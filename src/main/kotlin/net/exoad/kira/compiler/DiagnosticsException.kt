@@ -34,7 +34,7 @@ class DiagnosticsException(
             Uh oh...
             The compiler panicked at $tag with:
                     
-                    $message
+            $message
               ${
             if(location != null) " at $location" else ""
         }${
@@ -48,6 +48,6 @@ class DiagnosticsException(
                 ""
                     .trimIndent()
         }
-        """.trimIndent()
+        """
     }
 }

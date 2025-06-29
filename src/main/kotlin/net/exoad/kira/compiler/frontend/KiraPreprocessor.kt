@@ -12,15 +12,19 @@ object KiraPreprocessor
 {
     const val COMMENT_PATTERN: String = "//";
 
-    fun stripComments(file: File): String
+    fun stripComments(file: String): String
     {
-        return file
-            .readLines()
+        return file.split("\n")
             .map { line ->
                 val index = line.indexOf(COMMENT_PATTERN);
                 if(index != -1) line.substring(0, index).trimEnd() else line
             }
             .filter { it.trim().isNotEmpty() }
             .joinToString("\n")
+    }
+
+    fun process(file: String): String
+    {
+        return stripComments(file)
     }
 }

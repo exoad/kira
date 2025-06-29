@@ -9,7 +9,7 @@ An **enjoyable** modern object oriented programming language with modern syntax 
 
 `June 28, 2025:`
 
-Currently the compiler and further language designs are not finished. The frontend is implemented in Kotlin with the backend currently chosen to either be LLVM or a fork of NekoVM. Additionally, I have also been considering generating raw x86 Assembly and using NASM to do the rest; however, we will where we go :).
+Currently the compiler and further language designs are not finished. The frontend is implemented in Kotlin with the backend currently chosen to either be LLVM or a fork of NekoVM. Additionally, I have also been considering generating raw x86 Assembly and using NASM to do the rest; however, we will see where this goes :).
 
 ## Code Snippets
 

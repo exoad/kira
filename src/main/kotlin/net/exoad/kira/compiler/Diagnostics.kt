@@ -1,11 +1,6 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.compiler.frontend.FileLocation
-import net.exoad.kira.compiler.frontend.Token
-import java.io.PrintWriter
-import java.io.StringWriter
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.logging.ConsoleHandler
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -26,13 +21,59 @@ object Diagnostics
             formatter = SimpleFormatter()
         }
         logger.addHandler(consoleHandler)
-        logger.level = Level.ALL
+        logger.level = Level.OFF
         logger.useParentHandlers = false
+    }
+
+    fun useDiagnostics()
+    {
+        logger.level = Level.ALL
+    }
+
+    fun silenceDiagnostics()
+    {
+        logger.level = Level.OFF
     }
 
     fun panic(tag: String, message: Any, cause: Throwable? = null, location: FileLocation? = null): Nothing
     {
         throw DiagnosticsException(tag, message.toString(), cause, location)
+    }
+
+    fun panic(message: String): Nothing
+    {
+        println("\n=====================[ Kira Panicked ]=====================")
+        for(segment in message.split('\n'))
+        {
+            val words = segment.split(" ")
+            var buffer = StringBuilder()
+            for(word in words)
+            {
+                if(buffer.length + word.length + (if(buffer.isNotEmpty()) 1 else 0) > 64)
+                {
+                    println(buffer.toString())
+                    buffer = StringBuilder(word)
+                }
+                else
+                {
+                    if(buffer.isNotEmpty())
+                    {
+                        buffer.append(" ")
+                    }
+                    buffer.append(word)
+                }
+            }
+            if(buffer.isNotEmpty())
+            {
+                println(buffer.toString())
+            }
+            else
+            {
+                println("")
+            }
+        }
+        println("===========================================================")
+        exitProcess(1)
     }
 
     object Logging

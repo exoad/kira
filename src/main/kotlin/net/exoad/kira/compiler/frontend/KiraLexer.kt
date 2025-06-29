@@ -30,13 +30,14 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
 {
     enum class Type(val rawDiagnosticsRepresentation: String? = null)
     {
-        INTEGER_LITERAL,
-        STRING_LITERAL,
-        FLOAT_LITERAL,
-        BOOL_TRUE_LITERAL,
-        BOOL_FALSE_LITERAL,
-        EOF,
-        DOT("'.' (Dot)"),
+        L_INTEGER,
+        L_STRING,
+        L_FLOAT,
+        L_TRUE_BOOL,
+        L_FALSE_BOOL,
+        S_EOF,
+        S_DOT("'.' (Dot)"),
+        S_COMMA("',' (Comma)"),
         IDENTIFIER,
         OP_ADD("'+' (Plus)"),
         OP_SUB("'-' (Minus)"),
@@ -44,15 +45,20 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_DIV("'/' (Divide)"),
         OP_MOD("'%' (Modulo)"),
         OP_ASSIGN("'=' (Assignment)"),
+        OP_LEQ("'<=' (Less Than Or Equal To)"),
+        OP_GEQ("'>=' (Greater Than Or Equal To)"),
+        OP_EQL("'==' (Equals To)"),
+        OP_NEQ("'!=' (Not Equals To)"),
         K_IF("'if'"),
         K_ELSE("'else'"),
         K_WHILE("'while'"),
-        L_PAREN("'(' (Opening Parenthesis)"), // opening
-        R_PAREN("')' (Closing Parenthesis"), // closing
-        L_BRACE("'{' (Opening Braces)"), // opening
-        R_BRACE("'}' (Closing Braces)"), //closing
-        TYPE_ANNOTATION("':' (Type Annotator)"),
-        STATEMENT_DELIMITER("';' (Semicolon)");
+        K_DO("'do'"),
+        S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"), // opening
+        S_CLOSE_PARENTHESIS("')' (Closing Parenthesis)"), // closing
+        S_OPEN_BRACE("'{' (Opening Braces)"), // opening
+        S_CLOSE_BRACE("'}' (Closing Braces)"), //closing
+        S_COLON("':' (Colon)"),
+        S_SEMICOLON("';' (Semicolon)");
 
         fun diagnosticsName(): String
         {
@@ -74,8 +80,8 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
             {
                 return when(token)
                 {
-                    STRING_LITERAL, INTEGER_LITERAL -> true
-                    else                            -> false
+                    L_STRING, L_INTEGER -> true
+                    else                -> false
                 }
             }
         }
@@ -179,11 +185,11 @@ open class KiraLexer(val readBuffer: String)
         val content = readBuffer.substring(start, pointer)
         return if(isFloat)
         {
-            Token.Raw(Token.Type.FLOAT_LITERAL, content, start, startLoc)
+            Token.Raw(Token.Type.L_FLOAT, content, start, startLoc)
         }
         else
         {
-            Token.Raw(Token.Type.INTEGER_LITERAL, content, start, startLoc)
+            Token.Raw(Token.Type.L_INTEGER, content, start, startLoc)
         }
     }
 
@@ -216,7 +222,7 @@ open class KiraLexer(val readBuffer: String)
                 "Unterminated string at $pointer. Insert '${Symbols.DOUBLE_QUOTE.rep}' to terminate it"
             )
         }
-        return Token.Raw(Token.Type.STRING_LITERAL, buffer.toString(), start, startLoc)
+        return Token.Raw(Token.Type.L_STRING, buffer.toString(), start, startLoc)
     }
 
     fun lexIdentifier(): Token
@@ -237,7 +243,7 @@ open class KiraLexer(val readBuffer: String)
             skipWhitespace()
             if(underPointer == Symbols.NULL.rep)
             {
-                return Token.Symbol(Token.Type.EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
+                return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
             }
             val char = underPointer
             val start = pointer
@@ -272,7 +278,7 @@ open class KiraLexer(val readBuffer: String)
             return when(char)
             {
                 Symbols.COLON.rep             -> Token.Symbol(
-                    Token.Type.TYPE_ANNOTATION,
+                    Token.Type.S_COLON,
                     Symbols.COLON,
                     start,
                     startLoc
@@ -282,24 +288,35 @@ open class KiraLexer(val readBuffer: String)
                 Symbols.ASTERISK.rep          -> Token.Symbol(Token.Type.OP_MUL, Symbols.ASTERISK, start, startLoc)
                 Symbols.SLASH.rep             -> Token.Symbol(Token.Type.OP_DIV, Symbols.SLASH, start, startLoc)
                 Symbols.PERCENT.rep           -> Token.Symbol(Token.Type.OP_MOD, Symbols.PERCENT, start, startLoc)
-                Symbols.OPEN_BRACE.rep        -> Token.Symbol(Token.Type.L_BRACE, Symbols.OPEN_BRACE, start, startLoc)
-                Symbols.PERIOD.rep            -> Token.Symbol(Token.Type.DOT, Symbols.PERIOD, start, startLoc)
+                Symbols.OPEN_BRACE.rep        -> Token.Symbol(
+                    Token.Type.S_OPEN_BRACE,
+                    Symbols.OPEN_BRACE,
+                    start,
+                    startLoc
+                )
+                Symbols.PERIOD.rep            -> Token.Symbol(Token.Type.S_DOT, Symbols.PERIOD, start, startLoc)
+                Symbols.COMMA.rep             -> Token.Symbol(Token.Type.S_COMMA, Symbols.COMMA, start, startLoc)
                 Symbols.PERCENT.rep           -> Token.Symbol(Token.Type.OP_MOD, Symbols.PERCENT, start, startLoc)
-                Symbols.CLOSE_BRACE.rep       -> Token.Symbol(Token.Type.R_BRACE, Symbols.CLOSE_BRACE, start, startLoc)
+                Symbols.CLOSE_BRACE.rep       -> Token.Symbol(
+                    Token.Type.S_CLOSE_BRACE,
+                    Symbols.CLOSE_BRACE,
+                    start,
+                    startLoc
+                )
                 Symbols.OPEN_PARENTHESIS.rep  -> Token.Symbol(
-                    Token.Type.L_PAREN,
+                    Token.Type.S_OPEN_PARENTHESIS,
                     Symbols.OPEN_PARENTHESIS,
                     start,
                     startLoc
                 )
                 Symbols.CLOSE_PARENTHESIS.rep -> Token.Symbol(
-                    Token.Type.R_PAREN,
+                    Token.Type.S_CLOSE_PARENTHESIS,
                     Symbols.CLOSE_PARENTHESIS,
                     start,
                     startLoc
                 )
                 Symbols.SEMICOLON.rep         -> Token.Symbol(
-                    Token.Type.STATEMENT_DELIMITER,
+                    Token.Type.S_SEMICOLON,
                     Symbols.SEMICOLON,
                     start,
                     startLoc
@@ -311,7 +328,7 @@ open class KiraLexer(val readBuffer: String)
                 )
             }
         }
-        return Token.Symbol(Token.Type.EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
+        return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
     }
 
     fun tokenize(): List<Token>
@@ -322,7 +339,7 @@ open class KiraLexer(val readBuffer: String)
         {
             token = nextToken()
             res.add(token)
-        } while(token.type != Token.Type.EOF)
+        } while(token.type != Token.Type.S_EOF)
         return res
     }
 }

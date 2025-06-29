@@ -19,6 +19,9 @@ enum class Symbols(val rep: Char)
     CLOSE_PARENTHESIS('\u0029'),
     OPEN_BRACE('\u007b'),
     CLOSE_BRACE('\u007d'),
+    OPEN_ANGLE('\u003c'),
+    CLOSE_ANGLE('\u003e'),
+    COMMA('\u002c'),
     PERIOD('\u002e'),
     COLON('\u003a');
 
@@ -34,11 +37,12 @@ object Keywords
      * Common literal like keywords that are essential to the programming language
      */
     val common = mapOf(
-        "true" to Token.Type.BOOL_TRUE_LITERAL,
-        "false" to Token.Type.BOOL_FALSE_LITERAL,
+        "true" to Token.Type.L_TRUE_BOOL,
+        "false" to Token.Type.L_FALSE_BOOL,
         "if" to Token.Type.K_IF,
         "else" to Token.Type.K_ELSE,
-        "while" to Token.Type.K_WHILE
+        "while" to Token.Type.K_WHILE,
+        "do" to Token.Type.K_DO
     )
 }
 
@@ -67,16 +71,16 @@ object Builtin
      * Integer
      */
     val integerTypes = mapOf(
-        "Int32" to arrayOf(Token.Type.INTEGER_LITERAL),
-        "Int64" to arrayOf(Token.Type.INTEGER_LITERAL),
+        "Int32" to arrayOf(Token.Type.L_INTEGER),
+        "Int64" to arrayOf(Token.Type.L_INTEGER),
     )
 
     /**
      * Floating point numbers
      */
     val floatTypes = mapOf(
-        "Float32" to arrayOf(Token.Type.FLOAT_LITERAL),
-        "Float64" to arrayOf(Token.Type.FLOAT_LITERAL)
+        "Float32" to arrayOf(Token.Type.L_FLOAT),
+        "Float64" to arrayOf(Token.Type.L_FLOAT)
     )
 
     /**
@@ -85,7 +89,7 @@ object Builtin
      * Has always the highest implicit precedence value
      */
     val sequenceTypes = mapOf(
-        "String" to arrayOf(Token.Type.STRING_LITERAL)
+        "String" to arrayOf(Token.Type.L_STRING)
     )
 
     /**
@@ -94,7 +98,7 @@ object Builtin
      * Has the same implicit precedence as integer types
      */
     val logicalTypes = mapOf(
-        "Bool" to arrayOf(Token.Type.BOOL_TRUE_LITERAL, Token.Type.BOOL_FALSE_LITERAL)
+        "Bool" to arrayOf(Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL)
     )
 
     fun allBuiltinTypes(): Map<String, Array<Token.Type>>

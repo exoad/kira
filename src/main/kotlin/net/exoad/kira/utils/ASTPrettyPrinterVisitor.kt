@@ -15,6 +15,8 @@ import net.exoad.kira.compiler.frontend.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.statements.StatementNode
 import net.exoad.kira.compiler.frontend.RootASTNode
 import net.exoad.kira.compiler.frontend.elements.FloatLiteralNode
+import net.exoad.kira.compiler.frontend.expressions.FunctionCallExpressionNode
+import net.exoad.kira.compiler.frontend.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.statements.ElseIfBranchStatement
 import net.exoad.kira.compiler.frontend.statements.WhileIterationStatement
@@ -103,6 +105,19 @@ object ASTPrettyPrinterVisitor : ASTVisitor()
         }
     }
 
+    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
+    {
+        appendLine("DoWhileIterationStatement")
+        pushIndent()
+        doWhileIterationStatement.condition.accept(this)
+        popIndent()
+        doWhileIterationStatement.statements.forEach { statement ->
+            pushIndent()
+            statement.accept(this)
+            popIndent()
+        }
+    }
+
     override fun visitBinaryExpression(binaryExpressionNode: BinaryExpressionNode)
     {
         appendLine("BinaryExpression{ ${binaryExpressionNode.operator} }")
@@ -175,6 +190,17 @@ object ASTPrettyPrinterVisitor : ASTVisitor()
         pushIndent()
         assignmentExpressionNode.value.accept(this)
         popIndent()
+    }
+
+    override fun visitFunctionCallExpression(functionCallExpressionNode: FunctionCallExpressionNode)
+    {
+        appendLine("FunctionCallExpression")
+        pushIndent()
+        functionCallExpressionNode.parameters.forEach { statement ->
+            statement.accept(this)
+            popIndent()
+            pushIndent()
+        }
     }
 
     private fun pushIndent()

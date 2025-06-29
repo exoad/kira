@@ -11,9 +11,11 @@ import net.exoad.kira.compiler.frontend.elements.TypeNode
 import net.exoad.kira.compiler.frontend.expressions.AssignmentExpressionNode
 import net.exoad.kira.compiler.frontend.expressions.BinaryExpressionNode
 import net.exoad.kira.compiler.frontend.expressions.BinaryOperator
+import net.exoad.kira.compiler.frontend.expressions.FunctionCallExpressionNode
 import net.exoad.kira.compiler.frontend.expressions.UnaryExpressionNode
 import net.exoad.kira.compiler.frontend.expressions.UnaryOperator
 import net.exoad.kira.compiler.frontend.expressions.declarations.VariableDeclarationNode
+import net.exoad.kira.compiler.frontend.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.statements.IfElseBranchStatementNode
 import net.exoad.kira.compiler.frontend.statements.ElseIfBranchStatement
@@ -35,11 +37,13 @@ abstract class ASTVisitor
     abstract fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement)
     abstract fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement)
     abstract fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
+    abstract fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
 
     // EXPRESSIONS
     abstract fun visitBinaryExpression(binaryExpressionNode: BinaryExpressionNode)
     abstract fun visitUnaryExpression(unaryExpressionNode: UnaryExpressionNode)
     abstract fun visitAssignmentExpression(assignmentExpressionNode: AssignmentExpressionNode)
+    abstract fun visitFunctionCallExpression(functionCallExpressionNode: FunctionCallExpressionNode)
 
     // LITERALS
     abstract fun visitIntegerLiteral(integerLiteralNode: IntegerLiteralNode)
@@ -80,7 +84,7 @@ open class KiraParser(val tokens: List<Token>)
     init
     {
         underPointer = if(tokens.isEmpty()) Token.Symbol(
-            Token.Type.EOF,
+            Token.Type.S_EOF,
             Symbols.NULL,
             0,
             FileLocation(1, 1)
@@ -97,7 +101,7 @@ open class KiraParser(val tokens: List<Token>)
     {
         val index = pointer + k - 1
         return if(index < tokens.size) tokens[index]
-        else Token.Symbol(Token.Type.EOF, Symbols.NULL, 0, FileLocation(1, 1))
+        else Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
     }
 
     /**
@@ -109,7 +113,7 @@ open class KiraParser(val tokens: List<Token>)
     {
         val index = pointer + k
         return if(index < tokens.size) tokens[index]
-        else Token.Symbol(Token.Type.EOF, Symbols.NULL, 0, FileLocation(1, 1))
+        else Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
     }
 
     /**
@@ -120,7 +124,7 @@ open class KiraParser(val tokens: List<Token>)
         pointer++
         underPointer = if(pointer < tokens.size) tokens[pointer]
         else Token.Symbol(
-            Token.Type.EOF, Symbols.NULL, 0,
+            Token.Type.S_EOF, Symbols.NULL, 0,
             FileLocation(1, 1)
         )
     }
@@ -163,7 +167,7 @@ open class KiraParser(val tokens: List<Token>)
         {
             Diagnostics.panic(
                 "KiraParser::expect",
-                "Expected ${token.name} but got ${underPointer.type.name} at ${underPointer.canonicalLocation}"
+                "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}"
             )
         }
         else
@@ -178,7 +182,7 @@ open class KiraParser(val tokens: List<Token>)
         {
             Diagnostics.panic(
                 "KiraParser::expect",
-                "Expected any of ${tokens.map { it.name }} but got ${underPointer.type.name} at ${underPointer.canonicalLocation}"
+                "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}"
             )
         }
         else
@@ -190,7 +194,7 @@ open class KiraParser(val tokens: List<Token>)
     fun parseProgram(): RootASTNode
     {
         val statements = mutableListOf<ASTNode>()
-        while(underPointer.type != Token.Type.EOF)
+        while(underPointer.type != Token.Type.S_EOF)
         {
             statements.add(parseStatement())
         }
@@ -201,12 +205,14 @@ open class KiraParser(val tokens: List<Token>)
     {
         return when(underPointer.type)
         {
+            // parse keywords stuffs first if possible (like keyword first statements)
             Token.Type.K_IF    -> parseIfSelectionStatement()
             Token.Type.K_WHILE -> parseWhileIterationStatement()
+            Token.Type.K_DO    -> parseDoWhileIterationStatement()
             else               ->
             {
                 val expression = parseExpression()
-                expect(Token.Type.STATEMENT_DELIMITER)
+                expect(Token.Type.S_SEMICOLON)
                 StatementNode(expression)
             }
         }
@@ -217,31 +223,43 @@ open class KiraParser(val tokens: List<Token>)
      */
     private fun parseStatementBlock(): List<StatementNode>
     {
-        expect(Token.Type.L_BRACE)
+        expect(Token.Type.S_OPEN_BRACE)
         val statements = mutableListOf<StatementNode>()
-        while(underPointer.type != Token.Type.R_BRACE && underPointer.type != Token.Type.EOF)
+        while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
         {
             statements.add(parseStatement())
         }
-        expect(Token.Type.R_BRACE)
+        expect(Token.Type.S_CLOSE_BRACE)
         return statements
     }
 
     fun parseWhileIterationStatement(): StatementNode
     {
         expect(Token.Type.K_WHILE)
-        expect(Token.Type.L_PAREN)
+        expect(Token.Type.S_OPEN_PARENTHESIS)
         val condition = parseExpression()
-        expect(Token.Type.R_PAREN)
+        expect(Token.Type.S_CLOSE_PARENTHESIS)
         return WhileIterationStatement(condition, parseStatementBlock())
+    }
+
+    fun parseDoWhileIterationStatement(): StatementNode
+    {
+        expect(Token.Type.K_DO)
+        val statements = parseStatementBlock()
+        expect(Token.Type.K_WHILE)
+        expect(Token.Type.S_OPEN_PARENTHESIS)
+        val condition = parseExpression()
+        expect(Token.Type.S_CLOSE_PARENTHESIS)
+        expect(Token.Type.S_SEMICOLON)
+        return DoWhileIterationStatement(condition, statements)
     }
 
     fun parseIfSelectionStatement(): StatementNode
     {
         expect(Token.Type.K_IF)
-        expect(Token.Type.L_PAREN)
+        expect(Token.Type.S_OPEN_PARENTHESIS)
         val condition = parseExpression()
-        expect(Token.Type.R_PAREN)
+        expect(Token.Type.S_CLOSE_PARENTHESIS)
         val thenStatements = parseStatementBlock()
         val branches = mutableListOf<IfElseBranchStatementNode>()
         while(underPointer.type == Token.Type.K_ELSE)
@@ -250,9 +268,9 @@ open class KiraParser(val tokens: List<Token>)
             if(underPointer.type == Token.Type.K_IF) // "else-if" part
             {
                 advance()
-                expect(Token.Type.L_PAREN)
+                expect(Token.Type.S_OPEN_PARENTHESIS)
                 val deepCondition = parseExpression()
-                expect(Token.Type.R_PAREN)
+                expect(Token.Type.S_CLOSE_PARENTHESIS)
                 branches.add(ElseIfBranchStatement(deepCondition, parseStatementBlock()))
             }
             else
@@ -266,7 +284,6 @@ open class KiraParser(val tokens: List<Token>)
     fun parseExpression(minPrecedence: Int = 0): ExpressionNode
     {
         var left: ExpressionNode = parsePrimaryOrUnaryExpression()
-
         while(true)
         {
             val binaryOperatorType = BinaryOperator.byTokenTypeMaybe(underPointer.type)
@@ -298,19 +315,29 @@ open class KiraParser(val tokens: List<Token>)
     {
         return when(underPointer.type)
         {
-            Token.Type.FLOAT_LITERAL                                    -> parseFloatLiteral()
-            Token.Type.INTEGER_LITERAL                                  -> parseIntegerLiteral()
-            Token.Type.IDENTIFIER                                       -> parseIdentifierExpression()
-            Token.Type.BOOL_TRUE_LITERAL, Token.Type.BOOL_FALSE_LITERAL -> parseBoolLiteral()
-            Token.Type.OP_SUB, Token.Type.OP_ADD                        -> parseUnaryExpression()
-            Token.Type.L_PAREN                                          ->
+            Token.Type.L_FLOAT                              -> parseFloatLiteral()
+            Token.Type.L_INTEGER                            -> parseIntegerLiteral()
+            Token.Type.IDENTIFIER                           ->
+            {
+                if(peek(1).type == Token.Type.S_OPEN_PARENTHESIS)
+                {
+                    parseFunctionCallExpression()
+                }
+                else
+                {
+                    parseIdentifierExpression()
+                }
+            }
+            Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL -> parseBoolLiteral()
+            Token.Type.OP_SUB, Token.Type.OP_ADD            -> parseUnaryExpression()
+            Token.Type.S_OPEN_PARENTHESIS                   ->
             {
                 advance()
                 val expression = parseExpression()
-                expect(Token.Type.R_PAREN)
+                expect(Token.Type.S_CLOSE_PARENTHESIS)
                 expression
             }
-            else                                                        -> Diagnostics.panic(
+            else                                            -> Diagnostics.panic(
                 "KiraParser::parsePrimaryExpression",
                 "${if(underPointer.type.rawDiagnosticsRepresentation == null) "'${underPointer.content}'" else underPointer.type.diagnosticsName()} is not allowed at ${underPointer.canonicalLocation}"
             )
@@ -342,13 +369,31 @@ open class KiraParser(val tokens: List<Token>)
         return left
     }
 
+    fun parseFunctionCallExpression(): ExpressionNode
+    {
+        val identifier = parseIdentifier()
+        expect(Token.Type.S_OPEN_PARENTHESIS)
+        val parameters = mutableListOf<ExpressionNode>()
+        while(underPointer.type != Token.Type.S_CLOSE_PARENTHESIS)
+        {
+            Diagnostics.Logging.wtf("KiraParser::parseFunctionCallExpression", parameters)
+            if(parameters.isNotEmpty()) // calling with only one parameter like 'myFunction(1,)' would not be right
+            {
+                expect(Token.Type.S_COMMA)
+            }
+            parameters.add(parseExpression())
+        }
+        expect(Token.Type.S_CLOSE_PARENTHESIS)
+        return FunctionCallExpressionNode(identifier, parameters)
+    }
+
     private fun parseIdentifierExpression(): ExpressionNode
     {
         return when(peek(1).type)
         {
-            Token.Type.OP_ASSIGN       -> parseAssignmentExpression()
-            Token.Type.TYPE_ANNOTATION -> parseVariableDeclaration()
-            else                       -> parseIdentifier() // Just an identifier if no special operator follows
+            Token.Type.OP_ASSIGN -> parseAssignmentExpression()
+            Token.Type.S_COLON   -> parseVariableDeclaration()
+            else                 -> parseType()
         }
     }
 
@@ -363,7 +408,7 @@ open class KiraParser(val tokens: List<Token>)
     fun parseVariableDeclaration(): VariableDeclarationNode
     {
         val identifier = parseIdentifier()
-        expect(Token.Type.TYPE_ANNOTATION)
+        expect(Token.Type.S_COLON)
         val type = parseType()
         expect(Token.Type.OP_ASSIGN)
         val value = parseBinaryExpression()
@@ -385,7 +430,7 @@ open class KiraParser(val tokens: List<Token>)
                 e
             )
         }
-        expect(Token.Type.INTEGER_LITERAL)
+        expect(Token.Type.L_INTEGER)
         return IntegerLiteralNode(value)
     }
 
@@ -404,7 +449,7 @@ open class KiraParser(val tokens: List<Token>)
                 e
             )
         }
-        expect(Token.Type.FLOAT_LITERAL)
+        expect(Token.Type.L_FLOAT)
         return FloatLiteralNode(value)
     }
 
@@ -423,7 +468,7 @@ open class KiraParser(val tokens: List<Token>)
                 e
             )
         }
-        expectAnyOf(arrayOf(Token.Type.BOOL_TRUE_LITERAL, Token.Type.BOOL_FALSE_LITERAL))
+        expectAnyOf(arrayOf(Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL))
         return BoolLiteralNode(value)
     }
 
