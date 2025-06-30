@@ -5,21 +5,24 @@
 >
 > Thus, a lot of things will lack documentation!
 
-An **enjoyable** modern object oriented programming language with modern syntax and semantics inspired from languages
+An **enjoyable** modern object-oriented programming language with modern syntax and semantics inspired from languages
 such as Java, C, Dart, and Rust.
 
 `June 28, 2025:`
 
-Currently the compiler and further language designs are not finished. The frontend is implemented in Kotlin with the
+Currently, the compiler and further language designs are not finished. The frontend is implemented in Kotlin with the
 backend currently chosen to either be LLVM or a fork of NekoVM. Additionally, I have also been considering generating
 raw x86 Assembly and using NASM to do the rest; however, we will see where this goes :).
 
 ## Code Snippets
 
+> [!WARNING]
+> Nothing here is final, so the syntax and semantics will change.
+
 ### Hello, World!
 
 ```
-io::println("Hello World!");
+@__trace__("Hello World!");
 ```
 
 ### Conditionals & Loops
@@ -28,17 +31,17 @@ io::println("Hello World!");
 someCondition: Bool = 1 + 1 == 2;
 if(someCondition)
 {
-    io::println("Is true!");
+    @__trace__("Is true!");
 }
 else
 {
-    io::println(":(");
+    @__trace__(":(");
 }
 
 i: Int32 = 32;
 while(i-- > 0)
 {
-    io::println("Counting down at: ${i}");
+    @__trace__("Counting down at: ${i}");
 }
 ```
 
