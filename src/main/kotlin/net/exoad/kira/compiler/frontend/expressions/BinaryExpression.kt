@@ -27,19 +27,31 @@ class BinaryExpressionNode(
 enum class BinaryOperator(val symbol: Array<Symbols>, val tokenType: Token.Type, val precedence: Int)
 {
     // arithmetic operators
-    ADD(arrayOf(Symbols.PLUS), Token.Type.OP_ADD, 4),
-    SUB(arrayOf(Symbols.HYPHEN), Token.Type.OP_SUB, 4),
-    MUL(arrayOf(Symbols.ASTERISK), Token.Type.OP_MUL, 5),
-    DIV(arrayOf(Symbols.SLASH), Token.Type.OP_DIV, 5),
-    MOD(arrayOf(Symbols.PERCENT), Token.Type.OP_MOD, 5),
+    ADD(arrayOf(Symbols.PLUS), Token.Type.OP_ADD, 11),
+    SUB(arrayOf(Symbols.HYPHEN), Token.Type.OP_SUB, 11),
+    MUL(arrayOf(Symbols.ASTERISK), Token.Type.OP_MUL, 12),
+    DIV(arrayOf(Symbols.SLASH), Token.Type.OP_DIV, 12),
+    MOD(arrayOf(Symbols.PERCENT), Token.Type.OP_MOD, 12),
 
     // logical operators
-    EQL(arrayOf(Symbols.EQUALS, Symbols.EQUALS), Token.Type.OP_CMP_EQL, 2),
-    NEQ(arrayOf(Symbols.EXCLAMATION, Symbols.EQUALS), Token.Type.OP_CMP_NEQ, 2),
-    GTE(arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS), Token.Type.OP_CMP_GTE, 3),
-    LTE(arrayOf(Symbols.OPEN_BRACE, Symbols.EQUALS), Token.Type.OP_CMP_LTE, 3),
-    GRT(arrayOf(Symbols.CLOSE_ANGLE), Token.Type.S_CLOSE_ANGLE, 3),
-    LST(arrayOf(Symbols.OPEN_ANGLE), Token.Type.S_OPEN_ANGLE, 3)
+    EQL(arrayOf(Symbols.EQUALS, Symbols.EQUALS), Token.Type.OP_CMP_EQL, 8),
+    NEQ(arrayOf(Symbols.EXCLAMATION, Symbols.EQUALS), Token.Type.OP_CMP_NEQ, 8),
+    GTE(arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS), Token.Type.OP_CMP_GTE, 9),
+    LTE(arrayOf(Symbols.OPEN_BRACE, Symbols.EQUALS), Token.Type.OP_CMP_LTE, 9),
+    GRT(arrayOf(Symbols.CLOSE_ANGLE), Token.Type.S_CLOSE_ANGLE, 9),
+    LST(arrayOf(Symbols.OPEN_ANGLE), Token.Type.S_OPEN_ANGLE, 9),
+    AND(arrayOf(Symbols.AMPERSAND, Symbols.AMPERSAND), Token.Type.OP_CMP_AND, 4),
+    OR(arrayOf(Symbols.PIPE, Symbols.PIPE), Token.Type.OP_CMP_OR, 3),
+
+    // bitwise operators
+    BIT_SHR(arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE), Token.Type.OP_BIT_SHR, 10),
+    BIT_SHL(arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE), Token.Type.OP_BIT_SHL, 10),
+    BIT_USHR(arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE), Token.Type.OP_BIT_USHR, 10),
+    BIT_XOR(arrayOf(Symbols.CARET), Token.Type.OP_BIT_XOR, 6),
+
+    // raw
+    CONJUNCTIVE_OR(arrayOf(Symbols.PIPE), Token.Type.S_PIPE, 5),
+    CONJUNCTIVE_AND(arrayOf(Symbols.AMPERSAND), Token.Type.S_AND, 7)
     ;
 
     companion object
@@ -59,6 +71,12 @@ enum class BinaryOperator(val symbol: Array<Symbols>, val tokenType: Token.Type,
                 Token.Type.OP_CMP_GTE    -> GTE
                 Token.Type.S_OPEN_ANGLE  -> LST
                 Token.Type.S_CLOSE_ANGLE -> GRT
+                Token.Type.OP_BIT_USHR -> BIT_USHR
+                Token.Type.OP_BIT_SHR  -> BIT_SHR
+                Token.Type.OP_BIT_SHL  -> BIT_SHL
+                Token.Type.OP_BIT_XOR  -> BIT_XOR
+                Token.Type.S_PIPE      -> CONJUNCTIVE_OR
+                Token.Type.S_AND       -> CONJUNCTIVE_AND
                 else                     -> Diagnostics.panic(
                     "BinaryOperator::byTokenType",
                     "$tokenType is not a binary operator!"

@@ -20,43 +20,39 @@ object SrcProvider
      */
     fun findCanonicalLine(lineNumber: Int): String
     {
-        return if(lineNumber > srcContentLines.size || lineNumber < 0)
+        return when
         {
-            DiagnosticsSymbols.NOT_REPRESENTABLE
-        }
-        else
-        {
-            srcContentLines[lineNumber].trimIndent()
+            lineNumber > srcContentLines.size || lineNumber < 0 -> DiagnosticsSymbols.NOT_REPRESENTABLE
+            else                                                -> srcContentLines[lineNumber].trimIndent()
         }
     }
 
     fun formCanonicalLocatorString(fileLocation: FileLocation, trailingText: String? = null): String
     {
         val line = findCanonicalLine(fileLocation.lineNumber)
-        return if(fileLocation.column < 0 || line.isNotRepresentableDiagnosticsSymbol())
+        return when
         {
-            line
-        }
-        else
-        {
-            val builder = StringBuilder()
-            builder.appendLine(line)
-            val gap = " ".repeat(fileLocation.column - 1)
-            builder.append(gap)
-            if(Public.Flags.useDiagnosticsUnicode)
+            fileLocation.column < 0 || line.isNotRepresentableDiagnosticsSymbol() -> line
+            else                                                                  ->
             {
-                builder.appendLine("↑")
-            }
-            else
-            {
-                builder.appendLine("^")
-            }
-            if(trailingText != null)
-            {
+                val builder = StringBuilder()
+                builder.appendLine(line)
+                val gap = " ".repeat(fileLocation.column - 1)
                 builder.append(gap)
-                builder.append(trailingText)
+                builder.appendLine(
+                    when
+                    {
+                        Public.Flags.useDiagnosticsUnicode -> "↑"
+                        else                               -> "^"
+                    }
+                )
+                if(trailingText != null)
+                {
+                    builder.append(gap)
+                    builder.append(trailingText)
+                }
+                builder.toString()
             }
-            builder.toString()
         }
     }
 }

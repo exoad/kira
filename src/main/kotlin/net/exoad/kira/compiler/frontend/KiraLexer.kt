@@ -45,6 +45,12 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_CMP_GTE("'>=' (Greater Than Or Equal To)"),
         OP_CMP_EQL("'==' (Equals To)"),
         OP_CMP_NEQ("'!=' (Not Equals To)"),
+        OP_CMP_AND("'&&' (Logical AND)"),
+        OP_CMP_OR("'||' (Logical OR)"),
+        OP_BIT_SHL("'<<' (Bitwise Shift Left)"),
+        OP_BIT_SHR("'>>' (Bitwise Shift Right"),
+        OP_BIT_USHR("'>>>' (Bitwise Unsigned Shift Right"),
+        OP_BIT_XOR("'^' (Bitwise XOR"),
         K_IF("'if'"),
         K_ELSE("'else'"),
         K_WHILE("'while'"),
@@ -57,6 +63,8 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         S_CLOSE_ANGLE("'>' (Closing Angle Bracket)"),
         S_COLON("':' (Colon)"),
         S_SEMICOLON("';' (Semicolon)"),
+        S_AND("'&' (And)"),
+        S_PIPE("'|' (Pipe)"),
         S_EOF,
         S_BANG("'!' (Bang)"),
         S_DOT("'.' (Dot)"),
@@ -125,14 +133,14 @@ object KiraLexer
      */
     fun advancePointer()
     {
-        if(underPointer == '\n')
+        when(underPointer)
         {
-            lineNumber++
-            column = 1
-        }
-        else
-        {
-            column++
+            '\n' ->
+            {
+                lineNumber++
+                column = 1
+            }
+            else -> column++
         }
         pointer++
         underPointer =
@@ -153,13 +161,10 @@ object KiraLexer
     fun peek(k: Int = 0): Char
     {
         val index = pointer + k
-        return if(index < SrcProvider.srcContent.length)
+        return when
         {
-            SrcProvider.srcContent[index]
-        }
-        else
-        {
-            Symbols.NULL.rep
+            index < SrcProvider.srcContent.length -> SrcProvider.srcContent[index]
+            else                                  -> Symbols.NULL.rep
         }
     }
 
@@ -191,13 +196,10 @@ object KiraLexer
             }
         }
         val content = SrcProvider.srcContent.substring(start, pointer)
-        return if(isFloat)
+        return when
         {
-            Token.Raw(Token.Type.L_FLOAT, content, start, startLoc)
-        }
-        else
-        {
-            Token.Raw(Token.Type.L_INTEGER, content, start, startLoc)
+            isFloat -> Token.Raw(Token.Type.L_FLOAT, content, start, startLoc)
+            else    -> Token.Raw(Token.Type.L_INTEGER, content, start, startLoc)
         }
     }
 
@@ -257,13 +259,10 @@ object KiraLexer
             fun localPeek(k: Int): Char
             {
                 val index = k + start
-                return if(index < SrcProvider.srcContent.length)
+                return when
                 {
-                    SrcProvider.srcContent[index]
-                }
-                else
-                {
-                    Symbols.NULL.rep
+                    index < SrcProvider.srcContent.length -> SrcProvider.srcContent[index]
+                    else                                  -> Symbols.NULL.rep
                 }
             }
 
@@ -272,18 +271,18 @@ object KiraLexer
             {
                 val identifier = lexIdentifier()
                 val keywordTokenType = Keywords.common[identifier.content]
-                return if(keywordTokenType != null)
+                return when
                 {
-                    Token.Raw(
-                        keywordTokenType,
-                        identifier.content,
-                        identifier.pointerPosition,
-                        identifier.canonicalLocation
-                    )
-                }
-                else
-                {
-                    identifier
+                    keywordTokenType != null ->
+                    {
+                        Token.Raw(
+                            keywordTokenType,
+                            identifier.content,
+                            identifier.pointerPosition,
+                            identifier.canonicalLocation
+                        )
+                    }
+                    else                     -> identifier
                 }
             }
             if(char.isDigit())
@@ -298,34 +297,76 @@ object KiraLexer
             return when(char)
             {
                 Symbols.OPEN_ANGLE.rep        ->
-                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    when(localPeek(1))
                     {
-                        advancePointer()
-                        return Token.LinkedSymbols(
-                            Token.Type.OP_CMP_LTE,
-                            arrayOf(Symbols.OPEN_ANGLE, Symbols.EQUALS),
+                        Symbols.EQUALS.rep     ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_CMP_LTE,
+                                arrayOf(Symbols.OPEN_ANGLE, Symbols.EQUALS),
+                                start,
+                                startLoc
+                            )
+                        }
+                        Symbols.OPEN_ANGLE.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_BIT_SHL,
+                                arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else                   -> Token.Symbol(
+                            Token.Type.S_CLOSE_ANGLE,
+                            Symbols.OPEN_ANGLE,
                             start,
                             startLoc
                         )
-                    }
-                    else
-                    {
-                        return Token.Symbol(Token.Type.S_OPEN_ANGLE, Symbols.OPEN_ANGLE, start, startLoc)
                     }
                 Symbols.CLOSE_ANGLE.rep       ->
-                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    when(localPeek(1))
                     {
-                        advancePointer()
-                        return Token.LinkedSymbols(
-                            Token.Type.OP_CMP_GTE,
-                            arrayOf(Symbols.OPEN_ANGLE, Symbols.EQUALS),
+                        Symbols.EQUALS.rep      ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_CMP_GTE,
+                                arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS),
+                                start,
+                                startLoc
+                            )
+                        }
+                        Symbols.CLOSE_ANGLE.rep ->
+                        {
+                            advancePointer()
+                            return when(localPeek(2))
+                            {
+                                Symbols.CLOSE_ANGLE.rep ->
+                                { // support bitwise unsigned right shift
+                                    advancePointer()
+                                    Token.LinkedSymbols(
+                                        Token.Type.OP_BIT_USHR,
+                                        arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE),
+                                        start, startLoc
+                                    )
+                                }
+                                else                    -> Token.LinkedSymbols(
+                                    Token.Type.OP_BIT_SHR,
+                                    arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE),
+                                    start,
+                                    startLoc
+                                )
+                            }
+                        }
+                        else                    -> Token.Symbol(
+                            Token.Type.S_CLOSE_ANGLE,
+                            Symbols.CLOSE_ANGLE,
                             start,
                             startLoc
                         )
-                    }
-                    else
-                    {
-                        return Token.Symbol(Token.Type.S_CLOSE_ANGLE, Symbols.CLOSE_ANGLE, start, startLoc)
                     }
                 Symbols.COLON.rep             -> Token.Symbol(
                     Token.Type.S_COLON,
@@ -334,19 +375,19 @@ object KiraLexer
                     startLoc
                 )
                 Symbols.EXCLAMATION.rep       ->
-                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    when(localPeek(1))
                     {
-                        advancePointer()
-                        return Token.LinkedSymbols(
-                            Token.Type.OP_CMP_NEQ,
-                            arrayOf(Symbols.EXCLAMATION, Symbols.EQUALS),
-                            start,
-                            startLoc
-                        )
-                    }
-                    else
-                    {
-                        return Token.Symbol(Token.Type.S_BANG, Symbols.EXCLAMATION, start, startLoc)
+                        Symbols.EQUALS.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_CMP_NEQ,
+                                arrayOf(Symbols.EXCLAMATION, Symbols.EQUALS),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else               -> Token.Symbol(Token.Type.S_BANG, Symbols.EXCLAMATION, start, startLoc)
                     }
                 Symbols.PLUS.rep              -> Token.Symbol(Token.Type.OP_ADD, Symbols.PLUS, start, startLoc)
                 Symbols.HYPHEN.rep            -> Token.Symbol(Token.Type.OP_SUB, Symbols.HYPHEN, start, startLoc)
@@ -362,6 +403,37 @@ object KiraLexer
                 Symbols.PERIOD.rep            -> Token.Symbol(Token.Type.S_DOT, Symbols.PERIOD, start, startLoc)
                 Symbols.COMMA.rep             -> Token.Symbol(Token.Type.S_COMMA, Symbols.COMMA, start, startLoc)
                 Symbols.PERCENT.rep           -> Token.Symbol(Token.Type.OP_MOD, Symbols.PERCENT, start, startLoc)
+                Symbols.CARET.rep             -> Token.Symbol(Token.Type.OP_BIT_XOR, Symbols.CARET, start, startLoc)
+                Symbols.PIPE.rep              ->
+                    when(localPeek(1))
+                    {
+                        Symbols.PIPE.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_CMP_OR,
+                                arrayOf(Symbols.PIPE, Symbols.PIPE),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else             -> Token.Symbol(Token.Type.S_PIPE, Symbols.PIPE, start, startLoc)
+                    }
+                Symbols.AMPERSAND.rep         ->
+                    when(localPeek(1))
+                    {
+                        Symbols.AMPERSAND.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_CMP_AND,
+                                arrayOf(Symbols.AMPERSAND, Symbols.AMPERSAND),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else                  -> Token.Symbol(Token.Type.S_AND, Symbols.AMPERSAND, start, startLoc)
+                    }
                 Symbols.CLOSE_BRACE.rep       -> Token.Symbol(
                     Token.Type.S_CLOSE_BRACE,
                     Symbols.CLOSE_BRACE,
@@ -387,19 +459,20 @@ object KiraLexer
                     startLoc
                 )
                 Symbols.EQUALS.rep            ->
-                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    when(localPeek(1))
                     {
-                        advancePointer()
-                        return Token.LinkedSymbols(
-                            Token.Type.OP_CMP_EQL,
-                            arrayOf(Symbols.EQUALS, Symbols.EQUALS),
-                            start,
-                            startLoc
-                        )
-                    }
-                    else
-                    {
-                        return Token.Symbol(Token.Type.OP_ASSIGN, Symbols.EQUALS, start, startLoc)
+                        Symbols.EQUALS.rep ->
+                        {
+                            advancePointer()
+                            return Token.LinkedSymbols(
+                                Token.Type.OP_CMP_EQL,
+                                arrayOf(Symbols.EQUALS, Symbols.EQUALS),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else               ->
+                            return Token.Symbol(Token.Type.OP_ASSIGN, Symbols.EQUALS, start, startLoc)
                     }
                 else                          -> Diagnostics.panic(
                     "KiraLexer::nextToken",

@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+    <configuration default="false" name="Main:GenerateBytecode" type="Application" factoryName="Application">
+        <option name="MAIN_CLASS_NAME" value="net.exoad.kira.MainKt"/>
+        <module name="kira_lang.main"/>
+        <option name="PROGRAM_PARAMETERS"
+                value="--src=meta/test.kira --diagnostics=true --out=test.kira.neko --target=neko"/>
+        <method v="2">
+            <option name="Make" enabled="true"/>
+        </method>
+    </configuration>
+</component>

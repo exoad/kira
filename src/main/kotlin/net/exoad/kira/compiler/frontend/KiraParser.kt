@@ -87,8 +87,11 @@ object KiraParser
     fun look(k: Int): Token
     {
         val index = pointer + k - 1
-        return if(index < TokensProvider.tokens.size) TokensProvider.tokens[index]
-        else Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+        return when
+        {
+            index < TokensProvider.tokens.size -> TokensProvider.tokens[index]
+            else                               -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+        }
     }
 
     /**
@@ -99,13 +102,10 @@ object KiraParser
     fun peek(k: Int = 0): Token
     {
         val index = pointer + k
-        return if(index < TokensProvider.tokens.size)
+        return when
         {
-            TokensProvider.tokens[index]
-        }
-        else
-        {
-            Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+            index < TokensProvider.tokens.size -> TokensProvider.tokens[index]
+            else                               -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
         }
     }
 
@@ -115,60 +115,63 @@ object KiraParser
     fun advance()
     {
         pointer++
-        underPointer = if(pointer < TokensProvider.tokens.size) TokensProvider.tokens[pointer]
-        else Token.Symbol(
-            Token.Type.S_EOF, Symbols.NULL, 0,
-            FileLocation(1, 1)
-        )
+        underPointer = when
+        {
+            pointer < TokensProvider.tokens.size -> TokensProvider.tokens[pointer]
+            else                                 -> Token.Symbol(
+                Token.Type.S_EOF, Symbols.NULL, 0,
+                FileLocation(1, 1)
+            )
+        }
     }
 
     fun expectAt(token: Token.Type, k: Int, ifOk: () -> Unit = { advance() })
     {
         val lookedAtToken = look(k)
-        if(lookedAtToken.type == token)
+        when(lookedAtToken.type)
         {
-            Diagnostics.panic(
-                "KiraParser::expect",
-                "Expected ${token.name} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
-                location = lookedAtToken.canonicalLocation
-            )
-        }
-        else
-        {
-            ifOk()
+            token ->
+            {
+                Diagnostics.panic(
+                    "KiraParser::expect",
+                    "Expected ${token.name} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
+                    location = lookedAtToken.canonicalLocation
+                )
+            }
+            else  -> ifOk()
         }
     }
 
     fun expectAnyOfAt(tokens: Array<Token.Type>, k: Int, ifOk: () -> Unit = { advance() })
     {
         val lookedAtToken = look(k)
-        if(!tokens.contains(underPointer.type))
+        when
         {
-            Diagnostics.panic(
-                "KiraParser::expect",
-                "Expected any of ${tokens.map { it.name }} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
-                location = lookedAtToken.canonicalLocation
-            )
-        }
-        else
-        {
-            ifOk()
+            !tokens.contains(underPointer.type) ->
+            {
+                Diagnostics.panic(
+                    "KiraParser::expect",
+                    "Expected any of ${tokens.map { it.name }} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
+                    location = lookedAtToken.canonicalLocation
+                )
+            }
+            else                                -> ifOk()
         }
     }
 
     fun expect(token: Token.Type, ifOk: () -> Unit = { advance() })
     {
-        if(underPointer.type != token)
+        when
         {
-            Diagnostics.panic(
-                "KiraParser::expect",
-                "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
-                location = underPointer.canonicalLocation
-            )
-        }
-        else
-        {
-            ifOk()
+            underPointer.type != token ->
+            {
+                Diagnostics.panic(
+                    "KiraParser::expect",
+                    "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
+                    location = underPointer.canonicalLocation
+                )
+            }
+            else                       -> ifOk()
         }
     }
 
@@ -177,17 +180,17 @@ object KiraParser
                 { advance() }
     )
     {
-        if(!tokens.contains(underPointer.type))
+        when
         {
-            Diagnostics.panic(
-                "KiraParser::expect",
-                "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
-                location = underPointer.canonicalLocation
-            )
-        }
-        else
-        {
-            ifOk()
+            !tokens.contains(underPointer.type) ->
+            {
+                Diagnostics.panic(
+                    "KiraParser::expect",
+                    "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
+                    location = underPointer.canonicalLocation
+                )
+            }
+            else                                -> ifOk()
         }
     }
 
@@ -265,17 +268,17 @@ object KiraParser
         while(underPointer.type == Token.Type.K_ELSE)
         {
             advance() // consume "else" part: not useful
-            if(underPointer.type == Token.Type.K_IF) // "else-if" part
+            when(underPointer.type)
             {
-                advance()
-                expect(Token.Type.S_OPEN_PARENTHESIS)
-                val deepCondition = parseExpression()
-                expect(Token.Type.S_CLOSE_PARENTHESIS)
-                branches.add(ElseIfBranchStatement(deepCondition, parseStatementBlock()))
-            }
-            else
-            {
-                branches.add(ElseBranchStatement(parseStatementBlock()))
+                Token.Type.K_IF -> // "else-if" part
+                {
+                    advance()
+                    expect(Token.Type.S_OPEN_PARENTHESIS)
+                    val deepCondition = parseExpression()
+                    expect(Token.Type.S_CLOSE_PARENTHESIS)
+                    branches.add(ElseIfBranchStatement(deepCondition, parseStatementBlock()))
+                }
+                else            -> branches.add(ElseBranchStatement(parseStatementBlock()))
             }
         }
         return IfSelectionStatement(condition, thenStatements, branches)
@@ -301,13 +304,10 @@ object KiraParser
 
     private fun parsePrimaryOrUnaryExpression(): ExpressionNode
     {
-        return if(UnaryOperator.byTokenTypeMaybe(underPointer.type) != null)
+        return when
         {
-            parseUnaryExpression()
-        }
-        else
-        {
-            parsePrimaryExpression()
+            UnaryOperator.byTokenTypeMaybe(underPointer.type) != null -> parseUnaryExpression()
+            else                                                      -> parsePrimaryExpression()
         }
     }
 
@@ -320,13 +320,10 @@ object KiraParser
             Token.Type.L_STRING                                     -> parseStringLiteral()
             Token.Type.IDENTIFIER                                   ->
             {
-                if(peek(1).type == Token.Type.S_OPEN_PARENTHESIS)
+                when(peek(1).type)
                 {
-                    parseFunctionCallExpression()
-                }
-                else
-                {
-                    parseIdentifierExpression()
+                    Token.Type.S_OPEN_PARENTHESIS -> parseFunctionCallExpression()
+                    else                          -> parseIdentifierExpression()
                 }
             }
             Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL         -> parseBoolLiteral()
@@ -340,7 +337,13 @@ object KiraParser
             }
             else                                                    -> Diagnostics.panic(
                 "KiraParser::parsePrimaryExpression",
-                "${if(underPointer.type.rawDiagnosticsRepresentation == null) "'${underPointer.content}'" else underPointer.type.diagnosticsName()} is not allowed at ${underPointer.canonicalLocation}",
+                "${
+                    when(underPointer.type.rawDiagnosticsRepresentation)
+                    {
+                        null -> "'${underPointer.content}'"
+                        else -> underPointer.type.diagnosticsName()
+                    }
+                } is not allowed at ${underPointer.canonicalLocation}",
                 location = underPointer.canonicalLocation
             )
         }

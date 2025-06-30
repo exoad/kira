@@ -20,13 +20,10 @@ fun main(args: Array<String>)
     val (_, duration) = measureTimedValue {
         argsParser = ArgsParser(args)
         parseArgs().let { it ->
-            if(it.useDiagnostics)
+            when(it.useDiagnostics)
             {
-                Diagnostics.useDiagnostics()
-            }
-            else
-            {
-                Diagnostics.silenceDiagnostics()
+                true -> Diagnostics.useDiagnostics()
+                else -> Diagnostics.silenceDiagnostics()
             }
             for(sourceFile in it.src)
             {

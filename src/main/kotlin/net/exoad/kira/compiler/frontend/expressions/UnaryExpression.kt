@@ -23,11 +23,11 @@ class UnaryExpressionNode(val operator: UnaryOperator, val operand: ExpressionNo
 enum class UnaryOperator(val symbol: Symbols, val tokenType: Token.Type, val precedence: Int)
 {
     // numerical operators
-    NEG(Symbols.HYPHEN, Token.Type.OP_SUB, 10),
-    POS(Symbols.PLUS, Token.Type.OP_ADD, 10),
+    NEG(Symbols.HYPHEN, Token.Type.OP_SUB, 13),
+    POS(Symbols.PLUS, Token.Type.OP_ADD, 13),
 
     // logical operators
-    NOT(Symbols.EXCLAMATION, Token.Type.S_BANG, 10)
+    NOT(Symbols.EXCLAMATION, Token.Type.S_BANG, 13)
     ;
 
     companion object

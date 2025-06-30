@@ -32,24 +32,22 @@ class DiagnosticsException(
 The compiler panicked at $tag with:
 $message
 ${
-            if(location != null)
+            when
             {
-                "\n${SrcProvider.formCanonicalLocatorString(location, "Here")}"
-            }
-            else
-            {
-                ""
+                location != null -> "\n${SrcProvider.formCanonicalLocatorString(location, "Here")}"
+                else             -> ""
             }
         }
 ${
-            if(exceptionTrace != null)
-                """
-Internal stack trace (from cause): 
-                    
-$exceptionTrace    
-""".trimIndent()
-            else
-                ""
+            when
+            {
+                exceptionTrace != null -> """
+    Internal stack trace (from cause): 
+                        
+    $exceptionTrace    
+    """.trimIndent()
+                else                   -> ""
+            }
         }
         """
     }

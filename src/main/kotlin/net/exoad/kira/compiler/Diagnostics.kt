@@ -50,28 +50,30 @@ object Diagnostics
             var buffer = StringBuilder()
             for(word in words)
             {
-                if(buffer.length + word.length + (if(buffer.isNotEmpty()) 1 else 0) > 64)
+                when
                 {
-                    println(buffer.toString())
-                    buffer = StringBuilder(word)
-                }
-                else
-                {
-                    if(buffer.isNotEmpty())
+                    buffer.length + word.length + (if(buffer.isNotEmpty()) 1 else 0) > 64 ->
                     {
-                        buffer.append(" ")
+                        println(buffer.toString())
+                        buffer = StringBuilder(word)
                     }
-                    buffer.append(word)
+                    else                                                                  ->
+                    {
+                        if(buffer.isNotEmpty())
+                        {
+                            buffer.append(" ")
+                        }
+                        buffer.append(word)
+                    }
                 }
             }
-            if(buffer.isNotEmpty())
-            {
-                println(buffer.toString())
-            }
-            else
-            {
-                println("")
-            }
+            println(
+                when
+                {
+                    buffer.isNotEmpty() -> buffer.toString()
+                    else                -> ""
+                }
+            )
         }
         println("===========================================================")
         exitProcess(1)

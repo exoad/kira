@@ -15,7 +15,11 @@ object KiraPreprocessor
         SrcProvider.srcContent = SrcProvider.srcContentLines
             .map { line ->
                 val index = line.indexOf(COMMENT_PATTERN)
-                if(index != -1) line.substring(0, index).trimEnd() else line
+                when
+                {
+                    index != -1 -> line.substring(0, index).trimEnd()
+                    else        -> line
+                }
             }
             .filter { it.trim().isNotEmpty() }
             .joinToString("\n")
