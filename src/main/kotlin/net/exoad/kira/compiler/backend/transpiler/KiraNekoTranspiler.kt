@@ -1,13 +1,11 @@
 package net.exoad.kira.compiler.backend.transpiler
 
+import net.exoad.kira.Builtin
 import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.GeneratedProvider
 import net.exoad.kira.compiler.frontend.TokensProvider
 import net.exoad.kira.compiler.frontend.elements.*
-import net.exoad.kira.compiler.frontend.expressions.AssignmentExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.BinaryExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.FunctionCallExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.UnaryExpressionNode
+import net.exoad.kira.compiler.frontend.expressions.*
 import net.exoad.kira.compiler.frontend.expressions.declarations.VariableDeclarationNode
 import net.exoad.kira.compiler.frontend.statements.*
 import java.io.File
@@ -43,7 +41,11 @@ object KiraNekoTranspiler : KiraTranspiler(
 
     override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
     {
-        TODO("Not yet implemented")
+        sb.append("while ")
+        whileIterationStatement.expression.accept(this)
+        sb.appendLine(" {")
+        whileIterationStatement.statements.forEach { it.accept(this) }
+        sb.appendLine("}")
     }
 
     override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
@@ -70,12 +72,41 @@ object KiraNekoTranspiler : KiraTranspiler(
 
     override fun visitAssignmentExpression(assignmentExpressionNode: AssignmentExpressionNode)
     {
-        TODO("Not yet implemented")
+        assignmentExpressionNode.target.accept(this)
+        sb.append(" = ")
+        assignmentExpressionNode.value.accept(this)
     }
 
     override fun visitFunctionCallExpression(functionCallExpressionNode: FunctionCallExpressionNode)
     {
         TODO("Not yet implemented")
+    }
+
+    override fun visitIntrinsicCallExpression(intrinsicCallExpression: IntrinsicCallExpression)
+    {
+        when(intrinsicCallExpression.name.intrinsicKey)
+        {
+            Builtin.Intrinsics.TRACE ->
+            {
+                if(intrinsicCallExpression.parameters.size > 1)
+                {
+                    Diagnostics.Logging.warn(
+                        "KiraNekoTranspiler::visitIntrinsicCallExpression",
+                        "The intrinsic '${Builtin.Intrinsics.TRACE.rep}' only accepts one argument. Ignoring the rest..."
+                    )
+                }
+                sb.append(
+                    "\$print(\"[${
+                        intrinsicCallExpression.name.absoluteFileLocation.srcFile.replace(
+                            "\\",
+                            "\\\\"
+                        )
+                    }:${intrinsicCallExpression.name.absoluteFileLocation.lineNumber}:${intrinsicCallExpression.name.absoluteFileLocation.column}]\"+"
+                )
+                intrinsicCallExpression.parameters.first().accept(this)
+                sb.append(")")
+            }
+        }
     }
 
     override fun visitIntegerLiteral(integerLiteralNode: IntegerLiteralNode)

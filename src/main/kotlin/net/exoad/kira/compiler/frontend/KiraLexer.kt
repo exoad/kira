@@ -18,7 +18,26 @@ data class FileLocation(val lineNumber: Int, val column: Int)
 
     override fun toString(): String
     {
-        return "Line $lineNumber, Column $column"
+        return "line $lineNumber, col $column"
+    }
+}
+
+data class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFile: String)
+{
+    init
+    {
+        assert(lineNumber > 0) { "Line Number must be greater than 0 (BAD: $lineNumber)" }
+        assert(column > 0) { "Column Number must be greater than 0 (BAD: $column)" }
+    }
+
+    fun toNormalFileLocation(): FileLocation
+    {
+        return FileLocation(lineNumber, column)
+    }
+
+    override fun toString(): String
+    {
+        return "[$srcFile : line $lineNumber, col $column"
     }
 }
 
@@ -41,8 +60,8 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_DIV("'/' (Divide)"),
         OP_MOD("'%' (Modulo)"),
         OP_ASSIGN("'=' (Assignment)"),
-        OP_CMP_LTE("'<=' (Less Than Or Equal To)"),
-        OP_CMP_GTE("'>=' (Greater Than Or Equal To)"),
+        OP_CMP_LEQ("'<=' (Less Than Or Equal To)"),
+        GEQ("'>=' (Greater Than Or Equal To)"),
         OP_CMP_EQL("'==' (Equals To)"),
         OP_CMP_NEQ("'!=' (Not Equals To)"),
         OP_CMP_AND("'&&' (Logical AND)"),
@@ -66,8 +85,10 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         S_AND("'&' (And)"),
         S_PIPE("'|' (Pipe)"),
         S_EOF,
+        S_AT("'@' (At)"),
         S_BANG("'!' (Bang)"),
         S_DOT("'.' (Dot)"),
+        S_TILDE("'~' (Tilde)"),
         S_COMMA("',' (Comma)"),
         ;
 
@@ -82,8 +103,14 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
             {
                 return when(token)
                 {
-                    OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_CMP_NEQ, OP_CMP_GTE, OP_CMP_LTE, OP_CMP_EQL, S_OPEN_ANGLE, S_CLOSE_ANGLE -> true
-                    else                                                                                                                -> false
+                    OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
+                    OP_CMP_NEQ, GEQ, OP_CMP_LEQ, OP_CMP_EQL,
+                    S_OPEN_ANGLE, S_CLOSE_ANGLE,
+                    OP_CMP_AND, OP_CMP_OR,
+                    OP_BIT_XOR, OP_BIT_USHR, OP_BIT_SHL, OP_BIT_SHR,
+                    S_AND, S_PIPE,
+                         -> true
+                    else -> false
                 }
             }
 
@@ -215,13 +242,10 @@ object KiraLexer
             buffer.append(underPointer)
             advancePointer()
         }
-        if(underPointer == Symbols.DOUBLE_QUOTE.rep)
+        when(underPointer)
         {
-            advancePointer()
-        }
-        else
-        {
-            Diagnostics.panic(
+            Symbols.DOUBLE_QUOTE.rep -> advancePointer()
+            else                     -> Diagnostics.panic(
                 "KiraLexer::lexStringLiteral",
                 "Unterminated string at $pointer. Insert '${Symbols.DOUBLE_QUOTE.rep}' to terminate it",
                 location = startLoc
@@ -259,10 +283,10 @@ object KiraLexer
             fun localPeek(k: Int): Char
             {
                 val index = k + start
-                return when
+                return when(index < SrcProvider.srcContent.length)
                 {
-                    index < SrcProvider.srcContent.length -> SrcProvider.srcContent[index]
-                    else                                  -> Symbols.NULL.rep
+                    true -> SrcProvider.srcContent[index]
+                    else -> Symbols.NULL.rep
                 }
             }
 
@@ -296,6 +320,7 @@ object KiraLexer
             advancePointer()
             return when(char)
             {
+                Symbols.AT.rep                -> Token.Symbol(Token.Type.S_AT, Symbols.AT, start, startLoc)
                 Symbols.OPEN_ANGLE.rep        ->
                     when(localPeek(1))
                     {
@@ -303,7 +328,7 @@ object KiraLexer
                         {
                             advancePointer()
                             Token.LinkedSymbols(
-                                Token.Type.OP_CMP_LTE,
+                                Token.Type.OP_CMP_LEQ,
                                 arrayOf(Symbols.OPEN_ANGLE, Symbols.EQUALS),
                                 start,
                                 startLoc
@@ -320,7 +345,7 @@ object KiraLexer
                             )
                         }
                         else                   -> Token.Symbol(
-                            Token.Type.S_CLOSE_ANGLE,
+                            Token.Type.S_OPEN_ANGLE,
                             Symbols.OPEN_ANGLE,
                             start,
                             startLoc
@@ -333,7 +358,7 @@ object KiraLexer
                         {
                             advancePointer()
                             Token.LinkedSymbols(
-                                Token.Type.OP_CMP_GTE,
+                                Token.Type.GEQ,
                                 arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS),
                                 start,
                                 startLoc
@@ -440,6 +465,7 @@ object KiraLexer
                     start,
                     startLoc
                 )
+                Symbols.TILDE.rep             -> Token.Symbol(Token.Type.S_TILDE, Symbols.TILDE, start, startLoc)
                 Symbols.OPEN_PARENTHESIS.rep  -> Token.Symbol(
                     Token.Type.S_OPEN_PARENTHESIS,
                     Symbols.OPEN_PARENTHESIS,
@@ -476,8 +502,8 @@ object KiraLexer
                     }
                 else                          -> Diagnostics.panic(
                     "KiraLexer::nextToken",
-                    "Token '$char' is not known at Line $lineNumber, Column $column",
-                    location = startLoc
+                    "Symbol '$char' is not known at Line $lineNumber, Column $column",
+                    location = startLoc,
                 )
             }
         }

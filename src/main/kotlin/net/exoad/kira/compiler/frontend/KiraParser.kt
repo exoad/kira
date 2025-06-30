@@ -1,7 +1,9 @@
 package net.exoad.kira.compiler.frontend
 
+import net.exoad.kira.Builtin
 import net.exoad.kira.Symbols
 import net.exoad.kira.compiler.Diagnostics
+import net.exoad.kira.compiler.Intrinsic
 import net.exoad.kira.compiler.frontend.KiraParser.look
 import net.exoad.kira.compiler.frontend.KiraParser.peek
 import net.exoad.kira.compiler.frontend.KiraParser.pointer
@@ -31,6 +33,7 @@ abstract class ASTVisitor
     abstract fun visitUnaryExpression(unaryExpressionNode: UnaryExpressionNode)
     abstract fun visitAssignmentExpression(assignmentExpressionNode: AssignmentExpressionNode)
     abstract fun visitFunctionCallExpression(functionCallExpressionNode: FunctionCallExpressionNode)
+    abstract fun visitIntrinsicCallExpression(intrinsicCallExpression: IntrinsicCallExpression)
 
     // LITERALS
     abstract fun visitIntegerLiteral(integerLiteralNode: IntegerLiteralNode)
@@ -125,59 +128,26 @@ object KiraParser
         }
     }
 
-    fun expectAt(token: Token.Type, k: Int, ifOk: () -> Unit = { advance() })
-    {
-        val lookedAtToken = look(k)
-        when(lookedAtToken.type)
-        {
-            token ->
-            {
-                Diagnostics.panic(
-                    "KiraParser::expect",
-                    "Expected ${token.name} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
-                    location = lookedAtToken.canonicalLocation
-                )
-            }
-            else  -> ifOk()
-        }
-    }
-
-    fun expectAnyOfAt(tokens: Array<Token.Type>, k: Int, ifOk: () -> Unit = { advance() })
-    {
-        val lookedAtToken = look(k)
-        when
-        {
-            !tokens.contains(underPointer.type) ->
-            {
-                Diagnostics.panic(
-                    "KiraParser::expect",
-                    "Expected any of ${tokens.map { it.name }} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
-                    location = lookedAtToken.canonicalLocation
-                )
-            }
-            else                                -> ifOk()
-        }
-    }
-
     fun expect(token: Token.Type, ifOk: () -> Unit = { advance() })
     {
-        when
+        when(underPointer.type != token)
         {
-            underPointer.type != token ->
+            true ->
             {
                 Diagnostics.panic(
                     "KiraParser::expect",
-                    "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
+                    "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()}",
                     location = underPointer.canonicalLocation
                 )
             }
-            else                       -> ifOk()
+            else -> ifOk()
         }
     }
 
     fun expectAnyOf(
-        tokens: Array<Token.Type>, ifOk: () -> Unit =
-                { advance() }
+        tokens: Array<Token.Type>,
+        ifOk: () -> Unit =
+                { advance() },
     )
     {
         when
@@ -186,7 +156,7 @@ object KiraParser
             {
                 Diagnostics.panic(
                     "KiraParser::expect",
-                    "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
+                    "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()}",
                     location = underPointer.canonicalLocation
                 )
             }
@@ -315,27 +285,40 @@ object KiraParser
     {
         return when(underPointer.type)
         {
-            Token.Type.L_FLOAT                                      -> parseFloatLiteral()
-            Token.Type.L_INTEGER                                    -> parseIntegerLiteral()
-            Token.Type.L_STRING                                     -> parseStringLiteral()
-            Token.Type.IDENTIFIER                                   ->
-            {
+            Token.Type.L_FLOAT                                                          -> parseFloatLiteral()
+            Token.Type.L_INTEGER                                                        -> parseIntegerLiteral()
+            Token.Type.L_STRING                                                         -> parseStringLiteral()
+            Token.Type.S_AT                                                             ->
+                when(peek(1).type)
+                {
+                    Token.Type.IDENTIFIER ->
+                    {
+                        advance()
+                        parseIntrinsicCallExpression()
+                    }
+                    else                  -> Diagnostics.panic(
+                        "KiraParser::parsePrimaryExpression",
+                        "Intrinsics must be followed by an identifier",
+                        location = underPointer.canonicalLocation,
+                        selectorLength = peek(1).content.length
+                    )
+                }
+            Token.Type.IDENTIFIER                                                       ->
                 when(peek(1).type)
                 {
                     Token.Type.S_OPEN_PARENTHESIS -> parseFunctionCallExpression()
                     else                          -> parseIdentifierExpression()
                 }
-            }
-            Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL         -> parseBoolLiteral()
-            Token.Type.OP_SUB, Token.Type.OP_ADD, Token.Type.S_BANG -> parseUnaryExpression()
-            Token.Type.S_OPEN_PARENTHESIS                           ->
+            Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL                             -> parseBoolLiteral()
+            Token.Type.OP_SUB, Token.Type.OP_ADD, Token.Type.S_BANG, Token.Type.S_TILDE -> parseUnaryExpression()
+            Token.Type.S_OPEN_PARENTHESIS                                               ->
             {
                 advance()
                 val expression = parseExpression()
                 expect(Token.Type.S_CLOSE_PARENTHESIS)
                 expression
             }
-            else                                                    -> Diagnostics.panic(
+            else                                                                        -> Diagnostics.panic(
                 "KiraParser::parsePrimaryExpression",
                 "${
                     when(underPointer.type.rawDiagnosticsRepresentation)
@@ -343,8 +326,9 @@ object KiraParser
                         null -> "'${underPointer.content}'"
                         else -> underPointer.type.diagnosticsName()
                     }
-                } is not allowed at ${underPointer.canonicalLocation}",
-                location = underPointer.canonicalLocation
+                } is not allowed",
+                location = underPointer.canonicalLocation,
+                selectorLength = underPointer.content.length
             )
         }
     }
@@ -374,6 +358,44 @@ object KiraParser
         return left
     }
 
+    fun parseIntrinsicCallExpression(): ExpressionNode
+    {
+        val startLoc = underPointer.canonicalLocation
+        val identifier = parseIdentifier()
+        expect(Token.Type.S_OPEN_PARENTHESIS)
+        val parameters = mutableListOf<ExpressionNode>()
+        while(underPointer.type != Token.Type.S_CLOSE_PARENTHESIS)
+        {
+            Diagnostics.Logging.yap("KiraParser::parseIntrinsicCallExpression", parameters)
+            if(parameters.isNotEmpty())
+            {
+                expect(Token.Type.S_COMMA)
+            }
+            parameters.add(parseExpression())
+        }
+        expect(Token.Type.S_CLOSE_PARENTHESIS)
+        val findVal = Builtin.Intrinsics.entries.find { it.rep == identifier.name }
+        return when(findVal != null)
+        {
+            true -> IntrinsicCallExpression(
+                Intrinsic(
+                    findVal,
+                    AbsoluteFileLocation(
+                        underPointer.canonicalLocation.lineNumber,
+                        underPointer.canonicalLocation.column,
+                        SrcProvider.srcFile
+                    )
+                ), parameters
+            )
+            else -> Diagnostics.panic(
+                "KiraParser::parseIntrinsicCallExpression",
+                "Could not find a compile time intrinsic named '${identifier.name}'",
+                location = startLoc,
+                selectorLength = identifier.name.length
+            )
+        }
+    }
+
     fun parseFunctionCallExpression(): ExpressionNode
     {
         val identifier = parseIdentifier()
@@ -381,7 +403,7 @@ object KiraParser
         val parameters = mutableListOf<ExpressionNode>()
         while(underPointer.type != Token.Type.S_CLOSE_PARENTHESIS)
         {
-            Diagnostics.Logging.wtf("KiraParser::parseFunctionCallExpression", parameters)
+            Diagnostics.Logging.yap("KiraParser::parseFunctionCallExpression", parameters)
             if(parameters.isNotEmpty()) // calling with only one parameter like 'myFunction(1,)' would not be right
             {
                 expect(Token.Type.S_COMMA)
@@ -438,7 +460,7 @@ object KiraParser
         {
             Diagnostics.panic(
                 "KiraParser::parseIntegerLiteral",
-                "Unable to read '${underPointer.content}' as an integer literal at ${underPointer.canonicalLocation}",
+                "Unable to read '${underPointer.content}' as an integer literal",
                 cause = e,
                 location = underPointer.canonicalLocation
             )
@@ -458,7 +480,7 @@ object KiraParser
         {
             Diagnostics.panic(
                 "KiraParser::parseIntegerLiteral",
-                "Unable to read '${underPointer.content}' as an integer literal at ${underPointer.canonicalLocation}",
+                "Unable to read '${underPointer.content}' as an integer literal",
                 cause = e,
                 location = underPointer.canonicalLocation
             )
@@ -478,7 +500,7 @@ object KiraParser
         {
             Diagnostics.panic(
                 "KiraParser::parseBoolLiteral",
-                "Unable to read ${underPointer.content} as a bool literal at ${underPointer.canonicalLocation}",
+                "Unable to read ${underPointer.content} as a bool literal",
                 cause = e,
                 location = underPointer.canonicalLocation
             )

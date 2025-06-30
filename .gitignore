@@ -50,3 +50,5 @@ bin/
 **.kira.txt
 **.neko
 **.n
+# coverage
+/htmlReport

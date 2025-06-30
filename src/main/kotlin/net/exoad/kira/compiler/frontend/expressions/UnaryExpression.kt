@@ -27,7 +27,10 @@ enum class UnaryOperator(val symbol: Symbols, val tokenType: Token.Type, val pre
     POS(Symbols.PLUS, Token.Type.OP_ADD, 13),
 
     // logical operators
-    NOT(Symbols.EXCLAMATION, Token.Type.S_BANG, 13)
+    NOT(Symbols.EXCLAMATION, Token.Type.S_BANG, 13),
+
+    // bitwise operators
+    BIT_NOT(Symbols.TILDE, Token.Type.S_TILDE, 13)
     ;
 
     companion object
@@ -36,10 +39,11 @@ enum class UnaryOperator(val symbol: Symbols, val tokenType: Token.Type, val pre
         {
             return when(tokenType)
             {
-                Token.Type.OP_SUB -> NEG
-                Token.Type.OP_ADD -> POS
-                Token.Type.S_BANG -> NOT
-                else              -> Diagnostics.panic(
+                Token.Type.OP_SUB  -> NEG
+                Token.Type.OP_ADD  -> POS
+                Token.Type.S_BANG  -> NOT
+                Token.Type.S_TILDE -> BIT_NOT
+                else               -> Diagnostics.panic(
                     "UnaryOperator::byTokenType",
                     "$tokenType is not an unary operator!"
                 )

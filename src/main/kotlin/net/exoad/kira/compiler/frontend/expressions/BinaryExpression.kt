@@ -9,7 +9,7 @@ import net.exoad.kira.compiler.frontend.Token
 class BinaryExpressionNode(
     val leftExpression: ExpressionNode,
     val rightExpression: ExpressionNode,
-    val operator: BinaryOperator
+    val operator: BinaryOperator,
 ) : ExpressionNode()
 {
     override fun accept(visitor: ASTVisitor)
@@ -36,8 +36,8 @@ enum class BinaryOperator(val symbol: Array<Symbols>, val tokenType: Token.Type,
     // logical operators
     EQL(arrayOf(Symbols.EQUALS, Symbols.EQUALS), Token.Type.OP_CMP_EQL, 8),
     NEQ(arrayOf(Symbols.EXCLAMATION, Symbols.EQUALS), Token.Type.OP_CMP_NEQ, 8),
-    GTE(arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS), Token.Type.OP_CMP_GTE, 9),
-    LTE(arrayOf(Symbols.OPEN_BRACE, Symbols.EQUALS), Token.Type.OP_CMP_LTE, 9),
+    GTE(arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS), Token.Type.GEQ, 9),
+    LTE(arrayOf(Symbols.OPEN_ANGLE, Symbols.EQUALS), Token.Type.OP_CMP_LEQ, 9),
     GRT(arrayOf(Symbols.CLOSE_ANGLE), Token.Type.S_CLOSE_ANGLE, 9),
     LST(arrayOf(Symbols.OPEN_ANGLE), Token.Type.S_OPEN_ANGLE, 9),
     AND(arrayOf(Symbols.AMPERSAND, Symbols.AMPERSAND), Token.Type.OP_CMP_AND, 4),
@@ -66,17 +66,19 @@ enum class BinaryOperator(val symbol: Array<Symbols>, val tokenType: Token.Type,
                 Token.Type.OP_DIV        -> DIV
                 Token.Type.OP_MOD        -> MOD
                 Token.Type.OP_CMP_EQL    -> EQL
-                Token.Type.OP_CMP_NEQ    -> NEQ
-                Token.Type.OP_CMP_LTE    -> LTE
-                Token.Type.OP_CMP_GTE    -> GTE
-                Token.Type.S_OPEN_ANGLE  -> LST
+                Token.Type.OP_CMP_NEQ   -> NEQ
+                Token.Type.OP_CMP_LEQ   -> LTE
+                Token.Type.GEQ          -> GTE
+                Token.Type.S_OPEN_ANGLE -> LST
                 Token.Type.S_CLOSE_ANGLE -> GRT
-                Token.Type.OP_BIT_USHR -> BIT_USHR
-                Token.Type.OP_BIT_SHR  -> BIT_SHR
-                Token.Type.OP_BIT_SHL  -> BIT_SHL
-                Token.Type.OP_BIT_XOR  -> BIT_XOR
-                Token.Type.S_PIPE      -> CONJUNCTIVE_OR
-                Token.Type.S_AND       -> CONJUNCTIVE_AND
+                Token.Type.OP_BIT_USHR  -> BIT_USHR
+                Token.Type.OP_BIT_SHR   -> BIT_SHR
+                Token.Type.OP_BIT_SHL   -> BIT_SHL
+                Token.Type.OP_BIT_XOR   -> BIT_XOR
+                Token.Type.OP_CMP_OR    -> OR
+                Token.Type.OP_CMP_AND   -> AND
+                Token.Type.S_PIPE       -> CONJUNCTIVE_OR
+                Token.Type.S_AND        -> CONJUNCTIVE_AND
                 else                     -> Diagnostics.panic(
                     "BinaryOperator::byTokenType",
                     "$tokenType is not a binary operator!"

@@ -36,9 +36,15 @@ object Diagnostics
         logger.level = Level.OFF
     }
 
-    fun panic(tag: String, message: Any, cause: Throwable? = null, location: FileLocation? = null): Nothing
+    fun panic(
+        tag: String,
+        message: Any,
+        cause: Throwable? = null,
+        location: FileLocation? = null,
+        selectorLength: Int = 1,
+    ): Nothing
     {
-        throw DiagnosticsException(tag, message.toString(), cause, location)
+        throw DiagnosticsException(tag, message.toString(), cause, location, selectorLength)
     }
 
     fun panic(message: String): Nothing
@@ -81,19 +87,9 @@ object Diagnostics
 
     object Logging
     {
-        fun ohNo(tag: String, message: Any)
-        {
-            logger.severe("OhNo/$tag: $message")
-        }
-
         fun info(tag: String, message: Any)
         {
             logger.info("Info/$tag: $message")
-        }
-
-        fun wtf(tag: String, message: Any)
-        {
-            logger.info("WTF?/$tag: $message") // :)
         }
 
         fun yap(tag: String, message: Any)

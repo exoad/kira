@@ -20,6 +20,8 @@ enum class Symbols(val rep: Char)
     EQUALS('\u003d'),
     OPEN_PARENTHESIS('\u0028'),
     CLOSE_PARENTHESIS('\u0029'),
+    AT('\u0040'),
+    TILDE('\u007e'),
     OPEN_BRACE('\u007b'),
     CLOSE_BRACE('\u007d'),
     OPEN_ANGLE('\u003c'),
@@ -67,6 +69,14 @@ object Keywords
  */
 object Builtin
 {
+    enum class Intrinsics(val rep: String)
+    {
+        TRACE("__trace__")
+    }
+
+    /**
+     * Unit types, only things like Void
+     */
     val unitTypes = mapOf<String, Array<Token.Type>>(
         "Void" to emptyArray()
     )

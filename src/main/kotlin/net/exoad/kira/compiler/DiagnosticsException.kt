@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler
 
+import net.exoad.kira.Public
 import net.exoad.kira.compiler.frontend.FileLocation
 import net.exoad.kira.compiler.frontend.SrcProvider
 import java.io.PrintWriter
@@ -9,7 +10,8 @@ class DiagnosticsException(
     val tag: String,
     override val message: String,
     cause: Throwable? = null,
-    val location: FileLocation? = null
+    val location: FileLocation? = null,
+    val selectorLength: Int,
 ) : RuntimeException(message, cause)
 {
     override fun toString(): String
@@ -29,16 +31,31 @@ class DiagnosticsException(
         }
         return """
 ===================[ Kira Panicked! ]===================    
-The compiler panicked at $tag with:
-$message
+Kira panicked at $tag:
 ${
-            when
+            when(location)
             {
-                location != null -> "\n${SrcProvider.formCanonicalLocatorString(location, "Here")}"
-                else             -> ""
+                null -> ""
+                else ->
+                {
+                    "${
+                        when(Public.Flags.useDiagnosticsUnicode)
+                        {
+                            true -> "➥"
+                            else -> "-->"
+                        }
+                    } [${SrcProvider.srcFile}] : $location"
+                }
             }
         }
 ${
+            when
+            {
+                location != null -> SrcProvider.formCanonicalLocatorString(location, "Here: $message", selectorLength)
+                else             -> ""
+            }
+        }
+            ${
             when
             {
                 exceptionTrace != null -> """
@@ -49,6 +66,6 @@ ${
                 else                   -> ""
             }
         }
-        """
+            """
     }
 }

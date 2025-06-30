@@ -1,13 +1,11 @@
 package net.exoad.kira.utils
 
+import net.exoad.kira.Builtin
 import net.exoad.kira.compiler.frontend.ASTNode
 import net.exoad.kira.compiler.frontend.ASTVisitor
 import net.exoad.kira.compiler.frontend.RootASTNode
 import net.exoad.kira.compiler.frontend.elements.*
-import net.exoad.kira.compiler.frontend.expressions.AssignmentExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.BinaryExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.FunctionCallExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.UnaryExpressionNode
+import net.exoad.kira.compiler.frontend.expressions.*
 import net.exoad.kira.compiler.frontend.expressions.declarations.VariableDeclarationNode
 import net.exoad.kira.compiler.frontend.statements.*
 
@@ -187,6 +185,17 @@ object ASTPrettyPrinterVisitor : ASTVisitor()
         appendLine("FunctionCallExpression")
         pushIndent()
         functionCallExpressionNode.parameters.forEach { statement ->
+            statement.accept(this)
+            popIndent()
+            pushIndent()
+        }
+    }
+
+    override fun visitIntrinsicCallExpression(intrinsicCallExpression: IntrinsicCallExpression)
+    {
+        appendLine("IntrinsicCallExpression[[ ${Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpression.name.intrinsicKey.name }} ]]")
+        pushIndent()
+        intrinsicCallExpression.parameters.forEach { statement ->
             statement.accept(this)
             popIndent()
             pushIndent()

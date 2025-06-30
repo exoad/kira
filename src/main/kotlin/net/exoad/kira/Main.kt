@@ -28,6 +28,7 @@ fun main(args: Array<String>)
             for(sourceFile in it.src)
             {
                 val file = File(sourceFile)
+                SrcProvider.srcFile = file.canonicalPath
                 SrcProvider.srcContent = file.readText()
                 KiraPreprocessor.process()
                 KiraLexer.tokenize()

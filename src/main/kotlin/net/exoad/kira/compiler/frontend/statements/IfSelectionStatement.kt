@@ -6,7 +6,7 @@ import net.exoad.kira.compiler.frontend.ExpressionNode
 
 open class IfSelectionStatement(
     condition: ExpressionNode, val thenStatements: List<StatementNode>,
-    val elseBranches: List<IfElseBranchStatementNode> = emptyList()
+    val elseBranches: List<IfElseBranchStatementNode> = emptyList(),
 ) :
     StatementNode(expression = condition)
 {
