@@ -1,4 +1,4 @@
-![Kira](./public/kira_header.jpg)
+![Kira](./public/kira_header_small.png)
 
 > [!NOTE]
 > Hi! This project is currently a work in progress :)
