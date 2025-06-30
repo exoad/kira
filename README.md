@@ -49,27 +49,30 @@ Check back later! More stuffs will come and go :)
 
 ## Chores
 
-### Frontend
+### Language Features
 
-Chores relating to anything to do with parsing, lexing, and static analysis.
+Chores relating to anything to do with the upfront semantics and syntax of the language
 
 - [ ] Parser evaluates escaped string characters
-- [ ] Interpolation in strings without using "+"
+
+- [ ] Interpolation in strings without using `+`
+
 - [ ] **In Triage** For Loop
+
+### Internal Workings
+
+Chores relating to anything that involves the internal workings
+
 - [ ] Static Analyzer for validating the state of the AST
+
 - [ ] Support for outputting the AST as an XML document so there is not a necessary usage of another parser to parse the
   formatting
 
-### Backend
-
-Chores relating to anything that takes a valid AST and transpiles it into another medium like machine code or bytecode.
-
 - [ ] **In Progress** Transpile to NekoVM Neko code with full support for all features
 
-### Misc.
+### General Maintenance
 
 General upkeep.
 
-- [ ] **In Progress** Enable more verbose logging that is currently toggleable through `--verbose`
-
+- [ ] **In Progress** Enable more verbose logging that is currently toggleable through --verbose
 
