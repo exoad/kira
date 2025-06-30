@@ -46,3 +46,30 @@ while(i-- > 0)
 ```
 
 Check back later! More stuffs will come and go :)
+
+## Chores
+
+### Frontend
+
+Chores relating to anything to do with parsing, lexing, and static analysis.
+
+- [ ] Parser evaluates escaped string characters
+- [ ] Interpolation in strings without using "+"
+- [ ] **In Triage** For Loop
+- [ ] Static Analyzer for validating the state of the AST
+- [ ] Support for outputting the AST as an XML document so there is not a necessary usage of another parser to parse the
+  formatting
+
+### Backend
+
+Chores relating to anything that takes a valid AST and transpiles it into another medium like machine code or bytecode.
+
+- [ ] **In Progress** Transpile to NekoVM Neko code with full support for all features
+
+### Misc.
+
+General upkeep.
+
+- [ ] **In Progress** Enable more verbose logging that is currently toggleable through `--verbose`
+
+
