@@ -3,6 +3,10 @@ package net.exoad.kira.compiler.frontend
 import net.exoad.kira.Keywords
 import net.exoad.kira.Symbols
 import net.exoad.kira.compiler.Diagnostics
+import net.exoad.kira.compiler.frontend.KiraLexer.column
+import net.exoad.kira.compiler.frontend.KiraLexer.lineNumber
+import net.exoad.kira.compiler.frontend.KiraLexer.peek
+import net.exoad.kira.compiler.frontend.KiraLexer.pointer
 
 data class FileLocation(val lineNumber: Int, val column: Int)
 {
@@ -35,9 +39,6 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         L_FLOAT,
         L_TRUE_BOOL,
         L_FALSE_BOOL,
-        S_EOF,
-        S_DOT("'.' (Dot)"),
-        S_COMMA("',' (Comma)"),
         IDENTIFIER,
         OP_ADD("'+' (Plus)"),
         OP_SUB("'-' (Minus)"),
@@ -45,20 +46,27 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_DIV("'/' (Divide)"),
         OP_MOD("'%' (Modulo)"),
         OP_ASSIGN("'=' (Assignment)"),
-        OP_LEQ("'<=' (Less Than Or Equal To)"),
-        OP_GEQ("'>=' (Greater Than Or Equal To)"),
-        OP_EQL("'==' (Equals To)"),
-        OP_NEQ("'!=' (Not Equals To)"),
+        OP_CMP_LTE("'<=' (Less Than Or Equal To)"),
+        OP_CMP_GTE("'>=' (Greater Than Or Equal To)"),
+        OP_CMP_EQL("'==' (Equals To)"),
+        OP_CMP_NEQ("'!=' (Not Equals To)"),
         K_IF("'if'"),
         K_ELSE("'else'"),
         K_WHILE("'while'"),
         K_DO("'do'"),
         S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"), // opening
         S_CLOSE_PARENTHESIS("')' (Closing Parenthesis)"), // closing
-        S_OPEN_BRACE("'{' (Opening Braces)"), // opening
-        S_CLOSE_BRACE("'}' (Closing Braces)"), //closing
+        S_OPEN_BRACE("'{' (Opening Brace)"), // opening
+        S_CLOSE_BRACE("'}' (Closing Brace)"), //closing
+        S_OPEN_ANGLE("'<' (Opening Angle Bracket)"),
+        S_CLOSE_ANGLE("'>' (Closing Angle Bracket)"),
         S_COLON("':' (Colon)"),
-        S_SEMICOLON("';' (Semicolon)");
+        S_SEMICOLON("';' (Semicolon)"),
+        S_EOF,
+        S_BANG("'!' (Bang)"),
+        S_DOT("'.' (Dot)"),
+        S_COMMA("',' (Comma)"),
+        ;
 
         fun diagnosticsName(): String
         {
@@ -71,18 +79,14 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
             {
                 return when(token)
                 {
-                    OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD -> true
-                    else                                   -> false
+                    OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_CMP_NEQ, OP_CMP_GTE, OP_CMP_LTE, OP_CMP_EQL, S_OPEN_ANGLE, S_CLOSE_ANGLE -> true
+                    else                                                                                                                -> false
                 }
             }
 
             fun isLiteral(token: Type): Boolean
             {
-                return when(token)
-                {
-                    L_STRING, L_INTEGER -> true
-                    else                -> false
-                }
+                return token.name.startsWith("L_")
             }
         }
     }
@@ -92,6 +96,9 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
 
     class Symbol(type: Type, symbol: Symbols, pointerPosition: Int, canonicalLocation: FileLocation) :
         Token(type, symbol.rep.toString(), pointerPosition, canonicalLocation)
+
+    class LinkedSymbols(type: Type, symbols: Array<Symbols>, pointerPosition: Int, canonicalLocation: FileLocation) :
+        Token(type, symbols.map { it.rep }.joinToString(""), pointerPosition, canonicalLocation)
 
     override fun toString(): String
     {
@@ -110,15 +117,16 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
  *
  * It passes this list of symbols onto the [KiraParser]
  */
-open class KiraLexer(val readBuffer: String)
+object KiraLexer
 {
     private var pointer = 0
     private var lineNumber = 1
     private var column = 1
-    private var underPointer: Char = if(readBuffer.isEmpty()) Symbols.NULL.rep else readBuffer.first()
+    private var underPointer: Char =
+            if(SrcProvider.srcContent.isEmpty()) Symbols.NULL.rep else SrcProvider.srcContent.first()
 
     /**
-     * Advances [pointer] to the next character in [readBuffer] and updates [lineNumber] and [column]
+     * Advances [pointer] to the next character in [SrcProvider.srcContent] and updates [lineNumber] and [column]
      */
     fun advancePointer()
     {
@@ -132,7 +140,8 @@ open class KiraLexer(val readBuffer: String)
             column++
         }
         pointer++
-        underPointer = if(pointer >= readBuffer.length) Symbols.NULL.rep else readBuffer[pointer]
+        underPointer =
+                if(pointer >= SrcProvider.srcContent.length) Symbols.NULL.rep else SrcProvider.srcContent[pointer]
     }
 
     fun skipWhitespace()
@@ -143,11 +152,15 @@ open class KiraLexer(val readBuffer: String)
         }
     }
 
-    fun peekNext(): Char
+    /**
+     * Grabs the [k]th token away from [pointer] as a relative offset.
+     */
+    fun peek(k: Int = 0): Char
     {
-        return if(pointer + 1 < readBuffer.length)
+        val index = pointer + k
+        return if(index < SrcProvider.srcContent.length)
         {
-            readBuffer[pointer + 1]
+            SrcProvider.srcContent[index]
         }
         else
         {
@@ -170,7 +183,7 @@ open class KiraLexer(val readBuffer: String)
         }
         if(underPointer == Symbols.PERIOD.rep)
         {
-            val afterDot = peekNext()
+            val afterDot = peek(1)
             if(afterDot.isDigit())
             {
                 isFloat = true
@@ -182,7 +195,7 @@ open class KiraLexer(val readBuffer: String)
             }
         }
         // TODO: add exponent notation ?
-        val content = readBuffer.substring(start, pointer)
+        val content = SrcProvider.srcContent.substring(start, pointer)
         return if(isFloat)
         {
             Token.Raw(Token.Type.L_FLOAT, content, start, startLoc)
@@ -208,7 +221,11 @@ open class KiraLexer(val readBuffer: String)
             }
             else
             {
-                Diagnostics.panic("KiraLexer::lexStringLiteral", "Escaped characters are not yet supported!")
+                Diagnostics.panic(
+                    "KiraLexer::lexStringLiteral",
+                    "Escaped characters are not yet supported!",
+                    location = startLoc
+                )
             }
         }
         if(underPointer == Symbols.DOUBLE_QUOTE.rep)
@@ -219,7 +236,8 @@ open class KiraLexer(val readBuffer: String)
         {
             Diagnostics.panic(
                 "KiraLexer::lexStringLiteral",
-                "Unterminated string at $pointer. Insert '${Symbols.DOUBLE_QUOTE.rep}' to terminate it"
+                "Unterminated string at $pointer. Insert '${Symbols.DOUBLE_QUOTE.rep}' to terminate it",
+                location = startLoc
             )
         }
         return Token.Raw(Token.Type.L_STRING, buffer.toString(), start, startLoc)
@@ -233,7 +251,7 @@ open class KiraLexer(val readBuffer: String)
         {
             advancePointer()
         }
-        return Token.Raw(Token.Type.IDENTIFIER, readBuffer.substring(start, pointer), start, startLoc)
+        return Token.Raw(Token.Type.IDENTIFIER, SrcProvider.srcContent.substring(start, pointer), start, startLoc)
     }
 
     fun nextToken(): Token
@@ -247,6 +265,23 @@ open class KiraLexer(val readBuffer: String)
             }
             val char = underPointer
             val start = pointer
+
+            /**
+             * A version of [peek] but for the local context. [k] is a relative offset
+             */
+            fun localPeek(k: Int): Char
+            {
+                val index = k + start
+                return if(index < SrcProvider.srcContent.length)
+                {
+                    SrcProvider.srcContent[index]
+                }
+                else
+                {
+                    Symbols.NULL.rep
+                }
+            }
+
             val startLoc = FileLocation(lineNumber, column)
             if(char.isLetter() || char == Symbols.UNDERSCORE.rep) // identifiers and keywords usually have the same stuffs
             {
@@ -277,12 +312,57 @@ open class KiraLexer(val readBuffer: String)
             advancePointer()
             return when(char)
             {
+                Symbols.OPEN_ANGLE.rep        ->
+                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    {
+                        advancePointer()
+                        return Token.LinkedSymbols(
+                            Token.Type.OP_CMP_LTE,
+                            arrayOf(Symbols.OPEN_ANGLE, Symbols.EQUALS),
+                            start,
+                            startLoc
+                        )
+                    }
+                    else
+                    {
+                        return Token.Symbol(Token.Type.S_OPEN_ANGLE, Symbols.OPEN_ANGLE, start, startLoc)
+                    }
+                Symbols.CLOSE_ANGLE.rep       ->
+                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    {
+                        advancePointer()
+                        return Token.LinkedSymbols(
+                            Token.Type.OP_CMP_GTE,
+                            arrayOf(Symbols.OPEN_ANGLE, Symbols.EQUALS),
+                            start,
+                            startLoc
+                        )
+                    }
+                    else
+                    {
+                        return Token.Symbol(Token.Type.S_CLOSE_ANGLE, Symbols.CLOSE_ANGLE, start, startLoc)
+                    }
                 Symbols.COLON.rep             -> Token.Symbol(
                     Token.Type.S_COLON,
                     Symbols.COLON,
                     start,
                     startLoc
                 )
+                Symbols.EXCLAMATION.rep       ->
+                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    {
+                        advancePointer()
+                        return Token.LinkedSymbols(
+                            Token.Type.OP_CMP_NEQ,
+                            arrayOf(Symbols.EXCLAMATION, Symbols.EQUALS),
+                            start,
+                            startLoc
+                        )
+                    }
+                    else
+                    {
+                        return Token.Symbol(Token.Type.S_BANG, Symbols.EXCLAMATION, start, startLoc)
+                    }
                 Symbols.PLUS.rep              -> Token.Symbol(Token.Type.OP_ADD, Symbols.PLUS, start, startLoc)
                 Symbols.HYPHEN.rep            -> Token.Symbol(Token.Type.OP_SUB, Symbols.HYPHEN, start, startLoc)
                 Symbols.ASTERISK.rep          -> Token.Symbol(Token.Type.OP_MUL, Symbols.ASTERISK, start, startLoc)
@@ -321,17 +401,32 @@ open class KiraLexer(val readBuffer: String)
                     start,
                     startLoc
                 )
-                Symbols.EQUALS.rep            -> Token.Symbol(Token.Type.OP_ASSIGN, Symbols.EQUALS, start, startLoc)
+                Symbols.EQUALS.rep            ->
+                    if(localPeek(1) == Symbols.EQUALS.rep)
+                    {
+                        advancePointer()
+                        return Token.LinkedSymbols(
+                            Token.Type.OP_CMP_EQL,
+                            arrayOf(Symbols.EQUALS, Symbols.EQUALS),
+                            start,
+                            startLoc
+                        )
+                    }
+                    else
+                    {
+                        return Token.Symbol(Token.Type.OP_ASSIGN, Symbols.EQUALS, start, startLoc)
+                    }
                 else                          -> Diagnostics.panic(
                     "KiraLexer::nextToken",
-                    "Token '$char' is not known at Line $lineNumber, Column $column"
+                    "Token '$char' is not known at Line $lineNumber, Column $column",
+                    location = startLoc
                 )
             }
         }
         return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
     }
 
-    fun tokenize(): List<Token>
+    fun tokenize()
     {
         val res = mutableListOf<Token>()
         lateinit var token: Token
@@ -340,6 +435,6 @@ open class KiraLexer(val readBuffer: String)
             token = nextToken()
             res.add(token)
         } while(token.type != Token.Type.S_EOF)
-        return res
+        TokensProvider.tokens = res
     }
 }

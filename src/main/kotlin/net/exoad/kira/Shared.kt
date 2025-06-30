@@ -21,6 +21,7 @@ enum class Symbols(val rep: Char)
     CLOSE_BRACE('\u007d'),
     OPEN_ANGLE('\u003c'),
     CLOSE_ANGLE('\u003e'),
+    EXCLAMATION('\u0021'),
     COMMA('\u002c'),
     PERIOD('\u002e'),
     COLON('\u003a');

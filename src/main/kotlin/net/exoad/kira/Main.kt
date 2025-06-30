@@ -1,14 +1,12 @@
 package net.exoad.kira
 
 import net.exoad.kira.compiler.Diagnostics
-import net.exoad.kira.compiler.frontend.KiraLexer
-import net.exoad.kira.compiler.frontend.KiraParser
-import net.exoad.kira.compiler.frontend.KiraPreprocessor
-import net.exoad.kira.compiler.frontend.RootASTNode
-import net.exoad.kira.compiler.frontend.Token
+import net.exoad.kira.compiler.frontend.*
 import net.exoad.kira.utils.ASTPrettyPrinterVisitor
 import net.exoad.kira.utils.ArgsParser
 import java.io.File
+import kotlin.system.exitProcess
+import kotlin.time.measureTimedValue
 
 internal lateinit var argsParser: ArgsParser
 
@@ -18,66 +16,69 @@ internal lateinit var argsParser: ArgsParser
  */
 fun main(args: Array<String>)
 {
-    argsParser = ArgsParser(args)
-    parseArgs().let {
-        if(it.useDiagnostics)
-        {
-            Diagnostics.useDiagnostics()
-        }
-        else
-        {
-            Diagnostics.silenceDiagnostics()
-        }
-        for(sourceFile in it.src)
-        {
-            val file = File(sourceFile)
-            when(it.stepOnly)
+    val (_, duration) = measureTimedValue {
+        argsParser = ArgsParser(args)
+        parseArgs().let { it ->
+            if(it.useDiagnostics)
             {
-                ArgsCompileStep.ALL -> printAST(parse(lex(preprocess(file))))
-                else -> Diagnostics.panic("NOT SUPPORTED!")
+                Diagnostics.useDiagnostics()
+            }
+            else
+            {
+                Diagnostics.silenceDiagnostics()
+            }
+            for(sourceFile in it.src)
+            {
+                val file = File(sourceFile)
+                SrcProvider.srcContent = file.readText()
+                KiraPreprocessor.process()
+                KiraLexer.tokenize()
+                if(it.dumpLexerTokens != null)
+                {
+                    val lexerTokensDumpFile = File(it.dumpLexerTokens)
+                    lexerTokensDumpFile.createNewFile()
+                    var i = 0
+                    lexerTokensDumpFile.writeText(TokensProvider.tokens.joinToString("\n") { tk ->
+                        "${++i}: $tk"
+                    })
+                    Diagnostics.Logging.info("Kira::main", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
+                }
+                KiraParser.parseProgram()
+                if(it.dumpAST != null)
+                {
+                    val astDumpFile = File(it.dumpAST)
+                    astDumpFile.createNewFile()
+                    astDumpFile.writeText(ASTPrettyPrinterVisitor.build(TokensProvider.rootASTNode))
+                    Diagnostics.Logging.info("Kira::main", "Dumped AST representation to ${astDumpFile.absolutePath}")
+                }
+                else
+                {
+                    Diagnostics.Logging.ohNo("Kira::main", "Not finished!")
+                    exitProcess(0)
+                }
             }
         }
     }
-    Diagnostics.Logging.info("Main", "Hello, World!")
+    Diagnostics.Logging.info("Kira::main", "Completed in $duration")
 }
 
 fun parseArgs(): ArgsOptions
 {
     val useDiagnostics = argsParser.findOption("--diagnostics", "false")!!.equals("true", true)
-    val stepOnly = ArgsCompileStep.of(argsParser.findOption("--stepOnly", "all")!!)
     val srcLocOption = argsParser.findOption("--src")
     if(srcLocOption == null)
     {
         Diagnostics.panic("Could not find the 'src' option pointing to a source file.\nUsage: '--src=main.kira'")
     }
-    return ArgsOptions(useDiagnostics, stepOnly, srcLocOption.split(","))
+    val dumpLexerTokensOption = argsParser.findOption("--dumpLexerTokens")
+    val dumpASTOptionOption = argsParser.findOption("--dumpAST")
+    parsePublicFlags()
+    return ArgsOptions(useDiagnostics, srcLocOption.split(","), dumpLexerTokensOption, dumpASTOptionOption)
 }
 
-fun preprocess(inputFile: File): String
+fun parsePublicFlags()
 {
-    val contents = KiraPreprocessor.process(inputFile.readText())
-    Diagnostics.Logging.info("Main", "=====================[ Preprocessor ]=====================")
-    Diagnostics.Logging.info("Main", contents)
-    return contents
-}
-
-fun lex(source: String): List<Token>
-{
-    val lexer = KiraLexer(source)
-    val tokens = lexer.tokenize()
-    Diagnostics.Logging.info("Main", "=====================[ Lexer ]=====================")
-    tokens.forEachIndexed { index, token ->
-        Diagnostics.Logging.info("Main", "${index + 1}: $token")
-    }
-    Diagnostics.Logging.info("Main", "Total Tokens: ${tokens.size}")
-    return tokens
-}
-
-fun parse(tokens: List<Token>): RootASTNode
-{
-    Diagnostics.Logging.info("Main", "=====================[ Parser ]=====================")
-    val parser = KiraParser(tokens)
-    return parser.parseProgram()
+    Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("--noPrettyDiagnostics")
 }
 
 fun printAST(ast: RootASTNode)

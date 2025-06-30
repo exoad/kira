@@ -2,26 +2,13 @@ package net.exoad.kira.compiler.frontend
 
 import net.exoad.kira.Symbols
 import net.exoad.kira.compiler.Diagnostics
-import net.exoad.kira.compiler.frontend.elements.BoolLiteralNode
-import net.exoad.kira.compiler.frontend.elements.FloatLiteralNode
-import net.exoad.kira.compiler.frontend.elements.IdentifierNode
-import net.exoad.kira.compiler.frontend.elements.IntegerLiteralNode
-import net.exoad.kira.compiler.frontend.elements.StringLiteralNode
-import net.exoad.kira.compiler.frontend.elements.TypeNode
-import net.exoad.kira.compiler.frontend.expressions.AssignmentExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.BinaryExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.BinaryOperator
-import net.exoad.kira.compiler.frontend.expressions.FunctionCallExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.UnaryExpressionNode
-import net.exoad.kira.compiler.frontend.expressions.UnaryOperator
+import net.exoad.kira.compiler.frontend.KiraParser.look
+import net.exoad.kira.compiler.frontend.KiraParser.peek
+import net.exoad.kira.compiler.frontend.KiraParser.pointer
+import net.exoad.kira.compiler.frontend.elements.*
+import net.exoad.kira.compiler.frontend.expressions.*
 import net.exoad.kira.compiler.frontend.expressions.declarations.VariableDeclarationNode
-import net.exoad.kira.compiler.frontend.statements.DoWhileIterationStatement
-import net.exoad.kira.compiler.frontend.statements.ElseBranchStatement
-import net.exoad.kira.compiler.frontend.statements.IfElseBranchStatementNode
-import net.exoad.kira.compiler.frontend.statements.ElseIfBranchStatement
-import net.exoad.kira.compiler.frontend.statements.IfSelectionStatement
-import net.exoad.kira.compiler.frontend.statements.StatementNode
-import net.exoad.kira.compiler.frontend.statements.WhileIterationStatement
+import net.exoad.kira.compiler.frontend.statements.*
 import kotlin.properties.Delegates
 
 abstract class ASTNode
@@ -76,20 +63,20 @@ abstract class ExpressionNode : ASTNode()
  * It will then pass this AST onto the [KiraStaticAnalyzer] to make sure the AST is
  * valid grammar.
  */
-open class KiraParser(val tokens: List<Token>)
+object KiraParser
 {
     private var pointer: Int = 0
     private var underPointer: Token
 
     init
     {
-        underPointer = if(tokens.isEmpty()) Token.Symbol(
+        underPointer = if(TokensProvider.tokens.isEmpty()) Token.Symbol(
             Token.Type.S_EOF,
             Symbols.NULL,
             0,
             FileLocation(1, 1)
         )
-        else tokens.first()
+        else TokensProvider.tokens.first()
     }
 
     /**
@@ -100,7 +87,7 @@ open class KiraParser(val tokens: List<Token>)
     fun look(k: Int): Token
     {
         val index = pointer + k - 1
-        return if(index < tokens.size) tokens[index]
+        return if(index < TokensProvider.tokens.size) TokensProvider.tokens[index]
         else Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
     }
 
@@ -112,8 +99,14 @@ open class KiraParser(val tokens: List<Token>)
     fun peek(k: Int = 0): Token
     {
         val index = pointer + k
-        return if(index < tokens.size) tokens[index]
-        else Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+        return if(index < TokensProvider.tokens.size)
+        {
+            TokensProvider.tokens[index]
+        }
+        else
+        {
+            Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+        }
     }
 
     /**
@@ -122,7 +115,7 @@ open class KiraParser(val tokens: List<Token>)
     fun advance()
     {
         pointer++
-        underPointer = if(pointer < tokens.size) tokens[pointer]
+        underPointer = if(pointer < TokensProvider.tokens.size) TokensProvider.tokens[pointer]
         else Token.Symbol(
             Token.Type.S_EOF, Symbols.NULL, 0,
             FileLocation(1, 1)
@@ -136,7 +129,8 @@ open class KiraParser(val tokens: List<Token>)
         {
             Diagnostics.panic(
                 "KiraParser::expect",
-                "Expected ${token.name} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}"
+                "Expected ${token.name} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
+                location = lookedAtToken.canonicalLocation
             )
         }
         else
@@ -152,7 +146,8 @@ open class KiraParser(val tokens: List<Token>)
         {
             Diagnostics.panic(
                 "KiraParser::expect",
-                "Expected any of ${tokens.map { it.name }} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}"
+                "Expected any of ${tokens.map { it.name }} but got ${lookedAtToken.type.name} at ${lookedAtToken.canonicalLocation}",
+                location = lookedAtToken.canonicalLocation
             )
         }
         else
@@ -167,7 +162,8 @@ open class KiraParser(val tokens: List<Token>)
         {
             Diagnostics.panic(
                 "KiraParser::expect",
-                "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}"
+                "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
+                location = underPointer.canonicalLocation
             )
         }
         else
@@ -176,13 +172,17 @@ open class KiraParser(val tokens: List<Token>)
         }
     }
 
-    fun expectAnyOf(tokens: Array<Token.Type>, ifOk: () -> Unit = { advance() })
+    fun expectAnyOf(
+        tokens: Array<Token.Type>, ifOk: () -> Unit =
+                { advance() }
+    )
     {
         if(!tokens.contains(underPointer.type))
         {
             Diagnostics.panic(
                 "KiraParser::expect",
-                "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}"
+                "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()} at ${underPointer.canonicalLocation}",
+                location = underPointer.canonicalLocation
             )
         }
         else
@@ -317,6 +317,7 @@ open class KiraParser(val tokens: List<Token>)
         {
             Token.Type.L_FLOAT                              -> parseFloatLiteral()
             Token.Type.L_INTEGER                            -> parseIntegerLiteral()
+            Token.Type.L_STRING                             -> parseStringLiteral()
             Token.Type.IDENTIFIER                           ->
             {
                 if(peek(1).type == Token.Type.S_OPEN_PARENTHESIS)
@@ -339,7 +340,8 @@ open class KiraParser(val tokens: List<Token>)
             }
             else                                            -> Diagnostics.panic(
                 "KiraParser::parsePrimaryExpression",
-                "${if(underPointer.type.rawDiagnosticsRepresentation == null) "'${underPointer.content}'" else underPointer.type.diagnosticsName()} is not allowed at ${underPointer.canonicalLocation}"
+                "${if(underPointer.type.rawDiagnosticsRepresentation == null) "'${underPointer.content}'" else underPointer.type.diagnosticsName()} is not allowed at ${underPointer.canonicalLocation}",
+                location = underPointer.canonicalLocation
             )
         }
     }
@@ -415,6 +417,13 @@ open class KiraParser(val tokens: List<Token>)
         return VariableDeclarationNode(identifier, type, value)
     }
 
+    fun parseStringLiteral(): StringLiteralNode
+    {
+        val value = underPointer.content
+        expect(Token.Type.L_STRING)
+        return StringLiteralNode(value)
+    }
+
     fun parseIntegerLiteral(): IntegerLiteralNode
     {
         var value by Delegates.notNull<Long>()
@@ -427,7 +436,8 @@ open class KiraParser(val tokens: List<Token>)
             Diagnostics.panic(
                 "KiraParser::parseIntegerLiteral",
                 "Unable to read '${underPointer.content}' as an integer literal at ${underPointer.canonicalLocation}",
-                e
+                cause = e,
+                location = underPointer.canonicalLocation
             )
         }
         expect(Token.Type.L_INTEGER)
@@ -446,7 +456,8 @@ open class KiraParser(val tokens: List<Token>)
             Diagnostics.panic(
                 "KiraParser::parseIntegerLiteral",
                 "Unable to read '${underPointer.content}' as an integer literal at ${underPointer.canonicalLocation}",
-                e
+                cause = e,
+                location = underPointer.canonicalLocation
             )
         }
         expect(Token.Type.L_FLOAT)
@@ -465,7 +476,8 @@ open class KiraParser(val tokens: List<Token>)
             Diagnostics.panic(
                 "KiraParser::parseBoolLiteral",
                 "Unable to read ${underPointer.content} as a bool literal at ${underPointer.canonicalLocation}",
-                e
+                cause = e,
+                location = underPointer.canonicalLocation
             )
         }
         expectAnyOf(arrayOf(Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL))

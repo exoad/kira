@@ -1,7 +1,5 @@
 package net.exoad.kira.compiler.frontend
 
-import java.io.File
-
 /**
  * The first process in the frontend compilation process by which certain
  * elements are either removed like comments and preprocessor directives.
@@ -12,9 +10,9 @@ object KiraPreprocessor
 {
     const val COMMENT_PATTERN: String = "//";
 
-    fun stripComments(file: String): String
+    fun stripComments()
     {
-        return file.split("\n")
+        SrcProvider.srcContent = SrcProvider.srcContentLines
             .map { line ->
                 val index = line.indexOf(COMMENT_PATTERN);
                 if(index != -1) line.substring(0, index).trimEnd() else line
@@ -23,8 +21,8 @@ object KiraPreprocessor
             .joinToString("\n")
     }
 
-    fun process(file: String): String
+    fun process()
     {
-        return stripComments(file)
+        return stripComments()
     }
 }

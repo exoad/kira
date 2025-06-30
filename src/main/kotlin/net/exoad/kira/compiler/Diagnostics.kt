@@ -15,7 +15,7 @@ object Diagnostics
     {
         System.setProperty(
             "java.util.logging.SimpleFormatter.format",
-            "%1\$tH:%1\$tM:%1\$tS %5\$s%n"
+            "%5\$s%n"
         )
         val consoleHandler = ConsoleHandler().apply {
             formatter = SimpleFormatter()
@@ -93,7 +93,7 @@ object Diagnostics
             logger.info("WTF?/$tag: $message") // :)
         }
 
-        fun uhOh(tag: String, message: Any)
+        fun warn(tag: String, message: Any)
         {
             logger.warning("Warn/$tag: $message")
         }

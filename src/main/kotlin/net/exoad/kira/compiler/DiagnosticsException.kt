@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.compiler.frontend.FileLocation
+import net.exoad.kira.compiler.frontend.SrcProvider
 import java.io.PrintWriter
 import java.io.StringWriter
 
@@ -13,8 +14,6 @@ class DiagnosticsException(
 {
     override fun toString(): String
     {
-        val baseMessage = "Compiler Panicked: $tag - $message"
-        val locationPart = location?.let { " at $it" } ?: ""
         return "\n${formattedPanicMessage()}"
     }
 
@@ -28,25 +27,29 @@ class DiagnosticsException(
             printWriter.flush()
             exceptionTrace = writer.toString()
         }
-
         return """
-            ===================[ Kira Panicked! ]===================    
-            Uh oh...
-            The compiler panicked at $tag with:
-                    
-            $message
-              ${
-            if(location != null) " at $location" else ""
-        }${
+===================[ Kira Panicked! ]===================    
+The compiler panicked at $tag with:
+$message
+${
+            if(location != null)
+            {
+                "\n${SrcProvider.formCanonicalLocatorString(location, "Here")}"
+            }
+            else
+            {
+                ""
+            }
+        }
+${
             if(exceptionTrace != null)
                 """
-             Internal stack trace (from cause): 
+Internal stack trace (from cause): 
                     
-            $exceptionTrace    
-                """.trimIndent()
+$exceptionTrace    
+""".trimIndent()
             else
                 ""
-                    .trimIndent()
         }
         """
     }
