@@ -47,5 +47,6 @@ bin/
 .idea
 
 /meta
-
 **.kira.txt
+**.neko
+**.n

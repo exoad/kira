@@ -1,11 +1,12 @@
 package net.exoad.kira
 
 import net.exoad.kira.compiler.Diagnostics
+import net.exoad.kira.compiler.GeneratedProvider
+import net.exoad.kira.compiler.backend.transpiler.KiraNekoTranspiler
 import net.exoad.kira.compiler.frontend.*
 import net.exoad.kira.utils.ASTPrettyPrinterVisitor
 import net.exoad.kira.utils.ArgsParser
 import java.io.File
-import kotlin.system.exitProcess
 import kotlin.time.measureTimedValue
 
 internal lateinit var argsParser: ArgsParser
@@ -41,7 +42,7 @@ fun main(args: Array<String>)
                     lexerTokensDumpFile.writeText(TokensProvider.tokens.joinToString("\n") { tk ->
                         "${++i}: $tk"
                     })
-                    Diagnostics.Logging.info("Kira::main", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
+                    Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                 }
                 KiraParser.parseProgram()
                 if(it.dumpAST != null)
@@ -49,21 +50,22 @@ fun main(args: Array<String>)
                     val astDumpFile = File(it.dumpAST)
                     astDumpFile.createNewFile()
                     astDumpFile.writeText(ASTPrettyPrinterVisitor.build(TokensProvider.rootASTNode))
-                    Diagnostics.Logging.info("Kira::main", "Dumped AST representation to ${astDumpFile.absolutePath}")
+                    Diagnostics.Logging.info("Kira", "Dumped AST representation to ${astDumpFile.absolutePath}")
                 }
-                else
+                when(GeneratedProvider.outputMode)
                 {
-                    Diagnostics.Logging.ohNo("Kira::main", "Not finished!")
-                    exitProcess(0)
+                    GeneratedProvider.OutputTarget.NEKO -> KiraNekoTranspiler.transpile()
+                    GeneratedProvider.OutputTarget.NONE -> Diagnostics.Logging.info("Kira", "No output...")
                 }
             }
         }
     }
-    Diagnostics.Logging.info("Kira::main", "Completed in $duration")
+    Diagnostics.Logging.info("Kira", "Completed in $duration")
 }
 
 fun parseArgs(): ArgsOptions
 {
+    parsePublicFlags()
     val useDiagnostics = argsParser.findOption("--diagnostics", "false")!!.equals("true", true)
     val srcLocOption = argsParser.findOption("--src")
     if(srcLocOption == null)
@@ -72,16 +74,30 @@ fun parseArgs(): ArgsOptions
     }
     val dumpLexerTokensOption = argsParser.findOption("--dumpLexerTokens")
     val dumpASTOptionOption = argsParser.findOption("--dumpAST")
-    parsePublicFlags()
+    // ephemeral options
+    val outputFileOption = argsParser.findOption("--out")
+    if(outputFileOption == null)
+    {
+        GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
+    }
+    else
+    {
+        val outputModeOption = argsParser.findOption("--target")
+        when(outputModeOption?.lowercase())
+        {
+            "neko" ->
+            {
+                GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NEKO
+                GeneratedProvider.outputFile = outputFileOption
+            }
+            else   -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
+        }
+    }
     return ArgsOptions(useDiagnostics, srcLocOption.split(","), dumpLexerTokensOption, dumpASTOptionOption)
 }
 
 fun parsePublicFlags()
 {
     Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("--noPrettyDiagnostics")
-}
-
-fun printAST(ast: RootASTNode)
-{
-    Diagnostics.Logging.info("Main", "\n${ASTPrettyPrinterVisitor.build(ast)}")
+    Public.Flags.beVerbose = !argsParser.findFlag("--verbose")
 }

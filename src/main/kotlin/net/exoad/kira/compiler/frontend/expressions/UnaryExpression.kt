@@ -19,10 +19,16 @@ class UnaryExpressionNode(val operator: UnaryOperator, val operand: ExpressionNo
     }
 }
 
+// TODO: migrate this to also use an array of symbols similar to BinaryOperator so we can have multiple symbols :)
 enum class UnaryOperator(val symbol: Symbols, val tokenType: Token.Type, val precedence: Int)
 {
-    NEG(Symbols.HYPHEN, Token.Type.OP_SUB, 3),
-    POS(Symbols.PLUS, Token.Type.OP_ADD, 3);
+    // numerical operators
+    NEG(Symbols.HYPHEN, Token.Type.OP_SUB, 10),
+    POS(Symbols.PLUS, Token.Type.OP_ADD, 10),
+
+    // logical operators
+    NOT(Symbols.EXCLAMATION, Token.Type.S_BANG, 10)
+    ;
 
     companion object
     {
@@ -32,6 +38,7 @@ enum class UnaryOperator(val symbol: Symbols, val tokenType: Token.Type, val pre
             {
                 Token.Type.OP_SUB -> NEG
                 Token.Type.OP_ADD -> POS
+                Token.Type.S_BANG -> NOT
                 else              -> Diagnostics.panic(
                     "UnaryOperator::byTokenType",
                     "$tokenType is not an unary operator!"

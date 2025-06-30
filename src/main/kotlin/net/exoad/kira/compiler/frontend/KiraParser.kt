@@ -191,14 +191,14 @@ object KiraParser
         }
     }
 
-    fun parseProgram(): RootASTNode
+    fun parseProgram()
     {
         val statements = mutableListOf<ASTNode>()
         while(underPointer.type != Token.Type.S_EOF)
         {
             statements.add(parseStatement())
         }
-        return RootASTNode(statements)
+        TokensProvider.rootASTNode = RootASTNode(statements)
     }
 
     fun parseStatement(): StatementNode
@@ -315,10 +315,10 @@ object KiraParser
     {
         return when(underPointer.type)
         {
-            Token.Type.L_FLOAT                              -> parseFloatLiteral()
-            Token.Type.L_INTEGER                            -> parseIntegerLiteral()
-            Token.Type.L_STRING                             -> parseStringLiteral()
-            Token.Type.IDENTIFIER                           ->
+            Token.Type.L_FLOAT                                      -> parseFloatLiteral()
+            Token.Type.L_INTEGER                                    -> parseIntegerLiteral()
+            Token.Type.L_STRING                                     -> parseStringLiteral()
+            Token.Type.IDENTIFIER                                   ->
             {
                 if(peek(1).type == Token.Type.S_OPEN_PARENTHESIS)
                 {
@@ -329,16 +329,16 @@ object KiraParser
                     parseIdentifierExpression()
                 }
             }
-            Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL -> parseBoolLiteral()
-            Token.Type.OP_SUB, Token.Type.OP_ADD            -> parseUnaryExpression()
-            Token.Type.S_OPEN_PARENTHESIS                   ->
+            Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL         -> parseBoolLiteral()
+            Token.Type.OP_SUB, Token.Type.OP_ADD, Token.Type.S_BANG -> parseUnaryExpression()
+            Token.Type.S_OPEN_PARENTHESIS                           ->
             {
                 advance()
                 val expression = parseExpression()
                 expect(Token.Type.S_CLOSE_PARENTHESIS)
                 expression
             }
-            else                                            -> Diagnostics.panic(
+            else                                                    -> Diagnostics.panic(
                 "KiraParser::parsePrimaryExpression",
                 "${if(underPointer.type.rawDiagnosticsRepresentation == null) "'${underPointer.content}'" else underPointer.type.diagnosticsName()} is not allowed at ${underPointer.canonicalLocation}",
                 location = underPointer.canonicalLocation

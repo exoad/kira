@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler
 
+import net.exoad.kira.Public
 import net.exoad.kira.compiler.frontend.FileLocation
 import java.util.logging.ConsoleHandler
 import java.util.logging.Level
@@ -91,6 +92,14 @@ object Diagnostics
         fun wtf(tag: String, message: Any)
         {
             logger.info("WTF?/$tag: $message") // :)
+        }
+
+        fun yap(tag: String, message: Any)
+        {
+            if(Public.Flags.beVerbose) // i dont want to toggle flags using Level and Logger :(
+            {
+                logger.finer("Yap/$tag: $message")
+            }
         }
 
         fun warn(tag: String, message: Any)

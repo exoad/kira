@@ -13,12 +13,7 @@ data class FileLocation(val lineNumber: Int, val column: Int)
     init
     {
         assert(lineNumber > 0) { "Line Number must be greater than 0 (BAD: $lineNumber)" }
-        assert(column > 0) { "Column Number must be greater than 0 (BAD: $column" }
-    }
-
-    fun toConciseString(): String
-    {
-        return "$lineNumber:$column"
+        assert(column > 0) { "Column Number must be greater than 0 (BAD: $column)" }
     }
 
     override fun toString(): String
@@ -174,6 +169,7 @@ object KiraLexer
      */
     fun lexNumberLiteral(): Token
     {
+        // TODO: add hex support
         val start = pointer
         val startLoc = FileLocation(lineNumber, column)
         var isFloat = false
@@ -194,7 +190,6 @@ object KiraLexer
                 }
             }
         }
-        // TODO: add exponent notation ?
         val content = SrcProvider.srcContent.substring(start, pointer)
         return if(isFloat)
         {
@@ -214,19 +209,9 @@ object KiraLexer
         val buffer = StringBuilder()
         while(underPointer != Symbols.NULL.rep && underPointer != Symbols.DOUBLE_QUOTE.rep && underPointer != '\n')
         {
-            if(underPointer != Symbols.BACK_SLASH.rep)
-            {
-                buffer.append(underPointer)
-                advancePointer()
-            }
-            else
-            {
-                Diagnostics.panic(
-                    "KiraLexer::lexStringLiteral",
-                    "Escaped characters are not yet supported!",
-                    location = startLoc
-                )
-            }
+            // escaped sequences are passed "as is" to the parser
+            buffer.append(underPointer)
+            advancePointer()
         }
         if(underPointer == Symbols.DOUBLE_QUOTE.rep)
         {

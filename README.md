@@ -1,15 +1,18 @@
-# Kira
+![Kira](./public/kira_header.jpg)
 
 > [!NOTE]
 > Hi! This project is currently a work in progress :)
 >
 > Thus, a lot of things will lack documentation!
 
-An **enjoyable** modern object oriented programming language with modern syntax and semantics inspired from languages such as Java, C, Dart, and Rust.
+An **enjoyable** modern object oriented programming language with modern syntax and semantics inspired from languages
+such as Java, C, Dart, and Rust.
 
 `June 28, 2025:`
 
-Currently the compiler and further language designs are not finished. The frontend is implemented in Kotlin with the backend currently chosen to either be LLVM or a fork of NekoVM. Additionally, I have also been considering generating raw x86 Assembly and using NASM to do the rest; however, we will see where this goes :).
+Currently the compiler and further language designs are not finished. The frontend is implemented in Kotlin with the
+backend currently chosen to either be LLVM or a fork of NekoVM. Additionally, I have also been considering generating
+raw x86 Assembly and using NASM to do the rest; however, we will see where this goes :).
 
 ## Code Snippets
 

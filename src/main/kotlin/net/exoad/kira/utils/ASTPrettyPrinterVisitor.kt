@@ -2,24 +2,14 @@ package net.exoad.kira.utils
 
 import net.exoad.kira.compiler.frontend.ASTNode
 import net.exoad.kira.compiler.frontend.ASTVisitor
-import net.exoad.kira.compiler.frontend.elements.BoolLiteralNode
-import net.exoad.kira.compiler.frontend.elements.IdentifierNode
-import net.exoad.kira.compiler.frontend.elements.IntegerLiteralNode
-import net.exoad.kira.compiler.frontend.elements.StringLiteralNode
-import net.exoad.kira.compiler.frontend.elements.TypeNode
+import net.exoad.kira.compiler.frontend.RootASTNode
+import net.exoad.kira.compiler.frontend.elements.*
 import net.exoad.kira.compiler.frontend.expressions.AssignmentExpressionNode
 import net.exoad.kira.compiler.frontend.expressions.BinaryExpressionNode
+import net.exoad.kira.compiler.frontend.expressions.FunctionCallExpressionNode
 import net.exoad.kira.compiler.frontend.expressions.UnaryExpressionNode
 import net.exoad.kira.compiler.frontend.expressions.declarations.VariableDeclarationNode
-import net.exoad.kira.compiler.frontend.statements.IfSelectionStatement
-import net.exoad.kira.compiler.frontend.statements.StatementNode
-import net.exoad.kira.compiler.frontend.RootASTNode
-import net.exoad.kira.compiler.frontend.elements.FloatLiteralNode
-import net.exoad.kira.compiler.frontend.expressions.FunctionCallExpressionNode
-import net.exoad.kira.compiler.frontend.statements.DoWhileIterationStatement
-import net.exoad.kira.compiler.frontend.statements.ElseBranchStatement
-import net.exoad.kira.compiler.frontend.statements.ElseIfBranchStatement
-import net.exoad.kira.compiler.frontend.statements.WhileIterationStatement
+import net.exoad.kira.compiler.frontend.statements.*
 
 object ASTPrettyPrinterVisitor : ASTVisitor()
 {
@@ -35,7 +25,7 @@ object ASTPrettyPrinterVisitor : ASTVisitor()
     fun visitRootASTNode(rootASTNode: RootASTNode)
     {
         appendLine("★")
-        rootASTNode.statements.forEachIndexed { index, statement ->
+        rootASTNode.statements.forEach { statement ->
             pushIndent()
             statement.accept(this)
             popIndent()
