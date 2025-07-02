@@ -1,8 +1,8 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
-import net.exoad.kira.compiler.frontend.FileLocation
-import net.exoad.kira.compiler.frontend.SrcProvider
+import net.exoad.kira.compiler.front.FileLocation
+import net.exoad.kira.compiler.front.SrcProvider
 import java.io.PrintWriter
 import java.io.StringWriter
 

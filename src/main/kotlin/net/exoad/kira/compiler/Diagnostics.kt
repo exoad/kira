@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
-import net.exoad.kira.compiler.frontend.FileLocation
+import net.exoad.kira.compiler.front.FileLocation
 import java.util.logging.ConsoleHandler
 import java.util.logging.Level
 import java.util.logging.Logger

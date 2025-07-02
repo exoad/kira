@@ -1,0 +1,139 @@
+// comment
+module "module_name:sub_module";
+
+import "another_module:sub_module";
+
+// immutable variable
+immutableVariable: Int32 = 123;
+
+// mutable variable (can be reassigned)
+mut variable: Int32 = 123;
+
+// strings
+stringsVariable: String = "Hello World!";
+
+// floats
+floatsVariable: Float32 = 3.14156;
+
+// aggregate types (using syntax sugar)
+myFilledArray: Array<Int32> = [10 ; 3]; // compile time expansion of 10 3's (array filling)
+myArray: Array<Int32> = [ 1, 3, 4 ];
+// reassignable and the individual elements can be altered
+mut myMutableArray: Array<Int32> = [ 1, 3, 4 ];
+ultraMutableArray[0] = 123; // 0 based indexing
+myList: List<Int32> = listOf(mut [1, 4, 5, 6]);
+myMap: Map<String, Int32> = { "hello" : 1, "world" : 2 };
+mySet: Set<Float32> = { 1, 2, 3, 4 };
+
+// operations
+1 + 1;
+2 * 2;
+3 - -2;
+4 / 3;
+10 % 2;
+4 & 0;
+1 >> 2;
+2 >>> 3;
+1 << 2;
+2 | 1;
+2 ^ ~1;
+
+// assignment (compound operations)
+mut x: Int32 = 123;
+x = 149;
+x >>= 123;
+x <<= 123;
+x >>>= 123;
+x |= 123;
+x ^= 123;
+x *= 123;
+x /= 123;
+x %= 123;
+x += 123;
+x -= 123;
+
+// relation operators
+true == true;
+true != !false;
+1 > 2;
+1 < 2;
+1 >= 2;
+1 <= 3;
+
+// selection statements
+if(true)
+{
+    // ...
+}
+else if(false)
+{
+    // ...
+}
+else
+{
+    // ...
+}
+
+// iteration statements
+while(true)
+{
+    // ...
+}
+
+do
+{
+    // ...
+} while(true);
+
+for(mut i:0..10; i += 1)
+{
+    // ...
+}
+
+// functions (first class)
+sum(a: Int32, b: Int32): Int32 { return a + b; }
+
+sumf(a: Float32, b: Float32): Float32
+{
+    return a + b;
+}
+
+// functions are first class
+sumPointer(a: Int32, b: Int32): Int32 = sum;
+
+// calling functions
+sum(12, 12); // 24
+sumPointer(12, 1); // 13
+
+// classes (methods are immutable / final be default as well as classes cannot be extended without having "mut"
+// similar to kotlin)
+// additionally, all fields are private by default (they can be accessed within the same source file), specify with the "pub" modifier to make them public
+pub mut class User(name: String, id: Int32)
+{
+    // cannot be overridden, but it is public
+    pub formattedString(): String
+    {
+        return name + id;
+    }
+
+    // protected in other languages, meaning child classes can extend this, but only child classes can see this
+    mut overridableMethod(): String
+    {
+        // ...
+    }
+}
+
+// inheritance (only permits single inheritance)
+pub class Administrator(super.name, super.id): User
+{
+    pub executeCommand(command: String): Void
+    {
+        // ...
+    }
+}
+
+// creating objects
+newUser: User = User("John Doe", 123);
+
+// submodule members directly without importing
+maths::abs(2);

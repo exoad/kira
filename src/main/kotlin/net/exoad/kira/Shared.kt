@@ -1,6 +1,6 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.frontend.Token
+import net.exoad.kira.compiler.front.Token
 
 enum class Symbols(val rep: Char)
 {
@@ -48,7 +48,9 @@ object Keywords
         "if" to Token.Type.K_IF,
         "else" to Token.Type.K_ELSE,
         "while" to Token.Type.K_WHILE,
-        "do" to Token.Type.K_DO
+        "do" to Token.Type.K_DO,
+        "null" to Token.Type.L_NULL,
+        "mut" to Token.Type.K_MUTABLE,
     )
 }
 
@@ -59,12 +61,12 @@ object Keywords
  * Type precedence is an implied concept that means the likelihood of this type being
  * converted to one with higher precedence.
  *
- * For example. a float and an integer together in an arithmetic expression will always
+ * For example. a float and an integer together in an arithmetic expr will always
  * equate to a float without specific casting. This is because floats in general will
  * have a higher precedence than integers. On the other hand, there is also precedence
  * within type groups themselves.
  *
- * For example, an expression adding an Int32 and an Int64 will always equate to an Int64
+ * For example, an expr adding an Int32 and an Int64 will always equate to an Int64
  * without specific casting that involves truncating.
  */
 object Builtin

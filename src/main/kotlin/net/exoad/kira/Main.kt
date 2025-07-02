@@ -2,10 +2,11 @@ package net.exoad.kira
 
 import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.GeneratedProvider
-import net.exoad.kira.compiler.backend.transpiler.KiraNekoTranspiler
-import net.exoad.kira.compiler.frontend.*
-import net.exoad.kira.utils.ASTPrettyPrinterVisitor
+import net.exoad.kira.compiler.back.KiraNekoTranspiler
+import net.exoad.kira.compiler.front.*
+import net.exoad.kira.compiler.preprocessor.KiraPreprocessor
 import net.exoad.kira.utils.ArgsParser
+import net.exoad.kira.utils.XMLASTVisitor
 import java.io.File
 import kotlin.time.measureTimedValue
 
@@ -47,7 +48,7 @@ fun main(args: Array<String>)
                 {
                     val astDumpFile = File(it.dumpAST)
                     astDumpFile.createNewFile()
-                    astDumpFile.writeText(ASTPrettyPrinterVisitor.build(TokensProvider.rootASTNode))
+                    astDumpFile.writeText(XMLASTVisitor.build(TokensProvider.rootASTNode))
                     Diagnostics.Logging.info("Kira", "Dumped AST representation to ${astDumpFile.absolutePath}")
                 }
                 when(GeneratedProvider.outputMode)

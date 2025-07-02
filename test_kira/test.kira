@@ -1,1 +1,11 @@
-amogus: Int32 = 1200;
+amogus: Int32 = 1200 + ( 12  + 12);
+amogus += 23;
+
+if(true)
+{
+    @__trace__("Hello World!");
+}
+else
+{
+    @__trace__("Foo Bar");
+}

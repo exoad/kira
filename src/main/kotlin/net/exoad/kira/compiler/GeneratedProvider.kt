@@ -5,7 +5,7 @@ object GeneratedProvider
     enum class OutputTarget
     {
         /**
-         * See [net.exoad.kira.compiler.backend.transpiler.KiraNekoTranspiler]
+         * See [net.exoad.kira.compiler]
          */
         NEKO,
         NONE
