@@ -85,7 +85,9 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_WHILE("'while'"),
         K_RETURN("'return'"),
         K_DO("'do'"),
+        K_FOR("'for'"),
         K_CLASS("'class'"),
+        K_IN("'in'"),
         K_MODIFIER_REQUIRE("'require' (Required)"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
@@ -552,12 +554,16 @@ object KiraLexer
                 Symbols.PERIOD.rep            ->
                     when(localPeek(1))
                     {
-                        Symbols.PERIOD.rep -> Token.LinkedSymbols(
-                            Token.Type.OP_RANGE,
-                            arrayOf(Symbols.PERIOD, Symbols.PERIOD),
-                            start,
-                            startLoc
-                        )
+                        Symbols.PERIOD.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_RANGE,
+                                arrayOf(Symbols.PERIOD, Symbols.PERIOD),
+                                start,
+                                startLoc
+                            )
+                        }
                         else               -> Token.Symbol(Token.Type.S_DOT, Symbols.PERIOD, start, startLoc)
                     }
                 Symbols.COMMA.rep             -> Token.Symbol(

@@ -28,6 +28,13 @@ object XMLASTVisitor : ASTVisitor()
         pushIndent()
     }
 
+    private fun node(tag: String, attrs: String = "", children: () -> Unit)
+    {
+        xmlOpen(tag, attrs)
+        children()
+        xmlClose(tag)
+    }
+
     private fun xmlClose(tag: String)
     {
         popIndent()
@@ -55,98 +62,136 @@ object XMLASTVisitor : ASTVisitor()
     {
         appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
         appendLine("""<!-- Kira AST Generated at ${SimpleDateFormat().format(System.currentTimeMillis())} -->""")
-        xmlOpen("KiraProgram")
-        rootASTNode.statements.forEach { it.accept(this) }
-        xmlClose("KiraProgram")
+        node("KiraProgram")
+        {
+            rootASTNode.statements.forEach { it.accept(this) }
+        }
     }
 
     override fun visitStatement(statement: Statement)
     {
-        xmlOpen("Statement")
-        statement.expr.accept(this)
-        xmlClose("Statement")
+        node("Statement")
+        {
+            statement.expr.accept(this)
+        }
     }
 
     override fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement)
     {
-        xmlOpen("IfSelectionStatement")
-        xmlOpen("Condition")
-        ifSelectionStatement.expr.accept(this)
-        xmlClose("Condition")
-        xmlOpen("Then")
-        ifSelectionStatement.thenStatements.forEach { it.accept(this) }
-        xmlClose("Then")
-        ifSelectionStatement.elseBranches.forEach { it.accept(this) }
-        xmlClose("IfSelectionStatement")
+        node("IfSelectionStatement")
+        {
+            node("Condition")
+            {
+                ifSelectionStatement.expr.accept(this)
+            }
+            node("Then")
+            {
+                ifSelectionStatement.thenStatements.forEach { it.accept(this) }
+            }
+            node("Branches")
+            {
+                ifSelectionStatement.elseBranches.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement)
     {
-        xmlOpen("ElseIfBranch")
-        xmlOpen("Condition")
-        ifElseIfBranchNode.condition.accept(this)
-        xmlClose("Condition")
-        xmlOpen("Body")
-        ifElseIfBranchNode.statements.forEach { it.accept(this) }
-        xmlClose("Body")
-        xmlClose("ElseIfBranch")
+        node("ElseIfBranch")
+        {
+            node("Condition")
+            {
+                ifElseIfBranchNode.condition.accept(this)
+            }
+            node("Body")
+            {
+                ifElseIfBranchNode.statements.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement)
     {
-        xmlOpen("ElseBranch")
-        xmlOpen("Body")
-        elseBranchNode.statements.forEach { it.accept(this) }
-        xmlClose("Body")
-        xmlClose("ElseBranch")
+        node("ElseBranch")
+        {
+            node("Body")
+            {
+                elseBranchNode.statements.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
     {
-        xmlOpen("WhileIterationStatement")
-        xmlOpen("Condition")
-        whileIterationStatement.condition.accept(this)
-        xmlClose("Condition")
-        xmlOpen("Body")
-        whileIterationStatement.statements.forEach { it.accept(this) }
-        xmlClose("Body")
-        xmlClose("WhileIterationStatement")
+        node("WhileIterationStatement")
+        {
+            node("Condition")
+            {
+                whileIterationStatement.condition.accept(this)
+            }
+            node("Body")
+            {
+                whileIterationStatement.statements.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
     {
-        xmlOpen("DoWhileIterationStatement")
-        xmlOpen("Condition")
-        doWhileIterationStatement.condition.accept(this)
-        xmlClose("Condition")
-        doWhileIterationStatement.statements.forEach { it.accept(this) }
-        xmlClose("DoWhileIterationStatement")
+        node("DoWhileIterationStatement")
+        {
+            node("Condition")
+            {
+                doWhileIterationStatement.condition.accept(this)
+            }
+            node("Body")
+            {
+                doWhileIterationStatement.statements.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitReturnStatement(returnStatement: ReturnStatement)
     {
-        xmlOpen("ReturnStatement")
-        returnStatement.expr.accept(this)
-        xmlClose("ReturnStatement")
+        node("ReturnStatement")
+        {
+            returnStatement.expr.accept(this)
+        }
+    }
+
+    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
+    {
+        node("ForIterationStatement")
+        {
+            forIterationStatement.expr.accept(this)
+            node("Body")
+            {
+                forIterationStatement.body.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitBinaryExpr(binaryExpr: BinaryExpr)
     {
-        xmlOpen("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""")
-        xmlOpen("Left")
-        binaryExpr.leftExpr.accept(this)
-        xmlClose("Left")
-        xmlOpen("Right")
-        binaryExpr.rightExpr.accept(this)
-        xmlClose("Right")
-        xmlClose("BinaryExpr")
+        node("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""")
+        {
+            node("Left")
+            {
+                binaryExpr.leftExpr.accept(this)
+            }
+            node("Right")
+            {
+                binaryExpr.rightExpr.accept(this)
+            }
+        }
     }
 
     override fun visitUnaryExpr(unaryExpr: UnaryExpr)
     {
-        xmlOpen("UnaryExpr", """op="${escapeXml(unaryExpr.operator.toString())}"""")
-        unaryExpr.operand.accept(this)
-        xmlClose("UnaryExpr")
+        node("UnaryExpr", """op="${escapeXml(unaryExpr.operator.toString())}"""")
+        {
+            unaryExpr.operand.accept(this)
+        }
     }
 
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
@@ -181,48 +226,65 @@ object XMLASTVisitor : ASTVisitor()
 
     override fun visitVariableDecl(variableDecl: VariableFirstClassDecl)
     {
-        xmlOpen(
-            "VariableDecl",
-            when(variableDecl.modifiers.isNotEmpty())
+        node(
+            "VariableDecl", when(variableDecl.modifiers.isNotEmpty())
             {
                 true -> """modifiers="${variableDecl.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
         )
-        variableDecl.name.accept(this)
-        variableDecl.type.accept(this)
-        if(variableDecl.value != null)
         {
-            xmlOpen("Value")
-            variableDecl.value!!.accept(this)
-            xmlClose("Value")
+            variableDecl.name.accept(this)
+            variableDecl.type.accept(this)
+            if(variableDecl.value != null)
+            {
+                node("Value")
+                {
+                    variableDecl.value!!.accept(this)
+                }
+            }
         }
-        xmlClose("VariableDecl")
     }
 
     override fun visitFunctionDecl(functionDecl: FunctionFirstClassDecl)
     {
-        xmlOpen(
-            "FunctionDecl",
-            when(functionDecl.modifiers.isNotEmpty())
+        node(
+            "FunctionDecl", when(functionDecl.modifiers.isNotEmpty())
             {
                 true -> """modifiers="${functionDecl.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
         )
-        functionDecl.name.accept(this)
-        functionDecl.returnType.accept(this)
-        xmlOpen("Parameters")
-        functionDecl.parameters.forEach { it.accept(this) }
-        xmlClose("Parameters")
-        xmlOpen("Body")
-        functionDecl.body?.forEach { it.accept(this) }
-        xmlClose("Body")
-        xmlClose("FunctionDecl")
+        {
+            functionDecl.name.accept(this)
+            functionDecl.returnType.accept(this)
+            node("Parameters")
+            {
+                functionDecl.parameters.forEach { it.accept(this) }
+            }
+            node("Body")
+            {
+                functionDecl.body?.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitClassDecl(classDecl: ClassDecl)
     {
+        node(
+            "ClassDecl", when(classDecl.modifiers.isNotEmpty())
+            {
+                true -> """modifiers="${classDecl.modifiers.joinToString(", ") { it.name }}""""
+                else -> ""
+            }
+        )
+        {
+            classDecl.name.accept(this)
+            node("Members")
+            {
+                classDecl.members.forEach { it.accept(this) }
+            }
+        }
         xmlOpen(
             "ClassDecl", when(classDecl.modifiers.isNotEmpty())
             {
@@ -230,79 +292,118 @@ object XMLASTVisitor : ASTVisitor()
                 else -> ""
             }
         )
-        classDecl.name.accept(this)
-        xmlOpen("Members")
-        classDecl.members.forEach { it.accept(this) }
-        xmlClose("Members")
-        xmlClose("ClassDecl")
     }
 
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
     {
-        xmlOpen("AssignmentExpr")
-        assignmentExpr.target.accept(this)
-        assignmentExpr.value.accept(this)
-        xmlClose("AssignmentExpr")
+        node("AssignmentExpr")
+        {
+            assignmentExpr.target.accept(this)
+            assignmentExpr.value.accept(this)
+        }
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
     {
-        xmlOpen("FunctionCallExpr")
-        functionCallExpr.name.accept(this)
-        xmlOpen("Parameters")
-        functionCallExpr.parameters.forEach { it.accept(this) }
-        xmlClose("Parameters")
-        xmlClose("FunctionCallExpr")
+        node("FunctionCallExpr")
+        {
+            functionCallExpr.name.accept(this)
+            node("Parameters")
+            {
+                functionCallExpr.parameters.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
     {
-        val name = Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
-            ?: intrinsicCallExpr.name.intrinsicKey.name
-        xmlOpen("IntrinsicCallExpr", """name="$name"""")
-        xmlOpen("Parameters")
-        intrinsicCallExpr.parameters.forEach { it.accept(this) }
-        xmlClose("Parameters")
-        xmlClose("IntrinsicCallExpr")
+
+        node(
+            "IntrinsicCallExpr", """name="${
+                Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
+                    ?: intrinsicCallExpr.name.intrinsicKey.name
+            }""""
+        ) {
+            node("Parameters")
+            {
+                intrinsicCallExpr.parameters.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
     {
-        xmlOpen("CompoundAssignmentExpr", """op="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
-        xmlOpen("LValue")
-        compoundAssignmentExpr.left.accept(this)
-        xmlClose("LValue")
-        xmlOpen("RValue")
-        compoundAssignmentExpr.right.accept(this)
-        xmlClose("RValue")
-        xmlClose("CompoundAssignmentExpr")
+        node("CompoundAssignmentExpr", """op="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
+        {
+            node("LValue")
+            {
+                compoundAssignmentExpr.left.accept(this)
+            }
+            node("RValue")
+            {
+                compoundAssignmentExpr.right.accept(this)
+            }
+        }
     }
 
     override fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
     {
-        xmlOpen(
-            "FunctionParameterExpr",
-            when(functionParameterExpr.modifiers.isNotEmpty())
+        node(
+            "FunctionParameterExpr", when(functionParameterExpr.modifiers.isNotEmpty())
             {
                 true -> """modifiers="${functionParameterExpr.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
         )
-        functionParameterExpr.name.accept(this)
-        functionParameterExpr.type.accept(this)
-        xmlClose("FunctionParameterExpr")
+        {
+            functionParameterExpr.name.accept(this)
+            functionParameterExpr.type.accept(this)
+        }
     }
 
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
     {
-        xmlOpen("MemberAccessExpr")
-        xmlOpen("Origin")
-        memberAccessExpr.origin.accept(this)
-        xmlClose("Origin")
-        xmlOpen("Member")
-        memberAccessExpr.member.accept(this)
-        xmlClose("Member")
-        xmlClose("MemberAccessExpr")
+        node("MemberAccessExpr")
+        {
+            node("Origin")
+            {
+                memberAccessExpr.origin.accept(this)
+            }
+            node("Member")
+            {
+                memberAccessExpr.member.accept(this)
+            }
+        }
+    }
+
+    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
+    {
+        node("ForIterationExpr")
+        {
+            node("Initializer")
+            {
+                forIterationExpr.initializer.accept(this)
+            }
+            node("Target")
+            {
+                forIterationExpr.target.accept(this)
+            }
+        }
+    }
+
+    override fun visitRangeExpr(rangeExpr: RangeExpr)
+    {
+        node("RangeExpr")
+        {
+            node("Begin")
+            {
+                rangeExpr.begin.accept(this)
+            }
+            node("End")
+            {
+                rangeExpr.end.accept(this)
+            }
+        }
     }
 
     private fun pushIndent()

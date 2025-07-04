@@ -85,7 +85,7 @@ do
     // ...
 } while(true);
 
-for(mut i:0..10; i += 1)
+for(mut i : 0..10; i += 1)
 {
     // ...
 }
@@ -145,6 +145,52 @@ pub class Administrator(super.name, super.id): User
     pub executeCommand(command: String): Void
     {
         // ...
+    }
+}
+
+pub class Vector2
+{
+    require pub mut x: Float32
+    require pub mut y: Float32
+
+    pub add(other: Vector2): Vector2
+    {
+        return Vector2(x + other.x, y + other.y)
+    }
+
+    pub subtract(other: Vector2): Vector2
+    {
+        return Vector2(x - other.x, y - other.y)
+    }
+
+    pub multiply(scalar: Float32): Vector2
+    {
+        return Vector2(x * scalar, y * scalar)
+    }
+
+    pub magnitude(): Float32
+    {
+        return (x * x + y * y).sqrt()
+    }
+
+    pub normalize(): Vector2
+    {
+        mag = magnitude()
+        if(mag != 0)
+        {
+            return Vector2(x / mag, y / mag)
+        }
+        return Vector2(0, 0)
+    }
+
+    pub dot(other: Vector2): Float32
+    {
+        return x * other.x + y * other.y
+    }
+
+    pub toString(): String
+    {
+        return "Vector2(x: " + x + ", y: " + y + ")"
     }
 }
 

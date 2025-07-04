@@ -52,7 +52,8 @@ enum class BinaryOp(val symbol: Array<Symbols>, val tokenType: Token.Type, val p
     // raw
     CONJUNCTIVE_OR(arrayOf(Symbols.PIPE), Token.Type.S_PIPE, 5),
     CONJUNCTIVE_AND(arrayOf(Symbols.AMPERSAND), Token.Type.S_AND, 7),
-    CONJUNCTIVE_DOT(arrayOf(Symbols.PERIOD), Token.Type.S_DOT, 14)
+    CONJUNCTIVE_DOT(arrayOf(Symbols.PERIOD), Token.Type.S_DOT, 14),
+    RANGE(arrayOf(Symbols.PERIOD, Symbols.PERIOD), Token.Type.OP_RANGE, 14)
     ;
 
     companion object
@@ -81,6 +82,7 @@ enum class BinaryOp(val symbol: Array<Symbols>, val tokenType: Token.Type, val p
                 Token.Type.S_PIPE        -> CONJUNCTIVE_OR
                 Token.Type.S_AND         -> CONJUNCTIVE_AND
                 Token.Type.S_DOT         -> CONJUNCTIVE_DOT
+                Token.Type.OP_RANGE      -> RANGE
                 else                     -> Diagnostics.panic(
                     "BinaryOperator::byTokenType",
                     "$tokenType is not a binary operator!"

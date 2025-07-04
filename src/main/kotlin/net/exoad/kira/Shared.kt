@@ -54,6 +54,8 @@ object Keywords
         "pub" to Token.Type.K_MODIFIER_PUBLIC,
         "require" to Token.Type.K_MODIFIER_REQUIRE,
         "class" to Token.Type.K_CLASS,
+        "for" to Token.Type.K_FOR,
+        "in" to Token.Type.K_IN
     )
 
     val literals = mapOf(

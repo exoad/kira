@@ -31,6 +31,7 @@ abstract class ASTVisitor
     abstract fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
     abstract fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
     abstract fun visitReturnStatement(returnStatement: ReturnStatement)
+    abstract fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
 
     // Expressions
     abstract fun visitBinaryExpr(binaryExpr: BinaryExpr)
@@ -41,6 +42,8 @@ abstract class ASTVisitor
     abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
     abstract fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
     abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
+    abstract fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
+    abstract fun visitRangeExpr(rangeExpr: RangeExpr)
 
     // LITERALS
     abstract fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
@@ -192,6 +195,7 @@ object KiraParser
             Token.Type.K_IF         -> parseIfSelectionStatement()
             Token.Type.K_WHILE      -> parseWhileIterationStatement()
             Token.Type.K_DO         -> parseDoWhileIterationStatement()
+            Token.Type.K_FOR        -> parseForIterationStatement()
             in Token.Type.modifiers ->
             {
                 val modifiers = parseModifiers()
@@ -241,6 +245,20 @@ object KiraParser
         val expr = parseExpr()
         expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
         return ReturnStatement(expr)
+    }
+
+    fun parseForIterationStatement(): Statement
+    {
+        expectThenAdvance(Token.Type.K_FOR)
+        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+        // todo: might need a better warning message here, since the initializer needs to be present
+        expectThenAdvance(Token.Type.K_MODIFIER_MUTABLE)
+        val identifier = parseIdentifier()
+        expectThenAdvance(Token.Type.S_COLON)
+        val target = parseExpr()
+        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        val body = parseStatementBlock()
+        return ForIterationStatement(ForIterationExpr(identifier, target), body)
     }
 
     fun parseWhileIterationStatement(): Statement
@@ -309,6 +327,7 @@ object KiraParser
                 when(binaryOpType)
                 {
                     BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
+                    BinaryOp.RANGE           -> RangeExpr(left, right)
                     else                     -> BinaryExpr(left, right, binaryOpType)
                 }
         }
