@@ -7,6 +7,8 @@ import net.exoad.kira.compiler.front.KiraLexer.column
 import net.exoad.kira.compiler.front.KiraLexer.lineNumber
 import net.exoad.kira.compiler.front.KiraLexer.peek
 import net.exoad.kira.compiler.front.KiraLexer.pointer
+import net.exoad.kira.utils.isHexChar
+import kotlin.properties.Delegates
 
 data class FileLocation(val lineNumber: Int, val column: Int)
 {
@@ -30,11 +32,6 @@ data class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFil
         assert(column > 0) { "Column Number must be greater than 0 (BAD: $column)" }
     }
 
-    fun toNormalFileLocation(): FileLocation
-    {
-        return FileLocation(lineNumber, column)
-    }
-
     override fun toString(): String
     {
         return "[$srcFile : line $lineNumber, col $column"
@@ -55,6 +52,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         L_FALSE_BOOL,
         L_NULL,
         IDENTIFIER,
+        OP_RANGE("'..' (Range To)"),
         OP_ADD("'+' (Plus)"),
         OP_SUB("'-' (Minus)"),
         OP_MUL("'*' (Multiply)"),
@@ -85,12 +83,18 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_IF("'if'"),
         K_ELSE("'else'"),
         K_WHILE("'while'"),
+        K_RETURN("'return'"),
         K_DO("'do'"),
-        K_MUTABLE("'mut'"),
-        S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"), // opening
-        S_CLOSE_PARENTHESIS("')' (Closing Parenthesis)"), // closing
-        S_OPEN_BRACE("'{' (Opening Brace)"), // opening
-        S_CLOSE_BRACE("'}' (Closing Brace)"), //closing
+        K_CLASS("'class'"),
+        K_MODIFIER_REQUIRE("'require' (Required)"),
+        K_MODIFIER_MUTABLE("'mut' (Mutable)"),
+        K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
+        S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"),
+        S_CLOSE_PARENTHESIS("')' (Closing Parenthesis)"),
+        S_OPEN_BRACKET("'[' (Opening Bracket)"),
+        S_CLOSE_BRACKET("']' (Closing Bracket)"),
+        S_OPEN_BRACE("'{' (Opening Brace)"),
+        S_CLOSE_BRACE("'}' (Closing Brace)"),
         S_OPEN_ANGLE("'<' (Opening Angle Bracket)"),
         S_CLOSE_ANGLE("'>' (Closing Angle Bracket)"),
         S_COLON("':' (Colon)"),
@@ -115,39 +119,28 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
             /**
              * [net.exoad.kira.compiler.front.exprs.CompoundAssignmentExpr]
              */
-            val compoundAssignmentTokens = arrayOf(
-                OP_ASSIGN_ADD,
-                OP_ASSIGN_SUB,
-                OP_ASSIGN_MUL,
-                OP_ASSIGN_DIV,
-                OP_ASSIGN_MOD,
-                OP_ASSIGN_BIT_OR,
-                OP_ASSIGN_BIT_AND,
-                OP_ASSIGN_BIT_SHL,
-                OP_ASSIGN_BIT_SHR,
-                OP_ASSIGN_BIT_USHR,
-                OP_ASSIGN_BIT_XOR,
-            )
+            val compoundAssignmentOperators = entries.filter { it.name.startsWith("OP_ASSIGN_") }.toTypedArray()
 
             fun isBinaryOperator(token: Type): Boolean
             {
                 return when(token)
                 {
+                    OP_RANGE, S_DOT,
                     OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
                     OP_CMP_NEQ, OP_CMP_GEQ, OP_CMP_LEQ, OP_CMP_EQL,
                     S_OPEN_ANGLE, S_CLOSE_ANGLE,
                     OP_CMP_AND, OP_CMP_OR,
                     OP_BIT_XOR, OP_BIT_USHR, OP_BIT_SHL, OP_BIT_SHR,
-                    S_AND, S_PIPE,
+                    S_AND,
+                    S_PIPE,
                          -> true
                     else -> false
                 }
             }
 
-            fun isLiteral(token: Type): Boolean
-            {
-                return token.name.startsWith("L_")
-            }
+            val modifiers = entries.filter { it.name.startsWith("K_MODIFIER_") }.toTypedArray()
+
+            val literals = entries.filter { it.name.startsWith("L_") }.toTypedArray()
         }
     }
 
@@ -183,7 +176,7 @@ object KiraLexer
     private var lineNumber = 1
     private var column = 1
     private var underPointer: Char =
-            if(SrcProvider.srcContent.isEmpty()) Symbols.NULL.rep else SrcProvider.srcContent.first()
+        if(SrcProvider.srcContent.isEmpty()) Symbols.NULL.rep else SrcProvider.srcContent.first()
 
     /**
      * Advances [pointer] to the next character in [SrcProvider.srcContent] and updates [lineNumber] and [column]
@@ -201,7 +194,7 @@ object KiraLexer
         }
         pointer++
         underPointer =
-                if(pointer >= SrcProvider.srcContent.length) Symbols.NULL.rep else SrcProvider.srcContent[pointer]
+            if(pointer >= SrcProvider.srcContent.length) Symbols.NULL.rep else SrcProvider.srcContent[pointer]
     }
 
     fun skipWhitespace()
@@ -225,6 +218,31 @@ object KiraLexer
         }
     }
 
+    private fun lexHexNumberLiteral(): Token
+    {
+        val start = pointer
+        val startLoc = FileLocation(lineNumber, column)
+        while(underPointer.isHexChar())
+        {
+            advancePointer()
+        }
+        var content by Delegates.notNull<String>()
+        try
+        {
+            content = SrcProvider.srcContent.substring(start, pointer).toInt(16).toString(10) // check
+        }
+        catch(_: Exception)
+        {
+            Diagnostics.panic(
+                "KiraLexer::lexHexNumberLiteral",
+                "'$content' is not a valid hex literal.",
+                location = startLoc,
+                selectorLength = content.length
+            )
+        }
+        return Token.Raw(Token.Type.L_INTEGER, content, start, startLoc)
+    }
+
     /**
      * Maximal Munch approach to reading floating point and integer types by preferring
      * reading floating point first
@@ -232,6 +250,12 @@ object KiraLexer
     fun lexNumberLiteral(): Token
     {
         // TODO: add hex support
+        if(underPointer == '0' && peek(1) == 'x')
+        {
+            advancePointer()
+            advancePointer()
+            return lexHexNumberLiteral()
+        }
         val start = pointer
         val startLoc = FileLocation(lineNumber, column)
         var isFloat = false
@@ -324,7 +348,7 @@ object KiraLexer
             if(char.isLetter() || char == Symbols.UNDERSCORE.rep) // identifiers and keywords usually have the same stuffs
             {
                 val identifier = lexIdentifier()
-                val keywordTokenType = Keywords.common[identifier.content]
+                val keywordTokenType = Keywords.all[identifier.content]
                 return when
                 {
                     keywordTokenType != null ->
@@ -525,7 +549,17 @@ object KiraLexer
                     start,
                     startLoc
                 )
-                Symbols.PERIOD.rep            -> Token.Symbol(Token.Type.S_DOT, Symbols.PERIOD, start, startLoc)
+                Symbols.PERIOD.rep            ->
+                    when(localPeek(1))
+                    {
+                        Symbols.PERIOD.rep -> Token.LinkedSymbols(
+                            Token.Type.OP_RANGE,
+                            arrayOf(Symbols.PERIOD, Symbols.PERIOD),
+                            start,
+                            startLoc
+                        )
+                        else               -> Token.Symbol(Token.Type.S_DOT, Symbols.PERIOD, start, startLoc)
+                    }
                 Symbols.COMMA.rep             -> Token.Symbol(
                     Token.Type.S_COMMA,
                     Symbols.COMMA,
@@ -582,6 +616,18 @@ object KiraLexer
                 Symbols.CLOSE_BRACE.rep       -> Token.Symbol(
                     Token.Type.S_CLOSE_BRACE,
                     Symbols.CLOSE_BRACE,
+                    start,
+                    startLoc
+                )
+                Symbols.OPEN_BRACKET.rep      -> Token.Symbol(
+                    Token.Type.S_OPEN_BRACKET,
+                    Symbols.OPEN_BRACKET,
+                    start,
+                    startLoc
+                )
+                Symbols.CLOSE_BRACKET.rep     -> Token.Symbol(
+                    Token.Type.S_CLOSE_BRACKET,
+                    Symbols.CLOSE_BRACKET,
                     start,
                     startLoc
                 )

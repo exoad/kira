@@ -5,10 +5,10 @@ import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.exprs.Expr
 
 open class IfSelectionStatement(
-    condition: Expr, val thenStatements: List<StatementNode>,
+    condition: Expr, val thenStatements: List<Statement>,
     val elseBranches: List<IfElseBranchStatementNode> = emptyList(),
 ) :
-    StatementNode(expr = condition)
+    Statement(expr = condition)
 {
     override fun accept(visitor: ASTVisitor)
     {
@@ -23,7 +23,7 @@ open class IfSelectionStatement(
 
 sealed class IfElseBranchStatementNode : ASTNode()
 
-class ElseIfBranchStatement(val condition: Expr, val statements: List<StatementNode>) :
+class ElseIfBranchStatement(val condition: Expr, val statements: List<Statement>) :
     IfElseBranchStatementNode()
 {
     override fun accept(visitor: ASTVisitor)
@@ -32,7 +32,7 @@ class ElseIfBranchStatement(val condition: Expr, val statements: List<StatementN
     }
 }
 
-class ElseBranchStatement(val statements: List<StatementNode>) : IfElseBranchStatementNode()
+class ElseBranchStatement(val statements: List<Statement>) : IfElseBranchStatementNode()
 {
     override fun accept(visitor: ASTVisitor)
     {

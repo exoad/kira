@@ -42,7 +42,7 @@ ${
                         when(Public.Flags.useDiagnosticsUnicode)
                         {
                             true -> "➥"
-                            else -> "-->"
+                            else -> "@"
                         }
                     } [${SrcProvider.srcFile}] : $location"
                 }
@@ -51,7 +51,7 @@ ${
 ${
             when
             {
-                location != null -> SrcProvider.formCanonicalLocatorString(location, "Here: $message", selectorLength)
+                location != null -> SrcProvider.formCanonicalLocatorString(location, message, selectorLength)
                 else             -> ""
             }
         }

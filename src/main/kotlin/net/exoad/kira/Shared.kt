@@ -8,6 +8,8 @@ enum class Symbols(val rep: Char)
     DOUBLE_QUOTE('\u0022'),
     BACK_SLASH('\u005c'),
     UNDERSCORE('\u005f'),
+    OPEN_BRACKET('\u005b'),
+    CLOSE_BRACKET('\u005d'),
     CARET('\u005e'),
     AMPERSAND('\u0026'),
     PLUS('\u002b'),
@@ -40,18 +42,27 @@ enum class Symbols(val rep: Char)
 object Keywords
 {
     /**
-     * Common literal like keywords that are essential to the programming language
+     * Reserved keywords that are essential to the programming language
      */
-    val common = mapOf(
-        "true" to Token.Type.L_TRUE_BOOL,
-        "false" to Token.Type.L_FALSE_BOOL,
+    val reserved = mapOf(
         "if" to Token.Type.K_IF,
         "else" to Token.Type.K_ELSE,
         "while" to Token.Type.K_WHILE,
         "do" to Token.Type.K_DO,
-        "null" to Token.Type.L_NULL,
-        "mut" to Token.Type.K_MUTABLE,
+        "return" to Token.Type.K_RETURN,
+        "mut" to Token.Type.K_MODIFIER_MUTABLE,
+        "pub" to Token.Type.K_MODIFIER_PUBLIC,
+        "require" to Token.Type.K_MODIFIER_REQUIRE,
+        "class" to Token.Type.K_CLASS,
     )
+
+    val literals = mapOf(
+        "true" to Token.Type.L_TRUE_BOOL,
+        "false" to Token.Type.L_FALSE_BOOL,
+        "null" to Token.Type.L_NULL,
+    )
+
+    val all = reserved + literals
 }
 
 /**

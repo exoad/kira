@@ -3,16 +3,15 @@ package net.exoad.kira.compiler.front.statements
 import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.exprs.Expr
 
-class DoWhileIterationStatement(val condition: Expr, val statements: List<Statement>) :
-    Statement(expr = condition)
+open class ReturnStatement(override val expr: Expr) : Statement(expr)
 {
     override fun accept(visitor: ASTVisitor)
     {
-        visitor.visitDoWhileIterationStatement(this)
+        visitor.visitReturnStatement(this)
     }
 
     override fun toString(): String
     {
-        return "DoWhileIterationStatement{ $condition -> $statements }"
+        return "ReturnStatement{ $expr }"
     }
 }

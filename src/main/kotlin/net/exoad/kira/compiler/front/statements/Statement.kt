@@ -4,7 +4,7 @@ import net.exoad.kira.compiler.front.ASTNode
 import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.exprs.Expr
 
-open class StatementNode(open val expr: Expr) : ASTNode()
+open class Statement(open val expr: Expr) : ASTNode()
 {
     override fun accept(visitor: ASTVisitor)
     {

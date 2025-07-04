@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.front
 
 import net.exoad.kira.Public
+import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.DiagnosticsSymbols
 import net.exoad.kira.compiler.isNotRepresentableDiagnosticsSymbol
 
@@ -24,7 +25,7 @@ object SrcProvider
         return when
         {
             lineNumber > srcContentLines.size || lineNumber < 0 -> DiagnosticsSymbols.NOT_REPRESENTABLE
-            else -> srcContentLines[lineNumber - 1].trimIndent()
+            else                                                -> srcContentLines[lineNumber - 1].trimIndent()
         }
     }
 
@@ -51,7 +52,10 @@ object SrcProvider
                 }| "
                 builder.appendLine(gutter)
                 builder.appendLine("${fileLocation.lineNumber}| $line")
-                val gap = " ".repeat(fileLocation.column - 1)
+                // makes sure the arrows are always aligned properly to the actual selected portion of the line
+                val gap =
+                    " ".repeat(fileLocation.column - 1 - srcContentLines[fileLocation.lineNumber - 1].indexOfFirst { !it.isWhitespace() }
+                        .coerceAtLeast(0))
                 builder.append(gutter)
                 builder.append(gap)
                 builder.appendLine(

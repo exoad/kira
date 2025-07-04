@@ -135,15 +135,15 @@ object KiraNekoTranspiler : KiraTranspiler(
         TODO("Not yet implemented")
     }
 
-    override fun visitIntegerLiteral(integerLiteralNode: IntegerLiteral)
+    override fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
     {
-        sb.append(integerLiteralNode.value)
+        sb.append(integerLiteral.value)
     }
 
-    override fun visitStringLiteral(stringLiteralNode: StringLiteral)
+    override fun visitStringLiteral(stringLiteral: StringLiteral)
     {
         sb.append('"')
-        sb.append(stringLiteralNode.value)
+        sb.append(stringLiteral.value)
         sb.append('"')
     }
 
@@ -152,14 +152,14 @@ object KiraNekoTranspiler : KiraTranspiler(
         sb.append(boolLiteral.value)
     }
 
-    override fun visitFloatLiteral(floatLiteralNode: FloatLiteral)
+    override fun visitFloatLiteral(floatLiteral: FloatLiteral)
     {
-        sb.append(floatLiteralNode.value)
+        sb.append(floatLiteral.value)
     }
 
-    override fun visitIdentifier(identifierNode: Identifier)
+    override fun visitIdentifier(identifier: Identifier)
     {
-        sb.append(identifierNode.name)
+        sb.append(identifier.name)
     }
 
     override fun visitType(typeNode: Type)
@@ -167,14 +167,14 @@ object KiraNekoTranspiler : KiraTranspiler(
         sb.append(typeNode.name)
     }
 
-    override fun visitVariableDeclaration(variableDeclNode: VariableDecl)
+    override fun visitVariableDecl(variableDecl: VariableDecl)
     {
         sb.append("var ")
-        variableDeclNode.name.accept(this)
+        variableDecl.name.accept(this)
         sb.append("/*[[")
-        variableDeclNode.type.accept(this)
+        variableDecl.type.accept(this)
         sb.append("]]*/=")
-        variableDeclNode.value.accept(this)
+        variableDecl.value.accept(this)
     }
 
     override fun transpile()

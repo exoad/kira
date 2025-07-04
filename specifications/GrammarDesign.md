@@ -110,6 +110,23 @@ OP_BIT_XOR("'^' (Bitwise XOR"),
 math: Int32 = 123 + 123;
 ```
 
+### Functions
+
+#### Declarations
+
+```
+sum(a: Int32, b: Int32) -> Int32 
+{
+    return a + b;
+}
+```
+
+#### Call
+
+```
+sum(1, 2);
+```
+
 ### Execution Flow
 
 There are various constructs in programming languages on iteration and selection statements that allow the developer

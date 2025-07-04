@@ -29,11 +29,13 @@ object Diagnostics
     fun useDiagnostics()
     {
         logger.level = Level.ALL
+        logger.handlers.forEach { it.level = Level.ALL }
     }
 
     fun silenceDiagnostics()
     {
         logger.level = Level.OFF
+        logger.handlers.forEach { it.level = Level.OFF }
     }
 
     fun panic(
@@ -56,14 +58,14 @@ object Diagnostics
             var buffer = StringBuilder()
             for(word in words)
             {
-                when
+                when(buffer.length + word.length + (if(buffer.isNotEmpty()) 1 else 0) > 64)
                 {
-                    buffer.length + word.length + (if(buffer.isNotEmpty()) 1 else 0) > 64 ->
+                    true ->
                     {
                         println(buffer.toString())
                         buffer = StringBuilder(word)
                     }
-                    else                                                                  ->
+                    else ->
                     {
                         if(buffer.isNotEmpty())
                         {
@@ -92,7 +94,7 @@ object Diagnostics
             logger.info("Info/$tag: $message")
         }
 
-        fun yap(tag: String, message: Any)
+        fun finer(tag: String, message: Any)
         {
             if(Public.Flags.beVerbose) // i dont want to toggle flags using Level and Logger :(
             {

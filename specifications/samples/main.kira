@@ -108,8 +108,24 @@ sumPointer(12, 1); // 13
 // classes (methods are immutable / final be default as well as classes cannot be extended without having "mut"
 // similar to kotlin)
 // additionally, all fields are private by default (they can be accessed within the same source file), specify with the "pub" modifier to make them public
-pub mut class User(name: String, id: Int32)
+//
+// additionally, due to the existence of namespaces, companions and static members do not exist
+pub mut class User
 {
+    // these are automatically added to an implicit auto generated constructor that make these variables "required" meaning a value must be provided
+    //
+    // specifying the pub modifier only affects encapsulation of the field
+    require pub name: String
+
+    // this signifies that a value can be provided, if not the default value assigned here is used (optional)
+    //
+    // the mut modifier signifies that this variable can be reassigned, it does not generate implicit setters
+    require pub mut id: Int32 = 30
+
+    // this also applies to functions which can be either abstract or supplied an implementation thru the implicit constructor
+    // the latter would produce an anonymous object
+    require pub abstractOrAnonFunctionMember(): String
+
     // cannot be overridden, but it is public
     pub formattedString(): String
     {

@@ -2,16 +2,16 @@ package net.exoad.kira
 
 import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.GeneratedProvider
-import net.exoad.kira.compiler.back.KiraNekoTranspiler
 import net.exoad.kira.compiler.front.*
 import net.exoad.kira.compiler.preprocessor.KiraPreprocessor
 import net.exoad.kira.utils.ArgsParser
 import net.exoad.kira.utils.XMLASTVisitor
 import java.io.File
+import kotlin.math.floor
+import kotlin.math.log10
 import kotlin.time.measureTimedValue
 
 internal lateinit var argsParser: ArgsParser
-
 /**
  * This can be called from any other programs, but for the most part, the required parameter
  * is the `--src` option which points to the source file you want to compile. For example, `--src=hello.kira`
@@ -39,7 +39,10 @@ fun main(args: Array<String>)
                     lexerTokensDumpFile.createNewFile()
                     var i = 0
                     lexerTokensDumpFile.writeText(TokensProvider.tokens.joinToString("\n") { tk ->
-                        "${++i}: $tk"
+                        "${
+                            (++i).toString()
+                                .padStart(floor(log10(TokensProvider.tokens.size.toDouble())).toInt() + 1, ' ')
+                        }: $tk"
                     })
                     Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                 }
@@ -53,8 +56,8 @@ fun main(args: Array<String>)
                 }
                 when(GeneratedProvider.outputMode)
                 {
-                    GeneratedProvider.OutputTarget.NEKO -> KiraNekoTranspiler.transpile()
-                    GeneratedProvider.OutputTarget.NONE -> Diagnostics.Logging.info("Kira", "No output...")
+//                    GeneratedProvider.OutputTarget.NEKO -> `KiraNekoTranspiler.txt`.transpile()
+                    else -> Diagnostics.Logging.info("Kira", "No output...")
                 }
             }
         }
@@ -97,6 +100,6 @@ fun parseArgs(): ArgsOptions
 
 fun parsePublicFlags()
 {
-    Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("--noPrettyDiagnostics")
-    Public.Flags.beVerbose = !argsParser.findFlag("--verbose")
+    Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("-noPrettyDiagnostics")
+    Public.Flags.beVerbose = argsParser.findFlag("-verbose")
 }

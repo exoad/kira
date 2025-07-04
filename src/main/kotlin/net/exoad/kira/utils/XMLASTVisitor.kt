@@ -6,7 +6,9 @@ import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.RootASTNode
 import net.exoad.kira.compiler.front.elements.*
 import net.exoad.kira.compiler.front.exprs.*
-import net.exoad.kira.compiler.front.exprs.decl.VariableDecl
+import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.FunctionFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.VariableFirstClassDecl
 import net.exoad.kira.compiler.front.statements.*
 import java.text.SimpleDateFormat
 
@@ -14,7 +16,6 @@ object XMLASTVisitor : ASTVisitor()
 {
     private val builder = StringBuilder()
     private val currentIndent = mutableListOf<String>()
-
     private fun appendLine(content: String)
     {
         builder.append(currentIndent.joinToString(""))
@@ -44,11 +45,11 @@ object XMLASTVisitor : ASTVisitor()
     }
 
     private fun escapeXml(s: String): String =
-            s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;")
+        s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
 
     fun visitRootASTNode(rootASTNode: RootASTNode)
     {
@@ -59,10 +60,10 @@ object XMLASTVisitor : ASTVisitor()
         xmlClose("KiraProgram")
     }
 
-    override fun visitStatement(statementNode: StatementNode)
+    override fun visitStatement(statement: Statement)
     {
         xmlOpen("Statement")
-        statementNode.expr.accept(this)
+        statement.expr.accept(this)
         xmlClose("Statement")
     }
 
@@ -122,6 +123,13 @@ object XMLASTVisitor : ASTVisitor()
         xmlClose("DoWhileIterationStatement")
     }
 
+    override fun visitReturnStatement(returnStatement: ReturnStatement)
+    {
+        xmlOpen("ReturnStatement")
+        returnStatement.expr.accept(this)
+        xmlClose("ReturnStatement")
+    }
+
     override fun visitBinaryExpr(binaryExpr: BinaryExpr)
     {
         xmlOpen("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""")
@@ -141,14 +149,14 @@ object XMLASTVisitor : ASTVisitor()
         xmlClose("UnaryExpr")
     }
 
-    override fun visitIntegerLiteral(integerLiteralNode: IntegerLiteral)
+    override fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
     {
-        xmlSingleLeaf("LInt", """value="${integerLiteralNode.value}"""")
+        xmlSingleLeaf("LInt", """value="${integerLiteral.value}"""")
     }
 
-    override fun visitStringLiteral(stringLiteralNode: StringLiteral)
+    override fun visitStringLiteral(stringLiteral: StringLiteral)
     {
-        xmlSingleLeaf("LString", """value="${stringLiteralNode.value}"""")
+        xmlSingleLeaf("LString", """value="${stringLiteral.value}"""")
     }
 
     override fun visitBoolLiteral(boolLiteral: BoolLiteral)
@@ -156,14 +164,14 @@ object XMLASTVisitor : ASTVisitor()
         xmlSingleLeaf("LBool", """value="${boolLiteral.value}"""")
     }
 
-    override fun visitFloatLiteral(floatLiteralNode: FloatLiteral)
+    override fun visitFloatLiteral(floatLiteral: FloatLiteral)
     {
-        xmlSingleLeaf("LFloat", """value="${floatLiteralNode.value}"""")
+        xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
-    override fun visitIdentifier(identifierNode: Identifier)
+    override fun visitIdentifier(identifier: Identifier)
     {
-        xmlLeaf("Identifier", identifierNode.name)
+        xmlLeaf("Identifier", identifier.name)
     }
 
     override fun visitType(typeNode: Type)
@@ -171,13 +179,62 @@ object XMLASTVisitor : ASTVisitor()
         xmlLeaf("Type", typeNode.name)
     }
 
-    override fun visitVariableDeclaration(variableDeclNode: VariableDecl)
+    override fun visitVariableDecl(variableDecl: VariableFirstClassDecl)
     {
-        xmlOpen("VariableDecl")
-        variableDeclNode.name.accept(this)
-        variableDeclNode.type.accept(this)
-        variableDeclNode.value.accept(this)
+        xmlOpen(
+            "VariableDecl",
+            when(variableDecl.modifiers.isNotEmpty())
+            {
+                true -> """modifiers="${variableDecl.modifiers.joinToString(", ") { it.name }}""""
+                else -> ""
+            }
+        )
+        variableDecl.name.accept(this)
+        variableDecl.type.accept(this)
+        if(variableDecl.value != null)
+        {
+            xmlOpen("Value")
+            variableDecl.value!!.accept(this)
+            xmlClose("Value")
+        }
         xmlClose("VariableDecl")
+    }
+
+    override fun visitFunctionDecl(functionDecl: FunctionFirstClassDecl)
+    {
+        xmlOpen(
+            "FunctionDecl",
+            when(functionDecl.modifiers.isNotEmpty())
+            {
+                true -> """modifiers="${functionDecl.modifiers.joinToString(", ") { it.name }}""""
+                else -> ""
+            }
+        )
+        functionDecl.name.accept(this)
+        functionDecl.returnType.accept(this)
+        xmlOpen("Parameters")
+        functionDecl.parameters.forEach { it.accept(this) }
+        xmlClose("Parameters")
+        xmlOpen("Body")
+        functionDecl.body?.forEach { it.accept(this) }
+        xmlClose("Body")
+        xmlClose("FunctionDecl")
+    }
+
+    override fun visitClassDecl(classDecl: ClassDecl)
+    {
+        xmlOpen(
+            "ClassDecl", when(classDecl.modifiers.isNotEmpty())
+            {
+                true -> """modifiers="${classDecl.modifiers.joinToString(", ") { it.name }}""""
+                else -> ""
+            }
+        )
+        classDecl.name.accept(this)
+        xmlOpen("Members")
+        classDecl.members.forEach { it.accept(this) }
+        xmlClose("Members")
+        xmlClose("ClassDecl")
     }
 
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
@@ -191,7 +248,10 @@ object XMLASTVisitor : ASTVisitor()
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
     {
         xmlOpen("FunctionCallExpr")
+        functionCallExpr.name.accept(this)
+        xmlOpen("Parameters")
         functionCallExpr.parameters.forEach { it.accept(this) }
+        xmlClose("Parameters")
         xmlClose("FunctionCallExpr")
     }
 
@@ -208,7 +268,7 @@ object XMLASTVisitor : ASTVisitor()
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
     {
-        xmlOpen("CompoundAssignmentExpr", """operator="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
+        xmlOpen("CompoundAssignmentExpr", """op="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
         xmlOpen("LValue")
         compoundAssignmentExpr.left.accept(this)
         xmlClose("LValue")
@@ -216,6 +276,33 @@ object XMLASTVisitor : ASTVisitor()
         compoundAssignmentExpr.right.accept(this)
         xmlClose("RValue")
         xmlClose("CompoundAssignmentExpr")
+    }
+
+    override fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
+    {
+        xmlOpen(
+            "FunctionParameterExpr",
+            when(functionParameterExpr.modifiers.isNotEmpty())
+            {
+                true -> """modifiers="${functionParameterExpr.modifiers.joinToString(", ") { it.name }}""""
+                else -> ""
+            }
+        )
+        functionParameterExpr.name.accept(this)
+        functionParameterExpr.type.accept(this)
+        xmlClose("FunctionParameterExpr")
+    }
+
+    override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
+    {
+        xmlOpen("MemberAccessExpr")
+        xmlOpen("Origin")
+        memberAccessExpr.origin.accept(this)
+        xmlClose("Origin")
+        xmlOpen("Member")
+        memberAccessExpr.member.accept(this)
+        xmlClose("Member")
+        xmlClose("MemberAccessExpr")
     }
 
     private fun pushIndent()
@@ -235,13 +322,10 @@ object XMLASTVisitor : ASTVisitor()
     {
         builder.clear()
         currentIndent.clear()
-        if(node is RootASTNode)
+        when(node)
         {
-            visitRootASTNode(node)
-        }
-        else
-        {
-            node.accept(this)
+            is RootASTNode -> visitRootASTNode(node)
+            else           -> node.accept(this)
         }
         val res = builder.toString()
         builder.clear()

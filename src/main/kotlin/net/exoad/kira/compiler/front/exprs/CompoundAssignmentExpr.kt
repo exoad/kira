@@ -8,6 +8,7 @@ class CompoundAssignmentExpr(val left: Expr, val operator: BinaryOp, val right: 
 {
     override fun accept(visitor: ASTVisitor)
     {
+        visitor.visitCompoundAssignmentExpr(this)
     }
 
     override fun toString(): String

@@ -51,7 +51,8 @@ enum class BinaryOp(val symbol: Array<Symbols>, val tokenType: Token.Type, val p
 
     // raw
     CONJUNCTIVE_OR(arrayOf(Symbols.PIPE), Token.Type.S_PIPE, 5),
-    CONJUNCTIVE_AND(arrayOf(Symbols.AMPERSAND), Token.Type.S_AND, 7)
+    CONJUNCTIVE_AND(arrayOf(Symbols.AMPERSAND), Token.Type.S_AND, 7),
+    CONJUNCTIVE_DOT(arrayOf(Symbols.PERIOD), Token.Type.S_DOT, 14)
     ;
 
     companion object
@@ -79,6 +80,7 @@ enum class BinaryOp(val symbol: Array<Symbols>, val tokenType: Token.Type, val p
                 Token.Type.OP_CMP_AND    -> AND
                 Token.Type.S_PIPE        -> CONJUNCTIVE_OR
                 Token.Type.S_AND         -> CONJUNCTIVE_AND
+                Token.Type.S_DOT         -> CONJUNCTIVE_DOT
                 else                     -> Diagnostics.panic(
                     "BinaryOperator::byTokenType",
                     "$tokenType is not a binary operator!"
@@ -92,7 +94,7 @@ enum class BinaryOp(val symbol: Array<Symbols>, val tokenType: Token.Type, val p
             {
                 byTokenType(tokenType)
             }
-            catch(ignored: Exception)
+            catch(_: Exception)
             {
                 null
             }

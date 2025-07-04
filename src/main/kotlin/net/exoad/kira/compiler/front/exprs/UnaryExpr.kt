@@ -56,7 +56,7 @@ enum class UnaryOp(val symbol: Symbols, val tokenType: Token.Type, val precedenc
             {
                 byTokenType(tokenType)
             }
-            catch(ignored: Exception)
+            catch(_: Exception)
             {
                 null
             }
