@@ -5,7 +5,7 @@ import "another_module:sub_module";
 
 // immutable variable
 immutableVariable: Int32 = 123;
-
+hexInt: Int32 = 0x01;
 // mutable variable (can be reassigned)
 mut variable: Int32 = 123;
 
@@ -85,7 +85,7 @@ do
     // ...
 } while(true);
 
-for(mut i : 0..10; i += 1)
+for(mut i : 0..10) //range for loop, expanded during code analysis to use a for loop
 {
     // ...
 }

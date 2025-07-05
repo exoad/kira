@@ -87,7 +87,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_DO("'do'"),
         K_FOR("'for'"),
         K_CLASS("'class'"),
-        K_IN("'in'"),
+        K_MODULE("'module'"),
         K_MODIFIER_REQUIRE("'require' (Required)"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
@@ -174,6 +174,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
  */
 object KiraLexer
 {
+    // it is ill advised to modify any of these on their owns
     private var pointer = 0
     private var lineNumber = 1
     private var column = 1
@@ -195,6 +196,13 @@ object KiraLexer
             else -> column++
         }
         pointer++
+        if(pointer >= SrcProvider.srcContent.length)
+        {
+            Diagnostics.panic(
+                "KiraLexer::advancePointer",
+                "The lexer's read pointer exceeded ${SrcProvider.srcContent.length} (content length)"
+            )
+        }
         underPointer =
             if(pointer >= SrcProvider.srcContent.length) Symbols.NULL.rep else SrcProvider.srcContent[pointer]
     }
@@ -321,8 +329,14 @@ object KiraLexer
         return Token.Raw(Token.Type.IDENTIFIER, SrcProvider.srcContent.substring(start, pointer), start, startLoc)
     }
 
+    private val pendingTokens: ArrayDeque<Token> = ArrayDeque()
+
     fun nextToken(): Token
     {
+        if(pendingTokens.isNotEmpty())
+        {
+            return pendingTokens.removeFirst()
+        }
         while(underPointer != Symbols.NULL.rep)
         {
             skipWhitespace()
@@ -342,7 +356,10 @@ object KiraLexer
                 return when(index < SrcProvider.srcContent.length)
                 {
                     true -> SrcProvider.srcContent[index]
-                    else -> Symbols.NULL.rep
+                    else -> Diagnostics.panic(
+                        "KiraLexer::nextToken::localPeek",
+                        "Read pointer went out of content bounds ${SrcProvider.srcContent.length}"
+                    )
                 }
             }
 
@@ -408,9 +425,19 @@ object KiraLexer
                         )
                     }
                 Symbols.CLOSE_ANGLE.rep       ->
-                    when(localPeek(1))
+                {
+                    var count = 1
+                    while(localPeek(count) == Symbols.CLOSE_ANGLE.rep)
                     {
-                        Symbols.EQUALS.rep      ->
+                        count++
+                        Diagnostics.Logging.finer(
+                            "Kira",
+                            "Peek = ${localPeek(count)}, Pointer = $pointer, Count = $count"
+                        )
+                    }
+                    return when
+                    {
+                        localPeek(1) == Symbols.EQUALS.rep && count == 1 ->
                         {
                             advancePointer()
                             Token.LinkedSymbols(
@@ -420,35 +447,52 @@ object KiraLexer
                                 startLoc
                             )
                         }
-                        Symbols.CLOSE_ANGLE.rep ->
+                        count == 2                                       ->
                         {
                             advancePointer()
-                            return when(localPeek(2))
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_BIT_SHR,
+                                Array(2) { Symbols.CLOSE_ANGLE },
+                                start,
+                                startLoc
+                            )
+                        }
+                        count == 3                                       ->
+                        {
+                            advancePointer()
+                            advancePointer()
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_BIT_USHR,
+                                Array(3) { Symbols.CLOSE_ANGLE },
+                                start,
+                                startLoc
+                            )
+                        }
+                        else                                             ->
+                        {
+                            repeat(count - 1)
                             {
-                                Symbols.CLOSE_ANGLE.rep ->
-                                { // support bitwise unsigned right shift
-                                    advancePointer()
-                                    Token.LinkedSymbols(
-                                        Token.Type.OP_BIT_USHR,
-                                        arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE),
-                                        start, startLoc
+                                pendingTokens.addLast(
+                                    Token.Symbol(
+                                        Token.Type.S_CLOSE_ANGLE,
+                                        Symbols.CLOSE_ANGLE,
+                                        start,
+                                        startLoc
                                     )
-                                }
-                                else                    -> Token.LinkedSymbols(
-                                    Token.Type.OP_BIT_SHR,
-                                    arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE),
-                                    start,
-                                    startLoc
                                 )
                             }
+                            return Token.Symbol(
+                                Token.Type.S_CLOSE_ANGLE,
+                                Symbols.CLOSE_ANGLE,
+                                start,
+                                startLoc
+                            )
                         }
-                        else                    -> Token.Symbol(
-                            Token.Type.S_CLOSE_ANGLE,
-                            Symbols.CLOSE_ANGLE,
-                            start,
-                            startLoc
-                        )
                     }
+                }
+
                 Symbols.COLON.rep             -> Token.Symbol(
                     Token.Type.S_COLON,
                     Symbols.COLON,

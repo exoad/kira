@@ -8,6 +8,7 @@ import net.exoad.kira.compiler.front.elements.*
 import net.exoad.kira.compiler.front.exprs.*
 import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
 import net.exoad.kira.compiler.front.exprs.decl.FunctionFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.ModuleDecl
 import net.exoad.kira.compiler.front.exprs.decl.VariableFirstClassDecl
 import net.exoad.kira.compiler.front.statements.*
 import java.text.SimpleDateFormat
@@ -219,9 +220,19 @@ object XMLASTVisitor : ASTVisitor()
         xmlLeaf("Identifier", identifier.name)
     }
 
-    override fun visitType(typeNode: Type)
+    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
     {
-        xmlLeaf("Type", typeNode.name)
+        if(typeSpecifier.childGenericTypeSpecifier.isNotEmpty())
+        {
+            node("Type", """name="${typeSpecifier.name}"""")
+            {
+                typeSpecifier.childGenericTypeSpecifier.forEach { it.accept(this) }
+            }
+        }
+        else
+        {
+            xmlLeaf("Type", typeSpecifier.name)
+        }
     }
 
     override fun visitVariableDecl(variableDecl: VariableFirstClassDecl)
@@ -235,7 +246,7 @@ object XMLASTVisitor : ASTVisitor()
         )
         {
             variableDecl.name.accept(this)
-            variableDecl.type.accept(this)
+            variableDecl.typeSpecifier.accept(this)
             if(variableDecl.value != null)
             {
                 node("Value")
@@ -257,7 +268,7 @@ object XMLASTVisitor : ASTVisitor()
         )
         {
             functionDecl.name.accept(this)
-            functionDecl.returnType.accept(this)
+            functionDecl.returnTypeSpecifier.accept(this)
             node("Parameters")
             {
                 functionDecl.parameters.forEach { it.accept(this) }
@@ -292,6 +303,17 @@ object XMLASTVisitor : ASTVisitor()
                 else -> ""
             }
         )
+    }
+
+    override fun visitModuleDecl(moduleDecl: ModuleDecl)
+    {
+        node("ModuleDecl")
+        {
+            node("URI")
+            {
+                moduleDecl.uri.accept(this)
+            }
+        }
     }
 
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
@@ -357,7 +379,7 @@ object XMLASTVisitor : ASTVisitor()
         )
         {
             functionParameterExpr.name.accept(this)
-            functionParameterExpr.type.accept(this)
+            functionParameterExpr.typeSpecifier.accept(this)
         }
     }
 

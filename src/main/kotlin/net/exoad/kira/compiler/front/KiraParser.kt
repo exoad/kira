@@ -10,8 +10,10 @@ import net.exoad.kira.compiler.front.KiraParser.pointer
 import net.exoad.kira.compiler.front.elements.*
 import net.exoad.kira.compiler.front.exprs.*
 import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.Decl
 import net.exoad.kira.compiler.front.exprs.decl.FirstClassDecl
 import net.exoad.kira.compiler.front.exprs.decl.FunctionFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.ModuleDecl
 import net.exoad.kira.compiler.front.exprs.decl.VariableFirstClassDecl
 import net.exoad.kira.compiler.front.statements.*
 import kotlin.properties.Delegates
@@ -53,12 +55,13 @@ abstract class ASTVisitor
 
     // IDENTIFIERS
     abstract fun visitIdentifier(identifier: Identifier)
-    abstract fun visitType(typeNode: Type)
+    abstract fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
 
     // DECLARATIONS
     abstract fun visitVariableDecl(variableDecl: VariableFirstClassDecl)
     abstract fun visitFunctionDecl(functionDecl: FunctionFirstClassDecl)
     abstract fun visitClassDecl(classDecl: ClassDecl)
+    abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
 }
 
 class RootASTNode(val statements: List<ASTNode>) : ASTNode()
@@ -134,7 +137,7 @@ object KiraParser
         }
     }
 
-    fun expectOptionalThenAdvance(token: Token.Type)
+    fun expectOptionalThenAdvance(token: Token.Type, ifOk: () -> Unit = { advancePointer() })
     {
         if(underPointer.type == token)
         {
@@ -366,6 +369,7 @@ object KiraParser
                         selectorLength = peek(1).content.length
                     )
                 }
+            Token.Type.K_MODULE                                                         -> parseModuleDecl()
             Token.Type.IDENTIFIER                                                       ->
                 when(peek(1).type)
                 {
@@ -394,6 +398,13 @@ object KiraParser
                 selectorLength = underPointer.content.length
             )
         }
+    }
+
+    fun parseModuleDecl(): Decl
+    {
+        advancePointer()
+        val uri = parseStringLiteral()
+        return ModuleDecl(uri)
     }
 
     fun parseUnaryExpr(): Expr
@@ -700,11 +711,28 @@ object KiraParser
         return Identifier(value)
     }
 
-    fun parseType(): Type
+    fun parseType(trace: Int = 0): TypeSpecifier
     {
-        val value = underPointer.content
+        val baseName = underPointer.content
         expectThenAdvance(Token.Type.IDENTIFIER)
-        return Type(value)
+        val generics = mutableListOf<TypeSpecifier>()
+        if(underPointer.type == Token.Type.S_OPEN_ANGLE)
+        {
+            advancePointer()
+            while(true)
+            {
+                generics.add(parseType(trace + 1))
+                if(underPointer.type == Token.Type.S_COMMA)
+                {
+                    advancePointer()
+                    continue
+                }
+                break
+            }
+
+            expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
+        }
+        return TypeSpecifier(baseName, generics.toTypedArray())
     }
 
     fun parseModifiers(): List<Modifiers>

@@ -55,7 +55,7 @@ object Keywords
         "require" to Token.Type.K_MODIFIER_REQUIRE,
         "class" to Token.Type.K_CLASS,
         "for" to Token.Type.K_FOR,
-        "in" to Token.Type.K_IN
+        "module" to Token.Type.K_MODULE,
     )
 
     val literals = mapOf(

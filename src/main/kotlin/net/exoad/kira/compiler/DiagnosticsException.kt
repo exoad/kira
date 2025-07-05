@@ -52,7 +52,7 @@ ${
             when
             {
                 location != null -> SrcProvider.formCanonicalLocatorString(location, message, selectorLength)
-                else             -> ""
+                else             -> message
             }
         }
             ${

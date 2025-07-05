@@ -4,7 +4,7 @@ data class ArgsOptions(
     val useDiagnostics: Boolean,
     val src: List<String>,
     val dumpLexerTokens: String?,
-    val dumpAST: String?
+    val dumpAST: String?,
 )
 {
     override fun toString(): String

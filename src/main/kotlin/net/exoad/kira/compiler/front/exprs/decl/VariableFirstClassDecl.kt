@@ -4,11 +4,11 @@ import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.exprs.Expr
 import net.exoad.kira.compiler.front.elements.Identifier
 import net.exoad.kira.compiler.front.elements.Modifiers
-import net.exoad.kira.compiler.front.elements.Type
+import net.exoad.kira.compiler.front.elements.TypeSpecifier
 
 open class VariableFirstClassDecl(
     override val name: Identifier,
-    open val type: Type,
+    open val typeSpecifier: TypeSpecifier,
     open val value: Expr?, // if this is null, then this is a "noimpl" or "noval" , see [isStub]
     override val modifiers: List<Modifiers> = emptyList()
 ) : FirstClassDecl(name, modifiers)
@@ -20,7 +20,7 @@ open class VariableFirstClassDecl(
 
     override fun toString(): String
     {
-        return "VariableDeclaration[[ $modifiers  ]]{ $name ($type) := $value}"
+        return "VariableDeclaration[[ $modifiers  ]]{ $name ($typeSpecifier) := $value}"
     }
 
     override fun isStub(): Boolean
