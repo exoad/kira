@@ -45,6 +45,44 @@ while(i-- > 0)
 }
 ```
 
+### Classes
+
+```
+class Employee
+{
+    require pub name: String
+    require id: Int32
+    require pub clockedInTimes: Int64 = 0
+
+    require pub accessDatabase(): Void
+
+    pub transferTo(otherEmployee: Int32): User
+    {
+        return Employee(
+            name = ::name
+            id = otherEmployee
+            clockedInTimes = ::clockedInTimes
+        )
+    }
+
+    pub @__greater_than__(otherEmployee: Employee): Bool
+    {
+        if(::clockedInTimes > otherEmployee::clockedInTimes)
+        {
+            return true;
+        }
+        return false;
+    }
+}
+
+@main(): Void
+{
+    @__trace__(Employee(name = "John Doe", id = 123, accessDatabase = (): Void {
+        @__trace__("I am in!")
+   }))
+}
+```
+
 Check back later! More stuffs will come and go :)
 
 ## Chores
