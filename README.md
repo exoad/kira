@@ -21,13 +21,13 @@ raw x86 Assembly and using NASM to do the rest; however, we will see where this 
 
 ### Hello, World!
 
-```
+```haxe
 @__trace__("Hello World!");
 ```
 
 ### Conditionals & Loops
 
-```
+```haxe
 someCondition: Bool = 1 + 1 == 2;
 if(someCondition)
 {
@@ -47,7 +47,7 @@ while(i-- > 0)
 
 ### Classes
 
-```
+```haxe
 class Employee
 {
     require pub name: String
