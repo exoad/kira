@@ -8,15 +8,22 @@ import java.util.logging.Logger
 import java.util.logging.SimpleFormatter
 import kotlin.system.exitProcess
 
+/**
+ * General debugging things or information to be shown to the user like panic information and others
+ *
+ * kira's internal `System.out.print`
+ */
 object Diagnostics
 {
-    private val logger: Logger = Logger.getLogger("net.exoad.kira")
+    // could use something like println provided by the language, but nah, i am a cool programmer and we dont use this sissy tools (i still use println to debug sometimes ;D)
+    private val logger: Logger =
+        Logger.getLogger("net.exoad.kira") // the logger used so we can getter better compatibility and controls from external systems
 
     init
     {
         System.setProperty(
             "java.util.logging.SimpleFormatter.format",
-            "%5\$s%n"
+            "%5\$s%n" // get rid of all of the garbage produced by the default java logger including things like method site, a long time stamp.
         )
         val consoleHandler = ConsoleHandler().apply {
             formatter = SimpleFormatter()
@@ -29,6 +36,9 @@ object Diagnostics
     fun useDiagnostics()
     {
         logger.level = Level.ALL
+        // i learned it the hard way that just setting the logger's level doesnt work.
+        // YOU HAVE TO DO IT FOR ALL THE HANDLERS???
+        // bruh why is this a thing, cant they just built it in? i dont really understand why this isnt done under the hood
         logger.handlers.forEach { it.level = Level.ALL }
     }
 
@@ -38,6 +48,7 @@ object Diagnostics
         logger.handlers.forEach { it.level = Level.OFF }
     }
 
+    // something went wrong?? scary!
     fun panic(
         tag: String,
         message: Any,

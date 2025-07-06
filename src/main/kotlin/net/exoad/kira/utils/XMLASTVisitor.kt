@@ -13,7 +13,21 @@ import net.exoad.kira.compiler.front.exprs.decl.VariableFirstClassDecl
 import net.exoad.kira.compiler.front.statements.*
 import java.text.SimpleDateFormat
 
-object XMLASTVisitor : ASTVisitor()
+/**
+ * Builds a cool looking xml of the ast without external dependencies (can only write, not read tho)
+ *
+ * This might be an ir ir, meaning you could use this make other languages. but thats just the ast!
+ *
+ * usually this is just generated right after the parser phase, but you can always pass in a root ast node
+ * or something, and it will traverse and spit something out.
+ *
+ * it is dumped using [net.exoad.kira.ArgsOptions.dumpAST] to a file you want.
+ *
+ * spitting it out makes developing kira much easier than scrolling through a terminal sometimes
+ */
+object XMLASTVisitor :
+    ASTVisitor() // having to come back here to implement members from the ASTVisitor is just idk, is it too much boilerplate?
+// antlr and stuffs already pregenerate the code and all of those "visit" functions for you which is helpful lol
 {
     private val builder = StringBuilder()
     private val currentIndent = mutableListOf<String>()
@@ -29,6 +43,9 @@ object XMLASTVisitor : ASTVisitor()
         pushIndent()
     }
 
+    // i love kotlin's trailing lambda features as compared to other languages where you have to supply a lambda within a function
+    //
+    // todo: can we have the ^ above feature as an actual feature in kira?!
     private fun node(tag: String, attrs: String = "", children: () -> Unit)
     {
         xmlOpen(tag, attrs)
@@ -42,22 +59,31 @@ object XMLASTVisitor : ASTVisitor()
         appendLine("</$tag>")
     }
 
+    /**
+     * A leaf node in xml that has an ending tag because you need [value] or the content and
+     * potentially attributes with [attrs]
+     */
     private fun xmlLeaf(tag: String, value: String, attrs: String = "")
     {
         appendLine("<$tag${if(attrs.isNotEmpty()) " $attrs" else ""}>${escapeXml(value)}</$tag>")
     }
 
+    /**
+     * A leaf node in xml that has no ending tag, and you only want to specify attributes with [attrs]
+     */
     private fun xmlSingleLeaf(tag: String, attrs: String)
     {
         appendLine("<$tag${if(attrs.isNotEmpty()) " $attrs" else ""}/>")
     }
 
-    private fun escapeXml(s: String): String =
-        s.replace("&", "&amp;")
+    private fun escapeXml(s: String): String
+    {
+        return s.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&apos;")
+    }
 
     fun visitRootASTNode(rootASTNode: RootASTNode)
     {

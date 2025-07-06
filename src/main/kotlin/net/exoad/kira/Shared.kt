@@ -2,11 +2,22 @@ package net.exoad.kira
 
 import net.exoad.kira.compiler.front.Token
 
+// this file holds some of the global stuffs of the language like keywords and valid ascii symbols (maybe even utf8 later on)
+//
+// todo: [low-priority] should i modularize this and move some of the stuffs away from this file like the symbols and keywords and stuffs. in most of my other projects, a shared source file usually means just internal configurations and constants, but who knows, ig this makes sense!
+
+/**
+ * Global symbols used by the language and are defined here. these are all one byte characters for now and should all be ascii based (maybe utf8 for easter egg or special intrinsics or special feature??)
+ * lmao having to copy and paste constantly from an utf8 character code website would be hilarious
+ *
+ *
+ * - primarily used by [net.exoad.kira.compiler.front.KiraLexer] to match them to [Token]s
+ */
 enum class Symbols(val rep: Char)
 {
     NULL('\u0000'),
     DOUBLE_QUOTE('\u0022'),
-    BACK_SLASH('\u005c'),
+    BACK_SLASH('\u005c'), // unused ignore; this might not be necessary, but we might need it in the parser stage since the parse will now evaluate escaped strings? (check chores)
     UNDERSCORE('\u005f'),
     OPEN_BRACKET('\u005b'),
     CLOSE_BRACKET('\u005d'),
@@ -39,6 +50,9 @@ enum class Symbols(val rep: Char)
     }
 }
 
+/**
+ * Keywords shared constants, holds all the special keywords used in kira.
+ */
 object Keywords
 {
     /**

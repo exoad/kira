@@ -5,8 +5,18 @@ import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.DiagnosticsSymbols
 import net.exoad.kira.compiler.isNotRepresentableDiagnosticsSymbol
 
+/**
+ * A global handler for every part of the compiler to be able to read the original source content.
+ *
+ * It also provides an easy way to identify locations within the source content (see: [findCanonicalLine] and [formCanonicalLocatorString], which is great for
+ * generating debug messages or error messages of where something went wrong :)
+ */
 object SrcProvider
 {
+    // it would be very dangerous to change these after the initial initialization of these variables and then provide with lexical and semantical analysis.
+    //
+    // that would of course corrupt the error messages and even cause the generation of error messages to fail
+    // ^should i cover this case? where the error message fails. i think i do already in [findCanonicalLine] where it returns the weird NOT_REP null char which is pretty cool
     var srcFile = ""
     var srcContent = ""
         set(value)
@@ -18,17 +28,24 @@ object SrcProvider
         private set
 
     /**
-     * 1-based indexing
+     * 1-based indexing (is this lua? when anything refers to canonicity in my code, it often just means the way that ordinary folks (users of the language) would refer to things or like things
      */
     fun findCanonicalLine(lineNumber: Int): String
     {
         return when
         {
-            lineNumber > srcContentLines.size || lineNumber < 0 -> DiagnosticsSymbols.NOT_REPRESENTABLE
+            lineNumber > srcContentLines.size || lineNumber < 0 -> DiagnosticsSymbols.NOT_REPRESENTABLE // should never happen or appear, if it appears, well... something fucked up BADDDDDDD
             else                                                -> srcContentLines[lineNumber - 1].trimIndent()
         }
     }
 
+    /**
+     * Creates a visual pointer to a portion of [srcContent] by the specified [fileLocation] and how long of the content to point at [locatorLength]
+     *
+     * - [locatorLength] starts at the first character of [fileLocation]'s [FileLocation.column] parameter. *PS, this function will throw an assertion error if [locatorLength] is not `>=` (greater than or equal to) `1`*
+     *
+     * - commonly used by the [Diagnostics.panic] function to generate useful & friendly error messages
+     */
     fun formCanonicalLocatorString(
         fileLocation: FileLocation,
         trailingText: String? = null,

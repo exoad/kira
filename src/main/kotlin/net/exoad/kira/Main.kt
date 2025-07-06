@@ -18,11 +18,14 @@ internal lateinit var argsParser: ArgsParser
  */
 fun main(args: Array<String>)
 {
-    val (_, duration) = measureTimedValue {
+    val (_, duration) = measureTimedValue { // ignore the first parameter because this a void or unit block so the result is not important!
         argsParser = ArgsParser(args)
         parseArgs().let { it ->
             when(it.useDiagnostics)
             {
+                // the thing with this is that, we cannot log anything in functions before this happens, since the flag by default off
+                //
+                // the only thing we can do is panic!! silently panic LOL
                 true -> Diagnostics.useDiagnostics()
                 else -> Diagnostics.silenceDiagnostics()
             }
@@ -41,7 +44,11 @@ fun main(args: Array<String>)
                     lexerTokensDumpFile.writeText(TokensProvider.tokens.joinToString("\n") { tk ->
                         "${
                             (++i).toString()
-                                .padStart(floor(log10(TokensProvider.tokens.size.toDouble())).toInt() + 1, ' ')
+                                .padStart(
+                                    floor(log10(TokensProvider.tokens.size.toDouble())).toInt() + 1,
+                                    ' '
+                                ) // yikes, this math is for padding the left side of the token number being parsed to make sure that the tokens are never pushed out of alignment in this column form
+                            // basically it figures out the length of the number without using loops
                         }: $tk"
                     })
                     Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
@@ -62,6 +69,7 @@ fun main(args: Array<String>)
             }
         }
     }
+    // todo: should this be some kind of "finer" message or should we leave it everytime for the user to see?
     Diagnostics.Logging.info("Kira", "Completed in $duration")
 }
 
@@ -100,6 +108,9 @@ fun parseArgs(): ArgsOptions
 
 fun parsePublicFlags()
 {
+    // the flipping and unflipping of the conditions just sometimes gets me mixed up for some reason lol
+    //
+    // is my brain too slow ?
     Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("-noPrettyDiagnostics")
     Public.Flags.beVerbose = argsParser.findFlag("-verbose")
 }

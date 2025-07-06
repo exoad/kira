@@ -12,8 +12,13 @@ object KiraPreprocessor
 {
     const val COMMENT_PATTERN: String = "//"
 
+    /**
+     * Strips comments!
+     */
     fun stripComments()
     {
+        // todo: maybe we can capture the comments some time later and support exporting doc comments?
+        // todo: or will this be part of some external tool that scans or hooks up to this process
         SrcProvider.srcContent = SrcProvider.srcContentLines
             .map { line ->
                 val index = line.indexOf(COMMENT_PATTERN)
@@ -27,6 +32,9 @@ object KiraPreprocessor
             .joinToString("\n")
     }
 
+    /**
+     * Runs all the steps of the preprocessor in the preferred manner. Otherwise, you can call the steps you prefer.
+     */
     fun process()
     {
         return stripComments()

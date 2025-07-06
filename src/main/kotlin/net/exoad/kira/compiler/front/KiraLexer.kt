@@ -383,6 +383,18 @@ object KiraLexer
                 return lexStringLiteral()
             }
             advancePointer()
+            // i want to say this when statement looks great, but like man covering conditional, is just pure hell to my eyes to look at.
+            //
+            // but aye it is straightforward. there is no real need to modularize it further
+            //
+            // it could be troublesome especially when we need to distinguish multiple occurring characters apart from other ones
+            //
+            // by this mean i mean like distinguishing the closing angle brackets of something like:
+            //
+            //          Array<Array<Array<Array<Int32>>>>
+            //
+            // the last 4 '>' with a naive lexer would be easily mismarked as just either bitwise ushr or just 2 shr or 4 grt. its just a pain
+            // sometimes to cover and coalesce these lexical tokens together (I JUST WISH WE HAD MORE KEYS TO WORK WITH, no i dont lol)
             return when(char)
             {
                 Symbols.AT.rep                -> Token.Symbol(Token.Type.S_AT, Symbols.AT, start, startLoc)

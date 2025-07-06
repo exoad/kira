@@ -1,5 +1,10 @@
 package net.exoad.kira.compiler
 
+/**
+ * Holds the information on the information necessary to output the final generated output format.
+ *
+ * Things like the compilation format with [OutputTarget]
+ */
 object GeneratedProvider
 {
     enum class OutputTarget
