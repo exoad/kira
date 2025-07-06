@@ -53,3 +53,4 @@ bin/
 **.kira.xml
 # coverage
 /htmlReport
+/private

@@ -17,7 +17,9 @@ raw x86 Assembly and using NASM to do the rest; however, we will see where this 
 ## Code Snippets
 
 > [!WARNING]
-> Nothing here is final, so the syntax and semantics will change.
+> This is an early draft. Syntax and semantics are subject to change!
+
+*Semicolons as statement delimiters are **optional** ;)*
 
 ### Hello, World!
 
@@ -95,7 +97,9 @@ Chores relating to anything to do with the upfront semantics and syntax of the l
 
 - [ ] Interpolation in strings without using `+`
 
-- [ ] **In Triage** For Loop
+- [X] **In Triage** For Loop
+
+- [ ] **Pending Implementation** Proper parsing of anonymous function literals using `AnonymousIdentifier`
 
 ### Internal Workings
 
@@ -103,7 +107,7 @@ Chores relating to anything that involves the internal workings
 
 - [ ] Static Analyzer for validating the state of the AST
 
-- [ ] Support for outputting the AST as an XML document so there is not a necessary usage of another parser to parse the
+- [X] Support for outputting the AST as an XML document so there is not a necessary usage of another parser to parse the
   formatting
 
 - [ ] **In Progress** Transpile to NekoVM Neko code with full support for all features

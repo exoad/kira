@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.front.exprs
 import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.Token
+import net.exoad.kira.compiler.front.elements.BinaryOp
 
 class CompoundAssignmentExpr(val left: Expr, val operator: BinaryOp, val right: Expr) : Expr()
 {

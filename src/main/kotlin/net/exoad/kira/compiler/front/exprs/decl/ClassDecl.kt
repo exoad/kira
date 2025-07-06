@@ -12,7 +12,7 @@ open class ClassDecl(
     override val name: TypeSpecifier,
     val modifiers: List<Modifiers> = emptyList(),
     val members: List<FirstClassDecl> = emptyList(),
-    val parent: Identifier? = null
+    val parent: TypeSpecifier? = null
 ) : Decl(name)
 {
     override fun accept(visitor: ASTVisitor)

@@ -52,6 +52,7 @@ abstract class ASTVisitor
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
     abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
+    abstract fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
 
     // IDENTIFIERS
     abstract fun visitIdentifier(identifier: Identifier)
@@ -524,17 +525,8 @@ object KiraParser
 
     private fun parseFunctionDecl(identifier: Identifier, modifiers: List<Modifiers>? = null): FunctionFirstClassDecl
     {
-        val params = parseFunctionParameters()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-        expectThenAdvance(Token.Type.S_COLON)
-        val returnType = parseType()
-        var body: List<Statement>? = null
-        when(underPointer.type)
-        {
-            Token.Type.S_OPEN_BRACE -> body = parseStatementBlock()
-            else                    -> advancePointer()
-        }
-        return FunctionFirstClassDecl(identifier, returnType, params, body, modifiers ?: emptyList())
+        val functionLiteral = parseFunctionLiteral()
+        return FunctionFirstClassDecl(identifier, functionLiteral, modifiers ?: emptyList())
     }
 
     private fun parseFunctionCallExpr(identifier: Identifier): FunctionCallExpr
@@ -586,11 +578,16 @@ object KiraParser
     fun parseClassDecl(modifiers: List<Modifiers>? = null): ClassDecl
     {
         advancePointer() //consume the class keyword
-        val className = parseType() // TODO: maybe for later type generification / templates ?? :D
-        // todo: implement parsing for class inheritance
+        val className = parseType()
+        var parentType: TypeSpecifier? = null
+        if(underPointer.type == Token.Type.S_COLON) // inheritance here baby ;D
+        {
+            advancePointer()
+            parentType = parseType()
+        }
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<FirstClassDecl>()
-        do
+        while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
         {
             val memberModifiers = parseModifiers().also {
                 it.all { modifier -> modifier.scope.contains(Modifiers.Scope.CLASS) }
@@ -615,9 +612,9 @@ object KiraParser
                     }
                 }
             )
-        } while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
+        }
         expectOptionalThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return ClassDecl(className, modifiers ?: emptyList(), members)
+        return ClassDecl(className, modifiers ?: emptyList(), members, parentType)
     }
 
     fun parseVariableDecl(modifiers: List<Modifiers>? = null): VariableFirstClassDecl
@@ -702,6 +699,21 @@ object KiraParser
         }
         expectAnyOfThenAdvance(arrayOf(Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL))
         return BoolLiteral(value)
+    }
+
+    fun parseFunctionLiteral(): FunctionLiteral
+    {
+        val params = parseFunctionParameters()
+        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        expectThenAdvance(Token.Type.S_COLON)
+        val returnType = parseType()
+        var body: List<Statement>? = null
+        when(underPointer.type)
+        {
+            Token.Type.S_OPEN_BRACE -> body = parseStatementBlock()
+            else                    -> advancePointer()
+        }
+        return FunctionLiteral(returnType, params, body)
     }
 
     fun parseIdentifier(): Identifier

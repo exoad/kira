@@ -215,6 +215,27 @@ object XMLASTVisitor : ASTVisitor()
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
+    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
+    {
+        node("LFunc")
+        {
+            functionLiteral.returnTypeSpecifier.accept(this)
+            node("Parameters")
+            {
+                functionLiteral.parameters.forEach { it.accept(this) }
+            }
+            // todo: this is a bandage situation where function type notation is actually not supported. it makes parsing stubs as types much harder
+            // todo: either come up with a complete new system for function type or reuse the already existing one for function literal declarations
+            if(functionLiteral.body != null)
+            {
+                node("Body")
+                {
+                    functionLiteral.body!!.forEach { it.accept(this) }
+                }
+            }
+        }
+    }
+
     override fun visitIdentifier(identifier: Identifier)
     {
         xmlLeaf("Identifier", identifier.name)
@@ -260,23 +281,17 @@ object XMLASTVisitor : ASTVisitor()
     override fun visitFunctionDecl(functionDecl: FunctionFirstClassDecl)
     {
         node(
-            "FunctionDecl", when(functionDecl.modifiers.isNotEmpty())
-            {
-                true -> """modifiers="${functionDecl.modifiers.joinToString(", ") { it.name }}""""
-                else -> ""
-            }
+            "FunctionDecl", "${
+                when(functionDecl.modifiers.isNotEmpty())
+                {
+                    true -> "modifiers=\"${functionDecl.modifiers.joinToString(", ") { it.name }}\" "
+                    else -> ""
+                }
+            }stub=\"${functionDecl.isStub()}\""
         )
         {
             functionDecl.name.accept(this)
-            functionDecl.returnTypeSpecifier.accept(this)
-            node("Parameters")
-            {
-                functionDecl.parameters.forEach { it.accept(this) }
-            }
-            node("Body")
-            {
-                functionDecl.body?.forEach { it.accept(this) }
-            }
+            functionDecl.value?.accept(this)
         }
     }
 
@@ -296,13 +311,6 @@ object XMLASTVisitor : ASTVisitor()
                 classDecl.members.forEach { it.accept(this) }
             }
         }
-        xmlOpen(
-            "ClassDecl", when(classDecl.modifiers.isNotEmpty())
-            {
-                true -> """modifiers="${classDecl.modifiers.joinToString(", ") { it.name }}""""
-                else -> ""
-            }
-        )
     }
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl)

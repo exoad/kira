@@ -174,7 +174,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
  */
 object KiraLexer
 {
-    // it is ill advised to modify any of these on their owns
+    // it is ill-advised to modify any of these on their owns
     private var pointer = 0
     private var lineNumber = 1
     private var column = 1
@@ -196,13 +196,6 @@ object KiraLexer
             else -> column++
         }
         pointer++
-        if(pointer >= SrcProvider.srcContent.length)
-        {
-            Diagnostics.panic(
-                "KiraLexer::advancePointer",
-                "The lexer's read pointer exceeded ${SrcProvider.srcContent.length} (content length)"
-            )
-        }
         underPointer =
             if(pointer >= SrcProvider.srcContent.length) Symbols.NULL.rep else SrcProvider.srcContent[pointer]
     }
@@ -259,7 +252,6 @@ object KiraLexer
      */
     fun lexNumberLiteral(): Token
     {
-        // TODO: add hex support
         if(underPointer == '0' && peek(1) == 'x')
         {
             advancePointer()
@@ -329,13 +321,13 @@ object KiraLexer
         return Token.Raw(Token.Type.IDENTIFIER, SrcProvider.srcContent.substring(start, pointer), start, startLoc)
     }
 
-    private val pendingTokens: ArrayDeque<Token> = ArrayDeque()
+    private val pendingClosingAngleBrackets: ArrayDeque<Token> = ArrayDeque()
 
     fun nextToken(): Token
     {
-        if(pendingTokens.isNotEmpty())
+        if(pendingClosingAngleBrackets.isNotEmpty())
         {
-            return pendingTokens.removeFirst()
+            return pendingClosingAngleBrackets.removeFirst()
         }
         while(underPointer != Symbols.NULL.rep)
         {
@@ -427,17 +419,16 @@ object KiraLexer
                 Symbols.CLOSE_ANGLE.rep       ->
                 {
                     var count = 1
-                    while(localPeek(count) == Symbols.CLOSE_ANGLE.rep)
+                    while(underPointer == Symbols.CLOSE_ANGLE.rep)
                     {
                         count++
-                        Diagnostics.Logging.finer(
-                            "Kira",
-                            "Peek = ${localPeek(count)}, Pointer = $pointer, Count = $count"
-                        )
+                        advancePointer()
                     }
+                    advancePointer()
+                    Diagnostics.Logging.finer("KiraLexer::nextToken", "Total closed angles found: $count")
                     return when
                     {
-                        localPeek(1) == Symbols.EQUALS.rep && count == 1 ->
+                        localPeek(1) == Symbols.EQUALS.rep && count == 1 -> // asserts the case where the last closing angle bracket is against an assignment operator "=" which will make a greater than or equal to operator
                         {
                             advancePointer()
                             Token.LinkedSymbols(
@@ -449,8 +440,6 @@ object KiraLexer
                         }
                         count == 2                                       ->
                         {
-                            advancePointer()
-                            advancePointer()
                             Token.LinkedSymbols(
                                 Token.Type.OP_BIT_SHR,
                                 Array(2) { Symbols.CLOSE_ANGLE },
@@ -460,9 +449,6 @@ object KiraLexer
                         }
                         count == 3                                       ->
                         {
-                            advancePointer()
-                            advancePointer()
-                            advancePointer()
                             Token.LinkedSymbols(
                                 Token.Type.OP_BIT_USHR,
                                 Array(3) { Symbols.CLOSE_ANGLE },
@@ -472,14 +458,13 @@ object KiraLexer
                         }
                         else                                             ->
                         {
-                            repeat(count - 1)
-                            {
-                                pendingTokens.addLast(
+                            repeat(count - 1) { i ->
+                                pendingClosingAngleBrackets.addLast(
                                     Token.Symbol(
                                         Token.Type.S_CLOSE_ANGLE,
                                         Symbols.CLOSE_ANGLE,
-                                        start,
-                                        startLoc
+                                        start + i + 1,
+                                        FileLocation(startLoc.lineNumber, startLoc.column + i + 1)
                                     )
                                 )
                             }
@@ -734,7 +719,7 @@ object KiraLexer
     fun tokenize()
     {
         val res = mutableListOf<Token>()
-        lateinit var token: Token
+        var token by Delegates.notNull<Token>()
         do
         {
             token = nextToken()

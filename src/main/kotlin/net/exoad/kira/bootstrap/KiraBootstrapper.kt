@@ -2,7 +2,7 @@ package net.exoad.kira.bootstrap
 
 import net.exoad.kira.bootstrap.lang.KAny
 import net.exoad.kira.compiler.front.Token
-import net.exoad.kira.compiler.front.elements.Literal
+import net.exoad.kira.compiler.front.elements.DataLiteral
 import kotlin.reflect.KClass
 
 @Target(AnnotationTarget.FUNCTION)
@@ -32,7 +32,7 @@ annotation class KiraCannotInstantiate
 
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class KiraSugarLiteralInstantiate<E, T : Literal<E>>(val astNodeRep: KClass<T>)
+annotation class KiraSugarLiteralInstantiate<E, T : DataLiteral<E>>(val astNodeRep: KClass<T>)
 
 @Target(AnnotationTarget.LOCAL_VARIABLE)
 @Retention(AnnotationRetention.RUNTIME)

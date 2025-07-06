@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.front.elements
 
+import net.exoad.kira.Symbols
 import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.exprs.Expr
 
@@ -13,5 +14,13 @@ open class Identifier(open val name: String) : Expr()
     override fun toString(): String
     {
         return "Identifier{ '$name' }"
+    }
+}
+
+open class AnonymousIdentifier : Identifier(Symbols.NULL.rep.toString())
+{
+    override fun toString(): String
+    {
+        return "AnonymousIdentifier{  }"
     }
 }

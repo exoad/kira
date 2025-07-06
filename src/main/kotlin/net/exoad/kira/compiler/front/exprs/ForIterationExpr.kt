@@ -16,20 +16,3 @@ open class ForIterationExpr(val initializer: Identifier, val target: Expr) : Exp
     }
 }
 
-abstract class ForIterationTargetExpr : Expr()
-
-/**
- * An inclusive range where [begin] and [end] are both included aka [begin, end] not [begin, end)
- */
-open class RangeExpr(val begin: Expr, val end: Expr) : ForIterationTargetExpr()
-{
-    override fun accept(visitor: ASTVisitor)
-    {
-        visitor.visitRangeExpr(this)
-    }
-
-    override fun toString(): String
-    {
-        return "ForIterationTargetRangeExpr{ [$begin, $end] }"
-    }
-}

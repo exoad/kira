@@ -1,11 +1,10 @@
 package net.exoad.kira.compiler.front.elements
 
 import net.exoad.kira.compiler.front.ASTVisitor
-import net.exoad.kira.compiler.front.exprs.Expr
 
-abstract class Literal<T>(open val value: T) : Expr()
+abstract class DataLiteral<T>(open val value: T) : Literal()
 
-open class IntegerLiteral(override val value: Long) : Literal<Long>(value)
+open class IntegerLiteral(override val value: Long) : DataLiteral<Long>(value)
 {
     override fun accept(visitor: ASTVisitor)
     {
@@ -18,7 +17,7 @@ open class IntegerLiteral(override val value: Long) : Literal<Long>(value)
     }
 }
 
-open class FloatLiteral(override val value: Double) : Literal<Double>(value)
+open class FloatLiteral(override val value: Double) : DataLiteral<Double>(value)
 {
     override fun accept(visitor: ASTVisitor)
     {
@@ -31,7 +30,7 @@ open class FloatLiteral(override val value: Double) : Literal<Double>(value)
     }
 }
 
-open class StringLiteral(override val value: String) : Literal<String>(value)
+open class StringLiteral(override val value: String) : DataLiteral<String>(value)
 {
     override fun accept(visitor: ASTVisitor)
     {
@@ -44,7 +43,7 @@ open class StringLiteral(override val value: String) : Literal<String>(value)
     }
 }
 
-open class BoolLiteral(override val value: Boolean) : Literal<Boolean>(value)
+open class BoolLiteral(override val value: Boolean) : DataLiteral<Boolean>(value)
 {
     override fun accept(visitor: ASTVisitor)
     {
@@ -56,3 +55,4 @@ open class BoolLiteral(override val value: Boolean) : Literal<Boolean>(value)
         return "LBool{ $value }"
     }
 }
+

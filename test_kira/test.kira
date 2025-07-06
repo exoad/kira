@@ -1,4 +1,5 @@
 module "kira:parser";
 
-a: InlineArray<InlineArray<InlineArray<InlineArray<InlineArray<Int>>>>> = 32;
-
+pub mut class Vector2: Mathable
+{
+}
