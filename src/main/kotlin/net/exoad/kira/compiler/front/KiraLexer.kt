@@ -3,10 +3,7 @@ package net.exoad.kira.compiler.front
 import net.exoad.kira.Keywords
 import net.exoad.kira.Symbols
 import net.exoad.kira.compiler.Diagnostics
-import net.exoad.kira.compiler.front.KiraLexer.column
-import net.exoad.kira.compiler.front.KiraLexer.lineNumber
-import net.exoad.kira.compiler.front.KiraLexer.peek
-import net.exoad.kira.compiler.front.KiraLexer.pointer
+import net.exoad.kira.compiler.SourceContext
 import net.exoad.kira.utils.isHexChar
 import kotlin.properties.Delegates
 
@@ -87,8 +84,9 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_DO("'do'"),
         K_FOR("'for'"),
         K_CLASS("'class'"),
+        K_USE("'use'"),
         K_MODULE("'module'"),
-        K_MODIFIER_REQUIRE("'require' (Required)"),
+        K_MODIFIER_REQUIRE("'require'"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
         S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"),
@@ -172,17 +170,17 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
  *
  * It passes this list of symbols onto the [KiraParser]
  */
-object KiraLexer
+class KiraLexer(private val context: SourceContext)
 {
     // it is ill-advised to modify any of these on their owns
     private var pointer = 0
     private var lineNumber = 1
     private var column = 1
     private var underPointer: Char =
-        if(SrcProvider.srcContent.isEmpty()) Symbols.NULL.rep else SrcProvider.srcContent.first()
+        if(context.content.isEmpty()) Symbols.NULL.rep else context.content.first()
 
     /**
-     * Advances [pointer] to the next character in [SrcProvider.srcContent] and updates [lineNumber] and [column]
+     * Advances [pointer] to the next character in [context] and updates [lineNumber] and [column]
      */
     fun advancePointer()
     {
@@ -197,7 +195,7 @@ object KiraLexer
         }
         pointer++
         underPointer =
-            if(pointer >= SrcProvider.srcContent.length) Symbols.NULL.rep else SrcProvider.srcContent[pointer]
+            if(pointer >= context.content.length) Symbols.NULL.rep else context.content[pointer]
     }
 
     fun skipWhitespace()
@@ -216,8 +214,8 @@ object KiraLexer
         val index = pointer + k
         return when
         {
-            index < SrcProvider.srcContent.length -> SrcProvider.srcContent[index]
-            else                                  -> Symbols.NULL.rep
+            index < context.content.length -> context.content[index]
+            else                           -> Symbols.NULL.rep
         }
     }
 
@@ -232,7 +230,7 @@ object KiraLexer
         var content by Delegates.notNull<String>()
         try
         {
-            content = SrcProvider.srcContent.substring(start, pointer).toInt(16).toString(10) // check
+            content = context.content.substring(start, pointer).toInt(16).toString(10) // check
         }
         catch(_: Exception)
         {
@@ -240,7 +238,8 @@ object KiraLexer
                 "KiraLexer::lexHexNumberLiteral",
                 "'$content' is not a valid hex literal.",
                 location = startLoc,
-                selectorLength = content.length
+                selectorLength = content.length,
+                context = context
             )
         }
         return Token.Raw(Token.Type.L_INTEGER, content, start, startLoc)
@@ -278,7 +277,7 @@ object KiraLexer
                 }
             }
         }
-        val content = SrcProvider.srcContent.substring(start, pointer)
+        val content = context.content.substring(start, pointer)
         return when
         {
             isFloat -> Token.Raw(Token.Type.L_FLOAT, content, start, startLoc)
@@ -304,7 +303,8 @@ object KiraLexer
             else                     -> Diagnostics.panic(
                 "KiraLexer::lexStringLiteral",
                 "Unterminated string at $pointer. Insert '${Symbols.DOUBLE_QUOTE.rep}' to terminate it",
-                location = startLoc
+                location = startLoc,
+                context = context
             )
         }
         return Token.Raw(Token.Type.L_STRING, buffer.toString(), start, startLoc)
@@ -318,7 +318,7 @@ object KiraLexer
         {
             advancePointer()
         }
-        return Token.Raw(Token.Type.IDENTIFIER, SrcProvider.srcContent.substring(start, pointer), start, startLoc)
+        return Token.Raw(Token.Type.IDENTIFIER, context.content.substring(start, pointer), start, startLoc)
     }
 
     private val pendingClosingAngleBrackets: ArrayDeque<Token> = ArrayDeque()
@@ -345,12 +345,13 @@ object KiraLexer
             fun localPeek(k: Int): Char
             {
                 val index = k + start
-                return when(index < SrcProvider.srcContent.length)
+                return when(index < context.content.length)
                 {
-                    true -> SrcProvider.srcContent[index]
+                    true -> context.content[index]
                     else -> Diagnostics.panic(
                         "KiraLexer::nextToken::localPeek",
-                        "Read pointer went out of content bounds ${SrcProvider.srcContent.length}"
+                        "Read pointer went out of content bounds ${context.content.length}",
+                        context = context
                     )
                 }
             }
@@ -722,13 +723,14 @@ object KiraLexer
                     "KiraLexer::nextToken",
                     "Symbol '$char' is not known at Line $lineNumber, Column $column",
                     location = startLoc,
+                    context = context
                 )
             }
         }
         return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
     }
 
-    fun tokenize()
+    fun tokenize(): List<Token>
     {
         val res = mutableListOf<Token>()
         var token by Delegates.notNull<Token>()
@@ -737,6 +739,6 @@ object KiraLexer
             token = nextToken()
             res.add(token)
         } while(token.type != Token.Type.S_EOF)
-        TokensProvider.tokens = res
+        return res
     }
 }

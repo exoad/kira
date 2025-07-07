@@ -2,6 +2,7 @@ package net.exoad.kira.compiler.front.elements
 
 import net.exoad.kira.Symbols
 import net.exoad.kira.compiler.Diagnostics
+import net.exoad.kira.compiler.SourceContext
 import net.exoad.kira.compiler.front.Token
 
 // TODO: migrate this to also use an array of symbols similar to BinaryOperator so we can have multiple symbols :)
@@ -20,31 +21,27 @@ enum class UnaryOp(val symbol: Symbols, val tokenType: Token.Type, val precedenc
 
     companion object
     {
-        fun byTokenType(tokenType: Token.Type): UnaryOp
+
+//                else               -> Diagnostics.panic(
+//                    "UnaryOperator::byTokenType",
+//                    "$tokenType is not an unary operator!",
+//                )
+
+        fun byTokenTypeMaybe(tokenType: Token.Type, onBad: (() -> Unit)? = null): UnaryOp?
         {
-            return when(tokenType)
+            val res = when(tokenType)
             {
                 Token.Type.OP_SUB  -> NEG
                 Token.Type.OP_ADD  -> POS
                 Token.Type.S_BANG  -> NOT
                 Token.Type.S_TILDE -> BIT_NOT
-                else               -> Diagnostics.panic(
-                    "UnaryOperator::byTokenType",
-                    "$tokenType is not an unary operator!"
-                )
+                else               -> null
             }
-        }
-
-        fun byTokenTypeMaybe(tokenType: Token.Type): UnaryOp?
-        {
-            return try
+            if(res == null)
             {
-                byTokenType(tokenType)
+                onBad?.invoke()
             }
-            catch(_: Exception)
-            {
-                null
-            }
+            return res
         }
     }
 }

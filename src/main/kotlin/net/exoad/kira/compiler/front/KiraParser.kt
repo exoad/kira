@@ -1,12 +1,11 @@
 package net.exoad.kira.compiler.front
 
 import net.exoad.kira.Builtin
+import net.exoad.kira.Keywords
 import net.exoad.kira.Symbols
 import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.Intrinsic
-import net.exoad.kira.compiler.front.KiraParser.look
-import net.exoad.kira.compiler.front.KiraParser.peek
-import net.exoad.kira.compiler.front.KiraParser.pointer
+import net.exoad.kira.compiler.SourceContext
 import net.exoad.kira.compiler.front.elements.*
 import net.exoad.kira.compiler.front.exprs.*
 import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
@@ -34,6 +33,7 @@ abstract class ASTVisitor
     abstract fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
     abstract fun visitReturnStatement(returnStatement: ReturnStatement)
     abstract fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
+    abstract fun visitUseStatement(useStatement: UseStatement)
 
     // Expressions
     abstract fun visitBinaryExpr(binaryExpr: BinaryExpr)
@@ -52,7 +52,7 @@ abstract class ASTVisitor
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
     abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    abstract fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
+    abstract fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
 
     // IDENTIFIERS
     abstract fun visitIdentifier(identifier: Identifier)
@@ -79,21 +79,36 @@ class RootASTNode(val statements: List<ASTNode>) : ASTNode()
  * It will then pass this AST onto the [KiraSemanticAnalyzer] to make sure the AST is
  * valid grammar.
  */
-object KiraParser
+class KiraParser(private val tokens: List<Token>, private val context: SourceContext)
 {
     private var pointer: Int = 0
-    private var underPointer: Token
+    private var underPointer: Token =
+        tokens.firstOrNull() ?: Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
 
-    init
+//    init
+//    {
+//        underPointer = if(tokens.isEmpty()) Token.Symbol(
+//            Token.Type.S_EOF,
+//            Symbols.NULL,
+//            0,
+//            FileLocation(1, 1)
+//        )
+//        else tokens.first()
+//    }
+
+    /**
+     * Star method to call on [KiraParser] that will turn the passed in [tokens] into an AST.
+     */
+    fun parse(): RootASTNode
     {
-        underPointer = if(TokensProvider.tokens.isEmpty()) Token.Symbol(
-            Token.Type.S_EOF,
-            Symbols.NULL,
-            0,
-            FileLocation(1, 1)
-        )
-        else TokensProvider.tokens.first()
+        val statements = mutableListOf<ASTNode>()
+        while(underPointer.type != Token.Type.S_EOF)
+        {
+            statements.add(parseStatement())
+        }
+        return RootASTNode(statements)
     }
+
     /**
      * Grabs the token at the [k]-th position (absolute).
      *
@@ -104,8 +119,8 @@ object KiraParser
         val index = pointer + k - 1
         return when
         {
-            index < TokensProvider.tokens.size -> TokensProvider.tokens[index]
-            else                               -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+            index < tokens.size -> tokens[index]
+            else                -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
         }
     }
     /**
@@ -118,8 +133,8 @@ object KiraParser
         val index = pointer + k
         return when
         {
-            index < TokensProvider.tokens.size -> TokensProvider.tokens[index]
-            else                               -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+            index < tokens.size -> tokens[index]
+            else                -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
         }
     }
     /**
@@ -130,8 +145,8 @@ object KiraParser
         pointer++
         underPointer = when
         {
-            pointer < TokensProvider.tokens.size -> TokensProvider.tokens[pointer]
-            else                                 -> Token.Symbol(
+            pointer < tokens.size -> tokens[pointer]
+            else                  -> Token.Symbol(
                 Token.Type.S_EOF, Symbols.NULL, 0,
                 FileLocation(1, 1)
             )
@@ -142,7 +157,30 @@ object KiraParser
     {
         if(underPointer.type == token)
         {
-            advancePointer()
+            ifOk()
+        }
+    }
+
+    private fun expectModifiers(
+        modifiers: Map<Modifiers, FileLocation>? = null,
+        scopes: Modifiers.Scope
+    )
+    {
+        val r = if(modifiers == null || modifiers.isEmpty()) null
+        else modifiers.keys.toList().find { !it.scope.contains(scopes) }
+        if(r != null)
+        {
+            Diagnostics.panic(
+                "KiraParser::parseClassDecl",
+                "The modifier ${r.tokenType.diagnosticsName()} cannot be applied to a ${Modifiers.Scope.CLASS}",
+                location = modifiers?.get(r),
+                // this is so sketchy lmao, going through the values of a map to find the key which is THE OPPOSITE THING A MAP IS FOR LMAO
+                // but since the program is already crashing here, doesnt really matter
+                //
+                // it just feels really sketchy and could fail at anytime ig
+                selectorLength = Keywords.reserved.filterValues { it == r.tokenType }.keys.first().length,
+                context = context
+            )
         }
     }
 
@@ -155,7 +193,8 @@ object KiraParser
                     "KiraParser::expect",
                     "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()}",
                     location = underPointer.canonicalLocation,
-                    selectorLength = underPointer.content.length
+                    selectorLength = underPointer.content.length,
+                    context = context
                 )
             else -> ifOk()
         }
@@ -173,22 +212,23 @@ object KiraParser
                 Diagnostics.panic(
                     "KiraParser::expect",
                     "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()}",
-                    location = underPointer.canonicalLocation
+                    location = underPointer.canonicalLocation,
+                    context = context
                 )
 
             else                                -> ifOk()
         }
     }
 
-    fun parseProgram()
-    {
-        val statements = mutableListOf<ASTNode>()
-        while(underPointer.type != Token.Type.S_EOF)
-        {
-            statements.add(parseStatement())
-        }
-        TokensProvider.rootASTNode = RootASTNode(statements)
-    }
+//    fun parseProgram()
+//    {
+//        val statements = mutableListOf<ASTNode>()
+//        while(underPointer.type != Token.Type.S_EOF)
+//        {
+//            statements.add(parseStatement())
+//        }
+//        TokensProvider.rootASTNode = RootASTNode(statements)
+//    }
 
     fun parseStatement(): Statement
     {
@@ -200,6 +240,7 @@ object KiraParser
             Token.Type.K_WHILE      -> parseWhileIterationStatement()
             Token.Type.K_DO         -> parseDoWhileIterationStatement()
             Token.Type.K_FOR        -> parseForIterationStatement()
+            Token.Type.K_USE        -> parseUseStatement()
             in Token.Type.modifiers ->
             {
                 val modifiers = parseModifiers()
@@ -208,6 +249,12 @@ object KiraParser
                     Token.Type.K_CLASS -> parseClassDecl(modifiers)
                     else               -> parsePrimaryExpr(modifiers)
                 }
+                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+                return Statement(expr)
+            }
+            Token.Type.K_CLASS      -> // this part covers the case where the class decl has no modifiers on it. THIS CONDITION NEEDS TO BE UNDER THE PREVIOUS CONDITION
+            {
+                val expr = parseClassDecl()
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 return Statement(expr)
             }
@@ -220,7 +267,8 @@ object KiraParser
                         "KiraParser::parseStatement",
                         "Unexpected token '${underPointer.content}' after expression",
                         location = underPointer.canonicalLocation,
-                        selectorLength = underPointer.content.length
+                        selectorLength = underPointer.content.length,
+                        context = context
                     )
                 }
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
@@ -228,6 +276,7 @@ object KiraParser
             }
         }
     }
+
     /**
      * Used to parse a statement between two `{}` AKA a block.
      */
@@ -347,7 +396,7 @@ object KiraParser
         }
     }
 
-    fun parsePrimaryExpr(modifiers: List<Modifiers>? = null): Expr
+    fun parsePrimaryExpr(modifiers: Map<Modifiers, FileLocation>? = null): Expr
     {
         return when(underPointer.type)
         {
@@ -369,7 +418,8 @@ object KiraParser
                         "KiraParser::parsePrimaryExpr",
                         "Intrinsics must be followed by an identifier, but found '${peek(1).type.diagnosticsName()}'",
                         location = underPointer.canonicalLocation,
-                        selectorLength = peek(1).content.length
+                        selectorLength = peek(1).content.length,
+                        context = context
                     )
                 }
             Token.Type.K_MODULE                                                         -> parseModuleDecl()
@@ -388,24 +438,26 @@ object KiraParser
                 expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
                 expr
             }
-            else                                                                        -> Diagnostics.panic(
-                "KiraParser::parsePrimaryExpr",
-                "${
-                    when(underPointer.type.rawDiagnosticsRepresentation)
-                    {
-                        null -> "'${underPointer.content}'"
-                        else -> underPointer.type.diagnosticsName()
-                    }
-                } is not allowed",
-                location = underPointer.canonicalLocation,
-                selectorLength = underPointer.content.length
-            )
+            else                                                                        ->
+                Diagnostics.panic(
+                    "KiraParser::parsePrimaryExpr",
+                    "${
+                        when(underPointer.type.rawDiagnosticsRepresentation)
+                        {
+                            null -> "'${underPointer.content}'"
+                            else -> underPointer.type.diagnosticsName()
+                        }
+                    } is not allowed",
+                    location = underPointer.canonicalLocation,
+                    selectorLength = underPointer.content.length,
+                    context = context
+                )
         }
     }
 
     fun parseModuleDecl(): Decl
     {
-        advancePointer()
+        expectThenAdvance(Token.Type.K_MODULE)
         val uri = parseStringLiteral()
         return ModuleDecl(uri)
     }
@@ -415,7 +467,15 @@ object KiraParser
         val operatorToken = underPointer
         expectAnyOfThenAdvance(UnaryOp.entries.map { it.tokenType }.toTypedArray())
         val operand = parseExpr(UnaryOp.NEG.precedence)
-        return UnaryExpr(UnaryOp.byTokenType(operatorToken.type), operand)
+        return UnaryExpr(UnaryOp.byTokenTypeMaybe(operatorToken.type) {
+            Diagnostics.panic(
+                "UnaryOperator::byTokenTypeMaybe",
+                "$operatorToken is not an unary operator!",
+                context = context,
+                location = operatorToken.canonicalLocation,
+                selectorLength = operatorToken.content.length
+            )
+        }!!, operand)
     }
 
     fun parseBinaryExpr(): Expr
@@ -432,7 +492,15 @@ object KiraParser
                 else             -> BinaryExpr(
                     left,
                     right,
-                    BinaryOp.byTokenType(operator.type)
+                    BinaryOp.byTokenTypeMaybe(operator.type) {
+                        Diagnostics.panic(
+                            "BinaryOperator::byTokenTypeMaybe",
+                            "$operator is not a binary operator!",
+                            context = context,
+                            location = operator.canonicalLocation,
+                            selectorLength = operator.content.length
+                        )
+                    }!!
                 )
             }
         }
@@ -467,7 +535,7 @@ object KiraParser
                     AbsoluteFileLocation(
                         underPointer.canonicalLocation.lineNumber,
                         underPointer.canonicalLocation.column,
-                        SrcProvider.srcFile
+                        context.file
                     )
                 ), parameters
             )
@@ -475,7 +543,8 @@ object KiraParser
                 "KiraParser::parseIntrinsicCallExpr",
                 "Could not find a compile time intrinsic named '${identifier.name}'",
                 location = startLoc,
-                selectorLength = identifier.name.length
+                selectorLength = identifier.name.length,
+                context = context
             )
         }
     }
@@ -494,19 +563,36 @@ object KiraParser
             val name = parseIdentifier()
             expectThenAdvance(Token.Type.S_COLON)
             val type = parseType()
-            parameters.add(FunctionParameterExpr(name, type, modifiers))
+            parameters.add(FunctionParameterExpr(name, type, modifiers.keys.toList()))
         }
         return parameters
     }
 
-    fun parseFunctionCallOrDeclExpr(modifiers: List<Modifiers>? = null): Expr
+    fun parseFunctionCallOrDeclExpr(modifiers: Map<Modifiers, FileLocation>? = null): Expr
     {
-        val identifier = parseIdentifier()
+        var identifier: Identifier? = null
+        if(underPointer.type == Token.Type.IDENTIFIER)
+        {
+            identifier = parseIdentifier()
+        }
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         return when(isFunctionDeclSyntax())
         {
-            true -> parseFunctionDecl(identifier, modifiers)
-            else -> parseFunctionCallExpr(identifier)
+            true -> if(identifier == null) parseFunctionLiteral() else parseFunctionDecl(identifier, modifiers)
+            else ->
+            {
+                if(identifier == null)
+                {
+                    Diagnostics.panic(
+                        "KiraParser::parseFunctionCallOrDeclExpr",
+                        "Function calls must have a valid prefixed identifier!",
+                        location = underPointer.canonicalLocation,
+                        selectorLength = underPointer.content.length, // todo: check this validity
+                        context = context
+                    )
+                }
+                parseFunctionCallExpr(identifier)
+            }
         }
     }
 
@@ -529,10 +615,14 @@ object KiraParser
         }
     }
 
-    private fun parseFunctionDecl(identifier: Identifier, modifiers: List<Modifiers>? = null): FunctionFirstClassDecl
+    private fun parseFunctionDecl(
+        identifier: Identifier,
+        modifiers: Map<Modifiers, FileLocation>? = null
+    ): FunctionFirstClassDecl
     {
+        expectModifiers(modifiers, Modifiers.Scope.FUNCTION)
         val functionLiteral = parseFunctionLiteral()
-        return FunctionFirstClassDecl(identifier, functionLiteral, modifiers ?: emptyList())
+        return FunctionFirstClassDecl(identifier, functionLiteral, modifiers?.keys?.toList() ?: emptyList())
     }
 
     private fun parseFunctionCallExpr(identifier: Identifier): FunctionCallExpr
@@ -550,7 +640,7 @@ object KiraParser
         return FunctionCallExpr(identifier, parsedParameters)
     }
 
-    private fun parseIdentifierExpr(modifiers: List<Modifiers>? = null): Expr
+    private fun parseIdentifierExpr(modifiers: Map<Modifiers, FileLocation>? = null): Expr
     {
         return when(peek(1).type)
         {
@@ -559,6 +649,13 @@ object KiraParser
             Token.Type.S_COLON                        -> parseVariableDecl(modifiers)
             else                                      -> parseIdentifier()
         }
+    }
+
+    fun parseUseStatement(): Statement
+    {
+        expectThenAdvance(Token.Type.K_USE)
+        val uri = parseStringLiteral()
+        return UseStatement(uri)
     }
 
     fun parseCompoundAssignmentExpr(): CompoundAssignmentExpr
@@ -581,8 +678,9 @@ object KiraParser
         return AssignmentExpr(identifier, value)
     }
 
-    fun parseClassDecl(modifiers: List<Modifiers>? = null): ClassDecl
+    fun parseClassDecl(modifiers: Map<Modifiers, FileLocation>? = null): ClassDecl
     {
+        expectModifiers(modifiers, Modifiers.Scope.CLASS)
         advancePointer() //consume the class keyword
         val className = parseType()
         var parentType: TypeSpecifier? = null
@@ -595,23 +693,47 @@ object KiraParser
         val members = mutableListOf<FirstClassDecl>()
         while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
         {
-            val memberModifiers = parseModifiers().also {
-                it.all { modifier -> modifier.scope.contains(Modifiers.Scope.CLASS) }
-            }
+            val memberModifiers = parseModifiers()
+            expectModifiers(memberModifiers, Modifiers.Scope.CLASS_MEMBER)
             members.add(
-                when(peek(1).type != Token.Type.S_OPEN_PARENTHESIS)
+                when(underPointer.type != Token.Type.S_OPEN_PARENTHESIS && peek(1).type != Token.Type.S_OPEN_PARENTHESIS) // the first condition covers the case where there can be anonymous functions here
                 {
-                    true -> parseVariableDecl(memberModifiers)
+                    true ->
+                    {
+                        if(underPointer.type != Token.Type.IDENTIFIER)
+                        {
+                            Diagnostics.panic(
+                                "KiraParser::parseClassDecl",
+                                "Anonymous Literals are not allowed by themselves in a class.",
+                                location = underPointer.canonicalLocation,
+                                selectorLength = underPointer.content.length,
+                                context = context
+                            )
+                        }
+                        parseVariableDecl(memberModifiers)
+                    }
                     else ->
                     {
+                        val start = underPointer.canonicalLocation
                         if(!isFunctionDeclSyntax())
                         {
-                            Diagnostics.Logging.finer("Kira", "Under = $underPointer")
                             Diagnostics.panic(
                                 "KiraParser::parseClassMemberExpr",
                                 "Expected a function member here",
                                 location = underPointer.canonicalLocation,
-                                selectorLength = underPointer.content.length
+                                selectorLength = underPointer.content.length,
+                                context = context
+                            )
+                        }
+                        val expr = parseFunctionCallOrDeclExpr(memberModifiers)
+                        if(expr is Literal) // at this pt this is most likely an anonymous function or a function literal so this is just for my sanity, in hindsight i don't hink this check will ever fail nor will it cover other "data literals"
+                        {
+                            Diagnostics.panic(
+                                "KiraParser::parseClassDecl",
+                                "${expr::class.simpleName ?: "Literal"}s are not allowed to be placed in classes by themselves",
+                                location = start,
+                                selectorLength = context.findCanonicalLine(start.lineNumber).length, // make the error marker cover the whole line!
+                                context = context
                             )
                         }
                         parseFunctionCallOrDeclExpr(memberModifiers) as FunctionFirstClassDecl // if this throws, then it is 99.99% a bug
@@ -620,11 +742,12 @@ object KiraParser
             )
         }
         expectOptionalThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return ClassDecl(className, modifiers ?: emptyList(), members, parentType)
+        return ClassDecl(className, modifiers?.keys?.toList() ?: emptyList(), members, parentType)
     }
 
-    fun parseVariableDecl(modifiers: List<Modifiers>? = null): VariableFirstClassDecl
+    fun parseVariableDecl(modifiers: Map<Modifiers, FileLocation>? = null): VariableFirstClassDecl
     {
+        expectModifiers(modifiers, Modifiers.Scope.VARIABLE)
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_COLON)
         val type = parseType()
@@ -634,7 +757,7 @@ object KiraParser
             advancePointer()
             value = parseBinaryExpr()
         }
-        return VariableFirstClassDecl(identifier, type, value, modifiers ?: emptyList())
+        return VariableFirstClassDecl(identifier, type, value, modifiers?.keys?.toList() ?: emptyList())
     }
 
     fun parseStringLiteral(): StringLiteral
@@ -658,7 +781,8 @@ object KiraParser
                 "Unable to read '${underPointer.content}' as an integer literal",
                 cause = e,
                 location = underPointer.canonicalLocation,
-                selectorLength = underPointer.content.length
+                selectorLength = underPointer.content.length,
+                context = context
             )
         }
         expectThenAdvance(Token.Type.L_INTEGER)
@@ -679,7 +803,8 @@ object KiraParser
                 "Unable to read '${underPointer.content}' as an integer literal",
                 cause = e,
                 location = underPointer.canonicalLocation,
-                selectorLength = underPointer.content.length
+                selectorLength = underPointer.content.length,
+                context = context
             )
         }
         expectThenAdvance(Token.Type.L_FLOAT)
@@ -700,14 +825,14 @@ object KiraParser
                 "Unable to read ${underPointer.content} as a bool literal",
                 cause = e,
                 location = underPointer.canonicalLocation,
-                selectorLength = underPointer.content.length
+                context = context
             )
         }
         expectAnyOfThenAdvance(arrayOf(Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL))
         return BoolLiteral(value)
     }
 
-    fun parseFunctionLiteral(): FunctionLiteral
+    fun parseFunctionLiteral(): AnonymousFunction
     {
         val params = parseFunctionParameters()
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
@@ -719,7 +844,7 @@ object KiraParser
             Token.Type.S_OPEN_BRACE -> body = parseStatementBlock()
             else                    -> advancePointer()
         }
-        return FunctionLiteral(returnType, params, body)
+        return AnonymousFunction(returnType, params, body)
     }
 
     fun parseIdentifier(): Identifier
@@ -753,22 +878,39 @@ object KiraParser
         return TypeSpecifier(baseName, generics.toTypedArray())
     }
 
-    fun parseModifiers(): List<Modifiers>
+    fun parseModifiers(): Map<Modifiers, FileLocation>
     {
-        val modifiers = mutableListOf<Modifiers>()
+        val modifiers = mutableMapOf<Modifiers, FileLocation>()
         while(underPointer.type in Token.Type.modifiers)
         {
-            val currentModifier = Modifiers.byTokenType(underPointer.type)
+            val currentModifier = Modifiers.byTokenTypeMaybe(underPointer.type) {
+                Diagnostics.panic(
+                    "KiraParser::parseModifiers",
+                    "$underPointer is not a valid modifier",
+                    context = context,
+                    location = underPointer.canonicalLocation,
+                    selectorLength = underPointer.content.length
+                )
+            }!!
             if(currentModifier in modifiers)
             {
                 Diagnostics.panic(
                     "KiraParser::parseModifiers",
                     "The modifier ${currentModifier.tokenType.diagnosticsName()} was already specified at ${underPointer.canonicalLocation}. Remove the duplicate modifier.",
                     location = underPointer.canonicalLocation,
-                    selectorLength = underPointer.content.length
+                    selectorLength = underPointer.content.length,
+                    context = context
                 )
             }
-            modifiers.add(Modifiers.byTokenType(underPointer.type))
+            modifiers[Modifiers.byTokenTypeMaybe(underPointer.type) {
+                Diagnostics.panic(
+                    "KiraParser::parseModifiers",
+                    "$underPointer is not a valid modifier",
+                    context = context,
+                    location = underPointer.canonicalLocation,
+                    selectorLength = underPointer.content.length
+                )
+            }!!] = underPointer.canonicalLocation
             advancePointer()
         }
         return modifiers

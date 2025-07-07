@@ -2,7 +2,6 @@ package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.front.FileLocation
-import net.exoad.kira.compiler.front.SrcProvider
 import java.io.PrintWriter
 import java.io.StringWriter
 
@@ -11,6 +10,7 @@ class DiagnosticsException(
     override val message: String,
     cause: Throwable? = null,
     val location: FileLocation? = null,
+    val context: SourceContext,
     val selectorLength: Int,
 ) : RuntimeException(message, cause)
 {
@@ -41,17 +41,17 @@ ${
                     "${
                         when(Public.Flags.useDiagnosticsUnicode)
                         {
-                            true -> "➥"
+                            true -> "⮞"
                             else -> "@"
                         }
-                    } [${SrcProvider.srcFile}] : $location"
+                    } [${context.file}] : $location"
                 }
             }
         }
 ${
             when
             {
-                location != null -> SrcProvider.formCanonicalLocatorString(location, message, selectorLength)
+                location != null -> context.formCanonicalLocatorString(location, message, selectorLength)
                 else             -> message
             }
         }

@@ -14,25 +14,28 @@ enum class Modifiers(
 )
 {
     MUTABLE(Token.Type.K_MODIFIER_MUTABLE, Scope.entries.toTypedArray()),
-    PUBLIC(Token.Type.K_MODIFIER_PUBLIC, arrayOf(Scope.CLASS, Scope.MODULE, Scope.NAMESPACE)),
-    REQUIRE(Token.Type.K_MODIFIER_REQUIRE, arrayOf(Scope.CLASS))
+    PUBLIC(
+        Token.Type.K_MODIFIER_PUBLIC,
+        arrayOf(Scope.CLASS, Scope.CLASS_MEMBER, Scope.NAMESPACE, Scope.VARIABLE, Scope.FUNCTION)
+    ),
+    REQUIRE(Token.Type.K_MODIFIER_REQUIRE, arrayOf(Scope.CLASS_MEMBER, Scope.VARIABLE, Scope.FUNCTION))
     ;
 
     companion object
     {
-        fun byTokenType(tokenType: Token.Type): Modifiers
+        fun byTokenTypeMaybe(tokenType: Token.Type, onBad: (() -> Unit)? = null): Modifiers?
         {
             val modifier = Modifiers.entries.find { it.tokenType == tokenType }
-            return when(modifier == null)
+            if(modifier == null)
             {
-                true -> Diagnostics.panic("Kira", "$tokenType is not a modifier!")
-                else -> modifier
+                onBad?.invoke()
             }
+            return modifier
         }
     }
 
     enum class Scope
     {
-        CLASS, MODULE, FUNCTION, NAMESPACE
+        CLASS, MODULE, FUNCTION, NAMESPACE, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER
     }
 }

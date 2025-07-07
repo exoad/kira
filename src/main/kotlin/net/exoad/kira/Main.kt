@@ -2,6 +2,7 @@ package net.exoad.kira
 
 import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.GeneratedProvider
+import net.exoad.kira.compiler.SourceContext
 import net.exoad.kira.compiler.front.*
 import net.exoad.kira.compiler.preprocessor.KiraPreprocessor
 import net.exoad.kira.utils.ArgsParser
@@ -32,20 +33,20 @@ fun main(args: Array<String>)
             for(sourceFile in it.src)
             {
                 val file = File(sourceFile)
-                SrcProvider.srcFile = file.canonicalPath
-                SrcProvider.srcContent = file.readText()
-                KiraPreprocessor.process()
-                KiraLexer.tokenize()
+                val preprocessor = KiraPreprocessor(file.readText())
+                val srcContext = SourceContext(preprocessor.process(), file.canonicalPath)
+                val lexer = KiraLexer(srcContext)
+                val tokens = lexer.tokenize()
                 if(it.dumpLexerTokens != null)
                 {
                     val lexerTokensDumpFile = File(it.dumpLexerTokens)
                     lexerTokensDumpFile.createNewFile()
                     var i = 0
-                    lexerTokensDumpFile.writeText(TokensProvider.tokens.joinToString("\n") { tk ->
+                    lexerTokensDumpFile.writeText(tokens.joinToString("\n") { tk ->
                         "${
                             (++i).toString()
                                 .padStart(
-                                    floor(log10(TokensProvider.tokens.size.toDouble())).toInt() + 1,
+                                    floor(log10(tokens.size.toDouble())).toInt() + 1,
                                     ' '
                                 ) // yikes, this math is for padding the left side of the token number being parsed to make sure that the tokens are never pushed out of alignment in this column form
                             // basically it figures out the length of the number without using loops
@@ -53,12 +54,13 @@ fun main(args: Array<String>)
                     })
                     Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                 }
-                KiraParser.parseProgram()
+                val parser = KiraParser(tokens, srcContext)
+                val ast = parser.parse()
                 if(it.dumpAST != null)
                 {
                     val astDumpFile = File(it.dumpAST)
                     astDumpFile.createNewFile()
-                    astDumpFile.writeText(XMLASTVisitor.build(TokensProvider.rootASTNode))
+                    astDumpFile.writeText(XMLASTVisitor.build(ast))
                     Diagnostics.Logging.info("Kira", "Dumped AST representation to ${astDumpFile.absolutePath}")
                 }
                 when(GeneratedProvider.outputMode)

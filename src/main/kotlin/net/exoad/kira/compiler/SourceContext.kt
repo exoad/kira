@@ -1,31 +1,16 @@
-package net.exoad.kira.compiler.front
+package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
-import net.exoad.kira.compiler.Diagnostics
-import net.exoad.kira.compiler.DiagnosticsSymbols
-import net.exoad.kira.compiler.isNotRepresentableDiagnosticsSymbol
+import net.exoad.kira.compiler.front.FileLocation
 
-/**
- * A global handler for every part of the compiler to be able to read the original source content.
- *
- * It also provides an easy way to identify locations within the source content (see: [findCanonicalLine] and [formCanonicalLocatorString], which is great for
- * generating debug messages or error messages of where something went wrong :)
- */
-object SrcProvider
+class SourceContext(val content: String, val file: String)
 {
-    // it would be very dangerous to change these after the initial initialization of these variables and then provide with lexical and semantical analysis.
-    //
-    // that would of course corrupt the error messages and even cause the generation of error messages to fail
-    // ^should i cover this case? where the error message fails. i think i do already in [findCanonicalLine] where it returns the weird NOT_REP null char which is pretty cool
-    var srcFile = ""
-    var srcContent = ""
-        set(value)
-        {
-            field = value
-            srcContentLines = field.split("\n")
-        }
-    var srcContentLines = emptyList<String>()
-        private set
+    fun with(content: String): SourceContext
+    {
+        return SourceContext(content, file)
+    }
+
+    private val contentLines: List<String> = content.split("\n")
 
     /**
      * 1-based indexing (is this lua? when anything refers to canonicity in my code, it often just means the way that ordinary folks (users of the language) would refer to things or like things
@@ -34,8 +19,8 @@ object SrcProvider
     {
         return when
         {
-            lineNumber > srcContentLines.size || lineNumber < 0 -> DiagnosticsSymbols.NOT_REPRESENTABLE // should never happen or appear, if it appears, well... something fucked up BADDDDDDD
-            else                                                -> srcContentLines[lineNumber - 1].trimIndent()
+            lineNumber > contentLines.size || lineNumber < 0 -> DiagnosticsSymbols.NOT_REPRESENTABLE // should never happen or appear, if it appears, well... something fucked up BADDDDDDD
+            else                                             -> contentLines[lineNumber - 1].trimIndent()
         }
     }
 
@@ -71,14 +56,14 @@ object SrcProvider
                 builder.appendLine("${fileLocation.lineNumber}| $line")
                 // makes sure the arrows are always aligned properly to the actual selected portion of the line
                 val gap =
-                    " ".repeat(fileLocation.column - 1 - srcContentLines[fileLocation.lineNumber - 1].indexOfFirst { !it.isWhitespace() }
+                    " ".repeat(fileLocation.column - 1 - contentLines[fileLocation.lineNumber - 1].indexOfFirst { !it.isWhitespace() }
                         .coerceAtLeast(0))
                 builder.append(gutter)
                 builder.append(gap)
                 builder.appendLine(
                     when
                     {
-                        Public.Flags.useDiagnosticsUnicode -> "↑"
+                        Public.Flags.useDiagnosticsUnicode -> "▲"
                         else                               -> "^"
                     }.repeat(locatorLength)
                 )

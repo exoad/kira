@@ -71,9 +71,9 @@ object XMLASTVisitor :
     /**
      * A leaf node in xml that has no ending tag, and you only want to specify attributes with [attrs]
      */
-    private fun xmlSingleLeaf(tag: String, attrs: String)
+    private fun xmlSingleLeaf(tag: String, attrs: String?)
     {
-        appendLine("<$tag${if(attrs.isNotEmpty()) " $attrs" else ""}/>")
+        appendLine("<$tag${if(attrs != null) " $attrs" else ""}/>")
     }
 
     private fun escapeXml(s: String): String
@@ -198,6 +198,17 @@ object XMLASTVisitor :
         }
     }
 
+    override fun visitUseStatement(useStatement: UseStatement)
+    {
+        node("UseStatement")
+        {
+            node("URI")
+            {
+                useStatement.uri.accept(this)
+            }
+        }
+    }
+
     override fun visitBinaryExpr(binaryExpr: BinaryExpr)
     {
         node("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""")
@@ -241,7 +252,7 @@ object XMLASTVisitor :
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
+    override fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
     {
         node("LFunc")
         {
@@ -264,7 +275,11 @@ object XMLASTVisitor :
 
     override fun visitIdentifier(identifier: Identifier)
     {
-        xmlLeaf("Identifier", identifier.name)
+        when(identifier)
+        {
+            is AnonymousIdentifier -> xmlSingleLeaf("Anonymous", "")
+            else                   -> xmlLeaf("Identifier", identifier.name)
+        }
     }
 
     override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
@@ -317,7 +332,7 @@ object XMLASTVisitor :
         )
         {
             functionDecl.name.accept(this)
-            functionDecl.value?.accept(this)
+            functionDecl.value.accept(this)
         }
     }
 
@@ -332,6 +347,13 @@ object XMLASTVisitor :
         )
         {
             classDecl.name.accept(this)
+            if(classDecl.parent != null)
+            {
+                node("Parent")
+                {
+                    classDecl.parent.accept(this)
+                }
+            }
             node("Members")
             {
                 classDecl.members.forEach { it.accept(this) }

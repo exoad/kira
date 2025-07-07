@@ -70,6 +70,7 @@ object Keywords
         "class" to Token.Type.K_CLASS,
         "for" to Token.Type.K_FOR,
         "module" to Token.Type.K_MODULE,
+        "use" to Token.Type.K_USE,
     )
 
     val literals = mapOf(

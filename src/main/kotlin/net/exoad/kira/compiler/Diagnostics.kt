@@ -55,9 +55,10 @@ object Diagnostics
         cause: Throwable? = null,
         location: FileLocation? = null,
         selectorLength: Int = 1,
+        context: SourceContext
     ): Nothing
     {
-        throw DiagnosticsException(tag, message.toString(), cause, location, selectorLength)
+        throw DiagnosticsException(tag, message.toString(), cause, location, context, selectorLength)
     }
 
     fun panic(message: String): Nothing

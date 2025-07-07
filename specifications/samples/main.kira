@@ -1,7 +1,7 @@
 // comment
 module "module_name:sub_module";
 
-import "another_module:sub_module";
+use "another_module:sub_module";
 
 // immutable variable
 immutableVariable: Int32 = 123;

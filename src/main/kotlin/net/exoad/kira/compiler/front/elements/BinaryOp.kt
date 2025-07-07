@@ -39,9 +39,14 @@ enum class BinaryOp(val symbol: Array<Symbols>, val tokenType: Token.Type, val p
 
     companion object
     {
-        fun byTokenType(tokenType: Token.Type): BinaryOp
+//                else                     -> Diagnostics.panic(
+//                    "BinaryOperator::byTokenType",
+//                    "$tokenType is not a binary operator!"
+//                )
+
+        fun byTokenTypeMaybe(tokenType: Token.Type, onBad: (() -> Unit)? = null): BinaryOp?
         {
-            return when(tokenType)
+            val res = when(tokenType)
             {
                 Token.Type.OP_ADD        -> ADD
                 Token.Type.OP_SUB        -> SUB
@@ -64,23 +69,13 @@ enum class BinaryOp(val symbol: Array<Symbols>, val tokenType: Token.Type, val p
                 Token.Type.S_AND         -> CONJUNCTIVE_AND
                 Token.Type.S_DOT         -> CONJUNCTIVE_DOT
                 Token.Type.OP_RANGE      -> RANGE
-                else                     -> Diagnostics.panic(
-                    "BinaryOperator::byTokenType",
-                    "$tokenType is not a binary operator!"
-                )
+                else                     -> null
             }
-        }
-
-        fun byTokenTypeMaybe(tokenType: Token.Type): BinaryOp?
-        {
-            return try
+            if(res == null)
             {
-                byTokenType(tokenType)
+                onBad?.invoke()
             }
-            catch(_: Exception)
-            {
-                null
-            }
+            return res
         }
     }
 }

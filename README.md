@@ -101,6 +101,8 @@ Chores relating to anything to do with the upfront semantics and syntax of the l
 
 - [ ] **Pending Implementation** Proper parsing of anonymous function literals using `AnonymousIdentifier`
 
+- [ ] **In Triage** Module declaration at the start of the source file
+
 ### Internal Workings
 
 Chores relating to anything that involves the internal workings

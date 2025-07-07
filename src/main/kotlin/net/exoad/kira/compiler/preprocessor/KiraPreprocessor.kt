@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.preprocessor
 
-import net.exoad.kira.compiler.front.SrcProvider
+import net.exoad.kira.compiler.SourceContext
 
 /**
  * The first process in the frontend compilation process by which certain
@@ -8,18 +8,21 @@ import net.exoad.kira.compiler.front.SrcProvider
  *
  * The results are passed onto [net.exoad.kira.compiler.front.KiraLexer].
  */
-object KiraPreprocessor
+class KiraPreprocessor(private val rawContent: String)
 {
-    const val COMMENT_PATTERN: String = "//"
+    companion object
+    {
+        const val COMMENT_PATTERN: String = "//"
+    }
 
     /**
      * Strips comments!
      */
-    fun stripComments()
+    fun stripComments(): String
     {
         // todo: maybe we can capture the comments some time later and support exporting doc comments?
         // todo: or will this be part of some external tool that scans or hooks up to this process
-        SrcProvider.srcContent = SrcProvider.srcContentLines
+        return rawContent.split("\n")
             .map { line ->
                 val index = line.indexOf(COMMENT_PATTERN)
                 when
@@ -35,7 +38,7 @@ object KiraPreprocessor
     /**
      * Runs all the steps of the preprocessor in the preferred manner. Otherwise, you can call the steps you prefer.
      */
-    fun process()
+    fun process(): String
     {
         return stripComments()
     }

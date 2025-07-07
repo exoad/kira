@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.front.elements
 
-import net.exoad.kira.Symbols
+import net.exoad.kira.compiler.DiagnosticsSymbols
 import net.exoad.kira.compiler.front.ASTVisitor
 import net.exoad.kira.compiler.front.exprs.Expr
 
@@ -17,7 +17,7 @@ open class Identifier(open val name: String) : Expr()
     }
 }
 
-open class AnonymousIdentifier : Identifier(Symbols.NULL.rep.toString())
+open class AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE)
 {
     override fun toString(): String
     {

@@ -1,5 +1,6 @@
 module "kira:parser";
 
-pub mut class Vector2: Mathable
+class Vector2: MathContainer<Vector2>
 {
+    mut a: Int32 = 1
 }
