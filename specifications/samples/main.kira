@@ -1,201 +1,204 @@
-// comment
-module "module_name:sub_module";
+module "kira:main";
 
-use "another_module:sub_module";
+// this is a comment
 
-// immutable variable
-immutableVariable: Int32 = 123;
-hexInt: Int32 = 0x01;
-// mutable variable (can be reassigned)
-mut variable: Int32 = 123;
+@trace("Hello World!"); // semicolons are optional
 
-// strings
-stringsVariable: String = "Hello World!";
+// all of the necessary data types that are considered primitive are of the following:
+// == integer ==
+i32: Int32 = 0 // 32 bit integer 'int'
+i64: Int64 = 0 // 64 bit integer 'long'
+i16: Int16 = 0 // 16 bit integer 'short'
+i8: Int8 = 0 // 8 bit integer 'byte'
 
-// floats
-floatsVariable: Float32 = 3.14156;
+// == floating point ==
+f32: Float32 = 0.0 // 32 bit float 'float'
+f64: Float64 = 0.0 // 64 bit float 'double'
 
-// aggregate types (using syntax sugar)
-myFilledArray: Array<Int32> = [10 ; 3]; // compile time expansion of 10 3's (array filling)
-myArray: Array<Int32> = [ 1, 3, 4 ];
-// reassignable and the individual elements can be altered
-mut myMutableArray: Array<Int32> = [ 1, 3, 4 ];
-ultraMutableArray[0] = 123; // 0 based indexing
-myList: List<Int32> = listOf(mut [1, 4, 5, 6]);
-myMap: Map<String, Int32> = { "hello" : 1, "world" : 2 };
-mySet: Set<Float32> = { 1, 2, 3, 4 };
+// == boolean ==
+bool: Bool = true // true or false. uses a single bit within an 8 bit block
 
-// operations
-1 + 1;
-2 * 2;
-3 - -2;
-4 / 3;
-10 % 2;
-4 & 0;
-1 >> 2;
-2 >>> 3;
-1 << 2;
-2 | 1;
-2 ^ ~1;
+// == unit ==
+// unit types are only used for return type values of functions. currently there is only one:
+//
+// 1. 'Void' - nothing is returned or a lack of value to return
 
-// assignment (compound operations)
-mut x: Int32 = 123;
-x = 149;
-x >>= 123;
-x <<= 123;
-x >>>= 123;
-x |= 123;
-x ^= 123;
-x *= 123;
-x /= 123;
-x %= 123;
-x += 123;
-x -= 123;
+// == string ==
+// strings are immutable in Kira and can contain escaped characters like '\n'
+string: String = "hello world!"
 
-// relation operators
-true == true;
-true != !false;
-1 > 2;
-1 < 2;
-1 >= 2;
-1 <= 3;
+// == collection types ==
+// a non resizable, non dynamic array. it can hold any data type and you can join it
+// with itself to create N-dimensional arrays
+array: Array<Int32> = [ 23, 32, 12 ]
+// the "mut" modifier signifies that the notation here on the right should mark
+// every single element as mutable. this in turn makes the entire thing a dynamic array
+list: List<List<Int32>> = mut [ mut [ 123, 4, 5 ] ]
+// maps are allowed to be either mutable or immutable with the same type, but just specifying
+// the "mut" modifier next to the level you want to be made immutable
+//
+// if using a mutable map, you can auto down cast it to a "MutableMap" type similar to something you find in Kotlin
+map: Map<String, Int32> = { "hello": 1, "world": 2 }
 
-// selection statements
-if(true)
+// variables placed without any other constructs are internal global. meaning they are only accessible in the current module/source file
+//
+// they follow the format of:
+//
+// <modifiers+> <name>: <type> = <expr>
+//
+// additionally, all declarations are immutable by default, in order to allow for mutability, you will need to prefix with the "mut" modifier
+a: Int32 = 123
+// when prefixed with the "pub" modifier, this variable becomes accessible by other modules who import this module, but they only
+// have read access. adding the "mut" modifier will allow global read and write access
+pub b: Int32 = 123
+
+// type checking is done with the "is" binary operator
+//
+// <expr> is <type>
+definitelyFalse: Bool = 1 is Array<Int32>
+
+// object-oriented programming
+// since everything is an object, you can call member functions on literals like so:
+myNewInt: Int32 = 3.14156.trunc() // converts to "3" by removing everything after the decimal
+
+// execution flow
+// there are various ways to construct execution flow statements
+// 1. for loops
+// 2. if-else
+// 3. while loops
+// 4. do while loops
+
+// for loops
+for(mut i : 0..10) //range for loop, expanded during code analysis to use a while loop
+{
+
+}
+
+// while loops
+while(1 == 1)
 {
     // ...
 }
-else if(false)
-{
-    // ...
-}
-else
-{
-    // ...
-}
 
-// iteration statements
-while(true)
-{
-    // ...
-}
-
+// do while loops
 do
 {
     // ...
-} while(true);
+} while(1 != 2) // runs a single time before checking
 
-for(mut i : 0..10) //range for loop, expanded during code analysis to use a for loop
-{
-    // ...
-}
-
-// functions (first class)
-sum(a: Int32, b: Int32): Int32 { return a + b; }
-
-sumf(a: Float32, b: Float32): Float32
-{
-    return a + b;
-}
-
-// functions are first class
-sumPointer(a: Int32, b: Int32): Int32 = sum;
-
-// calling functions
-sum(12, 12); // 24
-sumPointer(12, 1); // 13
-
-// classes (methods are immutable / final be default as well as classes cannot be extended without having "mut"
-// similar to kotlin)
-// additionally, all fields are private by default (they can be accessed within the same source file), specify with the "pub" modifier to make them public
+// == functions ==
 //
-// additionally, due to the existence of namespaces, companions and static members do not exist
-pub mut class User
+// functions are special in that they are first class and you can pass them around, but they are also objects themselves
+//
+// their syntax follows:
+//
+// <name>(<parameters>): <return-type>
+// {
+//    <statements>
+// }
+//
+// where <parameters> is defined as:
+//
+// <mutability-modifier> <name>:<type>
+sum(a: Int32, b: Int32): Int32
 {
-    // these are automatically added to an implicit auto generated constructor that make these variables "required" meaning a value must be provided
-    //
-    // specifying the pub modifier only affects encapsulation of the field
-    require pub name: String
-
-    // this signifies that a value can be provided, if not the default value assigned here is used (optional)
-    //
-    // the mut modifier signifies that this variable can be reassigned, it does not generate implicit setters
-    require pub mut id: Int32 = 30
-
-    // this also applies to functions which can be either abstract or supplied an implementation thru the implicit constructor
-    // the latter would produce an anonymous object
-    require pub abstractOrAnonFunctionMember(): String
-
-    // cannot be overridden, but it is public
-    pub formattedString(): String
-    {
-        return name + id;
-    }
-
-    // protected in other languages, meaning child classes can extend this, but only child classes can see this
-    mut overridableMethod(): String
-    {
-        // ...
-    }
+    return a + b
 }
+//calling a function uses a convention similar to c# and kotlin where you can opt into named or positional arguments
+sum(a = 2, b = 3) // named arguments
+sum(2, 3) // positional arguments
+// - the function literal is every single part after the function <name>.
+// - if a function does not return, the type is 'Void'
 
-// inheritance (only permits single inheritance)
-pub class Administrator(super.name, super.id): User
+// similar to regular variables, all classes have pub and mut as valid modifiers.
+// - a class marked with "pub" means it is accessible to other modules globally, without it, only in the same module/source file
+// - a class marked with "mut" means it can be inherited from or extended by another class; otherwise, only anonymous objects can be created
+pub mut class Vector2
 {
-    pub executeCommand(command: String): Void
-    {
-        // ...
-    }
-}
+    // there are no companions/static contexts in a class, everything is part of the instance
+    //
+    // the "require" modifier assigns this value to the implicit constructor (there is only one). if a required
+    // variable does not have a value defined already like "y" below, it must be provided a value in the constructor.
+    //
+    // the constructor can either use named parameters or positional parameters which are the default and are generated by the order they appear in the source
+    //
+    // - "y" here is optional and assume the value "0.0" if not mentioned
+    // - since "pub" is not present on either of them, they do not have public setters nor getters; however, they do have an internal mutability within the class scope
+    require mut x: Float32
+    require mut y: Float32 = 0.0
 
-pub class Vector2
-{
-    require pub mut x: Float32
-    require pub mut y: Float32
-
-    pub add(other: Vector2): Vector2
-    {
-        return Vector2(x + other.x, y + other.y)
-    }
-
-    pub subtract(other: Vector2): Vector2
-    {
-        return Vector2(x - other.x, y - other.y)
-    }
-
-    pub multiply(scalar: Float32): Vector2
-    {
-        return Vector2(x * scalar, y * scalar)
-    }
-
-    pub magnitude(): Float32
-    {
-        return (x * x + y * y).sqrt()
-    }
-
-    pub normalize(): Vector2
-    {
-        mag = magnitude()
-        if(mag != 0)
-        {
-            return Vector2(x / mag, y / mag)
-        }
-        return Vector2(0, 0)
-    }
-
+    // a public instance function that provides implementation for a dot product function
     pub dot(other: Vector2): Float32
     {
-        return x * other.x + y * other.y
+        return (other.x * other.x) + (other.y * other.y) // dot operator for member access
     }
 
-    pub toString(): String
+    // this function is technically abstract but can also be provided an anonymous instance via the constructor or instantiated in an inheriting class
+    //
+    // furthermore, since it does not have the "mut" modifier, this method cannot be overridden externally or internally after assignment (this can be seen as null safety's "late" assignment in many other languages"
+    require pub scaleX(v: Float32): Vector2
+
+//    require pub scaleY(v: Float32): Vector2
+//    {
+//        return with { // a with operator must always be provided named arguments
+//            y *= v, // specify that "y" of the current instance is multiplied by "v",
+//            x = x // this is not necessary, but demonstrates the syntax of it is just like normal named arguments
+//        } // syntax sugar for creating a clone of this object with all of the other non specified but required fields filled in with the current instance's
+//    }
+//
+//    // using compiler symbol intrinsics to do operator overloading
+//    pub @__op_equals__(other: Vector2): Bool
+//    {
+//        return other.x == x && other.y == y
+//    }
+}
+
+// objects are static immutable containers that are able to nest other objects, but also variables, functions, enums, and classes
+//
+// however, they cannot have a derived type meaning they cannot inherit as seen in kotlin
+pub object Scope // only the operator "pub" is allowed here
+{
+    //"static" or "companion" variables
+    pub a: Int32 = 123
+    pub b: String = "Hello World!"
+
+    // secondary scope that is nested
+    pub object AnotherScope
     {
-        return "Vector2(x: " + x + ", y: " + y + ")"
+        pub c: Float32 = 3.14
+    }
+
+    // all members of an object can still be mutated or inherited from if they are only of the sorts classes, variables, & functions
+    mut class AClass
+    {
+        pub add(a: Int32, b: Int32): Int32
+        {
+            return a + b
+        }
     }
 }
 
-// creating objects
-newUser: User = User("John Doe", 123);
+// enumerations are simple containers that cannot be inherited from
+//
+// they serve as static containers for holding concrete related constants in one place
+//
+// they are only allowed the "pub" modifier in every context
+enum CardinalDirection
+{
+    // by default they behave like they do in c/c++ where they implicitly hold integer values based on their source position
+    NORTH,
+    SOUTH,
+    WEST,
+    EAST
+}
 
-// submodule members directly without importing
-maths::abs(2);
+enum BetterDirections
+{
+    // you can assign any simple data literal. that is any type of literal that is known and constant at compile time like strings, integers, floats, and booleans
+    //
+    // additionally, once you start assigning, all of the enumerations must be assigned a value OF THE SAME TYPE as well.
+    UP = "up",
+    DOWN = "down",
+    RIGHT = "right",
+    LEFT = "left"
+}

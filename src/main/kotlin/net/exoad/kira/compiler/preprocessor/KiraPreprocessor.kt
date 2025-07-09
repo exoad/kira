@@ -27,7 +27,7 @@ class KiraPreprocessor(private val rawContent: String)
                 val index = line.indexOf(COMMENT_PATTERN)
                 when
                 {
-                    index != -1 -> line.substring(0, index).trimEnd()
+                    index != -1 -> line.substring(0, index)
                     else        -> line
                 }
             }

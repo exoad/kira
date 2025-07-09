@@ -1,6 +1,17 @@
-module "kira:parser";
+module "kira:main"
 
-class Vector2: MathContainer<Vector2>
+pub myValue: Int32 = 1 + 2
+
+class User<T>
 {
-    mut a: Int32 = 1
+    pub belonging: T
+
+}
+
+pub object Scope
+{
+    pub object Scope2
+    {
+        pub a: Float32 = 3.14
+    }
 }

@@ -8,5 +8,6 @@ object Public
     {
         var useDiagnosticsUnicode by Delegates.notNull<Boolean>()
         var beVerbose by Delegates.notNull<Boolean>()
+        var enableVisualView by Delegates.notNull<Boolean>()
     }
 }

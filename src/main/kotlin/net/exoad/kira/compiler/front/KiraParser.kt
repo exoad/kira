@@ -10,80 +10,460 @@ import net.exoad.kira.compiler.front.elements.*
 import net.exoad.kira.compiler.front.exprs.*
 import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
 import net.exoad.kira.compiler.front.exprs.decl.Decl
+import net.exoad.kira.compiler.front.exprs.decl.EnumDecl
 import net.exoad.kira.compiler.front.exprs.decl.FirstClassDecl
-import net.exoad.kira.compiler.front.exprs.decl.FunctionFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.FunctionDecl
 import net.exoad.kira.compiler.front.exprs.decl.ModuleDecl
-import net.exoad.kira.compiler.front.exprs.decl.VariableFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.ObjectDecl
+import net.exoad.kira.compiler.front.exprs.decl.VariableDecl
 import net.exoad.kira.compiler.front.statements.*
 import kotlin.properties.Delegates
 
-abstract class ASTNode
+/**
+ * stack based prediction for use with [KiraParser] to help with making predicting ambiguous grammar easier, cleaner, and optimized
+ */
+class PredictionStack(private val parser: KiraParser)
 {
-    abstract fun accept(visitor: ASTVisitor)
-}
+    private val stack = mutableListOf<ParserState>() // state snapshots
+    private val predictionCache = mutableMapOf<String, PredictionResult<*>>()
 
-abstract class ASTVisitor
-{
-    // STATEMENTS
-    abstract fun visitStatement(statement: Statement)
-    abstract fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement)
-    abstract fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement)
-    abstract fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement)
-    abstract fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
-    abstract fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
-    abstract fun visitReturnStatement(returnStatement: ReturnStatement)
-    abstract fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
-    abstract fun visitUseStatement(useStatement: UseStatement)
-
-    // Expressions
-    abstract fun visitBinaryExpr(binaryExpr: BinaryExpr)
-    abstract fun visitUnaryExpr(unaryExpr: UnaryExpr)
-    abstract fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
-    abstract fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
-    abstract fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
-    abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
-    abstract fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
-    abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
-    abstract fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
-    abstract fun visitRangeExpr(rangeExpr: RangeExpr)
-
-    // LITERALS
-    abstract fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
-    abstract fun visitStringLiteral(stringLiteral: StringLiteral)
-    abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
-    abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    abstract fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
-
-    // IDENTIFIERS
-    abstract fun visitIdentifier(identifier: Identifier)
-    abstract fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
-
-    // DECLARATIONS
-    abstract fun visitVariableDecl(variableDecl: VariableFirstClassDecl)
-    abstract fun visitFunctionDecl(functionDecl: FunctionFirstClassDecl)
-    abstract fun visitClassDecl(classDecl: ClassDecl)
-    abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
-}
-
-class RootASTNode(val statements: List<ASTNode>) : ASTNode()
-{
-    override fun accept(visitor: ASTVisitor)
+    fun push(): PredictionContext
     {
-        statements.forEach { it.accept(visitor) }
+        val currentState = save()
+        stack.add(currentState)
+        return PredictionContext(this, currentState)
+    }
+
+    fun pop(): ParserState?
+    {
+        return when
+        {
+            stack.isNotEmpty() -> stack.removeAt(stack.size - 1)
+            else               -> null
+        }
+    }
+
+    fun peek(): ParserState?
+    {
+        return stack.lastOrNull()
+    }
+
+    /**
+     * saves the current parser state
+     */
+    fun save(): ParserState
+    {
+        return ParserState(
+            pointer = parser.pointer,
+            underPointer = parser.underPointer,
+            timestamp = System.currentTimeMillis()
+        )
+    }
+
+    /**
+     * restores the parser to a previous state
+     */
+    fun restore(state: ParserState)
+    {
+        parser.pointer = state.pointer
+        parser.underPointer = state.underPointer
+        parser.updateUnderPointer()
+    }
+
+    fun getCurrentState(): ParserState
+    {
+        return save()
+    }
+
+    /**
+     * evaluates a block with auto state management
+     */
+    fun <T> evaluate(block: () -> T): T
+    {
+        val context = push()
+        return try
+        {
+            val result = block()
+            context.commit()
+            result
+        }
+        catch(e: Exception)
+        {
+            context.rollback()
+            throw e
+        }
+        finally
+        {
+            pop()
+        }
+    }
+
+    /**
+     * returns the first successful candidate out of multiple
+     */
+    fun <T> tryInOrder(candidates: List<() -> T>, onError: (KiraRuntimeException) -> T): T
+    {
+        val context = push()
+        for(candidate in candidates)
+        {
+            try
+            {
+                val result = candidate()
+                context.commit()
+                return result
+            }
+            catch(_: Exception)
+            {
+                context.rollback()
+            }
+        }
+        // everything failed here
+        pop()
+        return onError(KiraRuntimeException("All prediction candidates failed"))
+    }
+
+    /**
+     * executes a block with error recovery capabilities
+     */
+    fun <T> withRecovery(block: () -> T): T
+    {
+        val startState = save()
+        return try
+        {
+            block()
+        }
+        catch(e: Exception)
+        {
+            restore(startState)
+            throw KiraRuntimeException("Parse error with recovery", e)
+        }
+    }
+
+    /**
+     * tries a single candidate and returns the result
+     */
+    fun <T> tryCandidate(candidate: () -> T): PredictionResult<T>
+    {
+        val startState = save()
+        return try
+        {
+            val result = candidate()
+            val endState = save()
+            PredictionResult.Success(result, endState)
+        }
+        catch(e: Exception)
+        {
+            val errorState = save()
+            restore(startState)
+            PredictionResult.Failure(e, errorState)
+        }
+    }
+
+    fun binaryOp(): Array<Token.Type>?
+    {
+        return tryInOrder(
+            listOf(
+                {
+                    // >>>= (ushr assign)
+                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                        parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                        parser.peek(2).type == Token.Type.S_CLOSE_ANGLE &&
+                        parser.peek(3).type == Token.Type.OP_ASSIGN
+                    )
+                    {
+                        arrayOf(
+                            Token.Type.S_CLOSE_ANGLE,
+                            Token.Type.S_CLOSE_ANGLE,
+                            Token.Type.S_CLOSE_ANGLE,
+                            Token.Type.OP_ASSIGN
+                        )
+                    }
+                    else
+                    {
+                        null
+                    }
+                },
+                {
+                    // >>> (ushr)
+                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                        parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                        parser.peek(2).type == Token.Type.S_CLOSE_ANGLE
+                    )
+                    {
+                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE)
+                    }
+                    else
+                    {
+                        null
+                    }
+                },
+                {
+                    // >>= (shr assign)
+                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                        parser.peek(2).type == Token.Type.OP_ASSIGN
+                    )
+                    {
+                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN)
+                    }
+                    else
+                    {
+                        null
+                    }
+                },
+                {
+                    // >> (shr)
+                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.S_CLOSE_ANGLE)
+                    {
+                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE)
+                    }
+                    else
+                    {
+                        null
+                    }
+                },
+                {
+                    // >= (geq)
+                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.OP_ASSIGN)
+                    {
+                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN)
+                    }
+                    else
+                    {
+                        null
+                    }
+                },
+                {
+                    // > (gte)
+                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE)
+                    {
+                        arrayOf(Token.Type.S_CLOSE_ANGLE)
+                    }
+                    else
+                    {
+                        null
+                    }
+                }
+            )) { null }
+    }
+
+    fun clearCache()
+    {
+        predictionCache.clear()
+    }
+
+    /**
+     * cache stats for debugging
+     */
+    fun getCacheStats(): String
+    {
+        return "PredictionCache: ${predictionCache.size} entries"
     }
 }
+
+class PredictionContext(
+    private val stack: PredictionStack,
+    private val initialState: ParserState
+)
+{
+    private var committed = false
+    private var rolledBack = false
+
+    /**
+     * tries a greedy approach by consuming [candidates] until the first successful one (not null)
+     */
+    fun <T> findFirstSuccess(candidates: List<() -> T>): T?
+    {
+        for(candidate in candidates)
+        {
+            val result = stack.tryCandidate(candidate)
+            if(result.isSuccess())
+            {
+                return result.getMaybe()
+            }
+        }
+        return null
+    }
+
+    /**
+     * tries multiple [candidates] and uses a scoring function to find the best one
+     */
+    fun <T> findBestMatch(candidates: List<() -> T>, scorer: (T) -> Int): T?
+    {
+        var bestResult: T? = null
+        var bestScore = Int.MIN_VALUE
+        for(candidate in candidates)
+        {
+            val result = stack.tryCandidate(candidate)
+            if(result.isSuccess())
+            {
+                val value = result.getMaybe()!!
+                val score = scorer(value)
+                if(score > bestScore)
+                {
+                    bestScore = score
+                    bestResult = value
+                }
+            }
+        }
+
+        return bestResult
+    }
+
+    /**
+     * tries a greedy approach by checking all [candidates] and returns the one that consumes the most tokens
+     */
+    fun <T> findLongestMatch(candidates: List<() -> T>): T?
+    {
+        var bestResult: T? = null
+        var maxTokensConsumed = -1
+        for(candidate in candidates)
+        {
+            val startState = stack.save()
+            val result = stack.tryCandidate(candidate)
+            if(result.isSuccess())
+            {
+                val tokensConsumed = stack.getCurrentState().pointer - startState.pointer
+                if(tokensConsumed > maxTokensConsumed)
+                {
+                    maxTokensConsumed = tokensConsumed
+                    bestResult = result.getMaybe()
+                }
+            }
+        }
+        return bestResult
+    }
+
+    /**
+     * rollback to the initial state
+     */
+    fun rollback()
+    {
+        if(committed)
+        {
+            throw IllegalStateException("Cannot rollback after commit")
+        }
+        stack.restore(initialState)
+        rolledBack = true
+    }
+
+    /**
+     * commits to the current state, this means you cannot roll back
+     */
+    fun commit()
+    {
+        if(rolledBack)
+        {
+            throw IllegalStateException("Cannot commit after rollback")
+        }
+        committed = true
+    }
+
+    fun isCommitted(): Boolean
+    {
+        return committed
+    }
+
+    fun isRolledBack(): Boolean
+    {
+        return rolledBack
+    }
+}
+
+// class for handling if something failed or not
+sealed class PredictionResult<T>(open val state: ParserState)
+{
+    data class Success<T>(val value: T, override val state: ParserState) : PredictionResult<T>(state)
+    data class Failure<T>(val error: Exception, override val state: ParserState) : PredictionResult<T>(state)
+
+    fun isSuccess(): Boolean
+    {
+        return this is Success
+    }
+
+    fun isFailure(): Boolean
+    {
+        return this is Failure
+    }
+
+    fun getMaybe(): T?
+    {
+        return when(this)
+        {
+            is Success -> value
+            is Failure -> null
+        }
+    }
+
+    fun getOrThrow(): T
+    {
+        return when(this)
+        {
+            is Success -> value
+            is Failure -> throw error
+        }
+    }
+}
+
+// holds a snapshot of a parser state (literally where the parser was at some point in time
+// useful for implementing rollbacks in predictive parsing
+data class ParserState(
+    val pointer: Int,
+    val underPointer: Token,
+    val timestamp: Long = System.currentTimeMillis()
+)
+{
+    fun isValid(): Boolean
+    {
+        return pointer >= 0 && underPointer.type != Token.Type.S_EOF
+    }
+
+    /**
+     * check if `this` is a state that is younger than [other]
+     */
+    fun isAheadOf(other: ParserState): Boolean
+    {
+        return this.pointer > other.pointer
+    }
+
+    /**
+     * grabs the lexical token distance away from [other]
+     */
+    fun distanceFrom(other: ParserState): Int
+    {
+        return kotlin.math.abs(this.pointer - other.pointer)
+    }
+
+    override fun toString(): String
+    {
+        return "ParserState{ pointer=$pointer, token=${underPointer.type}:'${underPointer.content}' }"
+    }
+}
+
 /**
- * A semi-naive LL(k) parser that strays from rollbacks as much as possible. It takes
- * the tokens generated by the [KiraLexer] and uses those to turn them into an AST.
+ * A semi-naive LL(k) parser. It takes the tokens generated by the [KiraLexer] and uses those to turn them into an AST.
+ *
+ * Parsing also uses a prediction stack in order to optimize ambiguous grammar by trying multiple
+ * approaches for the encountered tokens.
  *
  * It will then pass this AST onto the [KiraSemanticAnalyzer] to make sure the AST is
  * valid grammar.
  */
-class KiraParser(private val tokens: List<Token>, private val context: SourceContext)
+class KiraParser(private val context: SourceContext)
 {
-    private var pointer: Int = 0
-    private var underPointer: Token =
-        tokens.firstOrNull() ?: Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+    internal var pointer: Int = 0
+    internal var underPointer: Token =
+        context.tokens.firstOrNull() ?: Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+
+    private val predictionStack = PredictionStack(this)
+
+    internal fun updateUnderPointer()
+    {
+        underPointer = when
+        {
+            pointer < context.tokens.size -> context.tokens[pointer]
+            else                          -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+        }
+    }
 
 //    init
 //    {
@@ -97,14 +477,22 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
 //    }
 
     /**
-     * Star method to call on [KiraParser] that will turn the passed in [tokens] into an AST.
+     * Star method to call on [KiraParser] that will turn the passed in [context] into an AST.
      */
     fun parse(): RootASTNode
     {
-        val statements = mutableListOf<ASTNode>()
+        val statements = mutableListOf<Statement>()
         while(underPointer.type != Token.Type.S_EOF)
         {
-            statements.add(parseStatement())
+            statements.add(parseStatement(null))
+        }
+        if(statements.first().expr !is ModuleDecl)
+        {
+            Diagnostics.panic(
+                "KiraParser::parse",
+                "The first declaration of ${context.file} must be a module declaration!\nInstead, I got a ${statements.first()::class.simpleName}",
+                context = context
+            )
         }
         return RootASTNode(statements)
     }
@@ -119,10 +507,11 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         val index = pointer + k - 1
         return when
         {
-            index < tokens.size -> tokens[index]
-            else                -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+            index < context.tokens.size -> context.tokens[index]
+            else                        -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
         }
     }
+
     /**
      * Grabs the token [k] away from [pointer] (relative).
      *
@@ -133,10 +522,11 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         val index = pointer + k
         return when
         {
-            index < tokens.size -> tokens[index]
-            else                -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+            index < context.tokens.size -> context.tokens[index]
+            else                        -> Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
         }
     }
+
     /**
      * Moves the pointer forward to the next token and thus "consumes" the current token
      */
@@ -145,8 +535,8 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         pointer++
         underPointer = when
         {
-            pointer < tokens.size -> tokens[pointer]
-            else                  -> Token.Symbol(
+            pointer < context.tokens.size -> context.tokens[pointer]
+            else                          -> Token.Symbol(
                 Token.Type.S_EOF, Symbols.NULL, 0,
                 FileLocation(1, 1)
             )
@@ -162,17 +552,22 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
     }
 
     private fun expectModifiers(
-        modifiers: Map<Modifiers, FileLocation>? = null,
-        scopes: Modifiers.Scope
+        modifiers: Map<Modifiers, FileLocation>?,
+        scopes: Modifiers.Context
     )
     {
         val r = if(modifiers == null || modifiers.isEmpty()) null
-        else modifiers.keys.toList().find { !it.scope.contains(scopes) }
+        else modifiers.keys.toList().find { !it.context.contains(scopes) }
         if(r != null)
         {
             Diagnostics.panic(
-                "KiraParser::parseClassDecl",
-                "The modifier ${r.tokenType.diagnosticsName()} cannot be applied to a ${Modifiers.Scope.CLASS}",
+                "KiraParser::expectModifiers",
+                buildString {
+                    append("The modifier ")
+                    append(r.tokenType.diagnosticsName())
+                    append(" cannot be applied to a ")
+                    append(Modifiers.Context.CLASS)
+                },
                 location = modifiers?.get(r),
                 // this is so sketchy lmao, going through the values of a map to find the key which is THE OPPOSITE THING A MAP IS FOR LMAO
                 // but since the program is already crashing here, doesnt really matter
@@ -191,7 +586,12 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
             true ->
                 Diagnostics.panic(
                     "KiraParser::expect",
-                    "Expected ${token.diagnosticsName()} but got ${underPointer.type.diagnosticsName()}",
+                    buildString {
+                        append("Expected ")
+                        append(token.diagnosticsName())
+                        append(" but got ")
+                        append(if(underPointer.type.rawDiagnosticsRepresentation == null) "'${underPointer.content}' (${underPointer.type.diagnosticsName()})" else underPointer.type.diagnosticsName())
+                    }, // we actually output the content underneath the pointer which is easier to see and depending on if it is like a symbol/keyword we output that else we output variable token contents accordingly
                     location = underPointer.canonicalLocation,
                     selectorLength = underPointer.content.length,
                     context = context
@@ -211,11 +611,15 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
             !tokens.contains(underPointer.type) ->
                 Diagnostics.panic(
                     "KiraParser::expect",
-                    "Expected any of ${tokens.map { it.diagnosticsName() }} but got ${underPointer.type.diagnosticsName()}",
+                    buildString {
+                        append("Expected any of ")
+                        append(tokens.map { it.diagnosticsName() })
+                        append(" but got ")
+                        append(underPointer.type.diagnosticsName())
+                    },
                     location = underPointer.canonicalLocation,
                     context = context
                 )
-
             else                                -> ifOk()
         }
     }
@@ -230,8 +634,24 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
 //        TokensProvider.rootASTNode = RootASTNode(statements)
 //    }
 
-    fun parseStatement(): Statement
+    fun parseStatement(modifiers: Map<Modifiers, FileLocation>?): Statement
     {
+        fun parseWithModifiers(): Statement
+        {
+            val modifiers = parseModifiers()
+            val expr = when(underPointer.type)
+            {
+                Token.Type.K_CLASS  -> parseClassDecl(modifiers)
+                Token.Type.K_OBJECT -> parseObjectDecl(modifiers)
+                else                -> parsePrimaryExpr(modifiers)
+            }
+            expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+            return Statement(expr)
+        }
+        if(modifiers != null && modifiers.isNotEmpty())
+        {
+            return parseWithModifiers()
+        }
         return when(underPointer.type)
         {
             // parse keywords stuffs first if possible (like keyword first statements)
@@ -241,36 +661,41 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
             Token.Type.K_DO         -> parseDoWhileIterationStatement()
             Token.Type.K_FOR        -> parseForIterationStatement()
             Token.Type.K_USE        -> parseUseStatement()
-            in Token.Type.modifiers ->
+            Token.Type.K_BREAK      -> parseBreakStatement()
+            Token.Type.K_CONTINUE   -> parseContinueStatement()
+            in Token.Type.modifiers -> parseWithModifiers()
+            Token.Type.K_CLASS      -> // this part covers the case where the class decl has no modifiers on it. THIS CONDITION NEEDS TO BE UNDER THE PREVIOUS CONDITION
             {
-                val modifiers = parseModifiers()
-                val expr = when(underPointer.type)
-                {
-                    Token.Type.K_CLASS -> parseClassDecl(modifiers)
-                    else               -> parsePrimaryExpr(modifiers)
-                }
+                val expr = parseClassDecl(null)
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 return Statement(expr)
             }
-            Token.Type.K_CLASS      -> // this part covers the case where the class decl has no modifiers on it. THIS CONDITION NEEDS TO BE UNDER THE PREVIOUS CONDITION
+            Token.Type.K_ENUM       ->
             {
-                val expr = parseClassDecl()
+                val expr = parseEnumDecl(null)
+                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+                return Statement(expr)
+            }
+            Token.Type.K_OBJECT     -> // similar to the previous class case, covering when it has modifiers
+            {
+                val expr = parseObjectDecl(null)
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 return Statement(expr)
             }
             else                    ->
             {
                 val expr = parseExpr()
-                if(underPointer.type == Token.Type.L_INTEGER || underPointer.type == Token.Type.IDENTIFIER)
-                {
-                    Diagnostics.panic(
-                        "KiraParser::parseStatement",
-                        "Unexpected token '${underPointer.content}' after expression",
-                        location = underPointer.canonicalLocation,
-                        selectorLength = underPointer.content.length,
-                        context = context
-                    )
-                }
+                // todo: idk wtf this panic message is for ?
+//                if(underPointer.type == Token.Type.L_INTEGER || underPointer.type == Token.Type.IDENTIFIER)
+//                {
+//                    Diagnostics.panic(
+//                        "KiraParser::parseStatement",
+//                        "Unexpected token '${underPointer.content}'",
+//                        location = underPointer.canonicalLocation,
+//                        selectorLength = underPointer.content.length,
+//                        context = context
+//                    )
+//                }
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 Statement(expr)
             }
@@ -286,7 +711,7 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         val statements = mutableListOf<Statement>()
         while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
         {
-            statements.add(parseStatement())
+            statements.add(parseStatement(null))
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         return statements
@@ -298,6 +723,18 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         val expr = parseExpr()
         expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
         return ReturnStatement(expr)
+    }
+
+    fun parseBreakStatement(): Statement
+    {
+        expectThenAdvance(Token.Type.K_BREAK)
+        return BreakStatement()
+    }
+
+    fun parseContinueStatement(): Statement
+    {
+        expectThenAdvance(Token.Type.K_CONTINUE)
+        return ContinueStatement()
     }
 
     fun parseForIterationStatement(): Statement
@@ -366,37 +803,86 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
     fun parseExpr(minPrecedence: Int = 0): Expr
     {
         var left: Expr = parsePrimaryOrUnaryExpr()
+
         while(true)
         {
-            val binaryOpType = BinaryOp.byTokenTypeMaybe(underPointer.type)
-            if(binaryOpType == null || binaryOpType.precedence < minPrecedence)
-            {
-                break
-            }
-            advancePointer()
-            val nextMinPrecedence = binaryOpType.precedence + 1
-            val right = parseExpr(nextMinPrecedence)
-            left =
-                when(binaryOpType)
+            val opTokens = predictionStack.binaryOp()
+            val opToUse =
+                opTokens?.let { BinaryOp.byTokenTypeMaybe(*it) } ?: when(opTokens)
                 {
-                    BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
-                    BinaryOp.RANGE           -> RangeExpr(left, right)
-                    else                     -> BinaryExpr(left, right, binaryOpType)
+                    null -> BinaryOp.byTokenTypeMaybe(underPointer.type)
+                    else -> null
                 }
+            if(opToUse == null || opToUse.precedence < minPrecedence) break
+            val tokensToAdvance = opTokens?.size ?: 1
+            repeat(tokensToAdvance) { advancePointer() }
+            if(opToUse == BinaryOp.TYPE_CHECK)
+            {
+                val right = parseType()
+                return TypeCheckExpr(left, right)
+            }
+            if(opToUse == BinaryOp.TYPE_CAST)
+            {
+                val right = parseType()
+                return TypeCastExpr(left, right)
+            }
+            val nextMinPrecedence = opToUse.precedence + 1
+            val right = parseExpr(nextMinPrecedence)
+            left = when(opToUse)
+            {
+                BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
+                BinaryOp.RANGE           -> RangeExpr(left, right)
+                else                     -> BinaryExpr(left, right, opToUse)
+            }
         }
         return left
     }
+
+//    fun parseExpr(minPrecedence: Int = 0): Expr
+//    {
+//        var left: Expr = parsePrimaryOrUnaryExpr()
+//        while(true)
+//        {
+//            val binaryOpType = BinaryOp.byTokenTypeMaybe(underPointer.type)
+//            if(binaryOpType == null || binaryOpType.precedence < minPrecedence)
+//            {
+//                break
+//            }
+//            advancePointer()
+//            // the following binary operators require special parsing of the right hand side so they are put before the others
+//            if(binaryOpType == BinaryOp.TYPE_CHECK)
+//            {
+//                val right = parseType()
+//                return TypeCheckExpr(left, right)
+//            }
+//            if(binaryOpType == BinaryOp.TYPE_CAST)
+//            {
+//                val right = parseType()
+//                return TypeCastExpr(left, right)
+//            }
+//            val nextMinPrecedence = binaryOpType.precedence + 1
+//            val right = parseExpr(nextMinPrecedence)
+//            left =
+//                when(binaryOpType)
+//                {
+//                    BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
+//                    BinaryOp.RANGE           -> RangeExpr(left, right)
+//                    else                     -> BinaryExpr(left, right, binaryOpType)
+//                }
+//        }
+//        return left
+//    }
 
     private fun parsePrimaryOrUnaryExpr(): Expr
     {
         return when
         {
             UnaryOp.byTokenTypeMaybe(underPointer.type) != null -> parseUnaryExpr()
-            else                                                -> parsePrimaryExpr()
+            else                                                -> parsePrimaryExpr(null)
         }
     }
 
-    fun parsePrimaryExpr(modifiers: Map<Modifiers, FileLocation>? = null): Expr
+    fun parsePrimaryExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
     {
         return when(underPointer.type)
         {
@@ -405,6 +891,29 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
             Token.Type.L_FLOAT                                                          -> parseFloatLiteral()
             Token.Type.L_INTEGER                                                        -> parseIntegerLiteral()
             Token.Type.L_STRING                                                         -> parseStringLiteral()
+            Token.Type.S_OPEN_BRACE                                                     -> parseMapLiteral(false)
+            Token.Type.S_OPEN_BRACKET                                                   -> parseArrayLiteral()
+            Token.Type.K_MODIFIER_MUTABLE                                               ->
+                when(peek(1).type)
+                {
+                    Token.Type.S_OPEN_BRACKET ->
+                    {
+                        advancePointer() // consumes the previous modifier (mutable)
+                        parseListLiteral()
+                    }
+                    Token.Type.S_OPEN_BRACE   ->
+                    {
+                        advancePointer() // consume the mutable modifier
+                        parseMapLiteral(true)
+                    }
+                    else                      -> Diagnostics.panic(
+                        "KiraParser::parsePrimaryExpr",
+                        "${Token.Type.K_MODIFIER_MUTABLE} is only allowed on arrays at this position",
+                        context = context,
+                        location = underPointer.canonicalLocation,
+                        selectorLength = underPointer.content.length
+                    )
+                }
             Token.Type.S_AT                                                             ->
                 when(peek(1).type)
                 {
@@ -416,7 +925,7 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
 
                     else                  -> Diagnostics.panic(
                         "KiraParser::parsePrimaryExpr",
-                        "Intrinsics must be followed by an identifier, but found '${peek(1).type.diagnosticsName()}'",
+                        "Intrinsics must be followed by an identifier. I found '${peek(1).type.diagnosticsName()}'",
                         location = underPointer.canonicalLocation,
                         selectorLength = peek(1).content.length,
                         context = context
@@ -447,11 +956,44 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
                             null -> "'${underPointer.content}'"
                             else -> underPointer.type.diagnosticsName()
                         }
-                    } is not allowed",
+                    } is not allowed here.",
                     location = underPointer.canonicalLocation,
                     selectorLength = underPointer.content.length,
                     context = context
                 )
+        }
+    }
+
+    private fun peekBinaryOpTokens(): Array<Token.Type>?
+    {
+        return when
+        {
+            peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(2).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(3).type == Token.Type.OP_ASSIGN     -> arrayOf(
+                Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN
+            )
+            peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(2).type == Token.Type.S_CLOSE_ANGLE -> arrayOf(
+                Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE
+            )
+            peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(2).type == Token.Type.OP_ASSIGN     -> arrayOf(
+                Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN
+            )
+            peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(1).type == Token.Type.S_CLOSE_ANGLE -> arrayOf(
+                Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE
+            )
+            peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(1).type == Token.Type.OP_ASSIGN     -> arrayOf(
+                Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN
+            )
+            peek(0).type == Token.Type.S_CLOSE_ANGLE         -> arrayOf(Token.Type.S_CLOSE_ANGLE)
+            else                                             -> null
         }
     }
 
@@ -480,12 +1022,12 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
 
     fun parseBinaryExpr(): Expr
     {
-        var left = parsePrimaryExpr()
+        var left = parsePrimaryExpr(null)
         while(Token.Type.isBinaryOperator(underPointer.type))
         {
             val operator = underPointer
             advancePointer()
-            val right = parsePrimaryExpr()
+            val right = parsePrimaryExpr(null)
             left = when(operator.type)
             {
                 Token.Type.S_DOT -> MemberAccessExpr(left, right)
@@ -541,7 +1083,7 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
             )
             else -> Diagnostics.panic(
                 "KiraParser::parseIntrinsicCallExpr",
-                "Could not find a compile time intrinsic named '${identifier.name}'",
+                "I could not find an intrinsic named '${identifier.name}'",
                 location = startLoc,
                 selectorLength = identifier.name.length,
                 context = context
@@ -568,7 +1110,7 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         return parameters
     }
 
-    fun parseFunctionCallOrDeclExpr(modifiers: Map<Modifiers, FileLocation>? = null): Expr
+    fun parseFunctionCallOrDeclExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
     {
         var identifier: Identifier? = null
         if(underPointer.type == Token.Type.IDENTIFIER)
@@ -617,12 +1159,12 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
 
     private fun parseFunctionDecl(
         identifier: Identifier,
-        modifiers: Map<Modifiers, FileLocation>? = null
-    ): FunctionFirstClassDecl
+        modifiers: Map<Modifiers, FileLocation>?
+    ): FunctionDecl
     {
-        expectModifiers(modifiers, Modifiers.Scope.FUNCTION)
+        expectModifiers(modifiers, Modifiers.Context.FUNCTION)
         val functionLiteral = parseFunctionLiteral()
-        return FunctionFirstClassDecl(identifier, functionLiteral, modifiers?.keys?.toList() ?: emptyList())
+        return FunctionDecl(identifier, functionLiteral, modifiers?.keys?.toList() ?: emptyList())
     }
 
     private fun parseFunctionCallExpr(identifier: Identifier): FunctionCallExpr
@@ -640,7 +1182,7 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         return FunctionCallExpr(identifier, parsedParameters)
     }
 
-    private fun parseIdentifierExpr(modifiers: Map<Modifiers, FileLocation>? = null): Expr
+    private fun parseIdentifierExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
     {
         return when(peek(1).type)
         {
@@ -661,11 +1203,33 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
     fun parseCompoundAssignmentExpr(): CompoundAssignmentExpr
     {
         val left = parseIdentifier() // todo: allow for more than just identifiers for now
-        lateinit var op: BinaryOp
-        expectAnyOfThenAdvance(Token.Type.compoundAssignmentOperators) {
-            op = CompoundAssignmentExpr.findBinaryOp(underPointer.type)
-            advancePointer()
+        val opTokens: Array<Token.Type>? = when
+        {
+            underPointer.type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(2).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(3).type == Token.Type.OP_ASSIGN                -> arrayOf(
+                Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN
+            )
+            underPointer.type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                    peek(2).type == Token.Type.OP_ASSIGN                -> arrayOf(
+                Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN
+            )
+            underPointer.type in Token.Type.compoundAssignmentOperators -> arrayOf(underPointer.type)
+            else                                                        -> null
         }
+        if(opTokens == null)
+        {
+            Diagnostics.panic(
+                "KiraParser::parseCompoundAssignmentExpr",
+                "Expected a compound assignment operator, but found '${underPointer.type}'",
+                location = underPointer.canonicalLocation,
+                context = context
+            )
+        }
+        val op = CompoundAssignmentExpr.findBinaryOp(opTokens, context)
+        repeat(opTokens.size) { advancePointer() }
         val right = parseExpr()
         return CompoundAssignmentExpr(left, op, right)
     }
@@ -678,9 +1242,52 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         return AssignmentExpr(identifier, value)
     }
 
-    fun parseClassDecl(modifiers: Map<Modifiers, FileLocation>? = null): ClassDecl
+    fun parseEnumMemberExpr(): EnumMemberExpr
     {
-        expectModifiers(modifiers, Modifiers.Scope.CLASS)
+        val name = parseIdentifier()
+        var value: DataLiteral<*>? = null
+        if(underPointer.type == Token.Type.OP_ASSIGN)
+        {
+            expectThenAdvance(Token.Type.OP_ASSIGN)
+            val start = underPointer
+            val parseValue = parsePrimaryExpr(null)
+            if(parseValue !is SimpleLiteral && parseValue !is DataLiteral<*>)
+            {
+                Diagnostics.panic(
+                    "KiraParser::parseEnumMemberExpr",
+                    "Only simple literals are allowed as enum values. That is strings, booleans, floats, and integers.",
+                    location = start.canonicalLocation,
+                    selectorLength = start.content.length,
+                    context = context
+                )
+            }
+            value = parseValue as DataLiteral<*>
+        }
+        return EnumMemberExpr(name, value)
+    }
+
+    fun parseEnumDecl(modifiers: Map<Modifiers, FileLocation>?): EnumDecl
+    {
+        expectModifiers(modifiers, Modifiers.Context.ENUM)
+        advancePointer() // consume 'enum'
+        val name = parseIdentifier() // we only allow simple names, not complex names on enums, cuz there is no point
+        expectThenAdvance(Token.Type.S_OPEN_BRACE)
+        val members = mutableListOf<EnumMemberExpr>()
+        while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
+        {
+            members.add(parseEnumMemberExpr())
+            if(underPointer.type != Token.Type.S_CLOSE_BRACE)
+            {
+                expectThenAdvance(Token.Type.S_COMMA)
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        return EnumDecl(name, members.toTypedArray(), modifiers?.keys?.toList() ?: emptyList())
+    }
+
+    fun parseClassDecl(modifiers: Map<Modifiers, FileLocation>?): ClassDecl
+    {
+        expectModifiers(modifiers, Modifiers.Context.CLASS)
         advancePointer() //consume the class keyword
         val className = parseType()
         var parentType: TypeSpecifier? = null
@@ -694,7 +1301,7 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
         {
             val memberModifiers = parseModifiers()
-            expectModifiers(memberModifiers, Modifiers.Scope.CLASS_MEMBER)
+            expectModifiers(memberModifiers, Modifiers.Context.CLASS_MEMBER)
             members.add(
                 when(underPointer.type != Token.Type.S_OPEN_PARENTHESIS && peek(1).type != Token.Type.S_OPEN_PARENTHESIS) // the first condition covers the case where there can be anonymous functions here
                 {
@@ -730,24 +1337,27 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
                         {
                             Diagnostics.panic(
                                 "KiraParser::parseClassDecl",
-                                "${expr::class.simpleName ?: "Literal"}s are not allowed to be placed in classes by themselves",
+                                buildString {
+                                    append(expr::class.simpleName ?: "Literal")
+                                    append("s are not allowed to be placed in classes by themselves")
+                                },
                                 location = start,
                                 selectorLength = context.findCanonicalLine(start.lineNumber).length, // make the error marker cover the whole line!
                                 context = context
                             )
                         }
-                        parseFunctionCallOrDeclExpr(memberModifiers) as FunctionFirstClassDecl // if this throws, then it is 99.99% a bug
+                        expr as FunctionDecl // if this throws, then it is 99.99% a bug
                     }
                 }
             )
         }
-        expectOptionalThenAdvance(Token.Type.S_CLOSE_BRACE)
+        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         return ClassDecl(className, modifiers?.keys?.toList() ?: emptyList(), members, parentType)
     }
 
-    fun parseVariableDecl(modifiers: Map<Modifiers, FileLocation>? = null): VariableFirstClassDecl
+    fun parseVariableDecl(modifiers: Map<Modifiers, FileLocation>?): VariableDecl
     {
-        expectModifiers(modifiers, Modifiers.Scope.VARIABLE)
+        expectModifiers(modifiers, Modifiers.Context.VARIABLE)
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_COLON)
         val type = parseType()
@@ -757,7 +1367,37 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
             advancePointer()
             value = parseBinaryExpr()
         }
-        return VariableFirstClassDecl(identifier, type, value, modifiers?.keys?.toList() ?: emptyList())
+        return VariableDecl(identifier, type, value, modifiers?.keys?.toList() ?: emptyList())
+    }
+
+    fun parseObjectDecl(modifiers: Map<Modifiers, FileLocation>?): ObjectDecl
+    {
+        expectModifiers(modifiers, Modifiers.Context.OBJECT)
+        expectThenAdvance(Token.Type.K_OBJECT)
+        val identifier = parseIdentifier()
+        expectThenAdvance(Token.Type.S_OPEN_BRACE)
+        val members = mutableListOf<Decl>()
+        while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
+        {
+            val start = underPointer.canonicalLocation
+            val modifiers = parseModifiers()
+            expectModifiers(modifiers, Modifiers.Context.OBJECT_MEMBER)
+            val member = parseStatement(modifiers)
+            when(member.expr)
+            {
+                // i just want something like "!is ... && !is ..." why is kotlin so weird, even dart supports this ?
+                !is Decl -> Diagnostics.panic(
+                    "KiraParser::parseObjectDecl",
+                    "The type ${member::class.simpleName} is not allowed in an object declaration. Only declarations are allowed.",
+                    context = context,
+                    location = start,
+                    selectorLength = context.findCanonicalLine(start.lineNumber).length
+                )
+                else     -> members.add(member.expr as Decl)
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        return ObjectDecl(identifier, modifiers?.keys?.toList() ?: emptyList(), members)
     }
 
     fun parseStringLiteral(): StringLiteral
@@ -765,6 +1405,47 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
         val value = underPointer.content
         expectThenAdvance(Token.Type.L_STRING)
         return StringLiteral(value)
+    }
+
+    fun parseArrayLiteral(): ArrayLiteral
+    {
+        expectThenAdvance(Token.Type.S_OPEN_BRACKET)
+        val elements = mutableListOf<Expr>()
+        while(underPointer.type != Token.Type.S_CLOSE_BRACKET && underPointer.type != Token.Type.S_EOF)
+        {
+            elements.add(parsePrimaryExpr(null))
+            if(underPointer.type != Token.Type.S_CLOSE_BRACKET)
+            {
+                expectThenAdvance(Token.Type.S_COMMA)
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
+        return ArrayLiteral(elements.toTypedArray())
+    }
+
+    fun parseListLiteral(): ListLiteral
+    {
+        val arrayLiteral = parseArrayLiteral()
+        return ListLiteral(arrayLiteral.value.toList()) // more work we are just turning back what the parseLiteral function already did lmao
+    }
+
+    fun parseMapLiteral(mutable: Boolean): MapLiteral
+    {
+        expectThenAdvance(Token.Type.S_OPEN_BRACE)
+        val elements = mutableMapOf<Expr, Expr>()
+        while(underPointer.type != Token.Type.S_CLOSE_BRACE && underPointer.type != Token.Type.S_EOF)
+        {
+            val key = parseExpr()
+            expectThenAdvance(Token.Type.S_COLON)
+            val value = parseExpr()
+            elements[key] = value
+            if(underPointer.type != Token.Type.S_CLOSE_BRACE)
+            {
+                expectThenAdvance(Token.Type.S_COMMA)
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        return MapLiteral(elements, mutable)
     }
 
     fun parseIntegerLiteral(): IntegerLiteral
@@ -872,7 +1553,6 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
                 }
                 break
             }
-
             expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         }
         return TypeSpecifier(baseName, generics.toTypedArray())
@@ -896,7 +1576,13 @@ class KiraParser(private val tokens: List<Token>, private val context: SourceCon
             {
                 Diagnostics.panic(
                     "KiraParser::parseModifiers",
-                    "The modifier ${currentModifier.tokenType.diagnosticsName()} was already specified at ${underPointer.canonicalLocation}. Remove the duplicate modifier.",
+                    buildString {
+                        append("The modifier ")
+                        append(currentModifier.tokenType.diagnosticsName())
+                        append(" was already specified at ")
+                        append(underPointer.canonicalLocation)
+                        append(". Remove the duplicate modifier.")
+                    },
                     location = underPointer.canonicalLocation,
                     selectorLength = underPointer.content.length,
                     context = context

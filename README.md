@@ -5,8 +5,8 @@
 >
 > Thus, a lot of things will lack documentation!
 
-An **enjoyable** modern object-oriented programming language with modern syntax and semantics inspired from languages
-such as Java, C, Dart, and Rust.
+Kira is a modern, pure object-oriented language that combines the familiar, expressive syntax of Kotlin with Swift's
+efficient Automatic Reference Counting (ARC) memory management.
 
 `June 28, 2025:`
 

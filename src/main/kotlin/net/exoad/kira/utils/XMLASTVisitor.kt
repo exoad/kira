@@ -7,9 +7,11 @@ import net.exoad.kira.compiler.front.RootASTNode
 import net.exoad.kira.compiler.front.elements.*
 import net.exoad.kira.compiler.front.exprs.*
 import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
-import net.exoad.kira.compiler.front.exprs.decl.FunctionFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.EnumDecl
+import net.exoad.kira.compiler.front.exprs.decl.FunctionDecl
 import net.exoad.kira.compiler.front.exprs.decl.ModuleDecl
-import net.exoad.kira.compiler.front.exprs.decl.VariableFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.ObjectDecl
+import net.exoad.kira.compiler.front.exprs.decl.VariableDecl
 import net.exoad.kira.compiler.front.statements.*
 import java.text.SimpleDateFormat
 
@@ -209,6 +211,16 @@ object XMLASTVisitor :
         }
     }
 
+    override fun visitBreakStatement(breakStatement: BreakStatement)
+    {
+        xmlSingleLeaf("BreakStatement", null)
+    }
+
+    override fun visitContinueStatement(continueStatement: ContinueStatement)
+    {
+        xmlSingleLeaf("ContinueStatement", null)
+    }
+
     override fun visitBinaryExpr(binaryExpr: BinaryExpr)
     {
         node("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""")
@@ -273,6 +285,42 @@ object XMLASTVisitor :
         }
     }
 
+    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
+    {
+        node("LArray")
+        {
+            arrayLiteral.value.forEach { it.accept(this) }
+        }
+    }
+
+    override fun visitListLiteral(listLiteral: ListLiteral)
+    {
+        node("LList")
+        {
+            listLiteral.value.forEach { it.accept(this) }
+        }
+    }
+
+    override fun visitMapLiteral(mapLiteral: MapLiteral)
+    {
+        node("LMap")
+        {
+            mapLiteral.value.forEach {
+                node("Entry")
+                {
+                    node("Key")
+                    {
+                        it.key.accept(this)
+                    }
+                    node("Value")
+                    {
+                        it.value.accept(this)
+                    }
+                }
+            }
+        }
+    }
+
     override fun visitIdentifier(identifier: Identifier)
     {
         when(identifier)
@@ -297,12 +345,12 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitVariableDecl(variableDecl: VariableFirstClassDecl)
+    override fun visitVariableDecl(variableDecl: VariableDecl)
     {
         node(
             "VariableDecl", when(variableDecl.modifiers.isNotEmpty())
             {
-                true -> """modifiers="${variableDecl.modifiers.joinToString(", ") { it.name }}""""
+                true -> """modifiers="${variableDecl.modifiers.joinToString(",") { it.name }}""""
                 else -> ""
             }
         )
@@ -319,13 +367,17 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitFunctionDecl(functionDecl: FunctionFirstClassDecl)
+    override fun visitFunctionDecl(functionDecl: FunctionDecl)
     {
         node(
             "FunctionDecl", "${
                 when(functionDecl.modifiers.isNotEmpty())
                 {
-                    true -> "modifiers=\"${functionDecl.modifiers.joinToString(", ") { it.name }}\" "
+                    true -> buildString {
+                        append("modifiers=\"")
+                        append(functionDecl.modifiers.joinToString(",") { it.name })
+                        append("\" ")
+                    }
                     else -> ""
                 }
             }stub=\"${functionDecl.isStub()}\""
@@ -341,7 +393,7 @@ object XMLASTVisitor :
         node(
             "ClassDecl", when(classDecl.modifiers.isNotEmpty())
             {
-                true -> """modifiers="${classDecl.modifiers.joinToString(", ") { it.name }}""""
+                true -> """modifiers="${classDecl.modifiers.joinToString(",") { it.name }}""""
                 else -> ""
             }
         )
@@ -372,6 +424,34 @@ object XMLASTVisitor :
         }
     }
 
+    override fun visitObjectDecl(objectDecl: ObjectDecl)
+    {
+        node(
+            "ObjectDecl",
+            """modifiers="${objectDecl.modifiers.joinToString(",") { it.name }}""""
+        )
+        {
+            objectDecl.name.accept(this)
+            node("Members")
+            {
+                objectDecl.members.forEach { it.accept(this) }
+            }
+        }
+    }
+
+    override fun visitEnumDecl(enumDecl: EnumDecl)
+    {
+        node(
+            "EnumDecl", """modifiers="${
+                enumDecl.modifiers.joinToString(",") { it.name }
+            }""""
+        )
+        {
+            enumDecl.name.accept(this)
+            enumDecl.members.forEach { it.accept(this) }
+        }
+    }
+
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
     {
         node("AssignmentExpr")
@@ -397,7 +477,7 @@ object XMLASTVisitor :
     {
 
         node(
-            "IntrinsicCallExpr", """name="${
+            "IntrinsicCallExpr", """ name ="${
                 Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
                     ?: intrinsicCallExpr.name.intrinsicKey.name
             }""""
@@ -411,7 +491,7 @@ object XMLASTVisitor :
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
     {
-        node("CompoundAssignmentExpr", """op="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
+        node("CompoundAssignmentExpr", """ op ="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
         {
             node("LValue")
             {
@@ -429,7 +509,7 @@ object XMLASTVisitor :
         node(
             "FunctionParameterExpr", when(functionParameterExpr.modifiers.isNotEmpty())
             {
-                true -> """modifiers="${functionParameterExpr.modifiers.joinToString(", ") { it.name }}""""
+                true -> """ modifiers ="${functionParameterExpr.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
         )
@@ -482,6 +562,49 @@ object XMLASTVisitor :
                 rangeExpr.end.accept(this)
             }
         }
+    }
+
+    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr)
+    {
+        node("EnumMemberExpr", """ name ="${enumMemberExpr.name.name}"""")
+        {
+            enumMemberExpr.value?.accept(this)
+        }
+    }
+
+    override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr)
+    {
+        node("TypeCheckExpr")
+        {
+            node("Expr")
+            {
+                typeCheckExpr.value.accept(this)
+            }
+            node("TargetType")
+            {
+                typeCheckExpr.type.accept(this)
+            }
+        }
+    }
+
+    override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr)
+    {
+        node("TypeCastExpr")
+        {
+            node("Expr")
+            {
+                typeCastExpr.value.accept(this)
+            }
+            node("TargetType")
+            {
+                typeCastExpr.type.accept(this)
+            }
+        }
+    }
+
+    override fun visitNoExpr(noExpr: NoExpr)
+    {
+        xmlSingleLeaf("NoExpr", null)
     }
 
     private fun pushIndent()

@@ -2,12 +2,13 @@ package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.front.FileLocation
+import net.exoad.kira.compiler.front.Token
 
-class SourceContext(val content: String, val file: String)
+class SourceContext(val content: String, val file: String, val tokens: List<Token>)
 {
-    fun with(content: String): SourceContext
+    fun with(content: String, tokens: List<Token>? = null): SourceContext
     {
-        return SourceContext(content, file)
+        return SourceContext(content, file, tokens ?: this.tokens)
     }
 
     private val contentLines: List<String> = content.split("\n")
@@ -25,7 +26,7 @@ class SourceContext(val content: String, val file: String)
     }
 
     /**
-     * Creates a visual pointer to a portion of [srcContent] by the specified [fileLocation] and how long of the content to point at [locatorLength]
+     * Creates a visual pointer to a portion of [content] by the specified [fileLocation] and how long of the content to point at [locatorLength]
      *
      * - [locatorLength] starts at the first character of [fileLocation]'s [FileLocation.column] parameter. *PS, this function will throw an assertion error if [locatorLength] is not `>=` (greater than or equal to) `1`*
      *

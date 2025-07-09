@@ -53,6 +53,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_ADD("'+' (Plus)"),
         OP_SUB("'-' (Minus)"),
         OP_MUL("'*' (Multiply)"),
+        OP_SCOPE("'::' (Static Member Access)"),
         OP_DIV("'/' (Divide)"),
         OP_MOD("'%' (Modulo)"),
         OP_ASSIGN("'=' (Assignment)"),
@@ -64,29 +65,37 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_ASSIGN_BIT_OR("'|=' (Compound Bitwise OR Assignment)"),
         OP_ASSIGN_BIT_AND("'&=' (Compound Bitwise AND Assignment)"),
         OP_ASSIGN_BIT_SHL("'<<=' (Compound Bitwise Left Shift Assignment)"),
-        OP_ASSIGN_BIT_SHR("'>>=' (Compound Bitwise Right Shift Assignment)"),
-        OP_ASSIGN_BIT_USHR("'>>>=' (Compound Bitwise Unsigned Right Shift Assignment)"),
+        // commenting out all the tokens that involve ">" because it is very problematic when parsing them together with generics using the same symbols
+//        OP_ASSIGN_BIT_SHR("'>>=' (Compound Bitwise Right Shift Assignment)"),
+//        OP_ASSIGN_BIT_USHR("'>>>=' (Compound Bitwise Unsigned Right Shift Assignment)"),
         OP_ASSIGN_BIT_XOR("'^=' (Compound Bitwise XOR Assignment)"),
         OP_CMP_LEQ("'<=' (Less Than Or Equal To)"),
-        OP_CMP_GEQ("'>=' (Greater Than Or Equal To)"),
+        //        OP_CMP_GEQ("'>=' (Greater Than Or Equal To)"),
         OP_CMP_EQL("'==' (Equals To)"),
         OP_CMP_NEQ("'!=' (Not Equals To)"),
         OP_CMP_AND("'&&' (Logical AND)"),
         OP_CMP_OR("'||' (Logical OR)"),
         OP_BIT_SHL("'<<' (Bitwise Shift Left)"),
-        OP_BIT_SHR("'>>' (Bitwise Shift Right"),
-        OP_BIT_USHR("'>>>' (Bitwise Unsigned Shift Right"),
+        //        OP_BIT_SHR("'>>' (Bitwise Shift Right)"),
+//        OP_BIT_USHR("'>>>' (Bitwise Unsigned Shift Right)"),
         OP_BIT_XOR("'^' (Bitwise XOR"),
         K_IF("'if'"),
         K_ELSE("'else'"),
+        K_IS("'is'"),
+        K_CONTINUE("'continue'"),
+        K_BREAK("'break'"),
+        K_AS("'as'"),
         K_WHILE("'while'"),
         K_RETURN("'return'"),
         K_DO("'do'"),
         K_FOR("'for'"),
         K_CLASS("'class'"),
         K_USE("'use'"),
+        K_ENUM("'enum'"),
+        K_OBJECT("'object'"),
         K_MODULE("'module'"),
         K_MODIFIER_REQUIRE("'require'"),
+        K_MODIFIER_WEAK("'weak'"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
         S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"),
@@ -121,20 +130,37 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
              */
             val compoundAssignmentOperators = entries.filter { it.name.startsWith("OP_ASSIGN_") }.toTypedArray()
 
-            fun isBinaryOperator(token: Type): Boolean
+            fun isBinaryOperator(vararg token: Type): Boolean
             {
-                return when(token)
+                return when
                 {
-                    OP_RANGE, S_DOT,
-                    OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
-                    OP_CMP_NEQ, OP_CMP_GEQ, OP_CMP_LEQ, OP_CMP_EQL,
-                    S_OPEN_ANGLE, S_CLOSE_ANGLE,
-                    OP_CMP_AND, OP_CMP_OR,
-                    OP_BIT_XOR, OP_BIT_USHR, OP_BIT_SHL, OP_BIT_SHR,
-                    S_AND,
-                    S_PIPE,
-                         -> true
-                    else -> false
+                    token.size == 1                                              -> when(token[0])
+                    {
+                        OP_RANGE, S_DOT,
+                        OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
+                        OP_CMP_NEQ, OP_CMP_LEQ, OP_CMP_EQL,
+                        S_OPEN_ANGLE, S_CLOSE_ANGLE,
+                        OP_CMP_AND, OP_CMP_OR,
+                        OP_BIT_XOR, OP_BIT_SHL,
+                        S_AND, S_PIPE -> true
+                        else          -> false
+                    }
+                    token.size == 2 &&
+                            token[0] == S_CLOSE_ANGLE &&
+                            (token[1] == OP_ASSIGN || token[1] == S_CLOSE_ANGLE) -> true
+
+                    token.size == 3 &&
+                            token[0] == S_CLOSE_ANGLE &&
+                            token[1] == S_CLOSE_ANGLE &&
+                            token[2] == S_CLOSE_ANGLE                            -> true
+
+                    token.size == 4 &&
+                            token[0] == S_CLOSE_ANGLE &&
+                            token[1] == S_CLOSE_ANGLE &&
+                            token[2] == S_CLOSE_ANGLE &&
+                            token[3] == OP_ASSIGN                                -> true
+
+                    else                                                         -> false
                 }
             }
 
@@ -186,12 +212,12 @@ class KiraLexer(private val context: SourceContext)
     {
         when(underPointer)
         {
-            '\n' ->
+            Symbols.NEWLINE.rep ->
             {
                 lineNumber++
                 column = 1
             }
-            else -> column++
+            else                -> column++
         }
         pointer++
         underPointer =
@@ -251,7 +277,7 @@ class KiraLexer(private val context: SourceContext)
      */
     fun lexNumberLiteral(): Token
     {
-        if(underPointer == '0' && peek(1) == 'x')
+        if(underPointer == '0' && peek(1) == 'x') // hex parsing!
         {
             advancePointer()
             advancePointer()
@@ -302,7 +328,13 @@ class KiraLexer(private val context: SourceContext)
             Symbols.DOUBLE_QUOTE.rep -> advancePointer()
             else                     -> Diagnostics.panic(
                 "KiraLexer::lexStringLiteral",
-                "Unterminated string at $pointer. Insert '${Symbols.DOUBLE_QUOTE.rep}' to terminate it",
+                buildString {
+                    append("Unterminated string at ")
+                    append(pointer)
+                    append(". Insert '")
+                    append(Symbols.DOUBLE_QUOTE.rep)
+                    append("' to terminate it")
+                },
                 location = startLoc,
                 context = context
             )
@@ -398,8 +430,13 @@ class KiraLexer(private val context: SourceContext)
             // sometimes to cover and coalesce these lexical tokens together (I JUST WISH WE HAD MORE KEYS TO WORK WITH, no i dont lol)
             return when(char)
             {
-                Symbols.AT.rep                -> Token.Symbol(Token.Type.S_AT, Symbols.AT, start, startLoc)
-                Symbols.OPEN_ANGLE.rep        ->
+                Symbols.AT.rep                  -> Token.Symbol(
+                    Token.Type.S_AT,
+                    Symbols.AT,
+                    start,
+                    startLoc
+                )
+                Symbols.OPEN_ANGLE.rep          ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep     ->
@@ -429,75 +466,95 @@ class KiraLexer(private val context: SourceContext)
                             startLoc
                         )
                     }
-                Symbols.CLOSE_ANGLE.rep       ->
-                {
-                    var count = 1
-                    while(underPointer == Symbols.CLOSE_ANGLE.rep)
-                    {
-                        count++
-                        advancePointer()
-                    }
-                    advancePointer()
-                    Diagnostics.Logging.finer("KiraLexer::nextToken", "Total closed angles found: $count")
-                    return when
-                    {
-                        localPeek(1) == Symbols.EQUALS.rep && count == 1 -> // asserts the case where the last closing angle bracket is against an assignment operator "=" which will make a greater than or equal to operator
-                        {
-                            advancePointer()
-                            Token.LinkedSymbols(
-                                Token.Type.OP_CMP_GEQ,
-                                arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS),
-                                start,
-                                startLoc
-                            )
-                        }
-                        count == 2                                       ->
-                        {
-                            Token.LinkedSymbols(
-                                Token.Type.OP_BIT_SHR,
-                                Array(2) { Symbols.CLOSE_ANGLE },
-                                start,
-                                startLoc
-                            )
-                        }
-                        count == 3                                       ->
-                        {
-                            Token.LinkedSymbols(
-                                Token.Type.OP_BIT_USHR,
-                                Array(3) { Symbols.CLOSE_ANGLE },
-                                start,
-                                startLoc
-                            )
-                        }
-                        else                                             ->
-                        {
-                            repeat(count - 1) { i ->
-                                pendingClosingAngleBrackets.addLast(
-                                    Token.Symbol(
-                                        Token.Type.S_CLOSE_ANGLE,
-                                        Symbols.CLOSE_ANGLE,
-                                        start + i + 1,
-                                        FileLocation(startLoc.lineNumber, startLoc.column + i + 1)
-                                    )
-                                )
-                            }
-                            return Token.Symbol(
-                                Token.Type.S_CLOSE_ANGLE,
-                                Symbols.CLOSE_ANGLE,
-                                start,
-                                startLoc
-                            )
-                        }
-                    }
-                }
-
-                Symbols.COLON.rep             -> Token.Symbol(
-                    Token.Type.S_COLON,
-                    Symbols.COLON,
+                Symbols.CLOSE_ANGLE.rep         -> Token.Symbol(
+                    Token.Type.S_CLOSE_ANGLE,
+                    Symbols.CLOSE_ANGLE,
                     start,
                     startLoc
                 )
-                Symbols.EXCLAMATION.rep       ->
+// this following code piece was my first naive piece of trying to decipher between generics and regular operators that use the close angle brackets
+                //
+                // the current approach now just ignores this approach and makes the parser handle and determine the context
+//                {
+//                    var count = 1
+//                    while(underPointer == Symbols.CLOSE_ANGLE.rep)
+//                    {
+//                        count++
+//                        advancePointer()
+//                    }
+//                    advancePointer()
+//                    return when
+//                    {
+//                        localPeek(1) == Symbols.EQUALS.rep && count == 1 -> // asserts the case where the last closing angle bracket is against an assignment operator "=" which will make a greater than or equal to operator
+//                        {
+//                            advancePointer()
+//                            Token.LinkedSymbols(
+//                                Token.Type.OP_CMP_GEQ,
+//                                arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS),
+//                                start,
+//                                startLoc
+//                            )
+//                        }
+//                        count == 2                                       ->
+//                        {
+//                            Token.LinkedSymbols(
+//                                Token.Type.OP_BIT_SHR,
+//                                Array(2) { Symbols.CLOSE_ANGLE },
+//                                start,
+//                                startLoc
+//                            )
+//                        }
+//                        count == 3                                       ->
+//                        {
+//                            Token.LinkedSymbols(
+//                                Token.Type.OP_BIT_USHR,
+//                                Array(3) { Symbols.CLOSE_ANGLE },
+//                                start,
+//                                startLoc
+//                            )
+//                        }
+//                        else                                             ->
+//                        {
+//                            repeat(count - 1) { i ->
+//                                pendingClosingAngleBrackets.addLast(
+//                                    Token.Symbol(
+//                                        Token.Type.S_CLOSE_ANGLE,
+//                                        Symbols.CLOSE_ANGLE,
+//                                        start + i + 1,
+//                                        FileLocation(startLoc.lineNumber, startLoc.column + i + 1)
+//                                    )
+//                                )
+//                            }
+//                            return Token.Symbol(
+//                                Token.Type.S_CLOSE_ANGLE,
+//                                Symbols.CLOSE_ANGLE,
+//                                start,
+//                                startLoc
+//                            )
+//                        }
+//                    }
+//                }
+                Symbols.COLON.rep               ->
+                    when(localPeek(1))
+                    {
+                        Symbols.COLON.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_SCOPE,
+                                arrayOf(Symbols.COLON, Symbols.COLON),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else              -> Token.Symbol(
+                            Token.Type.S_COLON,
+                            Symbols.COLON,
+                            start,
+                            startLoc
+                        )
+                    }
+                Symbols.EXCLAMATION.rep         ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep ->
@@ -512,7 +569,7 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else               -> Token.Symbol(Token.Type.S_BANG, Symbols.EXCLAMATION, start, startLoc)
                     }
-                Symbols.PLUS.rep              ->
+                Symbols.PLUS.rep                ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep ->
@@ -527,7 +584,7 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else               -> Token.Symbol(Token.Type.OP_ADD, Symbols.PLUS, start, startLoc)
                     }
-                Symbols.HYPHEN.rep            ->
+                Symbols.HYPHEN.rep              ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep ->
@@ -542,7 +599,7 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else               -> Token.Symbol(Token.Type.OP_SUB, Symbols.HYPHEN, start, startLoc)
                     }
-                Symbols.ASTERISK.rep          ->
+                Symbols.ASTERISK.rep            ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep ->
@@ -557,7 +614,7 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else               -> Token.Symbol(Token.Type.OP_MUL, Symbols.ASTERISK, start, startLoc)
                     }
-                Symbols.SLASH.rep             ->
+                Symbols.SLASH.rep               ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep ->
@@ -572,7 +629,7 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else               -> Token.Symbol(Token.Type.OP_DIV, Symbols.SLASH, start, startLoc)
                     }
-                Symbols.PERCENT.rep           ->
+                Symbols.PERCENT.rep             ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep ->
@@ -587,13 +644,13 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else               -> Token.Symbol(Token.Type.OP_MOD, Symbols.PERIOD, start, startLoc)
                     }
-                Symbols.OPEN_BRACE.rep        -> Token.Symbol(
+                Symbols.OPEN_BRACE.rep          -> Token.Symbol(
                     Token.Type.S_OPEN_BRACE,
                     Symbols.OPEN_BRACE,
                     start,
                     startLoc
                 )
-                Symbols.PERIOD.rep            ->
+                Symbols.PERIOD.rep              ->
                     when(localPeek(1))
                     {
                         Symbols.PERIOD.rep ->
@@ -608,25 +665,25 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else               -> Token.Symbol(Token.Type.S_DOT, Symbols.PERIOD, start, startLoc)
                     }
-                Symbols.COMMA.rep             -> Token.Symbol(
+                Symbols.COMMA.rep               -> Token.Symbol(
                     Token.Type.S_COMMA,
                     Symbols.COMMA,
                     start,
                     startLoc
                 )
-                Symbols.PERCENT.rep           -> Token.Symbol(
+                Symbols.PERCENT.rep             -> Token.Symbol(
                     Token.Type.OP_MOD,
                     Symbols.PERCENT,
                     start,
                     startLoc
                 )
-                Symbols.CARET.rep             -> Token.Symbol(
+                Symbols.CARET.rep               -> Token.Symbol(
                     Token.Type.OP_BIT_XOR,
                     Symbols.CARET,
                     start,
                     startLoc
                 )
-                Symbols.PIPE.rep              ->
+                Symbols.PIPE.rep                ->
                     when(localPeek(1))
                     {
                         Symbols.PIPE.rep ->
@@ -641,7 +698,7 @@ class KiraLexer(private val context: SourceContext)
                         }
                         else             -> Token.Symbol(Token.Type.S_PIPE, Symbols.PIPE, start, startLoc)
                     }
-                Symbols.AMPERSAND.rep         ->
+                Symbols.AMPERSAND.rep           ->
                     when(localPeek(1))
                     {
                         Symbols.AMPERSAND.rep ->
@@ -661,49 +718,55 @@ class KiraLexer(private val context: SourceContext)
                             startLoc
                         )
                     }
-                Symbols.CLOSE_BRACE.rep       -> Token.Symbol(
+                Symbols.CLOSE_BRACE.rep         -> Token.Symbol(
                     Token.Type.S_CLOSE_BRACE,
                     Symbols.CLOSE_BRACE,
                     start,
                     startLoc
                 )
-                Symbols.OPEN_BRACKET.rep      -> Token.Symbol(
+                Symbols.OPEN_BRACKET.rep        -> Token.Symbol(
                     Token.Type.S_OPEN_BRACKET,
                     Symbols.OPEN_BRACKET,
                     start,
                     startLoc
                 )
-                Symbols.CLOSE_BRACKET.rep     -> Token.Symbol(
+                Symbols.CLOSE_BRACKET.rep       -> Token.Symbol(
                     Token.Type.S_CLOSE_BRACKET,
                     Symbols.CLOSE_BRACKET,
                     start,
                     startLoc
                 )
-                Symbols.TILDE.rep             -> Token.Symbol(
+                Symbols.TILDE.rep               -> Token.Symbol(
                     Token.Type.S_TILDE,
                     Symbols.TILDE,
                     start,
                     startLoc
                 )
-                Symbols.OPEN_PARENTHESIS.rep  -> Token.Symbol(
+                Symbols.OPEN_PARENTHESIS.rep    -> Token.Symbol(
                     Token.Type.S_OPEN_PARENTHESIS,
                     Symbols.OPEN_PARENTHESIS,
                     start,
                     startLoc
                 )
-                Symbols.CLOSE_PARENTHESIS.rep -> Token.Symbol(
+                Symbols.CLOSE_PARENTHESIS.rep   -> Token.Symbol(
                     Token.Type.S_CLOSE_PARENTHESIS,
                     Symbols.CLOSE_PARENTHESIS,
                     start,
                     startLoc
                 )
-                Symbols.SEMICOLON.rep         -> Token.Symbol(
+                Symbols.NEWLINE.rep             -> Token.Symbol( // treat new lines as optional semicolons or statement delimiters ;) just like kotlin!
                     Token.Type.S_SEMICOLON,
-                    Symbols.SEMICOLON,
+                    Symbols.NEWLINE, // just an adhoc case
                     start,
                     startLoc
                 )
-                Symbols.EQUALS.rep            ->
+                Symbols.STATEMENT_DELIMITER.rep -> Token.Symbol(
+                    Token.Type.S_SEMICOLON,
+                    Symbols.STATEMENT_DELIMITER,
+                    start,
+                    startLoc
+                )
+                Symbols.EQUALS.rep              ->
                     when(localPeek(1))
                     {
                         Symbols.EQUALS.rep ->
@@ -719,7 +782,7 @@ class KiraLexer(private val context: SourceContext)
                         else               ->
                             return Token.Symbol(Token.Type.OP_ASSIGN, Symbols.EQUALS, start, startLoc)
                     }
-                else                          -> Diagnostics.panic(
+                else                            -> Diagnostics.panic(
                     "KiraLexer::nextToken",
                     "Symbol '$char' is not known at Line $lineNumber, Column $column",
                     location = startLoc,

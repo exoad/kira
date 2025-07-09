@@ -48,6 +48,18 @@ object Diagnostics
         logger.handlers.forEach { it.level = Level.OFF }
     }
 
+    fun recordPanic(
+        tag: String,
+        message: Any,
+        cause: Throwable? = null,
+        location: FileLocation? = null,
+        selectorLength: Int = 1,
+        context: SourceContext
+    ): DiagnosticsException
+    {
+        return DiagnosticsException(tag, message.toString(), cause, location, context, selectorLength)
+    }
+
     // something went wrong?? scary!
     fun panic(
         tag: String,
@@ -58,7 +70,7 @@ object Diagnostics
         context: SourceContext
     ): Nothing
     {
-        throw DiagnosticsException(tag, message.toString(), cause, location, context, selectorLength)
+        throw recordPanic(tag, message, cause, location, selectorLength, context)
     }
 
     fun panic(message: String): Nothing

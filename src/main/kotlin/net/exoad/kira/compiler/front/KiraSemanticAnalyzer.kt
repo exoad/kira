@@ -1,26 +1,38 @@
 package net.exoad.kira.compiler.front
 
+import net.exoad.kira.compiler.SourceContext
 import net.exoad.kira.compiler.front.elements.AnonymousFunction
+import net.exoad.kira.compiler.front.elements.ArrayLiteral
 import net.exoad.kira.compiler.front.elements.BoolLiteral
 import net.exoad.kira.compiler.front.elements.FloatLiteral
 import net.exoad.kira.compiler.front.elements.Identifier
 import net.exoad.kira.compiler.front.elements.IntegerLiteral
+import net.exoad.kira.compiler.front.elements.ListLiteral
+import net.exoad.kira.compiler.front.elements.MapLiteral
 import net.exoad.kira.compiler.front.elements.StringLiteral
 import net.exoad.kira.compiler.front.elements.TypeSpecifier
 import net.exoad.kira.compiler.front.exprs.AssignmentExpr
 import net.exoad.kira.compiler.front.exprs.BinaryExpr
 import net.exoad.kira.compiler.front.exprs.CompoundAssignmentExpr
+import net.exoad.kira.compiler.front.exprs.EnumMemberExpr
 import net.exoad.kira.compiler.front.exprs.ForIterationExpr
 import net.exoad.kira.compiler.front.exprs.FunctionCallExpr
 import net.exoad.kira.compiler.front.exprs.FunctionParameterExpr
 import net.exoad.kira.compiler.front.exprs.IntrinsicCallExpr
 import net.exoad.kira.compiler.front.exprs.MemberAccessExpr
+import net.exoad.kira.compiler.front.exprs.NoExpr
 import net.exoad.kira.compiler.front.exprs.RangeExpr
+import net.exoad.kira.compiler.front.exprs.TypeCastExpr
+import net.exoad.kira.compiler.front.exprs.TypeCheckExpr
 import net.exoad.kira.compiler.front.exprs.UnaryExpr
 import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
-import net.exoad.kira.compiler.front.exprs.decl.FunctionFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.EnumDecl
+import net.exoad.kira.compiler.front.exprs.decl.FunctionDecl
 import net.exoad.kira.compiler.front.exprs.decl.ModuleDecl
-import net.exoad.kira.compiler.front.exprs.decl.VariableFirstClassDecl
+import net.exoad.kira.compiler.front.exprs.decl.ObjectDecl
+import net.exoad.kira.compiler.front.exprs.decl.VariableDecl
+import net.exoad.kira.compiler.front.statements.BreakStatement
+import net.exoad.kira.compiler.front.statements.ContinueStatement
 import net.exoad.kira.compiler.front.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.front.statements.ElseBranchStatement
 import net.exoad.kira.compiler.front.statements.ElseIfBranchStatement
@@ -112,7 +124,7 @@ class SymbolTable
  * The 4th phase after the parsing process that traverses the generated AST by the [KiraParser]
  * to make sure everything follows the rules of the language and everything makes sense.
  */
-object KiraSemanticAnalyzer
+class KiraSemanticAnalyzer(private val context: SourceContext)
 {
     fun validateAST(rootASTNode: RootASTNode): Boolean
     {
@@ -167,6 +179,16 @@ object KiraSemanticAnalyzer
             TODO("Not yet implemented")
         }
 
+        override fun visitBreakStatement(breakStatement: BreakStatement)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitContinueStatement(continueStatement: ContinueStatement)
+        {
+            TODO("Not yet implemented")
+        }
+
         override fun visitBinaryExpr(binaryExpr: BinaryExpr)
         {
             TODO("Not yet implemented")
@@ -217,6 +239,26 @@ object KiraSemanticAnalyzer
             TODO("Not yet implemented")
         }
 
+        override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitNoExpr(noExpr: NoExpr)
+        {
+            TODO("Not yet implemented")
+        }
+
         override fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
         {
             TODO("Not yet implemented")
@@ -242,6 +284,21 @@ object KiraSemanticAnalyzer
             TODO("Not yet implemented")
         }
 
+        override fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitListLiteral(listLiteral: ListLiteral)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitMapLiteral(mapLiteral: MapLiteral)
+        {
+            TODO("Not yet implemented")
+        }
+
         override fun visitIdentifier(identifier: Identifier)
         {
             TODO("Not yet implemented")
@@ -252,12 +309,12 @@ object KiraSemanticAnalyzer
             TODO("Not yet implemented")
         }
 
-        override fun visitVariableDecl(variableDecl: VariableFirstClassDecl)
+        override fun visitVariableDecl(variableDecl: VariableDecl)
         {
             TODO("Not yet implemented")
         }
 
-        override fun visitFunctionDecl(functionDecl: FunctionFirstClassDecl)
+        override fun visitFunctionDecl(functionDecl: FunctionDecl)
         {
             TODO("Not yet implemented")
         }
@@ -268,6 +325,16 @@ object KiraSemanticAnalyzer
         }
 
         override fun visitModuleDecl(moduleDecl: ModuleDecl)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitObjectDecl(objectDecl: ObjectDecl)
+        {
+            TODO("Not yet implemented")
+        }
+
+        override fun visitEnumDecl(enumDecl: EnumDecl)
         {
             TODO("Not yet implemented")
         }

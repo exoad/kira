@@ -1,15 +1,19 @@
 package net.exoad.kira
 
+import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatMTAtomOneDarkIJTheme
 import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.GeneratedProvider
 import net.exoad.kira.compiler.SourceContext
 import net.exoad.kira.compiler.front.*
 import net.exoad.kira.compiler.preprocessor.KiraPreprocessor
+import net.exoad.kira.ui.KiraVisualViewer
 import net.exoad.kira.utils.ArgsParser
 import net.exoad.kira.utils.XMLASTVisitor
 import java.io.File
+import javax.swing.UIManager
 import kotlin.math.floor
 import kotlin.math.log10
+import kotlin.properties.Delegates
 import kotlin.time.measureTimedValue
 
 internal lateinit var argsParser: ArgsParser
@@ -19,6 +23,15 @@ internal lateinit var argsParser: ArgsParser
  */
 fun main(args: Array<String>)
 {
+    try
+    {
+        UIManager.setLookAndFeel(FlatMTAtomOneDarkIJTheme())
+    }
+    catch(e: Exception)
+    {
+        e.printStackTrace()
+    }
+    var srcContext by Delegates.notNull<SourceContext>()
     val (_, duration) = measureTimedValue { // ignore the first parameter because this a void or unit block so the result is not important!
         argsParser = ArgsParser(args)
         parseArgs().let { it ->
@@ -34,19 +47,19 @@ fun main(args: Array<String>)
             {
                 val file = File(sourceFile)
                 val preprocessor = KiraPreprocessor(file.readText())
-                val srcContext = SourceContext(preprocessor.process(), file.canonicalPath)
+                srcContext = SourceContext(preprocessor.process(), file.canonicalPath, emptyList())
                 val lexer = KiraLexer(srcContext)
-                val tokens = lexer.tokenize()
+                srcContext = srcContext.with(srcContext.content, lexer.tokenize())
                 if(it.dumpLexerTokens != null)
                 {
                     val lexerTokensDumpFile = File(it.dumpLexerTokens)
                     lexerTokensDumpFile.createNewFile()
                     var i = 0
-                    lexerTokensDumpFile.writeText(tokens.joinToString("\n") { tk ->
+                    lexerTokensDumpFile.writeText(srcContext.tokens.joinToString("\n") { tk ->
                         "${
                             (++i).toString()
                                 .padStart(
-                                    floor(log10(tokens.size.toDouble())).toInt() + 1,
+                                    floor(log10(srcContext.tokens.size.toDouble())).toInt() + 1,
                                     ' '
                                 ) // yikes, this math is for padding the left side of the token number being parsed to make sure that the tokens are never pushed out of alignment in this column form
                             // basically it figures out the length of the number without using loops
@@ -54,7 +67,7 @@ fun main(args: Array<String>)
                     })
                     Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                 }
-                val parser = KiraParser(tokens, srcContext)
+                val parser = KiraParser(srcContext)
                 val ast = parser.parse()
                 if(it.dumpAST != null)
                 {
@@ -69,6 +82,12 @@ fun main(args: Array<String>)
                     else -> Diagnostics.Logging.info("Kira", "No output...")
                 }
             }
+        }
+    }
+    if(Public.Flags.enableVisualView)
+    {
+        KiraVisualViewer(srcContext).also {
+            it.run()
         }
     }
     // todo: should this be some kind of "finer" message or should we leave it everytime for the user to see?
@@ -115,4 +134,5 @@ fun parsePublicFlags()
     // is my brain too slow ?
     Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("-noPrettyDiagnostics")
     Public.Flags.beVerbose = argsParser.findFlag("-verbose")
+    Public.Flags.enableVisualView = argsParser.findFlag("-visualView")
 }

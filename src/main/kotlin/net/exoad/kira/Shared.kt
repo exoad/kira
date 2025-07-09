@@ -16,6 +16,7 @@ import net.exoad.kira.compiler.front.Token
 enum class Symbols(val rep: Char)
 {
     NULL('\u0000'),
+    NEWLINE('\n'),
     DOUBLE_QUOTE('\u0022'),
     BACK_SLASH('\u005c'), // unused ignore; this might not be necessary, but we might need it in the parser stage since the parse will now evaluate escaped strings? (check chores)
     UNDERSCORE('\u005f'),
@@ -29,7 +30,7 @@ enum class Symbols(val rep: Char)
     ASTERISK('\u002a'),
     SLASH('\u002f'),
     PERCENT('\u0025'),
-    SEMICOLON('\u003b'),
+    STATEMENT_DELIMITER('\u003b'),
     EQUALS('\u003d'),
     OPEN_PARENTHESIS('\u0028'),
     CLOSE_PARENTHESIS('\u0029'),
@@ -38,6 +39,10 @@ enum class Symbols(val rep: Char)
     OPEN_BRACE('\u007b'),
     CLOSE_BRACE('\u007d'),
     OPEN_ANGLE('\u003c'),
+    // lmao this is just hilarious, but yea i just dont want to ruin the structuring of the language, so these tables are necessary
+    LOWERCASE_A('\u0061'),
+    LOWERCASE_I('\u0069'),
+    LOWERCASE_S('\u0073'),
     CLOSE_ANGLE('\u003e'),
     EXCLAMATION('\u0021'),
     COMMA('\u002c'),
@@ -71,6 +76,13 @@ object Keywords
         "for" to Token.Type.K_FOR,
         "module" to Token.Type.K_MODULE,
         "use" to Token.Type.K_USE,
+        "weak" to Token.Type.K_MODIFIER_WEAK,
+        "object" to Token.Type.K_OBJECT,
+        "enum" to Token.Type.K_ENUM,
+        "as" to Token.Type.K_AS,
+        "is" to Token.Type.K_IS,
+        "break" to Token.Type.K_BREAK,
+        "continue" to Token.Type.K_CONTINUE
     )
 
     val literals = mapOf(
@@ -101,7 +113,7 @@ object Builtin
 {
     enum class Intrinsics(val rep: String)
     {
-        TRACE("__trace__")
+        TRACE("trace")
     }
 
     /**
