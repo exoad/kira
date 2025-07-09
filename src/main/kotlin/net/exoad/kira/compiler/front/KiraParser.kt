@@ -252,7 +252,7 @@ class PredictionStack(private val parser: KiraParser)
     }
 
     /**
-     * cache stats for debugging
+     * for debugging
      */
     fun getCacheStats(): String
     {
@@ -262,7 +262,7 @@ class PredictionStack(private val parser: KiraParser)
 
 class PredictionContext(
     private val stack: PredictionStack,
-    private val initialState: ParserState
+    private val initialState: ParserState,
 )
 {
     private var committed = false
@@ -409,7 +409,7 @@ sealed class PredictionResult<T>(open val state: ParserState)
 data class ParserState(
     val pointer: Int,
     val underPointer: Token,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
 )
 {
     fun isValid(): Boolean
@@ -553,7 +553,7 @@ class KiraParser(private val context: SourceContext)
 
     private fun expectModifiers(
         modifiers: Map<Modifiers, FileLocation>?,
-        scopes: Modifiers.Context
+        scopes: Modifiers.Context,
     )
     {
         val r = if(modifiers == null || modifiers.isEmpty()) null
@@ -624,16 +624,6 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-//    fun parseProgram()
-//    {
-//        val statements = mutableListOf<ASTNode>()
-//        while(underPointer.type != Token.Type.S_EOF)
-//        {
-//            statements.add(parseStatement())
-//        }
-//        TokensProvider.rootASTNode = RootASTNode(statements)
-//    }
-
     fun parseStatement(modifiers: Map<Modifiers, FileLocation>?): Statement
     {
         fun parseWithModifiers(): Statement
@@ -643,7 +633,7 @@ class KiraParser(private val context: SourceContext)
             {
                 Token.Type.K_CLASS  -> parseClassDecl(modifiers)
                 Token.Type.K_OBJECT -> parseObjectDecl(modifiers)
-                else                -> parsePrimaryExpr(modifiers)
+                else                -> parseExpr()
             }
             expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
             return Statement(expr)
@@ -803,7 +793,6 @@ class KiraParser(private val context: SourceContext)
     fun parseExpr(minPrecedence: Int = 0): Expr
     {
         var left: Expr = parsePrimaryOrUnaryExpr()
-
         while(true)
         {
             val opTokens = predictionStack.binaryOp()
@@ -1159,7 +1148,7 @@ class KiraParser(private val context: SourceContext)
 
     private fun parseFunctionDecl(
         identifier: Identifier,
-        modifiers: Map<Modifiers, FileLocation>?
+        modifiers: Map<Modifiers, FileLocation>?,
     ): FunctionDecl
     {
         expectModifiers(modifiers, Modifiers.Context.FUNCTION)
@@ -1365,7 +1354,7 @@ class KiraParser(private val context: SourceContext)
         if(underPointer.type == Token.Type.OP_ASSIGN)
         {
             advancePointer()
-            value = parseBinaryExpr()
+            value = parseExpr()
         }
         return VariableDecl(identifier, type, value, modifiers?.keys?.toList() ?: emptyList())
     }

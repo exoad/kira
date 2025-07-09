@@ -2,13 +2,14 @@ package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.front.FileLocation
+import net.exoad.kira.compiler.front.SourceMap
 import net.exoad.kira.compiler.front.Token
 
-class SourceContext(val content: String, val file: String, val tokens: List<Token>)
+class SourceContext(val content: String, val file: String, val tokens: List<Token>, val sourceMap: SourceMap)
 {
     fun with(content: String, tokens: List<Token>? = null): SourceContext
     {
-        return SourceContext(content, file, tokens ?: this.tokens)
+        return SourceContext(content, file, tokens ?: this.tokens, sourceMap)
     }
 
     private val contentLines: List<String> = content.split("\n")
@@ -18,11 +19,8 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
      */
     fun findCanonicalLine(lineNumber: Int): String
     {
-        return when
-        {
-            lineNumber > contentLines.size || lineNumber < 0 -> DiagnosticsSymbols.NOT_REPRESENTABLE // should never happen or appear, if it appears, well... something fucked up BADDDDDDD
-            else                                             -> contentLines[lineNumber - 1].trimIndent()
-        }
+        val originalLine = sourceMap.getOriginalLine(lineNumber)
+        return content.lines().getOrElse(originalLine - 1) { "" }
     }
 
     /**
@@ -56,9 +54,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
                 builder.appendLine(gutter)
                 builder.appendLine("${fileLocation.lineNumber}| $line")
                 // makes sure the arrows are always aligned properly to the actual selected portion of the line
-                val gap =
-                    " ".repeat(fileLocation.column - 1 - contentLines[fileLocation.lineNumber - 1].indexOfFirst { !it.isWhitespace() }
-                        .coerceAtLeast(0))
+                val gap = " ".repeat(fileLocation.column - 1)
                 builder.append(gutter)
                 builder.append(gap)
                 builder.appendLine(
@@ -79,3 +75,6 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         }
     }
 }
+
+
+

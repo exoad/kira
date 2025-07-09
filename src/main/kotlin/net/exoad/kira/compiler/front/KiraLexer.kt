@@ -142,8 +142,9 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
                         S_OPEN_ANGLE, S_CLOSE_ANGLE,
                         OP_CMP_AND, OP_CMP_OR,
                         OP_BIT_XOR, OP_BIT_SHL,
-                        S_AND, S_PIPE -> true
-                        else          -> false
+                        S_AND, S_PIPE,
+                             -> true
+                        else -> false
                     }
                     token.size == 2 &&
                             token[0] == S_CLOSE_ANGLE &&
@@ -191,7 +192,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
 }
 
 /**
- * The lexers turns the input string received from [net.exoad.kira.compiler.preprocessor.KiraPreprocessor] into [Token]s
+ * The lexers turns the input string received from [KiraPreprocessor] into [Token]s
  * and assigns them based on the symbol.
  *
  * It passes this list of symbols onto the [KiraParser]
@@ -220,8 +221,8 @@ class KiraLexer(private val context: SourceContext)
             else                -> column++
         }
         pointer++
-        underPointer =
-            if(pointer >= context.content.length) Symbols.NULL.rep else context.content[pointer]
+        underPointer = if(pointer >= context.content.length) Symbols.NULL.rep
+        else context.content[pointer]
     }
 
     fun skipWhitespace()
@@ -245,10 +246,18 @@ class KiraLexer(private val context: SourceContext)
         }
     }
 
+    private fun getOriginalLocation(preprocessedLine: Int, preprocessedCol: Int): FileLocation
+    {
+        return FileLocation(
+            context.sourceMap.getOriginalLine(preprocessedLine),
+            context.sourceMap.getPreprocessedLine(preprocessedCol)
+        )
+    }
+
     private fun lexHexNumberLiteral(): Token
     {
         val start = pointer
-        val startLoc = FileLocation(lineNumber, column)
+        val startLoc = getOriginalLocation(lineNumber, column)
         while(underPointer.isHexChar())
         {
             advancePointer()

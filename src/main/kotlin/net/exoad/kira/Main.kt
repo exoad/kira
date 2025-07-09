@@ -5,7 +5,7 @@ import net.exoad.kira.compiler.Diagnostics
 import net.exoad.kira.compiler.GeneratedProvider
 import net.exoad.kira.compiler.SourceContext
 import net.exoad.kira.compiler.front.*
-import net.exoad.kira.compiler.preprocessor.KiraPreprocessor
+import net.exoad.kira.compiler.front.KiraPreprocessor
 import net.exoad.kira.ui.KiraVisualViewer
 import net.exoad.kira.utils.ArgsParser
 import net.exoad.kira.utils.XMLASTVisitor
@@ -47,7 +47,13 @@ fun main(args: Array<String>)
             {
                 val file = File(sourceFile)
                 val preprocessor = KiraPreprocessor(file.readText())
-                srcContext = SourceContext(preprocessor.process(), file.canonicalPath, emptyList())
+                val preprocessingResult = preprocessor.process()
+                srcContext = SourceContext(
+                    preprocessingResult.processedContent,
+                    file.canonicalPath,
+                    emptyList(),
+                    preprocessingResult.sourceMap
+                )
                 val lexer = KiraLexer(srcContext)
                 srcContext = srcContext.with(srcContext.content, lexer.tokenize())
                 if(it.dumpLexerTokens != null)
