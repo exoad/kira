@@ -52,7 +52,6 @@ fun main(args: Array<String>)
                     preprocessingResult.processedContent,
                     file.canonicalPath,
                     emptyList(),
-                    preprocessingResult.sourceMap
                 )
                 val lexer = KiraLexer(srcContext)
                 srcContext = srcContext.with(srcContext.content, lexer.tokenize())

@@ -165,82 +165,70 @@ class PredictionStack(private val parser: KiraParser)
             listOf(
                 {
                     // >>>= (ushr assign)
-                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE &&
-                        parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
-                        parser.peek(2).type == Token.Type.S_CLOSE_ANGLE &&
-                        parser.peek(3).type == Token.Type.OP_ASSIGN
-                    )
+                    when
                     {
-                        arrayOf(
+                        parser.peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                                parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                                parser.peek(2).type == Token.Type.S_CLOSE_ANGLE &&
+                                parser.peek(3).type == Token.Type.OP_ASSIGN
+                             -> arrayOf(
                             Token.Type.S_CLOSE_ANGLE,
                             Token.Type.S_CLOSE_ANGLE,
                             Token.Type.S_CLOSE_ANGLE,
                             Token.Type.OP_ASSIGN
                         )
-                    }
-                    else
-                    {
-                        null
+                        else -> null
                     }
                 },
                 {
                     // >>> (ushr)
-                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE &&
-                        parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
-                        parser.peek(2).type == Token.Type.S_CLOSE_ANGLE
-                    )
+                    when
                     {
-                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE)
-                    }
-                    else
-                    {
-                        null
+                        parser.peek(0).type == Token.Type.S_CLOSE_ANGLE &&
+                                parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                                parser.peek(2).type == Token.Type.S_CLOSE_ANGLE
+                             -> arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE)
+                        else -> null
                     }
                 },
                 {
                     // >>= (shr assign)
-                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
-                        parser.peek(2).type == Token.Type.OP_ASSIGN
-                    )
+                    when
                     {
-                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN)
-                    }
-                    else
-                    {
-                        null
+                        parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.S_CLOSE_ANGLE &&
+                                parser.peek(2).type == Token.Type.OP_ASSIGN
+                             -> arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN)
+                        else -> null
                     }
                 },
                 {
                     // >> (shr)
-                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.S_CLOSE_ANGLE)
+                    when
                     {
-                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE)
-                    }
-                    else
-                    {
-                        null
+                        parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.S_CLOSE_ANGLE -> arrayOf(
+                            Token.Type.S_CLOSE_ANGLE,
+                            Token.Type.S_CLOSE_ANGLE
+                        )
+                        else                                                                                               -> null
                     }
                 },
                 {
                     // >= (geq)
-                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.OP_ASSIGN)
+                    when
                     {
-                        arrayOf(Token.Type.S_CLOSE_ANGLE, Token.Type.OP_ASSIGN)
-                    }
-                    else
-                    {
-                        null
+                        parser.peek(0).type == Token.Type.S_CLOSE_ANGLE && parser.peek(1).type == Token.Type.OP_ASSIGN -> arrayOf(
+                            Token.Type.S_CLOSE_ANGLE,
+                            Token.Type.OP_ASSIGN
+                        )
+                        else                                                                                           -> null
                     }
                 },
                 {
                     // > (gte)
-                    if(parser.peek(0).type == Token.Type.S_CLOSE_ANGLE)
+                    when(parser.peek(0).type)
                     {
-                        arrayOf(Token.Type.S_CLOSE_ANGLE)
-                    }
-                    else
-                    {
-                        null
+                        Token.Type.S_CLOSE_ANGLE -> arrayOf(Token.Type.S_CLOSE_ANGLE)
+                        else                     -> null
                     }
                 }
             )) { null }

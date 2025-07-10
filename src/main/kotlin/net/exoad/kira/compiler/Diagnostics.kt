@@ -54,7 +54,7 @@ object Diagnostics
         cause: Throwable? = null,
         location: FileLocation? = null,
         selectorLength: Int = 1,
-        context: SourceContext
+        context: SourceContext,
     ): DiagnosticsException
     {
         return DiagnosticsException(tag, message.toString(), cause, location, context, selectorLength)
@@ -67,9 +67,10 @@ object Diagnostics
         cause: Throwable? = null,
         location: FileLocation? = null,
         selectorLength: Int = 1,
-        context: SourceContext
+        context: SourceContext,
     ): Nothing
     {
+        Logging.finer("Kira", "Target Location = $location")
         throw recordPanic(tag, message, cause, location, selectorLength, context)
     }
 
@@ -122,7 +123,7 @@ object Diagnostics
         {
             if(Public.Flags.beVerbose) // i dont want to toggle flags using Level and Logger :(
             {
-                logger.finer("Yap/$tag: $message")
+                logger.finer("Finer/$tag: $message")
             }
         }
 

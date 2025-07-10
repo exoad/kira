@@ -246,18 +246,10 @@ class KiraLexer(private val context: SourceContext)
         }
     }
 
-    private fun getOriginalLocation(preprocessedLine: Int, preprocessedCol: Int): FileLocation
-    {
-        return FileLocation(
-            context.sourceMap.getOriginalLine(preprocessedLine),
-            context.sourceMap.getPreprocessedLine(preprocessedCol)
-        )
-    }
-
     private fun lexHexNumberLiteral(): Token
     {
         val start = pointer
-        val startLoc = getOriginalLocation(lineNumber, column)
+        val startLoc = FileLocation(lineNumber, column)
         while(underPointer.isHexChar())
         {
             advancePointer()

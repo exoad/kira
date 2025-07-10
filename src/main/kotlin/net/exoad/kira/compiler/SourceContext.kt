@@ -2,25 +2,23 @@ package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.front.FileLocation
-import net.exoad.kira.compiler.front.SourceMap
 import net.exoad.kira.compiler.front.Token
 
-class SourceContext(val content: String, val file: String, val tokens: List<Token>, val sourceMap: SourceMap)
+class SourceContext(val content: String, val file: String, val tokens: List<Token>)
 {
+    private val lines: List<String> = content.lines()
+
     fun with(content: String, tokens: List<Token>? = null): SourceContext
     {
-        return SourceContext(content, file, tokens ?: this.tokens, sourceMap)
+        return SourceContext(content, file, tokens ?: this.tokens)
     }
-
-    private val contentLines: List<String> = content.split("\n")
 
     /**
      * 1-based indexing (is this lua? when anything refers to canonicity in my code, it often just means the way that ordinary folks (users of the language) would refer to things or like things
      */
     fun findCanonicalLine(lineNumber: Int): String
     {
-        val originalLine = sourceMap.getOriginalLine(lineNumber)
-        return content.lines().getOrElse(originalLine - 1) { "" }
+        return lines[lineNumber - 1]
     }
 
     /**
@@ -38,40 +36,53 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     {
         assert(locatorLength >= 1) { "Locator length must be visible!" }
         val line = findCanonicalLine(fileLocation.lineNumber)
-        return when
-        {
-            fileLocation.column < 0 || line.isNotRepresentableDiagnosticsSymbol() -> line
-            else                                                                  ->
-            {
-                val builder = StringBuilder()
-                val gutter = "${
+        return buildString {
+            appendLine(
+                "${
                     when(Public.Flags.useDiagnosticsUnicode)
                     {
-                        true -> "░"
-                        else -> " "
-                    }.repeat(fileLocation.lineNumber.toString().length)
-                }| "
-                builder.appendLine(gutter)
-                builder.appendLine("${fileLocation.lineNumber}| $line")
-                // makes sure the arrows are always aligned properly to the actual selected portion of the line
-                val gap = " ".repeat(fileLocation.column - 1)
-                builder.append(gutter)
-                builder.append(gap)
-                builder.appendLine(
-                    when
-                    {
-                        Public.Flags.useDiagnosticsUnicode -> "▲"
-                        else                               -> "^"
-                    }.repeat(locatorLength)
-                )
-                if(trailingText != null)
+                        true -> "⮞"
+                        else -> "@"
+                    }
+                } [${file}] : $fileLocation"
+            )
+            append(
+                when
                 {
-                    builder.append(gutter)
-                    builder.append(gap)
-                    builder.append(trailingText)
+                    fileLocation.column < 0 || line.isNotRepresentableDiagnosticsSymbol() -> line
+                    else                                                                  ->
+                    {
+                        val builder = StringBuilder()
+                        val gutter = "${
+                            when(Public.Flags.useDiagnosticsUnicode)
+                            {
+                                true -> "░"
+                                else -> " "
+                            }.repeat(fileLocation.lineNumber.toString().length)
+                        }| "
+                        builder.appendLine(gutter)
+                        builder.appendLine("${fileLocation.lineNumber}| $line")
+                        // makes sure the arrows are always aligned properly to the actual selected portion of the line
+                        val gap = " ".repeat(fileLocation.column - 1)
+                        builder.append(gutter)
+                        builder.append(gap)
+                        builder.appendLine(
+                            when
+                            {
+                                Public.Flags.useDiagnosticsUnicode -> "▲"
+                                else                               -> "^"
+                            }.repeat(locatorLength)
+                        )
+                        if(trailingText != null)
+                        {
+                            builder.append(gutter)
+                            builder.append(gap)
+                            builder.append(trailingText)
+                        }
+                        builder.toString()
+                    }
                 }
-                builder.toString()
-            }
+            )
         }
     }
 }

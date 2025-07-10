@@ -1,5 +1,7 @@
 package net.exoad.kira.compiler.front
 
+import net.exoad.kira.compiler.Diagnostics
+
 /**
  * The first process in the frontend compilation process by which certain
  * elements are either removed like comments and preprocessor directives.
@@ -10,45 +12,23 @@ class KiraPreprocessor(private val rawContent: String)
 {
     fun process(): PreprocessorResult
     {
-        val originalLines = rawContent.lines()
+        val rawLines = rawContent.lines()
         val processedLines = mutableListOf<String>()
-        val lineMappingPreprocessed = mutableMapOf<Int, Int>()
-        val lineMappingOriginal = mutableMapOf<Int, Int>()
-        val removedSections = mutableListOf<RemovedSection>()
+        val lineComments = mutableListOf<Int>()
         var originalLine = 1
-        var currentLine = 1
-        for(line in originalLines)
+        for(line in rawLines)
         {
             val processed = removeTrailingComment(line)
             processedLines.add(processed)
-            lineMappingPreprocessed[currentLine] = originalLine
-            lineMappingOriginal[originalLine] = currentLine
             if(processed.isEmpty() && line.trim().isNotEmpty())
             {
-                removedSections.add(
-                    RemovedSection(
-                        originalLine, originalLine, PreprocessorRemovalType.LINE_COMMENT
-                    )
-                )
-            }
-            else if(processed != line)
-            {
-                removedSections.add(
-                    RemovedSection(
-                        originalLine, originalLine, PreprocessorRemovalType.TRAILING_COMMENT
-                    )
-                )
-            }
+                lineComments.add(originalLine)
+            } // ignore trailing comments (they are not captured)
             originalLine++
-            currentLine++
         }
         return PreprocessorResult(
             processedContent = processedLines.joinToString("\n"),
-            sourceMap = SourceMap(
-                preprocessedToOriginal = lineMappingPreprocessed,
-                originalToPreprocessed = lineMappingOriginal
-            ),
-            removedSections = removedSections
+            lineComments = lineComments
         )
     }
 
@@ -60,22 +40,11 @@ class KiraPreprocessor(private val rawContent: String)
         {
             when
             {
-                escape                                                                   ->
-                {
-                    escape = false
-                }
-                line[i] == '\\' && inString                                              ->
-                {
-                    escape = true
-                }
-                line[i] == '"'                                                           ->
-                {
-                    inString = !inString
-                }
-                !inString && line[i] == '/' && i + 1 < line.length && line[i + 1] == '/' ->
-                {
-                    return line.substring(0, i).trimEnd()
-                }
+                escape                                                                   -> escape = false
+                line[i] == '\\' && inString                                              -> escape = true
+                line[i] == '"'                                                           -> inString = !inString
+                !inString && line[i] == '/' && i + 1 < line.length && line[i + 1] == '/' -> return line.substring(0, i)
+                    .trimEnd()
             }
         }
         return line
@@ -84,36 +53,6 @@ class KiraPreprocessor(private val rawContent: String)
 
 data class PreprocessorResult(
     val processedContent: String,
-    val sourceMap: SourceMap,
-    val removedSections: List<RemovedSection>,
+    val lineComments: List<Int>,
 )
 
-// could be used for later implementing proper doc comment generation or some other compile time gimmick
-data class RemovedSection(
-    val originalStartLine: Int,
-    val originalEndLine: Int,
-    val type: PreprocessorRemovalType,
-)
-
-enum class PreprocessorRemovalType
-{
-    LINE_COMMENT,
-    TRAILING_COMMENT
-}
-
-// lookup tables for converting between the original source line number to the preprocessed line number
-class SourceMap(
-    private val preprocessedToOriginal: Map<Int, Int>,
-    private val originalToPreprocessed: Map<Int, Int>,
-)
-{
-    fun getOriginalLine(preprocessedLine: Int): Int
-    {
-        return preprocessedToOriginal[preprocessedLine] ?: preprocessedLine
-    }
-
-    fun getPreprocessedLine(originalLine: Int): Int
-    {
-        return originalToPreprocessed[originalLine] ?: originalLine
-    }
-}

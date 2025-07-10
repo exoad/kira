@@ -33,22 +33,6 @@ class DiagnosticsException(
 ===================[ Kira Panicked! ]===================    
 Kira panicked at $tag:
 ${
-            when(location)
-            {
-                null -> ""
-                else ->
-                {
-                    "${
-                        when(Public.Flags.useDiagnosticsUnicode)
-                        {
-                            true -> "⮞"
-                            else -> "@"
-                        }
-                    } [${context.file}] : $location"
-                }
-            }
-        }
-${
             when
             {
                 location != null -> context.formCanonicalLocatorString(location, message, selectorLength)
