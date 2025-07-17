@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.front.exprs.decl
 
 import net.exoad.kira.compiler.front.ASTVisitor
+import net.exoad.kira.compiler.front.AbsoluteFileLocation
 import net.exoad.kira.compiler.front.elements.Identifier
 import net.exoad.kira.compiler.front.elements.Modifiers
 import net.exoad.kira.compiler.front.exprs.EnumMemberExpr
@@ -8,7 +9,7 @@ import net.exoad.kira.compiler.front.exprs.EnumMemberExpr
 class EnumDecl(
     override val name: Identifier,
     val members: Array<EnumMemberExpr>,
-    val modifiers: List<Modifiers> = emptyList()
+    val modifiers: List<Modifiers> = emptyList(),
 ) : Decl(name)
 {
     override fun accept(visitor: ASTVisitor)

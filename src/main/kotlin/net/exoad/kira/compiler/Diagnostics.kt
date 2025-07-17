@@ -6,6 +6,7 @@ import java.util.logging.ConsoleHandler
 import java.util.logging.Level
 import java.util.logging.Logger
 import java.util.logging.SimpleFormatter
+import kotlin.properties.Delegates
 import kotlin.system.exitProcess
 
 /**
@@ -46,6 +47,34 @@ object Diagnostics
     {
         logger.level = Level.OFF
         logger.handlers.forEach { it.level = Level.OFF }
+    }
+
+    fun recordDiagnostics(exception: DiagnosticsException): String
+    {
+        return """
+${
+            when
+            {
+                exception.location != null -> exception.context.formCanonicalLocatorString(
+                    exception.location,
+                    exception.message,
+                    exception.selectorLength
+                )
+                else                       -> exception.message
+            }
+        }
+        ${
+            when
+            {
+                exception.cause != null -> """
+    Internal stack trace (from cause): 
+                        
+    ${exception.cause}    
+    """.trimIndent()
+                else                    -> ""
+            }
+        }
+        """
     }
 
     fun recordPanic(

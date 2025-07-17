@@ -8,7 +8,7 @@ open class IfSelectionStatement(
     condition: Expr, val thenStatements: List<Statement>,
     val elseBranches: List<IfElseBranchStatementNode> = emptyList(),
 ) :
-    Statement(expr = condition)
+    Statement(condition)
 {
     override fun accept(visitor: ASTVisitor)
     {

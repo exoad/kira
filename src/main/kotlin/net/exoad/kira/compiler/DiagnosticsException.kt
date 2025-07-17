@@ -1,14 +1,13 @@
 package net.exoad.kira.compiler
 
-import net.exoad.kira.Public
 import net.exoad.kira.compiler.front.FileLocation
 import java.io.PrintWriter
 import java.io.StringWriter
 
-class DiagnosticsException(
+data class DiagnosticsException(
     val tag: String,
     override val message: String,
-    cause: Throwable? = null,
+    override val cause: Throwable? = null,
     val location: FileLocation? = null,
     val context: SourceContext,
     val selectorLength: Int,

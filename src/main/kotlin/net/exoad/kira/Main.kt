@@ -55,6 +55,12 @@ fun main(args: Array<String>)
                 )
                 val lexer = KiraLexer(srcContext)
                 srcContext = srcContext.with(srcContext.content, lexer.tokenize())
+                if(Public.Flags.enableVisualView)
+                {
+                    KiraVisualViewer(srcContext).also {
+                        it.run()
+                    }
+                }
                 if(it.dumpLexerTokens != null)
                 {
                     val lexerTokensDumpFile = File(it.dumpLexerTokens)
@@ -73,13 +79,29 @@ fun main(args: Array<String>)
                     Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                 }
                 val parser = KiraParser(srcContext)
-                val ast = parser.parse()
+                parser.parse()
                 if(it.dumpAST != null)
                 {
                     val astDumpFile = File(it.dumpAST)
                     astDumpFile.createNewFile()
-                    astDumpFile.writeText(XMLASTVisitor.build(ast))
+                    astDumpFile.writeText(XMLASTVisitor.build(srcContext.ast))
                     Diagnostics.Logging.info("Kira", "Dumped AST representation to ${astDumpFile.absolutePath}")
+                }
+                val semanticAnalyzer = KiraSemanticAnalyzer(srcContext)
+                val semanticAnalyzerResults = semanticAnalyzer.validateAST()
+                Diagnostics.Logging.warn(
+                    "Kira",
+                    if(semanticAnalyzerResults.isHealthy) "Source Health OK" else "There are problems in your code. Refer to the diagnostics below."
+                )
+                if(semanticAnalyzerResults.diagnostics.isNotEmpty())
+                {
+                    repeat(semanticAnalyzerResults.diagnostics.size)
+                    {
+                        Diagnostics.Logging.warn(
+                            "Kira",
+                            "\n-- Pumped Diagnostic #${it + 1}${Diagnostics.recordDiagnostics(semanticAnalyzerResults.diagnostics[it])}"
+                        )
+                    }
                 }
                 when(GeneratedProvider.outputMode)
                 {
@@ -89,12 +111,7 @@ fun main(args: Array<String>)
             }
         }
     }
-    if(Public.Flags.enableVisualView)
-    {
-        KiraVisualViewer(srcContext).also {
-            it.run()
-        }
-    }
+
     // todo: should this be some kind of "finer" message or should we leave it everytime for the user to see?
     Diagnostics.Logging.info("Kira", "Completed in $duration")
 }

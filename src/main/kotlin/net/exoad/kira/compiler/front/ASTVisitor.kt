@@ -16,6 +16,8 @@ import net.exoad.kira.compiler.front.exprs.CompoundAssignmentExpr
 import net.exoad.kira.compiler.front.exprs.EnumMemberExpr
 import net.exoad.kira.compiler.front.exprs.ForIterationExpr
 import net.exoad.kira.compiler.front.exprs.FunctionCallExpr
+import net.exoad.kira.compiler.front.exprs.FunctionCallNamedParameterExpr
+import net.exoad.kira.compiler.front.exprs.FunctionCallPositionalParameterExpr
 import net.exoad.kira.compiler.front.exprs.FunctionParameterExpr
 import net.exoad.kira.compiler.front.exprs.IntrinsicCallExpr
 import net.exoad.kira.compiler.front.exprs.MemberAccessExpr
@@ -24,6 +26,8 @@ import net.exoad.kira.compiler.front.exprs.RangeExpr
 import net.exoad.kira.compiler.front.exprs.TypeCastExpr
 import net.exoad.kira.compiler.front.exprs.TypeCheckExpr
 import net.exoad.kira.compiler.front.exprs.UnaryExpr
+import net.exoad.kira.compiler.front.exprs.WithExpr
+import net.exoad.kira.compiler.front.exprs.WithExprMember
 import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
 import net.exoad.kira.compiler.front.exprs.decl.EnumDecl
 import net.exoad.kira.compiler.front.exprs.decl.FunctionDecl
@@ -72,6 +76,10 @@ abstract class ASTVisitor
     abstract fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr)
     abstract fun visitTypeCastExpr(typeCastExpr: TypeCastExpr)
     abstract fun visitNoExpr(noExpr: NoExpr)
+    abstract fun visitWithExpr(withExpr: WithExpr)
+    abstract fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr)
+    abstract fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr)
+    abstract fun visitWithExprMember(withExprMember: WithExprMember)
 
     // LITERALS
     abstract fun visitIntegerLiteral(integerLiteral: IntegerLiteral)

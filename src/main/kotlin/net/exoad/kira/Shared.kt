@@ -82,7 +82,8 @@ object Keywords
         "as" to Token.Type.K_AS,
         "is" to Token.Type.K_IS,
         "break" to Token.Type.K_BREAK,
-        "continue" to Token.Type.K_CONTINUE
+        "continue" to Token.Type.K_CONTINUE,
+        "with" to Token.Type.K_WITH
     )
 
     val literals = mapOf(

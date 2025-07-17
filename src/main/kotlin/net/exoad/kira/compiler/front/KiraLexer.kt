@@ -9,6 +9,11 @@ import kotlin.properties.Delegates
 
 data class FileLocation(val lineNumber: Int, val column: Int)
 {
+    companion object
+    {
+        val UNKNOWN = FileLocation(-1, -1)
+    }
+
     init
     {
         assert(lineNumber > 0) { "Line Number must be greater than 0 (BAD: $lineNumber)" }
@@ -23,15 +28,28 @@ data class FileLocation(val lineNumber: Int, val column: Int)
 
 data class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFile: String)
 {
+    companion object
+    {
+        fun fromRelative(location: FileLocation, file: String): AbsoluteFileLocation
+        {
+            return AbsoluteFileLocation(location.lineNumber, location.column, file)
+        }
+    }
+
     init
     {
         assert(lineNumber > 0) { "Line Number must be greater than 0 (BAD: $lineNumber)" }
         assert(column > 0) { "Column Number must be greater than 0 (BAD: $column)" }
     }
 
+    fun toRelative(): FileLocation
+    {
+        return FileLocation(lineNumber, column)
+    }
+
     override fun toString(): String
     {
-        return "[$srcFile : line $lineNumber, col $column"
+        return "[$srcFile] : line $lineNumber, col $column"
     }
 }
 
@@ -56,7 +74,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_SCOPE("'::' (Static Member Access)"),
         OP_DIV("'/' (Divide)"),
         OP_MOD("'%' (Modulo)"),
-        OP_ASSIGN("'=' (Assignment)"),
+        S_EQUAL("'=' (Assignment)"),
         OP_ASSIGN_ADD("'+=' (Compound Addition Assignment)"),
         OP_ASSIGN_SUB("'-=' (Compound Subtraction Assignment)"),
         OP_ASSIGN_MUL("'*=' (Compound Multiplication Assignment)"),
@@ -91,6 +109,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_FOR("'for'"),
         K_CLASS("'class'"),
         K_USE("'use'"),
+        K_WITH("'with'"),
         K_ENUM("'enum'"),
         K_OBJECT("'object'"),
         K_MODULE("'module'"),
@@ -125,16 +144,11 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
 
         companion object
         {
-            /**
-             * [net.exoad.kira.compiler.front.exprs.CompoundAssignmentExpr]
-             */
-            val compoundAssignmentOperators = entries.filter { it.name.startsWith("OP_ASSIGN_") }.toTypedArray()
-
             fun isBinaryOperator(vararg token: Type): Boolean
             {
                 return when
                 {
-                    token.size == 1                                              -> when(token[0])
+                    token.size == 1                                            -> when(token[0])
                     {
                         OP_RANGE, S_DOT,
                         OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
@@ -148,20 +162,18 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
                     }
                     token.size == 2 &&
                             token[0] == S_CLOSE_ANGLE &&
-                            (token[1] == OP_ASSIGN || token[1] == S_CLOSE_ANGLE) -> true
-
+                            (token[1] == S_EQUAL || token[1] == S_CLOSE_ANGLE) -> true
                     token.size == 3 &&
                             token[0] == S_CLOSE_ANGLE &&
                             token[1] == S_CLOSE_ANGLE &&
-                            token[2] == S_CLOSE_ANGLE                            -> true
-
+                            token[2] == S_CLOSE_ANGLE                          -> true
                     token.size == 4 &&
                             token[0] == S_CLOSE_ANGLE &&
                             token[1] == S_CLOSE_ANGLE &&
                             token[2] == S_CLOSE_ANGLE &&
-                            token[3] == OP_ASSIGN                                -> true
+                            token[3] == S_EQUAL                                -> true
 
-                    else                                                         -> false
+                    else                                                       -> false
                 }
             }
 
@@ -453,12 +465,26 @@ class KiraLexer(private val context: SourceContext)
                         Symbols.OPEN_ANGLE.rep ->
                         {
                             advancePointer()
-                            Token.LinkedSymbols(
-                                Token.Type.OP_BIT_SHL,
-                                arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE),
-                                start,
-                                startLoc
-                            )
+                            when(localPeek(2))
+                            {
+                                Symbols.EQUALS.rep ->
+                                {
+                                    advancePointer()
+                                    Token.LinkedSymbols(
+                                        Token.Type.OP_ASSIGN_BIT_SHL,
+                                        arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE, Symbols.EQUALS),
+                                        start,
+                                        startLoc
+                                    )
+                                }
+                                else               -> Token.LinkedSymbols(
+                                    Token.Type.OP_BIT_SHL,
+                                    arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE),
+                                    start,
+                                    startLoc
+                                )
+                            }
+
                         }
                         else                   -> Token.Symbol(
                             Token.Type.S_OPEN_ANGLE,
@@ -672,22 +698,52 @@ class KiraLexer(private val context: SourceContext)
                     start,
                     startLoc
                 )
-                Symbols.PERCENT.rep             -> Token.Symbol(
-                    Token.Type.OP_MOD,
-                    Symbols.PERCENT,
-                    start,
-                    startLoc
-                )
-                Symbols.CARET.rep               -> Token.Symbol(
-                    Token.Type.OP_BIT_XOR,
-                    Symbols.CARET,
-                    start,
-                    startLoc
-                )
+                Symbols.PERCENT.rep             ->
+                    when(localPeek(1))
+                    {
+                        Symbols.EQUALS.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_ASSIGN_MOD,
+                                arrayOf(Symbols.PERCENT, Symbols.EQUALS),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else               -> Token.Symbol(
+                            Token.Type.OP_MOD,
+                            Symbols.PERCENT,
+                            start,
+                            startLoc
+                        )
+                    }
+
+                Symbols.CARET.rep               ->
+                    when(localPeek(1))
+                    {
+                        Symbols.EQUALS.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_ASSIGN_BIT_XOR,
+                                arrayOf(Symbols.CARET, Symbols.EQUALS),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else               -> Token.Symbol(
+                            Token.Type.OP_BIT_XOR,
+                            Symbols.CARET,
+                            start,
+                            startLoc
+                        )
+                    }
+
                 Symbols.PIPE.rep                ->
                     when(localPeek(1))
                     {
-                        Symbols.PIPE.rep ->
+                        Symbols.PIPE.rep   ->
                         {
                             advancePointer()
                             Token.LinkedSymbols(
@@ -697,7 +753,17 @@ class KiraLexer(private val context: SourceContext)
                                 startLoc
                             )
                         }
-                        else             -> Token.Symbol(Token.Type.S_PIPE, Symbols.PIPE, start, startLoc)
+                        Symbols.EQUALS.rep ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_ASSIGN_BIT_OR,
+                                arrayOf(Symbols.PIPE, Symbols.EQUALS),
+                                start,
+                                startLoc
+                            )
+                        }
+                        else               -> Token.Symbol(Token.Type.S_PIPE, Symbols.PIPE, start, startLoc)
                     }
                 Symbols.AMPERSAND.rep           ->
                     when(localPeek(1))
@@ -708,6 +774,16 @@ class KiraLexer(private val context: SourceContext)
                             Token.LinkedSymbols(
                                 Token.Type.OP_CMP_AND,
                                 arrayOf(Symbols.AMPERSAND, Symbols.AMPERSAND),
+                                start,
+                                startLoc
+                            )
+                        }
+                        Symbols.EQUALS.rep    ->
+                        {
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_ASSIGN_BIT_AND,
+                                arrayOf(Symbols.AMPERSAND, Symbols.EQUALS),
                                 start,
                                 startLoc
                             )
@@ -781,7 +857,7 @@ class KiraLexer(private val context: SourceContext)
                             )
                         }
                         else               ->
-                            return Token.Symbol(Token.Type.OP_ASSIGN, Symbols.EQUALS, start, startLoc)
+                            return Token.Symbol(Token.Type.S_EQUAL, Symbols.EQUALS, start, startLoc)
                     }
                 else                            -> Diagnostics.panic(
                     "KiraLexer::nextToken",

@@ -468,7 +468,14 @@ object XMLASTVisitor :
             functionCallExpr.name.accept(this)
             node("Parameters")
             {
-                functionCallExpr.parameters.forEach { it.accept(this) }
+                node("Positional")
+                {
+                    functionCallExpr.positionalParameters.forEach { it.accept(this) }
+                }
+                node("Named")
+                {
+                    functionCallExpr.namedParameters.forEach { it.accept(this) }
+                }
             }
         }
     }
@@ -605,6 +612,50 @@ object XMLASTVisitor :
     override fun visitNoExpr(noExpr: NoExpr)
     {
         xmlSingleLeaf("NoExpr", null)
+    }
+
+    override fun visitWithExpr(withExpr: WithExpr)
+    {
+        node("WithExpr")
+        {
+            withExpr.members.forEach { it.accept(this) }
+        }
+    }
+
+    override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr)
+    {
+        node("FunctionCallNamedParameterExpr")
+        {
+            node("Name")
+            {
+                functionCallNamedParameterExpr.name.accept(this)
+            }
+            functionCallNamedParameterExpr.value.accept(this)
+        }
+    }
+
+    override fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr)
+    {
+        node("FunctionCallPositionalParameterExpr")
+        {
+            node("Position")
+            {
+                appendLine(functionCallPositionalParameterExpr.position.toString())
+            }
+            functionCallPositionalParameterExpr.value.accept(this)
+        }
+    }
+
+    override fun visitWithExprMember(withExprMember: WithExprMember)
+    {
+        node("WithExprMember")
+        {
+            node("Name")
+            {
+                withExprMember.name.accept(this)
+            }
+            withExprMember.value.accept(this)
+        }
     }
 
     private fun pushIndent()

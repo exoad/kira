@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.front.exprs.decl
 
 import net.exoad.kira.compiler.front.ASTVisitor
+import net.exoad.kira.compiler.front.AbsoluteFileLocation
 import net.exoad.kira.compiler.front.elements.StringLiteral
 
 class ModuleDecl(val uri: StringLiteral) : Decl(uri)

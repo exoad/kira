@@ -7,10 +7,7 @@ import net.exoad.kira.compiler.front.Token
  *
  * [context] describe on where these members are allowed to be placed
  */
-enum class Modifiers(
-    val tokenType: Token.Type,
-    val context: Array<Context> = emptyArray(),
-)
+enum class Modifiers(val tokenType: Token.Type, val context: Array<Context> = emptyArray())
 {
     MUTABLE(
         Token.Type.K_MODIFIER_MUTABLE, arrayOf(

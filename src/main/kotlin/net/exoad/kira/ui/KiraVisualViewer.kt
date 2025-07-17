@@ -18,39 +18,36 @@ import kotlin.math.log10
  */
 class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer")
 {
-    private val editorPane = JEditorPane()
-    private var showTokenType = true
-
     init
     {
         size = Dimension(600, 800)
         preferredSize = size
         defaultCloseOperation = EXIT_ON_CLOSE //often is the last flag that is run and checked in the lifecycle
-        editorPane.apply {
+        contentPane = JTabbedPane().apply {
+            addTab("Raw", JScrollPane(render(false)).apply {
+                isOpaque = true
+                preferredSize = size
+            })
+            addTab("Lexer", JScrollPane(render(true)).apply {
+                isOpaque = true
+                preferredSize = size
+            })
+            addTab("Stats", JEditorPane().apply {
+                contentType = "text/html"
+                text =
+                    "<html><body style=\"font-size: 16px;\"><strong>Total Tokens:</strong> ${context.tokens.size}</body></html>"
+            })
+        }
+    }
+
+    private fun render(showTokenType: Boolean): JEditorPane
+    {
+        val editorPane = JEditorPane().apply {
             isEditable = false
             contentType = "text/html"
             font = Font(Font.MONOSPACED, Font.PLAIN, 14)
             border = BorderFactory.createLineBorder(Color.BLACK, 1, true)
         }
-        jMenuBar = JMenuBar().apply {
-            add(JMenu("View").apply {
-                add(JMenuItem(if(showTokenType) "Toggle Raw View" else "Toggle Token View").apply {
-                    addActionListener {
-                        showTokenType = !showTokenType
-                        render()
-                    }
-                })
-            })
-        }
-        contentPane = JScrollPane(editorPane).apply {
-            isOpaque = true
-            preferredSize = size
-        }
-        render()
-    }
-
-    private fun render()
-    {
         editorPane.text = buildString {
             fun node(name: String, attrs: String? = null, body: () -> Unit)
             {
@@ -133,6 +130,7 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
                 }
             }
         }
+        return editorPane
     }
 
     fun run()

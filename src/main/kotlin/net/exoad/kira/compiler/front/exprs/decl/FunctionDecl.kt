@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.front.exprs.decl
 
 import net.exoad.kira.compiler.front.ASTVisitor
+import net.exoad.kira.compiler.front.AbsoluteFileLocation
 import net.exoad.kira.compiler.front.elements.AnonymousIdentifier
 import net.exoad.kira.compiler.front.elements.AnonymousFunction
 import net.exoad.kira.compiler.front.elements.Identifier
@@ -9,7 +10,7 @@ import net.exoad.kira.compiler.front.elements.Modifiers
 open class FunctionDecl(
     override val name: Identifier,
     open val value: AnonymousFunction,
-    override val modifiers: List<Modifiers> = emptyList()
+    override val modifiers: List<Modifiers> = emptyList(),
 ) : FirstClassDecl(name, modifiers)
 {
     init

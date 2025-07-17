@@ -3,8 +3,7 @@ package net.exoad.kira.compiler.front.exprs
 import net.exoad.kira.compiler.Intrinsic
 import net.exoad.kira.compiler.front.ASTVisitor
 
-open class IntrinsicCallExpr(val name: Intrinsic, val parameters: List<Expr>) :
-    Expr()
+open class IntrinsicCallExpr(val name: Intrinsic, val parameters: List<Expr>) : Expr()
 {
     override fun accept(visitor: ASTVisitor)
     {

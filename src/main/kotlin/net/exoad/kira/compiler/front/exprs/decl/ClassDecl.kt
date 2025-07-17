@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.front.exprs.decl
 
 import net.exoad.kira.compiler.front.ASTVisitor
+import net.exoad.kira.compiler.front.AbsoluteFileLocation
 import net.exoad.kira.compiler.front.elements.Modifiers
 import net.exoad.kira.compiler.front.elements.TypeSpecifier
 
@@ -11,7 +12,7 @@ open class ClassDecl(
     override val name: TypeSpecifier,
     val modifiers: List<Modifiers> = emptyList(),
     val members: List<FirstClassDecl> = emptyList(),
-    val parent: TypeSpecifier? = null
+    val parent: TypeSpecifier? = null,
 ) : Decl(name)
 {
     override fun accept(visitor: ASTVisitor)
