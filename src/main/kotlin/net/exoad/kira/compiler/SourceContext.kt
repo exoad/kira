@@ -97,9 +97,14 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
                         )
                         if(trailingText != null)
                         {
-                            builder.append(gutter)
-                            builder.append(gap)
-                            builder.append(trailingText)
+                            // allow for multi line and adjusts the gutter to allow for multi line support!
+                            for(bit in trailingText.split("\n"))
+                            {
+                                builder.append(gutter)
+                                builder.append(gap)
+                                builder.append(bit)
+                                builder.appendLine()
+                            }
                         }
                         builder.toString()
                     }

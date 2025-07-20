@@ -1182,20 +1182,21 @@ class KiraParser(private val context: SourceContext)
 
     fun parseIdentifier(): Identifier
     {
+        val loc = underPointer.canonicalLocation
         val value = underPointer.content
         expectThenAdvance(Token.Type.IDENTIFIER)
-        return putOrigin(Identifier(value))
+        return putOrigin(Identifier(value), loc)
     }
 
     private val emptyTypeArray = emptyArray<TypeSpecifier>() // temporary usage for [parseType]
     fun parseType(trace: Int = 0): TypeSpecifier
     {
-        val baseName = underPointer.content
         val baseLocation = underPointer.canonicalLocation
+        val baseName = underPointer.content
         expectThenAdvance(Token.Type.IDENTIFIER)
         if(underPointer.type != Token.Type.S_OPEN_ANGLE)
         {
-            return putOrigin(TypeSpecifier(baseName, emptyTypeArray))
+            return putOrigin(TypeSpecifier(baseName, emptyTypeArray), baseLocation)
         }
         val generics = mutableListOf<TypeSpecifier>()
         if(underPointer.type == Token.Type.S_OPEN_ANGLE)

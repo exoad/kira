@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.front.elements.FloatLiteral
 import net.exoad.kira.compiler.front.elements.Identifier
 import net.exoad.kira.compiler.front.elements.IntegerLiteral
 import net.exoad.kira.compiler.front.elements.ListLiteral
+import net.exoad.kira.compiler.front.elements.Literal
 import net.exoad.kira.compiler.front.elements.MapLiteral
 import net.exoad.kira.compiler.front.elements.StringLiteral
 import net.exoad.kira.compiler.front.elements.TypeSpecifier
@@ -48,6 +49,7 @@ import net.exoad.kira.compiler.front.statements.ReturnStatement
 import net.exoad.kira.compiler.front.statements.Statement
 import net.exoad.kira.compiler.front.statements.UseStatement
 import net.exoad.kira.compiler.front.statements.WhileIterationStatement
+import kotlin.reflect.KClass
 
 data class SemanticSymbol(
     val name: String,
@@ -72,6 +74,7 @@ enum class Scope
     MODULE,
     CLASS,
     OBJECT,
+    OBJECT_MAJOR, // object is the object declaration created using the "object scope"
     ENUM,
     FUNCTION,
 }
@@ -107,9 +110,12 @@ class SymbolTable
 
     fun declare(identifier: String, symbol: SemanticSymbol): Boolean
     {
-        if(scopeStack.first().containsKey(identifier))
+        for(scope in scopeStack)
         {
-            return false
+            if(scope.containsKey(identifier))
+            {
+                return false // already declared in any active scope
+            }
         }
         scopeStack.first()[identifier] = symbol
         return true
@@ -153,12 +159,34 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
     private val diagnosticsPump = mutableListOf<DiagnosticsException>()
     val symbolTable: SymbolTable = SymbolTable()
 
-    private fun pump(message: String, location: FileLocation, selectorLength: Int = 1)
+    init
+    {
+        symbolTable.declare(
+            "Int32",
+            SemanticSymbol(
+                name = "Int32",
+                kind = SemanticSymbolKind.TYPE_SPECIFIER,
+                type = Token.Type.IDENTIFIER,
+                declaredAt = AbsoluteFileLocation.bakedIn()
+            )
+        )
+        symbolTable.declare(
+            "String",
+            SemanticSymbol(
+                name = "String",
+                kind = SemanticSymbolKind.TYPE_SPECIFIER,
+                type = Token.Type.IDENTIFIER,
+                declaredAt = AbsoluteFileLocation.bakedIn()
+            )
+        )
+    }
+
+    private fun pump(message: String, location: FileLocation, selectorLength: Int = 1, help: String = "")
     {
         diagnosticsPump.add(
             Diagnostics.recordPanic(
                 "",
-                message,
+                if(help.isEmpty()) message else "$message\n\nHelp: $help",
                 location = location,
                 selectorLength = selectorLength,
                 context = context
@@ -177,6 +205,54 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
             return SemanticAnalyzerResults(diagnosticsPump, symbolTable, false)
         }
         return SemanticAnalyzerResults(diagnosticsPump, symbolTable, diagnosticsPump.isEmpty()) // todo: need impl!
+    }
+
+    fun pumpOnTrue(expr: Boolean, message: String, location: FileLocation?, selectorLength: Int = 1, help: String = "")
+    {
+        if(expr)
+        {
+            pump(message, location ?: FileLocation.UNKNOWN, selectorLength, help)
+        }
+    }
+
+    fun expectSymbol(symbolName: String, symbolKind: SemanticSymbolKind)
+    {
+        val res = symbolTable.resolve(symbolName)
+        pumpOnTrue(
+            res == null || res.kind != symbolKind, "Expected a $symbolKind for '$symbolName', but got '$res'",
+            location = res?.declaredAt?.toRelative() ?: FileLocation.UNKNOWN,
+            selectorLength = res!!.name.length
+        )
+    }
+
+    fun expectNotDeclared(
+        symbolName: String,
+        location: FileLocation?,
+        helpMessage: String = "Shadowing is not allowed. Rename this or the previous declaration.",
+    )
+    {
+        val res = symbolTable.resolve(symbolName)
+        if(res != null)
+        {
+            pump(
+                "'${symbolName}' was already declared at ${res.declaredAt}",
+                location = location ?: FileLocation.UNKNOWN,
+                selectorLength = symbolName.length,
+                help = helpMessage
+            )
+        }
+    }
+
+    fun expectType(symbolName: String, typeName: String)
+    {
+        val res = symbolTable.resolve(symbolName)
+        if(res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName)
+        {
+            pump(
+                "Expected a $typeName for $symbolName, but got '$res'",
+                location = res?.declaredAt?.toRelative() ?: FileLocation.UNKNOWN
+            )
+        }
     }
 
     override fun visitStatement(statement: Statement)
@@ -326,27 +402,27 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
 
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
     {
-        // TODO("Not yet implemented")
+        // should be true
     }
 
     override fun visitStringLiteral(stringLiteral: StringLiteral)
     {
-        // TODO("Not yet implemented")
+        // should be true
     }
 
     override fun visitBoolLiteral(boolLiteral: BoolLiteral)
     {
-        // TODO("Not yet implemented")
+        // should be true
     }
 
     override fun visitFloatLiteral(floatLiteral: FloatLiteral)
     {
-        // TODO("Not yet implemented")
+        // should be true
     }
 
     override fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
     {
-        // TODO("Not yet implemented")
+        // should be true
     }
 
     override fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
@@ -366,60 +442,84 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
 
     override fun visitIdentifier(identifier: Identifier)
     {
-        if(symbolTable.resolve(identifier.name) == null)
-        {
-            pump(
-                "The identifier '${identifier.name}' was not found at this scope (${symbolTable.peekScope().name.lowercase()})",
-                location = context.astOrigins[identifier] ?: FileLocation(-1, -1)
+        expectNotDeclared(identifier.name, context.astOrigins[identifier])
+        symbolTable.declare(
+            identifier.name, SemanticSymbol(
+                name = identifier.name,
+                kind = SemanticSymbolKind.VARIABLE,
+                type = Token.Type.IDENTIFIER,
+                declaredAt = AbsoluteFileLocation.fromRelative(
+                    context.astOrigins[identifier] ?: FileLocation.UNKNOWN, context.file
+                )
             )
-        }
+        )
     }
 
     override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
     {
-        if(symbolTable.resolve(typeSpecifier.name) == null)
-        {
-            pump(
-                "The type '${typeSpecifier.name}' was not found at this scope (${symbolTable.peekScope().name.lowercase()})",
-                location = context.astOrigins[typeSpecifier] ?: FileLocation.UNKNOWN
-            )
-        }
     }
+
+    /**
+     * Used for [visitVariableDecl] which uses this map to find all of the literal types and how they can match
+     */
+    private val variableBuiltinPrimitives = mapOf(
+        StringLiteral::class to { type: String -> type == "String" },
+        IntegerLiteral::class to { type: String -> type == "Int32" || type == "Int64" },
+        FloatLiteral::class to { type: String -> type == "Float32" || type == "Float64" },
+        BoolLiteral::class to { type: String -> type == "Bool" },
+
+        )
 
     override fun visitVariableDecl(variableDecl: VariableDecl)
     {
-        val name = variableDecl.name.name
-        if(!symbolTable.declare(
-                name, SemanticSymbol(
-                    name = name,
-                    kind = SemanticSymbolKind.VARIABLE,
-                    type = Token.Type.IDENTIFIER,
-                    declaredAt = AbsoluteFileLocation.fromRelative(
-                        context.astOrigins[variableDecl] ?: FileLocation.UNKNOWN, context.file
-                    )
-                )
-            )
-        )
+        variableDecl.name.accept(this)
+        if(symbolTable.resolve(variableDecl.typeSpecifier.name) == null)
         {
             pump(
-                "Variable '${name}' was already declared in the ${symbolTable.peekScope().name.lowercase()} scope at ${
-                    symbolTable.resolve(
-                        name
-                    )?.declaredAt
-                }",
-                location = context.astOrigins[variableDecl] ?: FileLocation.UNKNOWN
+                "The type '${variableDecl.typeSpecifier.name}' was not found at this scope (${symbolTable.peekScope().name.lowercase()})",
+                location = context.astOrigins[variableDecl.typeSpecifier] ?: FileLocation.UNKNOWN,
+                selectorLength = variableDecl.typeSpecifier.name.length
+            )
+        }
+        variableDecl.typeSpecifier.accept(this)
+        // check if the value of the variable matches the type
+        //
+        // we need to check for a multitude of conditions
+        // 1. if it's a raw literal or object value, check if just the type names match
+        // 2. if it's a function call, check the return type of that function type
+        // (there are more edge cases, but i am not too sure
+        if(variableDecl.value != null)
+        {
+            variableDecl.value!!.accept(this)
+            val typeName = variableDecl.typeSpecifier.name
+            val literalClass = variableDecl.value!!::class
+            pumpOnTrue(
+                !(variableBuiltinPrimitives[literalClass]?.invoke(typeName) ?: true),
+                "Type mismatch. Got a ${
+                    literalClass.simpleName?.removeSuffix("Literal")?.lowercase()
+                } literal, but expected a '$typeName'",
+                context.astOrigins[variableDecl.value],
+                help = "Correct the declaration type or the value itself.",
             )
         }
     }
 
     override fun visitFunctionDecl(functionDecl: FunctionDecl)
     {
-        // TODO("Not yet implemented")
     }
 
     override fun visitClassDecl(classDecl: ClassDecl)
     {
-        // TODO("Not yet implemented")
+        expectNotDeclared(classDecl.name.name, context.astOrigins[classDecl])
+        symbolTable.declare(
+            classDecl.name.name,
+            SemanticSymbol(
+                classDecl.name.name,
+                SemanticSymbolKind.CLASS,
+                Token.Type.K_CLASS,
+                AbsoluteFileLocation.fromRelative(context.astOrigins[classDecl] ?: FileLocation.UNKNOWN, context.file)
+            )
+        )
     }
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl)
@@ -429,7 +529,6 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
 
     override fun visitObjectDecl(objectDecl: ObjectDecl)
     {
-        // TODO("Not yet implemented")
     }
 
     override fun visitEnumDecl(enumDecl: EnumDecl)

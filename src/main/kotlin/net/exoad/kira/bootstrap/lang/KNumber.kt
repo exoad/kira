@@ -9,6 +9,7 @@ import net.exoad.kira.bootstrap.KiraPragmaUseStackInliner
 import net.exoad.kira.bootstrap.KiraRefLiteral
 import net.exoad.kira.bootstrap.KiraSubClass
 import net.exoad.kira.bootstrap.KiraSugarLiteralInstantiate
+import net.exoad.kira.bootstrap.KiraVectorizeNoExtract
 import net.exoad.kira.compiler.front.Token
 import net.exoad.kira.compiler.front.elements.IntegerLiteral
 
@@ -66,17 +67,20 @@ sealed class KNumber<T : KNumber<T>>(open val value: Number) : KAny()
 
         override fun times(other: KInt32): KInt32
         {
-            TODO("Not yet implemented")
+            @KiraPragmaUseStackInliner val res = @KiraVectorizeNoExtract(true) (value * other.value)
+            return KInt32(res)
         }
 
         override fun divide(other: KInt32): KInt32
         {
-            TODO("Not yet implemented")
+            @KiraPragmaUseStackInliner val res = @KiraVectorizeNoExtract(true) (value / other.value)
+            return KInt32(res)
         }
 
         override fun remainder(other: KInt32): KInt32
         {
-            TODO("Not yet implemented")
+            @KiraPragmaUseStackInliner val res = @KiraVectorizeNoExtract(true) (value % other.value)
+            return KInt32(res)
         }
     }
 }

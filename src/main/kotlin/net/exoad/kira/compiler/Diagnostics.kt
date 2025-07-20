@@ -24,7 +24,7 @@ object Diagnostics
     {
         System.setProperty(
             "java.util.logging.SimpleFormatter.format",
-            "%5\$s%n" // get rid of all of the garbage produced by the default java logger including things like method site, a long time stamp.
+            "%5\$s%n" // get rid of all the garbage produced by the default java logger including things like method site, a long time stamp.
         )
         val consoleHandler = ConsoleHandler().apply {
             formatter = SimpleFormatter()

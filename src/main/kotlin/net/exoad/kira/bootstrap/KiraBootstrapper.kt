@@ -45,3 +45,7 @@ annotation class KiraCoerceLiteralToken(val token: Array<Token.Type>)
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.SOURCE)
 annotation class KiraRefLiteral(val target: KClass<*>)
+
+@Target(AnnotationTarget.EXPRESSION)
+@Retention(AnnotationRetention.SOURCE)
+annotation class KiraVectorizeNoExtract(val intVector: Boolean)

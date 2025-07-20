@@ -26,10 +26,21 @@ data class FileLocation(val lineNumber: Int, val column: Int)
     }
 }
 
-data class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFile: String)
+open class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFile: String)
 {
     companion object
     {
+        fun bakedIn(): AbsoluteFileLocation
+        {
+            return object : AbsoluteFileLocation(0, 0, "builtin")
+            {
+                override fun toString(): String
+                {
+                    return "kira:builtin"
+                }
+            }
+        }
+
         fun fromRelative(location: FileLocation, file: String): AbsoluteFileLocation
         {
             return AbsoluteFileLocation(location.lineNumber, location.column, file)
