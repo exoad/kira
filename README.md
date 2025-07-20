@@ -9,11 +9,13 @@ Kira is a modern, pure object-oriented language that combines familiar expressiv
 Swift, Kotlin, and Dart. Kira serves as a modern toolkit similar to Haxe, allowing for transpilation and AOT-compilation to various
 mediums.
 
+Kira's model focuses on private, immutable, and static. This means that without the mut keyword (for mutability or inheritance) or pub (for public access), variables, functions, and classes cannot be modified, reassigned, or inherited.
+Classes in Kira only hold instance-level information, without static or companion members. Instead, namespaces handle code organization and separate static from instance data.
+
 `July 19, 2025:`
 
 I have decided on Kira's main workflow target as towards transpiling to other mediums (be it source, bytecode, bitcode, or machine code). This is resolution
 is backed by the strong compile-time intrinsics I plan to further improve from not just simple directives but towards "metaprogramming."
-
 
 `June 28, 2025:`
 
@@ -35,7 +37,7 @@ raw x86 Assembly and using NASM to do the rest; however, we will see where this 
 *Please note that this is an early build where there is yet to be a standard library, so compile-time intrinsics are used.*
 
 ```zig
-@__trace__("Hello World!")
+@trace("Hello World!")
 ```
 
 ### Variables, Functions, & Data
@@ -82,7 +84,7 @@ All types are declared after a colon `:` even for functions and variables as fun
 a: Int32 = 9999
 b: Int32 = 0x10
 
-@__trace__(a + b)
+@trace(a + b)
 
 sumOf(a1: Int32, b1: Int32): Int32 
 {
@@ -102,17 +104,17 @@ on the `Bool` data type.
 someCondition: Bool = 1 + 1 == 2;
 if(someCondition)
 {
-    @__trace__("Is true!");
+    @trace("Is true!");
 }
 else
 {
-    @__trace__(":(");
+    @trace(":(");
 }
 
 i: Int32 = 32;
 while(i-- > 0)
 {
-    @__trace__("Counting down at: ${i}");
+    @trace("Counting down at: ${i}");
 }
 ```
 
@@ -159,7 +161,7 @@ while(i-- > 0)
 [//]: # (```&#41;)
 
 [//]: # ()
-[//]: # (@__trace__&#40;a["hello"])
+[//]: # (@trace&#40;a["hello"])
 
 [//]: # (```)
 
@@ -212,13 +214,41 @@ class Employee
 
 @main(): Void
 {
-    @__trace__(Employee(name = "John Doe", id = 123, accessDatabase = (): Void {
-        @__trace__("I am in!")
+    @trace(Employee(name = "John Doe", id = 123, accessDatabase = (): Void {
+        @trace("I am in!")
    }))
 }
 ```
 
 Check back later! More stuffs will come and go :)
+
+### Namespaces
+
+Namespaces are used primarily for code organizations within modules allowing for nesting:
+1. Variables (promoting companion/static members)
+2. Classes 
+3. Functions
+4. Other namespaces
+
+They can be declared anywhere, but should not be abused where a single file should have 1 to 2 namespaces max.
+
+```zig
+pub namespace Utils 
+{
+  pub computeSum(a: Int32, b: Int32): Int32
+  {
+    return a + b
+  }
+  
+  pub class Vector2
+  {
+    require pub x: Float32
+    require pub y: Float32
+  }
+}
+```
+
+> Everything in Kira is private and immutable by default!
 
 ## Chores
 

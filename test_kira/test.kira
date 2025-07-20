@@ -2,20 +2,12 @@ module "test:kira"
 
 a: Int32 = 123;
 b: String = "Hello World"
-b: Int32 = 145;
 
 class Vector2
 {
 
 }
 
-pub class Vector2
-{
-}
-
-pub mut class Vector2
-{
-
-}
+@trace("Amogus")
 
 vec2: Vector2;

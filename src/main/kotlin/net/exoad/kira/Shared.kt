@@ -83,7 +83,7 @@ object Keywords
         "is" to Token.Type.K_IS,
         "break" to Token.Type.K_BREAK,
         "continue" to Token.Type.K_CONTINUE,
-        "with" to Token.Type.K_WITH
+        "with" to Token.Type.K_WITH,
     )
 
     val literals = mapOf(
@@ -128,6 +128,8 @@ object Builtin
      * Integer
      */
     val integerTypes = mapOf(
+        "Int8" to arrayOf(Token.Type.L_INTEGER),
+        "Int16" to arrayOf(Token.Type.L_INTEGER),
         "Int32" to arrayOf(Token.Type.L_INTEGER),
         "Int64" to arrayOf(Token.Type.L_INTEGER),
     )
@@ -146,7 +148,11 @@ object Builtin
      * Has always the highest implicit precedence value
      */
     val sequenceTypes = mapOf(
-        "String" to arrayOf(Token.Type.L_STRING)
+        "Str" to arrayOf(Token.Type.L_STRING),
+        "Arr" to emptyArray(),
+        "Map" to emptyArray(),
+        "List" to emptyArray(),
+        "Set" to emptyArray()
     )
 
     /**

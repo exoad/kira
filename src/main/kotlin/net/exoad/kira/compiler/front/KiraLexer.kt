@@ -124,6 +124,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_ENUM("'enum'"),
         K_OBJECT("'object'"),
         K_MODULE("'module'"),
+        K_THIS("'this'"),
         K_MODIFIER_REQUIRE("'require'"),
         K_MODIFIER_WEAK("'weak'"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
