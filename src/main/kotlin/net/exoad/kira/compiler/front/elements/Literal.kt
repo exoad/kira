@@ -13,5 +13,6 @@ abstract class Literal : Expr()
  * 2. int
  * 3. strings
  * 4. bools
+ * 5. none/null
  */
 interface SimpleLiteral

@@ -101,3 +101,18 @@ open class MapLiteral(override val value: Map<Expr, Expr>, val mutable: Boolean)
         return "LMap${if(mutable) "[[ MUTABLE ]]" else ""}{ $value }"
     }
 }
+
+private val nullRep = Any()
+
+object NullLiteral : DataLiteral<Any>(nullRep)
+{
+    override fun accept(visitor: ASTVisitor)
+    {
+        visitor.visitNullLiteral(this)
+    }
+
+    override fun toString(): String
+    {
+        return "LNull{ }"
+    }
+}

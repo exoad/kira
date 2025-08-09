@@ -321,6 +321,11 @@ object XMLASTVisitor :
         }
     }
 
+    override fun visitNullLiteral(nullLiteral: NullLiteral)
+    {
+        xmlSingleLeaf("LNull", attrs = null)
+    }
+
     override fun visitIdentifier(identifier: Identifier)
     {
         when(identifier)

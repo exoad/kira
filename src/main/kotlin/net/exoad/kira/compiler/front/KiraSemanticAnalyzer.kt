@@ -10,8 +10,8 @@ import net.exoad.kira.compiler.front.elements.FloatLiteral
 import net.exoad.kira.compiler.front.elements.Identifier
 import net.exoad.kira.compiler.front.elements.IntegerLiteral
 import net.exoad.kira.compiler.front.elements.ListLiteral
-import net.exoad.kira.compiler.front.elements.Literal
 import net.exoad.kira.compiler.front.elements.MapLiteral
+import net.exoad.kira.compiler.front.elements.NullLiteral
 import net.exoad.kira.compiler.front.elements.StringLiteral
 import net.exoad.kira.compiler.front.elements.TypeSpecifier
 import net.exoad.kira.compiler.front.exprs.AssignmentExpr
@@ -49,7 +49,6 @@ import net.exoad.kira.compiler.front.statements.ReturnStatement
 import net.exoad.kira.compiler.front.statements.Statement
 import net.exoad.kira.compiler.front.statements.UseStatement
 import net.exoad.kira.compiler.front.statements.WhileIterationStatement
-import kotlin.reflect.KClass
 
 data class SemanticSymbol(
     val name: String,
@@ -223,6 +222,24 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
             location = res?.declaredAt?.toRelative() ?: FileLocation.UNKNOWN,
             selectorLength = res!!.name.length
         )
+    }
+
+    fun expectDeclared(
+        symbolName: String,
+        location: FileLocation?,
+        helpMessage: String = "'$symbolName' is not available at this scope. Or it has not been declared.",
+    )
+    {
+        val res = symbolTable.resolve(symbolName)
+        if(res == null)
+        {
+            pump(
+                "'${symbolName}' is an unknown symbol here.",
+                location = location ?: FileLocation.UNKNOWN,
+                selectorLength = symbolName.length,
+                help = helpMessage
+            )
+        }
     }
 
     fun expectNotDeclared(
@@ -440,6 +457,11 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
         // TODO("Not yet implemented")
     }
 
+    override fun visitNullLiteral(nullLiteral: NullLiteral)
+    {
+        TODO("Not yet implemented")
+    }
+
     override fun visitIdentifier(identifier: Identifier)
     {
         expectNotDeclared(identifier.name, context.astOrigins[identifier])
@@ -515,9 +537,12 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
             classDecl.name.name,
             SemanticSymbol(
                 classDecl.name.name,
-                SemanticSymbolKind.CLASS,
+                SemanticSymbolKind.TYPE_SPECIFIER,
                 Token.Type.K_CLASS,
-                AbsoluteFileLocation.fromRelative(context.astOrigins[classDecl] ?: FileLocation.UNKNOWN, context.file)
+                AbsoluteFileLocation.fromRelative(
+                    context.astOrigins[classDecl] ?: FileLocation.UNKNOWN,
+                    context.file
+                )
             )
         )
     }

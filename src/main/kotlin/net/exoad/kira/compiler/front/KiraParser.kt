@@ -18,6 +18,7 @@ import net.exoad.kira.compiler.front.exprs.decl.ObjectDecl
 import net.exoad.kira.compiler.front.exprs.decl.VariableDecl
 import net.exoad.kira.compiler.front.statements.*
 import java.util.IdentityHashMap
+import kotlin.math.max
 import kotlin.properties.Delegates
 
 /**
@@ -61,8 +62,10 @@ class KiraParser(private val context: SourceContext)
         {
             Diagnostics.panic(
                 "KiraParser::parse",
-                "The first declaration of ${context.file} must be a module declaration!\nInstead, I got a ${statements.first()::class.simpleName}",
-                context = context
+                "The first declaration of ${context.file} must be a module declaration!",
+                context = context,
+                location = FileLocation(1, 1),
+                selectorLength = max(1, context.findCanonicalLine(1).length)
             )
         }
         context.ast = RootASTNode(statements)
@@ -460,6 +463,7 @@ class KiraParser(private val context: SourceContext)
             Token.Type.L_FLOAT                                                          -> parseFloatLiteral()
             Token.Type.L_INTEGER                                                        -> parseIntegerLiteral()
             Token.Type.L_STRING                                                         -> parseStringLiteral()
+            Token.Type.L_NULL                                                           -> parseNullLiteral()
             Token.Type.S_OPEN_BRACE                                                     -> parseMapLiteral(false)
             Token.Type.S_OPEN_BRACKET                                                   -> parseArrayLiteral()
             Token.Type.K_MODIFIER_MUTABLE                                               ->
@@ -1031,6 +1035,12 @@ class KiraParser(private val context: SourceContext)
         )
     }
 
+    fun parseNullLiteral(): NullLiteral
+    {
+        expectThenAdvance(Token.Type.L_NULL)
+        return putOrigin(NullLiteral)
+    }
+
     fun parseStringLiteral(): StringLiteral
     {
         val value = underPointer.content
@@ -1194,9 +1204,14 @@ class KiraParser(private val context: SourceContext)
         val baseLocation = underPointer.canonicalLocation
         val baseName = underPointer.content
         expectThenAdvance(Token.Type.IDENTIFIER)
+        var baseNullable = false
+        expectOptionalThenAdvance(Token.Type.S_QUESTION_MARK) {
+            baseNullable = true
+            advancePointer() // overridden
+        }
         if(underPointer.type != Token.Type.S_OPEN_ANGLE)
         {
-            return putOrigin(TypeSpecifier(baseName, emptyTypeArray), baseLocation)
+            return putOrigin(TypeSpecifier(baseName, baseNullable, emptyTypeArray), baseLocation)
         }
         val generics = mutableListOf<TypeSpecifier>()
         if(underPointer.type == Token.Type.S_OPEN_ANGLE)
@@ -1214,7 +1229,7 @@ class KiraParser(private val context: SourceContext)
             }
             expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         }
-        return putOrigin(TypeSpecifier(baseName, generics.toTypedArray()), baseLocation)
+        return putOrigin(TypeSpecifier(baseName, baseNullable, generics.toTypedArray()), baseLocation)
     }
 
     fun parseModifiers(): Map<Modifiers, FileLocation>

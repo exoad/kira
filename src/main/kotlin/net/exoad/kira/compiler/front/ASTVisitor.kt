@@ -8,6 +8,7 @@ import net.exoad.kira.compiler.front.elements.Identifier
 import net.exoad.kira.compiler.front.elements.IntegerLiteral
 import net.exoad.kira.compiler.front.elements.ListLiteral
 import net.exoad.kira.compiler.front.elements.MapLiteral
+import net.exoad.kira.compiler.front.elements.NullLiteral
 import net.exoad.kira.compiler.front.elements.StringLiteral
 import net.exoad.kira.compiler.front.elements.TypeSpecifier
 import net.exoad.kira.compiler.front.exprs.AssignmentExpr
@@ -90,6 +91,7 @@ abstract class ASTVisitor
     abstract fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
     abstract fun visitListLiteral(listLiteral: ListLiteral)
     abstract fun visitMapLiteral(mapLiteral: MapLiteral)
+    abstract fun visitNullLiteral(nullLiteral: NullLiteral) // this will always be the same instance of null (null isnt a true value)
 
     // IDENTIFIERS
     abstract fun visitIdentifier(identifier: Identifier)

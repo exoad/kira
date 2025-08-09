@@ -1,13 +1,7 @@
-module "test:kira"
+module "test:main"
 
-a: Int32 = 123;
-b: String = "Hello World"
-
-class Vector2
+pub class Int32
 {
-
 }
 
-@trace("Amogus")
-
-vec2: Vector2;
+val: Int32? = null

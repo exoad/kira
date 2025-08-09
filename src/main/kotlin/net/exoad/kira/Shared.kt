@@ -29,6 +29,7 @@ enum class Symbols(val rep: Char)
     PIPE('\u007c'),
     ASTERISK('\u002a'),
     SLASH('\u002f'),
+    QUESTION_MARK('\u003f'),
     PERCENT('\u0025'),
     STATEMENT_DELIMITER('\u003b'),
     EQUALS('\u003d'),

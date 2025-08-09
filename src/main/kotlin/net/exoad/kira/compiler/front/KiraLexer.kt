@@ -147,6 +147,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         S_DOT("'.' (Dot)"),
         S_TILDE("'~' (Tilde)"),
         S_COMMA("',' (Comma)"),
+        S_QUESTION_MARK("'?', (Question Mark)")
         ;
 
         fun diagnosticsName(): String
@@ -593,6 +594,12 @@ class KiraLexer(private val context: SourceContext)
                             startLoc
                         )
                     }
+                Symbols.QUESTION_MARK.rep       -> Token.Symbol(
+                    Token.Type.S_QUESTION_MARK,
+                    Symbols.QUESTION_MARK,
+                    start,
+                    startLoc
+                )
                 Symbols.EXCLAMATION.rep         ->
                     when(localPeek(1))
                     {
