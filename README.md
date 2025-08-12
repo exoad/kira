@@ -1,84 +1,30 @@
 ![Kira](./public/kira_header_small.png)
 
 > [!NOTE]
-> Hi! This project is currently a work in progress :)
->
-> Thus, a lot of things will lack documentation!
+> This project is currently under active development. Documentation may be incomplete.
 
-Kira is a modern, pure object-oriented language that combines familiar expressive syntaxes in modern languages like
-Swift, Kotlin, and Dart. Kira serves as a modern toolkit similar to Haxe, allowing for transpilation and AOT-compilation to various
-mediums.
+**Kira** is a modern, pure object-oriented programming language with expressive syntax inspired by Swift, Kotlin, and Dart. It functions as a flexible toolkit—similar to Haxe—supporting transpilation and ahead-of-time (AOT) compilation to multiple targets, including source code, bytecode, bitcode, and machine code.
 
-Kira's model focuses on private, immutable, and static. This means that without the mut keyword (for mutability or inheritance) or pub (for public access), variables, functions, and classes cannot be modified, reassigned, or inherited.
-Classes in Kira only hold instance-level information, without static or companion members. Instead, namespaces handle code organization and separate static from instance data.
+Kira enforces three core principles: **privacy**, **immutability**, and **static behavior**. All declarations are private and immutable by default. To enable mutability or public access, use the `mut` or `pub` modifiers respectively. Classes contain only instance-level data; static and companion members are managed via namespaces.
 
-`July 19, 2025:`
-
-I have decided on Kira's main workflow target as towards transpiling to other mediums (be it source, bytecode, bitcode, or machine code). This is resolution
-is backed by the strong compile-time intrinsics I plan to further improve from not just simple directives but towards "metaprogramming."
-
-`June 28, 2025:`
-
-Currently, the compiler and further language designs are not finished. The frontend is implemented in Kotlin with the
-backend currently chosen to either be LLVM or a fork of NekoVM. Additionally, I have also been considering generating
-raw x86 Assembly and using NASM to do the rest; however, we will see where this goes :).
+---
 
 ## Code Snippets
 
 > [!WARNING]
-> This is an early draft. Syntax and semantics are subject to change!
+> Syntax and semantics are subject to change.
 
-<!-- dont worry about the zig highlighting, it looks close enough -->
+<!-- Syntax highlighting uses Zig for approximation -->
 
-*Semicolons as statement delimiters are **optional** ;)*
-
-### Hello, World!
-
-*Please note that this is an early build where there is yet to be a standard library, so compile-time intrinsics are used.*
+### Hello, World
 
 ```zig
 @trace("Hello World!")
 ```
 
-### Variables, Functions, & Data
+### Variables, Functions, and Types
 
-Kira is a statically-typed language (*there are plans for type inferencing*) meaning that you must specify the type you want at source. With this,
-everything is an object, and there are a few builtin (i.e. supporting syntax sugar for instantiation) types:
-
-#### Integer types
-
-- `Int8` - 8-Bit Signed Integer
-- `Int16` - 16-Bit Signed Integer
-- `Int32` - 32-Bit Signed Integer
-- `Int64` - 64-Bit Signed Integer
-
-*Unsigned versions are still in-triage*
-
-#### Floating-Point Types
-
-- `Float32` - 32-Bit Floating-Point Number
-- `Float64` - 64-Bit Floating-Point Number
-
-#### Misc Types
-
-- `Void` - An absence of value; used for functions.
-- `@_Never_` - (*In-Triage*) Intrinsic specifying that a function never returns.
-- `Any` - Root type 
-- `Str` - An immutable string object
-- `Bool` - A boolean value that can hold either `true` or `false` and is backed by an 8-bit integer internally
-- `Array<T>` - A static (non-resizable) mutable container for storing sequential data
-- `List<T>` - A dynamic (resizable) mutable container for storing sequential data
-- `Map<K, V>` - A dynamic (resizable) mutable hash table for storing relational data in a key value pair
-- `Set<T>` - A dynamic (resizable) mutable hash set for storing unique data
-- `Num` - Represents the parent type of floating-point and integer types
-- `Maybe<T>` - (*In-Triage*) Represents a potentially nullable value with type `T`
-- `Func<A, @_Many_(Any)>` - Function syntax where `A` represents the return type and `@_Many_` is a compile-time intrinsic for generating generics at parse time.
-
-> For function types, the syntax for `...` a variadic declaration is in-triage to replace or make it less verbose to use `@_Many_(T)`
-
-#### Declaration Style
-
-All types are declared after a colon `:` even for functions and variables as functions are first-class citizens (meaning they are values)
+Kira is statically typed. All types are declared after a colon `:`. Functions are first-class values.
 
 ```zig
 a: Int32 = 9999
@@ -92,13 +38,29 @@ sumOf(a1: Int32, b1: Int32): Int32
 }
 ```
 
-> Shadowing is not permitted.
+> Shadowing is disallowed.
 
-### Conditionals & Loops
+#### All Built-in Types
 
-Currently, there is only one style of selection statement available which is the `if-else` statements which all operate
-on the `Bool` data type.
+- `Int8`, `Int16`, `Int32`, `Int64` – Signed integers
+- `Float32`, `Float64` – Floating-point numbers
+- `Bool` – Boolean backed by 8-bit integer
+- `Str` – Immutable string
+- `Void` – Absence of value
+- `Any` – Root type
+- `Num` – Parent type of numeric types
+- `Array<T>` – Static mutable container
+- `List<T>` – Dynamic mutable container
+- `Map<K, V>` – Key-value store
+- `Set<T>` – Unique value store
+- `Maybe<T>` – Nullable wrapper (*In-Triage*)
+- `Var<A>` – Source-declared variable
+- `Class<A>` - Source declared class
+- `Func<A, @_Many_(Any)>` – Function type with compile-time generic expansion
 
+---
+
+### Conditionals and Loops
 
 ```zig
 someCondition: Bool = 1 + 1 == 2;
@@ -118,71 +80,97 @@ while(i-- > 0)
 }
 ```
 
-[//]: # (### Compile-Time Intrinsics &#40;Implementation&#41;)
+---
 
-[//]: # ()
-[//]: # (This is the main design point of Kira, where I found it crucial or enjoyable for me to have something that can run at compile time like a function)
+### Memory Model
 
-[//]: # (that could get picked up. This was akin to concepts in C/C++ with the preprocessor and `constexpr`, Jai's compile time expressions, and Rust macros.)
+> WIP
 
-[//]: # ()
-[//]: # (Within Kira, they are like any other function, variable, and identifier, but they are prefixed with an `@`. In order to see how they are used, it is crucial)
+Kira follows similar suite to Swift by using **ARC (Automatic Reference Counting)** which provides deterministic memory management without the complexity on the runtime side of a garbage collector. 
 
-[//]: # (to view their documentation. Some are function-like while others are not and if they are function-like, anything passed to them is directly sent off to the )
+Kira provides the following in terms of developer experience and memory safety management to avoid Cycle detections:
 
-[//]: # (intrinsic's compile-time receiver which processes the code directly and outputs something appropriately.)
+**1. Weak References**
 
-[//]: # ()
-[//]: # (Additionally, intrinsics are sometimes worked on at different periods of the compilation process. Some intrinsics are able to run at the parser stage, others )
+Using the `weak` modifier signifies that Kira should not increase the ref count. When the reference object is deallocated, this weak reference
+will automatically become `null`.
 
-[//]: # (during semantic analysis & optimization, and some even as late as final output generation.)
+```zig
+weak friend: Person
+```
 
-[//]: # ()
-[//]: # (This not only allows for very possible things like DSL creations, but you could have your entire program run at compile time, but this isn't the main purpose, )
+This is ideal for breaking retain cycles in bidirectional relationships, such as parent-child or delegate patterns.
 
-[//]: # (instead it allows for precomputation and doing metaprogramming.)
+**2. Unsafe References**
 
-[//]: # ()
-[//]: # (For example, you can have something like:)
+Using the `unsafe` modifier signifies that Kira should not increase the ref count and assumes that the object will outlive the reference.
 
-[//]: # ()
-[//]: # (```zig)
+```zig
+unsafe buffer: Array<Int8>
+```
 
-[//]: # (a: Map<String, Any> = @_json_decode_&#40;```)
+This is a performance-oriented feature and should be used with caution. If the object is deallocated before the reference is used, it can lead to undefined behavior or runtime crashes.
 
-[//]: # (  {)
+> Unsafe references are like raw pointers in C/C++—powerful but dangerous.
 
-[//]: # (    "hello": 1,)
+**3. Finalizers**
 
-[//]: # (    "world": 2)
+Classes are able to have the intrinsic `@finalize` on ONE of its methods to signify cleanup logic for external resources.
 
-[//]: # (  })
+```zig
+class A
+{
+    ...
+    @finalize close(): Void
+    {
+        ...
+    }
+}
+```
 
-[//]: # (```&#41;)
+**4. Pass By Value Opt-In**
 
-[//]: # ()
-[//]: # (@trace&#40;a["hello"])
+Kira allows explicit pass-by-value semantics using the `val` modifier on function or constructor parameters. This instructs the compiler to create a copy of the argument rather than passing a reference.
 
-[//]: # (```)
+```zig
+sum(val a: Int32, b: Int32): Int32 { ... }
+@trace(sum(3, 4)) 
+```
 
-[//]: # ()
-[//]: # (Here `_json_decode_` is a compiler library that is able to decode the JSON value and returns the appropriate Kira equivalent value.)
+In this example:
 
-[//]: # ()
+- `a` is passed by value, meaning a copy of `3` is created.
+
+- `b` is passed by reference, meaning the original `4`
+
+---
+
+
+### Compile-Time Intrinsics
+
+Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed to simplify expressions, enable metaprogramming, and support DSL construction.
+
+**Properties:**
+
+- Prefixed with `@`
+- Treated as standard identifiers
+- Function-like or directive-like
+- Executed during any compiler phase
+
+```zig
+a: Map<String, Any> = @json_decode(`
+  {
+    "hello": 1,
+    "world": 2
+  }
+`)
+
+@trace(a["hello"]) // Outputs 1 to debugger
+```
+
+---
 
 ### Classes
-
-**Classes perform the same as many other languages, where they serve the purpose of being "blueprints" to create Objects.** However,
-in Kira there are some limitations to them:
-
-1. Only one canonical constructor, which is _implicitly_ declared
-2. Classes cannot nest other constructs (i.e. classes & namespaces). Instead, use either top-level declarations or object declarations for scoping.
-3. Classes are immutable and private by default just like everything else in the language unless they are marked with `pub` and `mut`
-4. Static/Companion members are not allowed. (*This is not finalized*) 
-5. There are no restrictions to instantizing anonymous class instead of inheritance. 
-6. There is no `protected` keyword like in Java and Kotlin
-7. No multi-inheritance.
-8. Methods or member functions are final or non-virtual by default unless specified with the `mut` modifier
 
 ```zig
 class Employee
@@ -190,25 +178,20 @@ class Employee
     require pub name: String
     require id: Int32
     require pub clockedInTimes: Int64 = 0
-
     require pub accessDatabase(): Void
 
     pub transferTo(otherEmployee: Int32): User
     {
         return Employee(
-            name = ::name
+            name = .name
             id = otherEmployee
-            clockedInTimes = ::clockedInTimes
+            clockedInTimes = .clockedInTimes
         )
     }
 
     pub @__greater_than__(otherEmployee: Employee): Bool
     {
-        if(::clockedInTimes > otherEmployee::clockedInTimes)
-        {
-            return true;
-        }
-        return false;
+        return .clockedInTimes > otherEmployee.clockedInTimes
     }
 }
 
@@ -216,70 +199,75 @@ class Employee
 {
     @trace(Employee(name = "John Doe", id = 123, accessDatabase = (): Void {
         @trace("I am in!")
-   }))
+    }))
 }
 ```
 
-Check back later! More stuffs will come and go :)
+**Class Constraints:**
+
+1. Single implicit constructor
+2. No nested constructs
+3. Immutable and private by default
+4. No static/companion members (*subject to change*)
+5. Anonymous instantiation supported
+6. No `protected` keyword
+7. No multiple inheritance ([Diamond Problem](https://github.com/exoad/kira/edit/main/README.md))
+8. Methods are final unless marked `mut`
+
+---
 
 ### Namespaces
 
-Namespaces are used primarily for code organizations within modules allowing for nesting:
-1. Variables (promoting companion/static members)
-2. Classes 
-3. Functions
-4. Other namespaces
+Namespaces are scoping structures for helping keep things tidy within a single module, additionally this also means they use the scope-value operator `.`
 
-They can be declared anywhere, but should not be abused where a single file should have 1 to 2 namespaces max.
+An example would be having the same functions in 2 different namespaces:
 
 ```zig
 pub namespace Utils 
 {
-  pub computeSum(a: Int32, b: Int32): Int32
-  {
-    return a + b
-  }
-  
-  pub class Vector2
-  {
-    require pub x: Float32
-    require pub y: Float32
-  }
+    pub computeSum(a: Int32, b: Int32): Int32
+    {
+        return a + b
+    }
+
+    pub class Vector2
+    {
+        require pub x: Float32
+        require pub y: Float32
+    }
+}
+
+pub namespace LinAlg
+{
+    pub computeDot(a: Utils.Vector2, b: Utils.Vector2): Float64
+    {
+        return (a.x * b.x) + (a.y + b.y)
+    }
 }
 ```
 
-> Everything in Kira is private and immutable by default!
+Namespaces support nesting of variables, classes, functions, and other namespaces. Usage should be limited to 1–2 per file.
+
+---
 
 ## Chores
 
 ### Language Features
 
-Chores relating to anything to do with the upfront semantics and syntax of the language
-
-- [ ] Parser evaluates escaped string characters
-
-- [ ] Interpolation in strings without using `+`
-
-- [X] **In Triage** For Loop
-
-- [ ] **Pending Implementation** Proper parsing of anonymous function literals using `AnonymousIdentifier`
-
-- [ ] **In Triage** Module declaration at the start of the source file
+- [X] Parser support for escaped string characters
+- [ ] String interpolation without `+`
+- [X] For loop (*In Triage*)
+- [X] Anonymous function literal parsing
+- [X] Module declarations
+- [ ] Semantical Level Intrinsics
+- [ ] Intrinsics Expression Production Rule
 
 ### Internal Workings
 
-Chores relating to anything that involves the internal workings
-
-- [ ] Static Analyzer for validating the state of the AST
-
-- [X] Support for outputting the AST as an XML document so there is not a necessary usage of another parser to parse the
-  formatting
-
-- [ ] **In Progress** Transpile to NekoVM Neko code with full support for all features
+- [ ] Static analyzer for AST validation
+- [X] AST XML output support
+- [ ] NekoVM transpilation (*In Progress*)
 
 ### General Maintenance
 
-General upkeep.
-
-- [ ] **In Progress** Enable more verbose logging that is currently toggleable through --verbose
-
+- [X] Verbose logging toggle via `--verbose` (*In Progress*)
