@@ -1,11 +1,22 @@
-![Kira](./public/kira_header_small.png)
+<h1 align="center">
+<img src="./public/logo_simple.png" width=64/><br/>Kira
+</h1>
+<p align="center">
+<strong>
+A modern object-oriented programming language focused on portability and simplicity.
+</strong>
+</p>
 
 > [!NOTE]
 > This project is currently under active development. Documentation may be incomplete.
 
-**Kira** is a modern, pure object-oriented programming language with expressive syntax inspired by Swift, Kotlin, and Dart. It functions as a flexible toolkit—similar to Haxe—supporting transpilation and ahead-of-time (AOT) compilation to multiple targets, including source code, bytecode, bitcode, and machine code.
+**Kira** is a modern, pure object-oriented programming language with expressive syntax inspired by Swift, Kotlin, and
+Dart. It functions as a flexible toolkit—similar to Haxe—supporting transpilation and ahead-of-time (AOT) compilation to
+multiple targets, including source code, bytecode, bitcode, and machine code.
 
-Kira enforces three core principles: **privacy**, **immutability**, and **static behavior**. All declarations are private and immutable by default. To enable mutability or public access, use the `mut` or `pub` modifiers respectively. Classes contain only instance-level data; static and companion members are managed via namespaces.
+Kira enforces three core principles: **privacy**, **immutability**, and **static behavior**. All declarations are
+private and immutable by default. To enable mutability or public access, use the `mut` or `pub` modifiers respectively.
+Classes contain only instance-level data; static and companion members are managed via namespaces.
 
 ---
 
@@ -86,13 +97,15 @@ while(i-- > 0)
 
 > WIP
 
-Kira follows similar suite to Swift by using **ARC (Automatic Reference Counting)** which provides deterministic memory management without the complexity on the runtime side of a garbage collector. 
+Kira follows similar suite to Swift by using **ARC (Automatic Reference Counting)** which provides deterministic memory
+management without the complexity on the runtime side of a garbage collector.
 
 Kira provides the following in terms of developer experience and memory safety management to avoid Cycle detections:
 
 **1. Weak References**
 
-Using the `weak` modifier signifies that Kira should not increase the ref count. When the reference object is deallocated, this weak reference
+Using the `weak` modifier signifies that Kira should not increase the ref count. When the reference object is
+deallocated, this weak reference
 will automatically become `null`.
 
 ```zig
@@ -103,19 +116,22 @@ This is ideal for breaking retain cycles in bidirectional relationships, such as
 
 **2. Unsafe References**
 
-Using the `unsafe` modifier signifies that Kira should not increase the ref count and assumes that the object will outlive the reference.
+Using the `unsafe` modifier signifies that Kira should not increase the ref count and assumes that the object will
+outlive the reference.
 
 ```zig
 unsafe buffer: Array<Int8>
 ```
 
-This is a performance-oriented feature and should be used with caution. If the object is deallocated before the reference is used, it can lead to undefined behavior or runtime crashes.
+This is a performance-oriented feature and should be used with caution. If the object is deallocated before the
+reference is used, it can lead to undefined behavior or runtime crashes.
 
 > Unsafe references are like raw pointers in C/C++—powerful but dangerous.
 
 **3. Finalizers**
 
-Classes are able to have the intrinsic `@finalize` on ONE of its methods to signify cleanup logic for external resources.
+Classes are able to have the intrinsic `@finalize` on ONE of its methods to signify cleanup logic for external
+resources.
 
 ```zig
 class A
@@ -130,7 +146,8 @@ class A
 
 **4. Pass By Value Opt-In**
 
-Kira allows explicit pass-by-value semantics using the `val` modifier on function or constructor parameters. This instructs the compiler to create a copy of the argument rather than passing a reference.
+Kira allows explicit pass-by-value semantics using the `val` modifier on function or constructor parameters. This
+instructs the compiler to create a copy of the argument rather than passing a reference.
 
 ```zig
 sum(val a: Int32, b: Int32): Int32 { ... }
@@ -145,10 +162,10 @@ In this example:
 
 ---
 
-
 ### Compile-Time Intrinsics
 
-Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed to simplify expressions, enable metaprogramming, and support DSL construction.
+Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed
+to simplify expressions, enable metaprogramming, and support DSL construction.
 
 **Properties:**
 
@@ -218,7 +235,8 @@ class Employee
 
 ### Namespaces
 
-Namespaces are scoping structures for helping keep things tidy within a single module, additionally this also means they use the scope-value operator `.`
+Namespaces are scoping structures for helping keep things tidy within a single module, additionally this also means they
+use the scope-value operator `.`
 
 An example would be having the same functions in 2 different namespaces:
 
@@ -246,7 +264,8 @@ pub namespace LinAlg
 }
 ```
 
-Namespaces support nesting of variables, classes, functions, and other namespaces. Usage should be limited to 1–2 per file.
+Namespaces support nesting of variables, classes, functions, and other namespaces. Usage should be limited to 1–2 per
+file.
 
 ---
 
