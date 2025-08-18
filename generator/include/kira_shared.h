@@ -23,6 +23,7 @@ typedef uint16_t UInt16;
 typedef void Void;
 typedef const Int8* String;
 typedef FILE CFile;
+typedef Void* Any;
 
 #define null NULL
 #define _PRINT(format, ...) printf(format "\n", ##__VA_ARGS__)

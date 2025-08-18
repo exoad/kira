@@ -27,7 +27,7 @@
 
 #define _CHECK(condition, msg) do { \
     if (!(condition)) {             \
-        PANIC(msg);                 \
+        _PANIC(msg);                 \
     }                               \
 } while(0)
 
