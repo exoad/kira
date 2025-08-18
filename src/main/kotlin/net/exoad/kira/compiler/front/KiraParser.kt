@@ -32,7 +32,7 @@ class KiraParser(private val context: SourceContext)
 {
     private var pointer: Int = 0
     private var underPointer: Token =
-        context.tokens.firstOrNull() ?: Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+            context.tokens.firstOrNull() ?: Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
 
     init
     {
@@ -1198,7 +1198,6 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(Identifier(value), loc)
     }
 
-    private val emptyTypeArray = emptyArray<TypeSpecifier>() // temporary usage for [parseType]
     fun parseType(trace: Int = 0): TypeSpecifier
     {
         val baseLocation = underPointer.canonicalLocation
@@ -1207,25 +1206,29 @@ class KiraParser(private val context: SourceContext)
         var baseNullable = false
         expectOptionalThenAdvance(Token.Type.S_QUESTION_MARK) {
             baseNullable = true
-            advancePointer() // overridden
-        }
-        if(underPointer.type != Token.Type.S_OPEN_ANGLE)
-        {
-            return putOrigin(TypeSpecifier(baseName, baseNullable, emptyTypeArray), baseLocation)
+            advancePointer()
         }
         val generics = mutableListOf<TypeSpecifier>()
         if(underPointer.type == Token.Type.S_OPEN_ANGLE)
         {
             advancePointer()
-            while(true)
+            while(underPointer.type != Token.Type.S_CLOSE_ANGLE && underPointer.type != Token.Type.S_EOF)
             {
                 generics.add(parseType(trace + 1))
                 if(underPointer.type == Token.Type.S_COMMA)
                 {
                     advancePointer()
-                    continue
                 }
-                break
+                else if(underPointer.type != Token.Type.S_CLOSE_ANGLE)
+                {
+                    Diagnostics.panic(
+                        "KiraParser::parseType",
+                        "Expected ',' or '>' in generic parameter list but got ${underPointer.type.diagnosticsName()}",
+                        location = underPointer.canonicalLocation,
+                        selectorLength = underPointer.content.length,
+                        context = context
+                    )
+                }
             }
             expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         }

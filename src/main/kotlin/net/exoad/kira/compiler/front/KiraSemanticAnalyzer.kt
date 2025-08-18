@@ -109,11 +109,21 @@ class SymbolTable
 
     fun declare(identifier: String, symbol: SemanticSymbol): Boolean
     {
+        if(scopeStack.first().containsKey(identifier))
+        {
+            return false
+        }
+        scopeStack.first()[identifier] = symbol
+        return true
+    }
+
+    fun declareGlobal(identifier: String, symbol: SemanticSymbol): Boolean
+    {
         for(scope in scopeStack)
         {
             if(scope.containsKey(identifier))
             {
-                return false // already declared in any active scope
+                return false
             }
         }
         scopeStack.first()[identifier] = symbol
@@ -160,24 +170,17 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
 
     init
     {
-        symbolTable.declare(
-            "Int32",
-            SemanticSymbol(
-                name = "Int32",
-                kind = SemanticSymbolKind.TYPE_SPECIFIER,
-                type = Token.Type.IDENTIFIER,
-                declaredAt = AbsoluteFileLocation.bakedIn()
+        arrayOf("Int32", "String", "Float32", "Bool", "Int64", "Int16", "Int8", "Float64", "Void", "Never").forEach {
+            symbolTable.declare(
+                it,
+                SemanticSymbol(
+                    name = it,
+                    kind = SemanticSymbolKind.TYPE_SPECIFIER,
+                    type = Token.Type.IDENTIFIER,
+                    declaredAt = AbsoluteFileLocation.bakedIn()
+                )
             )
-        )
-        symbolTable.declare(
-            "String",
-            SemanticSymbol(
-                name = "String",
-                kind = SemanticSymbolKind.TYPE_SPECIFIER,
-                type = Token.Type.IDENTIFIER,
-                declaredAt = AbsoluteFileLocation.bakedIn()
-            )
-        )
+        }
     }
 
     private fun pump(message: String, location: FileLocation, selectorLength: Int = 1, help: String = "")
@@ -489,8 +492,7 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
         IntegerLiteral::class to { type: String -> type == "Int32" || type == "Int64" },
         FloatLiteral::class to { type: String -> type == "Float32" || type == "Float64" },
         BoolLiteral::class to { type: String -> type == "Bool" },
-
-        )
+    )
 
     override fun visitVariableDecl(variableDecl: VariableDecl)
     {
@@ -560,5 +562,4 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
     {
         // TODO("Not yet implemented")
     }
-
 }

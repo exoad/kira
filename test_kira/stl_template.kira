@@ -1,0 +1,13 @@
+module "kira"
+
+pub class Int32
+{
+}
+
+pub class Int64
+{
+}
+
+pub class Float32
+{
+}

@@ -94,17 +94,20 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         OP_ASSIGN_BIT_OR("'|=' (Compound Bitwise OR Assignment)"),
         OP_ASSIGN_BIT_AND("'&=' (Compound Bitwise AND Assignment)"),
         OP_ASSIGN_BIT_SHL("'<<=' (Compound Bitwise Left Shift Assignment)"),
+
         // commenting out all the tokens that involve ">" because it is very problematic when parsing them together with generics using the same symbols
 //        OP_ASSIGN_BIT_SHR("'>>=' (Compound Bitwise Right Shift Assignment)"),
 //        OP_ASSIGN_BIT_USHR("'>>>=' (Compound Bitwise Unsigned Right Shift Assignment)"),
         OP_ASSIGN_BIT_XOR("'^=' (Compound Bitwise XOR Assignment)"),
         OP_CMP_LEQ("'<=' (Less Than Or Equal To)"),
+
         //        OP_CMP_GEQ("'>=' (Greater Than Or Equal To)"),
         OP_CMP_EQL("'==' (Equals To)"),
         OP_CMP_NEQ("'!=' (Not Equals To)"),
         OP_CMP_AND("'&&' (Logical AND)"),
         OP_CMP_OR("'||' (Logical OR)"),
         OP_BIT_SHL("'<<' (Bitwise Shift Left)"),
+
         //        OP_BIT_SHR("'>>' (Bitwise Shift Right)"),
 //        OP_BIT_USHR("'>>>' (Bitwise Unsigned Shift Right)"),
         OP_BIT_XOR("'^' (Bitwise XOR"),
@@ -185,13 +188,11 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
                             token[1] == S_CLOSE_ANGLE &&
                             token[2] == S_CLOSE_ANGLE &&
                             token[3] == S_EQUAL                                -> true
-
                     else                                                       -> false
                 }
             }
 
             val modifiers = entries.filter { it.name.startsWith("K_MODIFIER_") }.toTypedArray()
-
             val literals = entries.filter { it.name.startsWith("L_") }.toTypedArray()
         }
     }
@@ -229,7 +230,7 @@ class KiraLexer(private val context: SourceContext)
     private var lineNumber = 1
     private var column = 1
     private var underPointer: Char =
-        if(context.content.isEmpty()) Symbols.NULL.rep else context.content.first()
+            if(context.content.isEmpty()) Symbols.NULL.rep else context.content.first()
 
     /**
      * Advances [pointer] to the next character in [context] and updates [lineNumber] and [column]
@@ -497,7 +498,6 @@ class KiraLexer(private val context: SourceContext)
                                     startLoc
                                 )
                             }
-
                         }
                         else                   -> Token.Symbol(
                             Token.Type.S_OPEN_ANGLE,
@@ -737,7 +737,6 @@ class KiraLexer(private val context: SourceContext)
                             startLoc
                         )
                     }
-
                 Symbols.CARET.rep               ->
                     when(localPeek(1))
                     {
@@ -758,7 +757,6 @@ class KiraLexer(private val context: SourceContext)
                             startLoc
                         )
                     }
-
                 Symbols.PIPE.rep                ->
                     when(localPeek(1))
                     {
