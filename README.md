@@ -3,7 +3,7 @@
 </h1>
 <p align="center">
 <strong>
-A modern object-oriented programming language focused on portability and simplicity.
+A modern object-oriented programming language focused on simplicity & practicality.
 </strong>
 </p>
 
