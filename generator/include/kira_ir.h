@@ -22,7 +22,6 @@ typedef enum
     OP_FNEG,
     OP_LOAD_INT,
     OP_LOAD_FLOAT,
-    OP_LOAD_STRING,
     OP_MOVE,
     OP_FUNC_DEF,
     OP_FUNC_END,
@@ -33,13 +32,25 @@ typedef enum
     OP_CMP_EQ,
     OP_JUMP,
     OP_HALT,
+    OP_ICMP_GT,
+    OP_ICMP_LT,
+    OP_JMP_ZERO,
+    OP_JMP_LT,
     SYSOUT,
 } KiraOpCode;
 
-#define LOAD_INT(dest, op1, op2, immediate) (KiraInstruction) { OP_LOAD_INT, dest, op1, op2, immediate }
-#define IADD(dest, op1, op2, immediate) (KiraInstruction) { OP_IADD, dest, op1, op2, immediate }
-#define SYSOUT(op1) (KiraInstruction) { SYSOUT, 0, op1, 0, 0 }
+#define LOAD_FLOAT(dest, value) (KiraInstruction) { OP_LOAD_FLOAT, dest, 0, 0, value }
+#define LOAD_INT(dest, value) (KiraInstruction) { OP_LOAD_INT, dest, 0, 0, value }
+#define IADD(dest, src1, src2) (KiraInstruction) { OP_IADD, dest, src1, src2, 0 }
+#define CALL(returnRegister, nameOffset) (KiraInstruction) { OP_CALL, returnRegister, 0, 0, nameOffset }
+#define RETURN(src) (KiraInstruction) { OP_RETURN, 0, src, 0, 0 }
+#define JUMP(address) (KiraInstruction) { OP_JUMP, 0, 0, 0, address }
+#define SYSOUT(src) (KiraInstruction) { SYSOUT, 0, src, 0, 0 }
 #define HALT() (KiraInstruction) { OP_HALT, 0, 0, 0, 0 }
+#define ICMP_LT(src1, src2) (KiraInstruction) { OP_ICMP_LT, 0, src1, src2, 0 }
+#define ICMP_GT(src1, src2) (KiraInstruction) { OP_ICMP_GT, 0, src1, src2, 0 }
+#define JMP_ZERO(location) (KiraInstruction) { OP_JMP_ZERO, 0, 0, 0, location }
+#define JMP_LT(location) (KiraInstruction) { OP_JMP_LT, 0, 0, 0, location }
 
 // --- struct: KiraInstruction
 
@@ -64,22 +75,10 @@ typedef struct
     UInt32 instructionCount;
 } KiraHeader;
 
-// --- struct: KiraProgram
+// --- struct: KiraStringTable
 
 typedef struct
 {
-    KiraHeader header;
-    Int8* stringTable;
-    KiraInstruction* instructions;
-} KiraProgram;
-
-KiraProgram* kiraProgram(String fileName);
-
-Void kiraProgramExecute(KiraProgram* program);
-
-// --- struct: KiraStringTable
-
-typedef struct {
     Int8** strings;
     UInt32 count;
     UInt32 capacity;
@@ -102,6 +101,19 @@ typedef struct
     KiraAddress localRegistersStart;
     KiraAddress localRegistersCount;
 } KiraFunction;
+
+// --- struct: KiraProgram
+
+typedef struct
+{
+    KiraHeader header;
+    KiraStringTable* stringTable;
+    KiraInstruction* instructions;
+} KiraProgram;
+
+KiraProgram* kiraProgram(String fileName);
+
+Void kiraProgramExecute(KiraProgram* program);
 
 // --- struct: KiraFunctionTable
 

@@ -1,17 +1,8 @@
 package net.exoad.kira.bootstrap.lang
 
-import net.exoad.kira.bootstrap.KiraCannotInstantiate
-import net.exoad.kira.bootstrap.KiraClass
-import net.exoad.kira.bootstrap.KiraCoerceLiteralToken
-import net.exoad.kira.bootstrap.KiraIntrinsicFunction
-import net.exoad.kira.bootstrap.KiraNoTailRecursion
-import net.exoad.kira.bootstrap.KiraPragmaUseStackInliner
-import net.exoad.kira.bootstrap.KiraRefLiteral
-import net.exoad.kira.bootstrap.KiraSubClass
-import net.exoad.kira.bootstrap.KiraSugarLiteralInstantiate
-import net.exoad.kira.bootstrap.KiraVectorizeNoExtract
-import net.exoad.kira.compiler.front.Token
-import net.exoad.kira.compiler.front.elements.IntegerLiteral
+import net.exoad.kira.bootstrap.*
+import net.exoad.kira.compiler.Token
+import net.exoad.kira.compiler.elements.IntegerLiteral
 
 @KiraClass("Num")
 @KiraCannotInstantiate

@@ -1,11 +1,7 @@
 package net.exoad.kira
 
 import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatMTAtomOneDarkIJTheme
-import net.exoad.kira.compiler.Diagnostics
-import net.exoad.kira.compiler.GeneratedProvider
-import net.exoad.kira.compiler.SourceContext
-import net.exoad.kira.compiler.front.*
-import net.exoad.kira.compiler.front.KiraPreprocessor
+import net.exoad.kira.compiler.*
 import net.exoad.kira.ui.KiraVisualViewer
 import net.exoad.kira.utils.ArgsParser
 import net.exoad.kira.utils.XMLASTVisitor
@@ -17,6 +13,7 @@ import kotlin.properties.Delegates
 import kotlin.time.measureTimedValue
 
 internal lateinit var argsParser: ArgsParser
+
 /**
  * This can be called from any other programs, but for the most part, the required parameter
  * is the `--src` option which points to the source file you want to compile. For example, `--src=hello.kira`
@@ -53,55 +50,62 @@ fun main(args: Array<String>)
                     file.canonicalPath,
                     emptyList(),
                 )
-                val lexer = KiraLexer(srcContext)
-                srcContext = srcContext.with(srcContext.content, lexer.tokenize())
-                if(Public.Flags.enableVisualView)
-                {
-                    KiraVisualViewer(srcContext).also {
-                        it.run()
+                val (_, duration) = measureTimedValue {
+                    val lexer = KiraLexer(srcContext)
+                    srcContext = srcContext.with(srcContext.content, lexer.tokenize())
+                    if(Public.Flags.enableVisualView)
+                    {
+                        KiraVisualViewer(srcContext).also {
+                            it.run()
+                        }
+                    }
+                    if(it.dumpLexerTokens != null)
+                    {
+                        val lexerTokensDumpFile = File(it.dumpLexerTokens)
+                        lexerTokensDumpFile.createNewFile()
+                        var i = 0
+                        lexerTokensDumpFile.writeText(srcContext.tokens.joinToString("\n") { tk ->
+                            "${
+                                (++i).toString()
+                                    .padStart(
+                                        floor(log10(srcContext.tokens.size.toDouble())).toInt() + 1,
+                                        ' '
+                                    ) // yikes, this math is for padding the left side of the token number being parsed to make sure that the tokens are never pushed out of alignment in this column form
+                                // basically it figures out the length of the number without using loops
+                            }: $tk"
+                        })
+                        Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
+                    }
+                    val parser = KiraParser(srcContext)
+                    parser.parse()
+                    val semanticAnalyzer = KiraSemanticAnalyzer(srcContext)
+                    val semanticAnalyzerResults = semanticAnalyzer.validateAST()
+                    Diagnostics.Logging.warn(
+                        "Kira",
+                        if(semanticAnalyzerResults.isHealthy) "Source Health OK" else "There are problems in your code. Refer to the diagnostics below."
+                    )
+                    if(semanticAnalyzerResults.diagnostics.isNotEmpty())
+                    {
+                        repeat(semanticAnalyzerResults.diagnostics.size)
+                        {
+                            Diagnostics.Logging.warn(
+                                "Kira",
+                                "\n-- Pumped Diagnostic #${it + 1}${
+                                    Diagnostics.recordDiagnostics(
+                                        semanticAnalyzerResults.diagnostics[it]
+                                    )
+                                }"
+                            )
+                        }
                     }
                 }
-                if(it.dumpLexerTokens != null)
-                {
-                    val lexerTokensDumpFile = File(it.dumpLexerTokens)
-                    lexerTokensDumpFile.createNewFile()
-                    var i = 0
-                    lexerTokensDumpFile.writeText(srcContext.tokens.joinToString("\n") { tk ->
-                        "${
-                            (++i).toString()
-                                .padStart(
-                                    floor(log10(srcContext.tokens.size.toDouble())).toInt() + 1,
-                                    ' '
-                                ) // yikes, this math is for padding the left side of the token number being parsed to make sure that the tokens are never pushed out of alignment in this column form
-                            // basically it figures out the length of the number without using loops
-                        }: $tk"
-                    })
-                    Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
-                }
-                val parser = KiraParser(srcContext)
-                parser.parse()
+                Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
                 if(it.dumpAST != null)
                 {
                     val astDumpFile = File(it.dumpAST)
                     astDumpFile.createNewFile()
                     astDumpFile.writeText(XMLASTVisitor.build(srcContext.ast))
                     Diagnostics.Logging.info("Kira", "Dumped AST representation to ${astDumpFile.absolutePath}")
-                }
-                val semanticAnalyzer = KiraSemanticAnalyzer(srcContext)
-                val semanticAnalyzerResults = semanticAnalyzer.validateAST()
-                Diagnostics.Logging.warn(
-                    "Kira",
-                    if(semanticAnalyzerResults.isHealthy) "Source Health OK" else "There are problems in your code. Refer to the diagnostics below."
-                )
-                if(semanticAnalyzerResults.diagnostics.isNotEmpty())
-                {
-                    repeat(semanticAnalyzerResults.diagnostics.size)
-                    {
-                        Diagnostics.Logging.warn(
-                            "Kira",
-                            "\n-- Pumped Diagnostic #${it + 1}${Diagnostics.recordDiagnostics(semanticAnalyzerResults.diagnostics[it])}"
-                        )
-                    }
                 }
                 when(GeneratedProvider.outputMode)
                 {
@@ -111,9 +115,8 @@ fun main(args: Array<String>)
             }
         }
     }
-
     // todo: should this be some kind of "finer" message or should we leave it everytime for the user to see?
-    Diagnostics.Logging.info("Kira", "Completed in $duration")
+    Diagnostics.Logging.info("Kira", "Total unit completed in $duration")
 }
 
 fun parseArgs(): ArgsOptions

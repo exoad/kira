@@ -1,10 +1,8 @@
 package net.exoad.tests.kira
 
-import net.exoad.kira.compiler.Diagnostics
-import net.exoad.kira.compiler.front.KiraPreprocessor
+import net.exoad.kira.compiler.KiraPreprocessor
 import org.junit.jupiter.api.assertDoesNotThrow
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class TestLineNumberCanonicity

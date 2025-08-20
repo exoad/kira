@@ -1,8 +1,8 @@
 package net.exoad.kira.bootstrap
 
 import net.exoad.kira.bootstrap.lang.KAny
-import net.exoad.kira.compiler.front.Token
-import net.exoad.kira.compiler.front.elements.DataLiteral
+import net.exoad.kira.compiler.Token
+import net.exoad.kira.compiler.elements.DataLiteral
 import kotlin.reflect.KClass
 
 @Target(AnnotationTarget.FUNCTION)

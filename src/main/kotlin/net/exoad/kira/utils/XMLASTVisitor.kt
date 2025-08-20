@@ -1,18 +1,13 @@
 package net.exoad.kira.utils
 
 import net.exoad.kira.Builtin
-import net.exoad.kira.compiler.front.ASTNode
-import net.exoad.kira.compiler.front.ASTVisitor
-import net.exoad.kira.compiler.front.RootASTNode
-import net.exoad.kira.compiler.front.elements.*
-import net.exoad.kira.compiler.front.exprs.*
-import net.exoad.kira.compiler.front.exprs.decl.ClassDecl
-import net.exoad.kira.compiler.front.exprs.decl.EnumDecl
-import net.exoad.kira.compiler.front.exprs.decl.FunctionDecl
-import net.exoad.kira.compiler.front.exprs.decl.ModuleDecl
-import net.exoad.kira.compiler.front.exprs.decl.ObjectDecl
-import net.exoad.kira.compiler.front.exprs.decl.VariableDecl
-import net.exoad.kira.compiler.front.statements.*
+import net.exoad.kira.compiler.ASTNode
+import net.exoad.kira.compiler.ASTVisitor
+import net.exoad.kira.compiler.RootASTNode
+import net.exoad.kira.compiler.elements.*
+import net.exoad.kira.compiler.exprs.*
+import net.exoad.kira.compiler.exprs.decl.*
+import net.exoad.kira.compiler.statements.*
 import java.text.SimpleDateFormat
 
 /**

@@ -1,6 +1,6 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.front.Token
+import net.exoad.kira.compiler.Token
 
 // this file holds some of the global stuffs of the language like keywords and valid ascii symbols (maybe even utf8 later on)
 //
@@ -11,7 +11,7 @@ import net.exoad.kira.compiler.front.Token
  * lmao having to copy and paste constantly from an utf8 character code website would be hilarious
  *
  *
- * - primarily used by [net.exoad.kira.compiler.front.KiraLexer] to match them to [Token]s
+ * - primarily used by [net.exoad.kira.compiler.KiraLexer] to match them to [Token]s
  */
 enum class Symbols(val rep: Char)
 {

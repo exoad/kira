@@ -1,7 +1,3 @@
 module "test:main"
 
-pub class Int32
-{
-}
-
-val: Int32? = null
+val: String = "Hello World"

@@ -96,6 +96,53 @@ Void kiraProgramExecute(KiraProgram* program)
                 vm->programCount++;
                 break;
             }
+            case OP_ICMP_LT:
+            {
+                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
+                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
+                Int32 result = op1 - op2;
+                vm->flagBits.zero = (result == 0) ? 1 : 0;
+                vm->flagBits.negative = (result < 0) ? 1 : 0;
+                vm->flagBits.carry = ((UInt32) op1 < (UInt32) op2) ? 1 : 0;
+                vm->programCount++;
+                break;
+            }
+            case OP_ICMP_GT:
+            {
+                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
+                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
+                Int32 result = op1 - op2;
+                vm->flagBits.zero = (result == 0) ? 1 : 0;
+                vm->flagBits.negative = (result < 0) ? 1 : 0;
+                vm->flagBits.carry = ((UInt32) op1 > (UInt32) op2) ? 1 : 0;
+                vm->flagBits.overflow = ((op1 ^ result) & (op2 ^ result)) < 0 ? 1 : 0;
+                vm->programCount++;
+                break;
+            }
+            case OP_JMP_ZERO:
+            {
+                if(vm->flagBits.zero)
+                {
+                    vm->programCount = instruction->immediate;
+                }
+                else
+                {
+                    vm->programCount++;
+                }
+                break;
+            }
+            case OP_JMP_LT:
+            {
+                if(vm->flagBits.negative)
+                {
+                    vm->programCount = instruction->immediate;
+                }
+                else
+                {
+                    vm->programCount++;
+                }
+                break;
+            }
             case OP_LOAD_INT:
             {
                 kiraVMRegisterSetInt(vm->registers, instruction->dest, instruction->immediate);
@@ -105,12 +152,6 @@ Void kiraProgramExecute(KiraProgram* program)
             case OP_LOAD_FLOAT:
             {
                 kiraVMRegisterSetFloat(vm->registers, instruction->dest, instruction->immediate);
-                vm->programCount++;
-                break;
-            }
-            case OP_LOAD_STRING:
-            {
-                kiraVMRegisterSetString(vm->registers, instruction->dest, instruction->immediate);
                 vm->programCount++;
                 break;
             }
@@ -221,9 +262,6 @@ Void kiraProgramExecute(KiraProgram* program)
                         break;
                     case KIRA_REGISTER_TYPE_FLOAT:
                         _PRINT("%.6f", reg->value.floatValue);
-                        break;
-                    case KIRA_REGISTER_TYPE_STRING:
-                        _PRINT("%s", reg->value.stringValue ? reg->value.stringValue : "<null>");
                         break;
                     case KIRA_REGISTER_TYPE_UNSET:
                         _PRINT("<unset>");

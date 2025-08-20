@@ -1,6 +1,5 @@
 package net.exoad.kira.compiler
 
-import net.exoad.kira.compiler.front.FileLocation
 import java.io.PrintWriter
 import java.io.StringWriter
 

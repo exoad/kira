@@ -28,7 +28,7 @@ UInt32 kiraStringTableAdd(KiraStringTable* table, String str)
 
 String kiraStringTableGet(KiraStringTable* table, UInt32 offset)
 {
-    return offset >= table->totalSize ? null : table + offset;
+    return offset >= table->totalSize ? null : (String) table + offset;
 }
 
 Void kiraFormIR(String fileName, KiraInstruction* instructions, UInt32 instructionsCount, KiraStringTable* strings)
