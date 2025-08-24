@@ -10,4 +10,9 @@ object Public
         var beVerbose by Delegates.notNull<Boolean>()
         var enableVisualView by Delegates.notNull<Boolean>()
     }
+
+    object Builtin
+    {
+        val intrinsicalStandardLibrarySources = arrayOf("kira/types.kira")
+    }
 }

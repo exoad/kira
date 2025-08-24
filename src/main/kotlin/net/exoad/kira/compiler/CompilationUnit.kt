@@ -1,5 +1,10 @@
 package net.exoad.kira.compiler
 
+import net.exoad.kira.compiler.analysis.semantic.SemanticSymbol
+import net.exoad.kira.compiler.analysis.semantic.SymbolTable
+import net.exoad.kira.compiler.frontend.lexer.Token
+import net.exoad.kira.source.SourceContext
+
 class CompilationUnit
 {
     private val sources = mutableMapOf<String, SourceContext>()

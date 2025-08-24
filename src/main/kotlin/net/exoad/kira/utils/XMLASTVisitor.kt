@@ -1,13 +1,14 @@
 package net.exoad.kira.utils
 
-import net.exoad.kira.Builtin
-import net.exoad.kira.compiler.ASTNode
-import net.exoad.kira.compiler.ASTVisitor
-import net.exoad.kira.compiler.RootASTNode
 import net.exoad.kira.compiler.elements.*
 import net.exoad.kira.compiler.exprs.*
 import net.exoad.kira.compiler.exprs.decl.*
-import net.exoad.kira.compiler.statements.*
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.Builtin
 import java.text.SimpleDateFormat
 
 /**
@@ -18,7 +19,7 @@ import java.text.SimpleDateFormat
  * usually this is just generated right after the parser phase, but you can always pass in a root ast node
  * or something, and it will traverse and spit something out.
  *
- * it is dumped using [net.exoad.kira.ArgsOptions.dumpAST] to a file you want.
+ * it is dumped using [net.exoad.kira.cli.ArgsOptions.dumpAST] to a file you want.
  *
  * spitting it out makes developing kira much easier than scrolling through a terminal sometimes
  */

@@ -1,7 +1,7 @@
 package net.exoad.kira.ui
 
-import net.exoad.kira.compiler.SourceContext
-import net.exoad.kira.compiler.Token
+import net.exoad.kira.compiler.frontend.lexer.Token
+import net.exoad.kira.source.SourceContext
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.Font
