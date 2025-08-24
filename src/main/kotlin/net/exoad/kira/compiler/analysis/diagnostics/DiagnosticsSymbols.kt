@@ -19,3 +19,4 @@ fun String.isNotRepresentableDiagnosticsSymbol(): Boolean
 {
     return this == DiagnosticsSymbols.NOT_REPRESENTABLE
 }
+

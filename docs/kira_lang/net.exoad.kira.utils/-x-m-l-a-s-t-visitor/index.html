@@ -1,0 +1,1816 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>XMLASTVisitor</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+    <script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js"
+            async="async"></script>
+    <script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+    <link href="../../../styles/style.css" rel="Stylesheet">
+    <link href="../../../styles/main.css" rel="Stylesheet">
+    <link href="../../../styles/prism.css" rel="Stylesheet">
+    <link href="../../../styles/logo-styles.css" rel="Stylesheet">
+    <link href="../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+    <link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+    <script type="text/javascript" src="../../../scripts/clipboard.js" async="async"></script>
+    <script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+    <script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+    <script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+    <script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+    <script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+    <script type="text/javascript" src="../../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+        <a class="library-name--link" href="../../../index.html">
+            kira_lang
+        </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+            1.0-SNAPSHOT
+        </div>
+        <div class="navigation-controls">
+            <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter=":dokkaHtml/main">jvm
+                </button>
+                <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                    <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                            data-role="dropdown-toggle"
+                            aria-controls="platform-tags-listbox"
+                            aria-haspopup="listbox"
+                            aria-expanded="false"
+                            aria-label="Toggle source sets"
+                    ></button>
+                    <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                        <div class="dropdown--header"><span>Platform filter</span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":dokkaHtml/main"
+                                       data-filter=":dokkaHtml/main"/>
+                                <span class="checkbox--icon"></span>
+                                jvm
+                            </label>
+                        </li>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+    <div id="container">
+        <div class="sidebar" id="leftColumn">
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox">
+                    <div class="dropdown--header">
+                            <span>
+                                    kira_lang
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+        <div id="main">
+            <div class="main-content" data-page-type="classlike" id="content"
+                 pageIds="kira_lang::net.exoad.kira.utils/XMLASTVisitor///PointingToDeclaration//769193423">
+                <div class="breadcrumbs"><a href="../../../index.html">kira_lang</a><span class="delimiter">/</span><a
+                        href="../index.html">net.exoad.kira.utils</a><span class="delimiter">/</span><span
+                        class="current">XMLASTVisitor</span></div>
+                <div class="cover ">
+                    <h1 class="cover"><span><span>XMLASTVisitor</span></span></h1>
+                    <div class="platform-hinted " data-platform-hinted="data-platform-hinted">
+                        <div class="content sourceset-dependent-content" data-active=""
+                             data-togglable=":dokkaHtml/main">
+                            <div class="symbol monospace"><span class="token keyword">object </span><a
+                                    href="index.html">XMLASTVisitor</a> : <a
+                                    href="../../net.exoad.kira.compiler.frontend.parser.ast/-a-s-t-visitor/index.html">ASTVisitor</a>
+                            </div>
+                            <p class="paragraph">Builds a cool looking xml of the ast without external dependencies (can
+                                only write, not read tho)</p>
+                            <p class="paragraph">This might be an ir ir, meaning you could use this make other
+                                languages. but thats just the ast!</p>
+                            <p class="paragraph">usually this is just generated right after the parser phase, but you
+                                can always pass in a root ast node or something, and it will traverse and spit something
+                                out.</p>
+                            <p class="paragraph">it is dumped using <a
+                                    href="../../net.exoad.kira.cli/-argument-options/dump-a-s-t.html">net.exoad.kira.cli.ArgumentOptions.dumpAST</a>
+                                to a file you want.</p>
+                            <p class="paragraph">spitting it out makes developing kira much easier than scrolling
+                                through a terminal sometimes</p></div>
+                    </div>
+                </div>
+                <div class="tabbedcontent">
+                    <div class="tabs-section" tabs-section="tabs-section">
+                        <button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">
+                            Members
+                        </button>
+                    </div>
+                    <div class="tabs-section-body">
+                        <div data-togglable="FUNCTION">
+                            <h2 class="">Functions</h2>
+                            <div class="table"><a data-name="-1897293903%2FFunctions%2F769193423" anchor-label="build"
+                                                  id="-1897293903%2FFunctions%2F769193423"
+                                                  data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="build.html"><span><span>build</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1897293903%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">fun </span><a
+                                                                href="build.html"><span
+                                                                class="token function">build</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">node<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast/-a-s-t-node/index.html">ASTNode</a></span></span><span
+                                                                class="token punctuation">)</span><span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-926503013%2FFunctions%2F769193423" anchor-label="visitArrayLiteral"
+                                   id="-926503013%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-array-literal.html"><span>visit</span><wbr></wbr><span>Array</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-926503013%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-array-literal.html"><span
+                                                                class="token function">visitArrayLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">arrayLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-array-literal/index.html">ArrayLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="614656321%2FFunctions%2F769193423" anchor-label="visitAssignmentExpr"
+                                   id="614656321%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-assignment-expr.html"><span>visit</span><wbr></wbr><span>Assignment</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="614656321%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-assignment-expr.html"><span
+                                                                class="token function">visitAssignmentExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">assignmentExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1862953793%2FFunctions%2F769193423" anchor-label="visitBinaryExpr"
+                                   id="1862953793%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-binary-expr.html"><span>visit</span><wbr></wbr><span>Binary</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1862953793%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-binary-expr.html"><span
+                                                                class="token function">visitBinaryExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">binaryExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="2067187005%2FFunctions%2F769193423" anchor-label="visitBoolLiteral"
+                                   id="2067187005%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-bool-literal.html"><span>visit</span><wbr></wbr><span>Bool</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2067187005%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-bool-literal.html"><span
+                                                                class="token function">visitBoolLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">boolLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-bool-literal/index.html">BoolLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="678009160%2FFunctions%2F769193423" anchor-label="visitBreakStatement"
+                                   id="678009160%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-break-statement.html"><span>visit</span><wbr></wbr><span>Break</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="678009160%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-break-statement.html"><span
+                                                                class="token function">visitBreakStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">breakStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-break-statement/index.html">BreakStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-433434229%2FFunctions%2F769193423" anchor-label="visitClassDecl"
+                                   id="-433434229%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-class-decl.html"><span>visit</span><wbr></wbr><span>Class</span><wbr></wbr><span><span>Decl</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-433434229%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-class-decl.html"><span
+                                                                class="token function">visitClassDecl</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">classDecl<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-484402015%2FFunctions%2F769193423"
+                                   anchor-label="visitCompoundAssignmentExpr" id="-484402015%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-compound-assignment-expr.html"><span>visit</span><wbr></wbr><span>Compound</span><wbr></wbr><span>Assignment</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-484402015%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-compound-assignment-expr.html"><span
+                                                                class="token function">visitCompoundAssignmentExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">compoundAssignmentExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="203130218%2FFunctions%2F769193423" anchor-label="visitContinueStatement"
+                                   id="203130218%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-continue-statement.html"><span>visit</span><wbr></wbr><span>Continue</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="203130218%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-continue-statement.html"><span
+                                                                class="token function">visitContinueStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">continueStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-continue-statement/index.html">ContinueStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1053943626%2FFunctions%2F769193423"
+                                   anchor-label="visitDoWhileIterationStatement" id="1053943626%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-do-while-iteration-statement.html"><span>visit</span><wbr></wbr><span>Do</span><wbr></wbr><span>While</span><wbr></wbr><span>Iteration</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1053943626%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-do-while-iteration-statement.html"><span
+                                                                class="token function">visitDoWhileIterationStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">doWhileIterationStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-do-while-iteration-statement/index.html">DoWhileIterationStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-698942894%2FFunctions%2F769193423"
+                                   anchor-label="visitElseBranchStatement" id="-698942894%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-else-branch-statement.html"><span>visit</span><wbr></wbr><span>Else</span><wbr></wbr><span>Branch</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-698942894%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-else-branch-statement.html"><span
+                                                                class="token function">visitElseBranchStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">elseBranchNode<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-else-branch-statement/index.html">ElseBranchStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-633240095%2FFunctions%2F769193423" anchor-label="visitEnumDecl"
+                                   id="-633240095%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-enum-decl.html"><span>visit</span><wbr></wbr><span>Enum</span><wbr></wbr><span><span>Decl</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-633240095%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-enum-decl.html"><span
+                                                                class="token function">visitEnumDecl</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">enumDecl<span class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-855989503%2FFunctions%2F769193423" anchor-label="visitEnumMemberExpr"
+                                   id="-855989503%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-enum-member-expr.html"><span>visit</span><wbr></wbr><span>Enum</span><wbr></wbr><span>Member</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-855989503%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-enum-member-expr.html"><span
+                                                                class="token function">visitEnumMemberExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">enumMemberExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1076948155%2FFunctions%2F769193423" anchor-label="visitFloatLiteral"
+                                   id="1076948155%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-float-literal.html"><span>visit</span><wbr></wbr><span>Float</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1076948155%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-float-literal.html"><span
+                                                                class="token function">visitFloatLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">floatLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-float-literal/index.html">FloatLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1134148831%2FFunctions%2F769193423" anchor-label="visitForIterationExpr"
+                                   id="-1134148831%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-for-iteration-expr.html"><span>visit</span><wbr></wbr><span>For</span><wbr></wbr><span>Iteration</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1134148831%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-for-iteration-expr.html"><span
+                                                                class="token function">visitForIterationExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">forIterationExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="356215044%2FFunctions%2F769193423"
+                                   anchor-label="visitForIterationStatement" id="356215044%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-for-iteration-statement.html"><span>visit</span><wbr></wbr><span>For</span><wbr></wbr><span>Iteration</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="356215044%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-for-iteration-statement.html"><span
+                                                                class="token function">visitForIterationStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">forIterationStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-for-iteration-statement/index.html">ForIterationStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-2065158175%2FFunctions%2F769193423" anchor-label="visitFunctionCallExpr"
+                                   id="-2065158175%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-function-call-expr.html"><span>visit</span><wbr></wbr><span>Function</span><wbr></wbr><span>Call</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2065158175%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-function-call-expr.html"><span
+                                                                class="token function">visitFunctionCallExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">functionCallExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1127055775%2FFunctions%2F769193423"
+                                   anchor-label="visitFunctionCallNamedParameterExpr"
+                                   id="-1127055775%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-function-call-named-parameter-expr.html"><span>visit</span><wbr></wbr><span>Function</span><wbr></wbr><span>Call</span><wbr></wbr><span>Named</span><wbr></wbr><span>Parameter</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1127055775%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-function-call-named-parameter-expr.html"><span
+                                                                class="token function">visitFunctionCallNamedParameterExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">functionCallNamedParameterExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1771632145%2FFunctions%2F769193423"
+                                   anchor-label="visitFunctionCallPositionalParameterExpr"
+                                   id="-1771632145%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-function-call-positional-parameter-expr.html"><span>visit</span><wbr></wbr><span>Function</span><wbr></wbr><span>Call</span><wbr></wbr><span>Positional</span><wbr></wbr><span>Parameter</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1771632145%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-function-call-positional-parameter-expr.html"><span
+                                                                class="token function">visitFunctionCallPositionalParameterExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">functionCallPositionalParameterExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-218040319%2FFunctions%2F769193423" anchor-label="visitFunctionDecl"
+                                   id="-218040319%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-function-decl.html"><span>visit</span><wbr></wbr><span>Function</span><wbr></wbr><span><span>Decl</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-218040319%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-function-decl.html"><span
+                                                                class="token function">visitFunctionDecl</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">functionDecl<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="721016299%2FFunctions%2F769193423" anchor-label="visitFunctionLiteral"
+                                   id="721016299%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-function-literal.html"><span>visit</span><wbr></wbr><span>Function</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="721016299%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-function-literal.html"><span
+                                                                class="token function">visitFunctionLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">functionLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-anonymous-function/index.html">AnonymousFunction</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-2028668397%2FFunctions%2F769193423"
+                                   anchor-label="visitFunctionParameterExpr" id="-2028668397%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-function-parameter-expr.html"><span>visit</span><wbr></wbr><span>Function</span><wbr></wbr><span>Parameter</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2028668397%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-function-parameter-expr.html"><span
+                                                                class="token function">visitFunctionParameterExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">functionParameterExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1700064965%2FFunctions%2F769193423" anchor-label="visitIdentifier"
+                                   id="-1700064965%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-identifier.html"><span>visit</span><wbr></wbr><span><span>Identifier</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1700064965%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-identifier.html"><span
+                                                                class="token function">visitIdentifier</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">identifier<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-identifier/index.html">Identifier</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1969311689%2FFunctions%2F769193423"
+                                   anchor-label="visitIfElseIfBranchStatement" id="1969311689%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-if-else-if-branch-statement.html"><span>visit</span><wbr></wbr><span>If</span><wbr></wbr><span>Else</span><wbr></wbr><span>If</span><wbr></wbr><span>Branch</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1969311689%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-if-else-if-branch-statement.html"><span
+                                                                class="token function">visitIfElseIfBranchStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">ifElseIfBranchNode<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-else-if-branch-statement/index.html">ElseIfBranchStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1571091976%2FFunctions%2F769193423"
+                                   anchor-label="visitIfSelectionStatement" id="1571091976%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-if-selection-statement.html"><span>visit</span><wbr></wbr><span>If</span><wbr></wbr><span>Selection</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1571091976%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-if-selection-statement.html"><span
+                                                                class="token function">visitIfSelectionStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">ifSelectionStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-if-selection-statement/index.html">IfSelectionStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1799745211%2FFunctions%2F769193423" anchor-label="visitIntegerLiteral"
+                                   id="1799745211%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-integer-literal.html"><span>visit</span><wbr></wbr><span>Integer</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1799745211%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-integer-literal.html"><span
+                                                                class="token function">visitIntegerLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">integerLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-integer-literal/index.html">IntegerLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="76161079%2FFunctions%2F769193423" anchor-label="visitIntrinsicCallExpr"
+                                   id="76161079%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-intrinsic-call-expr.html"><span>visit</span><wbr></wbr><span>Intrinsic</span><wbr></wbr><span>Call</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="76161079%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-intrinsic-call-expr.html"><span
+                                                                class="token function">visitIntrinsicCallExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">intrinsicCallExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-888779355%2FFunctions%2F769193423" anchor-label="visitListLiteral"
+                                   id="-888779355%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-list-literal.html"><span>visit</span><wbr></wbr><span>List</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-888779355%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-list-literal.html"><span
+                                                                class="token function">visitListLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">listLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-list-literal/index.html">ListLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1493731333%2FFunctions%2F769193423" anchor-label="visitMapLiteral"
+                                   id="-1493731333%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-map-literal.html"><span>visit</span><wbr></wbr><span>Map</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1493731333%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-map-literal.html"><span
+                                                                class="token function">visitMapLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">mapLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-map-literal/index.html">MapLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="527620833%2FFunctions%2F769193423" anchor-label="visitMemberAccessExpr"
+                                   id="527620833%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-member-access-expr.html"><span>visit</span><wbr></wbr><span>Member</span><wbr></wbr><span>Access</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="527620833%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-member-access-expr.html"><span
+                                                                class="token function">visitMemberAccessExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">memberAccessExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="537349953%2FFunctions%2F769193423" anchor-label="visitModuleDecl"
+                                   id="537349953%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-module-decl.html"><span>visit</span><wbr></wbr><span>Module</span><wbr></wbr><span><span>Decl</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="537349953%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-module-decl.html"><span
+                                                                class="token function">visitModuleDecl</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">moduleDecl<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-712309055%2FFunctions%2F769193423" anchor-label="visitNoExpr"
+                                   id="-712309055%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-no-expr.html"><span>visit</span><wbr></wbr><span>No</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-712309055%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-no-expr.html"><span class="token function">visitNoExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">noExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1130754633%2FFunctions%2F769193423" anchor-label="visitNullLiteral"
+                                   id="-1130754633%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-null-literal.html"><span>visit</span><wbr></wbr><span>Null</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1130754633%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-null-literal.html"><span
+                                                                class="token function">visitNullLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">nullLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-null-literal/index.html">NullLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-425231839%2FFunctions%2F769193423" anchor-label="visitObjectDecl"
+                                   id="-425231839%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-object-decl.html"><span>visit</span><wbr></wbr><span>Object</span><wbr></wbr><span><span>Decl</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-425231839%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-object-decl.html"><span
+                                                                class="token function">visitObjectDecl</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">objectDecl<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="854531755%2FFunctions%2F769193423" anchor-label="visitRangeExpr"
+                                   id="854531755%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-range-expr.html"><span>visit</span><wbr></wbr><span>Range</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="854531755%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-range-expr.html"><span
+                                                                class="token function">visitRangeExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">rangeExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-92675652%2FFunctions%2F769193423" anchor-label="visitReturnStatement"
+                                   id="-92675652%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-return-statement.html"><span>visit</span><wbr></wbr><span>Return</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-92675652%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-return-statement.html"><span
+                                                                class="token function">visitReturnStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">returnStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-return-statement/index.html">ReturnStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1290988434%2FFunctions%2F769193423" anchor-label="visitRootASTNode"
+                                   id="1290988434%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-root-a-s-t-node.html"><span>visit</span><wbr></wbr><span>Root</span><wbr></wbr><span><span>ASTNode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1290988434%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-root-a-s-t-node.html"><span
+                                                                class="token function">visitRootASTNode</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">rootASTNode<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast/-root-a-s-t-node/index.html">RootASTNode</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1253153436%2FFunctions%2F769193423" anchor-label="visitStatement"
+                                   id="1253153436%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-statement.html"><span>visit</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1253153436%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-statement.html"><span
+                                                                class="token function">visitStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">statement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-statement/index.html">Statement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1990170805%2FFunctions%2F769193423" anchor-label="visitStringLiteral"
+                                   id="-1990170805%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-string-literal.html"><span>visit</span><wbr></wbr><span>String</span><wbr></wbr><span><span>Literal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1990170805%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-string-literal.html"><span
+                                                                class="token function">visitStringLiteral</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">stringLiteral<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-string-literal/index.html">StringLiteral</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="563068545%2FFunctions%2F769193423" anchor-label="visitTypeCastExpr"
+                                   id="563068545%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-type-cast-expr.html"><span>visit</span><wbr></wbr><span>Type</span><wbr></wbr><span>Cast</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="563068545%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-type-cast-expr.html"><span
+                                                                class="token function">visitTypeCastExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">typeCastExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="784672909%2FFunctions%2F769193423" anchor-label="visitTypeCheckExpr"
+                                   id="784672909%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-type-check-expr.html"><span>visit</span><wbr></wbr><span>Type</span><wbr></wbr><span>Check</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="784672909%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-type-check-expr.html"><span
+                                                                class="token function">visitTypeCheckExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">typeCheckExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="232371263%2FFunctions%2F769193423" anchor-label="visitTypeSpecifier"
+                                   id="232371263%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-type-specifier.html"><span>visit</span><wbr></wbr><span>Type</span><wbr></wbr><span><span>Specifier</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="232371263%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-type-specifier.html"><span
+                                                                class="token function">visitTypeSpecifier</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">typeSpecifier<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.elements/-type-specifier/index.html">TypeSpecifier</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="910818703%2FFunctions%2F769193423" anchor-label="visitUnaryExpr"
+                                   id="910818703%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-unary-expr.html"><span>visit</span><wbr></wbr><span>Unary</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="910818703%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-unary-expr.html"><span
+                                                                class="token function">visitUnaryExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">unaryExpr<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="281476104%2FFunctions%2F769193423" anchor-label="visitUseStatement"
+                                   id="281476104%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-use-statement.html"><span>visit</span><wbr></wbr><span>Use</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="281476104%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-use-statement.html"><span
+                                                                class="token function">visitUseStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">useStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-use-statement/index.html">UseStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-319247487%2FFunctions%2F769193423" anchor-label="visitVariableDecl"
+                                   id="-319247487%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-variable-decl.html"><span>visit</span><wbr></wbr><span>Variable</span><wbr></wbr><span><span>Decl</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-319247487%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-variable-decl.html"><span
+                                                                class="token function">visitVariableDecl</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">variableDecl<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="799734452%2FFunctions%2F769193423"
+                                   anchor-label="visitWhileIterationStatement" id="799734452%2FFunctions%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-while-iteration-statement.html"><span>visit</span><wbr></wbr><span>While</span><wbr></wbr><span>Iteration</span><wbr></wbr><span><span>Statement</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="799734452%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-while-iteration-statement.html"><span
+                                                                class="token function">visitWhileIterationStatement</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">whileIterationStatement<span
+                                                                class="token operator">: </span><a
+                                                                href="../../net.exoad.kira.compiler.frontend.parser.ast.statements/-while-iteration-statement/index.html">WhileIterationStatement</a></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1811024865%2FFunctions%2F769193423" anchor-label="visitWithExpr"
+                                   id="1811024865%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-with-expr.html"><span>visit</span><wbr></wbr><span>With</span><wbr></wbr><span><span>Expr</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1811024865%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-with-expr.html"><span
+                                                                class="token function">visitWithExpr</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span
+                                                                class="parameter ">withExpr<span class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-444081759%2FFunctions%2F769193423" anchor-label="visitWithExprMember"
+                                   id="-444081759%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="visit-with-expr-member.html"><span>visit</span><wbr></wbr><span>With</span><wbr></wbr><span>Expr</span><wbr></wbr><span><span>Member</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-444081759%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">open </span><span
+                                                                class="token keyword">override </span><span
+                                                                class="token keyword">fun </span><a
+                                                                href="visit-with-expr-member.html"><span
+                                                                class="token function">visitWithExprMember</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">withExprMember<span
+                                                                class="token operator">: </span><span
+                                                                data-unresolved-link="/&amp;lt;Error class: unknown class&amp;gt;///PointingToDeclaration/">&lt;Error class: unknown class&gt;</span></span></span><span
+                                                                class="token punctuation">)</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+                <span>© 2025 Copyright</span>
+                <span class="pull-right">
+            <span>Generated by </span>
+            <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                <span>dokka</span>
+            </a>
+        </span>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

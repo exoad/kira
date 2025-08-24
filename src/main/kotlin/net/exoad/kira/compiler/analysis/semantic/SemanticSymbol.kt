@@ -10,22 +10,5 @@ data class SemanticSymbol(
     val declaredAt: AbsoluteFileLocation,
 )
 
-enum class SemanticSymbolKind
-{
-    VARIABLE,
-    FUNCTION,
-    CLASS,
-    OBJECT,
-    ENUM,
-    PARAMETER,
-    TYPE_SPECIFIER
-}
 
-enum class SemanticScope
-{
-    MODULE,
-    CLASS,
-    OBJECT,
-    ENUM,
-    FUNCTION,
-}
+

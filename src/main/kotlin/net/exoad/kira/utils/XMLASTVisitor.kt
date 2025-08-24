@@ -19,7 +19,7 @@ import java.text.SimpleDateFormat
  * usually this is just generated right after the parser phase, but you can always pass in a root ast node
  * or something, and it will traverse and spit something out.
  *
- * it is dumped using [net.exoad.kira.cli.ArgsOptions.dumpAST] to a file you want.
+ * it is dumped using [net.exoad.kira.cli.ArgumentOptions.dumpAST] to a file you want.
  *
  * spitting it out makes developing kira much easier than scrolling through a terminal sometimes
  */

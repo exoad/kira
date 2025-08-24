@@ -13,12 +13,6 @@ import net.exoad.kira.source.AbsoluteFileLocation
 import net.exoad.kira.source.FileLocation
 import net.exoad.kira.source.SourceContext
 
-data class SemanticAnalyzerResults(
-    val diagnostics: List<DiagnosticsException>,
-    val symbolTable: SymbolTable,
-    val isHealthy: Boolean,
-)
-
 /**
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
  * to make sure everything follows the rules of the language and everything makes sense.

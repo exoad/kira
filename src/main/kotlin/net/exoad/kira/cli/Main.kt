@@ -124,7 +124,7 @@ fun main(args: Array<String>)
     Diagnostics.Logging.info("Kira", "Everything took $duration")
 }
 
-fun parseArgs(): ArgsOptions
+fun parseArgs(): ArgumentOptions
 {
     parsePublicFlags()
     val useDiagnostics = argsParser.findOption("--diagnostics", "false")!!.equals("true", true)
@@ -154,7 +154,7 @@ fun parseArgs(): ArgsOptions
             else   -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
         }
     }
-    return ArgsOptions(
+    return ArgumentOptions(
         useDiagnostics,
         srcLocOption.split(",").toTypedArray(),
         dumpLexerTokensOption,

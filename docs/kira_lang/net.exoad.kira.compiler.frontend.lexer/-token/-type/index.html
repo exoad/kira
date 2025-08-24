@@ -1,0 +1,2400 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>Type</title>
+    <link href="../../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+    <script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js"
+            async="async"></script>
+    <script type="text/javascript" src="../../../../scripts/sourceset_dependencies.js" async="async"></script>
+    <link href="../../../../styles/style.css" rel="Stylesheet">
+    <link href="../../../../styles/main.css" rel="Stylesheet">
+    <link href="../../../../styles/prism.css" rel="Stylesheet">
+    <link href="../../../../styles/logo-styles.css" rel="Stylesheet">
+    <link href="../../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+    <link href="../../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+    <script type="text/javascript" src="../../../../scripts/clipboard.js" async="async"></script>
+    <script type="text/javascript" src="../../../../scripts/navigation-loader.js" async="async"></script>
+    <script type="text/javascript" src="../../../../scripts/platform-content-handler.js" async="async"></script>
+    <script type="text/javascript" src="../../../../scripts/main.js" defer="defer"></script>
+    <script type="text/javascript" src="../../../../scripts/prism.js" async="async"></script>
+    <script type="text/javascript" src="../../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+    <script type="text/javascript" src="../../../../scripts/symbol-parameters-wrapper_deferred.js"
+            defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+        <a class="library-name--link" href="../../../../index.html">
+            kira_lang
+        </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+            1.0-SNAPSHOT
+        </div>
+        <div class="navigation-controls">
+            <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter=":dokkaHtml/main">jvm
+                </button>
+                <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                    <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                            data-role="dropdown-toggle"
+                            aria-controls="platform-tags-listbox"
+                            aria-haspopup="listbox"
+                            aria-expanded="false"
+                            aria-label="Toggle source sets"
+                    ></button>
+                    <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                        <div class="dropdown--header"><span>Platform filter</span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":dokkaHtml/main"
+                                       data-filter=":dokkaHtml/main"/>
+                                <span class="checkbox--icon"></span>
+                                jvm
+                            </label>
+                        </li>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+    <div id="container">
+        <div class="sidebar" id="leftColumn">
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox">
+                    <div class="dropdown--header">
+                            <span>
+                                    kira_lang
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+        <div id="main">
+            <div class="main-content" data-page-type="classlike" id="content"
+                 pageIds="kira_lang::net.exoad.kira.compiler.frontend.lexer/Token.Type///PointingToDeclaration//769193423">
+                <div class="breadcrumbs"><a href="../../../../index.html">kira_lang</a><span
+                        class="delimiter">/</span><a
+                        href="../../index.html">net.exoad.kira.compiler.frontend.lexer</a><span
+                        class="delimiter">/</span><a href="../index.html">Token</a><span class="delimiter">/</span><span
+                        class="current">Type</span></div>
+                <div class="cover ">
+                    <h1 class="cover"><span><span>Type</span></span></h1>
+                    <div class="platform-hinted " data-platform-hinted="data-platform-hinted">
+                        <div class="content sourceset-dependent-content" data-active=""
+                             data-togglable=":dokkaHtml/main">
+                            <div class="symbol monospace"><span class="token keyword">enum </span><a href="index.html">Type</a>
+                                :
+                                <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span
+                                        class="token operator">&lt;</span><a href="index.html">Token.Type</a><span
+                                        class="token operator">&gt; </span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tabbedcontent">
+                    <div class="tabs-section" tabs-section="tabs-section">
+                        <button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">
+                            Members
+                        </button>
+                        <button class="section-tab" data-togglable="ENTRY">Entries</button>
+                    </div>
+                    <div class="tabs-section-body">
+                        <div data-togglable="ENTRY">
+                            <h2 class="">Entries</h2>
+                            <div class="table"><a data-name="13022091%2FClasslikes%2F769193423" anchor-label="X_ANY"
+                                                  id="13022091%2FClasslikes%2F769193423"
+                                                  data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-x_-a-n-y/index.html">X_ANY</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="13022091%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-x_-a-n-y/index.html">X_ANY</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1198897873%2FClasslikes%2F769193423" anchor-label="L_INTEGER"
+                                   id="1198897873%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-l_-i-n-t-e-g-e-r/index.html">L_INTEGER</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1198897873%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-l_-i-n-t-e-g-e-r/index.html">L_INTEGER</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="655680870%2FClasslikes%2F769193423" anchor-label="L_STRING"
+                                   id="655680870%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-l_-s-t-r-i-n-g/index.html">L_STRING</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="655680870%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-l_-s-t-r-i-n-g/index.html">L_STRING</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1634680017%2FClasslikes%2F769193423" anchor-label="L_FLOAT"
+                                   id="-1634680017%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-l_-f-l-o-a-t/index.html">L_FLOAT</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1634680017%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-l_-f-l-o-a-t/index.html">L_FLOAT</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-244954066%2FClasslikes%2F769193423" anchor-label="L_TRUE_BOOL"
+                                   id="-244954066%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-l_-t-r-u-e_-b-o-o-l/index.html">L_TRUE_BOOL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-244954066%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-l_-t-r-u-e_-b-o-o-l/index.html">L_TRUE_BOOL</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1558663493%2FClasslikes%2F769193423" anchor-label="L_FALSE_BOOL"
+                                   id="-1558663493%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-l_-f-a-l-s-e_-b-o-o-l/index.html">L_FALSE_BOOL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1558663493%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-l_-f-a-l-s-e_-b-o-o-l/index.html">L_FALSE_BOOL</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1426866332%2FClasslikes%2F769193423" anchor-label="L_NULL"
+                                   id="1426866332%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-l_-n-u-l-l/index.html">L_NULL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1426866332%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-l_-n-u-l-l/index.html">L_NULL</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="766932075%2FClasslikes%2F769193423" anchor-label="IDENTIFIER"
+                                   id="766932075%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-i-d-e-n-t-i-f-i-e-r/index.html">IDENTIFIER</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="766932075%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-i-d-e-n-t-i-f-i-e-r/index.html">IDENTIFIER</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="743460353%2FClasslikes%2F769193423" anchor-label="OP_RANGE"
+                                   id="743460353%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-r-a-n-g-e/index.html">OP_RANGE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="743460353%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-r-a-n-g-e/index.html">OP_RANGE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1620809317%2FClasslikes%2F769193423" anchor-label="OP_ADD"
+                                   id="1620809317%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-d-d/index.html">OP_ADD</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1620809317%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-d-d/index.html">OP_ADD</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1437190084%2FClasslikes%2F769193423" anchor-label="OP_SUB"
+                                   id="1437190084%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-s-u-b/index.html">OP_SUB</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1437190084%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-s-u-b/index.html">OP_SUB</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="2108817992%2FClasslikes%2F769193423" anchor-label="OP_MUL"
+                                   id="2108817992%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-m-u-l/index.html">OP_MUL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2108817992%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-m-u-l/index.html">OP_MUL</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1959314216%2FClasslikes%2F769193423" anchor-label="OP_SCOPE"
+                                   id="-1959314216%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-s-c-o-p-e/index.html">OP_SCOPE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1959314216%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-s-c-o-p-e/index.html">OP_SCOPE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-878780843%2FClasslikes%2F769193423" anchor-label="OP_DIV"
+                                   id="-878780843%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-d-i-v/index.html">OP_DIV</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-878780843%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-d-i-v/index.html">OP_DIV</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1306188038%2FClasslikes%2F769193423" anchor-label="OP_MOD"
+                                   id="1306188038%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-m-o-d/index.html">OP_MOD</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1306188038%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-m-o-d/index.html">OP_MOD</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1655827826%2FClasslikes%2F769193423" anchor-label="S_EQUAL"
+                                   id="-1655827826%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-e-q-u-a-l/index.html">S_EQUAL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1655827826%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-e-q-u-a-l/index.html">S_EQUAL</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1895618315%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_ADD"
+                                   id="-1895618315%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-a-d-d/index.html">OP_ASSIGN_ADD</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1895618315%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-a-d-d/index.html">OP_ASSIGN_ADD</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-2079237548%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_SUB"
+                                   id="-2079237548%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-s-u-b/index.html">OP_ASSIGN_SUB</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2079237548%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-s-u-b/index.html">OP_ASSIGN_SUB</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1407609640%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_MUL"
+                                   id="-1407609640%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-m-u-l/index.html">OP_ASSIGN_MUL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1407609640%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-m-u-l/index.html">OP_ASSIGN_MUL</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-100241179%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_DIV"
+                                   id="-100241179%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-d-i-v/index.html">OP_ASSIGN_DIV</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-100241179%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-d-i-v/index.html">OP_ASSIGN_DIV</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="2084727702%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_MOD"
+                                   id="2084727702%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-m-o-d/index.html">OP_ASSIGN_MOD</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2084727702%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-m-o-d/index.html">OP_ASSIGN_MOD</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1367678633%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_BIT_OR"
+                                   id="1367678633%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-b-i-t_-o-r/index.html">OP_ASSIGN_BIT_OR</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1367678633%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-b-i-t_-o-r/index.html">OP_ASSIGN_BIT_OR</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="434566361%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_BIT_AND"
+                                   id="434566361%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-b-i-t_-a-n-d/index.html">OP_ASSIGN_BIT_AND</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="434566361%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-b-i-t_-a-n-d/index.html">OP_ASSIGN_BIT_AND</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="508325817%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_BIT_SHL"
+                                   id="508325817%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-b-i-t_-s-h-l/index.html">OP_ASSIGN_BIT_SHL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="508325817%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-b-i-t_-s-h-l/index.html">OP_ASSIGN_BIT_SHL</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-917054371%2FClasslikes%2F769193423" anchor-label="OP_ASSIGN_BIT_XOR"
+                                   id="-917054371%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-a-s-s-i-g-n_-b-i-t_-x-o-r/index.html">OP_ASSIGN_BIT_XOR</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-917054371%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-o-p_-a-s-s-i-g-n_-b-i-t_-x-o-r/index.html">OP_ASSIGN_BIT_XOR</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="295217347%2FClasslikes%2F769193423" anchor-label="OP_CMP_LEQ"
+                                   id="295217347%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-c-m-p_-l-e-q/index.html">OP_CMP_LEQ</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="295217347%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-c-m-p_-l-e-q/index.html">OP_CMP_LEQ</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-956450325%2FClasslikes%2F769193423" anchor-label="OP_CMP_EQL"
+                                   id="-956450325%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-c-m-p_-e-q-l/index.html">OP_CMP_EQL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-956450325%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-c-m-p_-e-q-l/index.html">OP_CMP_EQL</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-652834619%2FClasslikes%2F769193423" anchor-label="OP_CMP_NEQ"
+                                   id="-652834619%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-c-m-p_-n-e-q/index.html">OP_CMP_NEQ</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-652834619%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-c-m-p_-n-e-q/index.html">OP_CMP_NEQ</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-740133822%2FClasslikes%2F769193423" anchor-label="OP_CMP_AND"
+                                   id="-740133822%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-c-m-p_-a-n-d/index.html">OP_CMP_AND</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-740133822%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-c-m-p_-a-n-d/index.html">OP_CMP_AND</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1579708896%2FClasslikes%2F769193423" anchor-label="OP_CMP_OR"
+                                   id="-1579708896%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-c-m-p_-o-r/index.html">OP_CMP_OR</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1579708896%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-c-m-p_-o-r/index.html">OP_CMP_OR</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1779475753%2FClasslikes%2F769193423" anchor-label="OP_BIT_SHL"
+                                   id="1779475753%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-b-i-t_-s-h-l/index.html">OP_BIT_SHL</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1779475753%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-b-i-t_-s-h-l/index.html">OP_BIT_SHL</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="354095565%2FClasslikes%2F769193423" anchor-label="OP_BIT_XOR"
+                                   id="354095565%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-o-p_-b-i-t_-x-o-r/index.html">OP_BIT_XOR</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="354095565%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-o-p_-b-i-t_-x-o-r/index.html">OP_BIT_XOR</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-327055917%2FClasslikes%2F769193423" anchor-label="K_IF"
+                                   id="-327055917%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-i-f/index.html">K_IF</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-327055917%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-i-f/index.html">K_IF</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1984538735%2FClasslikes%2F769193423" anchor-label="K_ELSE"
+                                   id="1984538735%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-e-l-s-e/index.html">K_ELSE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1984538735%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-e-l-s-e/index.html">K_ELSE</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1003858656%2FClasslikes%2F769193423" anchor-label="K_IS"
+                                   id="-1003858656%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-i-s/index.html">K_IS</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1003858656%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-i-s/index.html">K_IS</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-237051299%2FClasslikes%2F769193423" anchor-label="K_CONTINUE"
+                                   id="-237051299%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-c-o-n-t-i-n-u-e/index.html">K_CONTINUE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-237051299%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-c-o-n-t-i-n-u-e/index.html">K_CONTINUE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1551896337%2FClasslikes%2F769193423" anchor-label="K_BREAK"
+                                   id="1551896337%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-b-r-e-a-k/index.html">K_BREAK</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1551896337%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-b-r-e-a-k/index.html">K_BREAK</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1335227944%2FClasslikes%2F769193423" anchor-label="K_AS"
+                                   id="1335227944%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-a-s/index.html">K_AS</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1335227944%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-a-s/index.html">K_AS</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1531004355%2FClasslikes%2F769193423" anchor-label="K_WHILE"
+                                   id="1531004355%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-w-h-i-l-e/index.html">K_WHILE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1531004355%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-w-h-i-l-e/index.html">K_WHILE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1998038438%2FClasslikes%2F769193423" anchor-label="K_RETURN"
+                                   id="1998038438%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-r-e-t-u-r-n/index.html">K_RETURN</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1998038438%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-r-e-t-u-r-n/index.html">K_RETURN</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1327081665%2FClasslikes%2F769193423" anchor-label="K_DO"
+                                   id="1327081665%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-d-o/index.html">K_DO</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1327081665%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-d-o/index.html">K_DO</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="265464027%2FClasslikes%2F769193423" anchor-label="K_FOR"
+                                   id="265464027%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-f-o-r/index.html">K_FOR</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="265464027%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-f-o-r/index.html">K_FOR</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1555916342%2FClasslikes%2F769193423" anchor-label="K_CLASS"
+                                   id="-1555916342%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-c-l-a-s-s/index.html">K_CLASS</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1555916342%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-c-l-a-s-s/index.html">K_CLASS</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1252268313%2FClasslikes%2F769193423" anchor-label="K_USE"
+                                   id="1252268313%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-u-s-e/index.html">K_USE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1252268313%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-u-s-e/index.html">K_USE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="2096462652%2FClasslikes%2F769193423" anchor-label="K_WITH"
+                                   id="2096462652%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-w-i-t-h/index.html">K_WITH</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2096462652%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-w-i-t-h/index.html">K_WITH</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1286307273%2FClasslikes%2F769193423" anchor-label="K_ENUM"
+                                   id="-1286307273%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-e-n-u-m/index.html">K_ENUM</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1286307273%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-e-n-u-m/index.html">K_ENUM</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1083069301%2FClasslikes%2F769193423" anchor-label="K_OBJECT"
+                                   id="1083069301%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-o-b-j-e-c-t/index.html">K_OBJECT</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1083069301%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-o-b-j-e-c-t/index.html">K_OBJECT</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-992580126%2FClasslikes%2F769193423" anchor-label="K_MODULE"
+                                   id="-992580126%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-m-o-d-u-l-e/index.html">K_MODULE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-992580126%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-k_-m-o-d-u-l-e/index.html">K_MODULE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1910755564%2FClasslikes%2F769193423" anchor-label="K_THIS"
+                                   id="-1910755564%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-t-h-i-s/index.html">K_THIS</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1910755564%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-t-h-i-s/index.html">K_THIS</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-2104780525%2FClasslikes%2F769193423" anchor-label="K_MODIFIER_REQUIRE"
+                                   id="-2104780525%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-m-o-d-i-f-i-e-r_-r-e-q-u-i-r-e/index.html">K_MODIFIER_REQUIRE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2104780525%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-m-o-d-i-f-i-e-r_-r-e-q-u-i-r-e/index.html">K_MODIFIER_REQUIRE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="593508434%2FClasslikes%2F769193423" anchor-label="K_MODIFIER_WEAK"
+                                   id="593508434%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-m-o-d-i-f-i-e-r_-w-e-a-k/index.html">K_MODIFIER_WEAK</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="593508434%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-m-o-d-i-f-i-e-r_-w-e-a-k/index.html">K_MODIFIER_WEAK</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1095662356%2FClasslikes%2F769193423" anchor-label="K_MODIFIER_MUTABLE"
+                                   id="1095662356%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-m-o-d-i-f-i-e-r_-m-u-t-a-b-l-e/index.html">K_MODIFIER_MUTABLE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1095662356%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-m-o-d-i-f-i-e-r_-m-u-t-a-b-l-e/index.html">K_MODIFIER_MUTABLE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1782679043%2FClasslikes%2F769193423" anchor-label="K_MODIFIER_PUBLIC"
+                                   id="1782679043%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-k_-m-o-d-i-f-i-e-r_-p-u-b-l-i-c/index.html">K_MODIFIER_PUBLIC</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1782679043%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-k_-m-o-d-i-f-i-e-r_-p-u-b-l-i-c/index.html">K_MODIFIER_PUBLIC</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1378842897%2FClasslikes%2F769193423" anchor-label="S_OPEN_PARENTHESIS"
+                                   id="-1378842897%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-o-p-e-n_-p-a-r-e-n-t-h-e-s-i-s/index.html">S_OPEN_PARENTHESIS</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1378842897%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-o-p-e-n_-p-a-r-e-n-t-h-e-s-i-s/index.html">S_OPEN_PARENTHESIS</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1551911543%2FClasslikes%2F769193423" anchor-label="S_CLOSE_PARENTHESIS"
+                                   id="-1551911543%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-c-l-o-s-e_-p-a-r-e-n-t-h-e-s-i-s/index.html">S_CLOSE_PARENTHESIS</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1551911543%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-c-l-o-s-e_-p-a-r-e-n-t-h-e-s-i-s/index.html">S_CLOSE_PARENTHESIS</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="405769793%2FClasslikes%2F769193423" anchor-label="S_OPEN_BRACKET"
+                                   id="405769793%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-o-p-e-n_-b-r-a-c-k-e-t/index.html">S_OPEN_BRACKET</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="405769793%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-o-p-e-n_-b-r-a-c-k-e-t/index.html">S_OPEN_BRACKET</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1738676699%2FClasslikes%2F769193423" anchor-label="S_CLOSE_BRACKET"
+                                   id="1738676699%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-c-l-o-s-e_-b-r-a-c-k-e-t/index.html">S_CLOSE_BRACKET</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1738676699%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-c-l-o-s-e_-b-r-a-c-k-e-t/index.html">S_CLOSE_BRACKET</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="305898444%2FClasslikes%2F769193423" anchor-label="S_OPEN_BRACE"
+                                   id="305898444%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-o-p-e-n_-b-r-a-c-e/index.html">S_OPEN_BRACE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="305898444%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-o-p-e-n_-b-r-a-c-e/index.html">S_OPEN_BRACE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="204492262%2FClasslikes%2F769193423" anchor-label="S_CLOSE_BRACE"
+                                   id="204492262%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-c-l-o-s-e_-b-r-a-c-e/index.html">S_CLOSE_BRACE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="204492262%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-c-l-o-s-e_-b-r-a-c-e/index.html">S_CLOSE_BRACE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1952646548%2FClasslikes%2F769193423" anchor-label="S_OPEN_ANGLE"
+                                   id="-1952646548%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-o-p-e-n_-a-n-g-l-e/index.html">S_OPEN_ANGLE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1952646548%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-o-p-e-n_-a-n-g-l-e/index.html">S_OPEN_ANGLE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-2054052730%2FClasslikes%2F769193423" anchor-label="S_CLOSE_ANGLE"
+                                   id="-2054052730%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-c-l-o-s-e_-a-n-g-l-e/index.html">S_CLOSE_ANGLE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2054052730%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-c-l-o-s-e_-a-n-g-l-e/index.html">S_CLOSE_ANGLE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-2047788679%2FClasslikes%2F769193423" anchor-label="S_COLON"
+                                   id="-2047788679%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-c-o-l-o-n/index.html">S_COLON</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2047788679%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-c-o-l-o-n/index.html">S_COLON</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1681518517%2FClasslikes%2F769193423" anchor-label="S_SEMICOLON"
+                                   id="-1681518517%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-s-e-m-i-c-o-l-o-n/index.html">S_SEMICOLON</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1681518517%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-s-e-m-i-c-o-l-o-n/index.html">S_SEMICOLON</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-504938639%2FClasslikes%2F769193423" anchor-label="S_AND"
+                                   id="-504938639%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-a-n-d/index.html">S_AND</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-504938639%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-a-n-d/index.html">S_AND</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1584985828%2FClasslikes%2F769193423" anchor-label="S_PIPE"
+                                   id="-1584985828%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-p-i-p-e/index.html">S_PIPE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1584985828%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-p-i-p-e/index.html">S_PIPE</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1167033302%2FClasslikes%2F769193423" anchor-label="S_EOF"
+                                   id="1167033302%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-e-o-f/index.html">S_EOF</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1167033302%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-e-o-f/index.html">S_EOF</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1671132001%2FClasslikes%2F769193423" anchor-label="S_AT"
+                                   id="1671132001%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-a-t/index.html">S_AT</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1671132001%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-a-t/index.html">S_AT</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1926334502%2FClasslikes%2F769193423" anchor-label="S_BANG"
+                                   id="1926334502%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-b-a-n-g/index.html">S_BANG</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1926334502%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-b-a-n-g/index.html">S_BANG</a></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1400479901%2FClasslikes%2F769193423" anchor-label="S_DOT"
+                                   id="-1400479901%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-d-o-t/index.html">S_DOT</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1400479901%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-d-o-t/index.html">S_DOT</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1385683022%2FClasslikes%2F769193423" anchor-label="S_TILDE"
+                                   id="-1385683022%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-t-i-l-d-e/index.html">S_TILDE</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1385683022%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-t-i-l-d-e/index.html">S_TILDE</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-1260240273%2FClasslikes%2F769193423" anchor-label="S_COMMA"
+                                   id="-1260240273%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-c-o-m-m-a/index.html">S_COMMA</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1260240273%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a href="-s_-c-o-m-m-a/index.html">S_COMMA</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="987544960%2FClasslikes%2F769193423" anchor-label="S_QUESTION_MARK"
+                                   id="987544960%2FClasslikes%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-togglable="ENTRY" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-s_-q-u-e-s-t-i-o-n_-m-a-r-k/index.html">S_QUESTION_MARK</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="987544960%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace">
+                                                            <div class="block"><a
+                                                                    href="-s_-q-u-e-s-t-i-o-n_-m-a-r-k/index.html">S_QUESTION_MARK</a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div data-togglable="TYPE">
+                            <h2 class="">Types</h2>
+                            <div class="table"><a data-name="1379826995%2FClasslikes%2F769193423"
+                                                  anchor-label="Companion" id="1379826995%2FClasslikes%2F769193423"
+                                                  data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="-companion/index.html"><span><span>Companion</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1379826995%2FClasslikes%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">object </span><a
+                                                                href="-companion/index.html">Companion</a></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div data-togglable="PROPERTY">
+                            <h2 class="">Properties</h2>
+                            <div class="table"><a data-name="1911335196%2FProperties%2F769193423" anchor-label="entries"
+                                                  id="1911335196%2FProperties%2F769193423"
+                                                  data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="entries.html"><span><span>entries</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1911335196%2FProperties%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">val </span><a href="entries.html">entries</a><span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.enums/-enum-entries/index.html">EnumEntries</a><span
+                                                                class="token operator">&lt;</span><a href="index.html">Token.Type</a><span
+                                                                class="token operator">&gt;</span></div>
+                                                        <div class="brief "><p class="paragraph">Returns a
+                                                            representation of an immutable list of all enum entries, in
+                                                            the order they're declared.</p></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-372974862%2FProperties%2F769193423" anchor-label="name"
+                                   id="-372974862%2FProperties%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="../../../net.exoad.kira.core/-builtin/-intrinsics/-t-r-a-c-e/index.html#-372974862%2FProperties%2F769193423"><span><span>name</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-372974862%2FProperties%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">val </span><a
+                                                                href="../../../net.exoad.kira.core/-builtin/-intrinsics/-t-r-a-c-e/index.html#-372974862%2FProperties%2F769193423">name</a><span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-739389684%2FProperties%2F769193423" anchor-label="ordinal"
+                                   id="-739389684%2FProperties%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="../../../net.exoad.kira.core/-builtin/-intrinsics/-t-r-a-c-e/index.html#-739389684%2FProperties%2F769193423"><span><span>ordinal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-739389684%2FProperties%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">val </span><a
+                                                                href="../../../net.exoad.kira.core/-builtin/-intrinsics/-t-r-a-c-e/index.html#-739389684%2FProperties%2F769193423">ordinal</a><span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="-374145539%2FProperties%2F769193423"
+                                   anchor-label="rawDiagnosticsRepresentation" id="-374145539%2FProperties%2F769193423"
+                                   data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="raw-diagnostics-representation.html"><span>raw</span><wbr></wbr><span>Diagnostics</span><wbr></wbr><span><span>Representation</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-374145539%2FProperties%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">val </span><a
+                                                                href="raw-diagnostics-representation.html">rawDiagnosticsRepresentation</a><span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span
+                                                                class="token operator">?</span><span
+                                                                class="token operator"> = </span>null
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div data-togglable="FUNCTION">
+                            <h2 class="">Functions</h2>
+                            <div class="table"><a data-name="430258741%2FFunctions%2F769193423"
+                                                  anchor-label="diagnosticsName" id="430258741%2FFunctions%2F769193423"
+                                                  data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="diagnostics-name.html"><span>diagnostics</span><wbr></wbr><span><span>Name</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="430258741%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">fun </span><a
+                                                                href="diagnostics-name.html"><span
+                                                                class="token function">diagnosticsName</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="token punctuation">)</span><span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="700178944%2FFunctions%2F769193423" anchor-label="valueOf"
+                                   id="700178944%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="value-of.html"><span>value</span><wbr></wbr><span><span>Of</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="700178944%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">fun </span><a
+                                                                href="value-of.html"><span class="token function">valueOf</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="parameters "><span class="parameter ">value<span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></span></span><span
+                                                                class="token punctuation">)</span><span
+                                                                class="token operator">: </span><a href="index.html">Token.Type</a>
+                                                        </div>
+                                                        <div class="brief "><p class="paragraph">Returns the enum
+                                                            constant of this type with the specified name. The string
+                                                            must match exactly an identifier used to declare an enum
+                                                            constant in this type. (Extraneous whitespace characters are
+                                                            not permitted.)</p></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a data-name="1509764876%2FFunctions%2F769193423" anchor-label="values"
+                                   id="1509764876%2FFunctions%2F769193423" data-filterable-set=":dokkaHtml/main"></a>
+                                <div class="table-row" data-filterable-current=":dokkaHtml/main"
+                                     data-filterable-set=":dokkaHtml/main">
+                                    <div class="main-subrow keyValue ">
+                                        <div class=""><span class="inline-flex">
+                  <div><a href="values.html"><span><span>values</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1509764876%2FFunctions%2F769193423"></span>
+                    <div class="copy-popup-wrapper "><span
+                            class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+                                        <div>
+                                            <div class="title">
+                                                <div class="platform-hinted "
+                                                     data-platform-hinted="data-platform-hinted">
+                                                    <div class="content sourceset-dependent-content" data-active=""
+                                                         data-togglable=":dokkaHtml/main">
+                                                        <div class="symbol monospace"><span
+                                                                class="token keyword">fun </span><a
+                                                                href="values.html"><span
+                                                                class="token function">values</span></a><span
+                                                                class="token punctuation">(</span><span
+                                                                class="token punctuation">)</span><span
+                                                                class="token operator">: </span><a
+                                                                href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span
+                                                                class="token operator">&lt;</span><a href="index.html">Token.Type</a><span
+                                                                class="token operator">&gt;</span></div>
+                                                        <div class="brief "><p class="paragraph">Returns an array
+                                                            containing the constants of this enum type, in the order
+                                                            they're declared.</p></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+                <span>© 2025 Copyright</span>
+                <span class="pull-right">
+            <span>Generated by </span>
+            <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                <span>dokka</span>
+            </a>
+        </span>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
