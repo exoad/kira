@@ -1,3 +1,7 @@
 module "test:main"
 
 val: String = "Hello World"
+
+//nullableValue: String? = null // fail to compile
+
+nullableValue2: Maybe<String> = null

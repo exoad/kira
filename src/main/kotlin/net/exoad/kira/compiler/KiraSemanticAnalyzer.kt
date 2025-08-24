@@ -5,109 +5,6 @@ import net.exoad.kira.compiler.exprs.*
 import net.exoad.kira.compiler.exprs.decl.*
 import net.exoad.kira.compiler.statements.*
 
-data class SemanticSymbol(
-    val name: String,
-    val kind: SemanticSymbolKind,
-    val type: Token.Type,
-    val declaredAt: AbsoluteFileLocation,
-)
-
-enum class SemanticSymbolKind
-{
-    VARIABLE,
-    FUNCTION,
-    CLASS,
-    OBJECT,
-    ENUM,
-    PARAMETER,
-    TYPE_SPECIFIER
-}
-
-enum class Scope
-{
-    MODULE,
-    CLASS,
-    OBJECT,
-    OBJECT_MAJOR, // object is the object declaration created using the "object scope"
-    ENUM,
-    FUNCTION,
-}
-
-class SymbolTable
-{
-    private val scopeStack: ArrayDeque<MutableMap<String, SemanticSymbol>> = ArrayDeque()
-    private val scopeTypeStack: ArrayDeque<Scope> = ArrayDeque()
-
-    init
-    {
-        enter(Scope.MODULE) // global scope!
-    }
-
-    fun enter(scopeType: Scope)
-    {
-        scopeStack.addFirst(mutableMapOf())
-        scopeTypeStack.addFirst(scopeType)
-    }
-
-    fun clean()
-    {
-        // this doesnt look like the best optimal implementation here
-        scopeStack.clear()
-        scopeTypeStack.clear()
-    }
-
-    fun exit()
-    {
-        scopeStack.removeFirst()
-        scopeTypeStack.removeFirst()
-    }
-
-    fun declare(identifier: String, symbol: SemanticSymbol): Boolean
-    {
-        if(scopeStack.first().containsKey(identifier))
-        {
-            return false
-        }
-        scopeStack.first()[identifier] = symbol
-        return true
-    }
-
-    fun declareGlobal(identifier: String, symbol: SemanticSymbol): Boolean
-    {
-        for(scope in scopeStack)
-        {
-            if(scope.containsKey(identifier))
-            {
-                return false
-            }
-        }
-        scopeStack.first()[identifier] = symbol
-        return true
-    }
-
-    fun resolve(identifier: String): SemanticSymbol?
-    {
-        for(scope in scopeStack)
-        {
-            if(scope.containsKey(identifier))
-            {
-                return scope[identifier]
-            }
-        }
-        return null
-    }
-
-    fun peek(): Map<String, SemanticSymbol>
-    {
-        return scopeStack.first()
-    }
-
-    fun peekScope(): Scope
-    {
-        return scopeTypeStack.first()
-    }
-}
-
 data class SemanticAnalyzerResults(
     val diagnostics: List<DiagnosticsException>,
     val symbolTable: SymbolTable,
@@ -118,24 +15,26 @@ data class SemanticAnalyzerResults(
  * The 4th phase after the parsing process that traverses the generated AST by the [KiraParser]
  * to make sure everything follows the rules of the language and everything makes sense.
  */
-class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
+class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVisitor()
 {
     private val diagnosticsPump = mutableListOf<DiagnosticsException>()
-    val symbolTable: SymbolTable = SymbolTable()
+    lateinit var context: SourceContext
 
-    init
+    fun validateAST(): SemanticAnalyzerResults
     {
-        arrayOf("Int32", "String", "Float32", "Bool", "Int64", "Int16", "Int8", "Float64", "Void", "Never").forEach {
-            symbolTable.declare(
-                it,
-                SemanticSymbol(
-                    name = it,
-                    kind = SemanticSymbolKind.TYPE_SPECIFIER,
-                    type = Token.Type.IDENTIFIER,
-                    declaredAt = AbsoluteFileLocation.bakedIn()
-                )
-            )
+        try
+        {
+            for(source in compilationUnit.allSources())
+            {
+                context = source
+                source.ast.statements.forEach { it.accept(this) }
+            }
         }
+        catch(_: Exception)
+        {
+            return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, false)
+        }
+        return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, diagnosticsPump.isEmpty())
     }
 
     private fun pump(message: String, location: FileLocation, selectorLength: Int = 1, help: String = "")
@@ -151,19 +50,6 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
         )
     }
 
-    fun validateAST(): SemanticAnalyzerResults
-    {
-        try
-        {
-            context.ast.statements.forEach { it.accept(this) }
-        }
-        catch(_: Exception)
-        {
-            return SemanticAnalyzerResults(diagnosticsPump, symbolTable, false)
-        }
-        return SemanticAnalyzerResults(diagnosticsPump, symbolTable, diagnosticsPump.isEmpty()) // todo: need impl!
-    }
-
     fun pumpOnTrue(expr: Boolean, message: String, location: FileLocation?, selectorLength: Int = 1, help: String = "")
     {
         if(expr)
@@ -174,7 +60,7 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
 
     fun expectSymbol(symbolName: String, symbolKind: SemanticSymbolKind)
     {
-        val res = symbolTable.resolve(symbolName)
+        val res = compilationUnit.symbolTable.resolve(symbolName)
         pumpOnTrue(
             res == null || res.kind != symbolKind, "Expected a $symbolKind for '$symbolName', but got '$res'",
             location = res?.declaredAt?.toRelative() ?: FileLocation.UNKNOWN,
@@ -188,7 +74,7 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
         helpMessage: String = "'$symbolName' is not available at this scope. Or it has not been declared.",
     )
     {
-        val res = symbolTable.resolve(symbolName)
+        val res = compilationUnit.symbolTable.resolve(symbolName)
         if(res == null)
         {
             pump(
@@ -206,7 +92,7 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
         helpMessage: String = "Shadowing is not allowed. Rename this or the previous declaration.",
     )
     {
-        val res = symbolTable.resolve(symbolName)
+        val res = compilationUnit.symbolTable.resolve(symbolName)
         if(res != null)
         {
             pump(
@@ -220,7 +106,7 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
 
     fun expectType(symbolName: String, typeName: String)
     {
-        val res = symbolTable.resolve(symbolName)
+        val res = compilationUnit.symbolTable.resolve(symbolName)
         if(res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName)
         {
             pump(
@@ -423,7 +309,7 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
     override fun visitIdentifier(identifier: Identifier)
     {
         expectNotDeclared(identifier.name, context.astOrigins[identifier])
-        symbolTable.declare(
+        compilationUnit.symbolTable.declare(
             identifier.name, SemanticSymbol(
                 name = identifier.name,
                 kind = SemanticSymbolKind.VARIABLE,
@@ -452,10 +338,10 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
     override fun visitVariableDecl(variableDecl: VariableDecl)
     {
         variableDecl.name.accept(this)
-        if(symbolTable.resolve(variableDecl.typeSpecifier.name) == null)
+        if(compilationUnit.symbolTable.resolve(variableDecl.typeSpecifier.name) == null)
         {
             pump(
-                "The type '${variableDecl.typeSpecifier.name}' was not found at this scope (${symbolTable.peekScope().name.lowercase()})",
+                "The type '${variableDecl.typeSpecifier.name}' was not found at this scope (${compilationUnit.symbolTable.peekScope().name.lowercase()})",
                 location = context.astOrigins[variableDecl.typeSpecifier] ?: FileLocation.UNKNOWN,
                 selectorLength = variableDecl.typeSpecifier.name.length
             )
@@ -490,7 +376,7 @@ class KiraSemanticAnalyzer(private val context: SourceContext) : ASTVisitor()
     override fun visitClassDecl(classDecl: ClassDecl)
     {
         expectNotDeclared(classDecl.name.name, context.astOrigins[classDecl])
-        symbolTable.declare(
+        compilationUnit.symbolTable.declareGlobal(
             classDecl.name.name,
             SemanticSymbol(
                 classDecl.name.name,

@@ -17,6 +17,11 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     lateinit var ast: RootASTNode
     lateinit var astOrigins: IdentityHashMap<ASTNode, FileLocation>
 
+    fun getLines(): List<String>
+    {
+        return lines
+    }
+
     fun with(content: String, tokens: List<Token>? = null): SourceContext
     {
         return SourceContext(content, file, tokens ?: this.tokens)

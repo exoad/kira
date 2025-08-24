@@ -198,7 +198,7 @@ class KiraParser(private val context: SourceContext)
                     location = peek().canonicalLocation,
                     context = context
                 )
-            else                                -> ifOk()
+            else -> ifOk()
         }
     }
 
@@ -1185,11 +1185,6 @@ class KiraParser(private val context: SourceContext)
         val baseLocation = peek().canonicalLocation
         val baseName = peek().content
         expectThenAdvance(Token.Type.IDENTIFIER)
-        var baseNullable = false
-        expectOptionalThenAdvance(Token.Type.S_QUESTION_MARK) {
-            baseNullable = true
-            advancePointer()
-        }
         val generics = mutableListOf<TypeSpecifier>()
         if(peek().type == Token.Type.S_OPEN_ANGLE)
         {
@@ -1214,7 +1209,7 @@ class KiraParser(private val context: SourceContext)
             }
             expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         }
-        return putOrigin(TypeSpecifier(baseName, baseNullable, generics.toTypedArray()), baseLocation)
+        return putOrigin(TypeSpecifier(baseName, generics.toTypedArray()), baseLocation)
     }
 
     fun parseModifiers(): Map<Modifiers, FileLocation>

@@ -5,7 +5,6 @@ import net.exoad.kira.compiler.Token
 // this file holds some of the global stuffs of the language like keywords and valid ascii symbols (maybe even utf8 later on)
 //
 // todo: [low-priority] should i modularize this and move some of the stuffs away from this file like the symbols and keywords and stuffs. in most of my other projects, a shared source file usually means just internal configurations and constants, but who knows, ig this makes sense!
-
 /**
  * Global symbols used by the language and are defined here. these are all one byte characters for now and should all be ascii based (maybe utf8 for easter egg or special intrinsics or special feature??)
  * lmao having to copy and paste constantly from an utf8 character code website would be hilarious
@@ -40,6 +39,7 @@ enum class Symbols(val rep: Char)
     OPEN_BRACE('\u007b'),
     CLOSE_BRACE('\u007d'),
     OPEN_ANGLE('\u003c'),
+
     // lmao this is just hilarious, but yea i just dont want to ruin the structuring of the language, so these tables are necessary
     LOWERCASE_A('\u0061'),
     LOWERCASE_I('\u0069'),
@@ -77,7 +77,6 @@ object Keywords
         "for" to Token.Type.K_FOR,
         "module" to Token.Type.K_MODULE,
         "use" to Token.Type.K_USE,
-        "weak" to Token.Type.K_MODIFIER_WEAK,
         "object" to Token.Type.K_OBJECT,
         "enum" to Token.Type.K_ENUM,
         "as" to Token.Type.K_AS,
@@ -86,13 +85,11 @@ object Keywords
         "continue" to Token.Type.K_CONTINUE,
         "with" to Token.Type.K_WITH,
     )
-
     val literals = mapOf(
         "true" to Token.Type.L_TRUE_BOOL,
         "false" to Token.Type.L_FALSE_BOOL,
         "null" to Token.Type.L_NULL,
     )
-
     val all = reserved + literals
 }
 
@@ -122,7 +119,16 @@ object Builtin
      * Unit types, only things like Void
      */
     val unitTypes = mapOf<String, Array<Token.Type>>(
-        "Void" to emptyArray()
+        "Void" to arrayOf(Token.Type.X_ANY)
+    )
+
+    /**
+     * Anything related to something being treated intrinsically as a modifier.
+     */
+    val referenceTypes = mapOf(
+        "Maybe" to arrayOf(Token.Type.L_NULL, Token.Type.X_ANY),
+        "Weak" to arrayOf(Token.Type.X_ANY),
+        "Unsafe" to arrayOf(Token.Type.X_ANY)
     )
 
     /**
@@ -149,11 +155,11 @@ object Builtin
      * Has always the highest implicit precedence value
      */
     val sequenceTypes = mapOf(
-        "Str" to arrayOf(Token.Type.L_STRING),
-        "Arr" to emptyArray(),
-        "Map" to emptyArray(),
-        "List" to emptyArray(),
-        "Set" to emptyArray()
+        "String" to arrayOf(Token.Type.L_STRING),
+        "Array" to arrayOf(Token.Type.X_ANY),
+        "Map" to arrayOf(Token.Type.X_ANY),
+        "List" to arrayOf(Token.Type.X_ANY),
+        "Set" to arrayOf(Token.Type.X_ANY)
     )
 
     /**
@@ -167,7 +173,7 @@ object Builtin
 
     fun allBuiltinTypes(): Map<String, Array<Token.Type>>
     {
-        return integerTypes + sequenceTypes + logicalTypes + unitTypes
+        return integerTypes + sequenceTypes + logicalTypes + unitTypes + referenceTypes
     }
 }
 

@@ -9,7 +9,6 @@ import java.io.File
 import javax.swing.UIManager
 import kotlin.math.floor
 import kotlin.math.log10
-import kotlin.properties.Delegates
 import kotlin.time.measureTimedValue
 
 internal lateinit var argsParser: ArgsParser
@@ -28,36 +27,38 @@ fun main(args: Array<String>)
     {
         e.printStackTrace()
     }
-    var srcContext by Delegates.notNull<SourceContext>()
-    val (_, duration) = measureTimedValue { // ignore the first parameter because this a void or unit block so the result is not important!
-        argsParser = ArgsParser(args)
+
+    argsParser = ArgsParser(args)
+    val (_, duration) = measureTimedValue {
         parseArgs().let { it ->
             when(it.useDiagnostics)
             {
-                // the thing with this is that, we cannot log anything in functions before this happens, since the flag by default off
-                //
-                // the only thing we can do is panic!! silently panic LOL
                 true -> Diagnostics.useDiagnostics()
                 else -> Diagnostics.silenceDiagnostics()
             }
-            for(sourceFile in it.src)
+            val compilationUnit = CompilationUnit()
+            val sources = arrayOf("kira/types.kira", *it.src.toTypedArray())
+            for(sourceFile in sources)
             {
                 val file = File(sourceFile)
                 val preprocessor = KiraPreprocessor(file.readText())
                 val preprocessingResult = preprocessor.process()
-                srcContext = SourceContext(
-                    preprocessingResult.processedContent,
+                var srcContext = compilationUnit.addSource(
                     file.canonicalPath,
-                    emptyList(),
+                    preprocessingResult.processedContent,
+                    emptyList()
                 )
                 val (_, duration) = measureTimedValue {
                     val lexer = KiraLexer(srcContext)
-                    srcContext = srcContext.with(srcContext.content, lexer.tokenize())
+                    val tokens = lexer.tokenize()
+                    srcContext = compilationUnit.addSource(
+                        file.canonicalPath,
+                        srcContext.content,
+                        tokens
+                    )
                     if(Public.Flags.enableVisualView)
                     {
-                        KiraVisualViewer(srcContext).also {
-                            it.run()
-                        }
+                        KiraVisualViewer(srcContext).also { it.run() }
                     }
                     if(it.dumpLexerTokens != null)
                     {
@@ -70,15 +71,13 @@ fun main(args: Array<String>)
                                     .padStart(
                                         floor(log10(srcContext.tokens.size.toDouble())).toInt() + 1,
                                         ' '
-                                    ) // yikes, this math is for padding the left side of the token number being parsed to make sure that the tokens are never pushed out of alignment in this column form
-                                // basically it figures out the length of the number without using loops
+                                    )
                             }: $tk"
                         })
                         Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                     }
-                    val parser = KiraParser(srcContext)
-                    parser.parse()
-                    val semanticAnalyzer = KiraSemanticAnalyzer(srcContext)
+                    KiraParser(srcContext).parse()
+                    val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
                     val semanticAnalyzerResults = semanticAnalyzer.validateAST()
                     Diagnostics.Logging.warn(
                         "Kira",
@@ -86,8 +85,7 @@ fun main(args: Array<String>)
                     )
                     if(semanticAnalyzerResults.diagnostics.isNotEmpty())
                     {
-                        repeat(semanticAnalyzerResults.diagnostics.size)
-                        {
+                        repeat(semanticAnalyzerResults.diagnostics.size) {
                             Diagnostics.Logging.warn(
                                 "Kira",
                                 "\n-- Pumped Diagnostic #${it + 1}${
@@ -109,13 +107,11 @@ fun main(args: Array<String>)
                 }
                 when(GeneratedProvider.outputMode)
                 {
-//                    GeneratedProvider.OutputTarget.NEKO -> `KiraNekoTranspiler.txt`.transpile()
                     else -> Diagnostics.Logging.info("Kira", "No output...")
                 }
             }
         }
     }
-    // todo: should this be some kind of "finer" message or should we leave it everytime for the user to see?
     Diagnostics.Logging.info("Kira", "Total unit completed in $duration")
 }
 

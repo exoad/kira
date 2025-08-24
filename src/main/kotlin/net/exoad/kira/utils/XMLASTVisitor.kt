@@ -482,7 +482,6 @@ object XMLASTVisitor :
 
     override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
     {
-
         node(
             "IntrinsicCallExpr", """ name ="${
                 Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name

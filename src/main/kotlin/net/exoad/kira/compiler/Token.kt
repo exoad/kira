@@ -9,6 +9,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
 {
     enum class Type(val rawDiagnosticsRepresentation: String? = null)
     {
+        X_ANY, // reserved for [Shared]
         L_INTEGER,
         L_STRING,
         L_FLOAT,
