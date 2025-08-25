@@ -1,10 +1,14 @@
-package net.exoad.kira.compiler.frontend.parser.ast
+package net.exoad.kira.utils
 
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
+import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.BuiltinTypes
+import net.exoad.kira.core.Builtin
 import java.text.SimpleDateFormat
 
 /**
@@ -256,7 +260,7 @@ object XMLASTVisitor :
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionBlock)
+    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
     {
         node("LFunc")
         {
@@ -377,7 +381,7 @@ object XMLASTVisitor :
                     }
                     else -> ""
                 }
-            }stub=\"${functionDecl.isStub()}\""
+            }stub=\"${functionDecl.isStub()}\" anon=\"${functionDecl.isAnonymous()}\""
         )
         {
             functionDecl.name.accept(this)
@@ -421,17 +425,17 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
+    override fun visitObjectDecl(objectDecl: ObjectDecl)
     {
         node(
             "ObjectDecl",
-            """modifiers="${namespaceDecl.modifiers.joinToString(",") { it.name }}""""
+            """modifiers="${objectDecl.modifiers.joinToString(",") { it.name }}""""
         )
         {
-            namespaceDecl.name.accept(this)
+            objectDecl.name.accept(this)
             node("Members")
             {
-                namespaceDecl.members.forEach { it.accept(this) }
+                objectDecl.members.forEach { it.accept(this) }
             }
         }
     }
@@ -481,7 +485,7 @@ object XMLASTVisitor :
     {
         node(
             "IntrinsicCallExpr", """ name ="${
-                BuiltinTypes.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
+                Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
                     ?: intrinsicCallExpr.name.intrinsicKey.name
             }""""
         ) {
@@ -507,18 +511,18 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
+    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     {
         node(
-            "FunctionParameterExpr", when(functionParameterExpr.modifiers.isNotEmpty())
+            "FunctionParameterExpr", when(functionDeclParameterExpr.modifiers.isNotEmpty())
             {
-                true -> """ modifiers ="${functionParameterExpr.modifiers.joinToString(", ") { it.name }}""""
+                true -> """ modifiers ="${functionDeclParameterExpr.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
         )
         {
-            functionParameterExpr.name.accept(this)
-            functionParameterExpr.typeSpecifier.accept(this)
+            functionDeclParameterExpr.name.accept(this)
+            functionDeclParameterExpr.typeSpecifier.accept(this)
         }
     }
 

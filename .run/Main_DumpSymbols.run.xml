@@ -5,7 +5,7 @@
       <option name="MAIN_CLASS_NAME" value="net.exoad.kira.cli.MainKt"/>
     <module name="kira_lang.main" />
       <option name="PROGRAM_PARAMETERS"
-              value="--src=test_kira/test.kira --diagnostics=true --dumpAST=ast.kira.xml --dumpLexerTokens=tokens.kira.txt -verbose"/>
+              value="--src=test_kira/test.kira --diagnostics=true --dumpAST=ast.kira --dumpLexerTokens=tokens.kira.txt -verbose"/>
     <method v="2">
       <option name="Make" enabled="true" />
     </method>

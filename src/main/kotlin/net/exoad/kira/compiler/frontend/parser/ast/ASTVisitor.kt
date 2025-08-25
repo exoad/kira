@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.frontend.parser.ast
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
+import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 
 abstract class ASTVisitor
@@ -27,7 +28,7 @@ abstract class ASTVisitor
     abstract fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
     abstract fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
     abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
-    abstract fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
+    abstract fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
     abstract fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
     abstract fun visitRangeExpr(rangeExpr: RangeExpr)
@@ -45,7 +46,7 @@ abstract class ASTVisitor
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
     abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    abstract fun visitFunctionLiteral(functionLiteral: FunctionBlock)
+    abstract fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
     abstract fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
     abstract fun visitListLiteral(listLiteral: ListLiteral)
     abstract fun visitMapLiteral(mapLiteral: MapLiteral)
@@ -60,6 +61,6 @@ abstract class ASTVisitor
     abstract fun visitFunctionDecl(functionDecl: FunctionDecl)
     abstract fun visitClassDecl(classDecl: ClassDecl)
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
-    abstract fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
+    abstract fun visitObjectDecl(objectDecl: ObjectDecl)
     abstract fun visitEnumDecl(enumDecl: EnumDecl)
 }

@@ -1,6 +1,17 @@
 module "test:main"
 
+val: String = "Hello World"
+
+//nullableValue: String? = null // fail to compile
+
+nullableValue2: Maybe<String> = null
+
 fx sum(a: Int32, b: Int32): Int32
 {
     return a + b
+}
+
+fx (a: Int32, b: Int32): Int32
+{
+    return a * b
 }

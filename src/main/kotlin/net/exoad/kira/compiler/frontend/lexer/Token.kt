@@ -8,16 +8,16 @@ import net.exoad.kira.source.SourcePosition
  */
 sealed class Token(val type: Type, val content: String, val pointerPosition: Int, val canonicalLocation: SourcePosition)
 {
-    enum class Type(val rawDiagnosticsRepresentation: String? = null)
+    enum class Type(val rawDiagnosticsRepresentation: String)
     {
-        X_ANY, // reserved for [Shared]
-        L_INTEGER,
-        L_STRING,
-        L_FLOAT,
-        L_TRUE_BOOL,
-        L_FALSE_BOOL,
-        L_NULL,
-        IDENTIFIER,
+        X_ANY("X_ANY"), // reserved for [BuiltinTypes]
+        L_INTEGER("Integer Literal"),
+        L_STRING("String Literal"),
+        L_FLOAT("Float Literal"),
+        L_TRUE_BOOL("'true' (Boolean)"),
+        L_FALSE_BOOL("'false' (Boolean)"),
+        L_NULL("'null'"),
+        IDENTIFIER("Identifier"),
         OP_RANGE("'..' (Range To)"),
         OP_ADD("'+' (Plus)"),
         OP_SUB("'-' (Minus)"),
@@ -73,6 +73,9 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_MODIFIER_WEAK("'weak'"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
+        K_FX("'fx' (Function)"),
+
+        // RAW SYMBOLS
         S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"),
         S_CLOSE_PARENTHESIS("')' (Closing Parenthesis)"),
         S_OPEN_BRACKET("'[' (Opening Bracket)"),
@@ -85,7 +88,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         S_SEMICOLON("';' (Semicolon)"),
         S_AND("'&' (And)"),
         S_PIPE("'|' (Pipe)"),
-        S_EOF,
+        S_EOF("'EOF' (End Of File)"),
         S_AT("'@' (At)"),
         S_BANG("'!' (Bang)"),
         S_DOT("'.' (Dot)"),
@@ -96,7 +99,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
 
         fun diagnosticsName(): String
         {
-            return rawDiagnosticsRepresentation ?: name
+            return rawDiagnosticsRepresentation
         }
 
         companion object

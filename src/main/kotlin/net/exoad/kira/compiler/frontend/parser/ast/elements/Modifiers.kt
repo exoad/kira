@@ -5,36 +5,44 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 /**
  * Technically not an AST Node by inheritance, but it is crucial in the evaluation of AST nodes
  *
- * [context] describe on where these members are allowed to be placed
+ * [wrappingContext] describe on where these members are allowed to be placed
  */
-enum class Modifiers(val tokenType: Token.Type, val context: Array<Context> = emptyArray())
+enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<WrappingContext> = emptyArray())
 {
     MUTABLE(
         Token.Type.K_MODIFIER_MUTABLE, arrayOf(
-            Context.CLASS,
-            Context.CLASS_MEMBER,
-            Context.VARIABLE,
-            Context.FUNCTION,
-            Context.NAMESPACE_MEMBER,
-            Context.MODULE
+            WrappingContext.CLASS,
+            WrappingContext.CLASS_MEMBER,
+            WrappingContext.VARIABLE,
+            WrappingContext.FUNCTION,
+            WrappingContext.OBJECT_MEMBER,
+            WrappingContext.MODULE
         )
     ),
     PUBLIC(
         Token.Type.K_MODIFIER_PUBLIC,
         arrayOf(
-            Context.CLASS,
-            Context.CLASS_MEMBER,
-            Context.VARIABLE,
-            Context.FUNCTION,
-            Context.NAMESPACE,
-            Context.NAMESPACE_MEMBER,
-            Context.ENUM,
+            WrappingContext.CLASS,
+            WrappingContext.CLASS_MEMBER,
+            WrappingContext.VARIABLE,
+            WrappingContext.FUNCTION,
+            WrappingContext.OBJECT,
+            WrappingContext.OBJECT_MEMBER,
+            WrappingContext.ENUM,
         )
     ),
-    REQUIRE(Token.Type.K_MODIFIER_REQUIRE, arrayOf(Context.CLASS_MEMBER, Context.VARIABLE, Context.FUNCTION)),
+    REQUIRE(
+        Token.Type.K_MODIFIER_REQUIRE,
+        arrayOf(WrappingContext.CLASS_MEMBER, WrappingContext.VARIABLE, WrappingContext.FUNCTION)
+    ),
     WEAK(
         Token.Type.K_MODIFIER_WEAK,
-        arrayOf(Context.CLASS_MEMBER, Context.VARIABLE, Context.FUNCTION, Context.FUNCTION_PARAMETER)
+        arrayOf(
+            WrappingContext.CLASS_MEMBER,
+            WrappingContext.VARIABLE,
+            WrappingContext.FUNCTION,
+            WrappingContext.FUNCTION_PARAMETER
+        )
     )
     ;
 
@@ -51,8 +59,8 @@ enum class Modifiers(val tokenType: Token.Type, val context: Array<Context> = em
         }
     }
 
-    enum class Context
+    enum class WrappingContext
     {
-        CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, NAMESPACE, NAMESPACE_MEMBER, ENUM
+        CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, OBJECT, OBJECT_MEMBER, ENUM
     }
 }

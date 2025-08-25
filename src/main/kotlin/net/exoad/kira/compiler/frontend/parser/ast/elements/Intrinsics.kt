@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.frontend.parser.ast.elements
 
-import net.exoad.kira.core.BuiltinTypes
+import net.exoad.kira.core.Builtin
 import net.exoad.kira.source.SourceLocation
 
 /**
@@ -11,6 +11,6 @@ import net.exoad.kira.source.SourceLocation
  *
  * It is similar to preprocessor directives, but they are evaluated after it and handles additional cases that may require static analysis
  *
- * - See [BuiltinTypes.Intrinsics] for actual available intrinsics
+ * - See [Builtin.Intrinsics] for actual available intrinsics
  */
-data class Intrinsic(val intrinsicKey: BuiltinTypes.Intrinsics, val sourceLocation: SourceLocation)
+data class Intrinsic(val intrinsicKey: Builtin.Intrinsics, val sourceLocation: SourceLocation)

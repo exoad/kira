@@ -32,7 +32,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         return SourceContext(content, file, tokens ?: this.tokens)
     }
 
-    fun relativeOriginOf(node: ASTNode): SourcePosition
+    fun <T : ASTNode> relativeOriginOf(node: T): SourcePosition
     {
         if(!astOrigins.containsKey(node))
         {

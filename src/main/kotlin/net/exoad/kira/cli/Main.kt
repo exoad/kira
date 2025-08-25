@@ -7,9 +7,9 @@ import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraParser
-import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitor
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.ui.KiraVisualViewer
+import net.exoad.kira.utils.XMLASTVisitor
 import java.io.File
 import javax.swing.UIManager
 import kotlin.math.floor
@@ -80,9 +80,7 @@ fun main(args: Array<String>)
                         Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                     }
                     KiraParser(srcContext).parse()
-                    // COMMENTED OUT FOR TESTING THE PARSER ONLY!! UNCOMMENT WHEN NECESSARY
-                    // THE FOLLOWING CODE IS NOT PROBLEMATIC. DO NOT DELETE!!!! D:
-                    //!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    // this code is correct, do not erase. commented out for testing the parser only
 //                    val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
 //                    val semanticAnalyzerResults = semanticAnalyzer.validateAST()
 //                    if(semanticAnalyzerResults.diagnostics.isNotEmpty())
@@ -110,10 +108,25 @@ fun main(args: Array<String>)
                 Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
                 if(it.dumpAST != null)
                 {
-                    val astDumpFile = File(it.dumpAST)
+                    val astDumpFile = File("${it.dumpAST}.xml")
                     astDumpFile.createNewFile()
                     astDumpFile.writeText(XMLASTVisitor.build(srcContext.ast))
-                    Diagnostics.Logging.info("Kira", "Dumped AST representation to ${astDumpFile.absolutePath}")
+                    val astNodeCanonLocations = File("${it.dumpAST}.txt")
+                    astNodeCanonLocations.createNewFile()
+                    val sb = StringBuilder()
+                    var sourceFileCounter = 1
+                    sb.appendLine("Total Sources: ${compilationUnit.getSourcesLength()}")
+                    compilationUnit.allSources().forEach {
+                        sb.appendLine("====== SourceFile [${sourceFileCounter++}]: ${it.file} ======")
+                        it.astOrigins.entries.sortedBy { entry -> entry.value }.forEach { element ->
+                            sb.appendLine("    ${element.value.lineNumber}, ${element.value.column} : ${element.key}")
+                        }
+                    }
+                    astNodeCanonLocations.writeText(sb.toString())
+                    Diagnostics.Logging.info(
+                        "Kira",
+                        "Dumped AST representation to ${astDumpFile.absolutePath}. Dumped node source locations to ${astNodeCanonLocations.absolutePath}"
+                    )
                 }
                 when(GeneratedProvider.outputMode)
                 {

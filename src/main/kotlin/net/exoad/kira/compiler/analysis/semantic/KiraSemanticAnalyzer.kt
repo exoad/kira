@@ -8,10 +8,13 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
+import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.Symbols
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
+import net.exoad.kira.utils.LocaleUtils
 
 /**
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
@@ -118,7 +121,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         if(res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName)
         {
             pump(
-                "Expected a $typeName for $symbolName, but got '$res'",
+                "Expected ${LocaleUtils.prependIndefiniteArticle(typeName)} for $symbolName, but got '$res'",
                 location = res?.declaredAt?.toPosition() ?: SourcePosition.Companion.UNKNOWN
             )
         }
@@ -209,7 +212,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         // TODO("Not yet implemented")
     }
 
-    override fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
+    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     {
         // TODO("Not yet implemented")
     }
@@ -289,7 +292,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         // should be true
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionBlock)
+    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
     {
         // should be true
     }
@@ -400,10 +403,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl)
     {
-        // TODO("Not yet implemented")
+        val parts = moduleDecl.uri.value.split(Symbols.COLON.rep)
+        pumpOnTrue(
+            parts.isEmpty(),
+            "A module declaration must specify an author followed by a submodule name: 'author:submodule'",
+            context.astOrigins[moduleDecl.name]!!,
+            help = "Use the format 'author_name:submodule_name'."
+        )
     }
 
-    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
+    override fun visitObjectDecl(objectDecl: ObjectDecl)
     {
     }
 

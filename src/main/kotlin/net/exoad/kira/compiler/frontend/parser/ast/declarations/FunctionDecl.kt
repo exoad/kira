@@ -2,22 +2,16 @@ package net.exoad.kira.compiler.frontend.parser.ast.declarations
 
 import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.AnonymousIdentifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.FunctionBlock
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifiers
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FunctionLiteral
 
 open class FunctionDecl(
     override val name: Identifier,
-    open val value: FunctionBlock,
+    open val value: FunctionLiteral,
     override val modifiers: List<Modifiers> = emptyList(),
 ) : FirstClassDecl(name, modifiers)
 {
-
-    init
-    {
-        assert(name !is AnonymousIdentifier) { "Anonymous Functions should prefer to use raw function literals. This is a compiler bug." }
-    }
-
     fun isAnonymous(): Boolean
     {
         return name is AnonymousIdentifier
@@ -30,7 +24,7 @@ open class FunctionDecl(
 
     override fun toString(): String
     {
-        return "FunctionDecl[[ $modifiers ]]{ $name -> $value}"
+        return "FunctionDecl[[ $modifiers ]]{ ${if(isAnonymous()) "(_Anon_)" else ""} $name -> $value}"
     }
 
     override fun isStub(): Boolean
