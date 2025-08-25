@@ -6,7 +6,8 @@ import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
-import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
@@ -410,10 +411,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
             context.astOrigins[moduleDecl.name]!!,
             help = "Use the format 'author_name:submodule_name'."
         )
-    }
-
-    override fun visitObjectDecl(objectDecl: ObjectDecl)
-    {
     }
 
     override fun visitEnumDecl(enumDecl: EnumDecl)

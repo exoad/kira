@@ -5,21 +5,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 
-<<<<<<<< HEAD:src/main/kotlin/net/exoad/kira/compiler/frontend/parser/ast/elements/FunctionBlock.kt
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionParameterExpr
-import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
-
-open class FunctionBlock(
-    ========
-import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
-import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
-
 open class FunctionLiteral(
-    >>>>>>>> origin/main:src/main/kotlin/net/exoad/kira/compiler/frontend/parser/ast/literals/FunctionLiteral.kt
     // so this is already anonymous by itself ?? in kira parser a raw function literal can be passed anonymously
     open val returnTypeSpecifier: TypeSpecifier,
-open val parameters: List<FunctionDeclParameterExpr>,
+    open val parameters: List<FunctionDeclParameterExpr>,
     open val body: List<Statement>?, // if this is null, then this is just a "noimpl" function
 ) : Literal()
 {

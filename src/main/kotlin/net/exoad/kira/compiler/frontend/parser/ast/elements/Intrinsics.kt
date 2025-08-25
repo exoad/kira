@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.frontend.parser.ast.elements
 
-import net.exoad.kira.core.Builtin
+import net.exoad.kira.core.BuiltinIntrinsics
 import net.exoad.kira.source.SourceLocation
 
 /**
@@ -13,4 +13,4 @@ import net.exoad.kira.source.SourceLocation
  *
  * - See [Builtin.Intrinsics] for actual available intrinsics
  */
-data class Intrinsic(val intrinsicKey: Builtin.Intrinsics, val sourceLocation: SourceLocation)
+data class Intrinsic(val intrinsicKey: BuiltinIntrinsics, val sourceLocation: SourceLocation)

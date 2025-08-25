@@ -19,11 +19,6 @@ import net.exoad.kira.compiler.frontend.lexer.Token
  */
 object BuiltinTypes
 {
-    enum class Intrinsics(val rep: String)
-    {
-        TRACE("trace")
-    }
-
     /**
      * Unit types, only things like Void
      */

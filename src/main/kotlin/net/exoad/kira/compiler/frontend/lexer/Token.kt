@@ -66,7 +66,6 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_WITH("'with'"),
         K_ENUM("'enum'"),
         K_NAMESPACE("'object'"),
-        K_FX("'fx'"),
         K_MODULE("'module'"),
         K_THIS("'this'"),
         K_MODIFIER_REQUIRE("'require'"),

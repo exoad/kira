@@ -1,7 +1,8 @@
 package net.exoad.kira.compiler.frontend.parser.ast
 
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
-import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
@@ -61,6 +62,5 @@ abstract class ASTVisitor
     abstract fun visitFunctionDecl(functionDecl: FunctionDecl)
     abstract fun visitClassDecl(classDecl: ClassDecl)
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
-    abstract fun visitObjectDecl(objectDecl: ObjectDecl)
     abstract fun visitEnumDecl(enumDecl: EnumDecl)
 }

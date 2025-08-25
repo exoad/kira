@@ -4,11 +4,13 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
-import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.elements.AnonymousIdentifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.Builtin
+import net.exoad.kira.core.BuiltinIntrinsics
 import java.text.SimpleDateFormat
 
 /**
@@ -425,21 +427,6 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitObjectDecl(objectDecl: ObjectDecl)
-    {
-        node(
-            "ObjectDecl",
-            """modifiers="${objectDecl.modifiers.joinToString(",") { it.name }}""""
-        )
-        {
-            objectDecl.name.accept(this)
-            node("Members")
-            {
-                objectDecl.members.forEach { it.accept(this) }
-            }
-        }
-    }
-
     override fun visitEnumDecl(enumDecl: EnumDecl)
     {
         node(
@@ -485,7 +472,7 @@ object XMLASTVisitor :
     {
         node(
             "IntrinsicCallExpr", """ name ="${
-                Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
+                BuiltinIntrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
                     ?: intrinsicCallExpr.name.intrinsicKey.name
             }""""
         ) {
