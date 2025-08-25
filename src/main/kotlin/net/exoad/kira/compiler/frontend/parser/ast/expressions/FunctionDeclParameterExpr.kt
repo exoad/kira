@@ -5,7 +5,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifiers
 import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 
-open class FunctionParameterExpr(val name: Identifier, val typeSpecifier: TypeSpecifier, val modifiers: List<Modifiers> = emptyList()) :
+open class FunctionDeclParameterExpr(val name: Identifier, val typeSpecifier: TypeSpecifier, val modifiers: List<Modifiers> = emptyList()) :
     Expr()
 {
     override fun accept(visitor: ASTVisitor)

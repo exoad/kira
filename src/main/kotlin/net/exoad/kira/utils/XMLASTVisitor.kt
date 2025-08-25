@@ -1,12 +1,20 @@
 package net.exoad.kira.utils
 
-import net.exoad.kira.compiler.elements.*
-import net.exoad.kira.compiler.exprs.*
-import net.exoad.kira.compiler.exprs.decl.*
+import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.BoolLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FunctionLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ListLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.MapLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.Builtin
 import java.text.SimpleDateFormat
@@ -260,7 +268,7 @@ object XMLASTVisitor :
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
-    override fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
+    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
     {
         node("LFunc")
         {
@@ -511,18 +519,18 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
+    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     {
         node(
-            "FunctionParameterExpr", when(functionParameterExpr.modifiers.isNotEmpty())
+            "FunctionParameterExpr", when(functionDeclParameterExpr.modifiers.isNotEmpty())
             {
-                true -> """ modifiers ="${functionParameterExpr.modifiers.joinToString(", ") { it.name }}""""
+                true -> """ modifiers ="${functionDeclParameterExpr.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
         )
         {
-            functionParameterExpr.name.accept(this)
-            functionParameterExpr.typeSpecifier.accept(this)
+            functionDeclParameterExpr.name.accept(this)
+            functionDeclParameterExpr.typeSpecifier.accept(this)
         }
     }
 

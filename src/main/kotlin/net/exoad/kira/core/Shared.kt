@@ -84,6 +84,7 @@ object Keywords
         "break" to Token.Type.K_BREAK,
         "continue" to Token.Type.K_CONTINUE,
         "with" to Token.Type.K_WITH,
+        "fx" to Token.Type.K_FX
     )
     val literals = mapOf(
         "true" to Token.Type.L_TRUE_BOOL,

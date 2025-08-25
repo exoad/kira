@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler.frontend.parser.ast.statements
 
 import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
-import net.exoad.kira.compiler.frontend.parser.ast.elements.StringLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 
 open class UseStatement(val uri: StringLiteral) : Statement(uri)
 {

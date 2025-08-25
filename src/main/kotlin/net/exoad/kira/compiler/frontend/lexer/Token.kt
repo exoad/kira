@@ -72,6 +72,9 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_MODIFIER_WEAK("'weak'"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
+        K_FX("'fx' (Function)"),
+
+        // RAW SYMBOLS
         S_OPEN_PARENTHESIS("'(' (Opening Parenthesis)"),
         S_CLOSE_PARENTHESIS("')' (Closing Parenthesis)"),
         S_OPEN_BRACKET("'[' (Opening Bracket)"),

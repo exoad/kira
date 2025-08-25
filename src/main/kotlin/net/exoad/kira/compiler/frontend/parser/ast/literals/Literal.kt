@@ -1,4 +1,4 @@
-package net.exoad.kira.compiler.frontend.parser.ast.elements
+package net.exoad.kira.compiler.frontend.parser.ast.literals
 
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 

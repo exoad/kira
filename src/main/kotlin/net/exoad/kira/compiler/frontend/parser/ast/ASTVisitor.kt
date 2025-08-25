@@ -3,6 +3,15 @@ package net.exoad.kira.compiler.frontend.parser.ast
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.BoolLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FunctionLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ListLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.MapLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 
 abstract class ASTVisitor
@@ -27,7 +36,7 @@ abstract class ASTVisitor
     abstract fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
     abstract fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
     abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
-    abstract fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
+    abstract fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
     abstract fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
     abstract fun visitRangeExpr(rangeExpr: RangeExpr)
@@ -45,7 +54,7 @@ abstract class ASTVisitor
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
     abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    abstract fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
+    abstract fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
     abstract fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
     abstract fun visitListLiteral(listLiteral: ListLiteral)
     abstract fun visitMapLiteral(mapLiteral: MapLiteral)

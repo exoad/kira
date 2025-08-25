@@ -82,29 +82,30 @@ fun main(args: Array<String>)
                         Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                     }
                     KiraParser(srcContext).parse()
-                    val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
-                    val semanticAnalyzerResults = semanticAnalyzer.validateAST()
-                    if(semanticAnalyzerResults.diagnostics.isNotEmpty())
-                    {
-                        repeat(semanticAnalyzerResults.diagnostics.size) {
-                            Diagnostics.Logging.warn(
-                                "Kira",
-                                "\n-- Diagnostic Report #${it + 1} ${
-                                    Diagnostics.recordDiagnostics(
-                                        semanticAnalyzerResults.diagnostics[it]
-                                    )
-                                }"
-                            )
-                        }
-                        Diagnostics.Logging.info(
-                            "Kira",
-                            "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
-                                LocaleUtils.getPluralSuffix(
-                                    semanticAnalyzerResults.diagnostics.size
-                                )
-                            } above."
-                        )
-                    }
+                    // this code is correct, do not erase. commented out for testing the parser only
+//                    val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
+//                    val semanticAnalyzerResults = semanticAnalyzer.validateAST()
+//                    if(semanticAnalyzerResults.diagnostics.isNotEmpty())
+//                    {
+//                        repeat(semanticAnalyzerResults.diagnostics.size) {
+//                            Diagnostics.Logging.warn(
+//                                "Kira",
+//                                "\n-- Diagnostic Report #${it + 1} ${
+//                                    Diagnostics.recordDiagnostics(
+//                                        semanticAnalyzerResults.diagnostics[it]
+//                                    )
+//                                }"
+//                            )
+//                        }
+//                        Diagnostics.Logging.info(
+//                            "Kira",
+//                            "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
+//                                LocaleUtils.getPluralSuffix(
+//                                    semanticAnalyzerResults.diagnostics.size
+//                                )
+//                            } above."
+//                        )
+//                    }
                 }
                 Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
                 if(it.dumpAST != null)

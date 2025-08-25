@@ -36,7 +36,7 @@ open class Identifier(open val name: String) : Expr()
     }
 }
 
-open class AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE)
+object AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE)
 {
     override fun toString(): String
     {

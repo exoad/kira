@@ -8,7 +8,17 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.BoolLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FunctionLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ListLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.MapLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.Symbols
 import net.exoad.kira.source.AbsoluteFileLocation
 import net.exoad.kira.source.FileLocation
 import net.exoad.kira.source.SourceContext
@@ -203,7 +213,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         // TODO("Not yet implemented")
     }
 
-    override fun visitFunctionParameterExpr(functionParameterExpr: FunctionParameterExpr)
+    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     {
         // TODO("Not yet implemented")
     }
@@ -283,7 +293,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         // should be true
     }
 
-    override fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
+    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
     {
         // should be true
     }
@@ -394,7 +404,13 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl)
     {
-        // TODO("Not yet implemented")
+        val parts = moduleDecl.uri.value.split(Symbols.COLON.rep)
+        pumpOnTrue(
+            parts.isEmpty(),
+            "A module declaration must specify an author followed by a submodule name: 'author:submodule'",
+            context.astOrigins[moduleDecl.name]!!,
+            help = "Use the format 'author_name:submodule_name'."
+        )
     }
 
     override fun visitObjectDecl(objectDecl: ObjectDecl)
