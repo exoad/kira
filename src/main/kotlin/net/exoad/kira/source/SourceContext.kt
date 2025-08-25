@@ -20,7 +20,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
 {
     private val lines: List<String> = content.lines()
     lateinit var ast: RootASTNode
-    lateinit var astOrigins: IdentityHashMap<ASTNode, FileLocation>
+    lateinit var astOrigins: IdentityHashMap<ASTNode, SourcePosition>
 
     fun getLines(): List<String>
     {
@@ -32,7 +32,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         return SourceContext(content, file, tokens ?: this.tokens)
     }
 
-    fun <T : ASTNode> relativeOriginOf(node: T): FileLocation
+    fun relativeOriginOf(node: ASTNode): SourcePosition
     {
         if(!astOrigins.containsKey(node))
         {
@@ -50,20 +50,20 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     }
 
     /**
-     * Creates a visual pointer to a portion of [content] by the specified [fileLocation] and how long of the content to point at [locatorLength]
+     * Creates a visual pointer to a portion of [content] by the specified [sourcePosition] and how long of the content to point at [locatorLength]
      *
-     * - [locatorLength] starts at the first character of [fileLocation]'s [FileLocation.column] parameter. *PS, this function will throw an assertion error if [locatorLength] is not `>=` (greater than or equal to) `1`*
+     * - [locatorLength] starts at the first character of [sourcePosition]'s [SourcePosition.column] parameter. *PS, this function will throw an assertion error if [locatorLength] is not `>=` (greater than or equal to) `1`*
      *
      * - commonly used by the [Diagnostics.panic] function to generate useful & friendly error messages
      */
     fun formCanonicalLocatorString(
-        fileLocation: FileLocation,
+        sourcePosition: SourcePosition,
         trailingText: String? = null,
         locatorLength: Int = 1,
     ): String
     {
         assert(locatorLength >= 1) { "Locator length must be visible!" }
-        val line = findCanonicalLine(fileLocation.lineNumber)
+        val line = findCanonicalLine(sourcePosition.lineNumber)
         return buildString {
             appendLine(
                 "${
@@ -72,13 +72,13 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
                         true -> "⮞"
                         else -> "@"
                     }
-                } [${file}] : $fileLocation"
+                } [${file}] : $sourcePosition"
             )
             append(
                 when
                 {
-                    fileLocation.column < 0 || line.isNotRepresentableDiagnosticsSymbol() -> line
-                    else                                                                  ->
+                    sourcePosition.column < 0 || line.isNotRepresentableDiagnosticsSymbol() -> line
+                    else                                                                    ->
                     {
                         val builder = StringBuilder()
                         val gutter = "${
@@ -86,12 +86,12 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
                             {
                                 true -> "░"
                                 else -> " "
-                            }.repeat(fileLocation.lineNumber.toString().length)
+                            }.repeat(sourcePosition.lineNumber.toString().length)
                         }| "
                         builder.appendLine(gutter)
-                        builder.appendLine("${fileLocation.lineNumber}| $line")
+                        builder.appendLine("${sourcePosition.lineNumber}| $line")
                         // makes sure the arrows are always aligned properly to the actual selected portion of the line
-                        val gap = " ".repeat(fileLocation.column - 1)
+                        val gap = " ".repeat(sourcePosition.column - 1)
                         builder.append(gutter)
                         builder.append(gap)
                         builder.appendLine(

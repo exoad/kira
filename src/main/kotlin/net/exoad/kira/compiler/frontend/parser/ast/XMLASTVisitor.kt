@@ -1,14 +1,10 @@
-package net.exoad.kira.utils
+package net.exoad.kira.compiler.frontend.parser.ast
 
-import net.exoad.kira.compiler.elements.*
-import net.exoad.kira.compiler.exprs.*
-import net.exoad.kira.compiler.exprs.decl.*
-import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
-import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.Builtin
+import net.exoad.kira.core.BuiltinTypes
 import java.text.SimpleDateFormat
 
 /**
@@ -260,7 +256,7 @@ object XMLASTVisitor :
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
-    override fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
+    override fun visitFunctionLiteral(functionLiteral: FunctionBlock)
     {
         node("LFunc")
         {
@@ -425,17 +421,17 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitObjectDecl(objectDecl: ObjectDecl)
+    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
     {
         node(
             "ObjectDecl",
-            """modifiers="${objectDecl.modifiers.joinToString(",") { it.name }}""""
+            """modifiers="${namespaceDecl.modifiers.joinToString(",") { it.name }}""""
         )
         {
-            objectDecl.name.accept(this)
+            namespaceDecl.name.accept(this)
             node("Members")
             {
-                objectDecl.members.forEach { it.accept(this) }
+                namespaceDecl.members.forEach { it.accept(this) }
             }
         }
     }
@@ -485,7 +481,7 @@ object XMLASTVisitor :
     {
         node(
             "IntrinsicCallExpr", """ name ="${
-                Builtin.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
+                BuiltinTypes.Intrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
                     ?: intrinsicCallExpr.name.intrinsicKey.name
             }""""
         ) {

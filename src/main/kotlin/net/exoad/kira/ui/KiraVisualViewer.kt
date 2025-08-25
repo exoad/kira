@@ -35,7 +35,7 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
             addTab("Stats", JEditorPane().apply {
                 contentType = "text/html"
                 text =
-                    "<html><body style=\"font-size: 16px;\"><strong>Total Tokens:</strong> ${context.tokens.size}</body></html>"
+                        "<html><body style=\"font-size: 16px;\"><strong>Total Tokens:</strong> ${context.tokens.size}</body></html>"
             })
         }
     }

@@ -1,12 +1,12 @@
 package net.exoad.kira.source
 
-open class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFile: String)
+open class SourceLocation(val lineNumber: Int, val column: Int, val srcFile: String)
 {
     companion object
     {
-        fun bakedIn(): AbsoluteFileLocation
+        fun bakedIn(): SourceLocation
         {
-            return object : AbsoluteFileLocation(0, 0, "builtin")
+            return object : SourceLocation(0, 0, "builtin")
             {
                 override fun toString(): String
                 {
@@ -15,9 +15,9 @@ open class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFil
             }
         }
 
-        fun fromRelative(location: FileLocation, file: String): AbsoluteFileLocation
+        fun fromPosition(location: SourcePosition, file: String): SourceLocation
         {
-            return AbsoluteFileLocation(location.lineNumber, location.column, file)
+            return SourceLocation(location.lineNumber, location.column, file)
         }
     }
 
@@ -27,9 +27,9 @@ open class AbsoluteFileLocation(val lineNumber: Int, val column: Int, val srcFil
         assert(column > 0) { "Column Number must be greater than 0 (BAD: $column)" }
     }
 
-    fun toRelative(): FileLocation
+    fun toPosition(): SourcePosition
     {
-        return FileLocation(lineNumber, column)
+        return SourcePosition(lineNumber, column)
     }
 
     override fun toString(): String

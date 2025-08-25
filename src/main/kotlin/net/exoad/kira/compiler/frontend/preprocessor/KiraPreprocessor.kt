@@ -49,8 +49,4 @@ class KiraPreprocessor(private val rawContent: String)
     }
 }
 
-data class PreprocessorResult(
-    val processedContent: String,
-    val lineComments: List<Int>,
-)
 

@@ -68,14 +68,27 @@ myNewInt: Int32 = 3.14156.trunc() // converts to "3" by removing everything afte
 // 3. while loops
 // 4. do while loops
 
+if true == true
+{
+    @trace("it is true!")
+}
+else if (1 + 1 == 2) && (3 + 4 != 7)
+{
+    @trace("...")
+}
+else
+{
+    ...
+}
+
 // for loops
-for(mut i : 0..10) //range for loop, expanded during code analysis to use a while loop
+for mut i : 0..10  //range for loop, expanded during code analysis to use a while loop
 {
 
 }
 
 // while loops
-while(1 == 1)
+while 1 == 1
 {
     // ...
 }
@@ -84,7 +97,7 @@ while(1 == 1)
 do
 {
     // ...
-} while(1 != 2) // runs a single time before checking
+} while 1 != 2 // runs a single time before checking
 
 // == functions ==
 //
@@ -100,7 +113,7 @@ do
 // where <parameters> is defined as:
 //
 // <mutability-modifier> <name>:<type>
-sum(a: Int32, b: Int32): Int32
+fx sum(a: Int32, b: Int32): Int32
 {
     return a + b
 }
@@ -128,7 +141,7 @@ pub mut class Vector2
     require mut y: Float32 = 0.0
 
     // a public instance function that provides implementation for a dot product function
-    pub dot(other: Vector2): Float32
+    pub fx dot(other: Vector2): Float32
     {
         return (other.x * other.x) + (other.y * other.y) // dot operator for member access
     }
@@ -136,7 +149,7 @@ pub mut class Vector2
     // this function is technically abstract but can also be provided an anonymous instance via the constructor or instantiated in an inheriting class
     //
     // furthermore, since it does not have the "mut" modifier, this method cannot be overridden externally or internally after assignment (this can be seen as null safety's "late" assignment in many other languages"
-    require pub scaleX(v: Float32): Vector2
+    require pub fx scaleX(v: Float32): Vector2
 
 //    require pub scaleY(v: Float32): Vector2
 //    {
@@ -151,31 +164,6 @@ pub mut class Vector2
 //    {
 //        return other.x == x && other.y == y
 //    }
-}
-
-// objects are static immutable containers that are able to nest other objects, but also variables, functions, enums, and classes
-//
-// however, they cannot have a derived type meaning they cannot inherit as seen in kotlin
-pub object Scope // only the operator "pub" is allowed here
-{
-    //"static" or "companion" variables
-    pub a: Int32 = 123
-    pub b: String = "Hello World!"
-
-    // secondary scope that is nested
-    pub object AnotherScope
-    {
-        pub c: Float32 = 3.14
-    }
-
-    // all members of an object can still be mutated or inherited from if they are only of the sorts classes, variables, & functions
-    mut class AClass
-    {
-        pub add(a: Int32, b: Int32): Int32
-        {
-            return a + b
-        }
-    }
 }
 
 // enumerations are simple containers that cannot be inherited from

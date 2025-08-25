@@ -4,8 +4,8 @@ import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.core.Symbols
 import net.exoad.kira.core.isHexChar
-import net.exoad.kira.source.FileLocation
 import net.exoad.kira.source.SourceContext
+import net.exoad.kira.source.SourcePosition
 import kotlin.properties.Delegates
 
 /**
@@ -60,7 +60,7 @@ class KiraLexer(private val context: SourceContext)
     private fun lexHexNumberLiteral(): Token
     {
         val start = pointer
-        val startLoc = FileLocation(lineNumber, column)
+        val startLoc = SourcePosition(lineNumber, column)
         while(peek().isHexChar())
         {
             advancePointer()
@@ -96,7 +96,7 @@ class KiraLexer(private val context: SourceContext)
             return lexHexNumberLiteral()
         }
         val start = pointer
-        val startLoc = FileLocation(lineNumber, column)
+        val startLoc = SourcePosition(lineNumber, column)
         var isFloat = false
         while(peek().isDigit())
         {
@@ -126,7 +126,7 @@ class KiraLexer(private val context: SourceContext)
     fun lexStringLiteral(): Token
     {
         val start = pointer
-        val startLoc = FileLocation(lineNumber, column)
+        val startLoc = SourcePosition(lineNumber, column)
         advancePointer() // skip opening "
         val contentStart = pointer
         while(peek() != Symbols.NULL.rep && peek() != Symbols.DOUBLE_QUOTE.rep && peek() != '\n')
@@ -157,7 +157,7 @@ class KiraLexer(private val context: SourceContext)
     fun lexIdentifier(): Token
     {
         val start = pointer
-        val startLoc = FileLocation(lineNumber, column)
+        val startLoc = SourcePosition(lineNumber, column)
         while(peek() != Symbols.NULL.rep && (peek().isLetterOrDigit() || peek() == Symbols.UNDERSCORE.rep))
         {
             advancePointer()
@@ -178,7 +178,7 @@ class KiraLexer(private val context: SourceContext)
             skipWhitespace()
             if(peek() == Symbols.NULL.rep)
             {
-                return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
+                return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, SourcePosition(lineNumber, column))
             }
             val char = peek()
             val start = pointer
@@ -200,7 +200,7 @@ class KiraLexer(private val context: SourceContext)
                 }
             }
 
-            val startLoc = FileLocation(lineNumber, column)
+            val startLoc = SourcePosition(lineNumber, column)
             if(char.isLetter() || char == Symbols.UNDERSCORE.rep) // identifiers and keywords usually have the same stuffs
             {
                 val identifier = lexIdentifier()
@@ -669,7 +669,7 @@ class KiraLexer(private val context: SourceContext)
                 )
             }
         }
-        return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, FileLocation(lineNumber, column))
+        return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, SourcePosition(lineNumber, column))
     }
 
     fun tokenize(): List<Token>

@@ -2,7 +2,7 @@ package net.exoad.kira.compiler.frontend.parser
 
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.core.Symbols
-import net.exoad.kira.source.FileLocation
+import net.exoad.kira.source.SourcePosition
 
 class TokenBuffer(
     private val tokens: List<Token>,
@@ -12,7 +12,7 @@ class TokenBuffer(
     private val window = Array<Token?>(windowSize) { null }
     private val windowMask = windowSize - 1
     private var position = 0
-    private val eofToken = Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+    private val eofToken = Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, SourcePosition(1, 1))
     private var windowFilled = 0
 
     init
@@ -114,11 +114,6 @@ class TokenBuffer(
         windowFilled = endIndex - startIndex
     }
 
-    fun getCurrentPosition(): Int
-    {
-        return position
-    }
-
     fun isAtEnd(): Boolean
     {
         return position >= tokens.size
@@ -145,21 +140,5 @@ class TokenBuffer(
         }
         return false
     }
-
-    fun getDebugInfo(): String = buildString {
-        appendLine("TokenBuffer Debug Info:")
-        appendLine("  Position: $position")
-        appendLine("  Window Size: $windowSize")
-        appendLine("  Tokens Total: ${tokens.size}")
-        appendLine("  Window Filled: $windowFilled")
-        appendLine("  At End: ${isAtEnd()}")
-        appendLine("  Current Token: ${current().content} (${current().type})")
-        appendLine("  Window Contents:")
-        for(i in 0 until windowSize)
-        {
-            appendLine("    [$i]: ${window[i]?.content ?: "null"} (${window[i]?.type ?: "null"})${if(i == (position and windowMask)) " <-- CURRENT" else ""}")
-        }
-    }
 }
 
-data class TokenBufferCheckpoint(val position: Int)

@@ -1,10 +1,10 @@
 package net.exoad.kira.source
 
-data class FileLocation(val lineNumber: Int, val column: Int)
+data class SourcePosition(val lineNumber: Int, val column: Int)
 {
     companion object
     {
-        val UNKNOWN = FileLocation(-1, -1)
+        val UNKNOWN = SourcePosition(-1, -1)
     }
 
     init

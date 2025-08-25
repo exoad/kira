@@ -1,8 +1,8 @@
 package net.exoad.kira.compiler.analysis.diagnostics
 
 import net.exoad.kira.Public
-import net.exoad.kira.source.FileLocation
 import net.exoad.kira.source.SourceContext
+import net.exoad.kira.source.SourcePosition
 import java.util.logging.ConsoleHandler
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -77,7 +77,7 @@ object Diagnostics
         tag: String,
         message: Any,
         cause: Throwable? = null,
-        location: FileLocation? = null,
+        location: SourcePosition? = null,
         selectorLength: Int = 1,
         context: SourceContext,
     ): DiagnosticsException
@@ -90,7 +90,7 @@ object Diagnostics
         tag: String,
         message: Any,
         cause: Throwable? = null,
-        location: FileLocation? = null,
+        location: SourcePosition? = null,
         selectorLength: Int = 1,
         context: SourceContext,
     ): Nothing

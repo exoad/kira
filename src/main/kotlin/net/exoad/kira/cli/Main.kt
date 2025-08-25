@@ -4,14 +4,12 @@ import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatMTAtomOneDarkI
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
-import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraParser
+import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitor
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.ui.KiraVisualViewer
-import net.exoad.kira.utils.LocaleUtils
-import net.exoad.kira.utils.XMLASTVisitor
 import java.io.File
 import javax.swing.UIManager
 import kotlin.math.floor
@@ -82,29 +80,32 @@ fun main(args: Array<String>)
                         Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
                     }
                     KiraParser(srcContext).parse()
-                    val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
-                    val semanticAnalyzerResults = semanticAnalyzer.validateAST()
-                    if(semanticAnalyzerResults.diagnostics.isNotEmpty())
-                    {
-                        repeat(semanticAnalyzerResults.diagnostics.size) {
-                            Diagnostics.Logging.warn(
-                                "Kira",
-                                "\n-- Diagnostic Report #${it + 1} ${
-                                    Diagnostics.recordDiagnostics(
-                                        semanticAnalyzerResults.diagnostics[it]
-                                    )
-                                }"
-                            )
-                        }
-                        Diagnostics.Logging.info(
-                            "Kira",
-                            "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
-                                LocaleUtils.getPluralSuffix(
-                                    semanticAnalyzerResults.diagnostics.size
-                                )
-                            } above."
-                        )
-                    }
+                    // COMMENTED OUT FOR TESTING THE PARSER ONLY!! UNCOMMENT WHEN NECESSARY
+                    // THE FOLLOWING CODE IS NOT PROBLEMATIC. DO NOT DELETE!!!! D:
+                    //!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//                    val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
+//                    val semanticAnalyzerResults = semanticAnalyzer.validateAST()
+//                    if(semanticAnalyzerResults.diagnostics.isNotEmpty())
+//                    {
+//                        repeat(semanticAnalyzerResults.diagnostics.size) {
+//                            Diagnostics.Logging.warn(
+//                                "Kira",
+//                                "\n-- Diagnostic Report #${it + 1} ${
+//                                    Diagnostics.recordDiagnostics(
+//                                        semanticAnalyzerResults.diagnostics[it]
+//                                    )
+//                                }"
+//                            )
+//                        }
+//                        Diagnostics.Logging.info(
+//                            "Kira",
+//                            "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
+//                                LocaleUtils.getPluralSuffix(
+//                                    semanticAnalyzerResults.diagnostics.size
+//                                )
+//                            } above."
+//                        )
+//                    }
                 }
                 Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
                 if(it.dumpAST != null)

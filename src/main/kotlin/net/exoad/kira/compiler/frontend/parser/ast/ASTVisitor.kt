@@ -45,7 +45,7 @@ abstract class ASTVisitor
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
     abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    abstract fun visitFunctionLiteral(functionLiteral: AnonymousFunction)
+    abstract fun visitFunctionLiteral(functionLiteral: FunctionBlock)
     abstract fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
     abstract fun visitListLiteral(listLiteral: ListLiteral)
     abstract fun visitMapLiteral(mapLiteral: MapLiteral)
@@ -60,6 +60,6 @@ abstract class ASTVisitor
     abstract fun visitFunctionDecl(functionDecl: FunctionDecl)
     abstract fun visitClassDecl(classDecl: ClassDecl)
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
-    abstract fun visitObjectDecl(objectDecl: ObjectDecl)
+    abstract fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
     abstract fun visitEnumDecl(enumDecl: EnumDecl)
 }

@@ -8,11 +8,11 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.Builtin
+import net.exoad.kira.core.BuiltinTypes
 import net.exoad.kira.core.Keywords
-import net.exoad.kira.source.AbsoluteFileLocation
-import net.exoad.kira.source.FileLocation
 import net.exoad.kira.source.SourceContext
+import net.exoad.kira.source.SourceLocation
+import net.exoad.kira.source.SourcePosition
 import java.util.*
 import kotlin.math.max
 import kotlin.properties.Delegates
@@ -35,7 +35,7 @@ class KiraParser(private val context: SourceContext)
 
     fun <T : ASTNode> putOrigin(
         node: T,
-        location: FileLocation = peek().canonicalLocation,
+        location: SourcePosition = peek().canonicalLocation,
     ): T // returns the original value to facilitate with easier refactoring
     {
         context.astOrigins[node] = location
@@ -58,7 +58,7 @@ class KiraParser(private val context: SourceContext)
                 "KiraParser::parse",
                 "The first declaration of ${context.file} must be a module declaration!",
                 context = context,
-                location = FileLocation(1, 1),
+                location = SourcePosition(1, 1),
                 selectorLength = max(1, context.findCanonicalLine(1).length)
             )
         }
@@ -137,32 +137,33 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-    private fun expectModifiers(modifiers: Map<Modifiers, FileLocation>?, scopes: Modifiers.Context)
+    private fun expectModifiers(
+        modifiers: Map<Modifiers, SourcePosition>?,
+        scopes: Modifiers.Context,
+    )
     {
-        val r = if(modifiers == null || modifiers.isEmpty())
+        (if(modifiers == null || modifiers.isEmpty())
         {
             null
         }
         else
         {
             modifiers.keys.toList().find { !it.context.contains(scopes) }
-        }
-        if(r != null)
-        {
+        })?.let {
             Diagnostics.panic(
                 "KiraParser::expectModifiers",
                 buildString {
                     append("The modifier ")
-                    append(r.tokenType.diagnosticsName())
+                    append(it.tokenType.diagnosticsName())
                     append(" cannot be applied to a ")
                     append(Modifiers.Context.CLASS)
                 },
-                location = modifiers?.get(r),
+                location = modifiers?.get(it),
                 // this is so sketchy lmao, going through the values of a map to find the key which is THE OPPOSITE THING A MAP IS FOR LMAO
                 // but since the program is already crashing here, doesnt really matter
                 //
                 // it just feels really sketchy and could fail at anytime ig
-                selectorLength = Keywords.reserved.filterValues { it == r.tokenType }.keys.first().length,
+                selectorLength = Keywords.reserved.filterValues { value -> value == it.tokenType }.keys.first().length,
                 context = context
             )
         }
@@ -209,17 +210,17 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-    fun parseStatement(modifiers: Map<Modifiers, FileLocation>?): Statement
+    fun parseStatement(modifiers: Map<Modifiers, SourcePosition>?): Statement
     {
         fun parseWithModifiers(): Statement
         {
             val modifiers = parseModifiers()
             val expr = when(peek().type)
             {
-                Token.Type.K_CLASS  -> parseClassDecl(modifiers)
-                Token.Type.K_OBJECT -> parseObjectDecl(modifiers)
-                Token.Type.K_ENUM   -> parseEnumDecl(modifiers)
-                else                -> parsePrimaryExpr(modifiers)
+                Token.Type.K_CLASS     -> parseClassDecl(modifiers)
+                Token.Type.K_NAMESPACE -> parseNamespaceDecl(modifiers)
+                Token.Type.K_ENUM      -> parseEnumDecl(modifiers)
+                else                   -> parsePrimaryExpr(modifiers)
             }
             expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
             return Statement(expr)
@@ -252,9 +253,9 @@ class KiraParser(private val context: SourceContext)
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 return Statement(expr)
             }
-            Token.Type.K_OBJECT     -> // similar to the previous class case, covering when it has modifiers
+            Token.Type.K_NAMESPACE -> // similar to the previous class case, covering when it has modifiers
             {
-                val expr = parseObjectDecl(null)
+                val expr = parseNamespaceDecl(null)
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 return Statement(expr)
             }
@@ -320,13 +321,11 @@ class KiraParser(private val context: SourceContext)
     {
         val origin = peek().canonicalLocation
         expectThenAdvance(Token.Type.K_FOR)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         // todo: might need a better warning message here, since the initializer needs to be present
         expectThenAdvance(Token.Type.K_MODIFIER_MUTABLE)
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_COLON)
         val target = parseExpr()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val body = parseStatementBlock()
         return putOrigin(ForIterationStatement(ForIterationExpr(identifier, target), body), origin)
     }
@@ -335,9 +334,7 @@ class KiraParser(private val context: SourceContext)
     {
         val origin = peek().canonicalLocation
         expectThenAdvance(Token.Type.K_WHILE)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         val condition = parseExpr()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         return putOrigin(WhileIterationStatement(condition, parseStatementBlock()), origin)
     }
 
@@ -347,10 +344,8 @@ class KiraParser(private val context: SourceContext)
         expectThenAdvance(Token.Type.K_DO)
         val statements = parseStatementBlock()
         expectThenAdvance(Token.Type.K_WHILE)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         val condition = parseExpr()
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-        expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
         return putOrigin(DoWhileIterationStatement(condition, statements), origin)
     }
 
@@ -358,9 +353,7 @@ class KiraParser(private val context: SourceContext)
     {
         val origin = peek().canonicalLocation
         expectThenAdvance(Token.Type.K_IF)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         val condition = parseExpr()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val thenStatements = parseStatementBlock()
         val branches = mutableListOf<IfElseBranchStatementNode>()
         while(peek().type == Token.Type.K_ELSE)
@@ -444,7 +437,7 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-    fun parsePrimaryExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
+    fun parsePrimaryExpr(modifiers: Map<Modifiers, SourcePosition>?): Expr
     {
         return when(peek().type)
         {
@@ -495,6 +488,11 @@ class KiraParser(private val context: SourceContext)
                 }
             Token.Type.K_WITH                                                           -> parseWithExpr()
             Token.Type.K_MODULE                                                         -> parseModuleDecl()
+            Token.Type.K_FX ->
+                parseFunctionDecl(
+                    null,
+                    modifiers
+                )
             Token.Type.IDENTIFIER                                                       ->
                 when(peek(1).type)
                 {
@@ -623,14 +621,14 @@ class KiraParser(private val context: SourceContext)
             parameters.add(parseExpr())
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-        val findVal = Builtin.Intrinsics.entries.find { it.rep == identifier.name }
+        val findVal = BuiltinTypes.Intrinsics.entries.find { it.rep == identifier.name }
         return when(findVal != null)
         {
             true -> putOrigin(
                 IntrinsicCallExpr(
                     Intrinsic(
                         findVal,
-                        AbsoluteFileLocation(
+                        SourceLocation(
                             peek().canonicalLocation.lineNumber,
                             peek().canonicalLocation.column,
                             context.file
@@ -649,7 +647,7 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-    fun parseFunctionParameters(): List<FunctionParameterExpr>
+    private fun parseFunctionParameters(): List<FunctionParameterExpr>
     {
         // could this be also adapted for future implementations of function notations ??
         val parameters = mutableListOf<FunctionParameterExpr>()
@@ -669,13 +667,14 @@ class KiraParser(private val context: SourceContext)
         return parameters
     }
 
-    fun parseFunctionCallOrDeclExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
+    fun parseFunctionCallOrDeclExpr(modifiers: Map<Modifiers, SourcePosition>?): Expr
     {
         var identifier: Identifier? = null
+        expectThenAdvance(Token.Type.K_FX)
         if(peek().type == Token.Type.IDENTIFIER)
         {
             identifier = parseIdentifier()
-        }
+        } // else it is an anonymous/inline function
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         return when(isFunctionDeclSyntax())
         {
@@ -716,17 +715,20 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-    private fun parseFunctionDecl(
-        identifier: Identifier,
-        modifiers: Map<Modifiers, FileLocation>?,
-    ): FunctionDecl
+    fun parseFunctionDecl(modifiers: Map<Modifiers, SourcePosition>?): FunctionDecl
     {
-        expectModifiers(modifiers, Modifiers.Context.FUNCTION)
         val origin = peek().canonicalLocation
+        expectModifiers(modifiers, Modifiers.Context.FUNCTION)
+        expectThenAdvance(Token.Type.K_FX)
+        var identifier: Identifier? = null
+        if(peek(1).type == Token.Type.IDENTIFIER)
+        {
+            identifier = parseIdentifier()
+        }
         val functionLiteral = parseFunctionLiteral()
         return putOrigin(
             FunctionDecl(
-                identifier,
+                identifier ?: AnonymousIdentifier,
                 functionLiteral,
                 modifiers?.keys?.toList() ?: emptyList()
             ), origin
@@ -802,7 +804,7 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(FunctionCallExpr(identifier, parameters.second, parameters.first))
     }
 
-    private fun parseIdentifierExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
+    private fun parseIdentifierExpr(modifiers: Map<Modifiers, SourcePosition>?): Expr
     {
         if(tryCompoundAssignmentOperators(1) != null) // skip the identifier with peekoffset +1 (similar to why we also peek(1) below in the when statement
         {
@@ -884,7 +886,7 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(EnumMemberExpr(name, value), origin)
     }
 
-    fun parseEnumDecl(modifiers: Map<Modifiers, FileLocation>?): EnumDecl
+    fun parseEnumDecl(modifiers: Map<Modifiers, SourcePosition>?): EnumDecl
     {
         expectModifiers(modifiers, Modifiers.Context.ENUM)
         advancePointer() // consume 'enum'
@@ -904,7 +906,7 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(EnumDecl(name, members.toTypedArray(), modifiers?.keys?.toList() ?: emptyList()), origin)
     }
 
-    fun parseClassDecl(modifiers: Map<Modifiers, FileLocation>?): ClassDecl
+    fun parseClassDecl(modifiers: Map<Modifiers, SourcePosition>?): ClassDecl
     {
         expectModifiers(modifiers, Modifiers.Context.CLASS)
         advancePointer() //consume the class keyword
@@ -974,7 +976,7 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(ClassDecl(className, modifiers?.keys?.toList() ?: emptyList(), members, parentType), origin)
     }
 
-    fun parseVariableDecl(modifiers: Map<Modifiers, FileLocation>?): VariableDecl
+    fun parseVariableDecl(modifiers: Map<Modifiers, SourcePosition>?): VariableDecl
     {
         expectModifiers(modifiers, Modifiers.Context.VARIABLE)
         val origin = peek().canonicalLocation
@@ -990,10 +992,10 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(VariableDecl(identifier, type, value, modifiers?.keys?.toList() ?: emptyList()), origin)
     }
 
-    fun parseObjectDecl(modifiers: Map<Modifiers, FileLocation>?): ObjectDecl
+    fun parseNamespaceDecl(modifiers: Map<Modifiers, SourcePosition>?): NamespaceDecl
     {
-        expectModifiers(modifiers, Modifiers.Context.OBJECT)
-        expectThenAdvance(Token.Type.K_OBJECT)
+        expectModifiers(modifiers, Modifiers.Context.NAMESPACE)
+        expectThenAdvance(Token.Type.K_NAMESPACE)
         val origin = peek().canonicalLocation
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
@@ -1002,14 +1004,14 @@ class KiraParser(private val context: SourceContext)
         {
             val start = peek().canonicalLocation
             val modifiers = parseModifiers()
-            expectModifiers(modifiers, Modifiers.Context.OBJECT_MEMBER)
+            expectModifiers(modifiers, Modifiers.Context.NAMESPACE_MEMBER)
             val member = parseStatement(modifiers)
             when(member.expr)
             {
                 // i just want something like "!is ... && !is ..." why is kotlin so weird, even dart supports this ?
                 !is Decl -> Diagnostics.panic(
-                    "KiraParser::parseObjectDecl",
-                    "The type ${member::class.simpleName} is not allowed in an object declaration. Only declarations are allowed.",
+                    "KiraParser::parseNamespaceDecl",
+                    "The type ${member::class.simpleName} is not allowed in a namespace. Only declarations are allowed.",
                     context = context,
                     location = start,
                     selectorLength = context.findCanonicalLine(start.lineNumber).length
@@ -1019,7 +1021,7 @@ class KiraParser(private val context: SourceContext)
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         return putOrigin(
-            ObjectDecl(identifier, modifiers?.keys?.toList() ?: emptyList(), members),
+            NamespaceDecl(identifier, modifiers?.keys?.toList() ?: emptyList(), members),
             origin
         )
     }
@@ -1095,7 +1097,7 @@ class KiraParser(private val context: SourceContext)
     fun parseIntegerLiteral(): IntegerLiteral
     {
         var value by Delegates.notNull<Long>()
-        lateinit var origin: FileLocation
+        lateinit var origin: SourcePosition
         try
         {
             origin = peek().canonicalLocation
@@ -1119,7 +1121,7 @@ class KiraParser(private val context: SourceContext)
     fun parseFloatLiteral(): FloatLiteral
     {
         var value by Delegates.notNull<Double>()
-        lateinit var origin: FileLocation
+        lateinit var origin: SourcePosition
         try
         {
             origin = peek().canonicalLocation
@@ -1143,7 +1145,7 @@ class KiraParser(private val context: SourceContext)
     fun parseBoolLiteral(): BoolLiteral
     {
         var value by Delegates.notNull<Boolean>()
-        lateinit var origin: FileLocation
+        lateinit var origin: SourcePosition
         try
         {
             origin = peek().canonicalLocation
@@ -1163,11 +1165,11 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(BoolLiteral(value), origin)
     }
 
-    fun parseFunctionLiteral(): AnonymousFunction
+    fun parseFunctionLiteral(): FunctionBlock
     {
-        val origin = peek().canonicalLocation
         val params = parseFunctionParameters()
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        val origin = peek().canonicalLocation
         expectThenAdvance(Token.Type.S_COLON)
         val returnType = parseType()
         var body: List<Statement>? = null
@@ -1176,7 +1178,7 @@ class KiraParser(private val context: SourceContext)
             Token.Type.S_OPEN_BRACE -> body = parseStatementBlock()
             else                    -> advancePointer()
         }
-        return putOrigin(AnonymousFunction(returnType, params, body), origin)
+        return putOrigin(FunctionBlock(returnType, params, body), origin)
     }
 
     fun parseIdentifier(): Identifier
@@ -1219,9 +1221,9 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(TypeSpecifier(baseName, generics.toTypedArray()), baseLocation)
     }
 
-    fun parseModifiers(): Map<Modifiers, FileLocation>
+    fun parseModifiers(): Map<Modifiers, SourcePosition>
     {
-        val modifiers = mutableMapOf<Modifiers, FileLocation>()
+        val modifiers = mutableMapOf<Modifiers, SourcePosition>()
         while(peek().type in Token.Type.modifiers)
         {
             val currentModifier = Modifiers.Companion.byTokenTypeMaybe(peek().type) {

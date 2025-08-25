@@ -1,10 +1,10 @@
 package net.exoad.kira.compiler.frontend.parser.ast.elements
 
-import net.exoad.kira.compiler.exprs.FunctionParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 
-open class AnonymousFunction(
+open class FunctionBlock(
     // so this is already anonymous by itself ?? in kira parser a raw function literal can be passed anonymously
     open val returnTypeSpecifier: TypeSpecifier,
     open val parameters: List<FunctionParameterExpr>,

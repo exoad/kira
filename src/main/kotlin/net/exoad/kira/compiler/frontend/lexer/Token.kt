@@ -1,12 +1,12 @@
 package net.exoad.kira.compiler.frontend.lexer
 
 import net.exoad.kira.core.Symbols
-import net.exoad.kira.source.FileLocation
+import net.exoad.kira.source.SourcePosition
 
 /**
  * Semantical tokens representing each part of text that was parsed
  */
-sealed class Token(val type: Type, val content: String, val pointerPosition: Int, val canonicalLocation: FileLocation)
+sealed class Token(val type: Type, val content: String, val pointerPosition: Int, val canonicalLocation: SourcePosition)
 {
     enum class Type(val rawDiagnosticsRepresentation: String? = null)
     {
@@ -65,7 +65,8 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         K_USE("'use'"),
         K_WITH("'with'"),
         K_ENUM("'enum'"),
-        K_OBJECT("'object'"),
+        K_NAMESPACE("'object'"),
+        K_FX("'fx'"),
         K_MODULE("'module'"),
         K_THIS("'this'"),
         K_MODIFIER_REQUIRE("'require'"),
@@ -137,13 +138,13 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         }
     }
 
-    class Raw(type: Type, rawString: String, pointerPosition: Int, canonicalLocation: FileLocation) :
+    class Raw(type: Type, rawString: String, pointerPosition: Int, canonicalLocation: SourcePosition) :
         Token(type, rawString, pointerPosition, canonicalLocation)
 
-    class Symbol(type: Type, symbol: Symbols, pointerPosition: Int, canonicalLocation: FileLocation) :
+    class Symbol(type: Type, symbol: Symbols, pointerPosition: Int, canonicalLocation: SourcePosition) :
         Token(type, symbol.rep.toString(), pointerPosition, canonicalLocation)
 
-    class LinkedSymbols(type: Type, symbols: Array<Symbols>, pointerPosition: Int, canonicalLocation: FileLocation) :
+    class LinkedSymbols(type: Type, symbols: Array<Symbols>, pointerPosition: Int, canonicalLocation: SourcePosition) :
         Token(type, symbols.map { it.rep }.joinToString(""), pointerPosition, canonicalLocation)
 
     override fun toString(): String

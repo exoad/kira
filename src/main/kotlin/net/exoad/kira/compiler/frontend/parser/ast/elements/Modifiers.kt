@@ -15,7 +15,7 @@ enum class Modifiers(val tokenType: Token.Type, val context: Array<Context> = em
             Context.CLASS_MEMBER,
             Context.VARIABLE,
             Context.FUNCTION,
-            Context.OBJECT_MEMBER,
+            Context.NAMESPACE_MEMBER,
             Context.MODULE
         )
     ),
@@ -26,8 +26,8 @@ enum class Modifiers(val tokenType: Token.Type, val context: Array<Context> = em
             Context.CLASS_MEMBER,
             Context.VARIABLE,
             Context.FUNCTION,
-            Context.OBJECT,
-            Context.OBJECT_MEMBER,
+            Context.NAMESPACE,
+            Context.NAMESPACE_MEMBER,
             Context.ENUM,
         )
     ),
@@ -53,6 +53,6 @@ enum class Modifiers(val tokenType: Token.Type, val context: Array<Context> = em
 
     enum class Context
     {
-        CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, OBJECT, OBJECT_MEMBER, ENUM
+        CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, NAMESPACE, NAMESPACE_MEMBER, ENUM
     }
 }

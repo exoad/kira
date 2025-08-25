@@ -43,9 +43,9 @@ b: Int32 = 0x10
 
 @trace(a + b)
 
-sumOf(a1: Int32, b1: Int32): Int32 
+fx sumOf(a1: Int32, b1: Int32): Int32 
 {
-  return a1 + b1
+    return a1 + b1
 }
 ```
 
@@ -75,7 +75,7 @@ sumOf(a1: Int32, b1: Int32): Int32
 
 ```zig
 someCondition: Bool = 1 + 1 == 2;
-if(someCondition)
+if someCondition 
 {
     @trace("Is true!");
 }
@@ -85,7 +85,7 @@ else
 }
 
 i: Int32 = 32;
-while(i-- > 0)
+while i-- > 0
 {
     @trace("Counting down at: ${i}");
 }
@@ -137,7 +137,7 @@ resources.
 class A
 {
     ...
-    @finalize close(): Void
+    @finalize fx close(): Void
     {
         ...
     }
@@ -150,7 +150,7 @@ Kira allows explicit pass-by-value semantics using the `val` modifier on functio
 instructs the compiler to create a copy of the argument rather than passing a reference.
 
 ```zig
-sum(val a: Int32, b: Int32): Int32 { ... }
+fx sum(val a: Int32, b: Int32): Int32 { ... }
 @trace(sum(3, 4)) 
 ```
 
