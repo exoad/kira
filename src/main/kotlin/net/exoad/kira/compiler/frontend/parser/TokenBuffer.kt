@@ -2,7 +2,7 @@ package net.exoad.kira.compiler.frontend.parser
 
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.core.Symbols
-import net.exoad.kira.source.FileLocation
+import net.exoad.kira.source.SourcePosition
 
 class TokenBuffer(
     private val tokens: List<Token>,
@@ -12,7 +12,7 @@ class TokenBuffer(
     private val window = Array<Token?>(windowSize) { null }
     private val windowMask = windowSize - 1
     private var position = 0
-    private val eofToken = Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, FileLocation(1, 1))
+    private val eofToken = Token.Symbol(Token.Type.S_EOF, Symbols.NULL, 0, SourcePosition(1, 1))
     private var windowFilled = 0
 
     init

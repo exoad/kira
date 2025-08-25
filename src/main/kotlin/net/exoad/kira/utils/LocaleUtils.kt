@@ -20,4 +20,16 @@ object LocaleUtils
         }
         else ""
     }
+
+    private val vowelCodes = setOf(65, 69, 73, 79, 85, 97, 101, 105, 111, 117)
+    fun isVowel(char: Char): Boolean
+    {
+        return char.code in vowelCodes
+    }
+
+    fun prependIndefiniteArticle(next: String, uppercase: Boolean = false): String
+    {
+        require(next.isNotEmpty()) { "affixIndefiniteArticle requires at least one character trailing!" }
+        return if(isVowel(next.first())) "${if(uppercase) "An" else "an"} $next" else "${if(uppercase) "A" else "a"} $next"
+    }
 }

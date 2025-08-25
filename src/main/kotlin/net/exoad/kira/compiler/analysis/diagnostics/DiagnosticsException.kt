@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.analysis.diagnostics
 
-import net.exoad.kira.source.FileLocation
+import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.source.SourceContext
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -9,7 +9,7 @@ data class DiagnosticsException(
     val tag: String,
     override val message: String,
     override val cause: Throwable? = null,
-    val location: FileLocation? = null,
+    val location: SourcePosition? = null,
     val context: SourceContext,
     val selectorLength: Int,
 ) : RuntimeException(message, cause)

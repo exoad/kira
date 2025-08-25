@@ -12,9 +12,9 @@ open class FunctionDecl(
     override val modifiers: List<Modifiers> = emptyList(),
 ) : FirstClassDecl(name, modifiers)
 {
-    init
+    fun isAnonymous(): Boolean
     {
-        assert(name !is AnonymousIdentifier) { "Anonymous Functions should prefer to use raw function literals. This is a compiler bug." }
+        return name is AnonymousIdentifier
     }
 
     override fun accept(visitor: ASTVisitor)
@@ -24,7 +24,7 @@ open class FunctionDecl(
 
     override fun toString(): String
     {
-        return "FunctionDecl[[ $modifiers ]]{ $name -> $value}"
+        return "FunctionDecl[[ $modifiers ]]{ ${if(isAnonymous()) "(_Anon_)" else ""} $name -> $value}"
     }
 
     override fun isStub(): Boolean

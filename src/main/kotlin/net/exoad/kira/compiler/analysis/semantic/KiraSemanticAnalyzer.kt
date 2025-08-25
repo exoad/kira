@@ -19,9 +19,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.Symbols
-import net.exoad.kira.source.AbsoluteFileLocation
-import net.exoad.kira.source.FileLocation
+import net.exoad.kira.source.SourceLocation
+import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.source.SourceContext
+import net.exoad.kira.utils.LocaleUtils
 
 /**
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
@@ -49,7 +50,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, diagnosticsPump.isEmpty())
     }
 
-    private fun pump(message: String, location: FileLocation, selectorLength: Int = 1, help: String = "")
+    private fun pump(message: String, location: SourcePosition, selectorLength: Int = 1, help: String = "")
     {
         diagnosticsPump.add(
             Diagnostics.recordPanic(
@@ -62,11 +63,11 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         )
     }
 
-    fun pumpOnTrue(expr: Boolean, message: String, location: FileLocation?, selectorLength: Int = 1, help: String = "")
+    fun pumpOnTrue(expr: Boolean, message: String, location: SourcePosition?, selectorLength: Int = 1, help: String = "")
     {
         if(expr)
         {
-            pump(message, location ?: FileLocation.Companion.UNKNOWN, selectorLength, help)
+            pump(message, location ?: SourcePosition.Companion.UNKNOWN, selectorLength, help)
         }
     }
 
@@ -75,14 +76,14 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         val res = compilationUnit.symbolTable.resolve(symbolName)
         pumpOnTrue(
             res == null || res.kind != symbolKind, "Expected a $symbolKind for '$symbolName', but got '$res'",
-            location = res?.declaredAt?.toRelative() ?: FileLocation.Companion.UNKNOWN,
+            location = res?.declaredAt?.toPosition() ?: SourcePosition.Companion.UNKNOWN,
             selectorLength = res!!.name.length
         )
     }
 
     fun expectDeclared(
         symbolName: String,
-        location: FileLocation?,
+        location: SourcePosition?,
         helpMessage: String = "'$symbolName' is not available at this scope. Or it has not been declared.",
     )
     {
@@ -91,7 +92,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         {
             pump(
                 "'${symbolName}' is an unknown symbol here.",
-                location = location ?: FileLocation.Companion.UNKNOWN,
+                location = location ?: SourcePosition.Companion.UNKNOWN,
                 selectorLength = symbolName.length,
                 help = helpMessage
             )
@@ -100,7 +101,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
 
     fun expectNotDeclared(
         symbolName: String,
-        location: FileLocation?,
+        location: SourcePosition?,
         helpMessage: String = "Shadowing is not allowed. Rename this or the previous declaration.",
     )
     {
@@ -109,7 +110,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         {
             pump(
                 "'${symbolName}' was already declared at ${res.declaredAt}",
-                location = location ?: FileLocation.Companion.UNKNOWN,
+                location = location ?: SourcePosition.Companion.UNKNOWN,
                 selectorLength = symbolName.length,
                 help = helpMessage
             )
@@ -122,8 +123,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         if(res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName)
         {
             pump(
-                "Expected a $typeName for $symbolName, but got '$res'",
-                location = res?.declaredAt?.toRelative() ?: FileLocation.Companion.UNKNOWN
+                "Expected ${LocaleUtils.prependIndefiniteArticle(typeName)} for $symbolName, but got '$res'",
+                location = res?.declaredAt?.toPosition() ?: SourcePosition.Companion.UNKNOWN
             )
         }
     }
@@ -326,8 +327,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
                 name = identifier.name,
                 kind = SemanticSymbolKind.VARIABLE,
                 type = Token.Type.IDENTIFIER,
-                declaredAt = AbsoluteFileLocation.Companion.fromRelative(
-                    context.astOrigins[identifier] ?: FileLocation.Companion.UNKNOWN, context.file
+                declaredAt = SourceLocation.Companion.fromPosition(
+                    context.astOrigins[identifier] ?: SourcePosition.Companion.UNKNOWN, context.file
                 )
             )
         )
@@ -354,7 +355,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         {
             pump(
                 "The type '${variableDecl.typeSpecifier.name}' was not found at this scope (${compilationUnit.symbolTable.peekScope().name.lowercase()})",
-                location = context.astOrigins[variableDecl.typeSpecifier] ?: FileLocation.Companion.UNKNOWN,
+                location = context.astOrigins[variableDecl.typeSpecifier] ?: SourcePosition.Companion.UNKNOWN,
                 selectorLength = variableDecl.typeSpecifier.name.length
             )
         }
@@ -394,8 +395,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
                 classDecl.name.name,
                 SemanticSymbolKind.TYPE_SPECIFIER,
                 Token.Type.K_CLASS,
-                AbsoluteFileLocation.Companion.fromRelative(
-                    context.astOrigins[classDecl] ?: FileLocation.Companion.UNKNOWN,
+                SourceLocation.Companion.fromPosition(
+                    context.astOrigins[classDecl] ?: SourcePosition.Companion.UNKNOWN,
                     context.file
                 )
             )

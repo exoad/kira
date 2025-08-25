@@ -14,7 +14,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FunctionLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.ListLiteral
-import net.exoad.kira.compiler.frontend.parser.ast.literals.Literal
 import net.exoad.kira.compiler.frontend.parser.ast.literals.MapLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.SimpleLiteral
@@ -22,9 +21,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.Builtin
 import net.exoad.kira.core.Keywords
-import net.exoad.kira.source.AbsoluteFileLocation
-import net.exoad.kira.source.FileLocation
+import net.exoad.kira.source.SourceLocation
+import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.source.SourceContext
+import net.exoad.kira.utils.LocaleUtils
 import java.util.*
 import kotlin.math.max
 import kotlin.properties.Delegates
@@ -47,14 +47,14 @@ class KiraParser(private val context: SourceContext)
 
     fun <T : ASTNode> putOrigin(
         node: T,
-        location: FileLocation = here(),
+        location: SourcePosition = here(),
     ): T // returns the original value to facilitate with easier refactoring
     {
         context.astOrigins[node] = location
         return node
     }
 
-    fun here(): FileLocation
+    fun here(): SourcePosition
     {
         return peek().canonicalLocation
     }
@@ -75,7 +75,7 @@ class KiraParser(private val context: SourceContext)
                 "KiraParser::parse",
                 "The first declaration of ${context.file} must be a module declaration!",
                 context = context,
-                location = FileLocation(1, 1),
+                location = SourcePosition(1, 1),
                 selectorLength = max(1, context.findCanonicalLine(1).length)
             )
         }
@@ -154,7 +154,7 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-    private fun expectModifiers(modifiers: Map<Modifiers, FileLocation>?, scopes: Modifiers.Context)
+    private fun expectModifiers(modifiers: Map<Modifiers, SourcePosition>?, scopes: Modifiers.WrappingContext)
     {
         val r = if(modifiers == null || modifiers.isEmpty())
         {
@@ -162,7 +162,7 @@ class KiraParser(private val context: SourceContext)
         }
         else
         {
-            modifiers.keys.toList().find { !it.context.contains(scopes) }
+            modifiers.keys.toList().find { !it.wrappingContext.contains(scopes) }
         }
         if(r != null)
         {
@@ -172,7 +172,7 @@ class KiraParser(private val context: SourceContext)
                     append("The modifier ")
                     append(r.tokenType.diagnosticsName())
                     append(" cannot be applied to a ")
-                    append(Modifiers.Context.CLASS)
+                    append(Modifiers.WrappingContext.CLASS)
                 },
                 location = modifiers?.get(r),
                 // this is so sketchy lmao, going through the values of a map to find the key which is THE OPPOSITE THING A MAP IS FOR LMAO
@@ -194,9 +194,9 @@ class KiraParser(private val context: SourceContext)
                     "KiraParser::expect",
                     buildString {
                         append("Expected ")
-                        append(token.diagnosticsName())
+                        append(LocaleUtils.prependIndefiniteArticle(token.diagnosticsName()))
                         append(" but got ")
-                        append(if(peek().type.rawDiagnosticsRepresentation == null) "'${peek().content}' (${peek().type.diagnosticsName()})" else peek().type.diagnosticsName())
+                        append(LocaleUtils.prependIndefiniteArticle(peek().type.diagnosticsName()))
                     }, // we actually output the content underneath the pointer which is easier to see and depending on if it is like a symbol/keyword we output that else we output variable token contents accordingly
                     location = peek().canonicalLocation,
                     selectorLength = peek().content.length,
@@ -217,7 +217,7 @@ class KiraParser(private val context: SourceContext)
                         append("Expected any of ")
                         append(tokens.map { it.diagnosticsName() })
                         append(" but got ")
-                        append(peek().type.diagnosticsName())
+                        append(LocaleUtils.prependIndefiniteArticle(peek().type.diagnosticsName()))
                     },
                     location = peek().canonicalLocation,
                     context = context
@@ -226,7 +226,7 @@ class KiraParser(private val context: SourceContext)
         }
     }
 
-    fun parseStatement(modifiers: Map<Modifiers, FileLocation>?): Statement
+    fun parseStatement(modifiers: Map<Modifiers, SourcePosition>?): Statement
     {
         fun parseWithModifiers(): Statement
         {
@@ -420,7 +420,7 @@ class KiraParser(private val context: SourceContext)
         while(true)
         {
             val binOpTokens = tryBinaryOps() ?: arrayOf(peek().type)
-            val binaryOpType = BinaryOp.Companion.byTokenTypeMaybe(binOpTokens)
+            val binaryOpType = BinaryOp.byTokenTypeMaybe(binOpTokens)
             if(binaryOpType == null || binaryOpType.precedence < minPrecedence)
             {
                 break
@@ -456,12 +456,12 @@ class KiraParser(private val context: SourceContext)
     {
         return when
         {
-            UnaryOp.Companion.byTokenTypeMaybe(peek().type) != null -> parseUnaryExpr()
-            else                                                    -> parsePrimaryExpr(null)
+            UnaryOp.byTokenTypeMaybe(peek().type) != null -> parseUnaryExpr()
+            else                                          -> parsePrimaryExpr(null)
         }
     }
 
-    fun parsePrimaryExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
+    fun parsePrimaryExpr(modifiers: Map<Modifiers, SourcePosition>?): Expr
     {
         return when(peek().type)
         {
@@ -504,7 +504,9 @@ class KiraParser(private val context: SourceContext)
                     }
                     else                  -> Diagnostics.panic(
                         "KiraParser::parsePrimaryExpr",
-                        "Intrinsics must be followed by an identifier. I found '${peek(1).type.diagnosticsName()}'",
+                        "Intrinsics must be followed by an identifier. Instead, got '${
+                            LocaleUtils.prependIndefiniteArticle(peek(1).type.diagnosticsName())
+                        }'",
                         location = here(),
                         selectorLength = peek(1).content.length,
                         context = context
@@ -544,13 +546,7 @@ class KiraParser(private val context: SourceContext)
             else                                                                        ->
                 Diagnostics.panic(
                     "KiraParser::parsePrimaryExpr",
-                    "${
-                        when(peek().type.rawDiagnosticsRepresentation)
-                        {
-                            null -> "'${peek().content}'"
-                            else -> peek().type.diagnosticsName()
-                        }
-                    } is not allowed here.",
+                    "${LocaleUtils.prependIndefiniteArticle(peek().type.diagnosticsName())} is not allowed here.",
                     location = peek().canonicalLocation,
                     selectorLength = peek().content.length,
                     context = context
@@ -572,7 +568,7 @@ class KiraParser(private val context: SourceContext)
         val operatorToken = peek()
         expectAnyOfThenAdvance(UnaryOp.entries.map { it.tokenType }.toTypedArray())
         val operand = parseExpr(UnaryOp.NEG.precedence)
-        return putOrigin(UnaryExpr(UnaryOp.Companion.byTokenTypeMaybe(operatorToken.type) {
+        return putOrigin(UnaryExpr(UnaryOp.byTokenTypeMaybe(operatorToken.type) {
             Diagnostics.panic(
                 "UnaryOperator::byTokenTypeMaybe",
                 "$operatorToken is not an unary operator!",
@@ -598,7 +594,7 @@ class KiraParser(private val context: SourceContext)
                 else             -> BinaryExpr(
                     left,
                     right,
-                    BinaryOp.Companion.byTokenTypeMaybe(arrayOf(operator.type)) {
+                    BinaryOp.byTokenTypeMaybe(arrayOf(operator.type)) {
                         Diagnostics.panic(
                             "BinaryOperator::byTokenTypeMaybe",
                             "$operator is not a binary operator!",
@@ -661,7 +657,7 @@ class KiraParser(private val context: SourceContext)
                 IntrinsicCallExpr(
                     Intrinsic(
                         findVal,
-                        AbsoluteFileLocation(
+                        SourceLocation(
                             peek().canonicalLocation.lineNumber,
                             peek().canonicalLocation.column,
                             context.file
@@ -730,32 +726,32 @@ class KiraParser(private val context: SourceContext)
 //        }
 //    }
 
-    private fun isFunctionDeclSyntax(): Boolean
-    {
-        var i = 0
-        while(true)
-        {
-            val token = peek(i)
-            val next = peek(i + 1)
-            if(token.type == Token.Type.S_CLOSE_PARENTHESIS && next.type != Token.Type.S_COLON)
-            {
-                return false
-            }
-            if(token.type == Token.Type.S_COLON)
-            {
-                return true
-            }
-            i++
-        }
-    }
+//    private fun isFunctionDeclSyntax(): Boolean
+//    {
+//        var i = 0
+//        while(true)
+//        {
+//            val token = peek(i)
+//            val next = peek(i + 1)
+//            if(token.type == Token.Type.S_CLOSE_PARENTHESIS && next.type != Token.Type.S_COLON)
+//            {
+//                return false
+//            }
+//            if(token.type == Token.Type.S_COLON)
+//            {
+//                return true
+//            }
+//            i++
+//        }
+//    }
 
-    private fun parseFunctionDecl(modifiers: Map<Modifiers, FileLocation>?): FunctionDecl
+    private fun parseFunctionDecl(modifiers: Map<Modifiers, SourcePosition>?): FunctionDecl
     {
         val origin = here()
-        expectModifiers(modifiers, Modifiers.Context.FUNCTION)
+        expectModifiers(modifiers, Modifiers.WrappingContext.FUNCTION)
         expectThenAdvance(Token.Type.K_FX)
         var functionName: Identifier = AnonymousIdentifier
-        if(peek(1).type == Token.Type.IDENTIFIER)
+        if(peek().type == Token.Type.IDENTIFIER)
         {
             functionName = parseIdentifier()
         }
@@ -840,7 +836,7 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(FunctionCallExpr(identifier, parameters.second, parameters.first), location = origin)
     }
 
-    private fun parseIdentifierExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
+    private fun parseIdentifierExpr(modifiers: Map<Modifiers, SourcePosition>?): Expr
     {
         if(tryCompoundAssignmentOperators(1) != null) // skip the identifier with peekoffset +1 (similar to why we also peek(1) below in the when statement
         {
@@ -882,7 +878,7 @@ class KiraParser(private val context: SourceContext)
         val origin = here()
         val left = parseIdentifier() // todo: allow for more than just identifiers for now
         val opTokens: Array<Token.Type> = tryCompoundAssignmentOperators() ?: arrayOf(peek().type)
-        val op = CompoundAssignmentExpr.Companion.findBinaryOp(opTokens)
+        val op = CompoundAssignmentExpr.findBinaryOp(opTokens)
         repeat(opTokens.size) { advancePointer() }
         val right = parseExpr()
         return putOrigin(CompoundAssignmentExpr(left, op!!, right), origin)
@@ -922,9 +918,9 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(EnumMemberExpr(name, value), origin)
     }
 
-    fun parseEnumDecl(modifiers: Map<Modifiers, FileLocation>?): EnumDecl
+    fun parseEnumDecl(modifiers: Map<Modifiers, SourcePosition>?): EnumDecl
     {
-        expectModifiers(modifiers, Modifiers.Context.ENUM)
+        expectModifiers(modifiers, Modifiers.WrappingContext.ENUM)
         advancePointer() // consume 'enum'
         val origin = here()
         val name = parseIdentifier() // we only allow simple names, not complex names on enums, cuz there is no point
@@ -942,9 +938,9 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(EnumDecl(name, members.toTypedArray(), modifiers?.keys?.toList() ?: emptyList()), origin)
     }
 
-    fun parseClassDecl(modifiers: Map<Modifiers, FileLocation>?): ClassDecl
+    fun parseClassDecl(modifiers: Map<Modifiers, SourcePosition>?): ClassDecl
     {
-        expectModifiers(modifiers, Modifiers.Context.CLASS)
+        expectModifiers(modifiers, Modifiers.WrappingContext.CLASS)
         advancePointer() //consume the class keyword
         val origin = here()
         val className = parseType()
@@ -959,7 +955,7 @@ class KiraParser(private val context: SourceContext)
         while(peek().type != Token.Type.S_CLOSE_BRACE && peek().type != Token.Type.S_EOF)
         {
             val memberModifiers = parseModifiers()
-            expectModifiers(memberModifiers, Modifiers.Context.CLASS_MEMBER)
+            expectModifiers(memberModifiers, Modifiers.WrappingContext.CLASS_MEMBER)
             members.add(
                 if(peek().type == Token.Type.S_OPEN_PARENTHESIS) // check for simple/anonymous function literals
                 {
@@ -979,32 +975,7 @@ class KiraParser(private val context: SourceContext)
                 }
                 else
                 {
-                    val start = peek().canonicalLocation
-                    if(!isFunctionDeclSyntax())
-                    {
-                        Diagnostics.panic(
-                            "KiraParser::parseClassMemberExpr",
-                            "Expected a function member here",
-                            location = peek().canonicalLocation,
-                            selectorLength = peek().content.length,
-                            context = context
-                        )
-                    }
-                    val expr = parseFunctionDecl(memberModifiers)
-                    if(expr is Literal) // at this pt this is most likely an anonymous function or a function literal so this is just for my sanity, in hindsight i don't hink this check will ever fail nor will it cover other "data literals"
-                    {
-                        Diagnostics.panic(
-                            "KiraParser::parseClassDecl",
-                            buildString {
-                                append(expr::class.simpleName ?: "Literal")
-                                append("s are not allowed to be placed in classes by themselves")
-                            },
-                            location = start,
-                            selectorLength = context.findCanonicalLine(start.lineNumber).length, // make the error marker cover the whole line!
-                            context = context
-                        )
-                    }
-                    expr as FunctionDecl // if this throws, then it is 99.99% a bug
+                    parseFunctionDecl(memberModifiers) // if this throws, then it is 99.99% user error
                 }
             )
         }
@@ -1012,9 +983,9 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(ClassDecl(className, modifiers?.keys?.toList() ?: emptyList(), members, parentType), origin)
     }
 
-    fun parseVariableDecl(modifiers: Map<Modifiers, FileLocation>?): VariableDecl
+    fun parseVariableDecl(modifiers: Map<Modifiers, SourcePosition>?): VariableDecl
     {
-        expectModifiers(modifiers, Modifiers.Context.VARIABLE)
+        expectModifiers(modifiers, Modifiers.WrappingContext.VARIABLE)
         val origin = here()
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_COLON)
@@ -1028,9 +999,9 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(VariableDecl(identifier, type, value, modifiers?.keys?.toList() ?: emptyList()), origin)
     }
 
-    fun parseObjectDecl(modifiers: Map<Modifiers, FileLocation>?): ObjectDecl
+    fun parseObjectDecl(modifiers: Map<Modifiers, SourcePosition>?): ObjectDecl
     {
-        expectModifiers(modifiers, Modifiers.Context.OBJECT)
+        expectModifiers(modifiers, Modifiers.WrappingContext.OBJECT)
         expectThenAdvance(Token.Type.K_OBJECT)
         val origin = here()
         val identifier = parseIdentifier()
@@ -1040,7 +1011,7 @@ class KiraParser(private val context: SourceContext)
         {
             val start = peek().canonicalLocation
             val modifiers = parseModifiers()
-            expectModifiers(modifiers, Modifiers.Context.OBJECT_MEMBER)
+            expectModifiers(modifiers, Modifiers.WrappingContext.OBJECT_MEMBER)
             val member = parseStatement(modifiers)
             when(member.expr)
             {
@@ -1133,7 +1104,7 @@ class KiraParser(private val context: SourceContext)
     fun parseIntegerLiteral(): IntegerLiteral
     {
         var value by Delegates.notNull<Long>()
-        lateinit var origin: FileLocation
+        lateinit var origin: SourcePosition
         try
         {
             origin = peek().canonicalLocation
@@ -1157,7 +1128,7 @@ class KiraParser(private val context: SourceContext)
     fun parseFloatLiteral(): FloatLiteral
     {
         var value by Delegates.notNull<Double>()
-        lateinit var origin: FileLocation
+        lateinit var origin: SourcePosition
         try
         {
             origin = peek().canonicalLocation
@@ -1181,7 +1152,7 @@ class KiraParser(private val context: SourceContext)
     fun parseBoolLiteral(): BoolLiteral
     {
         var value by Delegates.notNull<Boolean>()
-        lateinit var origin: FileLocation
+        lateinit var origin: SourcePosition
         try
         {
             origin = peek().canonicalLocation
@@ -1244,7 +1215,11 @@ class KiraParser(private val context: SourceContext)
                 {
                     Diagnostics.panic(
                         "KiraParser::parseType",
-                        "Expected ',' or '>' in generic parameter list but got ${peek().type.diagnosticsName()}",
+                        "Expected a ',' or '>' in generic parameter list, but got ${
+                            LocaleUtils.prependIndefiniteArticle(
+                                peek().type.diagnosticsName()
+                            )
+                        }",
                         location = peek().canonicalLocation,
                         selectorLength = peek().content.length,
                         context = context
@@ -1256,12 +1231,12 @@ class KiraParser(private val context: SourceContext)
         return putOrigin(TypeSpecifier(baseName, generics.toTypedArray()), baseLocation)
     }
 
-    fun parseModifiers(): Map<Modifiers, FileLocation>
+    fun parseModifiers(): Map<Modifiers, SourcePosition>
     {
-        val modifiers = mutableMapOf<Modifiers, FileLocation>()
+        val modifiers = mutableMapOf<Modifiers, SourcePosition>()
         while(peek().type in Token.Type.modifiers)
         {
-            val currentModifier = Modifiers.Companion.byTokenTypeMaybe(peek().type) {
+            val currentModifier = Modifiers.byTokenTypeMaybe(peek().type) {
                 Diagnostics.panic(
                     "KiraParser::parseModifiers",
                     "${peek()} is not a valid modifier",

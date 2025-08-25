@@ -1,10 +1,10 @@
 package net.exoad.kira.source
 
-data class FileLocation(val lineNumber: Int, val column: Int)
+data class SourcePosition(val lineNumber: Int, val column: Int) : Comparable<SourcePosition>
 {
     companion object
     {
-        val UNKNOWN = FileLocation(-1, -1)
+        val UNKNOWN = SourcePosition(-1, -1)
     }
 
     init
@@ -16,5 +16,11 @@ data class FileLocation(val lineNumber: Int, val column: Int)
     override fun toString(): String
     {
         return "line $lineNumber, col $column"
+    }
+
+    override fun compareTo(other: SourcePosition): Int
+    {
+        val lineCompare = lineNumber.compareTo(other.lineNumber)
+        return if(lineCompare != 0) lineCompare else column.compareTo(other.column)
     }
 }

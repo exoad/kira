@@ -22,6 +22,11 @@ class CompilationUnit
         return sources[file]
     }
 
+    fun getSourcesLength(): Int
+    {
+        return sources.size
+    }
+
     fun allSources(): Collection<SourceContext>
     {
         return sources.values

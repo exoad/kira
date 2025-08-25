@@ -10,3 +10,8 @@ fx sum(a: Int32, b: Int32): Int32
 {
     return a + b
 }
+
+fx (a: Int32, b: Int32): Int32
+{
+    return a * b
+}

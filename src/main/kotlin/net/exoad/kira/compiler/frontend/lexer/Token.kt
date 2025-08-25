@@ -1,23 +1,23 @@
 package net.exoad.kira.compiler.frontend.lexer
 
 import net.exoad.kira.core.Symbols
-import net.exoad.kira.source.FileLocation
+import net.exoad.kira.source.SourcePosition
 
 /**
  * Semantical tokens representing each part of text that was parsed
  */
-sealed class Token(val type: Type, val content: String, val pointerPosition: Int, val canonicalLocation: FileLocation)
+sealed class Token(val type: Type, val content: String, val pointerPosition: Int, val canonicalLocation: SourcePosition)
 {
-    enum class Type(val rawDiagnosticsRepresentation: String? = null)
+    enum class Type(val rawDiagnosticsRepresentation: String)
     {
-        X_ANY, // reserved for [Shared]
-        L_INTEGER,
-        L_STRING,
-        L_FLOAT,
-        L_TRUE_BOOL,
-        L_FALSE_BOOL,
-        L_NULL,
-        IDENTIFIER,
+        X_ANY("X_ANY"), // reserved for [BuiltinTypes]
+        L_INTEGER("Integer Literal"),
+        L_STRING("String Literal"),
+        L_FLOAT("Float Literal"),
+        L_TRUE_BOOL("'true' (Boolean)"),
+        L_FALSE_BOOL("'false' (Boolean)"),
+        L_NULL("'null'"),
+        IDENTIFIER("Identifier"),
         OP_RANGE("'..' (Range To)"),
         OP_ADD("'+' (Plus)"),
         OP_SUB("'-' (Minus)"),
@@ -87,7 +87,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         S_SEMICOLON("';' (Semicolon)"),
         S_AND("'&' (And)"),
         S_PIPE("'|' (Pipe)"),
-        S_EOF,
+        S_EOF("'EOF' (End Of File)"),
         S_AT("'@' (At)"),
         S_BANG("'!' (Bang)"),
         S_DOT("'.' (Dot)"),
@@ -98,7 +98,7 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
 
         fun diagnosticsName(): String
         {
-            return rawDiagnosticsRepresentation ?: name
+            return rawDiagnosticsRepresentation
         }
 
         companion object
@@ -140,13 +140,13 @@ sealed class Token(val type: Type, val content: String, val pointerPosition: Int
         }
     }
 
-    class Raw(type: Type, rawString: String, pointerPosition: Int, canonicalLocation: FileLocation) :
+    class Raw(type: Type, rawString: String, pointerPosition: Int, canonicalLocation: SourcePosition) :
         Token(type, rawString, pointerPosition, canonicalLocation)
 
-    class Symbol(type: Type, symbol: Symbols, pointerPosition: Int, canonicalLocation: FileLocation) :
+    class Symbol(type: Type, symbol: Symbols, pointerPosition: Int, canonicalLocation: SourcePosition) :
         Token(type, symbol.rep.toString(), pointerPosition, canonicalLocation)
 
-    class LinkedSymbols(type: Type, symbols: Array<Symbols>, pointerPosition: Int, canonicalLocation: FileLocation) :
+    class LinkedSymbols(type: Type, symbols: Array<Symbols>, pointerPosition: Int, canonicalLocation: SourcePosition) :
         Token(type, symbols.map { it.rep }.joinToString(""), pointerPosition, canonicalLocation)
 
     override fun toString(): String

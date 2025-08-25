@@ -389,7 +389,7 @@ object XMLASTVisitor :
                     }
                     else -> ""
                 }
-            }stub=\"${functionDecl.isStub()}\""
+            }stub=\"${functionDecl.isStub()}\" anon=\"${functionDecl.isAnonymous()}\""
         )
         {
             functionDecl.name.accept(this)

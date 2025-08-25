@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler.frontend.parser.ast.elements
 
 import net.exoad.kira.core.Builtin
-import net.exoad.kira.source.AbsoluteFileLocation
+import net.exoad.kira.source.SourceLocation
 
 /**
  * Compile time injection of certain symbols
@@ -13,4 +13,4 @@ import net.exoad.kira.source.AbsoluteFileLocation
  *
  * - See [Builtin.Intrinsics] for actual available intrinsics
  */
-data class Intrinsic(val intrinsicKey: Builtin.Intrinsics, val absoluteFileLocation: AbsoluteFileLocation)
+data class Intrinsic(val intrinsicKey: Builtin.Intrinsics, val sourceLocation: SourceLocation)
