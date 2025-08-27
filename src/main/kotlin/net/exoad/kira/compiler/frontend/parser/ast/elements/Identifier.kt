@@ -13,7 +13,7 @@ open class Identifier(open val name: String) : Expr()
 
     override fun toString(): String
     {
-        return "Identifier{ '$name' }"
+        return "I{ '$name' }"
     }
 
     override fun hashCode(): Int
@@ -40,7 +40,7 @@ object AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE)
 {
     override fun toString(): String
     {
-        return "AnonymousIdentifier{  }"
+        return "?{ }"
     }
 
     override fun hashCode(): Int

@@ -12,6 +12,6 @@ open class ReturnStatement(override val expr: Expr) : Statement(expr)
 
     override fun toString(): String
     {
-        return "ReturnStatement{ $expr }"
+        return "RETURN{ $expr }"
     }
 }

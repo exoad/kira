@@ -21,6 +21,6 @@ open class NamespaceDecl(
 
     override fun toString(): String
     {
-        return "ObjectDecl[[ $modifiers ]]{ $name -> $members }"
+        return "__NSP__${modifiers.ifEmpty { "" }}{ $name -> $members }"
     }
 }

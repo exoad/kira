@@ -12,7 +12,7 @@ class UnaryExpr(val operator: UnaryOp, val operand: Expr) : Expr()
 
     override fun toString(): String
     {
-        return "UnaryExpr{ $operator -> $operand }"
+        return "Unary{ $operator -> $operand }"
     }
 }
 

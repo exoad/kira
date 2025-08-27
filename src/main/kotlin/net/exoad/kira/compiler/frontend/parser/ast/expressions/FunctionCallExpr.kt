@@ -16,6 +16,6 @@ open class FunctionCallExpr(
 
     override fun toString(): String
     {
-        return "FunctionCallExpr{ $name -> {$positionalParameters} {$namedParameters} }"
+        return "FxCall{ $name -> {$positionalParameters} {$namedParameters} }"
     }
 }

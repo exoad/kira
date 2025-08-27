@@ -19,8 +19,8 @@ class EnumDecl(
     override fun toString(): String
     {
         return buildString {
-            append("EnumDecl")
-            append(if(modifiers.isNotEmpty()) "[[ $modifiers ]]" else "")
+            append("__ENUM__")
+            append(modifiers.ifEmpty { "" })
             append("{ ")
             append(name)
             append(" -> ")

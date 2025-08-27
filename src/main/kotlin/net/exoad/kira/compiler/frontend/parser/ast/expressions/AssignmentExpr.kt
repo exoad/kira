@@ -15,6 +15,6 @@ open class AssignmentExpr(
 
     override fun toString(): String
     {
-        return "AssignmentExpr{ ${target.name} -> $value }"
+        return "Assign{ ${target.name} -> $value }"
     }
 }

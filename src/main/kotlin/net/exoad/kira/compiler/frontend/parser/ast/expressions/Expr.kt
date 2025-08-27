@@ -22,6 +22,6 @@ object NoExpr : Expr()
 
     override fun toString(): String
     {
-        return "NoExpr{ }"
+        return "_{ }"
     }
 }

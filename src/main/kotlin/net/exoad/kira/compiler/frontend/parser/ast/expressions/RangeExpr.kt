@@ -14,6 +14,6 @@ open class RangeExpr(val begin: Expr, val end: Expr) : ForIterationTargetExpr()
 
     override fun toString(): String
     {
-        return "ForIterationTargetRangeExpr{ [$begin, $end] }"
+        return "Range{ [$begin, $end] }"
     }
 }

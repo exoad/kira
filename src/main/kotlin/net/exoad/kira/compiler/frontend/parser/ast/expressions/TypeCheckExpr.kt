@@ -12,6 +12,6 @@ class TypeCheckExpr(val value: Expr, val type: TypeSpecifier) : Expr()
 
     override fun toString(): String
     {
-        return "TypeCheckExpr{ $value -> $type }"
+        return "TypeCheck{ $value -> $type }"
     }
 }

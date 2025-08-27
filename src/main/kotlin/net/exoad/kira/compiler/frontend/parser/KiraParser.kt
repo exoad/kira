@@ -9,7 +9,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.Builtin
+import net.exoad.kira.core.BuiltinIntrinsics
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
@@ -223,10 +223,9 @@ class KiraParser(private val context: SourceContext)
             val modifiers = parseModifiers()
             val expr = when(peek().type)
             {
-                Token.Type.K_CLASS  -> parseClassDecl(modifiers)
-                Token.Type.K_OBJECT -> parseObjectDecl(modifiers)
-                Token.Type.K_ENUM   -> parseEnumDecl(modifiers)
-                else                -> parsePrimaryExpr(modifiers)
+                Token.Type.K_CLASS -> parseClassDecl(modifiers)
+                Token.Type.K_ENUM  -> parseEnumDecl(modifiers)
+                else               -> parsePrimaryExpr(modifiers)
             }
             expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
             return Statement(expr)
@@ -256,12 +255,6 @@ class KiraParser(private val context: SourceContext)
             Token.Type.K_ENUM       ->
             {
                 val expr = parseEnumDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return Statement(expr)
-            }
-            Token.Type.K_OBJECT -> // similar to the previous class case, covering when it has modifiers
-            {
-                val expr = parseObjectDecl(null)
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 return Statement(expr)
             }
@@ -640,7 +633,7 @@ class KiraParser(private val context: SourceContext)
             parameters.add(parseExpr())
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-        val findVal = Builtin.Intrinsics.entries.find { it.rep == identifier.name }
+        val findVal = BuiltinIntrinsics.entries.find { it.rep == identifier.name }
         return when(findVal != null)
         {
             true -> putOrigin(
@@ -687,7 +680,8 @@ class KiraParser(private val context: SourceContext)
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         return parameters
     }
-//    fun parseFunctionCallOrDeclExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
+
+    //    fun parseFunctionCallOrDeclExpr(modifiers: Map<Modifiers, FileLocation>?): Expr
 //    {
 //        var identifier: Identifier? = null
 //        if(peek().type == Token.Type.IDENTIFIER)
@@ -758,6 +752,7 @@ class KiraParser(private val context: SourceContext)
         val positional = mutableListOf<FunctionCallPositionalParameterExpr>()
         var positionalIndex = 0
         var seenNamed = false
+        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         while(peek().type != Token.Type.S_CLOSE_PARENTHESIS && peek().type != Token.Type.S_EOF)
         {
             if(positional.isNotEmpty() || named.isNotEmpty())
@@ -984,40 +979,6 @@ class KiraParser(private val context: SourceContext)
             value = parseExpr()
         }
         return putOrigin(VariableDecl(identifier, type, value, modifiers?.keys?.toList() ?: emptyList()), origin)
-    }
-
-    fun parseObjectDecl(modifiers: Map<Modifiers, SourcePosition>?): ObjectDecl
-    {
-        expectModifiers(modifiers, Modifiers.WrappingContext.OBJECT)
-        expectThenAdvance(Token.Type.K_OBJECT)
-        val origin = here()
-        val identifier = parseIdentifier()
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val members = mutableListOf<Decl>()
-        while(peek().type != Token.Type.S_CLOSE_BRACE && peek().type != Token.Type.S_EOF)
-        {
-            val start = peek().canonicalLocation
-            val modifiers = parseModifiers()
-            expectModifiers(modifiers, Modifiers.WrappingContext.OBJECT_MEMBER)
-            val member = parseStatement(modifiers)
-            when(member.expr)
-            {
-                // i just want something like "!is ... && !is ..." why is kotlin so weird, even dart supports this ?
-                !is Decl -> Diagnostics.panic(
-                    "KiraParser::parseObjectDecl",
-                    "The type ${member::class.simpleName} is not allowed in an object declaration. Only declarations are allowed.",
-                    context = context,
-                    location = start,
-                    selectorLength = context.findCanonicalLine(start.lineNumber).length
-                )
-                else     -> members.add(member.expr as Decl)
-            }
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return putOrigin(
-            ObjectDecl(identifier, modifiers?.keys?.toList() ?: emptyList(), members),
-            origin
-        )
     }
 
     fun parseNullLiteral(): NullLiteral

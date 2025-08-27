@@ -35,15 +35,6 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
         Token.Type.K_MODIFIER_REQUIRE,
         arrayOf(WrappingContext.CLASS_MEMBER, WrappingContext.VARIABLE, WrappingContext.FUNCTION)
     ),
-    WEAK(
-        Token.Type.K_MODIFIER_WEAK,
-        arrayOf(
-            WrappingContext.CLASS_MEMBER,
-            WrappingContext.VARIABLE,
-            WrappingContext.FUNCTION,
-            WrappingContext.FUNCTION_PARAMETER
-        )
-    )
     ;
 
     companion object

@@ -12,6 +12,6 @@ open class IntrinsicCallExpr(val name: Intrinsic, val parameters: List<Expr>) : 
 
     override fun toString(): String
     {
-        return "IntrinsicCallExpr[[ $name ]]{ $parameters }"
+        return "Intrinsic[[ $name ]]{ $parameters }"
     }
 }

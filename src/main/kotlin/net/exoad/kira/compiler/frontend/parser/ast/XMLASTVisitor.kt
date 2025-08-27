@@ -440,6 +440,11 @@ object XMLASTVisitor :
         }
     }
 
+    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
+    {
+        TODO("Not yet implemented")
+    }
+
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
     {
         node("AssignmentExpr")

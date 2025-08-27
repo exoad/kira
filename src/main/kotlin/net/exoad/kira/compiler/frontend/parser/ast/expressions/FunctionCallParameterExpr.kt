@@ -12,7 +12,7 @@ open class FunctionCallNamedParameterExpr(val name: Identifier, val value: Expr)
 
     override fun toString(): String
     {
-        return "FunctionCallNamedParameterExpr{ $name -> $value }"
+        return "FxNamedParam{ $name -> $value }"
     }
 }
 
@@ -25,6 +25,6 @@ open class FunctionCallPositionalParameterExpr(val position: Int, val value: Exp
 
     override fun toString(): String
     {
-        return "FunctionCallPositionalParameterExpr{ $position -> $value }"
+        return "FxPosParam{ $position -> $value }"
     }
 }

@@ -19,6 +19,6 @@ open class EnumMemberExpr(val name: Identifier, val value: DataLiteral<*>?) : Ex
 
     override fun toString(): String
     {
-        return "EnumMemberExpr{ $name ${if(value != null) "-> $value" else ""} }"
+        return "EnumMember{ $name ${if(value != null) "-> $value" else ""} }"
     }
 }

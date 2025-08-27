@@ -5,7 +5,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 
 open class IfSelectionStatement(
-    condition: Expr, val thenStatements: List<Statement>,
+    condition: Expr,
+    val thenStatements: List<Statement>,
     val elseBranches: List<IfElseBranchStatementNode> = emptyList(),
 ) :
     Statement(condition)
@@ -17,18 +18,22 @@ open class IfSelectionStatement(
 
     override fun toString(): String
     {
-        return "IfStatement{ $expr -> $thenStatements { $elseBranches } }"
+        return "IF{ $expr -> $thenStatements { $elseBranches } }"
     }
 }
 
 sealed class IfElseBranchStatementNode : ASTNode()
 
-class ElseIfBranchStatement(val condition: Expr, val statements: List<Statement>) :
-    IfElseBranchStatementNode()
+class ElseIfBranchStatement(val condition: Expr, val statements: List<Statement>) : IfElseBranchStatementNode()
 {
     override fun accept(visitor: ASTVisitor)
     {
         visitor.visitIfElseIfBranchStatement(this)
+    }
+
+    override fun toString(): String
+    {
+        return "ELSE_IF{ $condition -> $statements }"
     }
 }
 
@@ -37,5 +42,10 @@ class ElseBranchStatement(val statements: List<Statement>) : IfElseBranchStateme
     override fun accept(visitor: ASTVisitor)
     {
         visitor.visitElseBranchStatement(this)
+    }
+
+    override fun toString(): String
+    {
+        return "ELSE{ $statements }"
     }
 }

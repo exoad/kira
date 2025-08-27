@@ -417,4 +417,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
     {
         // TODO("Not yet implemented")
     }
+
+    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
+    {
+        TODO("Not yet implemented")
+    }
 }

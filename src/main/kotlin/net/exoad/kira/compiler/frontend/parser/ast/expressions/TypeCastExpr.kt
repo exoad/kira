@@ -12,6 +12,6 @@ class TypeCastExpr(val value: Expr, val type: TypeSpecifier) : Expr()
 
     override fun toString(): String
     {
-        return "TypeCastExpr{ $value -> $type }"
+        return "TypeCast{ $value -> $type }"
     }
 }

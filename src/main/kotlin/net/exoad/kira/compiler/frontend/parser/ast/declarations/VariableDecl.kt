@@ -20,7 +20,7 @@ open class VariableDecl(
 
     override fun toString(): String
     {
-        return "VariableDeclaration[[ $modifiers  ]]{ $name ($typeSpecifier) := $value}"
+        return "__VAR__${modifiers.ifEmpty { "" }}{ $name ($typeSpecifier) := $value}"
     }
 
     override fun isStub(): Boolean

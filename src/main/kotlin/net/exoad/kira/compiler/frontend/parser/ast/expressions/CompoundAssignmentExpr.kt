@@ -13,7 +13,7 @@ class CompoundAssignmentExpr(val left: Expr, val operator: BinaryOp, val right: 
 
     override fun toString(): String
     {
-        return "CompoundAssignmentExpr{ $left $operator $right}"
+        return "CmpndAssign{ $left $operator $right}"
     }
 
     companion object

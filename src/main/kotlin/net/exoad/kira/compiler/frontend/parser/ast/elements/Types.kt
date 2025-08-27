@@ -10,7 +10,10 @@ open class TypeSpecifier(
 {
     override fun toString(): String
     {
-        return "Type${if(childGenericTypeSpecifier.isEmpty()) "" else childGenericTypeSpecifier.toString()}{ '$name' }"
+        return "T< '$name'${
+            if(childGenericTypeSpecifier.isEmpty()) ""
+            else " ++ ${childGenericTypeSpecifier.joinToString { it.toString() }}"
+        } >"
     }
 
     override fun accept(visitor: ASTVisitor)

@@ -21,7 +21,7 @@ open class ClassDecl(
 
     override fun toString(): String
     {
-        return "ClassDecl[[ $modifiers ]]{ $name -> $members }"
+        return "__CLASS__${modifiers.ifEmpty { "" }}{ $name -> $members }"
     }
 }
 

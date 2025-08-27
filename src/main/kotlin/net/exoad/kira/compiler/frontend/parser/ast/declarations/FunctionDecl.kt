@@ -24,7 +24,12 @@ open class FunctionDecl(
 
     override fun toString(): String
     {
-        return "FunctionDecl[[ $modifiers ]]{ ${if(isAnonymous()) "(_Anon_)" else ""} $name -> $value}"
+        return "__FX__${modifiers.ifEmpty { "" }}{ ${
+            if(isAnonymous()) "(_Anon_)"
+            else
+                ""
+        } " +
+                "$name -> $value}"
     }
 
     override fun isStub(): Boolean

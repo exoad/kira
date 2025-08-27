@@ -11,6 +11,6 @@ open class MemberAccessExpr(val origin: Expr, val member: Expr) : Expr()
 
     override fun toString(): String
     {
-        return "MemberAccessExpr{ $origin -> $member }"
+        return "MemberAccess{ $origin -> $member }"
     }
 }

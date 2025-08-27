@@ -19,6 +19,6 @@ open class FunctionLiteral(
 
     override fun toString(): String
     {
-        return "LFunc{ $returnTypeSpecifier -> $parameters -> $body }"
+        return "LFunction{ $returnTypeSpecifier -> $parameters -> $body }"
     }
 }

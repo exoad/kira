@@ -41,16 +41,14 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int)
 
     companion object
     {
-//                else                     -> Diagnostics.panic(
+        //                else                     -> Diagnostics.panic(
 //                    "BinaryOperator::byTokenType",
 //                    "$tokenType is not a binary operator!"
 //                )
-
         fun byTokenTypeMaybe(tokenType: Array<Token.Type>, onBad: (() -> Unit)? = null): BinaryOp?
         {
             val op = when
             {
-
                 tokenType.size == 3 &&
                         tokenType[0] == Token.Type.S_CLOSE_ANGLE &&
                         tokenType[1] == Token.Type.S_CLOSE_ANGLE &&

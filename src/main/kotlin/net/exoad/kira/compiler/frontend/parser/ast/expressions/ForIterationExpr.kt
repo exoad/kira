@@ -12,7 +12,7 @@ open class ForIterationExpr(val initializer: Identifier, val target: Expr) : Exp
 
     override fun toString(): String
     {
-        return "ForIterationExpr{ $initializer -> $target }"
+        return "ForIter{ $initializer -> $target }"
     }
 }
 

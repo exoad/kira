@@ -63,4 +63,5 @@ abstract class ASTVisitor
     abstract fun visitClassDecl(classDecl: ClassDecl)
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
     abstract fun visitEnumDecl(enumDecl: EnumDecl)
+    abstract fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
 }

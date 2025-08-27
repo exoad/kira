@@ -12,6 +12,6 @@ class ModuleDecl(val uri: StringLiteral) : Decl(uri)
 
     override fun toString(): String
     {
-        return "ModuleDecl{ $uri }"
+        return "__MOD__{ $uri }"
     }
 }

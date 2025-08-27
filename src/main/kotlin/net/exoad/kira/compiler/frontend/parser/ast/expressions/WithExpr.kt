@@ -13,7 +13,7 @@ open class WithExpr(val members: List<WithExprMember>) :
 
     override fun toString(): String
     {
-        return "WithExpr{ $members }"
+        return "With{ $members }"
     }
 }
 
@@ -26,6 +26,6 @@ open class WithExprMember(val name: Identifier, val value: Expr) : Expr()
 
     override fun toString(): String
     {
-        return "WithExprMember{ $name -> $value }"
+        return "WithMember{ $name -> $value }"
     }
 }

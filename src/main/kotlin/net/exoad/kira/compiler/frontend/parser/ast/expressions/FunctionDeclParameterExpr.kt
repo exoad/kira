@@ -19,6 +19,6 @@ open class FunctionDeclParameterExpr(
 
     override fun toString(): String
     {
-        return "FunctionParameterExpr[[ $modifiers ]]{ $name -> $typeSpecifier }"
+        return "FxParam${if(modifiers.isNotEmpty()) "[[ $modifiers ]]" else ""}{ $name -> $typeSpecifier }"
     }
 }

@@ -16,7 +16,7 @@ class BinaryExpr(
 
     override fun toString(): String
     {
-        return "BinaryExpr{ $leftExpr ${operator.symbol} $rightExpr }"
+        return "Binary{ $leftExpr ${operator.symbol.joinToString { it.rep.toString() }} $rightExpr }"
     }
 }
 
