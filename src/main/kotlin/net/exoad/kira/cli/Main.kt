@@ -4,12 +4,13 @@ import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatMTAtomOneDarkI
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
+import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.ui.KiraVisualViewer
-import net.exoad.kira.utils.XMLASTVisitor
+import net.exoad.kira.utils.XMLASTVisitorKira
 import java.io.File
 import javax.swing.UIManager
 import kotlin.math.floor
@@ -22,28 +23,22 @@ internal lateinit var argsParser: ArgsParser
  * This can be called from any other programs, but for the most part, the required parameter
  * is the `--src` option which points to the source file you want to compile. For example, `--src=hello.kira`
  */
-fun main(args: Array<String>)
-{
-    try
-    {
+fun main(args: Array<String>) {
+    try {
         UIManager.setLookAndFeel(FlatMTAtomOneDarkIJTheme())
-    }
-    catch(e: Exception)
-    {
+    } catch (e: Exception) {
         e.printStackTrace()
     }
     argsParser = ArgsParser(args)
     val (_, duration) = measureTimedValue {
         parseArgs().let { it ->
-            when(it.useDiagnostics)
-            {
+            when (it.useDiagnostics) {
                 true -> Diagnostics.useDiagnostics()
                 else -> Diagnostics.silenceDiagnostics()
             }
             val compilationUnit = CompilationUnit()
             val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *it.src)
-            for(sourceFile in sources)
-            {
+            for (sourceFile in sources) {
                 val file = File(sourceFile)
                 val preprocessor = KiraPreprocessor(file.readText())
                 val preprocessingResult = preprocessor.process()
@@ -60,12 +55,10 @@ fun main(args: Array<String>)
                         srcContext.content,
                         tokens
                     )
-                    if(Public.Flags.enableVisualView)
-                    {
+                    if (Public.Flags.enableVisualView) {
                         KiraVisualViewer(srcContext).also { it.run() }
                     }
-                    if(it.dumpLexerTokens != null)
-                    {
+                    if (it.dumpLexerTokens != null) {
                         val lexerTokensDumpFile = File(it.dumpLexerTokens)
                         lexerTokensDumpFile.createNewFile()
                         var i = 0
@@ -106,11 +99,10 @@ fun main(args: Array<String>)
 //                    }
                 }
                 Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
-                if(it.dumpAST != null)
-                {
+                if (it.dumpAST != null) {
                     val astDumpFile = File("${it.dumpAST}.xml")
                     astDumpFile.createNewFile()
-                    astDumpFile.writeText(XMLASTVisitor.build(srcContext.ast))
+                    astDumpFile.writeText(XMLASTVisitorKira.build(srcContext.ast))
                     val astNodeCanonLocations = File("${it.dumpAST}.txt")
                     astNodeCanonLocations.createNewFile()
                     val sb = StringBuilder()
@@ -128,8 +120,12 @@ fun main(args: Array<String>)
                         "Dumped AST representation to ${astDumpFile.absolutePath}. Dumped node source locations to ${astNodeCanonLocations.absolutePath}"
                     )
                 }
-                when(GeneratedProvider.outputMode)
-                {
+                when (GeneratedProvider.outputMode) {
+                    GeneratedProvider.OutputTarget.C -> {
+                        Diagnostics.Logging.info("Kira", "Outputting to 'target C'")
+                        KiraCCodeGenerator(compilationUnit).generate()
+                    }
+
                     else -> Diagnostics.Logging.info("Kira", "No output...")
                 }
             }
@@ -138,35 +134,29 @@ fun main(args: Array<String>)
     Diagnostics.Logging.info("Kira", "Everything took $duration")
 }
 
-fun parseArgs(): ArgumentOptions
-{
+fun parseArgs(): ArgumentOptions {
     parsePublicFlags()
     val useDiagnostics = argsParser.findOption("--diagnostics", "false")!!.equals("true", true)
     val srcLocOption = argsParser.findOption("--src")
-    if(srcLocOption == null)
-    {
+    if (srcLocOption == null) {
         Diagnostics.panic("Could not find the 'src' option pointing to a source file.\nUsage: '--src=main.kira'")
     }
     val dumpLexerTokensOption = argsParser.findOption("--dumpLexerTokens")
     val dumpASTOptionOption = argsParser.findOption("--dumpAST")
     // ephemeral options
     val outputFileOption = argsParser.findOption("--out")
-    if(outputFileOption == null)
-    {
-        GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
-    }
-    else
-    {
-        val outputModeOption = argsParser.findOption("--target")
-        when(outputModeOption?.lowercase())
-        {
-            "neko" ->
-            {
-                GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NEKO
-                GeneratedProvider.outputFile = outputFileOption
+    val outputModeOption = argsParser.findOption("--target")
+    when (outputModeOption?.lowercase()) {
+        "neko" -> {
+            GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NEKO
+            if (outputFileOption == null) {
+                Diagnostics.panic("Output target 'NEKO' requires an output file with the '--out' option!")
             }
-            else   -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
+            GeneratedProvider.outputFile = outputFileOption
         }
+
+        "c" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.C
+        else -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
     }
     return ArgumentOptions(
         useDiagnostics,
@@ -176,8 +166,7 @@ fun parseArgs(): ArgumentOptions
     )
 }
 
-fun parsePublicFlags()
-{
+fun parsePublicFlags() {
     // the flipping and unflipping of the conditions just sometimes gets me mixed up for some reason lol
     //
     // is my brain too slow ?

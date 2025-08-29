@@ -12,8 +12,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
  *
  * - primarily used by [net.exoad.kira.compiler.frontend.lexer.KiraLexer] to match them to [Token]s
  */
-enum class Symbols(val rep: Char)
-{
+enum class Symbols(val rep: Char) {
     NULL('\u0000'),
     NEWLINE('\n'),
     DOUBLE_QUOTE('\u0022'),
@@ -50,8 +49,7 @@ enum class Symbols(val rep: Char)
     PERIOD('\u002e'),
     COLON('\u003a');
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return rep.toString()
     }
 }

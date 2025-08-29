@@ -12,15 +12,12 @@ data class DiagnosticsException(
     val location: SourcePosition? = null,
     val context: SourceContext,
     val selectorLength: Int,
-) : RuntimeException(message, cause)
-{
-    override fun toString(): String
-    {
+) : RuntimeException(message, cause) {
+    override fun toString(): String {
         return "\n${formattedPanicMessage()}"
     }
 
-    fun formattedPanicMessage(): String
-    {
+    fun formattedPanicMessage(): String {
         var exceptionTrace: String? = null
         cause?.let {
             val writer = StringWriter()
@@ -32,19 +29,18 @@ data class DiagnosticsException(
         return """
 ===================[ Kira Panicked! ]===================    
 Kira panicked at $tag: ${
-            when
-            {
+            when {
                 location != null -> context.formCanonicalLocatorString(location, message, selectorLength)
-                else             -> message
+                else -> message
             }
-        }""" + when
-        {
+        }""" + when {
             exceptionTrace != null -> """
     Internal stack trace (from cause): 
                         
     $exceptionTrace    
     """.trimIndent()
-            else                   -> ""
+
+            else -> ""
         }
     }
 }

@@ -16,10 +16,8 @@ import kotlin.math.log10
  *
  * ok after some finicking (idt this is a word), but anyway, going to make this just a glorified tokens viewer :)
  */
-class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer")
-{
-    init
-    {
+class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer") {
+    init {
         size = Dimension(600, 800)
         preferredSize = size
         defaultCloseOperation = EXIT_ON_CLOSE //often is the last flag that is run and checked in the lifecycle
@@ -35,13 +33,12 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
             addTab("Stats", JEditorPane().apply {
                 contentType = "text/html"
                 text =
-                        "<html><body style=\"font-size: 16px;\"><strong>Total Tokens:</strong> ${context.tokens.size}</body></html>"
+                    "<html><body style=\"font-size: 16px;\"><strong>Total Tokens:</strong> ${context.tokens.size}</body></html>"
             })
         }
     }
 
-    private fun render(showTokenType: Boolean): JEditorPane
-    {
+    private fun render(showTokenType: Boolean): JEditorPane {
         val editorPane = JEditorPane().apply {
             isEditable = false
             contentType = "text/html"
@@ -49,10 +46,9 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
             border = BorderFactory.createLineBorder(Color.BLACK, 1, true)
         }
         editorPane.text = buildString {
-            fun node(name: String, attrs: String? = null, body: () -> Unit)
-            {
+            fun node(name: String, attrs: String? = null, body: () -> Unit) {
                 append("<$name")
-                if(attrs != null) append(" $attrs")
+                if (attrs != null) append(" $attrs")
                 append(">")
                 body()
                 append("</$name>")
@@ -74,18 +70,16 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
                 ) {
                     var lastLine = -1
                     context.tokens.forEach { token ->
-                        val color = when
-                        {
+                        val color = when {
                             token.type.name.startsWith("K_MODIFIER") -> "#4db6ac"
-                            token.type.name.startsWith("K_")         -> "#58a6ff"
-                            token.type.name.startsWith("OP_")        -> "#f78c6c"
-                            token.type.name.startsWith("S_")         -> "#c792ea"
-                            token.type.name.startsWith("L_")         -> "#ffd580"
-                            else                                     -> "#fdf6e3"
+                            token.type.name.startsWith("K_") -> "#58a6ff"
+                            token.type.name.startsWith("OP_") -> "#f78c6c"
+                            token.type.name.startsWith("S_") -> "#c792ea"
+                            token.type.name.startsWith("L_") -> "#ffd580"
+                            else -> "#fdf6e3"
                         }
                         val lineNumber = token.canonicalLocation.lineNumber
-                        if(lineNumber != lastLine)
-                        {
+                        if (lineNumber != lastLine) {
                             append("<br/>")
                             append(
                                 """<span style="color:#5c6370;background-color:#21252b;">
@@ -100,19 +94,16 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
                         }
                         node(
                             "span", """style="${
-                                if(showTokenType)
-                                {
+                                if (showTokenType) {
                                     "background-color:$color;color:#000000;"
-                                }
-                                else
-                                {
+                                } else {
                                     "color:$color"
                                 }
                             }""""
                         )
                         {
                             append(
-                                (if(showTokenType) token.type.name else token.content)
+                                (if (showTokenType) token.type.name else token.content)
                                     .replace("&", "&amp;")
                                     .replace("<", "&lt;")
                                     .replace(">", "&gt;")
@@ -122,8 +113,7 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
                                     })
                         }
                         append("&nbsp;")
-                        if(token.type == Token.Type.S_SEMICOLON)
-                        {
+                        if (token.type == Token.Type.S_SEMICOLON) {
                             append("<br/>")
                         }
                     }
@@ -133,8 +123,7 @@ class KiraVisualViewer(private val context: SourceContext) : JFrame("Kira Lexer"
         return editorPane
     }
 
-    fun run()
-    {
+    fun run() {
         SwingUtilities.invokeLater {
             pack()
             isVisible = true

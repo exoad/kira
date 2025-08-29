@@ -3,12 +3,13 @@ package net.exoad.kira.compiler.frontend.parser.ast
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.UnionType
+import net.exoad.kira.compiler.frontend.parser.ast.elements.VariadicGenericParameter
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 
-abstract class ASTVisitor
-{
+abstract class KiraASTVisitor {
     // STATEMENTS
     abstract fun visitStatement(statement: Statement)
     abstract fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement)
@@ -53,9 +54,11 @@ abstract class ASTVisitor
     abstract fun visitMapLiteral(mapLiteral: MapLiteral)
     abstract fun visitNullLiteral(nullLiteral: NullLiteral) // this will always be the same instance of null (null isnt a true value)
 
-    // IDENTIFIERS
+    // ELEMENTS
     abstract fun visitIdentifier(identifier: Identifier)
     abstract fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
+    abstract fun visitUnionType(unionType: UnionType)
+    abstract fun visitVariadicGenericParameter(variadicGenericParameter: VariadicGenericParameter)
 
     // DECLARATIONS
     abstract fun visitVariableDecl(variableDecl: VariableDecl)

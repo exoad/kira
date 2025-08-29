@@ -1,17 +1,14 @@
 package net.exoad.kira.compiler.frontend.parser.ast.statements
 
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 
-open class ContinueStatement : Statement(NoExpr)
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+open class ContinueStatement : Statement(NoExpr) {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitContinueStatement(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "CONTINUE{ }"
     }
 }

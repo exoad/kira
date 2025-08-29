@@ -5,14 +5,13 @@ package net.exoad.kira.compiler.backend.targets
  *
  * Things like the compilation format with [OutputTarget]
  */
-object GeneratedProvider
-{
-    enum class OutputTarget
-    {
+object GeneratedProvider {
+    enum class OutputTarget {
         /**
          * See [net.exoad.kira.compiler]
          */
         NEKO,
+        C,
         NONE
     }
 

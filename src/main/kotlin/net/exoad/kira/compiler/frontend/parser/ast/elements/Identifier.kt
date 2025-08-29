@@ -1,34 +1,27 @@
 package net.exoad.kira.compiler.frontend.parser.ast.elements
 
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsSymbols
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 
-open class Identifier(open val name: String) : Expr()
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+open class Identifier(open val name: String) : Expr() {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitIdentifier(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "I{ '$name' }"
     }
 
-    override fun hashCode(): Int
-    {
+    override fun hashCode(): Int {
         return name.hashCode()
     }
 
-    override fun equals(other: Any?): Boolean
-    {
-        if(this === other)
-        {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) {
             return true
         }
-        if(javaClass != other?.javaClass)
-        {
+        if (javaClass != other?.javaClass) {
             return false
         }
         other as Identifier
@@ -36,26 +29,20 @@ open class Identifier(open val name: String) : Expr()
     }
 }
 
-object AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE)
-{
-    override fun toString(): String
-    {
+object AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE) {
+    override fun toString(): String {
         return "?{ }"
     }
 
-    override fun hashCode(): Int
-    {
+    override fun hashCode(): Int {
         return DiagnosticsSymbols.NOT_REPRESENTABLE.hashCode()
     }
 
-    override fun equals(other: Any?): Boolean
-    {
-        if(this === other)
-        {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) {
             return true
         }
-        if(javaClass != other?.javaClass)
-        {
+        if (javaClass != other?.javaClass) {
             return false
         }
         return true

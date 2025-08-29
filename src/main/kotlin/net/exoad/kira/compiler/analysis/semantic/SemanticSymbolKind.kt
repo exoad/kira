@@ -1,7 +1,6 @@
 package net.exoad.kira.compiler.analysis.semantic
 
-enum class SemanticSymbolKind
-{
+enum class SemanticSymbolKind {
     VARIABLE,
     FUNCTION,
     CLASS,

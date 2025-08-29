@@ -1,12 +1,10 @@
 package net.exoad.kira.utils
 
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
-import net.exoad.kira.compiler.frontend.parser.ast.elements.AnonymousIdentifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
@@ -25,36 +23,32 @@ import java.text.SimpleDateFormat
  *
  * spitting it out makes developing kira much easier than scrolling through a terminal sometimes
  */
-object XMLASTVisitor :
-    ASTVisitor() // having to come back here to implement members from the ASTVisitor is just idk, is it too much boilerplate?
+object XMLASTVisitorKira :
+    KiraASTVisitor() // having to come back here to implement members from the ASTVisitor is just idk, is it too much boilerplate?
 // antlr and stuffs already pregenerate the code and all of those "visit" functions for you which is helpful lol
 {
     private val builder = StringBuilder()
     private val currentIndent = mutableListOf<String>()
-    private fun appendLine(content: String)
-    {
+    private fun appendLine(content: String) {
         builder.append(currentIndent.joinToString(""))
         builder.appendLine(content)
     }
 
-    private fun xmlOpen(tag: String, attrs: String = "")
-    {
-        appendLine("<$tag${if(attrs.isNotEmpty()) " $attrs" else ""}>")
+    private fun xmlOpen(tag: String, attrs: String = "") {
+        appendLine("<$tag${if (attrs.isNotEmpty()) " $attrs" else ""}>")
         pushIndent()
     }
 
     // i love kotlin's trailing lambda features as compared to other languages where you have to supply a lambda within a function
     //
     // todo: can we have the ^ above feature as an actual feature in kira?!
-    private fun node(tag: String, attrs: String = "", children: () -> Unit)
-    {
+    private fun node(tag: String, attrs: String = "", children: () -> Unit) {
         xmlOpen(tag, attrs)
         children()
         xmlClose(tag)
     }
 
-    private fun xmlClose(tag: String)
-    {
+    private fun xmlClose(tag: String) {
         popIndent()
         appendLine("</$tag>")
     }
@@ -63,21 +57,18 @@ object XMLASTVisitor :
      * A leaf node in xml that has an ending tag because you need [value] or the content and
      * potentially attributes with [attrs]
      */
-    private fun xmlLeaf(tag: String, value: String, attrs: String = "")
-    {
-        appendLine("<$tag${if(attrs.isNotEmpty()) " $attrs" else ""}>${escapeXml(value)}</$tag>")
+    private fun xmlLeaf(tag: String, value: String, attrs: String = "") {
+        appendLine("<$tag${if (attrs.isNotEmpty()) " $attrs" else ""}>${escapeXml(value)}</$tag>")
     }
 
     /**
      * A leaf node in xml that has no ending tag, and you only want to specify attributes with [attrs]
      */
-    private fun xmlSingleLeaf(tag: String, attrs: String?)
-    {
-        appendLine("<$tag${if(attrs != null) " $attrs" else ""}/>")
+    private fun xmlSingleLeaf(tag: String, attrs: String?) {
+        appendLine("<$tag${if (attrs != null) " $attrs" else ""}/>")
     }
 
-    private fun escapeXml(s: String): String
-    {
+    private fun escapeXml(s: String): String {
         return s.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
@@ -85,8 +76,7 @@ object XMLASTVisitor :
             .replace("'", "&apos;")
     }
 
-    fun visitRootASTNode(rootASTNode: RootASTNode)
-    {
+    fun visitRootASTNode(rootASTNode: RootASTNode) {
         appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
         appendLine("""<!-- Kira AST Generated at ${SimpleDateFormat().format(System.currentTimeMillis())} -->""")
         node("KiraProgram")
@@ -95,16 +85,14 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitStatement(statement: Statement)
-    {
+    override fun visitStatement(statement: Statement) {
         node("Statement")
         {
             statement.expr.accept(this)
         }
     }
 
-    override fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement)
-    {
+    override fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement) {
         node("IfSelectionStatement")
         {
             node("Condition")
@@ -122,8 +110,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement)
-    {
+    override fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement) {
         node("ElseIfBranch")
         {
             node("Condition")
@@ -137,8 +124,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement)
-    {
+    override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement) {
         node("ElseBranch")
         {
             node("Body")
@@ -148,8 +134,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
-    {
+    override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement) {
         node("WhileIterationStatement")
         {
             node("Condition")
@@ -163,8 +148,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
-    {
+    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
         node("DoWhileIterationStatement")
         {
             node("Condition")
@@ -178,16 +162,14 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitReturnStatement(returnStatement: ReturnStatement)
-    {
+    override fun visitReturnStatement(returnStatement: ReturnStatement) {
         node("ReturnStatement")
         {
             returnStatement.expr.accept(this)
         }
     }
 
-    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
-    {
+    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
         node("ForIterationStatement")
         {
             forIterationStatement.expr.accept(this)
@@ -198,8 +180,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitUseStatement(useStatement: UseStatement)
-    {
+    override fun visitUseStatement(useStatement: UseStatement) {
         node("UseStatement")
         {
             node("URI")
@@ -209,18 +190,15 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitBreakStatement(breakStatement: BreakStatement)
-    {
+    override fun visitBreakStatement(breakStatement: BreakStatement) {
         xmlSingleLeaf("BreakStatement", null)
     }
 
-    override fun visitContinueStatement(continueStatement: ContinueStatement)
-    {
+    override fun visitContinueStatement(continueStatement: ContinueStatement) {
         xmlSingleLeaf("ContinueStatement", null)
     }
 
-    override fun visitBinaryExpr(binaryExpr: BinaryExpr)
-    {
+    override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
         node("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""")
         {
             node("Left")
@@ -234,36 +212,30 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitUnaryExpr(unaryExpr: UnaryExpr)
-    {
+    override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
         node("UnaryExpr", """op="${escapeXml(unaryExpr.operator.toString())}"""")
         {
             unaryExpr.operand.accept(this)
         }
     }
 
-    override fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
-    {
+    override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {
         xmlSingleLeaf("LInt", """value="${integerLiteral.value}"""")
     }
 
-    override fun visitStringLiteral(stringLiteral: StringLiteral)
-    {
+    override fun visitStringLiteral(stringLiteral: StringLiteral) {
         xmlSingleLeaf("LString", """value="${stringLiteral.value}"""")
     }
 
-    override fun visitBoolLiteral(boolLiteral: BoolLiteral)
-    {
+    override fun visitBoolLiteral(boolLiteral: BoolLiteral) {
         xmlSingleLeaf("LBool", """value="${boolLiteral.value}"""")
     }
 
-    override fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    {
+    override fun visitFloatLiteral(floatLiteral: FloatLiteral) {
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
-    {
+    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral) {
         node("LFunc")
         {
             functionLiteral.returnTypeSpecifier.accept(this)
@@ -273,8 +245,7 @@ object XMLASTVisitor :
             }
             // todo: this is a bandage situation where function type notation is actually not supported. it makes parsing stubs as types much harder
             // todo: either come up with a complete new system for function type or reuse the already existing one for function literal declarations
-            if(functionLiteral.body != null)
-            {
+            if (functionLiteral.body != null) {
                 node("Body")
                 {
                     functionLiteral.body!!.forEach { it.accept(this) }
@@ -283,24 +254,21 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
-    {
+    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
         node("LArray")
         {
             arrayLiteral.value.forEach { it.accept(this) }
         }
     }
 
-    override fun visitListLiteral(listLiteral: ListLiteral)
-    {
+    override fun visitListLiteral(listLiteral: ListLiteral) {
         node("LList")
         {
             listLiteral.value.forEach { it.accept(this) }
         }
     }
 
-    override fun visitMapLiteral(mapLiteral: MapLiteral)
-    {
+    override fun visitMapLiteral(mapLiteral: MapLiteral) {
         node("LMap")
         {
             mapLiteral.value.forEach {
@@ -319,40 +287,42 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitNullLiteral(nullLiteral: NullLiteral)
-    {
+    override fun visitNullLiteral(nullLiteral: NullLiteral) {
         xmlSingleLeaf("LNull", attrs = null)
     }
 
-    override fun visitIdentifier(identifier: Identifier)
-    {
-        when(identifier)
-        {
+    override fun visitIdentifier(identifier: Identifier) {
+        when (identifier) {
             is AnonymousIdentifier -> xmlSingleLeaf("Anonymous", "")
-            else                   -> xmlLeaf("Identifier", identifier.name)
+            else -> xmlLeaf("Identifier", identifier.name)
         }
     }
 
-    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
-    {
-        if(typeSpecifier.childGenericTypeSpecifier.isNotEmpty())
-        {
-            node("Type", """name="${typeSpecifier.name}"""")
-            {
-                typeSpecifier.childGenericTypeSpecifier.forEach { it.accept(this) }
-            }
-        }
-        else
-        {
-            xmlLeaf("Type", typeSpecifier.name)
-        }
+    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier) {
+//        if(typeSpecifier.childGenericTypeSpecifier.isNotEmpty())
+//        {
+//            node("Type", """name="${typeSpecifier.name}"""")
+//            {
+//                typeSpecifier.childGenericTypeSpecifier.forEach { it.accept(this) }
+//            }
+//        }
+//        else
+//        {
+//            xmlLeaf("Type", typeSpecifier.name)
+//        }
     }
 
-    override fun visitVariableDecl(variableDecl: VariableDecl)
-    {
+    override fun visitUnionType(unionType: UnionType) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitVariadicGenericParameter(variadicGenericParameter: VariadicGenericParameter) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitVariableDecl(variableDecl: VariableDecl) {
         node(
-            "VariableDecl", when(variableDecl.modifiers.isNotEmpty())
-            {
+            "VariableDecl", when (variableDecl.modifiers.isNotEmpty()) {
                 true -> """modifiers="${variableDecl.modifiers.joinToString(",") { it.name }}""""
                 else -> ""
             }
@@ -360,8 +330,7 @@ object XMLASTVisitor :
         {
             variableDecl.name.accept(this)
             variableDecl.typeSpecifier.accept(this)
-            if(variableDecl.value != null)
-            {
+            if (variableDecl.value != null) {
                 node("Value")
                 {
                     variableDecl.value!!.accept(this)
@@ -370,17 +339,16 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitFunctionDecl(functionDecl: FunctionDecl)
-    {
+    override fun visitFunctionDecl(functionDecl: FunctionDecl) {
         node(
             "FunctionDecl", "${
-                when(functionDecl.modifiers.isNotEmpty())
-                {
+                when (functionDecl.modifiers.isNotEmpty()) {
                     true -> buildString {
                         append("modifiers=\"")
                         append(functionDecl.modifiers.joinToString(",") { it.name })
                         append("\" ")
                     }
+
                     else -> ""
                 }
             }stub=\"${functionDecl.isStub()}\" anon=\"${functionDecl.isAnonymous()}\""
@@ -391,19 +359,16 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitClassDecl(classDecl: ClassDecl)
-    {
+    override fun visitClassDecl(classDecl: ClassDecl) {
         node(
-            "ClassDecl", when(classDecl.modifiers.isNotEmpty())
-            {
+            "ClassDecl", when (classDecl.modifiers.isNotEmpty()) {
                 true -> """modifiers="${classDecl.modifiers.joinToString(",") { it.name }}""""
                 else -> ""
             }
         )
         {
             classDecl.name.accept(this)
-            if(classDecl.parent != null)
-            {
+            if (classDecl.parent != null) {
                 node("Parent")
                 {
                     classDecl.parent.accept(this)
@@ -416,8 +381,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitModuleDecl(moduleDecl: ModuleDecl)
-    {
+    override fun visitModuleDecl(moduleDecl: ModuleDecl) {
         node("ModuleDecl")
         {
             node("URI")
@@ -427,8 +391,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl)
-    {
+    override fun visitEnumDecl(enumDecl: EnumDecl) {
         node(
             "EnumDecl", """modifiers="${
                 enumDecl.modifiers.joinToString(",") { it.name }
@@ -440,13 +403,11 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
-    {
+    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
         TODO("Not yet implemented")
     }
 
-    override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
-    {
+    override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {
         node("AssignmentExpr")
         {
             assignmentExpr.target.accept(this)
@@ -454,8 +415,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
-    {
+    override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         node("FunctionCallExpr")
         {
             functionCallExpr.name.accept(this)
@@ -473,8 +433,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
-    {
+    override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr) {
         node(
             "IntrinsicCallExpr", """ name ="${
                 BuiltinIntrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
@@ -488,8 +447,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
-    {
+    override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
         node("CompoundAssignmentExpr", """ op ="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
         {
             node("LValue")
@@ -503,11 +461,9 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
-    {
+    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr) {
         node(
-            "FunctionParameterExpr", when(functionDeclParameterExpr.modifiers.isNotEmpty())
-            {
+            "FunctionParameterExpr", when (functionDeclParameterExpr.modifiers.isNotEmpty()) {
                 true -> """ modifiers ="${functionDeclParameterExpr.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
@@ -518,8 +474,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
-    {
+    override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
         node("MemberAccessExpr")
         {
             node("Origin")
@@ -533,8 +488,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
-    {
+    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
         node("ForIterationExpr")
         {
             node("Initializer")
@@ -548,8 +502,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitRangeExpr(rangeExpr: RangeExpr)
-    {
+    override fun visitRangeExpr(rangeExpr: RangeExpr) {
         node("RangeExpr")
         {
             node("Begin")
@@ -563,16 +516,14 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr)
-    {
+    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
         node("EnumMemberExpr", """ name ="${enumMemberExpr.name.name}"""")
         {
             enumMemberExpr.value?.accept(this)
         }
     }
 
-    override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr)
-    {
+    override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
         node("TypeCheckExpr")
         {
             node("Expr")
@@ -586,8 +537,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr)
-    {
+    override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr) {
         node("TypeCastExpr")
         {
             node("Expr")
@@ -601,21 +551,18 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitNoExpr(noExpr: NoExpr)
-    {
+    override fun visitNoExpr(noExpr: NoExpr) {
         xmlSingleLeaf("NoExpr", null)
     }
 
-    override fun visitWithExpr(withExpr: WithExpr)
-    {
+    override fun visitWithExpr(withExpr: WithExpr) {
         node("WithExpr")
         {
             withExpr.members.forEach { it.accept(this) }
         }
     }
 
-    override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr)
-    {
+    override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr) {
         node("FunctionCallNamedParameterExpr")
         {
             node("Name")
@@ -626,8 +573,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr)
-    {
+    override fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr) {
         node("FunctionCallPositionalParameterExpr")
         {
             node("Position")
@@ -638,8 +584,7 @@ object XMLASTVisitor :
         }
     }
 
-    override fun visitWithExprMember(withExprMember: WithExprMember)
-    {
+    override fun visitWithExprMember(withExprMember: WithExprMember) {
         node("WithExprMember")
         {
             node("Name")
@@ -650,27 +595,22 @@ object XMLASTVisitor :
         }
     }
 
-    private fun pushIndent()
-    {
+    private fun pushIndent() {
         currentIndent.add("    ")
     }
 
-    private fun popIndent()
-    {
-        if(currentIndent.isNotEmpty())
-        {
+    private fun popIndent() {
+        if (currentIndent.isNotEmpty()) {
             currentIndent.removeLast()
         }
     }
 
-    fun build(node: ASTNode): String
-    {
+    fun build(node: ASTNode): String {
         builder.clear()
         currentIndent.clear()
-        when(node)
-        {
+        when (node) {
             is RootASTNode -> visitRootASTNode(node)
-            else           -> node.accept(this)
+            else -> node.accept(this)
         }
         val res = builder.toString()
         builder.clear()

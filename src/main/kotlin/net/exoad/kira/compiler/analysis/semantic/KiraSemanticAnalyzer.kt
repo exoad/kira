@@ -4,10 +4,12 @@ import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.frontend.lexer.Token
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.UnionType
+import net.exoad.kira.compiler.frontend.parser.ast.elements.VariadicGenericParameter
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
@@ -21,34 +23,27 @@ import net.exoad.kira.utils.LocaleUtils
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
  * to make sure everything follows the rules of the language and everything makes sense.
  */
-class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVisitor()
-{
+class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraASTVisitor() {
     private val diagnosticsPump = mutableListOf<DiagnosticsException>()
     lateinit var context: SourceContext
 
-    fun validateAST(): SemanticAnalyzerResults
-    {
-        try
-        {
-            for(source in compilationUnit.allSources())
-            {
+    fun validateAST(): SemanticAnalyzerResults {
+        try {
+            for (source in compilationUnit.allSources()) {
                 context = source
                 source.ast.statements.forEach { it.accept(this) }
             }
-        }
-        catch(_: Exception)
-        {
+        } catch (_: Exception) {
             return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, false)
         }
         return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, diagnosticsPump.isEmpty())
     }
 
-    private fun pump(message: String, location: SourcePosition, selectorLength: Int = 1, help: String = "")
-    {
+    private fun pump(message: String, location: SourcePosition, selectorLength: Int = 1, help: String = "") {
         diagnosticsPump.add(
             Diagnostics.recordPanic(
                 "",
-                if(help.isEmpty()) message else "$message\n\nHelp: $help",
+                if (help.isEmpty()) message else "$message\n\nHelp: $help",
                 location = location,
                 selectorLength = selectorLength,
                 context = context
@@ -62,16 +57,13 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         location: SourcePosition?,
         selectorLength: Int = 1,
         help: String = "",
-    )
-    {
-        if(expr)
-        {
+    ) {
+        if (expr) {
             pump(message, location ?: SourcePosition.Companion.UNKNOWN, selectorLength, help)
         }
     }
 
-    fun expectSymbol(symbolName: String, symbolKind: SemanticSymbolKind)
-    {
+    fun expectSymbol(symbolName: String, symbolKind: SemanticSymbolKind) {
         val res = compilationUnit.symbolTable.resolve(symbolName)
         pumpOnTrue(
             res == null || res.kind != symbolKind, "Expected a $symbolKind for '$symbolName', but got '$res'",
@@ -84,11 +76,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         symbolName: String,
         location: SourcePosition?,
         helpMessage: String = "'$symbolName' is not available at this scope. Or it has not been declared.",
-    )
-    {
+    ) {
         val res = compilationUnit.symbolTable.resolve(symbolName)
-        if(res == null)
-        {
+        if (res == null) {
             pump(
                 "'${symbolName}' is an unknown symbol here.",
                 location = location ?: SourcePosition.Companion.UNKNOWN,
@@ -102,11 +92,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         symbolName: String,
         location: SourcePosition?,
         helpMessage: String = "Shadowing is not allowed. Rename this or the previous declaration.",
-    )
-    {
+    ) {
         val res = compilationUnit.symbolTable.resolve(symbolName)
-        if(res != null)
-        {
+        if (res != null) {
             pump(
                 "'${symbolName}' was already declared at ${res.declaredAt}",
                 location = location ?: SourcePosition.Companion.UNKNOWN,
@@ -116,11 +104,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         }
     }
 
-    fun expectType(symbolName: String, typeName: String)
-    {
+    fun expectType(symbolName: String, typeName: String) {
         val res = compilationUnit.symbolTable.resolve(symbolName)
-        if(res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName)
-        {
+        if (res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName) {
             pump(
                 "Expected ${LocaleUtils.prependIndefiniteArticle(typeName)} for $symbolName, but got '$res'",
                 location = res?.declaredAt?.toPosition() ?: SourcePosition.Companion.UNKNOWN
@@ -128,198 +114,159 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         }
     }
 
-    override fun visitStatement(statement: Statement)
-    {
+    override fun visitStatement(statement: Statement) {
         statement.expr.accept(this)
     }
 
-    override fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement)
-    {
+    override fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement)
-    {
+    override fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement)
-    {
+    override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
-    {
+    override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
-    {
+    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitReturnStatement(returnStatement: ReturnStatement)
-    {
+    override fun visitReturnStatement(returnStatement: ReturnStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
-    {
+    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitUseStatement(useStatement: UseStatement)
-    {
+    override fun visitUseStatement(useStatement: UseStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitBreakStatement(breakStatement: BreakStatement)
-    {
+    override fun visitBreakStatement(breakStatement: BreakStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitContinueStatement(continueStatement: ContinueStatement)
-    {
+    override fun visitContinueStatement(continueStatement: ContinueStatement) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitBinaryExpr(binaryExpr: BinaryExpr)
-    {
+    override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitUnaryExpr(unaryExpr: UnaryExpr)
-    {
+    override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
-    {
+    override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
-    {
+    override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
-    {
+    override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
-    {
+    override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
-    {
+    override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
-    {
+    override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
-    {
+    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitRangeExpr(rangeExpr: RangeExpr)
-    {
+    override fun visitRangeExpr(rangeExpr: RangeExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr)
-    {
+    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr)
-    {
+    override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr)
-    {
+    override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitNoExpr(noExpr: NoExpr)
-    {
+    override fun visitNoExpr(noExpr: NoExpr) {
         // ignore
     }
 
-    override fun visitWithExpr(withExpr: WithExpr)
-    {
+    override fun visitWithExpr(withExpr: WithExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr)
-    {
+    override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr)
-    {
+    override fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitWithExprMember(withExprMember: WithExprMember)
-    {
+    override fun visitWithExprMember(withExprMember: WithExprMember) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
-    {
+    override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {
         // should be true
     }
 
-    override fun visitStringLiteral(stringLiteral: StringLiteral)
-    {
+    override fun visitStringLiteral(stringLiteral: StringLiteral) {
         // should be true
     }
 
-    override fun visitBoolLiteral(boolLiteral: BoolLiteral)
-    {
+    override fun visitBoolLiteral(boolLiteral: BoolLiteral) {
         // should be true
     }
 
-    override fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    {
+    override fun visitFloatLiteral(floatLiteral: FloatLiteral) {
         // should be true
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
-    {
+    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral) {
         // should be true
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
-    {
+    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitListLiteral(listLiteral: ListLiteral)
-    {
+    override fun visitListLiteral(listLiteral: ListLiteral) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitMapLiteral(mapLiteral: MapLiteral)
-    {
+    override fun visitMapLiteral(mapLiteral: MapLiteral) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitNullLiteral(nullLiteral: NullLiteral)
-    {
+    override fun visitNullLiteral(nullLiteral: NullLiteral) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitIdentifier(identifier: Identifier)
-    {
+    override fun visitIdentifier(identifier: Identifier) {
         expectNotDeclared(identifier.name, context.astOrigins[identifier])
         compilationUnit.symbolTable.declare(
             identifier.name, SemanticSymbol(
@@ -333,8 +280,15 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         )
     }
 
-    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier)
-    {
+    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier) {
+    }
+
+    override fun visitUnionType(unionType: UnionType) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitVariadicGenericParameter(variadicGenericParameter: VariadicGenericParameter) {
+        TODO("Not yet implemented")
     }
 
     /**
@@ -347,11 +301,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         BoolLiteral::class to { type: String -> type == "Bool" },
     )
 
-    override fun visitVariableDecl(variableDecl: VariableDecl)
-    {
+    override fun visitVariableDecl(variableDecl: VariableDecl) {
         variableDecl.name.accept(this)
-        if(compilationUnit.symbolTable.resolve(variableDecl.typeSpecifier.name) == null)
-        {
+        if (compilationUnit.symbolTable.resolve(variableDecl.typeSpecifier.name) == null) {
             pump(
                 "The type '${variableDecl.typeSpecifier.name}' was not found at this scope (${compilationUnit.symbolTable.peekScope().name.lowercase()})",
                 location = context.astOrigins[variableDecl.typeSpecifier] ?: SourcePosition.Companion.UNKNOWN,
@@ -365,8 +317,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         // 1. if it's a raw literal or object value, check if just the type names match
         // 2. if it's a function call, check the return type of that function type
         // (there are more edge cases, but i am not too sure
-        if(variableDecl.value != null)
-        {
+        if (variableDecl.value != null) {
             variableDecl.value!!.accept(this)
             val typeName = variableDecl.typeSpecifier.name
             val literalClass = variableDecl.value!!::class
@@ -381,12 +332,10 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         }
     }
 
-    override fun visitFunctionDecl(functionDecl: FunctionDecl)
-    {
+    override fun visitFunctionDecl(functionDecl: FunctionDecl) {
     }
 
-    override fun visitClassDecl(classDecl: ClassDecl)
-    {
+    override fun visitClassDecl(classDecl: ClassDecl) {
         expectNotDeclared(classDecl.name.name, context.astOrigins[classDecl])
         compilationUnit.symbolTable.declareGlobal(
             classDecl.name.name,
@@ -402,8 +351,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         )
     }
 
-    override fun visitModuleDecl(moduleDecl: ModuleDecl)
-    {
+    override fun visitModuleDecl(moduleDecl: ModuleDecl) {
         val parts = moduleDecl.uri.value.split(Symbols.COLON.rep)
         pumpOnTrue(
             parts.isEmpty(),
@@ -413,13 +361,11 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : ASTVi
         )
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl)
-    {
+    override fun visitEnumDecl(enumDecl: EnumDecl) {
         // TODO("Not yet implemented")
     }
 
-    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
-    {
+    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
         TODO("Not yet implemented")
     }
 }

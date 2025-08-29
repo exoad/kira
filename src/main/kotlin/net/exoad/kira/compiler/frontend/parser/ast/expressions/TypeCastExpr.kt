@@ -1,17 +1,14 @@
 package net.exoad.kira.compiler.frontend.parser.ast.expressions
 
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 
-class TypeCastExpr(val value: Expr, val type: TypeSpecifier) : Expr()
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+class TypeCastExpr(val value: Expr, val type: TypeSpecifier) : Expr() {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitTypeCastExpr(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "TypeCast{ $value -> $type }"
     }
 }

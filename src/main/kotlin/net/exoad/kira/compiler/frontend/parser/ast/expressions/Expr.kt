@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler.frontend.parser.ast.expressions
 
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 
 /**
  * Expression implementation
@@ -13,15 +13,12 @@ abstract class Expr : ASTNode()
  *
  * It signifies that this is just a single keyword statement
  */
-object NoExpr : Expr()
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+object NoExpr : Expr() {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitNoExpr(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "_{ }"
     }
 }

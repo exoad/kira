@@ -3,8 +3,7 @@ package net.exoad.kira.compiler.analysis.diagnostics
 /**
  * These symbols will still be present even if [net.exoad.kira.Public.Flags.useDiagnosticsUnicode] is `false`
  */
-object DiagnosticsSymbols
-{
+object DiagnosticsSymbols {
     /**
      * An emoji used to represent text that has been returned as a "null"
      *
@@ -15,8 +14,7 @@ object DiagnosticsSymbols
     const val NOT_REPRESENTABLE: String = "\uD83D\uDE15"
 }
 
-fun String.isNotRepresentableDiagnosticsSymbol(): Boolean
-{
+fun String.isNotRepresentableDiagnosticsSymbol(): Boolean {
     return this == DiagnosticsSymbols.NOT_REPRESENTABLE
 }
 

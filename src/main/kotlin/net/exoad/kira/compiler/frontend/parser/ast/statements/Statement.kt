@@ -1,18 +1,15 @@
 package net.exoad.kira.compiler.frontend.parser.ast.statements
 
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 
-open class Statement(open val expr: Expr) : ASTNode()
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+open class Statement(open val expr: Expr) : ASTNode() {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitStatement(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "STMT{ $expr }"
     }
 }

@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.frontend.parser.ast.declarations
 
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifiers
 import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 
@@ -12,15 +12,12 @@ open class ClassDecl(
     val modifiers: List<Modifiers> = emptyList(),
     val members: List<FirstClassDecl> = emptyList(),
     val parent: TypeSpecifier? = null,
-) : Decl(name)
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+) : Decl(name) {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitClassDecl(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "__CLASS__${modifiers.ifEmpty { "" }}{ $name -> $members }"
     }
 }

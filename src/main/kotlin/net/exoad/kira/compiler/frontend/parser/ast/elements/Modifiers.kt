@@ -7,8 +7,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
  *
  * [wrappingContext] describe on where these members are allowed to be placed
  */
-enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<WrappingContext> = emptyArray())
-{
+enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<WrappingContext> = emptyArray()) {
     MUTABLE(
         Token.Type.K_MODIFIER_MUTABLE, arrayOf(
             WrappingContext.CLASS,
@@ -37,21 +36,17 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
     ),
     ;
 
-    companion object
-    {
-        fun byTokenTypeMaybe(tokenType: Token.Type, onBad: (() -> Unit)? = null): Modifiers?
-        {
+    companion object {
+        fun byTokenTypeMaybe(tokenType: Token.Type, onBad: (() -> Unit)? = null): Modifiers? {
             val modifier = entries.find { it.tokenType == tokenType }
-            if(modifier == null)
-            {
+            if (modifier == null) {
                 onBad?.invoke()
             }
             return modifier
         }
     }
 
-    enum class WrappingContext
-    {
+    enum class WrappingContext {
         CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, OBJECT, OBJECT_MEMBER, ENUM
     }
 }

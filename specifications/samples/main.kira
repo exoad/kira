@@ -1,4 +1,4 @@
-module "kira:main";
+module "kira:lib";
 
 // this is a comment
 

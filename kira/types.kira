@@ -1,5 +1,8 @@
 module "kira:builtin"
 
+pub class Any;
+
+
 pub class Void
 {
 }

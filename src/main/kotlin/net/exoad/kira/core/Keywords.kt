@@ -5,8 +5,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 /**
  * Keywords shared constants, holds all the special keywords used in kira.
  */
-object Keywords
-{
+object Keywords {
     /**
      * Reserved keywords that are essential to the programming language
      */
@@ -30,7 +29,7 @@ object Keywords
         "break" to Token.Type.K_BREAK,
         "continue" to Token.Type.K_CONTINUE,
         "with" to Token.Type.K_WITH,
-        "fx" to Token.Type.K_FX
+        "fx" to Token.Type.K_FX,
     )
     val literals = mapOf(
         "true" to Token.Type.L_TRUE_BOOL,

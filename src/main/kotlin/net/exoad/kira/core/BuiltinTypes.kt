@@ -17,8 +17,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
  * For example, an expr adding an Int32 and an Int64 will always equate to an Int64
  * without specific casting that involves truncating.
  */
-object BuiltinTypes
-{
+object BuiltinTypes {
     /**
      * Unit types, only things like Void
      */
@@ -75,8 +74,7 @@ object BuiltinTypes
         "Bool" to arrayOf(Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL)
     )
 
-    fun allBuiltinTypes(): Map<String, Array<Token.Type>>
-    {
+    fun allBuiltinTypes(): Map<String, Array<Token.Type>> {
         return integerTypes + sequenceTypes + logicalTypes + unitTypes + referenceTypes
     }
 }

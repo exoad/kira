@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.frontend.parser.ast.declarations
 
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifiers
 
@@ -12,15 +12,12 @@ open class NamespaceDecl(
     override val name: Identifier,
     val modifiers: List<Modifiers> = emptyList(),
     val members: List<Decl> = emptyList(),
-) : Decl(name)
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+) : Decl(name) {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitNamespaceDecl(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "__NSP__${modifiers.ifEmpty { "" }}{ $name -> $members }"
     }
 }

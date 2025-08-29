@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.frontend.parser.ast.literals
 
-import net.exoad.kira.compiler.frontend.parser.ast.ASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -10,15 +10,12 @@ open class FunctionLiteral(
     open val returnTypeSpecifier: TypeSpecifier,
     open val parameters: List<FunctionDeclParameterExpr>,
     open val body: List<Statement>?, // if this is null, then this is just a "noimpl" function
-) : Literal()
-{
-    override fun accept(visitor: ASTVisitor)
-    {
+) : Literal() {
+    override fun accept(visitor: KiraASTVisitor) {
         visitor.visitFunctionLiteral(this)
     }
 
-    override fun toString(): String
-    {
+    override fun toString(): String {
         return "LFunction{ $returnTypeSpecifier -> $parameters -> $body }"
     }
 }

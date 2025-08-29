@@ -4,8 +4,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.core.Symbols
 
 // precedence guide: https://images.hive.blog/DQmZkdJ5YJGuQzyZvBW1gLRaKwJrKLiSNWkETb8AyBw4Z5A/image.png
-enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int)
-{
+enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int) {
     // arithmetic operators
     ADD(arrayOf(Symbols.PLUS), 11),
     SUB(arrayOf(Symbols.HYPHEN), 11),
@@ -39,16 +38,13 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int)
     TYPE_CAST(arrayOf(Symbols.LOWERCASE_A, Symbols.LOWERCASE_S), 9)
     ;
 
-    companion object
-    {
+    companion object {
         //                else                     -> Diagnostics.panic(
 //                    "BinaryOperator::byTokenType",
 //                    "$tokenType is not a binary operator!"
 //                )
-        fun byTokenTypeMaybe(tokenType: Array<Token.Type>, onBad: (() -> Unit)? = null): BinaryOp?
-        {
-            val op = when
-            {
+        fun byTokenTypeMaybe(tokenType: Array<Token.Type>, onBad: (() -> Unit)? = null): BinaryOp? {
+            val op = when {
                 tokenType.size == 3 &&
                         tokenType[0] == Token.Type.S_CLOSE_ANGLE &&
                         tokenType[1] == Token.Type.S_CLOSE_ANGLE &&
@@ -58,53 +54,54 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int)
                         tokenType[1] == Token.Type.S_CLOSE_ANGLE -> SHR // >>
                 tokenType.size == 2 &&
                         tokenType[0] == Token.Type.S_CLOSE_ANGLE &&
-                        tokenType[1] == Token.Type.S_EQUAL       -> GREATER_THAN_OR_EQUAL // >=
-                tokenType.size == 1                              -> when(tokenType[0])
-                {
-                    Token.Type.OP_ADD            -> ADD
-                    Token.Type.OP_SUB            -> SUB
-                    Token.Type.OP_MUL            -> MUL
-                    Token.Type.OP_DIV            -> DIV
-                    Token.Type.OP_MOD            -> MOD
-                    Token.Type.OP_CMP_EQL        -> EQUALS
-                    Token.Type.OP_CMP_NEQ        -> NOT_EQUAL
-                    Token.Type.OP_CMP_LEQ        -> LESS_THAN_OR_EQUAL
-                    Token.Type.S_OPEN_ANGLE      -> LESS_THAN
-                    Token.Type.S_CLOSE_ANGLE     -> GREATER_THAN
-                    Token.Type.OP_BIT_SHL        -> SHL
-                    Token.Type.OP_BIT_XOR        -> XOR
-                    Token.Type.OP_CMP_OR         -> OR
-                    Token.Type.OP_CMP_AND        -> AND
-                    Token.Type.S_PIPE            -> CONJUNCTIVE_OR
-                    Token.Type.S_AND             -> CONJUNCTIVE_AND
-                    Token.Type.S_DOT             -> CONJUNCTIVE_DOT
-                    Token.Type.OP_RANGE          -> RANGE
-                    Token.Type.K_IS              -> TYPE_CHECK
-                    Token.Type.K_AS              -> TYPE_CAST
-                    Token.Type.OP_ASSIGN_MUL     -> MUL
-                    Token.Type.OP_ASSIGN_DIV     -> DIV
-                    Token.Type.OP_ASSIGN_ADD     -> ADD
-                    Token.Type.OP_ASSIGN_SUB     -> SUB
-                    Token.Type.OP_ASSIGN_MOD     -> MOD
+                        tokenType[1] == Token.Type.S_EQUAL -> GREATER_THAN_OR_EQUAL // >=
+                tokenType.size == 1 -> when (tokenType[0]) {
+                    Token.Type.OP_ADD -> ADD
+                    Token.Type.OP_SUB -> SUB
+                    Token.Type.OP_MUL -> MUL
+                    Token.Type.OP_DIV -> DIV
+                    Token.Type.OP_MOD -> MOD
+                    Token.Type.OP_CMP_EQL -> EQUALS
+                    Token.Type.OP_CMP_NEQ -> NOT_EQUAL
+                    Token.Type.OP_CMP_LEQ -> LESS_THAN_OR_EQUAL
+                    Token.Type.S_OPEN_ANGLE -> LESS_THAN
+                    Token.Type.S_CLOSE_ANGLE -> GREATER_THAN
+                    Token.Type.OP_BIT_SHL -> SHL
+                    Token.Type.OP_BIT_XOR -> XOR
+                    Token.Type.OP_CMP_OR -> OR
+                    Token.Type.OP_CMP_AND -> AND
+                    Token.Type.S_PIPE -> CONJUNCTIVE_OR
+                    Token.Type.S_AND -> CONJUNCTIVE_AND
+                    Token.Type.S_DOT -> CONJUNCTIVE_DOT
+                    Token.Type.OP_RANGE -> RANGE
+                    Token.Type.K_IS -> TYPE_CHECK
+                    Token.Type.K_AS -> TYPE_CAST
+                    Token.Type.OP_ASSIGN_MUL -> MUL
+                    Token.Type.OP_ASSIGN_DIV -> DIV
+                    Token.Type.OP_ASSIGN_ADD -> ADD
+                    Token.Type.OP_ASSIGN_SUB -> SUB
+                    Token.Type.OP_ASSIGN_MOD -> MOD
                     Token.Type.OP_ASSIGN_BIT_XOR -> XOR
                     Token.Type.OP_ASSIGN_BIT_SHL -> SHL
-                    Token.Type.OP_ASSIGN_BIT_OR  -> CONJUNCTIVE_OR
+                    Token.Type.OP_ASSIGN_BIT_OR -> CONJUNCTIVE_OR
                     Token.Type.OP_ASSIGN_BIT_AND -> CONJUNCTIVE_AND
-                    else                         -> null
+                    else -> null
                 }
+
                 tokenType.size == 3 &&
                         tokenType[0] == Token.Type.S_CLOSE_ANGLE &&
                         tokenType[1] == Token.Type.S_CLOSE_ANGLE &&
-                        tokenType[2] == Token.Type.S_EQUAL       -> SHR
+                        tokenType[2] == Token.Type.S_EQUAL -> SHR
+
                 tokenType.size == 4 &&
                         tokenType[0] == Token.Type.S_CLOSE_ANGLE &&
                         tokenType[1] == Token.Type.S_CLOSE_ANGLE &&
                         tokenType[2] == Token.Type.S_CLOSE_ANGLE &&
-                        tokenType[3] == Token.Type.S_EQUAL       -> USHR
-                else                                             -> null
+                        tokenType[3] == Token.Type.S_EQUAL -> USHR
+
+                else -> null
             }
-            if(op == null)
-            {
+            if (op == null) {
                 onBad?.invoke()
             }
             return op
