@@ -1,4 +1,8 @@
-# Kira Language Guide
+# Kira Language Specifications
+
+Version 1.0
+
+August 30, 2025
 
 ## Hello World
 
@@ -85,9 +89,9 @@ starts off with a module declaration:
 module "author:module_name.submodule_name"
 ```
 
-- `author` represents the organization or individual that this belongs to.
-- `module_name` represents what project this source file falls under.
-- `submodule_name` represents this individual source file's name
+-   `author` represents the organization or individual that this belongs to.
+-   `module_name` represents what project this source file falls under.
+-   `submodule_name` represents this individual source file's name
 
 ### Using a submodule
 
@@ -116,17 +120,17 @@ however, they do have some limitations:
 6. No direct abstract classes or interfaces
 
 ```
-pub class Vector2 
+pub class Vector2
 {
     require pub mut x: Float32
     require pub mut y: Float32
-    
+
     pub fx dot(other: Vector2): Float32 {
         return (other.x * x) + (other.y * y)
     }
-    
+
     pub mut fx toStr(): Str {
-        return "( ${x}, ${y} )" 
+        return "( ${x}, ${y} )"
     }
 }
 
@@ -290,7 +294,7 @@ block:
 ```
 class Person {
     require pub age: Int32
-    
+
     initially {
         if age < 0 {
             @trace("Age must be >= 0!")
@@ -306,7 +310,7 @@ Finalizers are used to clean up external resources from things like File IO. It 
 
 ```
 class FileIO {
-    
+
     finally {
         doCleanup()
     }
@@ -365,7 +369,27 @@ everything is an object.
 4. `Map< K, V >` - Dynamic mutable hash table structure (not-compiler-optimized)
 5. `Set< A >` - Dynamic mutable hash set structure (not-compiler-optimized)
 
-## Intrinsics
+## Compile-Time Intrinsics
 
+Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed
+to simplify expressions, enable metaprogramming, and support DSL construction.
 
+**Properties:**
 
+-   Prefixed with `@`
+-   Treated as standard identifiers
+-   Function-like or directive-like
+-   Executed during any compiler phase
+
+```zig
+a: Map<String, Any> = @json_decode(`
+  {
+    "hello": 1,
+    "world": 2
+  }
+`)
+
+@trace(a["hello"]) // Outputs 1 to debugger
+```
+
+---
