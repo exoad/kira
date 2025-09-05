@@ -51,7 +51,7 @@ class KiraParser(private val context: SourceContext) {
      */
     fun parse() {
         val statements = mutableListOf<Statement>()
-        while (peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_EOF)) {
             statements.add(parseStatement(null))
         }
         if (statements.first().expr !is ModuleDecl) {
@@ -120,9 +120,13 @@ class KiraParser(private val context: SourceContext) {
     }
 
     private inline fun expectOptionalThenAdvance(token: Token.Type, ifOk: () -> Unit = { advancePointer() }) {
-        if (peek().type == token) {
+        if (hereIs(token)) {
             ifOk()
         }
+    }
+
+    private fun hereIs(type: Token.Type): Boolean {
+        return type == peek().type
     }
 
     private fun expectModifiers(modifiers: Map<Modifiers, SourcePosition>?, scopes: Modifiers.WrappingContext) {
@@ -152,13 +156,13 @@ class KiraParser(private val context: SourceContext) {
     }
 
     private inline fun expectThenAdvance(token: Token.Type, ifOk: () -> Unit = { advancePointer() }) {
-        when (peek().type != token) {
+        when (!hereIs(token)) {
             true ->
                 Diagnostics.panic(
                     "KiraParser::expect",
                     buildString {
                         append("Expected ")
-                        append(LocaleUtils.prependIndefiniteArticle(token.diagnosticsName()))
+                        append(LocaleUtils.prependIndefiniteArticle(token.diagnosticsName().lowercase()))
                         append(" but got ")
                         append(LocaleUtils.prependIndefiniteArticle(peek().type.diagnosticsName()))
                     }, // we actually output the content underneath the pointer which is easier to see and depending on if it is like a symbol/keyword we output that else we output variable token contents accordingly
@@ -231,7 +235,7 @@ class KiraParser(private val context: SourceContext) {
             else -> {
                 val expr = parseExpr()
                 // todo: idk wtf this panic message is for ?
-//                if(peek().type == Token.Type.L_INTEGER || peek().type == Token.Type.IDENTIFIER)
+//                if(hereIs( Token.Type.L_INTEGER || hereIs( Token.Type.IDENTIFIER)
 //                {
 //                    Diagnostics.panic(
 //                        "KiraParser::parseStatement",
@@ -253,7 +257,7 @@ class KiraParser(private val context: SourceContext) {
     private fun parseStatementBlock(): List<Statement> {
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val statements = mutableListOf<Statement>()
-        while (peek().type != Token.Type.S_CLOSE_BRACE && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_BRACE) && !hereIs(Token.Type.S_EOF)) {
             statements.add(parseStatement(null))
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
@@ -324,7 +328,7 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val thenStatements = parseStatementBlock()
         val branches = mutableListOf<IfElseBranchStatementNode>()
-        while (peek().type == Token.Type.K_ELSE) {
+        while (hereIs(Token.Type.K_ELSE)) {
             advancePointer() // consume "else" part: not useful
             when (peek().type) // before i started with always making that "else-if" part was just "elif" which made parsing a lot easier, but i can see why it really isnt that necessary LOL
             {
@@ -541,7 +545,7 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.K_WITH)
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<WithExprMember>()
-        while (peek().type != Token.Type.S_CLOSE_BRACE && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_BRACE) && !hereIs(Token.Type.S_EOF)) {
             if (members.isNotEmpty()) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
@@ -564,14 +568,14 @@ class KiraParser(private val context: SourceContext) {
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         val parameters = mutableListOf<Expr>()
-        while (peek().type != Token.Type.S_CLOSE_PARENTHESIS) {
+        while (!hereIs(Token.Type.S_CLOSE_PARENTHESIS) && !hereIs(Token.Type.S_EOF)) {
             if (parameters.isNotEmpty()) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
             parameters.add(parseExpr())
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-        val findVal = BuiltinIntrinsics.entries.find { it.rep == identifier.name }
+        val findVal = BuiltinIntrinsics.entries.find { it.rep == identifier.value }
         return when (findVal != null) {
             true -> putOrigin(
                 IntrinsicCallExpr(
@@ -589,9 +593,9 @@ class KiraParser(private val context: SourceContext) {
 
             else -> Diagnostics.panic(
                 "KiraParser::parseIntrinsicCallExpr",
-                "I could not find an intrinsic named '${identifier.name}'",
+                "I could not find an intrinsic named '${identifier.value}'",
                 location = startLoc,
-                selectorLength = identifier.name.length,
+                selectorLength = identifier.value.length,
                 context = context
             )
         }
@@ -601,7 +605,7 @@ class KiraParser(private val context: SourceContext) {
         // could this be also adapted for future implementations of function notations ??
         val parameters = mutableListOf<FunctionDeclParameterExpr>()
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-        while (peek().type != Token.Type.S_CLOSE_PARENTHESIS && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_PARENTHESIS) && !hereIs(Token.Type.S_EOF)) {
             if (parameters.isNotEmpty()) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
@@ -621,7 +625,7 @@ class KiraParser(private val context: SourceContext) {
         expectModifiers(modifiers, Modifiers.WrappingContext.FUNCTION)
         expectThenAdvance(Token.Type.K_FX)
         var functionName: Identifier = AnonymousIdentifier
-        if (peek().type == Token.Type.IDENTIFIER) {
+        if (hereIs(Token.Type.IDENTIFIER)) {
             functionName = parseIdentifier()
         }
         val functionLiteral = parseFunctionLiteral()
@@ -640,12 +644,12 @@ class KiraParser(private val context: SourceContext) {
         var positionalIndex = 0
         var seenNamed = false
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-        while (peek().type != Token.Type.S_CLOSE_PARENTHESIS && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_PARENTHESIS) && !hereIs(Token.Type.S_EOF)) {
             if (positional.isNotEmpty() || named.isNotEmpty()) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
             val startToken = peek()
-            if (peek().type == Token.Type.IDENTIFIER && peek(1).type == Token.Type.S_EQUAL) {
+            if (hereIs(Token.Type.IDENTIFIER) && peek(1).type == Token.Type.S_EQUAL) {
                 seenNamed = true
                 val origin = here()
                 val identifier = parseIdentifier()
@@ -751,7 +755,7 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         val name = parseIdentifier()
         var value: DataLiteral<*>? = null
-        if (peek().type == Token.Type.S_EQUAL) {
+        if (hereIs(Token.Type.S_EQUAL)) {
             expectThenAdvance(Token.Type.S_EQUAL)
             val start = peek()
             val parseValue = parsePrimaryExpr(null)
@@ -776,9 +780,9 @@ class KiraParser(private val context: SourceContext) {
         val name = parseIdentifier() // we only allow simple names, not complex names on enums, cuz there is no point
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<EnumMemberExpr>()
-        while (peek().type != Token.Type.S_CLOSE_BRACE && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_BRACE) && !hereIs(Token.Type.S_EOF)) {
             members.add(parseEnumMemberExpr())
-            if (peek().type != Token.Type.S_CLOSE_BRACE) {
+            if (!hereIs(Token.Type.S_CLOSE_BRACE)) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
         }
@@ -791,13 +795,13 @@ class KiraParser(private val context: SourceContext) {
         advancePointer() //consume the class keyword
         val origin = here()
         val className = parseType()
-        var parentType: TypeSpecifier? = null
-        if (peek().type == Token.Type.S_COLON) // inheritance here baby ;D
+        var parentType: Type? = null
+        if (hereIs(Token.Type.S_COLON)) // inheritance here baby ;D
         {
             advancePointer()
             parentType = parseType()
         }
-        if (peek().type != Token.Type.S_OPEN_BRACE) {
+        if (!hereIs(Token.Type.S_OPEN_BRACE)) {
             return putOrigin(
                 ClassDecl(className, modifiers?.keys?.toList() ?: emptyList(), emptyList(), parentType),
                 origin
@@ -805,11 +809,11 @@ class KiraParser(private val context: SourceContext) {
         }
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<FirstClassDecl>()
-        while (peek().type != Token.Type.S_CLOSE_BRACE && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_BRACE) && !hereIs(Token.Type.S_EOF)) {
             val memberModifiers = parseModifiers()
             expectModifiers(memberModifiers, Modifiers.WrappingContext.CLASS_MEMBER)
             members.add(
-                if (peek().type == Token.Type.S_OPEN_PARENTHESIS) // check for simple/anonymous function literals
+                if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) // check for simple/anonymous function literals
                 {
                     Diagnostics.panic(
                         "KiraParser::parseClassDecl",
@@ -838,7 +842,7 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.S_COLON)
         val type = parseType()
         var value: Expr? = null
-        if (peek().type == Token.Type.S_EQUAL) {
+        if (hereIs(Token.Type.S_EQUAL)) {
             advancePointer()
             value = parseExpr()
         }
@@ -860,9 +864,9 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.S_OPEN_BRACKET)
         val elements = mutableListOf<Expr>()
         val origin = here()
-        while (peek().type != Token.Type.S_CLOSE_BRACKET && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_BRACKET) && !hereIs(Token.Type.S_EOF)) {
             elements.add(parsePrimaryExpr(null))
-            if (peek().type != Token.Type.S_CLOSE_BRACKET) {
+            if (!hereIs(Token.Type.S_CLOSE_BRACKET)) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
         }
@@ -875,9 +879,9 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.S_OPEN_BRACKET)
         val elements = mutableListOf<Expr>()
         val origin = here()
-        while (peek().type != Token.Type.S_CLOSE_BRACKET && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_BRACKET) && !hereIs(Token.Type.S_EOF)) {
             elements.add(parsePrimaryExpr(null))
-            if (peek().type != Token.Type.S_CLOSE_BRACKET) {
+            if (!hereIs(Token.Type.S_CLOSE_BRACKET)) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
         }
@@ -889,12 +893,12 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val elements = mutableMapOf<Expr, Expr>()
         val origin = here()
-        while (peek().type != Token.Type.S_CLOSE_BRACE && peek().type != Token.Type.S_EOF) {
+        while (!hereIs(Token.Type.S_CLOSE_BRACE) && !hereIs(Token.Type.S_EOF)) {
             val key = parseExpr()
             expectThenAdvance(Token.Type.S_COLON)
             val value = parseExpr()
             elements[key] = value
-            if (peek().type != Token.Type.S_CLOSE_BRACE) {
+            if (!hereIs(Token.Type.S_CLOSE_BRACE)) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
         }
@@ -981,78 +985,56 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(Identifier(value), loc)
     }
 
-    fun parseSimpleType(): TypeSpecifier {
-        val loc = peek().canonicalLocation
-        val name = peek().content
-        expectThenAdvance(Token.Type.IDENTIFIER)
-        return putOrigin(TypeSpecifier(name), loc)
-    }
-
-    fun parseUnionType(): UnionType {
-        val types = mutableListOf<TypeSpecifier>()
-        types.add(parseSimpleType())
-        while (peek().type == Token.Type.S_PIPE) {
-            advancePointer() // consume pipe
-            types.add(parseSimpleType())
-        }
-        return UnionType(types)
-    }
-
-    fun parseVariadicGenericParameter(): VariadicGenericParameter {
-        expectThenAdvance(Token.Type.S_OPEN_BRACKET)
-        val paramName = peek().content
-        expectThenAdvance(Token.Type.IDENTIFIER)
-        var constraints: UnionType? = null
-        expectThenAdvance(Token.Type.S_COLON) {
-            advancePointer()
-            constraints = parseUnionType()
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
-        return VariadicGenericParameter(paramName, constraints)
-    }
-
-    fun parseType(): TypeSpecifier {
-        val baseLocation = peek().canonicalLocation
-        val baseName = peek().content
-        expectThenAdvance(Token.Type.IDENTIFIER)
-        val generics = mutableListOf<TypeSpecifier>()
-        var seenVariadic = false
-        if (peek().type == Token.Type.S_OPEN_ANGLE) {
-            advancePointer()
-            while (peek().type != Token.Type.S_CLOSE_ANGLE && peek().type != Token.Type.S_EOF) {
-                generics.add(parseType())
-                if (peek().type == Token.Type.S_COMMA) {
-                    advancePointer()
-                } else if (peek().type != Token.Type.S_CLOSE_ANGLE) {
-                    Diagnostics.panic(
-                        "KiraParser::parseType",
-                        "Expected a ',' or '>' in generic parameter list, but got ${
-                            LocaleUtils.prependIndefiniteArticle(
-                                peek().type.diagnosticsName()
-                            )
-                        }",
-                        location = peek().canonicalLocation,
-                        selectorLength = peek().content.length,
-                        context = context
-                    )
-                } else if (peek().type == Token.Type.S_OPEN_BRACKET) {
-                    if (seenVariadic) {
-                        Diagnostics.panic(
-                            "KiraParser::parseType",
-                            "A type specific can only use one variadic type!",
-                            location = peek().canonicalLocation,
-                            selectorLength = 1,
-                            context = context
-                        )
-                    } else {
-                        seenVariadic = true
-                    }
-                }
+    private fun parseTypeParameter(): Type {
+        var bound: Type? = null
+        fun acquireTypeBound() {
+            if (hereIs(Token.Type.S_COLON)) {
+                advancePointer()
+                bound = parseType()
             }
-            expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         }
-        // TODO: THIS iS NOT RIGHT
-        return putOrigin(TypeSpecifier(baseName, emptyArray()), baseLocation)
+        if (hereIs(Token.Type.S_OPEN_BRACKET)) { // branch for variadic type parameters
+            advancePointer()
+            val baseLocation = here()
+            val baseIdentifier = parseIdentifier()
+            acquireTypeBound()
+            expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
+            return putOrigin(VariadicTypeParameter(baseIdentifier, bound), baseLocation)
+        }
+        val baseLocation = here()
+        val baseIdentifier = parseIdentifier()
+        acquireTypeBound()
+        return putOrigin(Type(baseIdentifier, bound, emptyList()), baseLocation)
+    }
+
+
+    fun parseType(): Type {
+        val baseLocation = here()
+        val baseIdentifier = parseIdentifier()
+        if (!hereIs(Token.Type.S_OPEN_ANGLE)) {
+            return putOrigin(Type(baseIdentifier), baseLocation)
+        }
+        expectThenAdvance(Token.Type.S_OPEN_ANGLE)
+        val children = mutableListOf<Type>()
+        while (!hereIs(Token.Type.S_CLOSE_ANGLE) && !hereIs(Token.Type.S_EOF)) {
+            val param = parseTypeParameter()
+            if (param is VariadicTypeParameter && !hereIs(Token.Type.S_CLOSE_ANGLE)) {
+                Diagnostics.panic(
+                    "Kira::parseType",
+                    "A variadic type bound must always be at the end of the type parameter list.",
+                    context = context,
+                    location = context.astOrigins[param] ?: here(),
+                    selectorLength = 1
+                )
+            }
+            children.add(param)
+            if (!hereIs(Token.Type.S_CLOSE_ANGLE)) {
+                expectThenAdvance(Token.Type.S_COMMA)
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
+        return putOrigin(Type(baseIdentifier, null, children), baseLocation)
+
     }
 
     fun parseModifiers(): Map<Modifiers, SourcePosition> {

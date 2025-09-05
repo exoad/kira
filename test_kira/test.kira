@@ -1,12 +1,9 @@
 module "test:main"
 
-hello: Int32 = 123
+pub class A<C>
+pub class A<K, P, T, D, V, M, N, L, Q, R>
+pub class A<[T: Any]> // T: Any
 
-//pub class Chicken
-//{
-//}
-//
-//pub class Egg : Chicken
-//
-//
-//pub class Function<R, T: [Egg | Int32]>
+pub class B<[T: Int32]>
+pub class D<K, [V]> // K: Any, K: Any
+pub class E<K: Int32, [V: Int32]>

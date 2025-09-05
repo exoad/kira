@@ -139,6 +139,68 @@ b: Vector2 = Vector2 { 3, 3, toStr = fx() { return "< ${x}, ${y} >" } }
 @trace(a.dot(b))
 ```
 
+### Inheritance
+
+Multi-inheritance is not allowed, but to share common functions across multiple classes, Kira supports [traits](##Traits)
+
+Inheritance is very simple, there are only several types of allowed patterns:
+
+1. **Concrete classes**
+2. **(Semi-)Abstract classes**
+3. **Interface-Like classes**
+
+However, all of these utilize the format of classes meaning that you can only use ONE of these even if it is Interface-Like.
+
+Here are some examples of the previously mentioned patterns:
+
+#### Concrete Classes (Normal Classes)
+
+All members are implemented, with the only exception being property fields.
+
+```
+pub class Student {
+	require pub name: String
+	require pub mut gpa: Float32
+	
+	pub fx passing(): Boolean {
+		return gpa > 2.0
+	}
+}
+```
+
+#### (Semi-)Abstract Classes
+
+Semi Abstract classes are created where you add unimplemented member function (methods) into the mix of concrete classes. However, they are "semi" abstract because Kira allows anonymous classes to be made everywhere by passing functions directly to the constructor.
+
+```
+pub class Human {
+	pub scientificName: String= "Homo Sapien"
+	
+	pub fx speak(): Void
+	
+	pub fx walk(): Void {
+		@trace("Walking...")
+	}
+}
+```
+
+
+#### Interface-Like Classes
+
+This pattern is the most redundant and should be avoided. Instead, prefer to use traits if you need to share common functionalities across multiple classes. In general, interface like classes define no property members and only abstract function members:
+
+```
+pub class Animalia {
+	pub fx reproduce(): Animalia
+	
+	pub fx die(): Void
+	
+	pub fx eat(): Void
+	
+	pub fx isAlive(): Bool
+}
+```
+
 ## Immutability By Default
 
 Everything in Kira is immutable or closed by default. This means variables cannot be reassigned/mutated, classes
@@ -369,7 +431,46 @@ everything is an object.
 4. `Map< K, V >` - Dynamic mutable hash table structure (not-compiler-optimized)
 5. `Set< A >` - Dynamic mutable hash set structure (not-compiler-optimized)
 
-## Compile-Time Intrinsics
+## Traits / Compile Time "Mixins"
+
+Kira does not support multi-inheritance as previously seen; however, in order to suffice for allowing sharing common components across classes, **traits** are a good alternative. 
+
+Traits allow injecting a class with functions/methods at compile time directly. Additionally, it can also serve as a way to inject abstract methods or no-implementation functions that the target class must take care of.
+
+However, traits differ from Mixins and Interfaces in that they are an entirely compile-time feature. This means that you cannot perform runtime checks for if a type has a trait to it (however, this can be implemented by directly checking if a certain method/function exists within).
+
+Within Kira, you are only allowed to define functions within traits, and each function also implicitly points to the current instance like in classes (i.e. there is no `self` or `this` or `::` operands to access the current scope).
+
+> **Mutability Note:** All functions in a trait are mutable or overrideable, specifying the `mut` modifier will have no effect.
+> 
+> **Visibility Note:** You are able to enforce visibility modifiers on the trait itself and also functions. This is done by using the normal modifiers. However, when a function is marked with or without a modifier, it is not able to be changed by the implementing type.
+>
+> **Implementer Features:** The implementer class is allowed to use specific functions in order ot refer
+
+Implementing a trait:
+
+```
+trait Animal {
+	fx makeNoise(): Void
+	
+	pub fx canConsume(items: Arr<Str>): Bool {
+		return items.any([ "water", "air" ])
+	}
+}
+
+class Dog: Animal {
+	fx makeNoise(): Void {
+		@trace("Woof")
+	}
+	
+	pub fx canConsume(items: Arr<Str>): Bool {
+		return 
+	}
+}
+```
+
+
+## Compile-Time Intrinsics 
 
 Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed
 to simplify expressions, enable metaprogramming, and support DSL construction.
@@ -391,5 +492,4 @@ a: Map<String, Any> = @json_decode(`
 
 @trace(a["hello"]) // Outputs 1 to debugger
 ```
-
----
+	

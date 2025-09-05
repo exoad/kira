@@ -1,8 +1,5 @@
-package net.exoad.kira.utils
+package net.exoad.kira.compiler.frontend.parser.ast
 
-import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
-import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
@@ -291,34 +288,29 @@ object XMLASTVisitorKira :
         xmlSingleLeaf("LNull", attrs = null)
     }
 
-    override fun visitIdentifier(identifier: Identifier) {
-        when (identifier) {
-            is AnonymousIdentifier -> xmlSingleLeaf("Anonymous", "")
-            else -> xmlLeaf("Identifier", identifier.name)
+    override fun visitType(type: Type) {
+        node("Type", "name=\"${type.identifier.value}\" isVariadic=\"${type is VariadicTypeParameter}\"")
+        {
+            node("Constraints")
+            {
+                type.constraint?.accept(this)
+            }
+            if (type.children.isNotEmpty()) {
+                node("Children")
+                {
+                    type.children.forEach { it.accept(this) }
+                }
+            }
         }
     }
 
-    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier) {
-//        if(typeSpecifier.childGenericTypeSpecifier.isNotEmpty())
-//        {
-//            node("Type", """name="${typeSpecifier.name}"""")
-//            {
-//                typeSpecifier.childGenericTypeSpecifier.forEach { it.accept(this) }
-//            }
-//        }
-//        else
-//        {
-//            xmlLeaf("Type", typeSpecifier.name)
-//        }
+    override fun visitIdentifier(identifier: Identifier) {
+        when (identifier) {
+            is AnonymousIdentifier -> xmlSingleLeaf("Anonymous", "")
+            else -> xmlLeaf("Identifier", identifier.value)
+        }
     }
 
-    override fun visitUnionType(unionType: UnionType) {
-        TODO("Not yet implemented")
-    }
-
-    override fun visitVariadicGenericParameter(variadicGenericParameter: VariadicGenericParameter) {
-        TODO("Not yet implemented")
-    }
 
     override fun visitVariableDecl(variableDecl: VariableDecl) {
         node(
@@ -329,7 +321,7 @@ object XMLASTVisitorKira :
         )
         {
             variableDecl.name.accept(this)
-            variableDecl.typeSpecifier.accept(this)
+            variableDecl.type.accept(this)
             if (variableDecl.value != null) {
                 node("Value")
                 {
@@ -517,7 +509,7 @@ object XMLASTVisitorKira :
     }
 
     override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        node("EnumMemberExpr", """ name ="${enumMemberExpr.name.name}"""")
+        node("EnumMemberExpr", """ name ="${enumMemberExpr.name.value}"""")
         {
             enumMemberExpr.value?.accept(this)
         }

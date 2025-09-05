@@ -6,9 +6,7 @@ import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.UnionType
-import net.exoad.kira.compiler.frontend.parser.ast.elements.VariadicGenericParameter
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
@@ -220,24 +218,16 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         TODO("Not yet implemented")
     }
 
+    override fun visitType(type: Type) {
+        TODO("Not yet implemented")
+    }
+
     override fun visitIdentifier(identifier: Identifier) {
-        buffer.append(identifier.name)
-    }
-
-    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier) {
-        buffer.append(typeSpecifier.name)
-    }
-
-    override fun visitUnionType(unionType: UnionType) {
-        TODO("Not yet implemented")
-    }
-
-    override fun visitVariadicGenericParameter(variadicGenericParameter: VariadicGenericParameter) {
-        TODO("Not yet implemented")
+        buffer.append(identifier.value)
     }
 
     override fun visitVariableDecl(variableDecl: VariableDecl) {
-        variableDecl.typeSpecifier.accept(this)
+        variableDecl.type.accept(this)
         buffer.append(" ")
         variableDecl.name.accept(this)
         if (variableDecl.value != null) {
@@ -257,7 +247,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         } else {
             buffer.append("char _/*empty_field*/[0];")
         }
-        buffer.append("\n} ${classDecl.name.name}")
+        buffer.append("\n} ${classDecl.name.identifier}")
     }
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {

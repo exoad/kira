@@ -1,20 +1,23 @@
 package net.exoad.kira.compiler.frontend.parser.ast.elements
 
-import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsSymbols
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 
-open class Identifier(open val name: String) : Expr() {
+open class Identifier(open val value: String) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitIdentifier(this)
     }
 
     override fun toString(): String {
-        return "I{ '$name' }"
+        return "I{'$value'}"
+    }
+
+    fun length(): Int {
+        return value.length
     }
 
     override fun hashCode(): Int {
-        return name.hashCode()
+        return value.hashCode()
     }
 
     override fun equals(other: Any?): Boolean {
@@ -25,26 +28,7 @@ open class Identifier(open val name: String) : Expr() {
             return false
         }
         other as Identifier
-        return name == other.name
+        return value == other.value
     }
 }
 
-object AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE) {
-    override fun toString(): String {
-        return "?{ }"
-    }
-
-    override fun hashCode(): Int {
-        return DiagnosticsSymbols.NOT_REPRESENTABLE.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) {
-            return true
-        }
-        if (javaClass != other?.javaClass) {
-            return false
-        }
-        return true
-    }
-}

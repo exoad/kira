@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define CALL_STACK_SIZE (1024e12)
+
 Void kiraProgramExecute(KiraProgram* program)
 {
     KiraVM* vm = kiraVM(program);

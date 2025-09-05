@@ -10,7 +10,7 @@ import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.ui.KiraVisualViewer
-import net.exoad.kira.utils.XMLASTVisitorKira
+import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
 import java.io.File
 import javax.swing.UIManager
 import kotlin.math.floor
@@ -55,9 +55,6 @@ fun main(args: Array<String>) {
                         srcContext.content,
                         tokens
                     )
-                    if (Public.Flags.enableVisualView) {
-                        KiraVisualViewer(srcContext).also { it.run() }
-                    }
                     if (it.dumpLexerTokens != null) {
                         val lexerTokensDumpFile = File(it.dumpLexerTokens)
                         lexerTokensDumpFile.createNewFile()
@@ -97,6 +94,9 @@ fun main(args: Array<String>) {
 //                            } above."
 //                        )
 //                    }
+                }
+                if (Public.Flags.enableVisualView) {
+                    KiraVisualViewer(srcContext).also { it.run() }
                 }
                 Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
                 if (it.dumpAST != null) {

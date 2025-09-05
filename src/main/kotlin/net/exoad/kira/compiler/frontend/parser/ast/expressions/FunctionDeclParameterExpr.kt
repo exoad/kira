@@ -3,11 +3,11 @@ package net.exoad.kira.compiler.frontend.parser.ast.expressions
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifiers
-import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 
 open class FunctionDeclParameterExpr(
     val name: Identifier,
-    val typeSpecifier: TypeSpecifier,
+    val typeSpecifier: Type,
     val modifiers: List<Modifiers> = emptyList(),
 ) :
     Expr() {

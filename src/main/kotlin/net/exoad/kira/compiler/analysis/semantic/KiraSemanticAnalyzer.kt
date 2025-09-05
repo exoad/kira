@@ -7,9 +7,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.TypeSpecifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.UnionType
-import net.exoad.kira.compiler.frontend.parser.ast.elements.VariadicGenericParameter
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
@@ -266,11 +264,15 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
+    override fun visitType(type: Type) {
+        TODO("Not yet implemented")
+    }
+
     override fun visitIdentifier(identifier: Identifier) {
-        expectNotDeclared(identifier.name, context.astOrigins[identifier])
+        expectNotDeclared(identifier.value, context.astOrigins[identifier])
         compilationUnit.symbolTable.declare(
-            identifier.name, SemanticSymbol(
-                name = identifier.name,
+            identifier.value, SemanticSymbol(
+                name = identifier.value,
                 kind = SemanticSymbolKind.VARIABLE,
                 type = Token.Type.IDENTIFIER,
                 declaredAt = SourceLocation.Companion.fromPosition(
@@ -278,17 +280,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 )
             )
         )
-    }
-
-    override fun visitTypeSpecifier(typeSpecifier: TypeSpecifier) {
-    }
-
-    override fun visitUnionType(unionType: UnionType) {
-        TODO("Not yet implemented")
-    }
-
-    override fun visitVariadicGenericParameter(variadicGenericParameter: VariadicGenericParameter) {
-        TODO("Not yet implemented")
     }
 
     /**
@@ -303,14 +294,14 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitVariableDecl(variableDecl: VariableDecl) {
         variableDecl.name.accept(this)
-        if (compilationUnit.symbolTable.resolve(variableDecl.typeSpecifier.name) == null) {
+        if (compilationUnit.symbolTable.resolve(variableDecl.type.identifier.value) == null) {
             pump(
-                "The type '${variableDecl.typeSpecifier.name}' was not found at this scope (${compilationUnit.symbolTable.peekScope().name.lowercase()})",
-                location = context.astOrigins[variableDecl.typeSpecifier] ?: SourcePosition.Companion.UNKNOWN,
-                selectorLength = variableDecl.typeSpecifier.name.length
+                "The type '${variableDecl.type.identifier}' was not found at this scope (${compilationUnit.symbolTable.peekScope().name.lowercase()})",
+                location = context.astOrigins[variableDecl.type] ?: SourcePosition.Companion.UNKNOWN,
+                selectorLength = variableDecl.type.identifier.length()
             )
         }
-        variableDecl.typeSpecifier.accept(this)
+        variableDecl.type.accept(this)
         // check if the value of the variable matches the type
         //
         // we need to check for a multitude of conditions
@@ -319,7 +310,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // (there are more edge cases, but i am not too sure
         if (variableDecl.value != null) {
             variableDecl.value!!.accept(this)
-            val typeName = variableDecl.typeSpecifier.name
+            val typeName = variableDecl.type.identifier.value
             val literalClass = variableDecl.value!!::class
             pumpOnTrue(
                 !(variableBuiltinPrimitives[literalClass]?.invoke(typeName) ?: true),
@@ -336,11 +327,11 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
-        expectNotDeclared(classDecl.name.name, context.astOrigins[classDecl])
+        expectNotDeclared(classDecl.name.identifier.value, context.astOrigins[classDecl])
         compilationUnit.symbolTable.declareGlobal(
-            classDecl.name.name,
+            classDecl.name.identifier.value,
             SemanticSymbol(
-                classDecl.name.name,
+                classDecl.name.identifier.value,
                 SemanticSymbolKind.TYPE_SPECIFIER,
                 Token.Type.K_CLASS,
                 SourceLocation.Companion.fromPosition(

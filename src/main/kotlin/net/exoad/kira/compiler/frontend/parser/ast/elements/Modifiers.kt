@@ -14,7 +14,7 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
             WrappingContext.CLASS_MEMBER,
             WrappingContext.VARIABLE,
             WrappingContext.FUNCTION,
-            WrappingContext.OBJECT_MEMBER,
+            WrappingContext.NAMESPACE_MEMBER,
             WrappingContext.MODULE
         )
     ),
@@ -25,8 +25,8 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
             WrappingContext.CLASS_MEMBER,
             WrappingContext.VARIABLE,
             WrappingContext.FUNCTION,
-            WrappingContext.OBJECT,
-            WrappingContext.OBJECT_MEMBER,
+            WrappingContext.NAMESPACE,
+            WrappingContext.NAMESPACE_MEMBER,
             WrappingContext.ENUM,
         )
     ),
@@ -47,6 +47,6 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
     }
 
     enum class WrappingContext {
-        CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, OBJECT, OBJECT_MEMBER, ENUM
+        CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, NAMESPACE, NAMESPACE_MEMBER, ENUM
     }
 }

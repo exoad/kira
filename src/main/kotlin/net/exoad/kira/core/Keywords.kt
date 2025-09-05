@@ -30,6 +30,7 @@ object Keywords {
         "continue" to Token.Type.K_CONTINUE,
         "with" to Token.Type.K_WITH,
         "fx" to Token.Type.K_FX,
+        "trait" to Token.Type.K_TRAIT
     )
     val literals = mapOf(
         "true" to Token.Type.L_TRUE_BOOL,
