@@ -6,7 +6,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 open class AssignmentExpr(
     val target: Identifier,
     val value: Expr,
-) : Expr() {
+) : Expr {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitAssignmentExpr(this)
     }

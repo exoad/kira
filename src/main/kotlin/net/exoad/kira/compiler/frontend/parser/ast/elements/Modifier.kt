@@ -1,13 +1,15 @@
 package net.exoad.kira.compiler.frontend.parser.ast.elements
 
 import net.exoad.kira.compiler.frontend.lexer.Token
+import net.exoad.kira.utils.ObsoleteLanguageFeat
 
 /**
  * Technically not an AST Node by inheritance, but it is crucial in the evaluation of AST nodes
  *
  * [wrappingContext] describe on where these members are allowed to be placed
  */
-enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<WrappingContext> = emptyArray()) {
+enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<WrappingContext> = emptyArray()) {
+    @OptIn(ObsoleteLanguageFeat::class)
     MUTABLE(
         Token.Type.K_MODIFIER_MUTABLE, arrayOf(
             WrappingContext.CLASS,
@@ -16,8 +18,11 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
             WrappingContext.FUNCTION,
             WrappingContext.NAMESPACE_MEMBER,
             WrappingContext.MODULE
+
         )
     ),
+
+    @OptIn(ObsoleteLanguageFeat::class)
     PUBLIC(
         Token.Type.K_MODIFIER_PUBLIC,
         arrayOf(
@@ -28,6 +33,9 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
             WrappingContext.NAMESPACE,
             WrappingContext.NAMESPACE_MEMBER,
             WrappingContext.ENUM,
+            WrappingContext.ENUM_MEMBER,
+            WrappingContext.TRAIT_MEMBER,
+            WrappingContext.TRAIT
         )
     ),
     REQUIRE(
@@ -37,7 +45,7 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
     ;
 
     companion object {
-        fun byTokenTypeMaybe(tokenType: Token.Type, onBad: (() -> Unit)? = null): Modifiers? {
+        fun byTokenTypeMaybe(tokenType: Token.Type, onBad: (() -> Unit)? = null): Modifier? {
             val modifier = entries.find { it.tokenType == tokenType }
             if (modifier == null) {
                 onBad?.invoke()
@@ -46,7 +54,4 @@ enum class Modifiers(val tokenType: Token.Type, val wrappingContext: Array<Wrapp
         }
     }
 
-    enum class WrappingContext {
-        CLASS, MODULE, FUNCTION, CLASS_MEMBER, VARIABLE, FUNCTION_PARAMETER, NAMESPACE, NAMESPACE_MEMBER, ENUM
-    }
 }

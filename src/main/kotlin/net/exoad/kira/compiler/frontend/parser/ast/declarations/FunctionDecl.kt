@@ -3,13 +3,13 @@ package net.exoad.kira.compiler.frontend.parser.ast.declarations
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.AnonymousIdentifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifiers
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FunctionLiteral
 
 open class FunctionDecl(
     override val name: Identifier,
     open val value: FunctionLiteral,
-    override val modifiers: List<Modifiers> = emptyList(),
+    override val modifiers: List<Modifier> = emptyList(),
 ) : FirstClassDecl(name, modifiers) {
     fun isAnonymous(): Boolean {
         return name is AnonymousIdentifier

@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.utils.ObsoleteLanguageFeat
 
 abstract class KiraASTVisitor {
     // STATEMENTS
@@ -26,7 +27,7 @@ abstract class KiraASTVisitor {
     abstract fun visitUnaryExpr(unaryExpr: UnaryExpr)
     abstract fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
     abstract fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
-    abstract fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr)
+    abstract fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr)
     abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
     abstract fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
@@ -62,5 +63,8 @@ abstract class KiraASTVisitor {
     abstract fun visitClassDecl(classDecl: ClassDecl)
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
     abstract fun visitEnumDecl(enumDecl: EnumDecl)
+
+    @ObsoleteLanguageFeat
     abstract fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
+    abstract fun visitTraitDecl(traitDecl: TraitDecl)
 }

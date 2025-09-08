@@ -73,7 +73,6 @@ sealed class Token(
         K_TRAIT("'trait'"),
         K_THIS("'this'"),
         K_MODIFIER_REQUIRE("'require'"),
-        K_MODIFIER_WEAK("'weak'"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
         K_FX("'fx' (Function)"),

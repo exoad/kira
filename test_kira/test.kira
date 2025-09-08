@@ -1,9 +1,1 @@
-module "test:main"
-
-pub class A<C>
-pub class A<K, P, T, D, V, M, N, L, Q, R>
-pub class A<[T: Any]> // T: Any
-
-pub class B<[T: Int32]>
-pub class D<K, [V]> // K: Any, K: Any
-pub class E<K: Int32, [V: Int32]>
+module "exoad:kira/test"

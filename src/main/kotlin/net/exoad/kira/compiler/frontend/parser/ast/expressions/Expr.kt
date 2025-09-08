@@ -6,14 +6,14 @@ import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 /**
  * Expression implementation
  */
-abstract class Expr : ASTNode()
+interface Expr : ASTNode
 
 /**
  * A simple expression placeholder value to signify for things like [net.exoad.kira.compiler.frontend.parser.ast.statements.Statement] that need an [Expr] passed in.
  *
  * It signifies that this is just a single keyword statement
  */
-object NoExpr : Expr() {
+object NoExpr : Expr {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitNoExpr(this)
     }

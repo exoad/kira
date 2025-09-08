@@ -7,7 +7,7 @@ class BinaryExpr(
     val leftExpr: Expr,
     val rightExpr: Expr,
     val operator: BinaryOp,
-) : Expr() {
+) : Expr {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitBinaryExpr(this)
     }

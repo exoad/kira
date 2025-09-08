@@ -16,6 +16,7 @@ import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.utils.LocaleUtils
+import net.exoad.kira.utils.ObsoleteLanguageFeat
 
 /**
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
@@ -172,7 +173,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr) {
+    override fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr) {
         // TODO("Not yet implemented")
     }
 
@@ -342,13 +343,14 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         )
     }
 
+    private val fullUriMatcher = Regex("^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+/[a-zA-Z0-9_]+$")
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {
-        val parts = moduleDecl.uri.value.split(Symbols.COLON.rep)
+        val uri = moduleDecl.uri.value
         pumpOnTrue(
-            parts.isEmpty(),
-            "A module declaration must specify an author followed by a submodule name: 'author:submodule'",
-            context.astOrigins[moduleDecl.name]!!,
-            help = "Use the format 'author_name:submodule_name'."
+            !uri.matches(fullUriMatcher),
+            "A module URI must be in the format 'author:project/submodule' and contain only a-zA-Z0-9_ characters.",
+            context.astOrigins[moduleDecl.name]!!.offsetBy(0, 1), // skip leading quotation
+            selectorLength = uri.length
         )
     }
 
@@ -356,7 +358,12 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
+    @ObsoleteLanguageFeat
     override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitTraitDecl(traitDecl: TraitDecl) {
         TODO("Not yet implemented")
     }
 }

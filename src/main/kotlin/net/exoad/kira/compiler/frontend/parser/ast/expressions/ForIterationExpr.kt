@@ -3,7 +3,7 @@ package net.exoad.kira.compiler.frontend.parser.ast.expressions
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 
-open class ForIterationExpr(val initializer: Identifier, val target: Expr) : Expr() {
+open class ForIterationExpr(val initializer: Identifier, val target: Expr) : Expr {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitForIterationExpr(this)
     }

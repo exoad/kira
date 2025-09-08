@@ -7,7 +7,7 @@ open class FunctionCallExpr(
     val name: Identifier,
     val positionalParameters: List<FunctionCallPositionalParameterExpr>,
     val namedParameters: List<FunctionCallNamedParameterExpr>,
-) : Expr() {
+) : Expr {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitFunctionCallExpr(this)
     }

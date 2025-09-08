@@ -33,7 +33,7 @@ String kiraStringTableGet(KiraStringTable* table, UInt32 offset)
 
 Void kiraFormIR(String fileName, KiraInstruction* instructions, UInt32 instructionsCount, KiraStringTable* strings)
 {
-    CFile *file = fopen(fileName, "wb");
+    CFile* file = fopen(fileName, "wb");
     KiraHeader header = {
         .magic = {'K', 'I', 'R', 'A'},
         .version = 1,

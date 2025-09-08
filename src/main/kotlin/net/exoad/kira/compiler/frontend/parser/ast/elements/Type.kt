@@ -7,7 +7,7 @@ open class Type(
     open val identifier: Identifier,
     open val constraint: Type?,
     open val children: List<Type>
-) : Expr() {
+) : Expr {
     constructor(name: Identifier) : this(name, null, emptyList())
 
     init {
@@ -21,6 +21,13 @@ open class Type(
         }
     }
 
+    /**
+     * Signifies that this type has no children and no constraint
+     */
+    fun isHermit(): Boolean {
+        return children.isEmpty() && constraint == null
+    }
+
     fun hasVariadic(): Boolean {
         return children.any { it is VariadicTypeParameter }
     }
@@ -30,7 +37,7 @@ open class Type(
     }
 
     override fun toString(): String {
-        return "T<${identifier.value}${if (constraint != null) "++${constraint}" else ""} $children>"
+        return "<${identifier.value}${if (constraint != null) "++${constraint}" else ""} $children>"
     }
 }
 

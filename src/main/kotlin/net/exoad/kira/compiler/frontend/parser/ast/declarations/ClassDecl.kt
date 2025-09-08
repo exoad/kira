@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler.frontend.parser.ast.declarations
 
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
-import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifiers
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 
 /**
@@ -9,7 +9,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
  */
 open class ClassDecl(
     override val name: Type,
-    val modifiers: List<Modifiers> = emptyList(),
+    val modifiers: List<Modifier> = emptyList(),
     val members: List<FirstClassDecl> = emptyList(),
     val parent: Type? = null,
 ) : Decl(name) {

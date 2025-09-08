@@ -2,7 +2,7 @@ package net.exoad.kira.compiler.frontend.parser.ast.literals
 
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 
-abstract class Literal : Expr()
+abstract class Literal : Expr
 
 /**
  * **marker interface**

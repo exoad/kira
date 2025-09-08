@@ -4,7 +4,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 
-class CompoundAssignmentExpr(val left: Expr, val operator: BinaryOp, val right: Expr) : Expr() {
+class CompoundAssignmentExpr(val left: Expr, val operator: BinaryOp, val right: Expr) : Expr {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitCompoundAssignmentExpr(this)
     }

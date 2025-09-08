@@ -15,6 +15,10 @@ open class FunctionLiteral(
         visitor.visitFunctionLiteral(this)
     }
 
+    fun isStub(): Boolean {
+        return body == null
+    }
+
     override fun toString(): String {
         return "LFunction{ $returnTypeSpecifier -> $parameters -> $body }"
     }

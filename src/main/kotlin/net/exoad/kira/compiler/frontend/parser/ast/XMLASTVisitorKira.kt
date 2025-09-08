@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.BuiltinIntrinsics
+import net.exoad.kira.utils.ObsoleteLanguageFeat
 import java.text.SimpleDateFormat
 
 /**
@@ -395,8 +396,20 @@ object XMLASTVisitorKira :
         }
     }
 
+    @ObsoleteLanguageFeat
     override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
         TODO("Not yet implemented")
+    }
+
+    override fun visitTraitDecl(traitDecl: TraitDecl) {
+        node("TraitDecl", "modifiers=\"${traitDecl.modifiers.joinToString(",") { it.name }}\"")
+        {
+            traitDecl.name.accept(this)
+            node("Members")
+            {
+                traitDecl.members.forEach { it.accept(this) }
+            }
+        }
     }
 
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {
@@ -425,16 +438,16 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr) {
+    override fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr) {
         node(
             "IntrinsicCallExpr", """ name ="${
-                BuiltinIntrinsics.entries.find { it.name == intrinsicCallExpr.name.intrinsicKey.name }?.name
-                    ?: intrinsicCallExpr.name.intrinsicKey.name
+                BuiltinIntrinsics.entries.find { it.name == intrinsicExpr.intrinsicKey.name }?.name
+                    ?: intrinsicExpr.intrinsicKey.name
             }""""
         ) {
             node("Parameters")
             {
-                intrinsicCallExpr.parameters.forEach { it.accept(this) }
+                intrinsicExpr.parameters.forEach { it.accept(this) }
             }
         }
     }

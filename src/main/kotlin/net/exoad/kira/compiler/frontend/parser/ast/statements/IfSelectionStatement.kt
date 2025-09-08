@@ -19,7 +19,7 @@ open class IfSelectionStatement(
     }
 }
 
-sealed class IfElseBranchStatementNode : ASTNode()
+sealed class IfElseBranchStatementNode : ASTNode
 
 class ElseIfBranchStatement(val condition: Expr, val statements: List<Statement>) : IfElseBranchStatementNode() {
     override fun accept(visitor: KiraASTVisitor) {

@@ -14,6 +14,10 @@ data class SourcePosition(val lineNumber: Int, val column: Int) : Comparable<Sou
         return "line $lineNumber, col $column"
     }
 
+    fun offsetBy(lineOffset: Int, columnOffset: Int): SourcePosition {
+        return SourcePosition(lineNumber + lineOffset, column + columnOffset)
+    }
+
     override fun compareTo(other: SourcePosition): Int {
         val lineCompare = lineNumber.compareTo(other.lineNumber)
         return if (lineCompare != 0) lineCompare else column.compareTo(other.column)

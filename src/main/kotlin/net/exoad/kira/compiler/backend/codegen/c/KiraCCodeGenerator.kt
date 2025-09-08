@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.utils.ObsoleteLanguageFeat
 import java.io.File
 
 class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCodeGenerator(compilationUnit) {
@@ -126,7 +127,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         TODO("Not yet implemented")
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicCallExpr: IntrinsicCallExpr) {
+    override fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr) {
         TODO("Not yet implemented")
     }
 
@@ -261,7 +262,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         TODO("Not yet implemented")
     }
 
+    @ObsoleteLanguageFeat
     override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitTraitDecl(traitDecl: TraitDecl) {
         TODO("Not yet implemented")
     }
 }
