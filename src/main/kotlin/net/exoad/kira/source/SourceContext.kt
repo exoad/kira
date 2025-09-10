@@ -60,7 +60,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         return buildString {
             appendLine(
                 "${
-                    when (Public.Flags.useDiagnosticsUnicode) {
+                    when (Public.flags["useDiagnosticsUnicode"]!!) {
                         true -> "⮞"
                         else -> "@"
                     }
@@ -72,7 +72,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
                     else -> {
                         val builder = StringBuilder()
                         val gutter = "${
-                            when (Public.Flags.useDiagnosticsUnicode) {
+                            when (Public.flags["useDiagnosticsUnicode"]!!) {
                                 true -> "░"
                                 else -> " "
                             }.repeat(sourcePosition.lineNumber.toString().length)
@@ -85,7 +85,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
                         builder.append(gap)
                         builder.appendLine(
                             when {
-                                Public.Flags.useDiagnosticsUnicode -> "▲"
+                                Public.flags["useDiagnosticsUnicode"]!! -> "▲"
                                 else -> "^"
                             }.repeat(locatorLength)
                         )

@@ -1,19 +1,19 @@
 package net.exoad.kira.compiler.analysis.semantic
 
-class SymbolTable {
-    private data class ScopeFrame(
-        val kind: SemanticScope,
-        val symbols: MutableMap<String, SemanticSymbol> = mutableMapOf(),
-    )
+class KiraSymbolTable : Iterable<KiraScopeFrame> {
 
-    private val scopeStack = ArrayDeque<ScopeFrame>()
+    private val scopeStack = ArrayDeque<KiraScopeFrame>()
 
     init {
         enter(SemanticScope.MODULE) // global scope!
     }
 
     fun enter(kind: SemanticScope) {
-        scopeStack.addFirst(ScopeFrame(kind))
+        scopeStack.addFirst(KiraScopeFrame(kind))
+    }
+
+    fun totalSymbols(): Int {
+        return scopeStack.sumOf { it.symbols.size }
     }
 
     fun clean() {
@@ -59,5 +59,9 @@ class SymbolTable {
 
     fun peekScope(): SemanticScope {
         return scopeStack.first().kind
+    }
+
+    override fun iterator(): Iterator<KiraScopeFrame> {
+        return scopeStack.iterator()
     }
 }

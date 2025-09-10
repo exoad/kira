@@ -11,11 +11,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.Symbols
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
-import net.exoad.kira.utils.LocaleUtils
+import net.exoad.kira.utils.EnglishUtils
 import net.exoad.kira.utils.ObsoleteLanguageFeat
 
 /**
@@ -58,7 +57,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         help: String = "",
     ) {
         if (expr) {
-            pump(message, location ?: SourcePosition.Companion.UNKNOWN, selectorLength, help)
+            pump(message, location ?: SourcePosition.UNKNOWN, selectorLength, help)
         }
     }
 
@@ -66,7 +65,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         val res = compilationUnit.symbolTable.resolve(symbolName)
         pumpOnTrue(
             res == null || res.kind != symbolKind, "Expected a $symbolKind for '$symbolName', but got '$res'",
-            location = res?.declaredAt?.toPosition() ?: SourcePosition.Companion.UNKNOWN,
+            location = res?.declaredAt?.toPosition() ?: SourcePosition.UNKNOWN,
             selectorLength = res!!.name.length
         )
     }
@@ -80,7 +79,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         if (res == null) {
             pump(
                 "'${symbolName}' is an unknown symbol here.",
-                location = location ?: SourcePosition.Companion.UNKNOWN,
+                location = location ?: SourcePosition.UNKNOWN,
                 selectorLength = symbolName.length,
                 help = helpMessage
             )
@@ -96,7 +95,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         if (res != null) {
             pump(
                 "'${symbolName}' was already declared at ${res.declaredAt}",
-                location = location ?: SourcePosition.Companion.UNKNOWN,
+                location = location ?: SourcePosition.UNKNOWN,
                 selectorLength = symbolName.length,
                 help = helpMessage
             )
@@ -107,8 +106,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         val res = compilationUnit.symbolTable.resolve(symbolName)
         if (res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName) {
             pump(
-                "Expected ${LocaleUtils.prependIndefiniteArticle(typeName)} for $symbolName, but got '$res'",
-                location = res?.declaredAt?.toPosition() ?: SourcePosition.Companion.UNKNOWN
+                "Expected ${EnglishUtils.prependIndefiniteArticle(typeName)} for $symbolName, but got '$res'",
+                location = res?.declaredAt?.toPosition() ?: SourcePosition.UNKNOWN
             )
         }
     }
@@ -276,8 +275,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 name = identifier.value,
                 kind = SemanticSymbolKind.VARIABLE,
                 type = Token.Type.IDENTIFIER,
-                declaredAt = SourceLocation.Companion.fromPosition(
-                    context.astOrigins[identifier] ?: SourcePosition.Companion.UNKNOWN, context.file
+                declaredAt = SourceLocation.fromPosition(
+                    context.astOrigins[identifier] ?: SourcePosition.UNKNOWN, context.file
                 )
             )
         )
@@ -298,7 +297,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         if (compilationUnit.symbolTable.resolve(variableDecl.type.identifier.value) == null) {
             pump(
                 "The type '${variableDecl.type.identifier}' was not found at this scope (${compilationUnit.symbolTable.peekScope().name.lowercase()})",
-                location = context.astOrigins[variableDecl.type] ?: SourcePosition.Companion.UNKNOWN,
+                location = context.astOrigins[variableDecl.type] ?: SourcePosition.UNKNOWN,
                 selectorLength = variableDecl.type.identifier.length()
             )
         }
@@ -335,22 +334,23 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 classDecl.name.identifier.value,
                 SemanticSymbolKind.TYPE_SPECIFIER,
                 Token.Type.K_CLASS,
-                SourceLocation.Companion.fromPosition(
-                    context.astOrigins[classDecl] ?: SourcePosition.Companion.UNKNOWN,
+                SourceLocation.fromPosition(
+                    context.astOrigins[classDecl] ?: SourcePosition.UNKNOWN,
                     context.file
                 )
             )
         )
     }
 
-    private val fullUriMatcher = Regex("^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+/[a-zA-Z0-9_]+$")
+    private val fullUriMatcher = Regex("^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:/[a-zA-Z0-9_]+)*$")
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {
         val uri = moduleDecl.uri.value
         pumpOnTrue(
             !uri.matches(fullUriMatcher),
-            "A module URI must be in the format 'author:project/submodule' and contain only a-zA-Z0-9_ characters.",
+            "A module URI must be in the format 'author:project/submodule/submodule/...' and contain only [a-zA-Z0-9_] characters.",
             context.astOrigins[moduleDecl.name]!!.offsetBy(0, 1), // skip leading quotation
-            selectorLength = uri.length
+            selectorLength = uri.length,
+            help = "Here is the regex that is used: ^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:/[a-zA-Z0-9_]+)*$"
         )
     }
 

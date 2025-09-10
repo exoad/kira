@@ -12,7 +12,8 @@ import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.ui.KiraVisualViewer
 import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
-import net.exoad.kira.utils.LocaleUtils
+import net.exoad.kira.utils.Chronos
+import net.exoad.kira.utils.EnglishUtils
 import java.io.File
 import javax.swing.UIManager
 import kotlin.math.floor
@@ -38,9 +39,17 @@ fun main(args: Array<String>) {
                 true -> Diagnostics.useDiagnostics()
                 else -> Diagnostics.silenceDiagnostics()
             }
+            val dumpSB = if (it.dump != null) StringBuilder() else null
+            dumpSB?.appendLine("----------- Kira Processed Symbols Dump File -----------\nGenerated: ${Chronos.formatTimestamp()}")
+            val dumpFile = if (it.dump != null) File("${it.dump}.kira.txt") else null
+            if (dumpFile?.exists() ?: false) {
+                dumpFile.delete()
+            }
+            dumpFile?.createNewFile()
             val compilationUnit = CompilationUnit()
             val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *it.src)
             for (sourceFile in sources) {
+                dumpSB?.appendLine("----------- '$sourceFile' / ${sources.size} -----------")
                 val file = File(sourceFile)
                 val preprocessor = KiraPreprocessor(file.readText())
                 val preprocessingResult = preprocessor.process()
@@ -57,19 +66,19 @@ fun main(args: Array<String>) {
                         srcContext.content,
                         tokens
                     )
-                    if (it.dumpLexerTokens != null) {
-                        val lexerTokensDumpFile = File(it.dumpLexerTokens)
-                        lexerTokensDumpFile.createNewFile()
+                    if (dumpSB != null) {
                         var i = 0
-                        lexerTokensDumpFile.writeText(srcContext.tokens.joinToString("\n") { tk ->
-                            "${
+                        dumpSB.appendLine("    ############### Lexer Tokens '$sourceFile' ###############")
+                        dumpSB.appendLine(srcContext.tokens.joinToString("\n") { tk ->
+                            "    ${
                                 (++i).toString().padStart(
                                     length = floor(log10(srcContext.tokens.size.toDouble())).toInt() + 1,
                                     padChar = ' '
                                 )
                             }: $tk"
                         })
-                        Diagnostics.Logging.info("Kira", "Dumped lexer tokens to ${lexerTokensDumpFile.absolutePath}")
+                        dumpFile!!.appendText(dumpSB.toString())
+                        dumpSB.clear() // save on memory (so not everything is in dumpSB): problematic for large projects
                     }
                     KiraParser(srcContext).parse()
                     val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
@@ -88,37 +97,32 @@ fun main(args: Array<String>) {
                         Diagnostics.Logging.info(
                             "Kira",
                             "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
-                                LocaleUtils.getPluralSuffix(
+                                EnglishUtils.getPluralSuffix(
                                     semanticAnalyzerResults.diagnostics.size
                                 )
                             } above."
                         )
                     }
                 }
-                if (Public.Flags.enableVisualView) {
+                if (Public.flags["enableVisualView"]!!) {
                     KiraVisualViewer(srcContext).also { it.run() }
                 }
                 Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
-                if (it.dumpAST != null) {
-                    val astDumpFile = File("${it.dumpAST}.xml")
-                    astDumpFile.createNewFile()
-                    astDumpFile.writeText(XMLASTVisitorKira.build(srcContext.ast))
-                    val astNodeCanonLocations = File("${it.dumpAST}.txt")
-                    astNodeCanonLocations.createNewFile()
-                    val sb = StringBuilder()
-                    var sourceFileCounter = 1
-                    sb.appendLine("Total Sources: ${compilationUnit.getSourcesLength()}")
+                if (dumpSB != null) {
+                    dumpSB.appendLine("    ############### AST XML '$sourceFile' ###############")
+                    dumpSB.appendLine(
+                        XMLASTVisitorKira.build(srcContext.ast).split("\n").joinToString("\n") { "    $it" })
+                    dumpFile!!.appendText(dumpSB.toString())
+                    dumpSB.clear()
+                    dumpSB.appendLine("    ############### AST -> SRC MAP '$sourceFile' ###############")
+                    dumpSB.appendLine("\tTotal Sources: ${compilationUnit.getSourcesLength()}")
                     compilationUnit.allSources().forEach {
-                        sb.appendLine("====== SourceFile [${sourceFileCounter++}]: ${it.file} ======")
                         it.astOrigins.entries.sortedBy { entry -> entry.value }.forEach { element ->
-                            sb.appendLine("    ${element.value.lineNumber}, ${element.value.column} : ${element.key}")
+                            dumpSB.appendLine("        ${element.value.lineNumber}, ${element.value.column} : ${element.key}")
                         }
                     }
-                    astNodeCanonLocations.writeText(sb.toString())
-                    Diagnostics.Logging.info(
-                        "Kira",
-                        "Dumped AST representation to ${astDumpFile.absolutePath}. Dumped node source locations to ${astNodeCanonLocations.absolutePath}"
-                    )
+                    dumpFile.appendText(dumpSB.toString())
+                    dumpSB.clear()
                 }
                 when (GeneratedProvider.outputMode) {
                     GeneratedProvider.OutputTarget.C -> {
@@ -128,6 +132,20 @@ fun main(args: Array<String>) {
 
                     else -> Diagnostics.Logging.info("Kira", "No output...")
                 }
+            }
+            if (dumpSB != null) {
+                dumpSB.appendLine("############### CANON SYMBOL TABLE ###############")
+                dumpSB.appendLine("Total Symbols: ${compilationUnit.symbolTable.totalSymbols()}")
+                compilationUnit.symbolTable.forEach {
+                    dumpSB.appendLine(": Scope Kind: ${it.kind}")
+                    it.symbols.forEach { k, v ->
+                        dumpSB.appendLine("    '$k' to $v")
+                    }
+                }
+                dumpSB.appendLine("----------- End Dump File -----------")
+                dumpFile!!.appendText(dumpSB.toString())
+                dumpSB.clear()
+                Diagnostics.Logging.info("Kira", "Dumped processed symbols to ${dumpFile!!.path}.")
             }
         }
     }
@@ -142,7 +160,7 @@ fun parseArgs(): ArgumentOptions {
         Diagnostics.panic("Could not find the 'src' option pointing to a source file.\nUsage: '--src=main.kira'")
     }
     val dumpLexerTokensOption = argsParser.findOption("--dumpLexerTokens")
-    val dumpASTOptionOption = argsParser.findOption("--dumpAST")
+    val dump = argsParser.findOption("--dump")
     // ephemeral options
     val outputFileOption = argsParser.findOption("--out")
     val outputModeOption = argsParser.findOption("--target")
@@ -161,8 +179,7 @@ fun parseArgs(): ArgumentOptions {
     return ArgumentOptions(
         useDiagnostics,
         srcLocOption.split(",").toTypedArray(),
-        dumpLexerTokensOption,
-        dumpASTOptionOption
+        dump
     )
 }
 
@@ -170,7 +187,13 @@ fun parsePublicFlags() {
     // the flipping and unflipping of the conditions just sometimes gets me mixed up for some reason lol
     //
     // is my brain too slow ?
-    Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("-noPrettyDiagnostics")
-    Public.Flags.beVerbose = argsParser.findFlag("-verbose")
-    Public.Flags.enableVisualView = argsParser.findFlag("-visualView")
+    val flags = mutableMapOf<String, Boolean>()
+    Public.flagsDefault.forEach { k, v ->
+        val res = argsParser.findFlag("-$k")
+        flags[k] = if (!res) v else true
+    }
+    Public.flags = flags
+//    Public.Flags.useDiagnosticsUnicode = !argsParser.findFlag("-noPrettyDiagnostics")
+//    Public.Flags.beVerbose = argsParser.findFlag("-verbose")
+//    Public.Flags.enableVisualView = argsParser.findFlag("-visualView")
 }

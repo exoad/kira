@@ -14,7 +14,7 @@ import net.exoad.kira.core.Keywords
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
-import net.exoad.kira.utils.LocaleUtils
+import net.exoad.kira.utils.EnglishUtils
 import java.util.*
 import kotlin.math.max
 import kotlin.properties.Delegates
@@ -168,9 +168,9 @@ class KiraParser(private val context: SourceContext) {
                     "KiraParser::expect",
                     buildString {
                         append("Expected ")
-                        append(LocaleUtils.prependIndefiniteArticle(token.diagnosticsName().lowercase()))
+                        append(EnglishUtils.prependIndefiniteArticle(token.diagnosticsName().lowercase()))
                         append(" but got ")
-                        append(LocaleUtils.prependIndefiniteArticle(peek().type.diagnosticsName()))
+                        append(EnglishUtils.prependIndefiniteArticle(peek().type.diagnosticsName()))
                     }, // we actually output the content underneath the pointer which is easier to see and depending on if it is like a symbol/keyword we output that else we output variable token contents accordingly
                     location = peek().canonicalLocation,
                     selectorLength = peek().content.length,
@@ -191,7 +191,7 @@ class KiraParser(private val context: SourceContext) {
                         append("Expected any of ")
                         append(tokens.map { it.diagnosticsName() })
                         append(" but got ")
-                        append(LocaleUtils.prependIndefiniteArticle(peek().type.diagnosticsName()))
+                        append(EnglishUtils.prependIndefiniteArticle(peek().type.diagnosticsName()))
                     },
                     location = peek().canonicalLocation,
                     context = context
@@ -460,7 +460,7 @@ class KiraParser(private val context: SourceContext) {
                     else -> Diagnostics.panic(
                         "KiraParser::parsePrimaryExpr",
                         "Intrinsics must be followed by an identifier. Instead, got '${
-                            LocaleUtils.prependIndefiniteArticle(peek(1).type.diagnosticsName())
+                            EnglishUtils.prependIndefiniteArticle(peek(1).type.diagnosticsName())
                         }'",
                         location = here(),
                         selectorLength = peek(1).content.length,
@@ -501,7 +501,7 @@ class KiraParser(private val context: SourceContext) {
             else ->
                 Diagnostics.panic(
                     "KiraParser::parsePrimaryExpr",
-                    "${LocaleUtils.prependIndefiniteArticle(peek().type.diagnosticsName())} is not allowed here.",
+                    "${EnglishUtils.prependIndefiniteArticle(peek().type.diagnosticsName())} is not allowed here.",
                     location = peek().canonicalLocation,
                     selectorLength = peek().content.length,
                     context = context

@@ -1,6 +1,6 @@
 package net.exoad.kira.utils
 
-object LocaleUtils {
+object EnglishUtils {
     fun getPluralSuffix(count: Int, uppercase: Boolean = false): String {
         return if (count > 1) {
             if (uppercase) "S" else "s"

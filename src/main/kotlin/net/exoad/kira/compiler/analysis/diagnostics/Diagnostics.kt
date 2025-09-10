@@ -129,7 +129,7 @@ object Diagnostics {
         }
 
         fun finer(tag: String, message: Any) {
-            if (Public.Flags.beVerbose) // i dont want to toggle flags using Level and Logger :(
+            if (Public.flags["beVerbose"]!!) // i dont want to toggle flags using Level and Logger :(
             {
                 logger.finer("Finer/$tag: $message")
             }

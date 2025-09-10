@@ -3,11 +3,10 @@ package net.exoad.kira.cli
 data class ArgumentOptions(
     val useDiagnostics: Boolean,
     val src: Array<String>,
-    val dumpLexerTokens: String?,
-    val dumpAST: String?,
+    val dump: String?
 ) {
     override fun toString(): String {
-        return "ArgumentOptions{ UseDiagnostics: $useDiagnostics,  Src: $src, DumpLexerTokens: $dumpLexerTokens, DumpAST: $dumpAST }"
+        return "ArgumentOptions{ UseDiagnostics: $useDiagnostics,  Src: $src, Dump: $dump }"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -16,16 +15,14 @@ data class ArgumentOptions(
         other as ArgumentOptions
         if (useDiagnostics != other.useDiagnostics) return false
         if (!src.contentEquals(other.src)) return false
-        if (dumpLexerTokens != other.dumpLexerTokens) return false
-        if (dumpAST != other.dumpAST) return false
+        if (dump != other.dump) return false
         return true
     }
 
     override fun hashCode(): Int {
         var result = useDiagnostics.hashCode()
         result = 31 * result + src.contentHashCode()
-        result = 31 * result + (dumpLexerTokens?.hashCode() ?: 0)
-        result = 31 * result + (dumpAST?.hashCode() ?: 0)
+        result = 31 * result + (dump?.hashCode() ?: 0)
         return result
     }
 }

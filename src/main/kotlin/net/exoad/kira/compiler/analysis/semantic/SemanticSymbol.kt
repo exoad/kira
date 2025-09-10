@@ -8,7 +8,10 @@ data class SemanticSymbol(
     val kind: SemanticSymbolKind,
     val type: Token.Type,
     val declaredAt: SourceLocation,
-)
-
+) {
+    override fun toString(): String {
+        return "$$ $name $$ $kind -> $type @ [$declaredAt] "
+    }
+}
 
 
