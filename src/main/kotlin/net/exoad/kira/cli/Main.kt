@@ -40,14 +40,20 @@ fun main(args: Array<String>) {
                 else -> Diagnostics.silenceDiagnostics()
             }
             val dumpSB = if (it.dump != null) StringBuilder() else null
-            dumpSB?.appendLine("----------- Kira Processed Symbols Dump File -----------\nGenerated: ${Chronos.formatTimestamp()}")
+            val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *it.src)
+            dumpSB?.appendLine(
+                "----------- Kira Processed Symbols Dump File -----------\nGenerated: ${Chronos.formatTimestamp()}\nTotal Source Files: ${sources.size}\nSources List: \n${
+                    sources.joinToString(
+                        "\n"
+                    ) { " $it" }
+                }"
+            )
             val dumpFile = if (it.dump != null) File("${it.dump}.kira.txt") else null
             if (dumpFile?.exists() ?: false) {
                 dumpFile.delete()
             }
             dumpFile?.createNewFile()
             val compilationUnit = CompilationUnit()
-            val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *it.src)
             for (sourceFile in sources) {
                 dumpSB?.appendLine("----------- '$sourceFile' / ${sources.size} -----------")
                 val file = File(sourceFile)

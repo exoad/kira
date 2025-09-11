@@ -5,6 +5,7 @@ import net.exoad.kira.utils.ObsoleteLanguageFeat
 enum class SemanticScope {
     MODULE,
     CLASS,
+    GLOBAL,
 
     @ObsoleteLanguageFeat
     NAMESPACE,

@@ -5,7 +5,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.BuiltinIntrinsics
+import net.exoad.kira.core.Intrinsic
 import net.exoad.kira.utils.ObsoleteLanguageFeat
 import java.text.SimpleDateFormat
 
@@ -290,7 +290,7 @@ object XMLASTVisitorKira :
     }
 
     override fun visitType(type: Type) {
-        node("Type", "name=\"${type.identifier.value}\" isVariadic=\"${type is VariadicTypeParameter}\"")
+        node("Type", "name=\"${type.identifier}\" isVariadic=\"${type is VariadicTypeParameter}\"")
         {
             node("Constraints")
             {
@@ -396,11 +396,6 @@ object XMLASTVisitorKira :
         }
     }
 
-    @ObsoleteLanguageFeat
-    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
-        TODO("Not yet implemented")
-    }
-
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         node("TraitDecl", "modifiers=\"${traitDecl.modifiers.joinToString(",") { it.name }}\"")
         {
@@ -438,16 +433,16 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr) {
+    override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
         node(
             "IntrinsicCallExpr", """ name ="${
-                BuiltinIntrinsics.entries.find { it.name == intrinsicExpr.intrinsicKey.name }?.name
+                Intrinsic.entries.find { it.name == intrinsicExpr.intrinsicKey.name }?.name
                     ?: intrinsicExpr.intrinsicKey.name
             }""""
         ) {
             node("Parameters")
             {
-                intrinsicExpr.parameters.forEach { it.accept(this) }
+                intrinsicExpr.parameters?.forEach { it.accept(this) }
             }
         }
     }

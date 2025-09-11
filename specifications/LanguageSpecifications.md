@@ -469,6 +469,40 @@ class Dog: Animal {
 }
 ```
 
+## Aliasing
+
+Kira supports aliasing whereby it enables the developer to replace a more complicated expression with something simpler. For example, you can 
+alias a long type signature to just a single name: `Map<String, Map<String, String>>` to `LargeDictionary`. This process is known as aliasing
+and is processed during the initial preprocessor stage. Aliases must match `^[a-zA-Z0-9_]+` and follow the format of:
+
+```
+#alias <alias-name> <expr> 
+```
+
+**Please Note: _This is not a direct language feature as aliases are inlined after the preprocessor stages and the directives themselves removed. Additionally, all this feature is, is a find and replace._**
+
+To declare an alias you declare a line using the `#alias` symbol, followed by the alias name and the expression to alias as:
+
+```
+#alias Int Int32
+
+myInt: Int = 123
+```
+
+You can also alias entire expressions:
+
+```
+#alias FOR_TWICE for i in 0..2
+
+FOR_TWICE {
+   // ...
+}
+```
+
+
+### Visibility of Aliases
+
+Aliases by themselves are only persistent in the source file being processed, they cannot be exposed to other 
 
 ## Compile-Time Intrinsics 
 

@@ -1,19 +1,20 @@
 module "kira:builtin/types"
 
-pub class Any;
-pub @magic class Void
-pub class String
-pub class Num
-pub class Int8: Num
-pub class Int16: Num
+@global
+//pub class Any;
+//pub @magic class Void
+//pub class String
+//pub class Num
+//pub class Int8: Num
+//pub class Int16: Num
 pub class Int32: Num
 {
     fx @cmp_gt(other: Int32): Boolean;
 }
-pub class Int64: Num
-pub class Float32: Num
-pub class Float64: Num
-pub class Bool
-pub class Maybe<T>
-pub @magic class Weak<T>
-pub @magic class Unsafe<T>
+//pub class Int64: Num
+//pub class Float32: Num
+//pub class Float64: Num
+//pub class Bool
+//pub class Maybe<T>
+//pub @magic class Weak<T>
+//pub @magic class Unsafe<T>

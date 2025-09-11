@@ -4,10 +4,12 @@ import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.AnonymousIdentifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FunctionLiteral
 
 open class FunctionDecl(
-    override val name: Identifier,
+    override val name: Expr,
     open val value: FunctionLiteral,
     override val modifiers: List<Modifier> = emptyList(),
 ) : FirstClassDecl(name, modifiers) {

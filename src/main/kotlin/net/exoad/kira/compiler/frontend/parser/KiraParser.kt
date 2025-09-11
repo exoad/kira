@@ -9,7 +9,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.BuiltinIntrinsics
+import net.exoad.kira.core.Intrinsic
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
@@ -315,6 +315,14 @@ class KiraParser(private val context: SourceContext) {
         val target = parseExpr()
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val body = parseStatementBlock()
+        if (identifier !is Identifier) {
+            Diagnostics.panic(
+                "KiraParser::parseForIterationStatement",
+                "For iteration statements may only use identifiers.",
+                context = context,
+                location = context.astOrigins[identifier] ?: origin,
+            )
+        }
         return putOrigin(ForIterationStatement(ForIterationExpr(identifier, target), body), origin)
     }
 
@@ -572,25 +580,34 @@ class KiraParser(private val context: SourceContext) {
             val identifier = parseIdentifier()
             expectThenAdvance(Token.Type.S_EQUAL)
             val expr = parseExpr()
+            if (identifier !is Identifier) {
+                Diagnostics.panic(
+                    "KiraParser::parseWithExpr",
+                    "With expressions cannot use non-identifier for origin.",
+                    context = context,
+                    location = context.astOrigins[identifier] ?: origin,
+                )
+            }
             members.add(putOrigin(WithExprMember(identifier, expr), subOrigin))
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         return putOrigin(WithExpr(members), origin)
     }
 
-    fun parseIntrinsicExpr(marker: Boolean = false): IntrinsicExpr {
+    fun parseIntrinsicExpr(): IntrinsicExpr {
         // the current implementation of intrinsic calls act more like preprocessor directives in other languages
         // it just finds and replaces in whatever process after it uses it
         //
         // for a better way we could just add it as a find and replace method, but that just feels lame, but whatever.
-        val startLoc = peek().canonicalLocation
         if (hereIs(Token.Type.S_AT)) {
             advancePointer()
         }
+        val startLoc = peek().canonicalLocation
         val identifier = peek().content
         expectThenAdvance(Token.Type.IDENTIFIER) // this is scuffed but lmao
-        val parameters = mutableListOf<Expr>()
-        if (!marker && hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+        var parameters: List<Expr>? = null
+        if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+            parameters = mutableListOf()
             expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
             while (!hereIs(Token.Type.S_CLOSE_PARENTHESIS) && !hereIs(Token.Type.S_EOF)) {
                 if (parameters.isNotEmpty()) {
@@ -600,22 +617,18 @@ class KiraParser(private val context: SourceContext) {
             }
             expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         }
-        val findVal = BuiltinIntrinsics.entries.find { it.rep == identifier }
+        val findVal = Intrinsic.entries.find { it.rep == identifier }
         return when (findVal != null) {
             true -> putOrigin(
                 IntrinsicExpr(
                     findVal,
-                    SourceLocation(
-                        peek().canonicalLocation.lineNumber,
-                        peek().canonicalLocation.column,
-                        context.file
-                    ),
+                    startLoc.toLocationFromContext(context),
                     parameters
                 ), startLoc
             )
 
             else -> Diagnostics.panic(
-                "KiraParser::parseIntrinsicCallExpr",
+                "KiraParser::parseIntrinsicExpr",
                 "An intrinsic named '${identifier}' does not exist.",
                 location = startLoc,
                 selectorLength = identifier.length,
@@ -637,6 +650,14 @@ class KiraParser(private val context: SourceContext) {
             val name = parseIdentifier()
             expectThenAdvance(Token.Type.S_COLON)
             val type = parseType()
+            if (name !is Identifier) {
+                Diagnostics.panic(
+                    "KiraParser::parseFunctionDeclParameters",
+                    "Function parameters may only be named using identifiers.",
+                    context = context,
+                    location = context.astOrigins[name] ?: origin,
+                )
+            }
             parameters.add(putOrigin(FunctionDeclParameterExpr(name, type, modifiers.keys.toList()), origin))
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
@@ -648,10 +669,8 @@ class KiraParser(private val context: SourceContext) {
         expectModifiers(modifier, WrappingContext.FUNCTION)
         expectThenAdvance(Token.Type.K_FX)
         var functionName: Identifier = AnonymousIdentifier
-        if (hereIs(Token.Type.S_AT)) {
-            functionName = parseIntrinsicExpr(marker = true)
-        } else if (hereIs(Token.Type.IDENTIFIER)) {
-            functionName = parseIdentifier()
+        if (hereIs(Token.Type.S_AT) || hereIs(Token.Type.IDENTIFIER)) {
+            functionName = parseIntrinsicExpr()
         }
         val functionLiteral = parseFunctionLiteral()
         return putOrigin(
@@ -687,6 +706,14 @@ class KiraParser(private val context: SourceContext) {
                         context = context,
                         location = startToken.canonicalLocation,
                         selectorLength = startToken.content.length
+                    )
+                }
+                if (identifier !is Identifier) {
+                    Diagnostics.panic(
+                        "KiraParser::parseFunctionCallParameter",
+                        "Named parameters must ONLY use identifiers. It is guaranteed that the parameter will also be an identifier",
+                        context = context,
+                        location = context.astOrigins[identifier] ?: origin,
                     )
                 }
                 named.add(putOrigin(FunctionCallNamedParameterExpr(identifier, expr), origin))
@@ -773,6 +800,14 @@ class KiraParser(private val context: SourceContext) {
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_EQUAL)
         val value = parseBinaryExpr()
+        if (identifier !is Identifier) {
+            Diagnostics.panic(
+                "KiraParser::parseAssignmentExpr",
+                "Assignment expressions can only use identifiers for l-value.",
+                context = context,
+                location = context.astOrigins[identifier] ?: origin,
+            )
+        }
         return putOrigin(AssignmentExpr(identifier, value), origin)
     }
 
@@ -795,6 +830,14 @@ class KiraParser(private val context: SourceContext) {
             }
             value = parseValue as DataLiteral<*>
         }
+        if (name !is Identifier) {
+            Diagnostics.panic(
+                "KiraParser::parseEnumMemberExpr",
+                "Enum members can only be named using identifiers.",
+                context = context,
+                location = context.astOrigins[name] ?: origin,
+            )
+        }
         return putOrigin(EnumMemberExpr(name, value), origin)
     }
 
@@ -812,6 +855,14 @@ class KiraParser(private val context: SourceContext) {
             }
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        if (name !is Identifier) {
+            Diagnostics.panic(
+                "KiraParser::parseEnumDecl",
+                "Enum declarations can only use identifiers for their name.",
+                context = context,
+                location = context.astOrigins[name] ?: origin,
+            )
+        }
         return putOrigin(EnumDecl(name, members.toTypedArray(), modifier?.keys?.toList() ?: emptyList()), origin)
     }
 
@@ -1048,7 +1099,10 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(FunctionLiteral(returnType, params, body), origin)
     }
 
-    fun parseIdentifier(): Identifier {
+    fun parseIdentifier(): Expr {
+        if (hereIs(Token.Type.S_AT)) {
+            return parseIntrinsicExpr()
+        }
         val loc = peek().canonicalLocation
         val value = peek().content
         expectThenAdvance(Token.Type.IDENTIFIER)

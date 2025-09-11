@@ -8,9 +8,11 @@ data class SemanticSymbol(
     val kind: SemanticSymbolKind,
     val type: Token.Type,
     val declaredAt: SourceLocation,
-) {
+    val relativelyVisible: Boolean = false,
+
+    ) {
     override fun toString(): String {
-        return "$$ $name $$ $kind -> $type @ [$declaredAt] "
+        return "$$ $name ${if (relativelyVisible) "RELATIVE" else ""} $$ $kind -> $type @ [$declaredAt] "
     }
 }
 

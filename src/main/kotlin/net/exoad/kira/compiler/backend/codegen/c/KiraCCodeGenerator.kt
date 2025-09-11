@@ -127,7 +127,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         TODO("Not yet implemented")
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr) {
+    override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
         TODO("Not yet implemented")
     }
 
@@ -259,11 +259,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitEnumDecl(enumDecl: EnumDecl) {
-        TODO("Not yet implemented")
-    }
-
-    @ObsoleteLanguageFeat
-    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
         TODO("Not yet implemented")
     }
 

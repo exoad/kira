@@ -26,6 +26,12 @@ class KiraPreprocessor(private val rawContent: String) {
         )
     }
 
+    private fun inlineAlias(lines: List<String>): List<String> {
+        val resultLines = mutableListOf<String>()
+        val lookup = mutableMapOf<String, String>()
+
+    }
+
     private fun removeTrailingComment(line: String): String {
         var inString = false
         var escape = false

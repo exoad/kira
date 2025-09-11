@@ -6,6 +6,8 @@ import net.exoad.kira.compiler.analysis.diagnostics.isNotRepresentableDiagnostic
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
+import net.exoad.kira.core.Intrinsic
 import java.util.*
 
 /**
@@ -20,6 +22,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     private val lines: List<String> = content.lines()
     lateinit var ast: RootASTNode
     lateinit var astOrigins: IdentityHashMap<ASTNode, SourcePosition>
+    lateinit var astIntrinsicMarked: IdentityHashMap<ASTNode, Array<Intrinsic>>
 
     fun getLines(): List<String> {
         return lines
@@ -27,6 +30,17 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
 
     fun with(content: String, tokens: List<Token>? = null): SourceContext {
         return SourceContext(content, file, tokens ?: this.tokens)
+    }
+
+    fun <T : ASTNode> isIntrinsified(node: T): Boolean {
+        return astIntrinsicMarked[node]?.isNotEmpty() ?: false
+    }
+
+    fun <T : ASTNode> intrinsicsOf(node: T): Array<Intrinsic> {
+        if (!isIntrinsified(node)) {
+            Diagnostics.panic("Kira", "$node has no intrinsic markers.", context = this)
+        }
+        return astIntrinsicMarked[node]!!
     }
 
     fun <T : ASTNode> relativeOriginOf(node: T): SourcePosition {

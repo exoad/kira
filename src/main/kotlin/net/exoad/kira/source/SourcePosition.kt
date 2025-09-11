@@ -18,6 +18,10 @@ data class SourcePosition(val lineNumber: Int, val column: Int) : Comparable<Sou
         return SourcePosition(lineNumber + lineOffset, column + columnOffset)
     }
 
+    fun toLocationFromContext(ctxt: SourceContext): SourceLocation {
+        return SourceLocation.fromPosition(this, ctxt.file)
+    }
+
     override fun compareTo(other: SourcePosition): Int {
         val lineCompare = lineNumber.compareTo(other.lineNumber)
         return if (lineCompare != 0) lineCompare else column.compareTo(other.column)

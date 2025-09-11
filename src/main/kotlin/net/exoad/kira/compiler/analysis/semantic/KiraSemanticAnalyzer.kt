@@ -7,15 +7,16 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.IntrinsicCapability
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.utils.EnglishUtils
-import net.exoad.kira.utils.ObsoleteLanguageFeat
 
 /**
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
@@ -29,7 +30,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         try {
             for (source in compilationUnit.allSources()) {
                 context = source
-                source.ast.statements.forEach { it.accept(this) }
+                source.ast.accept(this)
             }
         } catch (_: Exception) {
             return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, false)
@@ -172,8 +173,23 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr) {
-        // TODO("Not yet implemented")
+    override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
+        pumpOnTrue(
+            intrinsicExpr.intrinsicKey.capabilities.all { it != IntrinsicCapability.Functor } && intrinsicExpr.parameters != null,
+            message = "The intrinsic '${intrinsicExpr.intrinsicKey.rep}' cannot be used as a functor.",
+            location = intrinsicExpr.sourceLocation.toPosition(),
+            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
+            help =
+                "Supported capabilities for this intrinsic: ${intrinsicExpr.intrinsicKey.capabilities.joinToString(",") { it::class.simpleName!! }}"
+        )
+        pumpOnTrue(
+            intrinsicExpr.intrinsicKey.capabilities.contains(IntrinsicCapability.Functor) && !intrinsicExpr.intrinsicKey.capabilities.contains(
+                IntrinsicCapability.Marker
+            ) && (intrinsicExpr.parameters?.isEmpty() ?: true),
+            message = "The intrinsic '${intrinsicExpr.intrinsicKey.rep}' can only be used as a functor. Supply arguments to it. ",
+            location = intrinsicExpr.sourceLocation.toPosition(),
+            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
+        )
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
@@ -265,7 +281,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitType(type: Type) {
-        TODO("Not yet implemented")
+        // todo
     }
 
     override fun visitIdentifier(identifier: Identifier) {
@@ -294,52 +310,63 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitVariableDecl(variableDecl: VariableDecl) {
         variableDecl.name.accept(this)
-        if (compilationUnit.symbolTable.resolve(variableDecl.type.identifier.value) == null) {
-            pump(
-                "The type '${variableDecl.type.identifier}' was not found at this scope (${compilationUnit.symbolTable.peekScope().name.lowercase()})",
-                location = context.astOrigins[variableDecl.type] ?: SourcePosition.UNKNOWN,
-                selectorLength = variableDecl.type.identifier.length()
-            )
+        if (variableDecl.type.identifier is Identifier) {
+            if (compilationUnit.symbolTable.resolve((variableDecl.type.identifier as Identifier).value) == null) {
+                pump(
+                    "The type '${variableDecl.type.identifier}' was not found at this scope (${compilationUnit.symbolTable.where().name.lowercase()})",
+                    location = context.astOrigins[variableDecl.type] ?: SourcePosition.UNKNOWN,
+                    selectorLength = (variableDecl.type.identifier as Identifier).length()
+                )
+            }
+            variableDecl.type.accept(this)
+            // check if the value of the variable matches the type
+            //
+            // we need to check for a multitude of conditions
+            // 1. if it's a raw literal or object value, check if just the type names match
+            // 2. if it's a function call, check the return type of that function type
+            // (there are more edge cases, but i am not too sure
+            if (variableDecl.value != null) {
+                variableDecl.value!!.accept(this)
+                val typeName = (variableDecl.type.identifier as Identifier).value
+                val literalClass = variableDecl.value!!::class
+                pumpOnTrue(
+                    !(variableBuiltinPrimitives[literalClass]?.invoke(typeName) ?: true),
+                    "Type mismatch. Got a ${
+                        literalClass.simpleName?.removeSuffix("Literal")?.lowercase()
+                    } literal, but expected a '$typeName'",
+                    context.astOrigins[variableDecl.value],
+                    help = "Correct the declaration type or the value itself.",
+                )
+            }
         }
-        variableDecl.type.accept(this)
-        // check if the value of the variable matches the type
-        //
-        // we need to check for a multitude of conditions
-        // 1. if it's a raw literal or object value, check if just the type names match
-        // 2. if it's a function call, check the return type of that function type
-        // (there are more edge cases, but i am not too sure
-        if (variableDecl.value != null) {
-            variableDecl.value!!.accept(this)
-            val typeName = variableDecl.type.identifier.value
-            val literalClass = variableDecl.value!!::class
-            pumpOnTrue(
-                !(variableBuiltinPrimitives[literalClass]?.invoke(typeName) ?: true),
-                "Type mismatch. Got a ${
-                    literalClass.simpleName?.removeSuffix("Literal")?.lowercase()
-                } literal, but expected a '$typeName'",
-                context.astOrigins[variableDecl.value],
-                help = "Correct the declaration type or the value itself.",
-            )
-        }
+
     }
 
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
+        TODO("Not yet implemented")
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
-        expectNotDeclared(classDecl.name.identifier.value, context.astOrigins[classDecl])
-        compilationUnit.symbolTable.declareGlobal(
-            classDecl.name.identifier.value,
-            SemanticSymbol(
-                classDecl.name.identifier.value,
-                SemanticSymbolKind.TYPE_SPECIFIER,
-                Token.Type.K_CLASS,
-                SourceLocation.fromPosition(
-                    context.astOrigins[classDecl] ?: SourcePosition.UNKNOWN,
-                    context.file
+        if (classDecl.name.identifier is Identifier) {
+            expectNotDeclared((classDecl.name.identifier as Identifier).value, context.astOrigins[classDecl])
+            compilationUnit.symbolTable.declare(
+                (classDecl.name.identifier as Identifier).value,
+                SemanticSymbol(
+                    (classDecl.name.identifier as Identifier).value,
+                    SemanticSymbolKind.TYPE_SPECIFIER,
+                    Token.Type.K_CLASS,
+                    SourceLocation.fromPosition(
+                        context.astOrigins[classDecl] ?: SourcePosition.UNKNOWN,
+                        context.file
+                    ),
+                    relativelyVisible = classDecl.modifiers.contains(Modifier.PUBLIC)
                 )
             )
-        )
+            classDecl.name.accept(this)
+            compilationUnit.symbolTable.enter(SemanticScope.CLASS)
+            classDecl.members.forEach { it.accept(this) }
+            compilationUnit.symbolTable.exit()
+        }
     }
 
     private val fullUriMatcher = Regex("^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:/[a-zA-Z0-9_]+)*$")
@@ -356,11 +383,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitEnumDecl(enumDecl: EnumDecl) {
         // TODO("Not yet implemented")
-    }
-
-    @ObsoleteLanguageFeat
-    override fun visitNamespaceDecl(namespaceDecl: NamespaceDecl) {
-        TODO("Not yet implemented")
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {

@@ -27,7 +27,7 @@ abstract class KiraASTVisitor {
     abstract fun visitUnaryExpr(unaryExpr: UnaryExpr)
     abstract fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
     abstract fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
-    abstract fun visitIntrinsicCallExpr(intrinsicExpr: IntrinsicExpr)
+    abstract fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr)
     abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
     abstract fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
@@ -63,8 +63,5 @@ abstract class KiraASTVisitor {
     abstract fun visitClassDecl(classDecl: ClassDecl)
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
     abstract fun visitEnumDecl(enumDecl: EnumDecl)
-
-    @ObsoleteLanguageFeat
-    abstract fun visitNamespaceDecl(namespaceDecl: NamespaceDecl)
     abstract fun visitTraitDecl(traitDecl: TraitDecl)
 }

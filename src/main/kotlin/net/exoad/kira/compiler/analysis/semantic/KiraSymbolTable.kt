@@ -57,7 +57,7 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
         return scopeStack.first().symbols.toMap()
     }
 
-    fun peekScope(): SemanticScope {
+    fun where(): SemanticScope {
         return scopeStack.first().kind
     }
 
