@@ -11,6 +11,12 @@ pub class Int32: Num
 {
     fx @cmp_gt(other: Int32): Boolean;
 }
+pub @magic mut class Tuple<T> {
+    require pub fx size(): Int32
+
+    require pub fx @get(index: Int32): Any
+}
+
 //pub class Int64: Num
 //pub class Float32: Num
 //pub class Float64: Num

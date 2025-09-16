@@ -1117,14 +1117,6 @@ class KiraParser(private val context: SourceContext) {
                 bound = parseType()
             }
         }
-        if (hereIs(Token.Type.S_OPEN_BRACKET)) { // branch for variadic type parameters
-            advancePointer()
-            val baseLocation = here()
-            val baseIdentifier = parseIdentifier()
-            acquireTypeBound()
-            expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
-            return putOrigin(VariadicTypeParameter(baseIdentifier, bound), baseLocation)
-        }
         val baseLocation = here()
         val baseIdentifier = parseIdentifier()
         acquireTypeBound()
@@ -1142,15 +1134,6 @@ class KiraParser(private val context: SourceContext) {
         val children = mutableListOf<Type>()
         while (!hereIs(Token.Type.S_CLOSE_ANGLE) && !hereIs(Token.Type.S_EOF)) {
             val param = parseTypeParameter()
-            if (param is VariadicTypeParameter && !hereIs(Token.Type.S_CLOSE_ANGLE)) {
-                Diagnostics.panic(
-                    "Kira::parseType",
-                    "A variadic type bound must always be at the end of the type parameter list.",
-                    context = context,
-                    location = context.astOrigins[param] ?: here(),
-                    selectorLength = 1
-                )
-            }
             children.add(param)
             if (!hereIs(Token.Type.S_CLOSE_ANGLE)) {
                 expectThenAdvance(Token.Type.S_COMMA)

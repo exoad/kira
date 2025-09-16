@@ -290,7 +290,7 @@ object XMLASTVisitorKira :
     }
 
     override fun visitType(type: Type) {
-        node("Type", "name=\"${type.identifier}\" isVariadic=\"${type is VariadicTypeParameter}\"")
+        node("Type", "name=\"${type.identifier}\"")
         {
             node("Constraints")
             {
