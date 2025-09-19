@@ -1,22 +1,15 @@
 module "kira:builtin/types"
 
-@global
 //pub class Any;
 //pub @magic class Void
 //pub class String
 //pub class Num
 //pub class Int8: Num
 //pub class Int16: Num
-pub class Int32: Num
+pub class Int32
 {
-    fx @cmp_gt(other: Int32): Boolean;
+    pub fx toBool(other: Int32): Boolean
 }
-pub @magic mut class Tuple<T> {
-    require pub fx size(): Int32
-
-    require pub fx @get(index: Int32): Any
-}
-
 //pub class Int64: Num
 //pub class Float32: Num
 //pub class Float64: Num

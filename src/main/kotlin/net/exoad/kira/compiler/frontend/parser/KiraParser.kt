@@ -8,11 +8,12 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDefExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.core.Intrinsic
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.source.SourceContext
-import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.utils.EnglishUtils
 import java.util.*
@@ -580,33 +581,18 @@ class KiraParser(private val context: SourceContext) {
             val identifier = parseIdentifier()
             expectThenAdvance(Token.Type.S_EQUAL)
             val expr = parseExpr()
-            if (identifier !is Identifier) {
-                Diagnostics.panic(
-                    "KiraParser::parseWithExpr",
-                    "With expressions cannot use non-identifier for origin.",
-                    context = context,
-                    location = context.astOrigins[identifier] ?: origin,
-                )
-            }
             members.add(putOrigin(WithExprMember(identifier, expr), subOrigin))
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         return putOrigin(WithExpr(members), origin)
     }
 
-    fun parseIntrinsicExpr(): IntrinsicExpr {
-        // the current implementation of intrinsic calls act more like preprocessor directives in other languages
-        // it just finds and replaces in whatever process after it uses it
-        //
-        // for a better way we could just add it as a find and replace method, but that just feels lame, but whatever.
-        if (hereIs(Token.Type.S_AT)) {
-            advancePointer()
-        }
+    fun parseIntrinsicExpr(isFunctionContext: Boolean = false): IntrinsicExpr {
         val startLoc = peek().canonicalLocation
         val identifier = peek().content
         expectThenAdvance(Token.Type.IDENTIFIER) // this is scuffed but lmao
         var parameters: List<Expr>? = null
-        if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+        if (!isFunctionContext && hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
             parameters = mutableListOf()
             expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
             while (!hereIs(Token.Type.S_CLOSE_PARENTHESIS) && !hereIs(Token.Type.S_EOF)) {
@@ -650,14 +636,6 @@ class KiraParser(private val context: SourceContext) {
             val name = parseIdentifier()
             expectThenAdvance(Token.Type.S_COLON)
             val type = parseType()
-            if (name !is Identifier) {
-                Diagnostics.panic(
-                    "KiraParser::parseFunctionDeclParameters",
-                    "Function parameters may only be named using identifiers.",
-                    context = context,
-                    location = context.astOrigins[name] ?: origin,
-                )
-            }
             parameters.add(putOrigin(FunctionDeclParameterExpr(name, type, modifiers.keys.toList()), origin))
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
@@ -668,16 +646,36 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         expectModifiers(modifier, WrappingContext.FUNCTION)
         expectThenAdvance(Token.Type.K_FX)
-        var functionName: Identifier = AnonymousIdentifier
-        if (hereIs(Token.Type.S_AT) || hereIs(Token.Type.IDENTIFIER)) {
-            functionName = parseIntrinsicExpr()
+        var functionName: Expr = AnonymousIdentifier
+        if (hereIs(Token.Type.S_AT)) {
+            functionName = parseIntrinsicExpr(isFunctionContext = true)
+        } else if (hereIs(Token.Type.IDENTIFIER)) {
+            functionName = parseIdentifier()
         }
-        val functionLiteral = parseFunctionLiteral()
+        val params = parseFunctionDeclParameters()
+        expectThenAdvance(Token.Type.S_COLON)
+        val returnType = parseType()
+        var body: List<Statement>? = null
+        if (hereIs(Token.Type.S_OPEN_BRACE)) {
+            body = parseStatementBlock()
+        }
+//        else {
+//            expectThenAdvance(Token.Type.S_SEMICOLON, onBad = {
+//                Diagnostics.panic(
+//                    "Kira::parseFunctionLiteral",
+//                    "Function stubs must end in a semi-colon! Else, specify the full function block.",
+//                    context = context,
+//                    location = here(),
+//                    selectorLength = 1
+//                )
+//            })
+//        }
+        Diagnostics.Logging.info("KiraDebug", "Got function intrinsic of ${functionName::class.java.simpleName}")
         return putOrigin(
             FunctionDecl(
                 functionName,
-                functionLiteral,
-                modifier?.keys?.toList() ?: emptyList()
+                FunctionDefExpr(returnType, params, body),
+                modifier?.keys?.toList() ?: emptyList(),
             ), origin
         )
     }
@@ -747,7 +745,12 @@ class KiraParser(private val context: SourceContext) {
 
     private fun parseFunctionCallExpr(): FunctionCallExpr {
         val origin = here()
-        val identifier = parseIdentifier()
+        var identifier by Delegates.notNull<Expr>()
+        if (hereIs(Token.Type.S_AT)) {
+            identifier = parseIntrinsicExpr()
+        } else {
+            identifier = parseIdentifier()
+        }
         val parameters = parseFunctionCallParameter()
         return putOrigin(FunctionCallExpr(identifier, parameters.second, parameters.first), location = origin)
     }
@@ -959,6 +962,7 @@ class KiraParser(private val context: SourceContext) {
             advancePointer()
             value = parseExpr()
         }
+        Diagnostics.Logging.info("LOG", "${context.file} @ $origin -> ${identifier.value}")
         return putOrigin(VariableDecl(identifier, type, value, modifier?.keys?.toList() ?: emptyList()), origin)
     }
 
@@ -1077,32 +1081,7 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(BoolLiteral(value), origin)
     }
 
-    fun parseFunctionLiteral(): FunctionLiteral {
-        val origin = here()
-        val params = parseFunctionDeclParameters()
-        expectThenAdvance(Token.Type.S_COLON)
-        val returnType = parseType()
-        var body: List<Statement>? = null
-        if (hereIs(Token.Type.S_OPEN_BRACE)) {
-            body = parseStatementBlock()
-        } else {
-            expectThenAdvance(Token.Type.S_SEMICOLON, onBad = {
-                Diagnostics.panic(
-                    "Kira::parseFunctionLiteral",
-                    "Function stubs must end in a semi-colon! Else, specify the full function block.",
-                    context = context,
-                    location = here(),
-                    selectorLength = 1
-                )
-            })
-        }
-        return putOrigin(FunctionLiteral(returnType, params, body), origin)
-    }
-
-    fun parseIdentifier(): Expr {
-        if (hereIs(Token.Type.S_AT)) {
-            return parseIntrinsicExpr()
-        }
+    fun parseIdentifier(): Identifier {
         val loc = peek().canonicalLocation
         val value = peek().content
         expectThenAdvance(Token.Type.IDENTIFIER)
@@ -1117,6 +1096,7 @@ class KiraParser(private val context: SourceContext) {
                 bound = parseType()
             }
         }
+
         val baseLocation = here()
         val baseIdentifier = parseIdentifier()
         acquireTypeBound()

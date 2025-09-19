@@ -260,7 +260,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // should be true
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral) {
+    override fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr) {
         // should be true
     }
 
@@ -343,7 +343,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
-        TODO("Not yet implemented")
+//        TODO("Not yet implemented")
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
