@@ -87,6 +87,18 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
+    fun expectTypeNotDeclaredInModule(symbolName: String, location: SourcePosition?) {
+        val moduleScope = compilationUnit.symbolTable.findScope(SemanticScope.MODULE)
+        if (moduleScope?.symbols?.containsKey(symbolName) == true) {
+            pump(
+                "'${symbolName}' was already declared in the current module scope.",
+                location = location ?: SourcePosition.UNKNOWN,
+                selectorLength = symbolName.length,
+                help = "Rename this type or remove the previous declaration. Shadowing types in the module scope is not allowed."
+            )
+        }
+    }
+
     fun expectNotDeclared(
         symbolName: String,
         location: SourcePosition?,
@@ -348,7 +360,10 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitClassDecl(classDecl: ClassDecl) {
         if (classDecl.name.identifier is Identifier) {
-            expectNotDeclared((classDecl.name.identifier as Identifier).value, context.astOrigins[classDecl])
+            expectTypeNotDeclaredInModule(
+                (classDecl.name.identifier as Identifier).value,
+                context.astOrigins[classDecl]
+            )
             compilationUnit.symbolTable.declare(
                 (classDecl.name.identifier as Identifier).value,
                 SemanticSymbol(

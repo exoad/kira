@@ -27,6 +27,10 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
         scopeStack.removeFirst()
     }
 
+    fun findScope(kind: SemanticScope): KiraScopeFrame? {
+        return scopeStack.find { it.kind == kind }
+    }
+
     fun declare(identifier: String, symbol: SemanticSymbol): Boolean {
         val current = scopeStack.first().symbols
         if (current.containsKey(identifier)) return false
