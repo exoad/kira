@@ -1,1 +1,7 @@
 module "exoad:kira/test"
+
+pub class V
+
+fx a(b: Int32): Void
+
+a(3)

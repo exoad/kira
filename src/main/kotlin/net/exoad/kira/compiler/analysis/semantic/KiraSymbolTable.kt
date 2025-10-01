@@ -4,9 +4,9 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
 
     private val scopeStack = ArrayDeque<KiraScopeFrame>()
 
-    init {
-        enter(SemanticScope.MODULE) // global scope!
-    }
+//    init {
+//        enter(SemanticScope.MODULE) // global scope!
+//    }
 
     fun enter(kind: SemanticScope) {
         scopeStack.addFirst(KiraScopeFrame(kind))
@@ -25,6 +25,10 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
             throw IllegalStateException("Cannot exit scope: no scope to exit!")
         }
         scopeStack.removeFirst()
+    }
+
+    fun findScope(kind: SemanticScope): KiraScopeFrame? {
+        return scopeStack.find { it.kind == kind }
     }
 
     fun declare(identifier: String, symbol: SemanticSymbol): Boolean {

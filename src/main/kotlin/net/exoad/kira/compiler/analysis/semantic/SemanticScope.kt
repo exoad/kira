@@ -1,14 +1,25 @@
 package net.exoad.kira.compiler.analysis.semantic
 
-import net.exoad.kira.utils.ObsoleteLanguageFeat
 
-enum class SemanticScope {
-    MODULE,
-    CLASS,
-    GLOBAL,
+sealed class SemanticScope(open val name: String) {
+    val symbols: Map<String, SemanticSymbol> = mutableMapOf()
 
-    @ObsoleteLanguageFeat
-    NAMESPACE,
-    ENUM,
-    FUNCTION,
+    data class Module(override val name: String) : SemanticScope(name)
+
+    data class Class(override val name: String) : SemanticScope(name)
+
+    data class Function(override val name: String) : SemanticScope(name)
+
+    data class Enum(override val name: String): SemanticScope(name)
 }
+
+//enum class SemanticScope {
+//    MODULE,
+//    CLASS,
+//    GLOBAL,
+//
+//    @ObsoleteLanguageFeat
+//    NAMESPACE,
+//    ENUM,
+//    FUNCTION,
+//}

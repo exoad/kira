@@ -87,6 +87,18 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
+    fun expectTypeNotDeclaredInModule(symbolName: String, location: SourcePosition?) {
+        val moduleScope = compilationUnit.symbolTable.findScope(SemanticScope.Module(context.getModuleUri()))
+        if (moduleScope?.symbols?.containsKey(symbolName) ?: true) {
+            pump(
+                "'${symbolName}' was already declared in the current module.",
+                location = location ?: SourcePosition.UNKNOWN,
+                selectorLength = symbolName.length,
+                help = "Rename this type or remove the previous declaration. Shadowing types in the module scope is not allowed."
+            )
+        }
+    }
+
     fun expectNotDeclared(
         symbolName: String,
         location: SourcePosition?,
@@ -260,7 +272,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // should be true
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral) {
+    override fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr) {
         // should be true
     }
 
@@ -343,12 +355,15 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
-        TODO("Not yet implemented")
+//        TODO("Not yet implemented")
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
         if (classDecl.name.identifier is Identifier) {
-            expectNotDeclared((classDecl.name.identifier as Identifier).value, context.astOrigins[classDecl])
+            expectTypeNotDeclaredInModule(
+                (classDecl.name.identifier as Identifier).value,
+                context.astOrigins[classDecl]
+            )
             compilationUnit.symbolTable.declare(
                 (classDecl.name.identifier as Identifier).value,
                 SemanticSymbol(
@@ -362,8 +377,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     relativelyVisible = classDecl.modifiers.contains(Modifier.PUBLIC)
                 )
             )
-            classDecl.name.accept(this)
-            compilationUnit.symbolTable.enter(SemanticScope.CLASS)
+//            classDecl.name.accept(this)
+            compilationUnit.symbolTable.enter(SemanticScope.Class((classDecl.name.identifier as Identifier).value))
             classDecl.members.forEach { it.accept(this) }
             compilationUnit.symbolTable.exit()
         }

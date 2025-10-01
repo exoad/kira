@@ -28,4 +28,15 @@ typedef Void* Any;
 #define null NULL
 #define _PRINT(format, ...) printf(format "\n", ##__VA_ARGS__)
 
+#include <string.h>
+#include <stdlib.h>
+static inline Int8* strdup(String string) 
+{
+    Int8* dup = malloc(strlen(string) + 1);    
+    if(dup != null)
+    {
+        dup = strcpy(dup, string);
+    }
+    return dup;
+}
 #endif

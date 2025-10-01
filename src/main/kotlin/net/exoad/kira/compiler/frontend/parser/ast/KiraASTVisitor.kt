@@ -6,7 +6,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.utils.ObsoleteLanguageFeat
 
 abstract class KiraASTVisitor {
     // STATEMENTS
@@ -41,13 +40,13 @@ abstract class KiraASTVisitor {
     abstract fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr)
     abstract fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr)
     abstract fun visitWithExprMember(withExprMember: WithExprMember)
+    abstract fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr)
 
     // LITERALS
     abstract fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
     abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    abstract fun visitFunctionLiteral(functionLiteral: FunctionLiteral)
     abstract fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
     abstract fun visitListLiteral(listLiteral: ListLiteral)
     abstract fun visitMapLiteral(mapLiteral: MapLiteral)

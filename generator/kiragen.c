@@ -2,6 +2,7 @@
 
 Int32 main()
 {
+    printf("Hello World!");
     KiraStringTable* strings = kiraStringTable();
     kiraFormIR("program.k", (KiraInstruction[]) {
         LOAD_INT(r1, 2),

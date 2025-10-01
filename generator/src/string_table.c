@@ -1,6 +1,4 @@
 #include "kira_ir.h"
-#include <stdlib.h>
-#include <string.h>
 
 KiraStringTable* kiraStringTable()
 {
