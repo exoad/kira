@@ -1,8 +1,8 @@
 # Kira Language Specifications
 
-Version 1.0
+Version 1.1
 
-August 30, 2025
+October 1, 2025
 
 ## Hello World
 
@@ -65,6 +65,8 @@ for i: Int32 in 1..10 {
 }
 ```
 
+> Note: These are statements and not expressions (e.g. you cannot return using a control flow structure).
+
 ## Functions
 
 Kira treats functions as first-class citizens, meaning you can use them as values and pass them around.
@@ -73,12 +75,26 @@ To return a value, Kira uses the `return` keyword. If a function has no return, 
 specify its return type as `Void` or `Nothing`.
 
 ```
-fx sumOf(a: Int32, b: Int32 = 3): Int32 {
+fx sumOf(a: Int32, b: Int32 = 3): Int32 {Inte
     return a + b
 }
 ```
 
 Function parameters can either be specified using their name or using position.
+
+## String Interpolation
+
+Using the `${}` syntax, you can embed expressions directly into strings.
+
+```
+name: Str = "John"
+age: Int32 = 34
+@trace("My name is ${name} and I am ${age} years old.")
+```
+
+> Please note that there is no `$var` syntax without the curly braces. This is to avoid ambiguity and confusion.
+> 
+> Additionally, you can escape the dollar sign by using `\$`.
 
 ## Module System
 
@@ -86,12 +102,17 @@ Kira uses a module system for you to organize your source structure. Each piece 
 starts off with a module declaration:
 
 ```
-module "author:module_name.submodule_name"
+module "author:module_name/module_name/submodule_name"
 ```
 
 -   `author` represents the organization or individual that this belongs to.
 -   `module_name` represents what project this source file falls under.
 -   `submodule_name` represents this individual source file's name
+
+> Whatever is at the end of the module declaration is what the file is named. For example, if
+> the module declaration is `module "kira:lib.types"`, then the file must be named `types.kira`.
+> 
+> Additionally, all intermediate `module_name` must be directories.
 
 ### Using a submodule
 
@@ -99,12 +120,12 @@ Often times, you would include or import submodules, not entire modules themselv
 to save on compile time and also potential bloating. To include another submodule:
 
 ```
-use "author:module_name.submodule_name"
-
-use "author:module_name" // makes all submodules available to the current context
+use "author:module_name/submodule_name"
 ```
 
 For example, to use all builtin types from Kira (e.g. `Int32`, `Str`), you need to use the submodule `kira:lib.types`.
+
+> There is no wildcard import. **You must explicitly import each submodule you want to use.**
 
 ## Classes
 
@@ -138,6 +159,13 @@ a: Vector2 = Vector2 { 3, 3 }
 b: Vector2 = Vector2 { 3, 3, toStr = fx() { return "< ${x}, ${y} >" } }
 @trace(a.dot(b))
 ```
+
+> For constructor calls, you can also use named parameters like so:
+> ```
+> b: Vector2 = Vector2 { y = 3, x = 3 }
+> ```
+> 
+> They follow the same rules as function parameters with positional and named parameters.
 
 ### Inheritance
 
@@ -215,6 +243,7 @@ There are only 2 visibility levels allowed:
 1. public - `pub`
 2. internal - implicit (i.e. no keyword used)
 
+
 ### Public Modifier
 
 The `pub` modifier specifies that anything outside can look inside. For example, a submodule which has a
@@ -233,10 +262,8 @@ An external submodule that uses this cannot see `class A`, but can see `class B`
 
 Within classes themselves, the modifier only serves as encapsulation purposes (i.e. hiding data and fields). If
 a member of a class does not have the `pub` modifier, that field can only be access through the setter during
-construction
-or within a neighboring method that can expose it (getter). Additionally, if the class is inheritable, it means that
-field
-is also private from the child and the child cannot access it.
+construction or within a neighboring method that can expose it (getter). Additionally, if the class is inheritable, it means that
+field is also private from the child and the child cannot access it.
 
 > **Why no `protected`?**
 >
@@ -248,6 +275,13 @@ is also private from the child and the child cannot access it.
 > binary system where
 > it is either the field is visible or not makes it not only easier, but gives more freedom to the programmer in
 > designing their APIs.
+
+### Internal Modifier
+
+When no modifier is used to denote visibility, it implies that the field is not visible anywhere else. Tl;dr, an internal
+visibility is mutually exclusive to public visibility. This is similar to other language's `private` keyword.
+
+When used within a class, it represents that the field is private and cannot be accessed outside of the class or from a child class.
 
 ## Null Safety
 
@@ -469,41 +503,6 @@ class Dog: Animal {
 }
 ```
 
-## Aliasing
-
-Kira supports aliasing whereby it enables the developer to replace a more complicated expression with something simpler. For example, you can 
-alias a long type signature to just a single name: `Map<String, Map<String, String>>` to `LargeDictionary`. This process is known as aliasing
-and is processed during the initial preprocessor stage. Aliases must match `^[a-zA-Z0-9_]+` and follow the format of:
-
-```
-#alias <alias-name> <expr> 
-```
-
-**Please Note: _This is not a direct language feature as aliases are inlined after the preprocessor stages and the directives themselves removed. Additionally, all this feature is, is a find and replace._**
-
-To declare an alias you declare a line using the `#alias` symbol, followed by the alias name and the expression to alias as:
-
-```
-#alias Int Int32
-
-myInt: Int = 123
-```
-
-You can also alias entire expressions:
-
-```
-#alias FOR_TWICE for i in 0..2
-
-FOR_TWICE {
-   // ...
-}
-```
-
-
-### Visibility of Aliases
-
-Aliases by themselves are only persistent in the source file being processed, they cannot be exposed to other 
-
 ## Compile-Time Intrinsics 
 
 Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed
@@ -527,3 +526,34 @@ a: Map<String, Any> = @json_decode(`
 @trace(a["hello"]) // Outputs 1 to debugger
 ```
 	
+## Operator Overloading
+
+Kira supports operator overloading to make user-defined types feel more natural. Additionally, they are also the mechanic by which the 
+base types like `Int32`, `Str`, etc. are implemented. 
+
+To overload an operator, you must define a method/class function member with the name of intrinsic that matches the operator. For example,
+to overload the addition operator `+`, you must define a method named `op_add`:
+
+```
+class Vector2 {
+    require pub mut x: Float32
+    require pub mut y: Float32
+
+    pub fx @op_add(other: Vector2): Vector2 {
+        return Vector2 { x + other.x, y + other.y }
+    }
+}
+```
+
+You can also look under the hood of how this works, as the following two pieces of code are equivalent:
+
+```
+a: Int32 = 1
+b: Int32 = 2
+c: Int32 = a + b // This is syntactic sugar for:
+c: Int32 = a.@op_add(b)
+```
+
+> Overloaded operators can return anything and take anything just like a function (recall that a marker intrinsic is just a placeholder for a 
+> special symbol). This makes them powerful yet confusing if not used properly and sparingly.
+
