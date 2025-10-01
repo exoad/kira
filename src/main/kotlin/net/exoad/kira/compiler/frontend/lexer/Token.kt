@@ -70,6 +70,7 @@ sealed class Token(
         K_ENUM("'enum'"),
         K_NAMESPACE("'object'"),
         K_MODULE("'module'"),
+//        K_GLOBAL("'global'"),
         K_TRAIT("'trait'"),
         K_THIS("'this'"),
         K_MODIFIER_REQUIRE("'require'"),

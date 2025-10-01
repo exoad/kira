@@ -659,17 +659,6 @@ class KiraParser(private val context: SourceContext) {
         if (hereIs(Token.Type.S_OPEN_BRACE)) {
             body = parseStatementBlock()
         }
-//        else {
-//            expectThenAdvance(Token.Type.S_SEMICOLON, onBad = {
-//                Diagnostics.panic(
-//                    "Kira::parseFunctionLiteral",
-//                    "Function stubs must end in a semi-colon! Else, specify the full function block.",
-//                    context = context,
-//                    location = here(),
-//                    selectorLength = 1
-//                )
-//            })
-//        }
         Diagnostics.Logging.info("KiraDebug", "Got function intrinsic of ${functionName::class.java.simpleName}")
         return putOrigin(
             FunctionDecl(
@@ -704,14 +693,6 @@ class KiraParser(private val context: SourceContext) {
                         context = context,
                         location = startToken.canonicalLocation,
                         selectorLength = startToken.content.length
-                    )
-                }
-                if (identifier !is Identifier) {
-                    Diagnostics.panic(
-                        "KiraParser::parseFunctionCallParameter",
-                        "Named parameters must ONLY use identifiers. It is guaranteed that the parameter will also be an identifier",
-                        context = context,
-                        location = context.astOrigins[identifier] ?: origin,
                     )
                 }
                 named.add(putOrigin(FunctionCallNamedParameterExpr(identifier, expr), origin))
