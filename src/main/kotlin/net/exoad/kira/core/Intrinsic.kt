@@ -37,6 +37,7 @@ sealed class IntrinsicCapability {
 
 enum class Intrinsic(val rep: String, vararg val capabilities: IntrinsicCapability) {
     TRACE("trace", Functor),
+    DUMMY("__dummy__", Functor),
     MAGIC("magic", Marker),
     GLOBAL("global", Marker),
     BEGIN_DEPRECATED("begin_deprecated", BlockBegin("end_deprecated"), Marker),

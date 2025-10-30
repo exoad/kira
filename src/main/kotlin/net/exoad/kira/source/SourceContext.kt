@@ -93,9 +93,10 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         return buildString {
             appendLine(
                 "${
-                    when (Public.flags["useDiagnosticsUnicode"]!!) {
-                        true -> "⮞"
-                        else -> "@"
+                    if (Public.flags["useDiagnosticsUnicode"]!!) {
+                        "⮞"
+                    } else {
+                        "@"
                     }
                 } [${file}] : $sourcePosition"
             )

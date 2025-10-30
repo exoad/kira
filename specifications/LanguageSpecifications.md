@@ -29,6 +29,8 @@ age: Int32 = 34
 isOk: Bool = true
 ```
 
+> **Note:** Please note that identifiers in Kira do NOT allow underscores to be used. It can only contain `[A-Za-z0-9]` as valid symbols
+
 ## Control Flow Structures
 
 These structures help determine which pieces of your code will run. Kira
@@ -93,7 +95,7 @@ age: Int32 = 34
 ```
 
 > Please note that there is no `$var` syntax without the curly braces. This is to avoid ambiguity and confusion.
-> 
+>
 > Additionally, you can escape the dollar sign by using `\$`.
 
 ## Module System
@@ -111,7 +113,7 @@ module "author:module_name/module_name/submodule_name"
 
 > Whatever is at the end of the module declaration is what the file is named. For example, if
 > the module declaration is `module "kira:lib.types"`, then the file must be named `types.kira`.
-> 
+>
 > Additionally, all intermediate `module_name` must be directories.
 
 ### Using a submodule
@@ -164,7 +166,7 @@ b: Vector2 = Vector2 { 3, 3, toStr = fx() { return "< ${x}, ${y} >" } }
 > ```
 > b: Vector2 = Vector2 { y = 3, x = 3 }
 > ```
-> 
+>
 > They follow the same rules as function parameters with positional and named parameters.
 
 ### Inheritance
@@ -189,7 +191,7 @@ All members are implemented, with the only exception being property fields.
 pub class Student {
 	require pub name: String
 	require pub mut gpa: Float32
-	
+
 	pub fx passing(): Boolean {
 		return gpa > 2.0
 	}
@@ -203,9 +205,9 @@ Semi Abstract classes are created where you add unimplemented member function (m
 ```
 pub class Human {
 	pub scientificName: String= "Homo Sapien"
-	
+
 	pub fx speak(): Void
-	
+
 	pub fx walk(): Void {
 		@trace("Walking...")
 	}
@@ -220,11 +222,11 @@ This pattern is the most redundant and should be avoided. Instead, prefer to use
 ```
 pub class Animalia {
 	pub fx reproduce(): Animalia
-	
+
 	pub fx die(): Void
-	
+
 	pub fx eat(): Void
-	
+
 	pub fx isAlive(): Bool
 }
 ```
@@ -467,7 +469,7 @@ everything is an object.
 
 ## Traits / Compile Time "Mixins"
 
-Kira does not support multi-inheritance as previously seen; however, in order to suffice for allowing sharing common components across classes, **traits** are a good alternative. 
+Kira does not support multi-inheritance as previously seen; however, in order to suffice for allowing sharing common components across classes, **traits** are a good alternative.
 
 Traits allow injecting a class with functions/methods at compile time directly. Additionally, it can also serve as a way to inject abstract methods or no-implementation functions that the target class must take care of.
 
@@ -476,7 +478,7 @@ However, traits differ from Mixins and Interfaces in that they are an entirely c
 Within Kira, you are only allowed to define functions within traits, and each function also implicitly points to the current instance like in classes (i.e. there is no `self` or `this` or `::` operands to access the current scope).
 
 > **Mutability Note:** All functions in a trait are mutable or overrideable, specifying the `mut` modifier will have no effect.
-> 
+>
 > **Visibility Note:** You are able to enforce visibility modifiers on the trait itself and also functions. This is done by using the normal modifiers. However, when a function is marked with or without a modifier, it is not able to be changed by the implementing type.
 >
 > **Implementer Features:** The implementer class is allowed to use specific functions in order ot refer
@@ -486,7 +488,7 @@ Implementing a trait:
 ```
 trait Animal {
 	fx makeNoise(): Void
-	
+
 	pub fx canConsume(items: Arr<Str>): Bool {
 		return items.any([ "water", "air" ])
 	}
@@ -496,14 +498,14 @@ class Dog: Animal {
 	fx makeNoise(): Void {
 		@trace("Woof")
 	}
-	
+
 	pub fx canConsume(items: Arr<Str>): Bool {
-		return 
+		return
 	}
 }
 ```
 
-## Compile-Time Intrinsics 
+## Compile-Time Intrinsics
 
 Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed
 to simplify expressions, enable metaprogramming, and support DSL construction.
@@ -525,11 +527,11 @@ a: Map<String, Any> = @json_decode(`
 
 @trace(a["hello"]) // Outputs 1 to debugger
 ```
-	
+
 ## Operator Overloading
 
-Kira supports operator overloading to make user-defined types feel more natural. Additionally, they are also the mechanic by which the 
-base types like `Int32`, `Str`, etc. are implemented. 
+Kira supports operator overloading to make user-defined types feel more natural. Additionally, they are also the mechanic by which the
+base types like `Int32`, `Str`, etc. are implemented.
 
 To overload an operator, you must define a method/class function member with the name of intrinsic that matches the operator. For example,
 to overload the addition operator `+`, you must define a method named `op_add`:
@@ -554,6 +556,6 @@ c: Int32 = a + b // This is syntactic sugar for:
 c: Int32 = a.@op_add(b)
 ```
 
-> Overloaded operators can return anything and take anything just like a function (recall that a marker intrinsic is just a placeholder for a 
+> Overloaded operators can return anything and take anything just like a function (recall that a marker intrinsic is just a placeholder for a
 > special symbol). This makes them powerful yet confusing if not used properly and sparingly.
 

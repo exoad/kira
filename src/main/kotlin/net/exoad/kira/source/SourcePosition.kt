@@ -1,5 +1,8 @@
 package net.exoad.kira.source
 
+/**
+ * Represents position within a source file
+ */
 data class SourcePosition(val lineNumber: Int, val column: Int) : Comparable<SourcePosition> {
     companion object {
         val UNKNOWN = SourcePosition(-1, -1)

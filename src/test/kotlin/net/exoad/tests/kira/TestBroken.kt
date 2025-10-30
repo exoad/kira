@@ -11,8 +11,8 @@ class TestBroken {
             KiraImmediateCompiler.formAST(
                 """
                 module "test:mod/submod"
-                
-                class A<[T]> 
+
+                class A<[T]>
             """.trimIndent()
             )
         }
@@ -20,11 +20,39 @@ class TestBroken {
             KiraImmediateCompiler.formAST(
                 """
                 module "test:mod/submod"
-                
-                class A<[T: A]> 
+
+                class A<[T: A]>
                 """.trimIndent()
             )
         }
     }
 
+
+    @Test
+    fun testUnderscoresInNormalIdentifiersNotAllowed() {
+        assertThrows<Throwable> {
+            KiraImmediateCompiler.formAST(
+                """
+                module "test:mod/submod"
+
+                class A_T {}
+
+                a_b: Int32 = 123
+            """.trimIndent()
+            )
+        }
+    }
+
+    @Test
+    fun testUnderscoresAllowedInIntrinsincs() {
+        assertThrows<Throwable> {
+            KiraImmediateCompiler.formAST(
+                """
+                module "test:mod/submod"
+                
+                @__dummy__("Hello World")
+                """.trimIndent()
+            )
+        }
+    }
 }
