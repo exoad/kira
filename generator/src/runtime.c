@@ -7,56 +7,56 @@
 Void kiraProgramExecute(KiraProgram* program)
 {
     KiraVM* vm = kiraVM(program);
-    while(vm->programCount < program->header.instructionCount)
+    while(vm->pc < program->header.instructionCount)
     {
-        KiraInstruction* instruction = &program->instructions[vm->programCount];
+        KiraInstruction* instruction = &program->instructions[vm->pc];
         switch(instruction->opcode)
         {
             case OP_IADD:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
-                kiraVMRegisterSetInt(vm->registers, instruction->dest, op1 + op2);
-                vm->programCount++;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                Word op2 = kiraVMRegisterGetWord(vm->registers, instruction->operand2);
+                kiraVMRegisterSetWord(vm->registers, instruction->dest, op1 + op2);
+                vm->pc++;
                 break;
             }
             case OP_ISUB:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
-                kiraVMRegisterSetInt(vm->registers, instruction->dest, op1 - op2);
-                vm->programCount++;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                Word op2 = kiraVMRegisterGetWord(vm->registers, instruction->operand2);
+                kiraVMRegisterSetWord(vm->registers, instruction->dest, op1 - op2);
+                vm->pc++;
                 break;
             }
             case OP_IMUL:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
-                kiraVMRegisterSetInt(vm->registers, instruction->dest, op1 * op2);
-                vm->programCount++;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                Word op2 = kiraVMRegisterGetWord(vm->registers, instruction->operand2);
+                kiraVMRegisterSetWord(vm->registers, instruction->dest, op1 * op2);
+                vm->pc++;
                 break;
             }
             case OP_IDIV:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
-                kiraVMRegisterSetInt(vm->registers, instruction->dest, op1 / op2);
-                vm->programCount++;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                Word op2 = kiraVMRegisterGetWord(vm->registers, instruction->operand2);
+                kiraVMRegisterSetWord(vm->registers, instruction->dest, op1 / op2);
+                vm->pc++;
                 break;
             }
             case OP_IMOD:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
-                kiraVMRegisterSetInt(vm->registers, instruction->dest, op1 % op2);
-                vm->programCount++;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                Word op2 = kiraVMRegisterGetWord(vm->registers, instruction->operand2);
+                kiraVMRegisterSetWord(vm->registers, instruction->dest, op1 % op2);
+                vm->pc++;
                 break;
             }
             case OP_INEG:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                kiraVMRegisterSetInt(vm->registers, instruction->dest, -op1);
-                vm->programCount++;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                kiraVMRegisterSetWord(vm->registers, instruction->dest, -op1);
+                vm->pc++;
                 break;
             }
             case OP_FADD:
@@ -64,7 +64,7 @@ Void kiraProgramExecute(KiraProgram* program)
                 Float32 op1 = kiraVMRegisterGetFloat(vm->registers, instruction->operand1);
                 Float32 op2 = kiraVMRegisterGetFloat(vm->registers, instruction->operand2);
                 kiraVMRegisterSetFloat(vm->registers, instruction->dest, op1 + op2);
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_FSUB:
@@ -72,7 +72,7 @@ Void kiraProgramExecute(KiraProgram* program)
                 Float32 op1 = kiraVMRegisterGetFloat(vm->registers, instruction->operand1);
                 Float32 op2 = kiraVMRegisterGetFloat(vm->registers, instruction->operand2);
                 kiraVMRegisterSetFloat(vm->registers, instruction->dest, op1 - op2);
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_FMUL:
@@ -80,7 +80,7 @@ Void kiraProgramExecute(KiraProgram* program)
                 Float32 op1 = kiraVMRegisterGetFloat(vm->registers, instruction->operand1);
                 Float32 op2 = kiraVMRegisterGetFloat(vm->registers, instruction->operand2);
                 kiraVMRegisterSetFloat(vm->registers, instruction->dest, op1 * op2);
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_FDIV:
@@ -88,48 +88,48 @@ Void kiraProgramExecute(KiraProgram* program)
                 Float32 op1 = kiraVMRegisterGetFloat(vm->registers, instruction->operand1);
                 Float32 op2 = kiraVMRegisterGetFloat(vm->registers, instruction->operand2);
                 kiraVMRegisterSetFloat(vm->registers, instruction->dest, op1 / op2);
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_FNEG:
             {
                 Float32 op1 = kiraVMRegisterGetFloat(vm->registers, instruction->operand1);
                 kiraVMRegisterSetFloat(vm->registers, instruction->dest, -op1);
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_ICMP_LT:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
-                Int32 result = op1 - op2;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                Word op2 = kiraVMRegisterGetWord(vm->registers, instruction->operand2);
+                Word result = op1 - op2;
                 vm->flagBits.zero = (result == 0) ? 1 : 0;
                 vm->flagBits.negative = (result < 0) ? 1 : 0;
                 vm->flagBits.carry = ((UInt32) op1 < (UInt32) op2) ? 1 : 0;
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_ICMP_GT:
             {
-                Int32 op1 = kiraVMRegisterGetInt(vm->registers, instruction->operand1);
-                Int32 op2 = kiraVMRegisterGetInt(vm->registers, instruction->operand2);
-                Int32 result = op1 - op2;
+                Word op1 = kiraVMRegisterGetWord(vm->registers, instruction->operand1);
+                Word op2 = kiraVMRegisterGetWord(vm->registers, instruction->operand2);
+                Word result = op1 - op2;
                 vm->flagBits.zero = (result == 0) ? 1 : 0;
                 vm->flagBits.negative = (result < 0) ? 1 : 0;
                 vm->flagBits.carry = ((UInt32) op1 > (UInt32) op2) ? 1 : 0;
                 vm->flagBits.overflow = ((op1 ^ result) & (op2 ^ result)) < 0 ? 1 : 0;
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_JMP_ZERO:
             {
                 if(vm->flagBits.zero)
                 {
-                    vm->programCount = instruction->immediate;
+                    vm->pc = instruction->immediate;
                 }
                 else
                 {
-                    vm->programCount++;
+                    vm->pc++;
                 }
                 break;
             }
@@ -137,24 +137,30 @@ Void kiraProgramExecute(KiraProgram* program)
             {
                 if(vm->flagBits.negative)
                 {
-                    vm->programCount = instruction->immediate;
+                    vm->pc = instruction->immediate;
                 }
                 else
                 {
-                    vm->programCount++;
+                    vm->pc++;
                 }
                 break;
             }
-            case OP_LOAD_INT:
+            case OP_LOAD_BYTE:
             {
-                kiraVMRegisterSetInt(vm->registers, instruction->dest, instruction->immediate);
-                vm->programCount++;
+                kiraVMRegisterSetByte(vm->registers, instruction->dest, instruction->immediate);
+                vm->pc++;
+                break;
+            }
+            case OP_LOAD_WORD:
+            {
+                kiraVMRegisterSetWord(vm->registers, instruction->dest, instruction->immediate);
+                vm->pc++;
                 break;
             }
             case OP_LOAD_FLOAT:
             {
                 kiraVMRegisterSetFloat(vm->registers, instruction->dest, instruction->immediate);
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_MOVE:
@@ -163,17 +169,17 @@ Void kiraProgramExecute(KiraProgram* program)
                 KiraVMRegister* dest = &vm->registers->registers[instruction->dest];
                 dest->type = src->type;
                 dest->value = src->value;
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_FUNC_DEF:
             {
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_FUNC_END:
             {
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_CALL:
@@ -182,14 +188,14 @@ Void kiraProgramExecute(KiraProgram* program)
                 KiraFunction* func = kiraFunctionTableFind(vm->functionTable, funcName);
                 if(func && vm->callStackTop < vm->callStackSize - 1)
                 {
-                    vm->callStack[vm->callStackTop++] = vm->programCount + 1;
+                    vm->callStack[vm->callStackTop++] = vm->pc + 1;
                     vm->callStack[vm->callStackTop++] = instruction->dest;
-                    vm->programCount = func->startAddress + 1;
+                    vm->pc = func->startAddress + 1;
                 }
                 else
                 {
                     _PRINT("ERROR: Function '%s' not found or call stack overflowed\n", funcName ? funcName : "<null>");
-                    vm->programCount++;
+                    vm->pc++;
                 }
                 break;
             }
@@ -204,11 +210,11 @@ Void kiraProgramExecute(KiraProgram* program)
                         KiraVMRegister* retVal = &vm->registers->registers[instruction->operand1];
                         vm->registers->registers[returnReg] = *retVal;
                     }
-                    vm->programCount = returnAddr;
+                    vm->pc = returnAddr;
                 }
                 else
                 {
-                    vm->programCount = program->header.instructionCount;
+                    vm->pc = program->header.instructionCount;
                 }
                 break;
             }
@@ -222,7 +228,7 @@ Void kiraProgramExecute(KiraProgram* program)
                     KiraVMRegister* dest = &vm->registers->registers[instruction->dest];
                     *dest = *src;
                 }
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_ARG:
@@ -234,24 +240,24 @@ Void kiraProgramExecute(KiraProgram* program)
                     KiraVMRegister* dest = &vm->registers->registers[argReg];
                     *dest = *src;
                 }
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             case OP_JUMP:
             {
-                if(instruction->immediate < program->header.instructionCount)
+                if(instruction->immediate < (Word) program->header.instructionCount)
                 {
-                    vm->programCount = instruction->immediate;
+                    vm->pc = instruction->immediate;
                 }
                 else
                 {
-                    vm->programCount++;
+                    vm->pc++;
                 }
                 break;
             }
             case OP_HALT:
             {
-                vm->programCount = vm->program->header.instructionCount;
+                vm->pc = vm->program->header.instructionCount;
                 break;
             }
             case SYSOUT:
@@ -259,26 +265,39 @@ Void kiraProgramExecute(KiraProgram* program)
                 KiraVMRegister* reg = &vm->registers->registers[instruction->operand1];
                 switch (reg->type)
                 {
-                    case KIRA_REGISTER_TYPE_INT:
-                        _PRINT("%d", reg->value.intValue);
+                    case KIRA_REGISTER_TYPE_BYTE:
+                    {
+                        _PRINT("%c", reg->value.byteValue);
                         break;
+                    }
+                    case KIRA_REGISTER_TYPE_WORD:
+                    {
+                        _PRINT("%d", reg->value.wordValue);
+                        break;
+                    }
                     case KIRA_REGISTER_TYPE_FLOAT:
+                    {
                         _PRINT("%.6f", reg->value.floatValue);
                         break;
+                    }
                     case KIRA_REGISTER_TYPE_UNSET:
-                        _PRINT("<unset>");
+                    {
+                        _PRINT("<unset-type>#SYS_OUT@%u", vm->pc);
                         break;
+                    }
                     default:
-                        _PRINT("<unknown-type>");
+                    {
+                        _PRINT("<unknown-type>#SYS_OUT@%u", vm->pc);
                         break;
+                    }
                 }
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
             default:
             {
                 _PRINT("UNKNOWN_OPCODE %d\n", instruction->opcode);
-                vm->programCount++;
+                vm->pc++;
                 break;
             }
         }
@@ -290,7 +309,7 @@ KiraVM* kiraVM(KiraProgram* program)
     KiraVM* vm = (KiraVM*) malloc(sizeof(KiraVM));
     vm->registers = kiraVMRegisterFile();
     vm->program = program;
-    vm->programCount = 0;
+    vm->pc = 0;
     vm->functionTable = kiraFunctionTable();
     if(vm->functionTable)
     {
@@ -316,10 +335,10 @@ Void freeKiraVM(KiraVM* vm)
 KiraVMRegisterFile* kiraVMRegisterFile()
 {
     KiraVMRegisterFile* registerFile = (KiraVMRegisterFile*) malloc(sizeof(KiraVMRegisterFile));
-    for(Int32 i = 0; i < KIRA_VM_MAX_REGISTERS; i++)
+    for(Word i = 0; i < KIRA_VM_MAX_REGISTERS; i++)
     {
         registerFile->registers[i].type = KIRA_REGISTER_TYPE_UNSET;
-        registerFile->registers[i].value.intValue = 0;
+        registerFile->registers[i].value.wordValue = 0;
     }
     return registerFile;
 }

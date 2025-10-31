@@ -20,8 +20,9 @@ typedef enum
     OP_FMUL,
     OP_FDIV,
     OP_FNEG,
-    OP_LOAD_INT,
+    OP_LOAD_WORD,
     OP_LOAD_FLOAT,
+    OP_LOAD_BYTE,
     OP_MOVE,
     OP_FUNC_DEF,
     OP_FUNC_END,
@@ -39,18 +40,6 @@ typedef enum
     SYSOUT,
 } KiraOpCode;
 
-#define LOAD_FLOAT(dest, value) (KiraInstruction) { OP_LOAD_FLOAT, dest, 0, 0, value }
-#define LOAD_INT(dest, value) (KiraInstruction) { OP_LOAD_INT, dest, 0, 0, value }
-#define IADD(dest, src1, src2) (KiraInstruction) { OP_IADD, dest, src1, src2, 0 }
-#define CALL(returnRegister, nameOffset) (KiraInstruction) { OP_CALL, returnRegister, 0, 0, nameOffset }
-#define RETURN(src) (KiraInstruction) { OP_RETURN, 0, src, 0, 0 }
-#define JUMP(address) (KiraInstruction) { OP_JUMP, 0, 0, 0, address }
-#define SYSOUT(src) (KiraInstruction) { SYSOUT, 0, src, 0, 0 }
-#define HALT() (KiraInstruction) { OP_HALT, 0, 0, 0, 0 }
-#define ICMP_LT(src1, src2) (KiraInstruction) { OP_ICMP_LT, 0, src1, src2, 0 }
-#define ICMP_GT(src1, src2) (KiraInstruction) { OP_ICMP_GT, 0, src1, src2, 0 }
-#define JMP_ZERO(location) (KiraInstruction) { OP_JMP_ZERO, 0, 0, 0, location }
-#define JMP_LT(location) (KiraInstruction) { OP_JMP_LT, 0, 0, 0, location }
 
 // --- struct: KiraInstruction
 
@@ -67,7 +56,7 @@ typedef struct
 
 typedef struct
 {
-    Int8 magic[4]; // "kira"
+    Byte magic[4]; // "kira"
     UInt16 version;
     UInt16 flags;
     UInt32 stringCount;
@@ -79,7 +68,7 @@ typedef struct
 
 typedef struct
 {
-    Int8** strings;
+    Byte** strings;
     UInt32 count;
     UInt32 capacity;
     UInt32 totalSize;

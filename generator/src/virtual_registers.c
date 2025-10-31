@@ -2,20 +2,33 @@
 #include "kira_diagnostics.h"
 
 String kiraVMRegisterTypeNames[] = {
-    "KIRA_REGISTER_TYPE_INT",
+    "KIRA_REGISTER_TYPE_BYTE"
+    "KIRA_REGISTER_TYPE_WORD",
+    "KIRA_REGISTER_TYPE_DWORD"
     "KIRA_REGISTER_TYPE_FLOAT",
     "KIRA_REGISTER_TYPE_UNSET"
 };
 
-Void kiraVMRegisterSetInt(KiraVMRegisterFile* regFile, KiraAddress reg, Int32 value)
+Void kiraVMRegisterSetWord(KiraVMRegisterFile* regFile, KiraAddress reg, Word value)
 {
     _CHECK(regFile != null, "Received a null pointer to a register file.");
     if(reg >= KIRA_VM_MAX_REGISTERS)
     {
         return;
     }
-    regFile->registers[reg].type = KIRA_REGISTER_TYPE_INT;
-    regFile->registers[reg].value.intValue = value;
+    regFile->registers[reg].type = KIRA_REGISTER_TYPE_WORD;
+    regFile->registers[reg].value.wordValue = value;
+}
+
+Void kiraVMRegisterSetByte(KiraVMRegisterFile* regFile, KiraAddress reg, Byte value)
+{
+    _CHECK(regFile != null, "Received a null pointer to a register file.");
+    if(reg >= KIRA_VM_MAX_REGISTERS)
+    {
+        return;
+    }
+    regFile->registers[reg].type = KIRA_REGISTER_TYPE_BYTE;
+    regFile->registers[reg].value.byteValue = value;
 }
 
 Void kiraVMRegisterSetFloat(KiraVMRegisterFile* regFile, KiraAddress reg, Float32 value)
@@ -46,10 +59,16 @@ Void checkRegister(KiraVMRegisterFile* regFile, KiraAddress reg, KiraVMRegisterT
     // }
 }
 
-Int32 kiraVMRegisterGetInt(KiraVMRegisterFile* regFile, KiraAddress reg)
+Byte kiraVMRegisterGetByte(KiraVMRegisterFile* regFile, KiraAddress reg)
 {
-    checkRegister(regFile, reg, KIRA_REGISTER_TYPE_INT);
-    return regFile->registers[reg].value.intValue;
+    checkRegister(regFile, reg, KIRA_REGISTER_TYPE_BYTE);
+    return regFile->registers[reg].value.byteValue;
+}
+
+Word kiraVMRegisterGetWord(KiraVMRegisterFile* regFile, KiraAddress reg)
+{
+    checkRegister(regFile, reg, KIRA_REGISTER_TYPE_WORD);
+    return regFile->registers[reg].value.wordValue;
 }
 
 Float32 kiraVMRegisterGetFloat(KiraVMRegisterFile* regFile, KiraAddress reg)
