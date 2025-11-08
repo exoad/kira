@@ -1,8 +1,11 @@
-# Kira
-
-![Kira logo](./public/drawing.png)
-
+<h1 align="center">
+<img src="./public/drawing.png" width=64/><br/>Kira
+</h1>
+<p align="center">
+<strong>
 A modern object-oriented programming language focused on simplicity & practicality.
+</strong>
+</p>
 
 > [!NOTE]
 > This project is currently under active development. Documentation may be incomplete.
