@@ -12,7 +12,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.Intrinsic
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.source.SourceContext
-import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.utils.EnglishUtils
 import java.util.*

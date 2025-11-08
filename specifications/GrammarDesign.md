@@ -58,7 +58,7 @@ Additionally, most builtin types will have syntactic sugar built-in to facilitat
 
 **String**
 
-1. `String` - iterable string
+1. `Str` - iterable string
 
 **Aggregate**
 
