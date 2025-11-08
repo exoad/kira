@@ -1,5 +1,5 @@
 <h1 align="center">
-<img src="./public/drawing.png" width=64/><br/>Kira
+<img src="./public/display_logo.png" width=96/><br/>Kira
 </h1>
 <p align="center">
 <strong>
