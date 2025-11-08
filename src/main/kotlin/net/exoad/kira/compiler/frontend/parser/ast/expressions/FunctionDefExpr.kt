@@ -1,0 +1,24 @@
+package net.exoad.kira.compiler.frontend.parser.ast.expressions
+
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
+
+open class FunctionDefExpr(
+    // so this is already anonymous by itself ?? in kira parser a raw function literal can be passed anonymously
+    open val returnTypeSpecifier: Type,
+    open val parameters: List<FunctionDeclParameterExpr>,
+    open val body: List<Statement>?, // if this is null, then this is just a "noimpl" function
+) : Expr {
+    override fun accept(visitor: KiraASTVisitor) {
+        visitor.visitFunctionDefExpr(this)
+    }
+
+    fun isStub(): Boolean {
+        return body == null
+    }
+
+    override fun toString(): String {
+        return "LFunction{ $returnTypeSpecifier -> $parameters -> $body }"
+    }
+}

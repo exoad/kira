@@ -1,5 +1,8 @@
 package net.exoad.kira.source
 
+/**
+ * Represents not just a position, but also the containing source file
+ */
 open class SourceLocation(val lineNumber: Int, val column: Int, val srcFile: String) {
     companion object {
         fun bakedIn(): SourceLocation {

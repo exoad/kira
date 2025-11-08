@@ -9,7 +9,8 @@
 
 typedef enum
 {
-    KIRA_REGISTER_TYPE_INT,
+    KIRA_REGISTER_TYPE_BYTE,
+    KIRA_REGISTER_TYPE_WORD,
     KIRA_REGISTER_TYPE_FLOAT,
     KIRA_REGISTER_TYPE_UNSET
 } KiraVMRegisterType;
@@ -23,7 +24,8 @@ typedef struct
     KiraVMRegisterType type;
     union
     {
-        Int32 intValue;
+        Int32 wordValue;
+        Int8 byteValue;
         Float32 floatValue;
     } value;
 } KiraVMRegister;
@@ -56,11 +58,15 @@ KiraVMRegisterFile* kiraVMRegisterFile();
 
 Void freeKiraVMRegisterFile(KiraVMRegisterFile* registerFile);
 
-Void kiraVMRegisterSetInt(KiraVMRegisterFile* regFile, KiraAddress reg, Int32 value);
+Void kiraVMRegisterSetWord(KiraVMRegisterFile* regFile, KiraAddress reg, Word value);
 
 Void kiraVMRegisterSetFloat(KiraVMRegisterFile* regFile, KiraAddress reg, Float32 value);
 
-Int32 kiraVMRegisterGetInt(KiraVMRegisterFile* regFile, KiraAddress reg);
+Void kiraVMRegisterSetByte(KiraVMRegisterFile* regFile, KiraAddress reg, Byte value);
+
+Byte kiraVMRegisterGetByte(KiraVMRegisterFile* regFile, KiraAddress reg);
+
+Word kiraVMRegisterGetWord(KiraVMRegisterFile* regFile, KiraAddress reg);
 
 Float32 kiraVMRegisterGetFloat(KiraVMRegisterFile* regFile, KiraAddress reg);
 
@@ -74,7 +80,7 @@ typedef struct
 {
     KiraVMRegisterFile* registers;
     KiraProgram* program;
-    UInt32 programCount;
+    UInt32 pc;
     KiraFunctionTable* functionTable;
     UInt32* callStack;
     UInt32 callStackTop;

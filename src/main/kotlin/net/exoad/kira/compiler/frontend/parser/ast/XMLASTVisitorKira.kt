@@ -6,7 +6,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.Intrinsic
-import net.exoad.kira.utils.ObsoleteLanguageFeat
 import java.text.SimpleDateFormat
 
 /**
@@ -233,20 +232,20 @@ object XMLASTVisitorKira :
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
-    override fun visitFunctionLiteral(functionLiteral: FunctionLiteral) {
+    override fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr) {
         node("LFunc")
         {
-            functionLiteral.returnTypeSpecifier.accept(this)
+            functionDefExpr.returnTypeSpecifier.accept(this)
             node("Parameters")
             {
-                functionLiteral.parameters.forEach { it.accept(this) }
+                functionDefExpr.parameters.forEach { it.accept(this) }
             }
             // todo: this is a bandage situation where function type notation is actually not supported. it makes parsing stubs as types much harder
             // todo: either come up with a complete new system for function type or reuse the already existing one for function literal declarations
-            if (functionLiteral.body != null) {
+            if (functionDefExpr.body != null) {
                 node("Body")
                 {
-                    functionLiteral.body!!.forEach { it.accept(this) }
+                    functionDefExpr.body!!.forEach { it.accept(this) }
                 }
             }
         }
@@ -290,7 +289,7 @@ object XMLASTVisitorKira :
     }
 
     override fun visitType(type: Type) {
-        node("Type", "name=\"${type.identifier}\" isVariadic=\"${type is VariadicTypeParameter}\"")
+        node("Type", "name=\"${type.identifier}\"")
         {
             node("Constraints")
             {
@@ -348,7 +347,7 @@ object XMLASTVisitorKira :
         )
         {
             functionDecl.name.accept(this)
-            functionDecl.value.accept(this)
+            functionDecl.def.accept(this)
         }
     }
 

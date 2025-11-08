@@ -137,13 +137,15 @@ class KiraLexer(private val context: SourceContext) {
     fun lexIdentifier(): Token {
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
-        while (peek() != Symbols.NULL.rep && (peek().isLetterOrDigit() || peek() == Symbols.UNDERSCORE.rep)) {
+        while (peek() != Symbols.NULL.rep && peek().isLetterOrDigit() && (isInIntrinsic && peek() == Symbols.UNDERSCORE.rep || peek() != Symbols.UNDERSCORE.rep)) {
             advancePointer()
         }
         return Token.Raw(Token.Type.IDENTIFIER, context.content.substring(start, pointer), start, startLoc)
     }
 
     private val pendingClosingAngleBrackets: ArrayDeque<Token> = ArrayDeque()
+
+    private var isInIntrinsic = false
 
     fun nextToken(): Token {
         if (pendingClosingAngleBrackets.isNotEmpty()) {
@@ -173,8 +175,7 @@ class KiraLexer(private val context: SourceContext) {
             }
 
             val startLoc = SourcePosition(lineNumber, column)
-            if (char.isLetter() || char == Symbols.UNDERSCORE.rep) // identifiers and keywords usually have the same stuffs
-            {
+            if (char.isLetter() || (isInIntrinsic && char == Symbols.UNDERSCORE.rep)) {  // identifiers and keywords usually have the same stuffs
                 val identifier = lexIdentifier()
                 val keywordTokenType = Keywords.all[identifier.content]
                 return when {
@@ -197,6 +198,19 @@ class KiraLexer(private val context: SourceContext) {
                 return lexStringLiteral()
             }
             advancePointer()
+            if (char == Symbols.AT.rep) {
+                advancePointer()
+                if (localPeek(1).isLetter()) {
+                    isInIntrinsic = true
+                } else {
+                    Diagnostics.panic(
+                        "KiraLexer::nextToken",
+                        "Expected identifier after '@' for intrinsic marking.",
+                        location = startLoc,
+                        context = context
+                    )
+                }
+            }
             // i want to say this when statement looks great, but like man covering conditional, is just pure hell to my eyes to look at.
             //
             // but aye it is straightforward. there is no real need to modularize it further
@@ -210,12 +224,7 @@ class KiraLexer(private val context: SourceContext) {
             // the last 4 '>' with a naive lexer would be easily mismarked as just either bitwise ushr or just 2 shr or 4 grt. its just a pain
             // sometimes to cover and coalesce these lexical tokens together (I JUST WISH WE HAD MORE KEYS TO WORK WITH, no i dont lol)
             return when (char) {
-                Symbols.AT.rep -> Token.Symbol(
-                    Token.Type.S_AT,
-                    Symbols.AT,
-                    start,
-                    startLoc
-                )
+                // we only allow intrinsics to start with this character, so we parse regularly
 
                 Symbols.OPEN_ANGLE.rep ->
                     when (localPeek(1)) {
@@ -265,68 +274,7 @@ class KiraLexer(private val context: SourceContext) {
                     start,
                     startLoc
                 )
-// this following code piece was my first naive piece of trying to decipher between generics and regular operators that use the close angle brackets
-                //
-                // the current approach now just ignores this approach and makes the parser handle and determine the context
-//                {
-//                    var count = 1
-//                    while(peek() == Symbols.CLOSE_ANGLE.rep)
-//                    {
-//                        count++
-//                        advancePointer()
-//                    }
-//                    advancePointer()
-//                    return when
-//                    {
-//                        localPeek(1) == Symbols.EQUALS.rep && count == 1 -> // asserts the case where the last closing angle bracket is against an assignment operator "=" which will make a greater than or equal to operator
-//                        {
-//                            advancePointer()
-//                            Token.LinkedSymbols(
-//                                Token.Type.OP_CMP_GEQ,
-//                                arrayOf(Symbols.CLOSE_ANGLE, Symbols.EQUALS),
-//                                start,
-//                                startLoc
-//                            )
-//                        }
-//                        count == 2                                       ->
-//                        {
-//                            Token.LinkedSymbols(
-//                                Token.Type.OP_BIT_SHR,
-//                                Array(2) { Symbols.CLOSE_ANGLE },
-//                                start,
-//                                startLoc
-//                            )
-//                        }
-//                        count == 3                                       ->
-//                        {
-//                            Token.LinkedSymbols(
-//                                Token.Type.OP_BIT_USHR,
-//                                Array(3) { Symbols.CLOSE_ANGLE },
-//                                start,
-//                                startLoc
-//                            )
-//                        }
-//                        else                                             ->
-//                        {
-//                            repeat(count - 1) { i ->
-//                                pendingClosingAngleBrackets.addLast(
-//                                    Token.Symbol(
-//                                        Token.Type.S_CLOSE_ANGLE,
-//                                        Symbols.CLOSE_ANGLE,
-//                                        start + i + 1,
-//                                        FileLocation(startLoc.lineNumber, startLoc.column + i + 1)
-//                                    )
-//                                )
-//                            }
-//                            return Token.Symbol(
-//                                Token.Type.S_CLOSE_ANGLE,
-//                                Symbols.CLOSE_ANGLE,
-//                                start,
-//                                startLoc
-//                            )
-//                        }
-//                    }
-//                }
+
                 Symbols.COLON.rep ->
                     when (localPeek(1)) {
                         Symbols.COLON.rep -> {
@@ -349,6 +297,13 @@ class KiraLexer(private val context: SourceContext) {
 
                 Symbols.QUESTION_MARK.rep -> Token.Symbol(
                     Token.Type.S_QUESTION_MARK,
+                    Symbols.QUESTION_MARK,
+                    start,
+                    startLoc
+                )
+
+                Symbols.UNDERSCORE.rep -> Token.Symbol(
+                    Token.Type.S_UNDERSCORE,
                     Symbols.QUESTION_MARK,
                     start,
                     startLoc

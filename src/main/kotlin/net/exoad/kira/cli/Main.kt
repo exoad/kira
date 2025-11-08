@@ -87,33 +87,12 @@ fun main(args: Array<String>) {
                         dumpSB.clear() // save on memory (so not everything is in dumpSB): problematic for large projects
                     }
                     KiraParser(srcContext).parse()
-                    val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
-                    val semanticAnalyzerResults = semanticAnalyzer.validateAST()
-                    if (semanticAnalyzerResults.diagnostics.isNotEmpty()) {
-                        repeat(semanticAnalyzerResults.diagnostics.size) {
-                            Diagnostics.Logging.warn(
-                                "Kira",
-                                "\n-- Diagnostic Report #${it + 1} ${
-                                    Diagnostics.recordDiagnostics(
-                                        semanticAnalyzerResults.diagnostics[it]
-                                    )
-                                }"
-                            )
-                        }
-                        Diagnostics.Logging.info(
-                            "Kira",
-                            "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
-                                EnglishUtils.getPluralSuffix(
-                                    semanticAnalyzerResults.diagnostics.size
-                                )
-                            } above."
-                        )
-                    }
+
                 }
                 if (Public.flags["enableVisualView"]!!) {
                     KiraVisualViewer(srcContext).also { it.run() }
                 }
-                Diagnostics.Logging.info("Kira", "Compiled ${file.name} in $duration")
+                Diagnostics.Logging.info("Kira", "Parsed ${file.name} in $duration")
                 if (dumpSB != null) {
                     dumpSB.appendLine("    ############### AST XML '$sourceFile' ###############")
                     dumpSB.appendLine(
@@ -139,12 +118,34 @@ fun main(args: Array<String>) {
                     else -> Diagnostics.Logging.info("Kira", "No output...")
                 }
             }
+            val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
+            val semanticAnalyzerResults = semanticAnalyzer.validateAST()
+            if (semanticAnalyzerResults.diagnostics.isNotEmpty()) {
+                repeat(semanticAnalyzerResults.diagnostics.size) {
+                    Diagnostics.Logging.warn(
+                        "Kira",
+                        "\n-- Diagnostic Report #${it + 1} ${
+                            Diagnostics.recordDiagnostics(
+                                semanticAnalyzerResults.diagnostics[it]
+                            )
+                        }"
+                    )
+                }
+                Diagnostics.Logging.info(
+                    "Kira",
+                    "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
+                        EnglishUtils.getPluralSuffix(
+                            semanticAnalyzerResults.diagnostics.size
+                        )
+                    } above."
+                )
+            }
             if (dumpSB != null) {
                 dumpSB.appendLine("############### CANON SYMBOL TABLE ###############")
                 dumpSB.appendLine("Total Symbols: ${compilationUnit.symbolTable.totalSymbols()}")
                 compilationUnit.symbolTable.forEach {
                     dumpSB.appendLine(": Scope Kind: ${it.kind}")
-                    it.symbols.forEach { k, v ->
+                    it.symbols.forEach { (k, v) ->
                         dumpSB.appendLine("    '$k' to $v")
                     }
                 }
@@ -162,9 +163,7 @@ fun parseArgs(): ArgumentOptions {
     parsePublicFlags()
     val useDiagnostics = argsParser.findOption("--diagnostics", "false")!!.equals("true", true)
     val srcLocOption = argsParser.findOption("--src")
-    if (srcLocOption == null) {
-        Diagnostics.panic("Could not find the 'src' option pointing to a source file.\nUsage: '--src=main.kira'")
-    }
+        ?: Diagnostics.panic("Could not find the 'src' option pointing to a source file.\nUsage: '--src=main.kira'")
     val dumpLexerTokensOption = argsParser.findOption("--dumpLexerTokens")
     val dump = argsParser.findOption("--dump")
     // ephemeral options
