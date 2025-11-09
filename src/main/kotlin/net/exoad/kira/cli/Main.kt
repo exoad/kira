@@ -9,9 +9,9 @@ import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraParser
+import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.ui.KiraVisualViewer
-import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
 import net.exoad.kira.utils.Chronos
 import net.exoad.kira.utils.EnglishUtils
 import java.io.File
@@ -152,7 +152,7 @@ fun main(args: Array<String>) {
                 dumpSB.appendLine("----------- End Dump File -----------")
                 dumpFile!!.appendText(dumpSB.toString())
                 dumpSB.clear()
-                Diagnostics.Logging.info("Kira", "Dumped processed symbols to ${dumpFile!!.path}.")
+                Diagnostics.Logging.info("Kira", "Dumped processed symbols to ${dumpFile.path}.")
             }
         }
     }
@@ -193,7 +193,7 @@ fun parsePublicFlags() {
     //
     // is my brain too slow ?
     val flags = mutableMapOf<String, Boolean>()
-    Public.flagsDefault.forEach { k, v ->
+    Public.flagsDefault.forEach { (k, v) ->
         val res = argsParser.findFlag("-$k")
         flags[k] = if (!res) v else true
     }

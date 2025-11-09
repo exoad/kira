@@ -42,7 +42,7 @@ fx compute(values: List<Int32>): Int32 {
 
 fx main(): Void {
     nums: List<Int32> = mut [1, 2, 3, 4, 5]
-    arr: Arr<Int32> = [10, 20, 30]
+    arr: Arr<Int32> = [ 10, 20, 3 0 ]
     @trace(nums)
     total: Int32 = compute(nums)
     @trace(total)

@@ -37,15 +37,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     "(unknown):(unknown)"
                 }
                 compilationUnit.symbolTable.enter(SemanticScope.Module(moduleName))
-                try {
-                    source.ast.accept(this)
-                } finally {
-                    // make sure we exit the module scope even if analysis of this source fails
-                    try {
-                        compilationUnit.symbolTable.exit()
-                    } catch (_: Exception) {
-                    }
-                }
+                // process the AST - keep module scopes alive so symbols persist for the entire compilation
+                source.ast.accept(this)
             }
         } catch (e: Exception) {
             // choose a context to attach the diagnostic to; prefer the current one if available
@@ -257,18 +250,18 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitThrowExpr(throwExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr) {
+    override fun visitThrowExpr(throwExpr: ThrowExpr) {
         throwExpr.value.accept(this)
     }
 
-    override fun visitTryExpr(tryExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr) {
+    override fun visitTryExpr(tryExpr: TryExpr) {
         tryExpr.tryBlock.forEach { it.accept(this) }
         tryExpr.handlerBlock.forEach { it.accept(this) }
         tryExpr.exceptionName?.accept(this)
         tryExpr.exceptionType?.accept(this)
     }
 
-    override fun visitArrayIndexExpr(arrayIndexExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr) {
+    override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {
         arrayIndexExpr.originExpr.accept(this)
         arrayIndexExpr.indexExpr.accept(this)
     }
@@ -278,9 +271,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitObjectInitExpr(objectInitExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr) {
-        // Visit positional arguments for semantic validation
         objectInitExpr.positionalArgs.forEach { it.accept(this) }
-        // Optionally, we could validate the type exists here; keep light for now.
     }
 
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
@@ -352,17 +343,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitIdentifier(identifier: Identifier) {
-        expectNotDeclared(identifier.value, context.astOrigins[identifier])
-        compilationUnit.symbolTable.declare(
-            identifier.value, SemanticSymbol(
-                name = identifier.value,
-                kind = SemanticSymbolKind.VARIABLE,
-                type = Token.Type.IDENTIFIER,
-                declaredAt = SourceLocation.fromPosition(
-                    context.astOrigins[identifier] ?: SourcePosition.UNKNOWN, context.file
-                )
-            )
-        )
+        // Identifiers themselves don't need to declare anything - they're just references
+        // Declarations happen in visitVariableDecl, visitClassDecl, visitFunctionDecl, etc.
     }
 
     /**
@@ -376,25 +358,40 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     )
 
     override fun visitVariableDecl(variableDecl: VariableDecl) {
-        variableDecl.name.accept(this)
+        val varName = variableDecl.name.value
+        if (compilationUnit.symbolTable.containsInCurrentScope(varName)) {
+            pump(
+                "Variable '$varName' is already declared in this scope",
+                location = context.astOrigins[variableDecl.name] ?: SourcePosition.UNKNOWN,
+                selectorLength = varName.length,
+                help = "Rename this variable or remove the previous declaration."
+            )
+        } else {
+            compilationUnit.symbolTable.declare(
+                varName,
+                SemanticSymbol(
+                    varName,
+                    SemanticSymbolKind.VARIABLE,
+                    Token.Type.IDENTIFIER,
+                    SourceLocation.fromPosition(
+                        context.astOrigins[variableDecl.name] ?: SourcePosition.UNKNOWN,
+                        context.file
+                    )
+                )
+            )
+        }
         if (variableDecl.type.identifier is Identifier) {
-            if (compilationUnit.symbolTable.resolve((variableDecl.type.identifier as Identifier).value) == null) {
+            val typeName = (variableDecl.type.identifier as Identifier).value
+            if (compilationUnit.symbolTable.resolve(typeName) == null) {
                 pump(
-                    "The type '${variableDecl.type.identifier}' was not found at this scope (${compilationUnit.symbolTable.where().name.lowercase()})",
+                    "The type '$typeName' was not found at this scope (${compilationUnit.symbolTable.where().name.lowercase()})",
                     location = context.astOrigins[variableDecl.type] ?: SourcePosition.UNKNOWN,
-                    selectorLength = (variableDecl.type.identifier as Identifier).length()
+                    selectorLength = typeName.length
                 )
             }
             variableDecl.type.accept(this)
-            // check if the value of the variable matches the type
-            //
-            // we need to check for a multitude of conditions
-            // 1. if it's a raw literal or object value, check if just the type names match
-            // 2. if it's a function call, check the return type of that function type
-            // (there are more edge cases, but i am not too sure
             if (variableDecl.value != null) {
                 variableDecl.value!!.accept(this)
-                val typeName = (variableDecl.type.identifier as Identifier).value
                 val literalClass = variableDecl.value!!::class
                 pumpOnTrue(
                     !(variableBuiltinPrimitives[literalClass]?.invoke(typeName) ?: true),
@@ -415,27 +412,44 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitClassDecl(classDecl: ClassDecl) {
         if (classDecl.name.identifier is Identifier) {
-            expectTypeNotDeclaredInModule(
-                (classDecl.name.identifier as Identifier).value,
-                context.astOrigins[classDecl]
+            val typeName = (classDecl.name.identifier as Identifier).value
+            val existingSymbol = compilationUnit.symbolTable.resolve(typeName)
+            if (existingSymbol != null && existingSymbol.kind == SemanticSymbolKind.TYPE_SPECIFIER) {
+                if (classDecl.members.isNotEmpty()) {
+                    compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+                    classDecl.members.forEach { it.accept(this) }
+                    compilationUnit.symbolTable.exit()
+                }
+                return
+            }
+            val hasGlobalIntrinsic = try {
+                context.astIntrinsicMarked.containsKey(classDecl) &&
+                        context.astIntrinsicMarked[classDecl]?.contains(net.exoad.kira.core.Intrinsic.GLOBAL) == true
+            } catch (_: UninitializedPropertyAccessException) {
+                false
+            }
+            val symbol = SemanticSymbol(
+                typeName,
+                SemanticSymbolKind.TYPE_SPECIFIER,
+                Token.Type.K_CLASS,
+                SourceLocation.fromPosition(
+                    context.astOrigins[classDecl] ?: SourcePosition.UNKNOWN,
+                    context.file
+                ),
+                relativelyVisible = classDecl.modifiers.contains(Modifier.PUBLIC)
             )
-            compilationUnit.symbolTable.declare(
-                (classDecl.name.identifier as Identifier).value,
-                SemanticSymbol(
-                    (classDecl.name.identifier as Identifier).value,
-                    SemanticSymbolKind.TYPE_SPECIFIER,
-                    Token.Type.K_CLASS,
-                    SourceLocation.fromPosition(
-                        context.astOrigins[classDecl] ?: SourcePosition.UNKNOWN,
-                        context.file
-                    ),
-                    relativelyVisible = classDecl.modifiers.contains(Modifier.PUBLIC)
-                )
-            )
-//            classDecl.name.accept(this)
-            compilationUnit.symbolTable.enter(SemanticScope.Class((classDecl.name.identifier as Identifier).value))
-            classDecl.members.forEach { it.accept(this) }
-            compilationUnit.symbolTable.exit()
+
+            if (hasGlobalIntrinsic) {
+                compilationUnit.symbolTable.declareGlobal(typeName, symbol)
+            } else {
+                expectTypeNotDeclaredInModule(typeName, context.astOrigins[classDecl])
+                compilationUnit.symbolTable.declare(typeName, symbol)
+            }
+            if (classDecl.members.isNotEmpty()) {
+                compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+                classDecl.members.forEach { it.accept(this) }
+                compilationUnit.symbolTable.exit()
+            }
         }
     }
 

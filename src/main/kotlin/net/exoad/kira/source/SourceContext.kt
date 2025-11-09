@@ -36,12 +36,18 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
             Diagnostics.panic("Failed to acquire module_uri for '$file' because the AST was not loaded yet!")
         }
         if (!::moduleUri.isInitialized) {
-            val maybeModule = ast.statements.find { it is ModuleDecl }
-            moduleUri = if (maybeModule == null) {
-                "(unknown):(unknown)"
-            } else {
-                (maybeModule as ModuleDecl).uri.value
+            // ast.statements contains Statement nodes, each with an expr property
+            for (node in ast.statements) {
+                if (node is net.exoad.kira.compiler.frontend.parser.ast.statements.Statement) {
+                    val expr = node.expr
+                    if (expr is ModuleDecl) {
+                        moduleUri = expr.uri.value
+                        return moduleUri
+                    }
+                }
             }
+            // fallback if no module declaration found
+            moduleUri = "(unknown):(unknown)"
         }
         return moduleUri
     }

@@ -1,3 +1,3 @@
 module "exoad:kira/test"
 
-a_b: Int32 = 123
+ab: Int32 = 123

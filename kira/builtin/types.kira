@@ -3,11 +3,10 @@ module "kira:builtin/types"
 //pub class Any;
 //pub @magic class Void
 //pub class String
-//pub class Num
+pub class Num
 //pub class Int8: Num
 //pub class Int16: Num
-pub class Int32
-{
+pub @global class Int32: Num {
     pub fx toBool(other: Int32): Boolean
 }
 //pub class Int64: Num

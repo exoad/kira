@@ -13,6 +13,6 @@ object Public {
     var flags by Delegates.notNull<Map<String, Boolean>>()
 
     object Builtin {
-        val intrinsicalStandardLibrarySources = arrayOf("kira/types.kira")
+        val intrinsicalStandardLibrarySources = arrayOf("kira/builtin/types.kira")
     }
 }

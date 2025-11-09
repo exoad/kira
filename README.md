@@ -20,11 +20,6 @@ Classes contain only instance-level data; static and companion members are manag
 
 ---
 
-# Kira
-
-Kira is a modern, statically-typed, object-oriented programming language focused on simplicity and practicality. This
-repository contains the compiler, standard library, and supporting tools.
-
 For the full language reference and detailed specifications, see the canonical specification document:
 
 - `specifications/LanguageSpecifications.md`

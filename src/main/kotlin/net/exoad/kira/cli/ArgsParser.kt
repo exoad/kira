@@ -5,9 +5,6 @@ class ArgsParser(private val args: Array<String>) {
     private val flags = mutableSetOf<String>()
     private val positionalArgs = mutableListOf<String>()
 
-    // public viewer getters
-    val viewOptions get() = options.toMap()
-    val viewFlags get() = flags.toSet()
     val viewPositionalArgs get() = positionalArgs.toList()
 
     init {
