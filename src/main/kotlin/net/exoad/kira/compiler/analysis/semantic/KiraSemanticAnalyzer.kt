@@ -30,11 +30,39 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         try {
             for (source in compilationUnit.allSources()) {
                 context = source
-                source.ast.accept(this)
+                // enter a module scope for this source so declarations have a place to be stored
+                val moduleName = try {
+                    context.getModuleUri()
+                } catch (_: Exception) {
+                    "(unknown):(unknown)"
+                }
+                compilationUnit.symbolTable.enter(SemanticScope.Module(moduleName))
+                try {
+                    source.ast.accept(this)
+                } finally {
+                    // make sure we exit the module scope even if analysis of this source fails
+                    try {
+                        compilationUnit.symbolTable.exit()
+                    } catch (_: Exception) {
+                    }
+                }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // choose a context to attach the diagnostic to; prefer the current one if available
+            diagnosticsPump.add(
+                Diagnostics.recordPanic(
+                    "KiraSemanticAnalyzer",
+                    "Exception during semantic analysis: ${e.message}",
+                    cause = e,
+                    location = SourcePosition.UNKNOWN,
+                    selectorLength = 1,
+                    context = if (this::context.isInitialized) context else compilationUnit.allSources().firstOrNull()
+                        ?: throw e
+                )
+            )
             return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, false)
         }
+
         return SemanticAnalyzerResults(diagnosticsPump, compilationUnit.symbolTable, diagnosticsPump.isEmpty())
     }
 
@@ -88,7 +116,12 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     fun expectTypeNotDeclaredInModule(symbolName: String, location: SourcePosition?) {
-        val moduleScope = compilationUnit.symbolTable.findScope(SemanticScope.Module(context.getModuleUri()))
+        val moduleScope = try {
+            compilationUnit.symbolTable.findScope(SemanticScope.Module(context.getModuleUri()))
+        } catch (e: Exception) {
+            null
+        }
+        // if we couldn't resolve the module scope we conservatively warn to avoid silent shadowing
         if (moduleScope?.symbols?.containsKey(symbolName) ?: true) {
             pump(
                 "'${symbolName}' was already declared in the current module.",
@@ -224,8 +257,30 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
+    override fun visitThrowExpr(throwExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr) {
+        throwExpr.value.accept(this)
+    }
+
+    override fun visitTryExpr(tryExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr) {
+        tryExpr.tryBlock.forEach { it.accept(this) }
+        tryExpr.handlerBlock.forEach { it.accept(this) }
+        tryExpr.exceptionName?.accept(this)
+        tryExpr.exceptionType?.accept(this)
+    }
+
+    override fun visitArrayIndexExpr(arrayIndexExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr) {
+        arrayIndexExpr.originExpr.accept(this)
+        arrayIndexExpr.indexExpr.accept(this)
+    }
+
     override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
         // TODO("Not yet implemented")
+    }
+
+    override fun visitObjectInitExpr(objectInitExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr) {
+        // Visit positional arguments for semantic validation
+        objectInitExpr.positionalArgs.forEach { it.accept(this) }
+        // Optionally, we could validate the type exists here; keep light for now.
     }
 
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {

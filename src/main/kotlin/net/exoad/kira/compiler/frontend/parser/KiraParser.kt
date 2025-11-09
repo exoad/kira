@@ -8,9 +8,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDefExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.core.Intrinsic
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.source.SourceContext
@@ -77,7 +75,7 @@ class KiraParser(private val context: SourceContext) {
     }
 
     /**
-     * Grabs the token [k] away from [pointer] (relative).
+     * Grabs the token [k] away from where the pointer is right now (relative).
      *
      * If you need absolute positioning, take a look at [look]
      *
@@ -218,6 +216,17 @@ class KiraParser(private val context: SourceContext) {
         if (modifier != null && modifier.isNotEmpty()) {
             return parseWithModifiers()
         }
+        // If keywords were lexed as simple identifiers (e.g., 'try' or 'throw'), handle them here too
+        if (peek().type == Token.Type.IDENTIFIER) {
+            val txt = peek().content
+            if (txt == "throw") {
+                return parseThrowStatement()
+            }
+            if (txt == "try") {
+                return parseTryStatement()
+            }
+        }
+
         return when (peek().type) {
             // parse keywords stuffs first if possible (like keyword first statements)
             Token.Type.K_RETURN -> parseReturnStatement()
@@ -225,6 +234,8 @@ class KiraParser(private val context: SourceContext) {
             Token.Type.K_WHILE -> parseWhileIterationStatement()
             Token.Type.K_DO -> parseDoWhileIterationStatement()
             Token.Type.K_FOR -> parseForIterationStatement()
+            Token.Type.K_THROW -> parseThrowStatement()
+            Token.Type.K_TRY -> parseTryStatement()
             Token.Type.K_USE -> parseUseStatement()
             Token.Type.K_BREAK -> parseBreakStatement()
             Token.Type.K_CONTINUE -> parseContinueStatement()
@@ -308,31 +319,39 @@ class KiraParser(private val context: SourceContext) {
     fun parseForIterationStatement(): Statement {
         val origin = here()
         expectThenAdvance(Token.Type.K_FOR)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+        // support both: `for (mut x: expr) {}` and `for mut x: expr {}`
+        val hasParens = hereIs(Token.Type.S_OPEN_PARENTHESIS)
+        if (hasParens) expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         // todo: might need a better warning message here, since the initializer needs to be present
         expectThenAdvance(Token.Type.K_MODIFIER_MUTABLE)
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_COLON)
         val target = parseExpr()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        if (hasParens) expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val body = parseStatementBlock()
-        if (identifier !is Identifier) {
-            Diagnostics.panic(
-                "KiraParser::parseForIterationStatement",
-                "For iteration statements may only use identifiers.",
-                context = context,
-                location = context.astOrigins[identifier] ?: origin,
-            )
-        }
+//        if (identifier !is Identifier) {
+//            Diagnostics.panic(
+//                "KiraParser::parseForIterationStatement",
+//                "For iteration statements may only use identifiers.",
+//                context = context,
+//                location = context.astOrigins[identifier] ?: origin,
+//            )
+//        }
         return putOrigin(ForIterationStatement(ForIterationExpr(identifier, target), body), origin)
     }
 
     fun parseWhileIterationStatement(): Statement {
         val origin = here()
         expectThenAdvance(Token.Type.K_WHILE)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-        val condition = parseExpr()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        // allow optional parentheses: `while (cond) {}` or `while cond {}`
+        val condition = if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+            expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+            val c = parseExpr()
+            expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+            c
+        } else {
+            parseExpr()
+        }
         return putOrigin(WhileIterationStatement(condition, parseStatementBlock()), origin)
     }
 
@@ -341,9 +360,15 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.K_DO)
         val statements = parseStatementBlock()
         expectThenAdvance(Token.Type.K_WHILE)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-        val condition = parseExpr()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        // allow optional parentheses: `do { } while (cond)` or `do { } while cond`
+        val condition = if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+            expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+            val c = parseExpr()
+            expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+            c
+        } else {
+            parseExpr()
+        }
         expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
         return putOrigin(DoWhileIterationStatement(condition, statements), origin)
     }
@@ -351,9 +376,15 @@ class KiraParser(private val context: SourceContext) {
     fun parseIfSelectionStatement(): Statement {
         val origin = here()
         expectThenAdvance(Token.Type.K_IF)
-        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-        val condition = parseExpr()
-        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        // allow optional parentheses: `if (cond) {}` or `if cond {}`
+        val condition = if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+            expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+            val c = parseExpr()
+            expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+            c
+        } else {
+            parseExpr()
+        }
         val thenStatements = parseStatementBlock()
         val branches = mutableListOf<IfElseBranchStatementNode>()
         while (hereIs(Token.Type.K_ELSE)) {
@@ -364,9 +395,14 @@ class KiraParser(private val context: SourceContext) {
                 {
                     val subOrigin = peek().canonicalLocation
                     advancePointer()
-                    expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-                    val deepCondition = parseExpr()
-                    expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+                    val deepCondition = if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+                        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+                        val dc = parseExpr()
+                        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+                        dc
+                    } else {
+                        parseExpr()
+                    }
                     branches.add(putOrigin(ElseIfBranchStatement(deepCondition, parseStatementBlock()), subOrigin))
                 }
 
@@ -391,6 +427,7 @@ class KiraParser(private val context: SourceContext) {
     fun parseExpr(minPrecedence: Int = 0): Expr {
         val origin = here()
         var left: Expr = parsePrimaryOrUnaryExpr()
+        left = parsePostfix(left)
         while (true) {
             val binOpTokens = tryBinaryOps() ?: arrayOf(peek().type)
             val binaryOpType = BinaryOp.byTokenTypeMaybe(binOpTokens)
@@ -421,6 +458,39 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(left, origin)
     }
 
+    private fun parsePostfix(baseExpr: Expr): Expr {
+        var expr = baseExpr
+        while (true) {
+            when {
+                hereIs(Token.Type.S_OPEN_BRACKET) -> {
+                    // array index
+                    expectThenAdvance(Token.Type.S_OPEN_BRACKET)
+                    val idx = parseExpr()
+                    expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
+                    expr = putOrigin(
+                        net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr(expr, idx),
+                        here()
+                    )
+                }
+
+                hereIs(Token.Type.S_DOT) -> {
+                    advancePointer()
+                    val member = parseIdentifier()
+                    expr = putOrigin(MemberAccessExpr(expr, member), here())
+                }
+
+                hereIs(Token.Type.S_OPEN_PARENTHESIS) -> {
+                    // function call on arbitrary expression (e.g., p.dist())
+                    val params = parseFunctionCallParameter()
+                    expr = putOrigin(FunctionCallExpr(expr, params.second, params.first), here())
+                }
+
+                else -> break
+            }
+        }
+        return expr
+    }
+
     private fun parsePrimaryOrUnaryExpr(): Expr {
         return when {
             UnaryOp.byTokenTypeMaybe(peek().type) != null -> parseUnaryExpr()
@@ -435,18 +505,17 @@ class KiraParser(private val context: SourceContext) {
             Token.Type.L_FLOAT -> parseFloatLiteral()
             Token.Type.L_INTEGER -> parseIntegerLiteral()
             Token.Type.L_STRING -> parseStringLiteral()
-            Token.Type.L_NULL -> parseNullLiteral()
             Token.Type.S_OPEN_BRACE -> parseMapLiteral(false)
             Token.Type.S_OPEN_BRACKET -> parseArrayLiteral()
             Token.Type.K_MODIFIER_MUTABLE ->
                 when (peek(1).type) {
                     Token.Type.S_OPEN_BRACKET -> {
-                        advancePointer() // consumes the previous modifier (mutable)
+                        // `parseListLiteral` will consume the `mut` modifier itself
                         parseListLiteral()
                     }
 
                     Token.Type.S_OPEN_BRACE -> {
-                        advancePointer() // consume the mutable modifier
+                        // `parseMapLiteral` will consume the `mut` modifier itself
                         parseMapLiteral(true)
                     }
 
@@ -459,23 +528,39 @@ class KiraParser(private val context: SourceContext) {
                     )
                 }
 
-            Token.Type.S_AT ->
-                when (peek(1).type) {
-                    Token.Type.IDENTIFIER -> {
-                        advancePointer()
-                        parseIntrinsicExpr()
+            Token.Type.INTRINSIC_IDENTIFIER -> {
+                // intrinsic tokens are lexed as a single token by the lexer
+                val startLoc = peek().canonicalLocation
+                val identifier = peek().content
+                advancePointer()
+                // if followed by '(' parse call-like parameters for intrinsics
+                var parameters: List<Expr>? = null
+                if (hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
+                    parameters = mutableListOf()
+                    expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+                    while (!hereIs(Token.Type.S_CLOSE_PARENTHESIS) && !hereIs(Token.Type.S_EOF)) {
+                        if (parameters.isNotEmpty()) {
+                            expectThenAdvance(Token.Type.S_COMMA)
+                        }
+                        parameters.add(parsePrimaryWithIndexing())
                     }
-
+                    expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+                }
+                val findVal = Intrinsic.entries.find { it.rep == identifier }
+                return when (findVal != null) {
+                    true -> putOrigin(
+                        IntrinsicExpr(findVal, startLoc.toLocationFromContext(context), parameters),
+                        startLoc
+                    )
                     else -> Diagnostics.panic(
                         "KiraParser::parsePrimaryExpr",
-                        "Intrinsics must be followed by an identifier. Instead, got '${
-                            EnglishUtils.prependIndefiniteArticle(peek(1).type.diagnosticsName())
-                        }'",
-                        location = here(),
-                        selectorLength = peek(1).content.length,
+                        "An intrinsic named '${identifier}' does not exist.",
+                        location = startLoc,
+                        selectorLength = identifier.length,
                         context = context
                     )
                 }
+            }
 
             Token.Type.K_WITH -> parseWithExpr()
             Token.Type.K_MODULE -> parseModuleDecl()
@@ -493,6 +578,16 @@ class KiraParser(private val context: SourceContext) {
                             )
                         }
                         parseFunctionCallExpr()
+                    }
+
+                    Token.Type.S_OPEN_BRACE -> {
+                        // Type initialization: only treat as object init if the identifier looks like a type (PascalCase)
+                        val ident = peek().content
+                        return if (ident.isNotEmpty() && ident[0].isUpperCase()) {
+                            parseObjectInit()
+                        } else {
+                            parseIdentifierExpr(modifier)
+                        }
                     }
 
                     else -> parseIdentifierExpr(modifier)
@@ -587,10 +682,23 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(WithExpr(members), origin)
     }
 
+    private fun parseFunctionCallExpr(): FunctionCallExpr {
+        val origin = here()
+        var identifier by Delegates.notNull<Expr>()
+        if (hereIs(Token.Type.INTRINSIC_IDENTIFIER)) {
+            identifier = parseIntrinsicExpr()
+        } else {
+            identifier = parseIdentifier()
+        }
+        val parameters = parseFunctionCallParameter()
+        return putOrigin(FunctionCallExpr(identifier, parameters.second, parameters.first), location = origin)
+    }
+
     fun parseIntrinsicExpr(isFunctionContext: Boolean = false): IntrinsicExpr {
         val startLoc = peek().canonicalLocation
         val identifier = peek().content
-        expectThenAdvance(Token.Type.IDENTIFIER) // this is scuffed but lmao
+        // intrinsic identifiers are lexed as INTRINSIC_IDENTIFIER by the lexer
+        expectThenAdvance(Token.Type.INTRINSIC_IDENTIFIER)
         var parameters: List<Expr>? = null
         if (!isFunctionContext && hereIs(Token.Type.S_OPEN_PARENTHESIS)) {
             parameters = mutableListOf()
@@ -599,7 +707,7 @@ class KiraParser(private val context: SourceContext) {
                 if (parameters.isNotEmpty()) {
                     expectThenAdvance(Token.Type.S_COMMA)
                 }
-                parameters.add(parseExpr())
+                parameters.add(parsePrimaryWithIndexing())
             }
             expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         }
@@ -647,10 +755,21 @@ class KiraParser(private val context: SourceContext) {
         expectModifiers(modifier, WrappingContext.FUNCTION)
         expectThenAdvance(Token.Type.K_FX)
         var functionName: Expr = AnonymousIdentifier
-        if (hereIs(Token.Type.S_AT)) {
+        if (hereIs(Token.Type.INTRINSIC_IDENTIFIER)) {
             functionName = parseIntrinsicExpr(isFunctionContext = true)
         } else if (hereIs(Token.Type.IDENTIFIER)) {
             functionName = parseIdentifier()
+        }
+        // optional generics: fx name<T, U: Bound> (...)
+        val generics = mutableListOf<Type>()
+        if (hereIs(Token.Type.S_OPEN_ANGLE)) {
+            expectThenAdvance(Token.Type.S_OPEN_ANGLE)
+            while (!hereIs(Token.Type.S_CLOSE_ANGLE) && !hereIs(Token.Type.S_EOF)) {
+                val param = parseTypeParameter()
+                generics.add(param)
+                if (!hereIs(Token.Type.S_CLOSE_ANGLE)) expectThenAdvance(Token.Type.S_COMMA)
+            }
+            expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         }
         val params = parseFunctionDeclParameters()
         expectThenAdvance(Token.Type.S_COLON)
@@ -665,6 +784,7 @@ class KiraParser(private val context: SourceContext) {
                 functionName,
                 FunctionDefExpr(returnType, params, body),
                 modifier?.keys?.toList() ?: emptyList(),
+                generics,
             ), origin
         )
     }
@@ -707,7 +827,7 @@ class KiraParser(private val context: SourceContext) {
                     )
                 }
                 val origin = here()
-                val expr = parseExpr()
+                val expr = parsePrimaryWithIndexing()
                 if (expr is CompoundAssignmentExpr || expr is AssignmentExpr) {
                     Diagnostics.panic(
                         "KiraParser::parseFunctionCallParameter",
@@ -724,17 +844,6 @@ class KiraParser(private val context: SourceContext) {
         return named to positional
     }
 
-    private fun parseFunctionCallExpr(): FunctionCallExpr {
-        val origin = here()
-        var identifier by Delegates.notNull<Expr>()
-        if (hereIs(Token.Type.S_AT)) {
-            identifier = parseIntrinsicExpr()
-        } else {
-            identifier = parseIdentifier()
-        }
-        val parameters = parseFunctionCallParameter()
-        return putOrigin(FunctionCallExpr(identifier, parameters.second, parameters.first), location = origin)
-    }
 
     private fun parseIdentifierExpr(modifier: Map<Modifier, SourcePosition>?): Expr {
         if (tryCompoundAssignmentOperators(1) != null) // skip the identifier with peekoffset +1 (similar to why we also peek(1) below in the when statement
@@ -784,14 +893,14 @@ class KiraParser(private val context: SourceContext) {
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_EQUAL)
         val value = parseBinaryExpr()
-        if (identifier !is Identifier) {
-            Diagnostics.panic(
-                "KiraParser::parseAssignmentExpr",
-                "Assignment expressions can only use identifiers for l-value.",
-                context = context,
-                location = context.astOrigins[identifier] ?: origin,
-            )
-        }
+//        if (identifier !is Identifier) {
+//            Diagnostics.panic(
+//                "KiraParser::parseAssignmentExpr",
+//                "Assignment expressions can only use identifiers for l-value.",
+//                context = context,
+//                location = context.astOrigins[identifier] ?: origin,
+//            )
+//        }
         return putOrigin(AssignmentExpr(identifier, value), origin)
     }
 
@@ -814,14 +923,14 @@ class KiraParser(private val context: SourceContext) {
             }
             value = parseValue as DataLiteral<*>
         }
-        if (name !is Identifier) {
-            Diagnostics.panic(
-                "KiraParser::parseEnumMemberExpr",
-                "Enum members can only be named using identifiers.",
-                context = context,
-                location = context.astOrigins[name] ?: origin,
-            )
-        }
+//        if (name !is Identifier) {
+//            Diagnostics.panic(
+//                "KiraParser::parseEnumMemberExpr",
+//                "Enum members can only be named using identifiers.",
+//                context = context,
+//                location = context.astOrigins[name] ?: origin,
+//            )
+//        }
         return putOrigin(EnumMemberExpr(name, value), origin)
     }
 
@@ -839,14 +948,14 @@ class KiraParser(private val context: SourceContext) {
             }
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        if (name !is Identifier) {
-            Diagnostics.panic(
-                "KiraParser::parseEnumDecl",
-                "Enum declarations can only use identifiers for their name.",
-                context = context,
-                location = context.astOrigins[name] ?: origin,
-            )
-        }
+//        if (name !is Identifier) {
+//            Diagnostics.panic(
+//                "KiraParser::parseEnumDecl",
+//                "Enum declarations can only use identifiers for their name.",
+//                context = context,
+//                location = context.astOrigins[name] ?: origin,
+//            )
+//        }
         return putOrigin(EnumDecl(name, members.toTypedArray(), modifier?.keys?.toList() ?: emptyList()), origin)
     }
 
@@ -947,11 +1056,6 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(VariableDecl(identifier, type, value, modifier?.keys?.toList() ?: emptyList()), origin)
     }
 
-    fun parseNullLiteral(): NullLiteral {
-        val origin = here()
-        expectThenAdvance(Token.Type.L_NULL)
-        return putOrigin(NullLiteral, origin)
-    }
 
     fun parseStringLiteral(): StringLiteral {
         val value = peek().content
@@ -1080,8 +1184,24 @@ class KiraParser(private val context: SourceContext) {
 
         val baseLocation = here()
         val baseIdentifier = parseIdentifier()
-        acquireTypeBound()
-        return putOrigin(Type(baseIdentifier, bound, emptyList()), baseLocation)
+
+        // If a generic parameter list follows, parse nested children recursively.
+        val children = mutableListOf<Type>()
+        if (hereIs(Token.Type.S_OPEN_ANGLE)) {
+            expectThenAdvance(Token.Type.S_OPEN_ANGLE)
+            while (!hereIs(Token.Type.S_CLOSE_ANGLE) && !hereIs(Token.Type.S_EOF)) {
+                val param = parseTypeParameter()
+                children.add(param)
+                if (!hereIs(Token.Type.S_CLOSE_ANGLE)) {
+                    expectThenAdvance(Token.Type.S_COMMA)
+                }
+            }
+            expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
+        } else {
+            acquireTypeBound()
+        }
+
+        return putOrigin(Type(baseIdentifier, bound, children), baseLocation)
     }
 
 
@@ -1129,5 +1249,88 @@ class KiraParser(private val context: SourceContext) {
             advancePointer()
         }
         return modifier
+    }
+
+    private fun parseObjectInit(): ObjectInitExpr {
+        val origin = here()
+        val typeName = parseIdentifier()
+        expectThenAdvance(Token.Type.S_OPEN_BRACE)
+        val args = mutableListOf<Expr>()
+        while (!hereIs(Token.Type.S_CLOSE_BRACE) && !hereIs(Token.Type.S_EOF)) {
+            if (args.isNotEmpty()) {
+                expectThenAdvance(Token.Type.S_COMMA)
+            }
+            args.add(parseExpr())
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        return putOrigin(ObjectInitExpr(typeName, args), origin)
+    }
+
+    private fun parsePrimaryWithIndexing(): Expr {
+        val base = parsePrimaryOrUnaryExpr()
+        return parsePostfix(base)
+    }
+
+    fun parseThrowStatement(): Statement {
+        val origin = here()
+        if (hereIs(Token.Type.K_THROW)) {
+            expectThenAdvance(Token.Type.K_THROW)
+        } else if (hereIs(Token.Type.IDENTIFIER) && peek().content == "throw") {
+            advancePointer()
+        } else {
+            Diagnostics.panic(
+                "KiraParser::parseThrowStatement",
+                "Expected 'throw' here.",
+                location = here(),
+                context = context
+            )
+        }
+        val expr = parseExpr()
+        expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+        val throwNode = putOrigin(net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr(expr), origin)
+        return putOrigin(Statement(throwNode), origin)
+    }
+
+    fun parseTryStatement(): Statement {
+        val origin = here()
+        if (hereIs(Token.Type.K_TRY)) {
+            expectThenAdvance(Token.Type.K_TRY)
+        } else if (hereIs(Token.Type.IDENTIFIER) && peek().content == "try") {
+            advancePointer()
+        } else {
+            Diagnostics.panic(
+                "KiraParser::parseTryStatement",
+                "Expected 'try' here.",
+                location = here(),
+                context = context
+            )
+        }
+        val tryBlock = parseStatementBlock()
+        // currently only support single `on` handler: `on e: Type { ... }`
+        if (hereIs(Token.Type.K_ON) || (hereIs(Token.Type.IDENTIFIER) && peek().content == "on")) {
+            if (hereIs(Token.Type.K_ON)) expectThenAdvance(Token.Type.K_ON) else advancePointer()
+            val name = parseIdentifier()
+            expectThenAdvance(Token.Type.S_COLON)
+            val type = parseType()
+            val handlerBlock = parseStatementBlock()
+            val tryNode = putOrigin(
+                net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr(
+                    tryBlock,
+                    name,
+                    type,
+                    handlerBlock
+                ), origin
+            )
+            return putOrigin(Statement(tryNode), origin)
+        }
+        val tryNode = putOrigin(
+            net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr(
+                tryBlock,
+                null,
+                null,
+                emptyList()
+            ), origin
+        )
+        return putOrigin(Statement(tryNode), origin)
     }
 }

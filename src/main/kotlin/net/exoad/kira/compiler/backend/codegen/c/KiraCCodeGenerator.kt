@@ -150,8 +150,34 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         TODO("Not yet implemented")
     }
 
+    override fun visitArrayIndexExpr(arrayIndexExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr) {
+        arrayIndexExpr.originExpr.accept(this)
+        buffer.append("[")
+        arrayIndexExpr.indexExpr.accept(this)
+        buffer.append("]")
+    }
+
+    override fun visitThrowExpr(throwExpr: ThrowExpr) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitTryExpr(tryExpr: TryExpr) {
+        TODO("Not yet implemented")
+    }
+
     override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
         TODO("Not yet implemented")
+    }
+
+    override fun visitObjectInitExpr(objectInitExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr) {
+        // Simplest handling: generate a call-like representation for now.
+        objectInitExpr.typeName.accept(this)
+        buffer.append(" {")
+        objectInitExpr.positionalArgs.forEachIndexed { i, arg ->
+            if (i > 0) buffer.append(", ")
+            arg.accept(this)
+        }
+        buffer.append(" }")
     }
 
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {

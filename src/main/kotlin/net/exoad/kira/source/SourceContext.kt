@@ -9,7 +9,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.core.Intrinsic
 import java.util.*
-import kotlin.properties.Delegates
 
 /**
  * a source context represents a single source file and contains all the processed information for that source file
@@ -37,7 +36,12 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
             Diagnostics.panic("Failed to acquire module_uri for '$file' because the AST was not loaded yet!")
         }
         if (!::moduleUri.isInitialized) {
-            moduleUri = (ast.statements.first { it is ModuleDecl } as ModuleDecl).uri.value
+            val maybeModule = ast.statements.find { it is ModuleDecl }
+            moduleUri = if (maybeModule == null) {
+                "(unknown):(unknown)"
+            } else {
+                (maybeModule as ModuleDecl).uri.value
+            }
         }
         return moduleUri
     }

@@ -1,7 +1,9 @@
 package net.exoad.kira.compiler.frontend.parser.ast
 
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
-import net.exoad.kira.compiler.frontend.parser.ast.elements.*
+import net.exoad.kira.compiler.frontend.parser.ast.elements.AnonymousIdentifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
@@ -515,10 +517,44 @@ object XMLASTVisitorKira :
         }
     }
 
+    override fun visitArrayIndexExpr(arrayIndexExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr) {
+        node("ArrayIndex") {
+            node("Origin") { arrayIndexExpr.originExpr.accept(this) }
+            node("Index") { arrayIndexExpr.indexExpr.accept(this) }
+        }
+    }
+
+    override fun visitThrowExpr(throwExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr) {
+        node("Throw") { throwExpr.value.accept(this) }
+    }
+
+    override fun visitTryExpr(tryExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr) {
+        node("Try") {
+            node("TryBlock") { tryExpr.tryBlock.forEach { it.accept(this) } }
+            node("Handler") {
+                if (tryExpr.exceptionName != null) tryExpr.exceptionName.accept(this)
+                if (tryExpr.exceptionType != null) tryExpr.exceptionType.accept(this)
+                tryExpr.handlerBlock.forEach { it.accept(this) }
+            }
+        }
+    }
+
     override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        node("EnumMemberExpr", """ name ="${enumMemberExpr.name.value}"""")
+        node("EnumMember")
         {
-            enumMemberExpr.value?.accept(this)
+            enumMemberExpr.name.accept(this)
+            if (enumMemberExpr.value != null) {
+                enumMemberExpr.value.accept(this)
+            }
+        }
+    }
+
+    override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
+        node("ObjectInit") {
+            node("Type") { objectInitExpr.typeName.accept(this) }
+            node("PositionalArgs") {
+                objectInitExpr.positionalArgs.forEach { it.accept(this) }
+            }
         }
     }
 

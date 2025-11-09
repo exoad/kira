@@ -4,9 +4,10 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
 
     private val scopeStack = ArrayDeque<KiraScopeFrame>()
 
-//    init {
-//        enter(SemanticScope.MODULE) // global scope!
-//    }
+    init {
+        // ensure there is always at least one global module scope to avoid empty-stack access
+        enter(SemanticScope.Module("(global)"))
+    }
 
     fun enter(kind: SemanticScope) {
         scopeStack.addFirst(KiraScopeFrame(kind))

@@ -1,0 +1,789 @@
+\documentclass[11pt]{article}
+
+% --- PACKAGES ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{parskip}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tcolorbox}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{sectsty}
+\usepackage{caption}
+
+\title{Kira Language Specifications}
+\author{Version 1.0}
+\date{November 08, 2025}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!70!black,
+    pdftitle={Kira Language Specifications},
+    pdfauthor={Kira Project},
+    pdfsubject={Programming Language Specification},
+    pdfkeywords={Kira, Programming Language, Specification},
+    pdffitwindow=true,
+    pdfstartview={FitH}
+}
+
+% --- SECTION STYLING ---
+\sectionfont{\color{black}\Large\bfseries}
+\subsectionfont{\color{black!90}\large\bfseries}
+\subsubsectionfont{\color{black!80}\normalsize\bfseries}
+\paragraphfont{\color{black!80}\normalsize\bfseries}
+
+% --- LISTINGS (CODE) STYLING FOR KIRA ---
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codepurple}{rgb}{0.6,0,0.6}
+\definecolor{codeblue}{rgb}{0,0,0.8}
+\definecolor{codeintr}{rgb}{0.5,0.2,0.2}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+
+% Define the Kira language for listings
+\lstdefinelanguage{Kira}{
+    morekeywords={ % Keywords
+        for, in, if, else, while, do, return, fx, module, use, class, pub, mut, require,
+        trait, try, on, throw, initially, finally, override, is, as
+    },
+    morekeywords={[2] % Types
+        Str, Int32, Bool, Void, Never, Int8, Int16, Int64, Float32, Float64, Any, Type,
+        Ref, Weak, Unsafe, Maybe, Result, Val, Module, Fx, Arr, List, Map, Set, Tuple,
+        Tuple1, Tuple2, Tuple10, Animalia, Student, Human, Vector2, Person, FileIO
+    },
+    morekeywords={[3] % Literals
+        true, false, null
+    },
+    morekeywords={[4] % Intrinsics & Annotations
+        @trace, @global, @json_decode, @type_of, @magic, @get
+    },
+    sensitive=true,
+    morecomment=[l]{//},
+    morestring=[b]",
+    morestring=[b]` % For the json_decode example
+}
+
+% Define the style for the Kira language
+\lstdefinestyle{KiraStyle}{
+    language=Kira,
+    basicstyle=\ttfamily\small,
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue}\bfseries,
+    keywordstyle={[2]\color{codeblue!70!black}}, % Types
+    keywordstyle={[3]\color{codepurple}},         % Literals
+    keywordstyle={[4]\color{codeintr}\bfseries},    % Intrinsics
+    stringstyle=\color{codepurple},
+    backgroundcolor=\color{gray!5}, % Light gray background
+    numbers=left,
+    numberstyle=\tiny\color{codegray},
+    numbersep=5pt,
+    breaklines=true,
+    frame=tb, % Top and bottom frame
+    framerule=0.4pt,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+    aboveskip=1em,
+    belowskip=1em
+}
+\lstset{style=KiraStyle} % Set as default
+
+% --- NOTE BOX STYLING ---
+\newtcolorbox{notebox}[2][]{
+    colback=gray!5,
+    colframe=gray!60,
+    fonttitle=\bfseries,
+    title=#2,
+    #1
+}
+\newtcolorbox{importantbox}[2][]{
+    colback=blue!5,
+    colframe=blue!70,
+    fonttitle=\bfseries,
+    title=#2,
+    #1
+}
+
+
+% --- START OF DOCUMENT ---
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Hello World!}
+\begin{lstlisting}
+@trace("Hello World!")
+\end{lstlisting}
+
+\section{FizzBuzz}
+\begin{lstlisting}
+for i in 0..101 {
+   if i % 15 == 0 {
+      @trace("FizzBuzz")
+   } else if i % 3 == 0 {
+      @trace("Fizz")
+   } else if i % 5 == 0 {
+      @trace("Buzz")
+   } else {
+      @trace(i)
+   }
+}
+\end{lstlisting}
+
+\section{Comments}
+Kira supports comments via \texttt{//}. Anything after will be stripped out by the preprocessor.
+\begin{lstlisting}
+// I won't appear in the generated output!
+\end{lstlisting}
+
+\section{Variables}
+Kira is a statically-typed language meaning that all variables must declare a type.
+\begin{lstlisting}
+name: Str = "John"
+age: Int32 = 34
+isOk: Bool = true
+\end{lstlisting}
+
+\section{Control Flow Structures}
+These structures help determine which pieces of your code will run. Kira
+has the following control structures:
+\begin{enumerate}
+    \item \texttt{if-else} selection statements
+    \item \texttt{while} loops
+    \item \texttt{do-while} loops
+    \item \texttt{for} loops
+\end{enumerate}
+
+\begin{lstlisting}
+// If-Else Selection Statement
+if name == "John" {
+    @trace("Hi John")
+} else if name == "Jamie" {
+    @trace("Hi Jamie")
+} else {
+    @trace("Who are you?")
+}
+
+// While Loop
+while true {
+    @trace("Looping forever...")
+}
+
+// Do-While Loop
+do {
+    @trace("I will be printed once!")
+} while false
+
+// For Loop
+for i: Int32 in 1..10 {
+    @trace(i)
+}
+\end{lstlisting}
+
+\section{Functions}
+Kira treats functions as first-class citizens, meaning you can use them as values and pass them around.
+
+To return a value, Kira uses the \texttt{return} keyword. If a function has no return, it must
+specify its return type as \texttt{Void} or \texttt{Never}.
+
+\begin{lstlisting}
+fx sumOf(a: Int32, b: Int32 = 3): Int32 {
+    return a + b
+}
+\end{lstlisting}
+
+Function parameters can either be specified using their name or using position.
+
+\section{Module System}
+Kira uses a module system for you to organize your source structure. Each piece of Kira source file
+starts off with a module declaration:
+\begin{lstlisting}
+module "author:module_name.submodule_name"
+\end{lstlisting}
+
+\begin{itemize}
+    \item \texttt{author} represents the organization or individual that this belongs to.
+    \item \texttt{module\_name} represents what project this source file falls under.
+    \item \texttt{submodule\_name} represents this individual source file's name
+\end{itemize}
+
+\subsection{Using a submodule}
+Often times, you would include or import submodules, not entire modules themselves per submodule. This is
+to save on compile time and also potential bloating. To include another submodule:
+\begin{lstlisting}
+use "author:module_name.submodule_name"
+
+use "author:module_name" // makes all submodules available to the current context
+\end{lstlisting}
+
+For example, to use all builtin types from Kira (e.g. \texttt{Int32}, \texttt{Str}), you need to use the submodule \texttt{kira:lib.types}.
+
+\section{Classes}
+Kira supports classes, an object-oriented principle. Class in Kira are very easy and malleable to understand and
+lightweight;
+however, they do have some limitations:
+\begin{enumerate}
+    \item No multi-inheritance (Diamond Inheritance Problem)
+    \item Only one default constructor
+    \item No nested structures (classes, enums, namespaces)
+    \item No companion or static members
+    \item All fields that are virtual can be provided through the constructor.
+    \item No direct abstract classes or interfaces
+\end{enumerate}
+\begin{lstlisting}
+pub class Vector2
+{
+    require pub mut x: Float32
+    require pub mut y: Float32
+
+    pub fx dot(other: Vector2): Float32 {
+        return (other.x * x) + (other.y * y)
+    }
+
+    pub mut fx toStr(): Str {
+        return "( ${x}, ${y} )"
+    }
+}
+
+a: Vector2 = Vector2 { 3, 3 }
+b: Vector2 = Vector2 { 3, 3, toStr = fx() { return "< ${x}, ${y} >" } }
+@trace(a.dot(b))
+\end{lstlisting}
+
+\subsection{Inheritance}
+Multi-inheritance is not allowed, but to share common functions across multiple classes, Kira supports traits
+
+Inheritance is very simple, there are only several types of allowed patterns:
+\begin{enumerate}
+    \item \textbf{Concrete classes}
+    \item \textbf{(Semi-)Abstract classes}
+    \item \textbf{Interface-Like classes}
+\end{enumerate}
+
+However, all of these utilize the format of classes meaning that you can only use ONE of these even if it is Interface-Like.
+
+Here are some examples of the previously mentioned patterns:
+
+\subsubsection{Concrete Classes (Normal Classes)}
+All members are implemented, with the only exception being property fields.
+\begin{lstlisting}
+pub class Student {
+	require pub name: Str
+	require pub mut gpa: Float32
+
+	pub fx passing(): Bool {
+		return gpa > 2.0
+	}
+}
+\end{lstlisting}
+
+\subsubsection{(Semi-)Abstract Classes}
+Semi Abstract classes are created where you add unimplemented member function (methods) into the mix of concrete classes. However, they are "semi" abstract because Kira allows anonymous classes to be made everywhere by passing functions directly to the constructor.
+\begin{lstlisting}
+pub class Human {
+	pub scientificName: Str = "Homo Sapien"
+
+	pub fx speak(): Void
+
+	pub fx walk(): Void {
+		@trace("Walking...")
+	}
+}
+\end{lstlisting}
+
+\subsubsection{Interface-Like Classes}
+This pattern is the most redundant and should be avoided. Instead, prefer to use traits if you need to share common functionalities across multiple classes. In general, interface like classes define no property members and only abstract function members:
+\begin{lstlisting}
+pub class Animalia {
+	pub fx reproduce(): Animalia
+
+	pub fx die(): Void
+
+	pub fx eat(): Void
+
+	pub fx isAlive(): Bool
+}
+\end{lstlisting}
+
+\section{Immutability By Default}
+Everything in Kira is immutable or closed by default. This means variables cannot be reassigned/mutated, classes
+cannot be inherited from, methods in classes cannot be overridden by default.
+
+In order to allow for mutability, specify the \texttt{mut} modifier before the element you want to make mutable.
+
+\section{Visibility Modifiers}
+There are only 2 visibility levels allowed:
+\begin{enumerate}
+    \item public - \texttt{pub}
+    \item internal - implicit (i.e. no keyword used)
+\end{enumerate}
+
+\subsection{Public Modifier}
+The \texttt{pub} modifier specifies that anything outside can look inside. For example, a submodule which has a
+class:
+\begin{lstlisting}
+class A {
+}
+
+pub class B {
+}
+\end{lstlisting}
+
+An external submodule that uses this cannot see \texttt{class A}, but can see \texttt{class B}. Additionally, \texttt{class B} can see
+\texttt{class A} and vice versa.
+
+Within classes themselves, the modifier only serves as encapsulation purposes (i.e. hiding data and fields). If
+a member of a class does not have the \texttt{pub} modifier, that field can only be access through the setter during
+construction
+or within a neighboring method that can expose it (getter). Additionally, if the class is inheritable, it means that
+field
+is also private from the child and the child cannot access it.
+
+\begin{notebox}{Why no \texttt{protected}?}
+In other languages like Java, the \texttt{protected} keyword is another visibility layer that allows for only the members of
+the class
+and children of that class to view that field.
+
+Kira does not utilize this layer simply because it is extra overhead and increases the learning curve. Creating a
+binary system where
+it is either the field is visible or not makes it not only easier, but gives more freedom to the programmer in
+designing their APIs.
+\end{notebox}
+
+\section{Null Safety}
+Kira incorporates sound null-safety as one of its core pillars. It does so using a core type: \texttt{Maybe<A>}.
+
+\begin{importantbox}{Important}
+Kira does not have a special \texttt{null} literal token in the language grammar. Instead, the core library exposes a global singleton value named \texttt{null} that represents an absent value (the canonical \texttt{Maybe} sentinel). The lexer/parser treat \texttt{null} as an ordinary identifier; the standard library provides the \texttt{null} binding and the semantic analyzer resolves it as the Maybe sentinel.
+\end{importantbox}
+
+Without boxing a type in \texttt{Maybe}, you are not allowed to assign the \texttt{null} sentinel to anything of a non-\texttt{Maybe} type:
+\begin{lstlisting}
+a: Int32 = null // error: cannot assign the `null` sentinel to a non-Maybe type
+
+b: Maybe<Int32> = null // ok: `null` is the Maybe sentinel and can be assigned to Maybe<T>
+\end{lstlisting}
+
+\texttt{Maybe} also enables for field-valuation meaning you can achieve the following without using a getter for the internally
+held value:
+\begin{lstlisting}
+mut a: Maybe<Int32> = null
+
+@trace(a) // null (the sentinel)
+@trace(a.value) // null
+
+a = 32 // assignment to Maybe<T> will auto-box a value of type T into the Maybe<T>
+
+@trace(a) // 32
+@trace(a.value) // 32
+\end{lstlisting}
+
+\subsection{Null Safety Operators}
+
+\paragraph{Null Safe Get}
+Instance form:
+\begin{lstlisting}
+// preferred instance-style helper
+value: Int32 = a.unwrapOr(0)
+\end{lstlisting}
+
+Also, available as a helper function (static-style) for convenience:
+\begin{lstlisting}
+value: Int32 = Maybe.unwrapOr(a, 0)
+\end{lstlisting}
+
+If the underlying value is the \texttt{null} sentinel, \texttt{unwrapOr} returns the provided \texttt{option} value, otherwise it returns the underlying value.
+\begin{lstlisting}
+mut a: Maybe<Int32> = null
+
+if a == null {
+    @trace("Null")
+} else {
+    @trace(a)
+}
+
+// is akin to:
+
+@trace(a.unwrapOr(0))
+\end{lstlisting}
+
+\paragraph{Sanity Checks}
+If you do not like using \texttt{==} to check if the value is equal to the \texttt{null} sentinel, there are 2 methods to help you:
+\begin{enumerate}
+    \item \texttt{Maybe<A>::isNull(): Bool} - returns \texttt{true} if the underlying value is the \texttt{null} sentinel else \texttt{false}
+    \item \texttt{Maybe<A>::isSome(): Bool} - returns \texttt{true} if the underlying value is not the \texttt{null} sentinel else \texttt{false}
+\end{enumerate}
+
+\section{Exceptions}
+Kira only has unchecked exceptions meaning that you do not need to catch everything. At the language core exceptions are
+represented as \texttt{Str} values (string messages):
+\begin{lstlisting}
+throw "Something went wrong."
+\end{lstlisting}
+
+\subsection{Exception Handling}
+Exceptions can be caught by using a \texttt{try-on} expression:
+\begin{lstlisting}
+try {
+    // ...
+} on e: Str {
+    @trace(e)
+}
+\end{lstlisting}
+
+\begin{notebox}{Note}
+The variable required after \texttt{on} is always guaranteed to be of \texttt{Str}.
+\end{notebox}
+
+If you need richer error information, prefer the ergonomic \texttt{Result<A, Str>} type (see \texttt{Ref} / \texttt{Result} in Reference
+Types) to encode error payloads and avoid relying solely on \texttt{throw}/\texttt{try-on} for control flow.
+
+\section{Memory Model}
+Kira uses an Automatic Reference Counting (ARC) memory model similar to Swift. Every object has a reference counter and
+when this counter drops to zero, the object is freed from memory. However, in certain scenarios like a circular
+reference where A and B reference each other, it can cause them to never be deallocated leading to undefined behavior
+and/or memory faults.
+
+To mitigate this, Kira has 2 types that are intrinsified by the compiler:
+\begin{enumerate}
+    \item \texttt{Weak<T>} - Used to denote a non-strong reference to mitigate circular references and allow for deallocation.
+    Reading a \texttt{Weak<T>} requires an explicit upgrade/unwrap operation (for example \texttt{w.upgrade()} or \texttt{w.value}) which
+    returns a \texttt{Maybe<T>}; if the target was already deallocated the upgrade returns \texttt{null}.
+    \item \texttt{Unsafe<T>} - Signifies a raw, non-refcounted reference. Dereferencing \texttt{Unsafe<T>} has no lifetime checks and may
+    dangle; it is intended only for performance critical interop code.
+\end{enumerate}
+
+\section{Finalizers \& Initializers Blocks}
+These are special functions that are only callable by the runtime and not from Kira itself. They are meant to be
+executed right at the
+time of object allocation and deallocation and are only permitted within classes.
+
+\subsection{Initializers}
+Initializers are ran right at the moment of object construction. It is accomplished by introducing the \texttt{initially}
+block:
+\begin{lstlisting}
+class Person {
+    require pub age: Int32
+
+    initially {
+        if age < 0 {
+            @trace("Age must be >= 0!")
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Finalizers}
+Finalizers are used to clean up external resources from things like File IO. It is accomplished by introducing the
+\texttt{finally} block:
+\begin{lstlisting}
+class FileIO {
+
+    finally {
+        doCleanup()
+    }
+}
+\end{lstlisting}
+
+All code in the finally block is called and ran when the object is about to be deallocated.
+
+\section{Core Types}
+Core types are intrinsified by the compiler: they are recognized specially and the compiler may optimize for them. Kira
+treats all values as objects (no boxing distinction), but these core types form the language's primitives and commonly
+used reference helpers.
+
+\subsection{Numeric types}
+\paragraph{Integer types}
+\begin{enumerate}
+    \item \texttt{Int8} - 8-bit signed integer
+    \item \texttt{Int16} - 16-bit signed integer
+    \item \texttt{Int32} - 32-bit signed integer
+    \item \texttt{Int64} - 64-bit signed integer
+\end{enumerate}
+
+\paragraph{Floating point types}
+\begin{enumerate}
+    \item \texttt{Float32} - 32-bit floating point
+    \item \texttt{Float64} - 64-bit floating point
+\end{enumerate}
+
+\subsection{Logical}
+\begin{enumerate}
+    \item \texttt{Bool} - Boolean type (\texttt{true} / \texttt{false}) backed by an 8-bit representation.
+\end{enumerate}
+
+\subsection{Unit / control types}
+\begin{enumerate}
+    \item \texttt{Void} - Indicates no return value.
+    \item \texttt{Never} - Indicates a function never returns (used to mark diverging code paths).
+\end{enumerate}
+
+\subsection{Reference / core helpers}
+These types are used for reference behavior, type representation, and core runtime helpers.
+\begin{enumerate}
+    \item \texttt{Any} - Root of all classes; universal supertype for dynamic values.
+    \item \texttt{Type} - Runtime representation of a type.
+    \item \texttt{Ref<A>} - A boxed reference to an object of type \texttt{A}.
+    \item \texttt{Weak<T>} - Weak reference: non-owning reference that can be upgraded to \texttt{Maybe<T>} and may be \texttt{null} if target is
+    deallocated.
+    \item \texttt{Unsafe<T>} - Raw, non-refcounted pointer-like reference (no lifetime checks; may dangle).
+    \item \texttt{Maybe<A>} - Nullability wrapper: use to allow \texttt{null} assignments and safe unwrap semantics.
+    \item \texttt{Result<A,B>} - Result type encoding success (\texttt{A}) or error (\texttt{B}), useful as an alternative to exceptions.
+    \item \texttt{Val<A>} - Trait indicating \texttt{A} can be referenced directly; used by \texttt{Maybe} and other helpers.
+    \item \texttt{Module} - Module metadata value, used to refer to module structures at runtime.
+    \item \texttt{Fx<P: Tuple, R>} - Function type representation where \texttt{P} is a \texttt{Tuple} of parameter types and \texttt{R} the return type (
+    see "Variadic Generics \& TupleN").
+\end{enumerate}
+
+\subsection{Sequence \& collection types}
+\begin{enumerate}
+    \item \texttt{Str} - String / character sequence.
+    \item \texttt{Arr<A>} - Static immutable array structure (compiler-optimized for fixed arrays).
+    \item \texttt{List<A>} - Dynamic, mutable array structure (standard library implementation).
+    \item \texttt{Map<K,V>} - Dynamic hashmap (standard library implementation).
+    \item \texttt{Set<A>} - Dynamic hash set (standard library implementation).
+\end{enumerate}
+
+\section{Generics (Type Bounds)}
+Generics are a feature to allow for generalization of a feature/class towards other types while maintaining type safety.
+In Kira, they are implemented
+as compile-time features with runtime reification.
+
+The syntax follows a very common format akin to C++, Java, and Kotlin:
+\begin{lstlisting}
+class Pair<A, B> {
+   require pub first: A
+   require pub second: B
+}
+
+// Deprecated variadic-style example (old proposal)
+// class Functor<A, [B]> {
+//    require pub returnValue: A
+//    require pub parameters: List<B>
+// }
+
+// Recommended tuple-based replacement:
+class Functor<A, P: Tuple> {
+   require pub returnValue: A
+   require pub parameters: P // use a TupleN type for parameter lists, e.g. Tuple2<Int32, Str>
+}
+\end{lstlisting}
+
+\section{Variadic Generics \& TupleN (design)}
+
+\subsection{Problem summary}
+Variadic generics (e.g. \texttt{class Fx<A, [B]>}) aim to allow a trailing, variable-length list of type parameters. While
+convenient, treating the trailing variadic parameter as a raw list at the language level is ambiguous at source-level (
+is it a list/array? how are bounds applied?) and forces compiler magic to implement safely. This makes the feature hard
+to inspect, extend, and reason about for library authors and tooling.
+
+\subsection{Design overview}
+Kira resolves the ambiguity by modeling variadic parameter lists as tuples at the source level. The core library
+provides a small family of \texttt{TupleN} concrete classes (for example \texttt{Tuple1} .. \texttt{Tuple10}) and a minimal \texttt{Tuple} interface
+that they implement. The compiler and standard library use these \texttt{TupleN} types to represent variable parameter lists.
+This keeps the feature a source-level construct (no hidden compiler-only expansion required for everyday usage) while
+still enabling variadic-like behavior.
+
+\subsection{Core interface (source-level)}
+\begin{lstlisting}
+// minimal Tuple interface (core library / intrinsified by compiler for ergonomics)
+pub @magic mut class Tuple {
+    require pub fx size(): Int32
+    require pub fx @get(index: Int): Any // accessor returns Any - see type-safety notes
+}
+
+// example concrete tuple with two elements
+pub @magic Tuple2<A, B>: Tuple() {
+    require pub first: A
+    require pub second: B
+
+    override pub fx size(): Int32 { return 2 }
+
+    override pub fx @get(index: Int): Any {
+        if index == 0 { return first }
+        else if index == 1 { return second }
+        throw "IndexNotFound: ${index}"
+    }
+}
+\end{lstlisting}
+
+\subsection{Function types and \texttt{Fx}}
+Function types use a \texttt{Tuple} as their parameter bundle. For example:
+\begin{lstlisting}
+pub @magic class Fx<P: Tuple, R> {
+    pub fx (params: P): R
+}
+\end{lstlisting}
+
+This lets a function type precisely declare the number and types of its parameters using \texttt{TupleN}:
+\begin{lstlisting}
+// a function taking (Int32, Str) returning Bool
+f: Fx<Tuple2<Int32, Str>, Bool>
+
+// or explicitly as a function literal type in signatures
+pub fx callMe(params: Tuple2<Int32, Str>): Bool { ... }
+\end{lstlisting}
+
+\subsection{Usage}
+\begin{lstlisting}
+myTuple: Tuple2<Int32, Str> = Tuple2<Int32, Str> { 69, "Hello" }
+for i in 0..(myTuple.size() - 1) {
+    @trace(myTuple[i])
+}
+\end{lstlisting}
+
+\subsection{Extensibility and compiler behavior}
+\begin{itemize}
+    \item The core library ships \texttt{Tuple1} .. \texttt{Tuple10} as the standard set. These are implemented in source and are visible to
+    users.
+    \item Libraries may extend the \texttt{Tuple} interface to support larger tuples (e.g. \texttt{Tuple11}) without changing the compiler.
+    Doing so is a normal library extension and remains source-visible.
+    \item The compiler performs bound checking when matching a \texttt{TupleN} usage to a generic parameter constrained with
+    \texttt{P: Tuple}.
+    \item Tools (formatters, linters, IDEs) can inspect \texttt{TupleN} declarations directly; no hidden template magic is required.
+\end{itemize}
+
+\subsection{Type-safety \& ergonomics}
+\begin{itemize}
+    \item The \texttt{@get} accessor returns \texttt{Any} because the elements of a tuple may have heterogeneous types. Callers are expected
+    to use \texttt{is}/\texttt{as} to narrow and safely cast where necessary.
+    \item For common patterns, the standard library should provide typed helpers where appropriate. Examples:
+    \begin{itemize}
+        \item \texttt{fn getAs<T>(tuple: Tuple, index: Int): Maybe<T>} — a generic helper that attempts to cast and returns \texttt{null} if
+        the cast fails.
+        \item Small macros or intrinsics (editor/compile-time) can generate typed accessors for specific \texttt{TupleN} definitions.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Migration from previous variadic proposal}
+\begin{itemize}
+    \item Previously used variadic syntax (for example \texttt{class Fx<A, [B]>}) is deprecated in favor of the \texttt{TupleN} approach.
+    \item Where the old syntax was used only to represent a function parameter list, replace it with \texttt{TupleN} bindings (for
+    example \texttt{Fx<Tuple2<A,B>, R>} or \texttt{fx(params: Tuple2<A,B>): R}).
+\end{itemize}
+
+\subsection{Rationale summary}
+\begin{itemize}
+    \item \textbf{Source-level visibility:} \texttt{TupleN} types live in the core library and are readable by developers and tooling.
+    \item \textbf{Extensible without compiler changes:} users and libraries can extend \texttt{Tuple} to add support for larger tuples if
+    needed.
+    \item \textbf{Clear semantics:} tuples give a concrete representation for a fixed-length heterogenous sequence; they avoid the
+    ambiguity of a "variadic list" type at the language surface.
+\end{itemize}
+
+\section{Traits / Compile Time "Mixins"}
+Kira does not support multi-inheritance as previously seen; however, in order to suffice for allowing sharing common components across classes, \textbf{traits} are a good alternative.
+
+Traits allow injecting a class with functions/methods at compile time directly. Additionally, it can also serve as a way to inject abstract methods or no-implementation functions that the target class must take care of.
+
+However, traits differ from Mixins and Interfaces in that they are an entirely compile-time feature. This means that you cannot perform runtime checks for if a type has a trait to it (however, this can be implemented by directly checking if a certain method/function exists within).
+
+Within Kira, you are only allowed to define functions within traits, and each function also implicitly points to the current instance like in classes (i.e. there is no \texttt{self} or \texttt{this} or \texttt{::} operands to access the current scope).
+
+\begin{notebox}{Mutability Note}
+All functions in a trait are mutable or overrideable, specifying the \texttt{mut} modifier will have no effect.
+\end{notebox}
+
+\begin{notebox}{Visibility Note}
+You are able to enforce visibility modifiers on the trait itself and also functions. This is done by using the normal modifiers. However, when a function is marked with or without a modifier, it is not able to be changed by the implementing type.
+\end{notebox}
+
+\begin{notebox}{Implementer Features}
+The implementer class is allowed to use specific functions in order ot refer
+\end{notebox}
+
+Implementing a trait:
+\begin{lstlisting}
+trait Animal {
+	fx makeNoise(): Void
+
+	pub fx canConsume(items: Arr<Str>): Bool {
+		return items.any([ "water", "air" ])
+	}
+}
+
+class Dog: Animal {
+	fx makeNoise(): Void {
+		@trace("Woof")
+	}
+
+	pub fx canConsume(items: Arr<Str>): Bool {
+		return
+	}
+}
+\end{lstlisting}
+
+\section{Compile-Time Intrinsics}
+Kira supports compiler-integrated intrinsics for compile-time execution. These are not user-definable and are designed
+to simplify expressions, enable metaprogramming, and support DSL construction.
+
+\paragraph{Properties:}
+\begin{itemize}
+    \item Prefixed with \texttt{@}
+    \item Treated as standard identifiers
+    \item Function-like or directive-like
+    \item Executed during any compiler phase
+\end{itemize}
+
+\begin{lstlisting}
+a: Map<Str, Any> = @json_decode(`
+  {
+    "hello": 1,
+    "world": 2
+  }
+`)
+
+@trace(a["hello"]) // Outputs 1 to debugger
+\end{lstlisting}
+
+\subsection{Standard Intrinsics}
+\begin{table}[h!]
+\centering
+\caption{Standard Intrinsics}
+\label{tab:intrinsics}
+\begin{tabular}{>{\ttfamily}l p{8.5cm} l}
+\toprule
+\textbf{Intrinsic} & \textbf{Description} & \textbf{Example Usage} \\
+\midrule
+@trace(...) & Outputs values to the debugger console at runtime. & \\
+@global & Elevates a type, function, or variable to global scope. & \\
+@json\_decode(...) & Parses a JSON string at compile-time into a \texttt{Map<Str, Any>}. & \\
+@type\_of(...) & Returns the runtime \texttt{Type} representation of a value or type. & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Identifiers and naming}
+Kira prefers a consistent naming style to improve readability and to leave a syntactic distinction available for compiler-level constructs.
+
+\begin{itemize}
+    \item Preferred styles for ordinary user-defined names (variables, functions, types, fields) are camelCase and PascalCase:
+    \begin{itemize}
+        \item Variables and function names: camelCase (example: \texttt{myVariable}, \texttt{computeSum}).
+        \item Type and class names: PascalCase (example: \texttt{Int32}, \texttt{MyStruct}).
+    \end{itemize}
+    \item Underscores (\texttt{\_}) are explicitly disallowed inside ordinary identifiers (variables, functions, types, fields, enum members, etc.). The lexer will reject identifiers that contain underscores and will raise a diagnostic. This rule helps:
+    \begin{itemize}
+        \item Reserve the underscore character for special/ambient language uses (see intrinsics below).
+        \item Reduce ambiguity and enforce a single, consistent naming style across codebases.
+    \end{itemize}
+    \item Exceptions:
+    \begin{itemize}
+        \item Module and file names may contain underscores. Those names are not subject to the same identifier restrictions as in-source identifiers.
+        \item Intrinsics are a language-level, compile-time feature and are lexed with the \texttt{@} prefix (for example \texttt{@trace\_one}). Intrinsic names may include underscores (snake\_case) to make them visually distinct from ordinary identifiers. Intrinsic tokens are lexed as a single \texttt{INTRINSIC\_IDENTIFIER} token by the lexer.
+    \end{itemize}
+\end{itemize}
+
+\paragraph{Rationale}
+Disallowing underscores for ordinary identifiers helps maintain a clear visual distinction between normal source-level names and compiler-level, intrinsic features. Intrinsics are intended to feel different from regular API or language constructs; allowing them to use snake\_case (and the \texttt{@} prefix) keeps that separation obvious both in source and in compiled metadata.
+
+\end{document}\textbf{}

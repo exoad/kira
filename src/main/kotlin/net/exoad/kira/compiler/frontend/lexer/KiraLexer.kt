@@ -137,8 +137,27 @@ class KiraLexer(private val context: SourceContext) {
     fun lexIdentifier(): Token {
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
-        while (peek() != Symbols.NULL.rep && peek().isLetterOrDigit() && (isInIntrinsic && peek() == Symbols.UNDERSCORE.rep || peek() != Symbols.UNDERSCORE.rep)) {
-            advancePointer()
+        while (peek() != Symbols.NULL.rep) {
+            val c = peek()
+            if (c.isLetterOrDigit()) {
+                advancePointer()
+                continue
+            }
+            if (c == Symbols.UNDERSCORE.rep) {
+                if (isInIntrinsic) {
+                    advancePointer()
+                    continue
+                } else {
+                    Diagnostics.panic(
+                        "KiraLexer::lexIdentifier",
+                        "Underscores are not allowed in identifiers. Only intrinsics may contain underscores; use camelCase or PascalCase for identifiers.",
+                        location = startLoc,
+                        selectorLength = pointer - start,
+                        context = context
+                    )
+                }
+            }
+            break
         }
         return Token.Raw(Token.Type.IDENTIFIER, context.content.substring(start, pointer), start, startLoc)
     }
@@ -178,17 +197,38 @@ class KiraLexer(private val context: SourceContext) {
             if (char.isLetter() || (isInIntrinsic && char == Symbols.UNDERSCORE.rep)) {  // identifiers and keywords usually have the same stuffs
                 val identifier = lexIdentifier()
                 val keywordTokenType = Keywords.all[identifier.content]
-                return when {
-                    keywordTokenType != null -> {
-                        Token.Raw(
-                            keywordTokenType,
-                            identifier.content,
-                            identifier.pointerPosition,
-                            identifier.canonicalLocation
-                        )
-                    }
+                if (keywordTokenType != null) {
+                    return Token.Raw(
+                        keywordTokenType,
+                        identifier.content,
+                        identifier.pointerPosition,
+                        identifier.canonicalLocation
+                    )
+                }
+                // defensive fallback for keywords that may not be present due to build ordering or map issues
+                when (identifier.content) {
+                    "try" -> return Token.Raw(
+                        Token.Type.K_TRY,
+                        identifier.content,
+                        identifier.pointerPosition,
+                        identifier.canonicalLocation
+                    )
 
-                    else -> identifier
+                    "throw" -> return Token.Raw(
+                        Token.Type.K_THROW,
+                        identifier.content,
+                        identifier.pointerPosition,
+                        identifier.canonicalLocation
+                    )
+
+                    "on" -> return Token.Raw(
+                        Token.Type.K_ON,
+                        identifier.content,
+                        identifier.pointerPosition,
+                        identifier.canonicalLocation
+                    )
+
+                    else -> return identifier
                 }
             }
             if (char.isDigit()) {
@@ -199,10 +239,7 @@ class KiraLexer(private val context: SourceContext) {
             }
             advancePointer()
             if (char == Symbols.AT.rep) {
-                advancePointer()
-                if (localPeek(1).isLetter()) {
-                    isInIntrinsic = true
-                } else {
+                if (!localPeek(1).isLetter()) {
                     Diagnostics.panic(
                         "KiraLexer::nextToken",
                         "Expected identifier after '@' for intrinsic marking.",
@@ -210,6 +247,15 @@ class KiraLexer(private val context: SourceContext) {
                         context = context
                     )
                 }
+                // consume the character already advanced (the '@' was consumed by advancePointer above)
+                // now lex the following identifier characters (letters, digits, underscores)
+                val identStart = pointer
+                val identStartLoc = SourcePosition(lineNumber, column)
+                while (localPeek(pointer - start).isLetterOrDigit() || localPeek(pointer - start) == Symbols.UNDERSCORE.rep) {
+                    advancePointer()
+                }
+                val content = context.content.substring(identStart, pointer)
+                return Token.Raw(Token.Type.INTRINSIC_IDENTIFIER, content, identStart, identStartLoc)
             }
             // i want to say this when statement looks great, but like man covering conditional, is just pure hell to my eyes to look at.
             //
@@ -304,7 +350,7 @@ class KiraLexer(private val context: SourceContext) {
 
                 Symbols.UNDERSCORE.rep -> Token.Symbol(
                     Token.Type.S_UNDERSCORE,
-                    Symbols.QUESTION_MARK,
+                    Symbols.UNDERSCORE,
                     start,
                     startLoc
                 )

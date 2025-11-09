@@ -21,7 +21,7 @@ object BuiltinTypes {
     /**
      * Unit types, only things like Void
      */
-    val unitTypes = mapOf<String, Array<Token.Type>>(
+    val unitTypes = mapOf(
         "Void" to arrayOf(Token.Type.X_ANY)
     )
 
@@ -29,7 +29,7 @@ object BuiltinTypes {
      * Anything related to something being treated intrinsically as a modifier.
      */
     val referenceTypes = mapOf(
-        "Maybe" to arrayOf(Token.Type.L_NULL, Token.Type.X_ANY),
+        "Maybe" to arrayOf(Token.Type.X_ANY),
         "Weak" to arrayOf(Token.Type.X_ANY),
         "Unsafe" to arrayOf(Token.Type.X_ANY)
     )
@@ -78,5 +78,3 @@ object BuiltinTypes {
         return integerTypes + sequenceTypes + logicalTypes + unitTypes + referenceTypes
     }
 }
-
-

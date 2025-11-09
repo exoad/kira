@@ -267,14 +267,19 @@ is also private from the child and the child cannot access it.
 
 ## Null Safety
 
-Kira incorporates sound null-safety as one of its core pillars. It does so using a core type: `Maybe< A >`.
+Kira incorporates sound null-safety as one of its core pillars. It does so using a core type: `Maybe<A>`.
 
-Without boxing a type in `Maybe`, you are not allowed to assign the literal `null` to anything:
+> Important: Kira does not have a special `null` literal token in the language grammar. Instead, the core library
+> exposes a global singleton value named `null` that represents an absent value (the canonical `Maybe` sentinel). The
+> lexer/parser treat `null` as an ordinary identifier; the standard library provides the `null` binding and the semantic
+> analyzer resolves it as the Maybe sentinel.
+
+Without boxing a type in `Maybe`, you are not allowed to assign the `null` sentinel to anything of a non-`Maybe` type:
 
 ```
-a: Int32 = null // error!
+a: Int32 = null // error: cannot assign the `null` sentinel to a non-Maybe type
 
-b: Maybe<Int32> = null // ok!
+b: Maybe<Int32> = null // ok: `null` is the Maybe sentinel and can be assigned to Maybe<T>
 ```
 
 `Maybe` also enables for field-valuation meaning you can achieve the following without using a getter for the internally
@@ -283,7 +288,7 @@ held value:
 ```
 mut a: Maybe<Int32> = null
 
-@trace(a) // null
+@trace(a) // null (the sentinel)
 @trace(a.value) // null
 
 a = 32 // assignment to Maybe<T> will auto-box a value of type T into the Maybe<T>
@@ -309,8 +314,8 @@ Also, available as a helper function (static-style) for convenience:
 value: Int32 = Maybe.unwrapOr(a, 0)
 ```
 
-If the underlying value is `null`, `unwrapOr` returns the provided `option` value, otherwise it returns the underlying
-value.
+If the underlying value is the `null` sentinel, `unwrapOr` returns the provided `option` value, otherwise it returns the
+underlying value.
 
 ```
 mut a: Maybe<Int32> = null
@@ -328,10 +333,10 @@ if a == null {
 
 **Sanity Checks**
 
-If you do not like using `==` to check if the value is equal to `null`, there are 2 methods to help you:
+If you do not like using `==` to check if the value is equal to the `null` sentinel, there are 2 methods to help you:
 
-1. `Maybe< A >::isNull(): Bool` - returns `true` if the underlying value is `null` else `false`
-2. `Maybe< A >::isSome(): Bool` - returns `true` if the underlying value is not `null` else `false`
+1. `Maybe<A>::isNull(): Bool` - returns `true` if the underlying value is the `null` sentinel else `false`
+2. `Maybe<A>::isSome(): Bool` - returns `true` if the underlying value is not the `null` sentinel else `false`
 
 ## Exceptions
 
@@ -657,3 +662,42 @@ a: Map<Str, Any> = @json_decode(`
 
 @trace(a["hello"]) // Outputs 1 to debugger
 ```
+
+### Standard Intrinsics
+
+| Intrinsic           | Description                                                                                     | Example Usage |
+|---------------------|-------------------------------------------------------------------------------------------------|---------------|
+| `@trace(...)`       | Outputs values to the debugger console at runtime.                                              |
+| `@global`           | Elevates a type, function, or variable to global scope.                                         |
+| `@json_decode(...)` | Parses a JSON string at compile-time into a `Map<Str, Any>`.                                    |
+| `@type_of(...)`     | Returns the runtime `Type` representation of a value or type.                                   |
+| ---------------     | ----------------------------------------------------------------------------------------------- |
+
+## Identifiers and naming
+
+Kira prefers a consistent naming style to improve readability and to leave a syntactic distinction available for
+compiler-level constructs.
+
+- Preferred styles for ordinary user-defined names (variables, functions, types, fields) are camelCase and PascalCase:
+    - Variables and function names: camelCase (example: `myVariable`, `computeSum`).
+    - Type and class names: PascalCase (example: `Int32`, `MyStruct`).
+
+- Underscores (`_`) are explicitly disallowed inside ordinary identifiers (variables, functions, types, fields, enum
+  members, etc.). The lexer will reject identifiers that contain underscores and will raise a diagnostic. This rule
+  helps:
+    - Reserve the underscore character for special/ambient language uses (see intrinsics below).
+    - Reduce ambiguity and enforce a single, consistent naming style across codebases.
+
+- Exceptions:
+    - Module and file names may contain underscores. Those names are not subject to the same identifier restrictions as
+      in-source identifiers.
+    - Intrinsics are a language-level, compile-time feature and are lexed with the `@` prefix (for example
+      `@trace_one`). Intrinsic names may include underscores (snake_case) to make them visually distinct from ordinary
+      identifiers. Intrinsic tokens are lexed as a single `INTRINSIC_IDENTIFIER` token by the lexer.
+
+**Rationale**
+
+Disallowing underscores for ordinary identifiers helps maintain a clear visual distinction between normal source-level
+names and compiler-level, intrinsic features. Intrinsics are intended to feel different from regular API or language
+constructs; allowing them to use snake_case (and the `@` prefix) keeps that separation obvious both in source and in
+compiled metadata.

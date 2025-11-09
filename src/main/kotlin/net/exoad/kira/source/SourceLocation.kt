@@ -19,8 +19,9 @@ open class SourceLocation(val lineNumber: Int, val column: Int, val srcFile: Str
     }
 
     init {
-        assert(lineNumber > 0) { "Line Number must be greater than 0 (BAD: $lineNumber)" }
-        assert(column > 0) { "Column Number must be greater than 0 (BAD: $column)" }
+        // allow sentinel (-1) and baked-in (0) positions; only assert against excessively negative values
+        assert(lineNumber >= -1) { "Line Number must be >= -1 (BAD: $lineNumber)" }
+        assert(column >= -1) { "Column Number must be >= -1 (BAD: $column)" }
     }
 
     fun toPosition(): SourcePosition {

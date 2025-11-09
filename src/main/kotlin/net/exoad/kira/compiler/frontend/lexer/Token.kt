@@ -54,9 +54,12 @@ sealed class Token(
 
         //        OP_BIT_SHR("'>>' (Bitwise Shift Right)"),
 //        OP_BIT_USHR("'>>>' (Bitwise Unsigned Shift Right)"),
-        OP_BIT_XOR("'^' (Bitwise XOR"),
+        OP_BIT_XOR("^' (Bitwise XOR"),
         K_IF("'if'"),
         K_ELSE("'else'"),
+        K_TRY("'try'"),
+        K_THROW("'throw'"),
+        K_ON("'on'"),
         K_IS("'is'"),
         K_CONTINUE("'continue'"),
         K_BREAK("'break'"),

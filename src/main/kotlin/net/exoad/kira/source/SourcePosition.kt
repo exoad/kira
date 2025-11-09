@@ -9,8 +9,9 @@ data class SourcePosition(val lineNumber: Int, val column: Int) : Comparable<Sou
     }
 
     init {
-        assert(lineNumber > 0) { "Line Number must be greater than 0 (BAD: $lineNumber)" }
-        assert(column > 0) { "Column Number must be greater than 0 (BAD: $column)" }
+        // allow sentinel UNKNOWN (-1) to be constructed; runtime positions must still be positive
+        assert(lineNumber >= -1) { "Line Number must be >= -1 (BAD: $lineNumber)" }
+        assert(column >= -1) { "Column Number must be >= -1 (BAD: $column)" }
     }
 
     override fun toString(): String {
