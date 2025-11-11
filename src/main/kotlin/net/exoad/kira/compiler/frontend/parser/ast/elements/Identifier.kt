@@ -3,7 +3,7 @@ package net.exoad.kira.compiler.frontend.parser.ast.elements
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 
-open class Identifier(open val value: String) : Expr {
+open class Identifier(open val value: String) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitIdentifier(this)
     }
@@ -31,4 +31,3 @@ open class Identifier(open val value: String) : Expr {
         return value == other.value
     }
 }
-

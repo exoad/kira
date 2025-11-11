@@ -6,10 +6,13 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
 
     init {
         // ensure there is always at least one global module scope to avoid empty-stack access
-        enter(SemanticScope.Module("(global)"))
+        enter(SemanticScope.Global)
     }
 
     fun enter(kind: SemanticScope) {
+        if(kind == SemanticScope.Global && scopeStack.any { it.kind == SemanticScope.Global }) {
+            throw KiraRuntimeException("Cannot enter global scope: already exists!")
+        }
         scopeStack.addFirst(KiraScopeFrame(kind))
     }
 

@@ -3,8 +3,7 @@ package net.exoad.kira.compiler.frontend.parser.ast.expressions
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 
-open class WithExpr(val members: List<WithExprMember>) :
-    Expr { // the value of the map represent everything on the right side of the key (aka the identifier) or WithMemberExpr
+open class WithExpr(val members: List<WithExprMember>) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitWithExpr(this)
     }
@@ -14,7 +13,7 @@ open class WithExpr(val members: List<WithExprMember>) :
     }
 }
 
-open class WithExprMember(val name: Identifier, val value: Expr) : Expr {
+open class WithExprMember(val name: Identifier, val value: Expr) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitWithExprMember(this)
     }

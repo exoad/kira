@@ -12,7 +12,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.IntrinsicCapability
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
@@ -212,22 +211,24 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
-        pumpOnTrue(
-            intrinsicExpr.intrinsicKey.capabilities.all { it != IntrinsicCapability.Functor } && intrinsicExpr.parameters != null,
-            message = "The intrinsic '${intrinsicExpr.intrinsicKey.rep}' cannot be used as a functor.",
-            location = intrinsicExpr.sourceLocation.toPosition(),
-            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
-            help =
-                "Supported capabilities for this intrinsic: ${intrinsicExpr.intrinsicKey.capabilities.joinToString(",") { it::class.simpleName!! }}"
-        )
-        pumpOnTrue(
-            intrinsicExpr.intrinsicKey.capabilities.contains(IntrinsicCapability.Functor) && !intrinsicExpr.intrinsicKey.capabilities.contains(
-                IntrinsicCapability.Marker
-            ) && (intrinsicExpr.parameters?.isEmpty() ?: true),
-            message = "The intrinsic '${intrinsicExpr.intrinsicKey.rep}' can only be used as a functor. Supply arguments to it. ",
-            location = intrinsicExpr.sourceLocation.toPosition(),
-            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
-        )
+//        pumpOnTrue(
+//            intrinsicExpr.intrinsicKey.capabilities.all { it != IntrinsicCapability.Functor } && intrinsicExpr.parameters != null,
+//            message = "The intrinsic '${intrinsicExpr.intrinsicKey.rep}' cannot be used as a functor.",
+//            location = intrinsicExpr.sourceLocation.toPosition(),
+//            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
+//            help =
+//                "Supported capabilities for this intrinsic: ${intrinsicExpr.intrinsicKey.capabilities.joinToString(",") { it::class.simpleName!! }}"
+//        )
+//        pumpOnTrue(
+//            intrinsicExpr.intrinsicKey.capabilities.contains(IntrinsicCapability.Functor) && !intrinsicExpr.intrinsicKey.capabilities.contains(
+//                IntrinsicCapability.Marker
+//            ) && (intrinsicExpr.parameters?.isEmpty() ?: true),
+//            message = "The intrinsic '${intrinsicExpr.intrinsicKey.rep}' can only be used as a functor. Supply arguments to it. ",
+//            location = intrinsicExpr.sourceLocation.toPosition(),
+//            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
+//        )
+        // TODO: implement proper validation logic by also double checking valid target ast nodes instead
+        intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit)
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
@@ -422,12 +423,14 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 }
                 return
             }
-            val hasGlobalIntrinsic = try {
-                context.astIntrinsicMarked.containsKey(classDecl) &&
-                        context.astIntrinsicMarked[classDecl]?.contains(net.exoad.kira.core.Intrinsic.GLOBAL) == true
-            } catch (_: UninitializedPropertyAccessException) {
-                false
-            }
+            // TODO: fix this so that it uses the current intrinsic registry to check for this
+            val hasGlobalIntrinsic = false
+//            val hasGlobalIntrinsic = try {
+//                context.astIntrinsicMarked.containsKey(classDecl) &&
+//                        context.astIntrinsicMarked[classDecl]?.contains(net.exoad.kira.core.IntrinsicRegistry.GLOBAL) == true
+//            } catch (_: UninitializedPropertyAccessException) {
+//                false
+//            }
             val symbol = SemanticSymbol(
                 typeName,
                 SemanticSymbolKind.TYPE_SPECIFIER,

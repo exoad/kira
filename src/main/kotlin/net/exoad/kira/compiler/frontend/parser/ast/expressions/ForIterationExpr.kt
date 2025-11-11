@@ -2,8 +2,13 @@ package net.exoad.kira.compiler.frontend.parser.ast.expressions
 
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.core.CompilerIntrinsic
 
-open class ForIterationExpr(val initializer: Identifier, val target: Expr) : Expr {
+open class ForIterationExpr(
+    val initializer: Identifier,
+    val target: Expr,
+    override val attachedIntrinsics: List<CompilerIntrinsic>
+) : Expr(attachedIntrinsics) {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitForIterationExpr(this)
     }

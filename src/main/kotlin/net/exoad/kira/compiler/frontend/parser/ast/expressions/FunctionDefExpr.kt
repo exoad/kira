@@ -9,7 +9,7 @@ open class FunctionDefExpr(
     open val returnTypeSpecifier: Type,
     open val parameters: List<FunctionDeclParameterExpr>,
     open val body: List<Statement>?, // if this is null, then this is just a "noimpl" function
-) : Expr {
+) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitFunctionDefExpr(this)
     }

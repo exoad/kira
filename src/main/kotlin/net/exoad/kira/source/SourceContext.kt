@@ -7,7 +7,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
-import net.exoad.kira.core.Intrinsic
+import net.exoad.kira.core.IntrinsicRegistry
 import java.util.*
 
 /**
@@ -22,7 +22,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     private val lines: List<String> = content.lines()
     lateinit var ast: RootASTNode
     lateinit var astOrigins: IdentityHashMap<ASTNode, SourcePosition>
-    lateinit var astIntrinsicMarked: IdentityHashMap<ASTNode, Array<Intrinsic>>
+    lateinit var astIntrinsicMarked: IdentityHashMap<ASTNode, Array<IntrinsicRegistry>>
 
     /**
      * Returns the module declaration representing this source module
@@ -65,7 +65,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         return astIntrinsicMarked[node]?.isNotEmpty() ?: false
     }
 
-    fun <T : ASTNode> intrinsicsOf(node: T): Array<Intrinsic> {
+    fun <T : ASTNode> intrinsicsOf(node: T): Array<IntrinsicRegistry> {
         if (!isIntrinsified(node)) {
             Diagnostics.panic("Kira", "$node has no intrinsic markers.", context = this)
         }

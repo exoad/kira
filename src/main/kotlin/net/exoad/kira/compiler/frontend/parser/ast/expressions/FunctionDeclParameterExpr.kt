@@ -9,7 +9,7 @@ open class FunctionDeclParameterExpr(
     val name: Identifier,
     val typeSpecifier: Type,
     val modifiers: List<Modifier> = emptyList(),
-) : Expr {
+) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitFunctionParameterExpr(this)
     }

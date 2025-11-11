@@ -9,6 +9,7 @@ import java.util.logging.Logger
 import java.util.logging.SimpleFormatter
 import kotlin.system.exitProcess
 
+
 /**
  * General debugging things or information to be shown to the user like panic information and others
  *

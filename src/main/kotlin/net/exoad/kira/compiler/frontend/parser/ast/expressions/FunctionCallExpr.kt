@@ -7,7 +7,7 @@ open class FunctionCallExpr(
     val name: Expr,
     val positionalParameters: List<FunctionCallPositionalParameterExpr>,
     val namedParameters: List<FunctionCallNamedParameterExpr>,
-) : Expr {
+) : Expr() {
     // this piece check is kind of faulty, most often it will report `name` as `null` which is not really possible
 //    init {
 //        require(name is IntrinsicExpr || name is Identifier) {

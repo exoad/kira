@@ -10,7 +10,7 @@ open class TryExpr(
     val exceptionName: Identifier?,
     val exceptionType: Type?,
     val handlerBlock: List<Statement>
-) : Expr {
+) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitTryExpr(this)
     }
@@ -19,4 +19,3 @@ open class TryExpr(
         return "Try{ try=${tryBlock.size} handler=${handlerBlock.size} }"
     }
 }
-

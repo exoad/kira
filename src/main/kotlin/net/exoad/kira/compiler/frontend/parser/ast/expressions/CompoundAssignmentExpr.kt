@@ -3,8 +3,14 @@ package net.exoad.kira.compiler.frontend.parser.ast.expressions
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
+import net.exoad.kira.core.CompilerIntrinsic
 
-class CompoundAssignmentExpr(val left: Expr, val operator: BinaryOp, val right: Expr) : Expr {
+class CompoundAssignmentExpr(
+    val left: Expr,
+    val operator: BinaryOp,
+    val right: Expr,
+    override val attachedIntrinsics: List<CompilerIntrinsic> = emptyList()
+) : Expr(attachedIntrinsics) {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitCompoundAssignmentExpr(this)
     }

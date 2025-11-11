@@ -7,7 +7,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.Intrinsic
+import net.exoad.kira.core.IntrinsicRegistry
 import java.text.SimpleDateFormat
 
 /**
@@ -437,7 +437,7 @@ object XMLASTVisitorKira :
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
         node(
             "IntrinsicCallExpr", """ name ="${
-                Intrinsic.entries.find { it.name == intrinsicExpr.intrinsicKey.name }?.name
+                IntrinsicRegistry.entries.find { it.name == intrinsicExpr.intrinsicKey.name }?.name
                     ?: intrinsicExpr.intrinsicKey.name
             }""""
         ) {

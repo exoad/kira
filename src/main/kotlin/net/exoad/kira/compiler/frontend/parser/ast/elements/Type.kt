@@ -8,7 +8,7 @@ open class Type(
     open val identifier: Expr,
     open val constraint: Type?,
     open val children: List<Type>
-) : Expr {
+) : Expr() {
     constructor(name: Expr) : this(name, null, emptyList())
 
     init {
@@ -32,4 +32,3 @@ open class Type(
         return "<$identifier${if (constraint != null) "++${constraint}" else ""} $children>"
     }
 }
-
