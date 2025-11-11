@@ -3,104 +3,113 @@
 
 #include "kira_ir.h"
 
-#define KIRA_VM_MAX_REGISTERS ((UInt8) 255)
+typedef enum
+{
+    KIRA_TYPE_INT = 0,
+    KIRA_TYPE_FLOAT = 1,
+    KIRA_TYPE_REFERENCE = 2,
+    KIRA_TYPE_RETURNADDR = 3,
+    KIRA_TYPE_UNINITIALIZED = 4
+} KiraValueType;
 
-// --- struct: KiraVMRegisterType
+typedef struct
+{
+    KiraValueType type;
+    union
+    {
+        Int32 intValue;
+        Float32 floatValue;
+        Void* refValue;
+        UInt32 returnAddr;
+    } as;
+} KiraValue;
 
 typedef enum
 {
-    KIRA_REGISTER_TYPE_BYTE,
-    KIRA_REGISTER_TYPE_WORD,
-    KIRA_REGISTER_TYPE_FLOAT,
-    KIRA_REGISTER_TYPE_UNSET
-} KiraVMRegisterType;
+    KIRA_OBJ_STRING = 0,
+    KIRA_OBJ_ARRAY = 1,
+    KIRA_OBJ_INSTANCE = 2,
+} KiraObjectType;
 
-extern String kiraVMRegisterTypeNames[];
-
-// --- struct: KiraVMRegister
+typedef struct sKiraObject
+{
+    KiraObjectType type;
+    UInt32 refCount;
+    struct sKiraObject* next;
+} KiraObject;
 
 typedef struct
 {
-    KiraVMRegisterType type;
-    union
-    {
-        Int32 wordValue;
-        Int8 byteValue;
-        Float32 floatValue;
-    } value;
-} KiraVMRegister;
-
-#define r0 0 // return result register
-#define r1 1
-#define r2 2
-#define r3 3
-#define r4 4
-#define r5 5
-#define r6 6
-#define r7 7
-#define r8 8
-#define r9 9
-#define rA 10 // first argument
-#define rB 11 // second argument
-#define rC 12 // third argument
-#define rD 13 // fourth argument
-#define rE 14 // fifth argument
-#define rF 15 // sixth argument
-
-// --- struct: KiraVMRegisterFile
+    KiraObject obj;
+    UInt32 length;
+    KiraValue* elements;
+} KiraArray;
 
 typedef struct
 {
-    KiraVMRegister registers[KIRA_VM_MAX_REGISTERS];
-} KiraVMRegisterFile;
-
-KiraVMRegisterFile* kiraVMRegisterFile();
-
-Void freeKiraVMRegisterFile(KiraVMRegisterFile* registerFile);
-
-Void kiraVMRegisterSetWord(KiraVMRegisterFile* regFile, KiraAddress reg, Word value);
-
-Void kiraVMRegisterSetFloat(KiraVMRegisterFile* regFile, KiraAddress reg, Float32 value);
-
-Void kiraVMRegisterSetByte(KiraVMRegisterFile* regFile, KiraAddress reg, Byte value);
-
-Byte kiraVMRegisterGetByte(KiraVMRegisterFile* regFile, KiraAddress reg);
-
-Word kiraVMRegisterGetWord(KiraVMRegisterFile* regFile, KiraAddress reg);
-
-Float32 kiraVMRegisterGetFloat(KiraVMRegisterFile* regFile, KiraAddress reg);
-
-KiraVMRegisterType kiraVMRegisterTypeAt(KiraVMRegisterFile* regFile, KiraAddress reg);
-
-// --- struct: KiraVM
-
-#define KIRA_VM_DEFAULT_CALL_STACK_SIZE 64
+    KiraObject obj;
+    String chars;
+    UInt32 length;
+    UInt32 hash;
+} KiraString;
 
 typedef struct
 {
-    KiraVMRegisterFile* registers;
+    KiraObject obj;
+    UInt16 classIndex;
+    KiraValue* fields;
+    UInt16 fieldCount;
+} KiraInstance;
+
+#define KIRA_MAX_LOCALS 256
+#define KIRA_MAX_STACK 256
+
+typedef struct
+{
+    UInt8* ip;
+    KiraValue* slots;
+    KiraValue* stackTop;
+    KiraValue stack[KIRA_MAX_STACK];
+    KiraMethodInfo* method;
+    UInt32 returnAddress;
+} KiraCallFrame;
+
+#define KIRA_MAX_FRAMES 64
+
+typedef struct
+{
     KiraProgram* program;
-    UInt32 pc;
-    KiraFunctionTable* functionTable;
-    UInt32* callStack;
-    UInt32 callStackTop;
-    UInt32 callStackSize;
-    union
-    {
-        UInt32 flags;
-        struct
-        {
-            UInt32 zero: 1;
-            UInt32 negative: 1;
-            UInt32 carry: 1;
-            UInt32 overflow: 1;
-            UInt32 reserved: 28;
-        } flagBits;
-    };
+    KiraCallFrame frames[KIRA_MAX_FRAMES];
+    Int32 frameCount;
+    KiraObject* objects;
+    UInt32 bytesAllocated;
+    KiraValue globals[256];
+    Bool halted;
+    Int32 exitCode;
 } KiraVM;
 
-KiraVM* kiraVM(KiraProgram* program);
+KiraVM* kiraVMCreate(KiraProgram* program);
+Void kiraVMFree(KiraVM* vm);
+Void kiraVMRun(KiraVM* vm);
 
-Void freeKiraVM(KiraVM* vm);
+KiraValue kiraValueInt(Int32 value);
+KiraValue kiraValueFloat(Float32 value);
+KiraValue kiraValueRef(Void* ref);
+Bool kiraValueEquals(KiraValue a, KiraValue b);
+Void kiraValuePrint(KiraValue value);
+
+Void kiraPush(KiraCallFrame* frame, KiraValue value);
+KiraValue kiraPop(KiraCallFrame* frame);
+KiraValue kiraPeek(KiraCallFrame* frame, Int32 distance);
+
+KiraObject* kiraAllocateObject(KiraVM* vm, Size size, KiraObjectType type);
+KiraArray* kiraAllocateArray(KiraVM* vm, UInt32 length);
+KiraString* kiraAllocateString(KiraVM* vm, String chars, UInt32 length);
+KiraInstance* kiraAllocateInstance(KiraVM* vm, UInt16 classIndex, UInt16 fieldCount);
+Void kiraFreeObject(KiraObject* object);
+
+Void kiraRetain(KiraObject* object);
+Void kiraRelease(KiraVM* vm, KiraObject* object);
+Void kiraReleaseValue(KiraVM* vm, KiraValue value);
 
 #endif

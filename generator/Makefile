@@ -1,49 +1,64 @@
+
+
 CC = gcc
-ASAN_FLAGS =
-ifeq ($(ASAN),1)
-    ASAN_FLAGS = -fsanitize=address -fsanitize=undefined -fsanitize-trap=all
-else ifeq ($(filter asan,$(MAKECMDGOALS)),asan)
-    ASAN_FLAGS = -fsanitize=address -fsanitize=undefined -fsanitize-trap=all
-endif
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Iinclude
+LDFLAGS = -lm
 
-CFLAGS = -Wall -Wextra -Wpedantic -Wunused -Wcast-align -Wno-unused-function -Wshadow -O3 $(ASAN_FLAGS) -std=c17 -Iinclude
+SRC_DIR = src
+OBJ_DIR = obj
+INCLUDE_DIR = include
+BIN_DIR = .
 
-LDFLAGS = $(ASAN_FLAGS)
+SRCS = $(SRC_DIR)/runtime.c $(SRC_DIR)/ir_impl.c $(SRC_DIR)/codegen.c
+MAIN_SRC = kiragen.c
+NATIVE_SRC = native_gen.c
 
-BIN = kiragen
+OBJS = $(SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+MAIN_OBJ = $(OBJ_DIR)/kiragen.o
+NATIVE_OBJ = $(OBJ_DIR)/native_gen.o
 
-SRCDIR = src
-INCDIR = include
-OBJDIR = obj
+TARGET = $(BIN_DIR)/kiragen.exe
+NATIVE_GEN = $(BIN_DIR)/native_gen.exe
 
-C_FILES = $(wildcard *.c) $(wildcard $(SRCDIR)/*.c) $(wildcard)
+all: $(TARGET) $(NATIVE_GEN)
 
-OBJ_FILES = $(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(C_FILES)))
+$(OBJ_DIR):
+	@if not exist $(OBJ_DIR) mkdir $(OBJ_DIR)
 
-all: $(BIN)
-
-$(OBJDIR):
-	@mkdir -p $(OBJDIR)
-
-$(BIN): $(OBJ_FILES) | $(OBJDIR)
-	$(CC) $(OBJ_FILES) -o $@ $(LDFLAGS)
-
-$(OBJDIR)/%.o: %.c | $(OBJDIR)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
+$(MAIN_OBJ): $(MAIN_SRC) | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(NATIVE_OBJ): $(NATIVE_SRC) | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TARGET): $(OBJS) $(MAIN_OBJ)
+	$(CC) $(OBJS) $(MAIN_OBJ) -o $@ $(LDFLAGS)
+	@echo Build complete: $(TARGET)
+
+$(NATIVE_GEN): $(OBJS) $(NATIVE_OBJ)
+	$(CC) $(OBJS) $(NATIVE_OBJ) -o $@ $(LDFLAGS)
+	@echo Build complete: $(NATIVE_GEN)
 
 clean:
-	rm -f $(OBJ_FILES)
-	rm -rf $(OBJDIR)
+	-@if exist $(OBJ_DIR) rmdir /s /q $(OBJ_DIR) 2>nul
+	-@if exist $(TARGET) del /q $(TARGET) 2>nul
+	-@if exist $(NATIVE_GEN) del /q $(NATIVE_GEN) 2>nul
+	-@if exist fibonacci.kir del /q fibonacci.kir 2>nul
+	-@if exist fibonacci.asm del /q fibonacci.asm 2>nul
+	-@if exist arc_example.asm del /q arc_example.asm 2>nul
+	@echo Clean complete
 
-fclean: clean
-	rm -f $(BIN)
+run: $(TARGET)
+	@echo.
+	@echo === Running Kira VM ===
+	@$(TARGET)
 
-re: fclean all
+native: $(NATIVE_GEN)
+	@echo.
+	@echo === Running Native Code Generator ===
+	@$(NATIVE_GEN)
 
-asan:
-	@$(MAKE) all ASAN=1
-
-.PHONY: all clean fclean re asan
+.PHONY: all clean run native
