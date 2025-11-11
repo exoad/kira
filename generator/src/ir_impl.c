@@ -22,7 +22,7 @@ Void kiraConstantPoolFree(KiraConstantPool* pool)
     {
         if(pool->constants[i].type == CONST_UTF8 && pool->constants[i].data.utf8.value != null)
         {
-            free((Void*) pool->constants[i].data.utf8.value);
+            free((Any) pool->constants[i].data.utf8.value);
         }
     }
     free(pool->constants);
@@ -243,7 +243,7 @@ KiraProgram* kiraLoadProgram(String fileName)
                 case CONST_UTF8:
                     fread(&constant->data.utf8.length, sizeof(UInt32), 1, file);
                     constant->data.utf8.value = (String) malloc(constant->data.utf8.length + 1);
-                    fread((Void*) constant->data.utf8.value, 1, constant->data.utf8.length, file);
+                    fread((Any) constant->data.utf8.value, 1, constant->data.utf8.length, file);
                     ((Int8*) constant->data.utf8.value)[constant->data.utf8.length] = '\0';
                     break;
                 case CONST_INTEGER:

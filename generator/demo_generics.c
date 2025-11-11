@@ -1,0 +1,84 @@
+#include "include/kira_runtime.h"
+#include "include/kira_ir.h"
+#include <stdio.h>
+
+Int32 main()
+{
+    printf("=== Kira Generics & Tuple Demo ===\n\n");
+    KiraProgram* program = (KiraProgram*)calloc(1, sizeof(KiraProgram));
+    KiraVM* vm = kiraVMCreate(program);
+    printf("1. Testing Type Parameters:\n");
+    KiraTypeInfo* listType = kiraCreateTypeInfo(vm, "List", 100, 0xFFFF, 32, 0, 0, 0, 1, 0, 0, 1);
+    kiraAddTypeParameter(listType, 0, "T");
+    kiraRegisterType(vm, listType);
+    printf("   Created generic type: %s with type parameter: %s\n", listType->name, listType->typeParamNames[0]);
+    printf("\n2. Testing Generic Instance:\n");
+    KiraTypeInfo* intType = kiraCreateTypeInfo(vm, "Int", 1, 0xFFFF, 16, 0, 0, 0, 0, 0, 0, 0);
+    kiraRegisterType(vm, intType);
+    KiraTypeInfo* typeParams[1] = { intType };
+    KiraGenericInstance* listOfInt = kiraCreateGenericInstance(vm, listType, 1, typeParams);
+    printf("   Created generic instance: ");
+    kiraValuePrint((KiraValue){ .type = KIRA_TYPE_REFERENCE, .as.refValue = (Any) listOfInt });
+    printf("\n");
+    printf("\n3. Testing Tuple Creation:\n");
+    KiraTuple* tuple = kiraCreateTuple(vm, 3);
+    KiraValue i1 = kiraBoxInt(vm, 42);
+    KiraValue i2 = kiraBoxInt(vm, 100);
+    KiraValue i3 = kiraBoxInt(vm, -7);
+    kiraSetTupleElement(tuple, 0, i1);
+    kiraSetTupleElement(tuple, 1, i2);
+    kiraSetTupleElement(tuple, 2, i3);
+    printf("   Created tuple: ");
+    kiraValuePrint((KiraValue){ .type = KIRA_TYPE_REFERENCE, .as.refValue = (Any) tuple });
+    printf("\n");
+    printf("\n4. Testing Tuple Element Access:\n");
+    KiraValue elem0 = kiraGetTupleElement(tuple, 0);
+    KiraValue elem1 = kiraGetTupleElement(tuple, 1);
+    KiraValue elem2 = kiraGetTupleElement(tuple, 2);
+    printf("   tuple[0] = ");
+    kiraValuePrint(elem0);
+    printf("\n   tuple[1] = ");
+    kiraValuePrint(elem1);
+    printf("\n   tuple[2] = ");
+    kiraValuePrint(elem2);
+    printf("\n");
+    printf("\n5. Testing Nested Generics:\n");
+    KiraTypeInfo* mapType = kiraCreateTypeInfo(vm, "Map", 101, 0xFFFF, 64, 0, 0, 0, 2, 0, 0, 1);
+    kiraAddTypeParameter(mapType, 0, "K");
+    kiraAddTypeParameter(mapType, 1, "V");
+    kiraRegisterType(vm, mapType);
+    KiraTypeInfo* stringType = kiraCreateTypeInfo(vm, "String", 2, 0xFFFF, 32, 0, 0, 0, 0, 0, 0, 0);
+    kiraRegisterType(vm, stringType);
+    KiraTypeInfo* mapParams[2] = { stringType, listOfInt->baseType };
+    KiraGenericInstance* mapOfStringToList = kiraCreateGenericInstance(vm, mapType, 2, mapParams);
+    printf("   Created nested generic: ");
+    kiraValuePrint((KiraValue){ .type = KIRA_TYPE_REFERENCE, .as.refValue = (Any) mapOfStringToList });
+    printf("\n");
+    printf("\n6. Testing Tuple with Mixed Types:\n");
+    KiraTuple* mixedTuple = kiraCreateTuple(vm, 4);
+    KiraValue num = kiraBoxInt(vm, 123);
+    KiraValue flt = kiraBoxFloat(vm, 3.14f);
+    KiraValue boolVal = kiraBoxBool(vm, 1);
+    kiraSetTupleElement(mixedTuple, 0, num);
+    kiraSetTupleElement(mixedTuple, 1, flt);
+    kiraSetTupleElement(mixedTuple, 2, boolVal);
+    kiraSetTupleElement(mixedTuple, 3, (KiraValue){ .type = KIRA_TYPE_REFERENCE, .as.refValue = (Any) tuple });
+    printf("   Created mixed tuple: ");
+    kiraValuePrint((KiraValue){ .type = KIRA_TYPE_REFERENCE, .as.refValue = (Any) mixedTuple });
+    printf("\n");
+    printf("\n7. Testing Type Parameter Retrieval:\n");
+    KiraTypeInfo* retrievedParam = kiraGetTypeParameter(listOfInt, 0);
+    printf("   List<T> where T = %s\n", retrievedParam->name);
+    printf("\n8. Testing Memory Management:\n");
+    printf("   listOfInt refCount: %d\n", listOfInt->obj.refCount);
+    printf("   tuple refCount: %d\n", tuple->obj.refCount);
+    printf("   Releasing generic instance...\n");
+    kiraRelease(vm, (KiraObject*)listOfInt);
+    printf("   Releasing tuple...\n");
+    kiraRelease(vm, (KiraObject*)tuple);
+    kiraRelease(vm, (KiraObject*)mixedTuple);
+    printf("\n=== All tests completed successfully! ===\n");
+    kiraVMFree(vm);
+    free(program);
+    return 0;
+}
