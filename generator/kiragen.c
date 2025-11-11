@@ -83,22 +83,10 @@ KiraProgram* createFibonacciProgram()
 
 Int32 main(Void)
 {
-    printf("=== Kira Virtual Machine - Stack-based Bytecode Engine ===\n\n");
-    printf("Creating fibonacci program...\n");
     KiraProgram* program = createFibonacciProgram();
-    printf("Saving bytecode to 'fibonacci.kir'...\n");
     kiraSaveBytecode(program, "fibonacci.kir");
     printf("\nExecuting program:\n");
     kiraProgramExecute(program);
     kiraFreeProgram(program);
-    printf("\n\n=== Loading from file and executing ===\n");
-    KiraProgram* loaded = kiraLoadBytecode("fibonacci.kir");
-    if(loaded != null)
-    {
-        printf("Successfully loaded bytecode\n");
-        printf("Executing loaded program:\n");
-        kiraProgramExecute(loaded);
-        kiraFreeProgram(loaded);
-    }
     return 0;
 }

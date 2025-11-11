@@ -1,5 +1,5 @@
-#include "include/kira_runtime.h"
-#include "include/kira_ir.h"
+#include "kira_runtime.h"
+#include "kira_ir.h"
 #include <stdio.h>
 
 Int32 main()

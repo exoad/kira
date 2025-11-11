@@ -9,3 +9,5 @@
 *.kir
 
 kiragen
+*.asm
+*.s

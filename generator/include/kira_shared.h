@@ -28,6 +28,8 @@ typedef Void* Any;
 typedef Int32 Word;
 typedef Int8 Byte;
 
+#define simple static inline
+
 #define null NULL
 #define _PRINT(format, ...) printf(format "\n", ##__VA_ARGS__)
 

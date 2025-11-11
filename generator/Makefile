@@ -1,8 +1,6 @@
-
-
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Iinclude
-LDFLAGS = -lm
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Iinclude -fno-pie
+LDFLAGS = -lm -no-pie
 
 SRC_DIR = src
 OBJ_DIR = obj
@@ -17,13 +15,13 @@ OBJS = $(SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 MAIN_OBJ = $(OBJ_DIR)/kiragen.o
 NATIVE_OBJ = $(OBJ_DIR)/native_gen.o
 
-TARGET = $(BIN_DIR)/kiragen.exe
-NATIVE_GEN = $(BIN_DIR)/native_gen.exe
+TARGET = $(BIN_DIR)/kiragen
+NATIVE_GEN = $(BIN_DIR)/native_gen
 
 all: $(TARGET) $(NATIVE_GEN)
 
 $(OBJ_DIR):
-	@if not exist $(OBJ_DIR) mkdir $(OBJ_DIR)
+	@mkdir -p $(OBJ_DIR)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -35,30 +33,26 @@ $(NATIVE_OBJ): $(NATIVE_SRC) | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJS) $(MAIN_OBJ)
-	$(CC) $(OBJS) $(MAIN_OBJ) -o $@ $(LDFLAGS)
+	$(CC) $^ -o $@ $(LDFLAGS)
 	@echo Build complete: $(TARGET)
 
 $(NATIVE_GEN): $(OBJS) $(NATIVE_OBJ)
-	$(CC) $(OBJS) $(NATIVE_OBJ) -o $@ $(LDFLAGS)
+	$(CC) $^ -o $@ $(LDFLAGS)
 	@echo Build complete: $(NATIVE_GEN)
 
 clean:
-	-@if exist $(OBJ_DIR) rmdir /s /q $(OBJ_DIR) 2>nul
-	-@if exist $(TARGET) del /q $(TARGET) 2>nul
-	-@if exist $(NATIVE_GEN) del /q $(NATIVE_GEN) 2>nul
-	-@if exist fibonacci.kir del /q fibonacci.kir 2>nul
-	-@if exist fibonacci.asm del /q fibonacci.asm 2>nul
-	-@if exist arc_example.asm del /q arc_example.asm 2>nul
+	@rm -rf $(OBJ_DIR)
+	@rm -f $(TARGET) $(NATIVE_GEN)
+	@rm -f fibonacci.kir fibonacci.asm arc_example.asm arc_example fibonacci
 	@echo Clean complete
 
 run: $(TARGET)
-	@echo.
+	@echo
 	@echo === Running Kira VM ===
-	@$(TARGET)
+	@./$(TARGET)
 
 native: $(NATIVE_GEN)
-	@echo.
-	@echo === Running Native Code Generator ===
-	@$(NATIVE_GEN)
+	@echo
+	@./$(NATIVE_GEN)
 
 .PHONY: all clean run native

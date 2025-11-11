@@ -66,7 +66,7 @@ Void kiraAsmComment(KiraCodeGenContext* ctx, String comment)
 
 String kiraCodeGenNewLabel(KiraCodeGenContext* ctx)
 {
-    static char buffer[64];
+    static Int8 buffer[64];
     snprintf(buffer, sizeof(buffer), ".L%u", ctx->labelCounter++);
     return buffer;
 }
@@ -104,15 +104,14 @@ Void kiraCodeGenEnd(KiraCodeGenContext* ctx)
 
 Void kiraCodeGenEmitRuntimeSupport(KiraCodeGenContext* ctx)
 {
-
     kiraAsmEmit(ctx, "kira_retain:");
     kiraAsmEmit(ctx, "    push rbp");
     kiraAsmEmit(ctx, "    mov rbp, rsp");
-    kiraAsmEmit(ctx, "    test rdi, rdi           ; Check for null");
+    kiraAsmEmit(ctx, "    test rdi, rdi");
     kiraAsmEmit(ctx, "    jz .retain_null");
-    kiraAsmEmit(ctx, "    mov eax, [rdi]          ; Load refCount");
-    kiraAsmEmit(ctx, "    inc eax                 ; Increment");
-    kiraAsmEmit(ctx, "    mov [rdi], eax          ; Store back");
+    kiraAsmEmit(ctx, "    mov eax, dword [rdi]");
+    kiraAsmEmit(ctx, "    inc eax");
+    kiraAsmEmit(ctx, "    mov dword [rdi], eax");
     kiraAsmEmit(ctx, ".retain_null:");
     kiraAsmEmit(ctx, "    pop rbp");
     kiraAsmEmit(ctx, "    ret");
@@ -120,15 +119,15 @@ Void kiraCodeGenEmitRuntimeSupport(KiraCodeGenContext* ctx)
     kiraAsmEmit(ctx, "kira_release:");
     kiraAsmEmit(ctx, "    push rbp");
     kiraAsmEmit(ctx, "    mov rbp, rsp");
-    kiraAsmEmit(ctx, "    test rdi, rdi           ; Check for null");
+    kiraAsmEmit(ctx, "    test rdi, rdi");
     kiraAsmEmit(ctx, "    jz .release_null");
-    kiraAsmEmit(ctx, "    mov eax, [rdi]          ; Load refCount");
-    kiraAsmEmit(ctx, "    dec eax                 ; Decrement");
-    kiraAsmEmit(ctx, "    mov [rdi], eax          ; Store back");
-    kiraAsmEmit(ctx, "    test eax, eax           ; Check if zero");
+    kiraAsmEmit(ctx, "    mov eax, dword [rdi]");
+    kiraAsmEmit(ctx, "    dec eax");
+    kiraAsmEmit(ctx, "    mov dword [rdi], eax");
+    kiraAsmEmit(ctx, "    test eax, eax");
     kiraAsmEmit(ctx, "    jnz .release_null");
-    kiraAsmEmit(ctx, "    ; refCount is 0, free the object");
-    kiraAsmEmit(ctx, "    call free               ; Free memory");
+    kiraAsmEmit(ctx, "    ; refCount = 0");
+    kiraAsmEmit(ctx, "    call free");
     kiraAsmEmit(ctx, ".release_null:");
     kiraAsmEmit(ctx, "    pop rbp");
     kiraAsmEmit(ctx, "    ret");
@@ -137,19 +136,21 @@ Void kiraCodeGenEmitRuntimeSupport(KiraCodeGenContext* ctx)
     kiraAsmEmit(ctx, "    push rbp");
     kiraAsmEmit(ctx, "    mov rbp, rsp");
     kiraAsmEmit(ctx, "    ; rdi = size, rsi = typeId");
-    kiraAsmEmit(ctx, "    add rdi, 16             ; Add header size");
+    kiraAsmEmit(ctx, "    add rdi, 16");
     kiraAsmEmit(ctx, "    call malloc");
     kiraAsmEmit(ctx, "    test rax, rax");
     kiraAsmEmit(ctx, "    jz .alloc_failed");
-    kiraAsmEmit(ctx, "    mov dword [rax], 1      ; Set refCount = 1");
-    kiraAsmEmit(ctx, "    mov dword [rax+4], esi  ; Set typeId");
-    kiraAsmEmit(ctx, "    mov dword [rax+8], edi  ; Set size");
-    kiraAsmEmit(ctx, "    mov dword [rax+12], 0   ; Set flags = 0");
+    kiraAsmEmit(ctx, "    mov dword [rax], 1");
+    kiraAsmEmit(ctx, "    mov dword [rax+4], esi");
+    kiraAsmEmit(ctx, "    mov dword [rax+8], edi");
+    kiraAsmEmit(ctx, "    mov dword [rax+12], 0");
     kiraAsmEmit(ctx, ".alloc_failed:");
     kiraAsmEmit(ctx, "    pop rbp");
     kiraAsmEmit(ctx, "    ret");
     kiraAsmEmit(ctx, "");
 }
+
+static const String _paramRegs[] = { "rdi", "rsi", "rdx", "rcx", "r8", "r9" };
 
 Void kiraCodeGenFunctionBegin(KiraCodeGenContext* ctx, String name, UInt32 paramCount, UInt32 localCount)
 {
@@ -164,14 +165,13 @@ Void kiraCodeGenFunctionBegin(KiraCodeGenContext* ctx, String name, UInt32 param
         kiraAsmEmit(ctx, "    mov rbp, rsp");
         if(ctx->stackSize > 0)
         {
-            kiraAsmEmit(ctx, "    sub rsp, %d        ; Allocate locals", ctx->stackSize);
+            kiraAsmEmit(ctx, "    sub rsp, %d", ctx->stackSize);
         }
-        String paramRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
         for(UInt32 i = 0; i < paramCount && i < 6; i++)
         {
-            kiraAsmEmit(ctx, "    mov [rbp-%d], %s    ; Store param %u",
-                       (i + 1) * 8, paramRegs[i], i);
-            ctx->locals[i].stackOffset = -(Int32)((i + 1) * 8);
+            kiraAsmEmit(ctx, "    mov [rbp-%d], %s    ; store %u",
+                       (i + 1) * 8, _paramRegs[i], i);
+            ctx->locals[i].stackOffset = -(Int32) ((i + 1) * 8);
             ctx->locals[i].isParameter = true;
             ctx->localCount++;
         }
@@ -213,7 +213,7 @@ Void kiraCodeGenStoreLocal(KiraCodeGenContext* ctx, UInt32 index)
 {
     if(ctx->target == TARGET_X86_64)
     {
-        Int32 offset = -(Int32)((index + 1) * 8);
+        Int32 offset = -(Int32) ((index + 1) * 8);
         kiraAsmEmit(ctx, "    pop qword [rbp%d]", offset);
     }
 }
@@ -257,7 +257,7 @@ Void kiraCodeGenDiv(KiraCodeGenContext* ctx)
     {
         kiraAsmEmit(ctx, "    pop rbx");
         kiraAsmEmit(ctx, "    pop rax");
-        kiraAsmEmit(ctx, "    cqo                  ; Sign extend");
+        kiraAsmEmit(ctx, "    cqo                  ; sign extend");
         kiraAsmEmit(ctx, "    idiv rbx");
         kiraAsmEmit(ctx, "    push rax");
     }
@@ -344,10 +344,6 @@ Void kiraCodeGenCompare(KiraCodeGenContext* ctx)
     }
 }
 
-
-
-
-
 Void kiraCodeGenRetain(KiraCodeGenContext* ctx)
 {
     if(ctx->target == TARGET_X86_64)
@@ -371,9 +367,9 @@ Void kiraCodeGenAllocate(KiraCodeGenContext* ctx, UInt32 size, UInt32 typeId)
 {
     if(ctx->target == TARGET_X86_64)
     {
-        kiraAsmEmit(ctx, "    mov rdi, %u          ; Size", size);
-        kiraAsmEmit(ctx, "    mov rsi, %u          ; Type ID", typeId);
+        kiraAsmEmit(ctx, "    mov rdi, %u          ; sz", size);
+        kiraAsmEmit(ctx, "    mov rsi, %u          ; typeid", typeId);
         kiraAsmEmit(ctx, "    call kira_allocate");
-        kiraAsmEmit(ctx, "    push rax             ; Push object pointer");
+        kiraAsmEmit(ctx, "    push rax");
     }
 }

@@ -84,7 +84,7 @@ Bool kiraUnboxBool(KiraValue value)
     return ((KiraBool*) o)->value != 0;
 }
 
-static inline Bool kiraValueEqualsInt(KiraValue a, KiraValue b)
+simple Bool kiraValueEqualsInt(KiraValue a, KiraValue b)
 {
     if(a.as.refValue == b.as.refValue) return true;
     if(a.as.refValue == null || b.as.refValue == null) return false;
@@ -201,7 +201,7 @@ Void kiraPush(KiraCallFrame* frame, KiraValue value)
     frame->stackTop++;
 }
 
-static inline KiraValue kiraPopNoRelease(KiraCallFrame* frame)
+simple KiraValue kiraPopNoRelease(KiraCallFrame* frame)
 {
     frame->stackTop--;
     return *frame->stackTop;
@@ -218,12 +218,12 @@ KiraValue kiraPeek(KiraCallFrame* frame, Int32 distance)
     return frame->stackTop[-1 - distance];
 }
 
-static inline Void kiraRetainFast(KiraObject* object)
+simple Void kiraRetainFast(KiraObject* object)
 {
     if(object != null) object->refCount++;
 }
 
-static inline Void kiraReleaseFast(KiraVM* vm, KiraObject* object)
+simple Void kiraReleaseFast(KiraVM* vm, KiraObject* object)
 {
     if(object == null)
     {
@@ -497,24 +497,24 @@ Void kiraVMFree(KiraVM* vm)
     free(vm);
 }
 
-static inline UInt8 readByte(KiraCallFrame* frame)
+simple UInt8 readByte(KiraCallFrame* frame)
 {
     return *frame->ip++;
 }
 
-static inline UInt16 readShort(KiraCallFrame* frame)
+simple UInt16 readShort(KiraCallFrame* frame)
 {
     frame->ip += 2;
     return (UInt16)((frame->ip[-2] << 8) | frame->ip[-1]);
 }
 
-static inline KiraConstant* readConstant(KiraVM* vm, KiraCallFrame* frame)
+simple KiraConstant* readConstant(KiraVM* vm, KiraCallFrame* frame)
 {
     UInt8 index = readByte(frame);
     return kiraConstantPoolGet(vm->program->constantPool, index);
 }
 
-static inline KiraConstant* readConstantLong(KiraVM* vm, KiraCallFrame* frame)
+simple KiraConstant* readConstantLong(KiraVM* vm, KiraCallFrame* frame)
 {
     UInt16 index = readShort(frame);
     return kiraConstantPoolGet(vm->program->constantPool, index);
