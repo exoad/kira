@@ -2427,10 +2427,10 @@ ptr.@acquire_value() // returns an Int32 representing the real memory location
 array: List<Int32> = mut []
 
 // <Type>, <Dest>, <Location>
-ptr.@read_offset(of array, array, ptr.@aquire_value() + 10)
+ptr.@read_offset(@type_of(array), array, ptr.@aquire_value() + 10)
 
 // Used to directly write memory information
-ptr.@store_offset(of array, array, ptr.@acquire_value() + 10)
+ptr.@store_offset(@type_of(array), array, ptr.@acquire_value() + 10)
 
 ```
 
