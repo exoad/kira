@@ -724,7 +724,7 @@ scores.put("Alice", 95)
 Unordered collection of unique values.
 
 ```kira
-mut uniqueIds: Set<Int32> = {}
+mut uniqueIds: Set<Int32> = Set<Int32> { }
 uniqueIds.add(42)
 ```
 
@@ -1750,7 +1750,7 @@ Anonymous functions are function literals without a declared name:
 **Syntax:**
 
 ```kira
-fx(parameters): ReturnType {
+fx (parameters): ReturnType {
     // body
 }
 ```
@@ -1759,18 +1759,18 @@ fx(parameters): ReturnType {
 
 ```kira
 // Assigned to variable
-double: Fx<Tuple1<Int32>, Int32> = fx(x: Int32): Int32 {
+double: Fx<Tuple1<Int32>, Int32> = fx (x: Int32): Int32 {
     return x * 2
 }
 
 // Passed as argument
 items: List<Int32> = mut [1, 2, 3, 4, 5]
-filtered: List<Int32> = items.filter(fx(x: Int32): Bool {
+filtered: List<Int32> = items.filter(fx (x: Int32): Bool {
     return x > 2
 })
 
 // Single expression (return implicit)
-squared: List<Int32> = items.map(fx(x: Int32): Int32 {
+squared: List<Int32> = items.map(fx (x: Int32): Int32 {
     return x * x
 })
 ```
@@ -1916,6 +1916,23 @@ fx processStr(value: Str): Void { }
 fx process<T>(value: T): Void { }
 ```
 
+### Function Reference
+
+Since functions are treated as first class citizens, there is no special operator like `::` that is used to get the direct value of a function under a certain container.
+
+Instead directly reference it as is or use the member access operator `.`
+
+```kira
+fx callFx(func: Fx<Tuple0, Void>): Void {
+    func()
+}
+
+fx supplier(): Void {
+    @trace("Supplier Function!")
+}
+
+callFx(supplier)
+```
 ---
 
 ## Module System
@@ -2107,6 +2124,8 @@ Class members support two visibility levels:
 
 Accessible from outside the class and module.
 
+> Note: At this visibility, the inheritors can see this member.
+
 ```kira
 pub class Example {
     pub field: Int32 = 0
@@ -2120,6 +2139,8 @@ pub class Example {
 **Internal (default):**
 
 Accessible only within the class and its methods.
+
+> Note: At this visibility, the inheritors cannot see this member.
 
 ```kira
 pub class Example {
@@ -2137,6 +2158,8 @@ pub class Example {
 
 Executed immediately after object construction for validation or setup:
 
+> Note: Inheritors cannot modify nor override the initializer blocks. Supplying another initializer block in a child will just mean that initializer block is ran after the parent's.
+
 ```kira
 pub class Person {
     require pub age: Int32
@@ -2153,6 +2176,8 @@ pub class Person {
 
 Executed before object deallocation for cleanup of external resources:
 
+> Note: Inheritors cannot modify nor override the finalizer blocks. Supplying another finalizer block in a child will just mean that finalizer block is ran after the parent's.
+
 ```kira
 pub class FileHandle {
     require handle: Int32
@@ -2162,6 +2187,32 @@ pub class FileHandle {
     }
 }
 ```
+
+---
+
+## Variant Classes
+
+Variant classes limit their inheritance pattern to only internally defined inheritors/children. In this case, the closed type serves as more of a container type rather than a type itself.
+
+```kira
+pub variant Result<A, E> {
+    class Success<A> : Result<A, Void> {
+        require pub A data
+    }
+
+    class Error<E> : Result<Void, E> {
+        require pub E error
+    }
+
+    pub @to_string(): Str { // this is also passed to the variants
+        return "Result Type"
+    }
+}
+```
+
+Here `Result` behaves normally like an abstract class (i.e. it cannot be instantiated); however, as compared to a normal class, the internal body allows for declaring additional classes. These classes are the only permitted predefined inheritors allowed (i.e. they must all provide an extension to the variant type).
+
+> Specifically here, `Success` and `Error` are known as variances of `Result`.
 
 ---
 
@@ -2260,6 +2311,10 @@ x: Float32 = coordinates.first
 y: Float32 = coordinates.second
 ```
 
+### Builtin Concrete Tuple Types
+
+Kira's STL provides concrete tuple types from `Tuple0` to `Tuple9` by default to allow for ease of use. Going above 9 generic parameters is up to the developer to implement.
+
 ### Function Types with Tuples
 
 Function types use tuples to represent parameter lists:
@@ -2269,6 +2324,10 @@ callback: Fx<Tuple2<Int32, Str>, Bool> = fx(num: Int32, text: Str): Bool {
     return num > 0
 }
 ```
+
+> Note: Although normal functions allow for supplying "named" parameters to functions, using `Tuple`s erases this feature due to the nature of how tuples behave. This is a known issue and is being triaged for implementation.
+>
+> However, the consensus at the moment is that parameter names is not crucial.
 
 ---
 
@@ -2359,6 +2418,23 @@ ptr: Unsafe<Int32> = Unsafe<Int32> { someObject }
 // ptr does not affect reference count
 // Accessing ptr after deallocation is undefined behavior
 ```
+
+Additionally, unsafe references only exist in certain transpilation targets that supports direct memory access such as compiling to machine code or transpiling to C/C++. Thus manipulation of the `Unsafe` type requires the usage of intrinsics:
+
+```kira
+ptr.@acquire_value() // returns an Int32 representing the real memory location
+
+array: List<Int32> = mut []
+
+// <Type>, <Dest>, <Location>
+ptr.@read_offset(of array, array, ptr.@aquire_value() + 10)
+
+// Used to directly write memory information
+ptr.@store_offset(of array, array, ptr.@acquire_value() + 10)
+
+```
+
+> Note: Modifying unsafe references are not yet implemented and are still in triage.
 
 ---
 
@@ -2523,6 +2599,20 @@ config: Map<Str, Any> = @json_decode(`{
 
 versionType: Type = @type_of(config["version"])
 ```
+
+**Intrinsic Avaliability**
+
+Intrinsics are meant to be compiler specific functions and tags that are meant to be used to extend the functionality of the language outside of the basic language features. While at the same time being flexible for the maintainers of the compiler to easily modify.
+
+It is crucial to note that some intrinsics are not available to be declared on certain platforms or transpilation targets.
+
+If the target does not define a certain intrinsic, the compiler will error out if the intrinsic is encountered even if the intrinsic is not crucial to the runtime of the program (i.e. cruciality is not tested by the compiler simply due to complexity).
+
+For example, modifying `Unsafe` involves using specific intrinsics which are only available on targets that allow for direct memory access. For example, you will not be able to compile a code that requires the usage of `@acquire_value` on an `Unsafe` type when compiling to JavaScript/TypeScript.
+
+> In-Triage Solution:
+>
+> Althought there is no direct way as of now to check if an intrinsic is allowed, there is a planned solution to allow for conditional checking to check if intrinsics are available along with conditional compilation guards.
 
 ### Standard Library Organization
 

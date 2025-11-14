@@ -13,7 +13,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.FirstClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
-import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.core.CompilerIntrinsic
