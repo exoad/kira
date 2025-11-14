@@ -706,7 +706,7 @@ numbers: Arr<Int32> = [1, 2, 3, 4, 5]
 Dynamic resizable array implemented in the standard library. Supports insertion, deletion, and mutation operations.
 
 ```kira
-mut items: List<Int32> = List<Int32> {}
+mut items: List<Int32> = mut []
 items.add(42)
 ```
 
@@ -715,7 +715,7 @@ items.add(42)
 Hash-based associative container mapping keys of type `K` to values of type `V`.
 
 ```kira
-mut scores: Map<Str, Int32> = Map<Str, Int32> {}
+mut scores: Map<Str, Int32> = {}
 scores.put("Alice", 95)
 ```
 
@@ -724,7 +724,7 @@ scores.put("Alice", 95)
 Unordered collection of unique values.
 
 ```kira
-mut uniqueIds: Set<Int32> = Set<Int32> {}
+mut uniqueIds: Set<Int32> = {}
 uniqueIds.add(42)
 ```
 
@@ -1507,7 +1507,7 @@ for i: Int32 in 10..0 step -1 {
 **Collection Iteration:**
 
 ```kira
-items: List<Str> = ["apple", "banana", "cherry"]
+items: List<Str> = mut ["apple", "banana", "cherry"]
 for item: Str in items {
     @trace(item)
 }
@@ -1764,7 +1764,7 @@ double: Fx<Tuple1<Int32>, Int32> = fx(x: Int32): Int32 {
 }
 
 // Passed as argument
-items: List<Int32> = [1, 2, 3, 4, 5]
+items: List<Int32> = mut [1, 2, 3, 4, 5]
 filtered: List<Int32> = items.filter(fx(x: Int32): Bool {
     return x > 2
 })
