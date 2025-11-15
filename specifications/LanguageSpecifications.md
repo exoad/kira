@@ -1973,7 +1973,7 @@ result: Int32 = createMultiplier(5)
 Lambda/closure expressions **cannot be recursive** because there is no way to reference the nameless function from within itself. If you need recursion, use a named function instead:
 
 ```kira
-// ❌ Cannot write recursive lambda (no self-reference mechanism)
+// Cannot write recursive lambda (no self-reference mechanism)
 factorial: Fx<Tuple1<Int32>, Int32> = fx(n: Int32): Int32 {
     return n <= 1 ? 1 : n * ??? // No way to reference self
 }
@@ -2843,7 +2843,7 @@ fx processItem<T: Comparable, Serializable>(item: T): Str {
     // T must implement both Comparable and Serializable
 }
 
-// ❌ Incorrect: not T: Comparable + Serializable
+// Incorrect: not T: Comparable + Serializable
 ```
 
 The type parameter `T` must implement all specified traits.
@@ -3055,7 +3055,7 @@ There is **no way to convert between safe and unsafe types** directly. However, 
 ptr: Unsafe<Int32> = Unsafe<Int32> { someObject }
 value: Int32 = @dereference(ptr)  // Get value from unsafe pointer
 
-// ❌ Cannot convert safe to unsafe or vice versa directly
+// Cannot convert safe to unsafe or vice versa directly
 safeRef: Ref<Int32> = ptr  // Not allowed
 unsafePtr: Unsafe<Int32> = safeRef  // Not allowed
 ```
@@ -3206,7 +3206,7 @@ if invalidInput {
     throw "Invalid input provided"
 }
 
-// ❌ Incorrect: cannot throw custom exception types
+// Incorrect: cannot throw custom exception types
 pub class MyException {
     require pub message: Str
 }
