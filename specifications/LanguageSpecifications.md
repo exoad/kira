@@ -575,7 +575,7 @@ Expression precedence from lowest to highest:
 
 ---
 
-## Expressions and Operators
+## Standard Types
 
 Kira employs a nominal type system where types are identified by their declared names rather than structural compatibility. All values in Kira are objects with reference semantics, eliminating the need for explicit boxing operations.
 
