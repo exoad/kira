@@ -3,23 +3,6 @@
 **Version:** 1.0
 **Last Updated:** November 14, 2025
 
-## Table of Contents
-
-1. [Introduction](#introduction)
-2. [Lexical Structure](#lexical-structure)
-3. [Syntax Grammar (BNF)](#syntax-grammar-bnf)
-4. [Expressions and Operators](#expressions-and-operators)
-5. [Type System](#type-system)
-6. [Variables and Declarations](#variables-and-declarations)
-7. [Control Flow](#control-flow)
-8. [Functions](#functions)
-9. [Module System](#module-system)
-10. [Object-Oriented Programming](#object-oriented-programming)
-11. [Generics and Type Parameters](#generics-and-type-parameters)
-12. [Memory Model](#memory-model)
-13. [Error Handling](#error-handling)
-14. [Standard Library](#standard-library)
-
 ---
 
 ## Introduction
@@ -266,9 +249,11 @@ Compiler intrinsics are prefixed with `@` and use snake_case to visually disting
 @compute_hash
 ```
 
-**Important Notes:**
+**Intrinsic Limitations:**
 
--   Intrinsics are compiler-provided and cannot be defined by users
+-   Intrinsics are **compiler-provided and cannot be defined by users**
+-   Users cannot create custom intrinsics - only the compiler can define them
+-   The complete list of available intrinsics is **currently in development** and compiler-specific
 -   The `@` prefix is part of the identifier and distinguishes intrinsics from regular identifiers
 -   Underscores are allowed only in intrinsics, not in ordinary identifiers
 
@@ -407,13 +392,15 @@ TopLevelDeclaration ::= ClassDeclaration
                       | TraitDeclaration
                       | FunctionDeclaration
                       | ConstantDeclaration
+                      | EnumDeclaration
+                      | TypeAliasDeclaration
 ```
 
 ### Declarations
 
 ```bnf
 ClassDeclaration    ::= [Visibility] 'class' TypeIdentifier [TypeParameters]
-                        [':' TypeIdentifier] ClassBody
+                        [':' TypeIdentifier (',' TypeIdentifier)*] ClassBody
 ClassBody           ::= '{' ClassMember* '}'
 ClassMember         ::= FieldDeclaration
                       | MethodDeclaration
@@ -428,6 +415,9 @@ TraitDeclaration    ::= [Visibility] 'trait' TypeIdentifier [TypeParameters] Tra
 TraitBody           ::= '{' TraitMember* '}'
 TraitMember         ::= MethodSignature
                       | MethodDeclaration
+EnumDeclaration     ::= [Visibility] 'enum' TypeIdentifier ':' PrimitiveType '{' EnumVariant (',' EnumVariant)* '}'
+EnumVariant         ::= ConstantIdentifier '=' Literal
+TypeAliasDeclaration ::= 'type' TypeIdentifier [TypeParameters] '=' Type
 MethodSignature     ::= [Visibility] 'fx' Identifier '(' ParameterList? ')' ':' Type
 FunctionDeclaration ::= [Visibility] 'fx' Identifier [TypeParameters]
                         '(' ParameterList? ')' ':' Type Block
@@ -637,6 +627,57 @@ if xType == yType {
 
 On platforms where `Int32` and `Int16` are aliased, both types are still available in source code, but runtime type comparison may show them as equal. The compiler ensures overflow and range semantics match the declared type regardless of the internal representation.
 
+### Type Aliases
+
+Type aliases allow creating alternative names for existing types. They work similarly to Dart's typedef feature, where the compiler performs a find-and-replace operation while maintaining full type checking and IntelliSense support.
+
+**Syntax:**
+
+```kira
+type AliasName = ExistingType
+```
+
+**Examples:**
+
+```kira
+type UserId = Int64
+type Callback = Fx<Tuple1<Str>, Void>
+type StringMap = Map<Str, Str>
+type Point = Tuple2<Float32, Float32>
+
+userId: UserId = 12345
+callback: Callback = fx(msg: Str): Void {
+    @trace(msg)
+}
+config: StringMap = Map<Str, Str> {}
+position: Point = Tuple2<Float32, Float32> { 10.0, 20.0 }
+```
+
+**Semantics:**
+
+-   Type aliases are purely compile-time constructs
+-   No runtime overhead; aliases are replaced with their underlying types
+-   Aliases and their underlying types are completely interchangeable
+-   Helps document code intent and reduce repetition of complex generic types
+
+```kira
+type Matrix = Arr<Arr<Float64>>
+
+mat: Matrix = [[1.0, 2.0], [3.0, 4.0]]
+```
+
+**Generic Type Aliases:**
+
+Type aliases can include generic parameters:
+
+```kira
+type Result<T> = Maybe<T>
+type Pair<A, B> = Tuple2<A, B>
+
+outcome: Result<Int32> = 42
+coords: Pair<Float32, Float32> = Tuple2<Float32, Float32> { 5.0, 10.0 }
+```
+
 ### Reference Types
 
 Kira provides several core reference types for advanced memory management and type manipulation:
@@ -697,8 +738,35 @@ greeting: Str = "Hello, ${name}!"
 
 Fixed-size immutable array. Size is determined at initialization and cannot change. The compiler may optimize array operations using static size information.
 
+**Array Literals:**
+
+Square brackets `[]` are the **only** syntax allowed for creating array literals in Kira. This provides consistency and clarity in the language.
+
 ```kira
 numbers: Arr<Int32> = [1, 2, 3, 4, 5]
+empty: Arr<Str> = []
+mixed: Arr<Float32> = [1.0, 2.5, 3.14]
+```
+
+**Array Type Inference:**
+
+Array element types must be explicitly declared. The compiler does not infer array types:
+
+```kira
+values: Arr<Int32> = [1, 2, 3]
+
+arr := [1, 2, 3]
+```
+
+**Array Size:**
+
+Array size is fixed at creation and cannot be modified. For dynamic arrays, use `List<A>`:
+
+```kira
+fixed: Arr<Int32> = [1, 2, 3]
+mut dynamic: List<Int32> = List<Int32> {}
+dynamic.add(1)
+dynamic.add(2)
 ```
 
 **`List<A>`**
@@ -706,7 +774,7 @@ numbers: Arr<Int32> = [1, 2, 3, 4, 5]
 Dynamic resizable array implemented in the standard library. Supports insertion, deletion, and mutation operations.
 
 ```kira
-mut items: List<Int32> = mut []
+mut items: List<Int32> = List<Int32> { [ 1, 3, 4 ] }
 items.add(42)
 ```
 
@@ -714,10 +782,29 @@ items.add(42)
 
 Hash-based associative container mapping keys of type `K` to values of type `V`.
 
+**Initialization:**
+
+Maps do not have literal syntax like arrays. They must be initialized using constructor syntax:
+
 ```kira
-mut scores: Map<Str, Int32> = {}
-scores.put("Alice", 95)
+mut scores: Map<Str, Int32> = Map<Str, Int32> {}
 ```
+
+**Adding/Accessing Values:**
+
+Maps support the `[]` indexing operator and `[]=` assignment operator for convenient value access and modification:
+
+```kira
+mut config: Map<Str, Int32> = Map<Str, Int32> {}
+
+config["timeout"] = 30
+config["maxRetries"] = 5
+config["bufferSize"] = 4096
+
+timeout: Int32 = config["timeout"]
+```
+
+This is similar to Java's Map interface but with operator overloading for cleaner syntax. The indexing operators are syntactic sugar for `get()` and `put()` methods.
 
 **`Set<A>`**
 
@@ -799,18 +886,18 @@ Operators are listed from highest to lowest precedence:
 **Binary Arithmetic:**
 
 ```kira
-a: Int32 = 10 + 5   // Addition: 15
-b: Int32 = 10 - 5   // Subtraction: 5
-c: Int32 = 10 * 5   // Multiplication: 50
-d: Int32 = 10 / 5   // Division: 2
-e: Int32 = 10 % 3   // Modulo: 1
+a: Int32 = 10 + 5
+b: Int32 = 10 - 5
+c: Int32 = 10 * 5
+d: Int32 = 10 / 5
+e: Int32 = 10 % 3
 ```
 
 **Unary Arithmetic:**
 
 ```kira
-x: Int32 = -10      // Unary minus (negation)
-y: Int32 = +10      // Unary plus (no operation)
+x: Int32 = -10
+y: Int32 = +10
 ```
 
 **Type Rules:**
@@ -819,6 +906,72 @@ y: Int32 = +10      // Unary plus (no operation)
 -   No implicit type coercion; explicit casting required for mixed-type operations
 -   Integer division truncates toward zero
 -   Division by zero results in runtime error
+
+### Operator Overloading
+
+Kira supports operator overloading through intrinsic markers. Classes can define methods with specific intrinsic names that map to operators, allowing custom types to work with standard operators.
+
+
+**Operator Intrinsic Mapping:**
+
+| Operator | Intrinsic Name      | Signature Example                              |
+| -------- | ------------------- | ---------------------------------------------- |
+| `+`      | `@__op_add__`       | `fx @__op_add__(other: T): T`                  |
+| `-`      | `@__op_sub__`       | `fx @__op_sub__(other: T): T`                  |
+| `*`      | `@__op_mul__`       | `fx @__op_mul__(other: T): T`                  |
+| `/`      | `@__op_div__`       | `fx @__op_div__(other: T): T`                  |
+| `%`      | `@__op_mod__`       | `fx @__op_mod__(other: T): T`                  |
+| `==`     | `@__op_eq__`        | `fx @__op_eq__(other: T): Bool`                |
+| `!=`     | `@__op_neq__`       | `fx @__op_neq__(other: T): Bool`               |
+| `<`      | `@__op_lt__`        | `fx @__op_lt__(other: T): Bool`                |
+| `>`      | `@__op_gt__`        | `fx @__op_gt__(other: T): Bool`                |
+| `<=`     | `@__op_lte__`       | `fx @__op_lte__(other: T): Bool`               |
+| `>=`     | `@__op_gte__`       | `fx @__op_gte__(other: T): Bool`               |
+| `-` (un) | `@__op_neg__`       | `fx @__op_neg__(): T`                          |
+| `[]`     | `@__op_get__`     | `fx @__op_get__(get: Int32): T`            |
+| `[]=`    | `@__op_set__` | `fx @__op_set__(index: Int32, val: T): Void` |
+
+> Note: Function Signatures can vary, but using a different signature means you must explicitly invoke the intrinsic as a function instead.
+
+**Example:**
+
+```kira
+pub class Vector2 {
+    require pub x: Float32
+    require pub y: Float32
+
+    pub fx @__op_add__(other: Vector2): Vector2 {
+        return Vector2 { x + other.x, y + other.y }
+    }
+
+    pub fx @__op_mul__(scalar: Float32): Vector2 {
+        return Vector2 { x * scalar, y * scalar }
+    }
+
+    pub fx @__op_eq__(other: Vector2): Bool {
+        return x == other.x && y == other.y
+    }
+
+    pub fx @__op_neg__(): Vector2 {
+        return Vector2 { -x, -y }
+    }
+}
+
+v1: Vector2 = Vector2 { 1.0, 2.0 }
+v2: Vector2 = Vector2 { 3.0, 4.0 }
+
+sum: Vector2 = v1 + v2
+scaled: Vector2 = v1 * 2.0
+negated: Vector2 = -v1
+equal: Bool = v1 == v2
+```
+
+**Notes:**
+
+-   Intrinsic markers are just symbol placeholders for the parser
+-   Function signatures can differ (return types, parameter types can vary)
+-   Not all operators need to be overloaded
+-   The compiler transforms operator usage into method calls at compile time
 
 ```kira
 // Error: type mismatch
@@ -922,7 +1075,36 @@ for i: Int32 in start..end {
 -   Lower bound is inclusive
 -   Upper bound is exclusive
 -   Both bounds must be of integer types
--   Ranges are lazy and do not allocate arrays
+-   **Ranges allocate an array** containing all values in the range
+
+**Memory Allocation:**
+
+When a range is created, it allocates an array containing all integer values from the start (inclusive) to end (exclusive):
+
+```kira
+range: Range = 0..10
+```
+
+This creates an array `[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]` in memory.
+
+**Performance Implications:**
+
+```kira
+for i: Int32 in 0..1000000 {
+}
+```
+
+This allocates an array with 1,000,000 elements. For large ranges, consider the memory cost. Alternative approaches for large iterations may be needed depending on the use case.
+
+**Range Type:**
+
+The `Range` type implements the `Iterable<Int32>` interface and provides array-like access:
+
+```kira
+range: Range = 5..10
+length: Int32 = range.length()
+element: Int32 = range[0]
+```
 
 ### Assignment Operator
 
@@ -1655,20 +1837,18 @@ result: Float32 = divide(10, 3)  // numerator=10, denominator=3
 
 **Named Parameters:**
 
-Arguments can be explicitly named at the call site for clarity:
+Arguments can be explicitly named at the call site for clarity. Named parameters use `=` (not `:`) to separate the parameter name from its value:
 
 ```kira
-result: Float32 = divide(numerator: 10, denominator: 3)
+result: Float32 = divide(numerator = 10, denominator = 3)
 ```
 
 Named and positional arguments can be mixed, but named arguments cannot precede positional ones:
 
 ```kira
-// Valid
-result: Float32 = divide(10, denominator: 3)
+result: Float32 = divide(10, denominator = 3)
 
-// Error: named argument before positional
-result: Float32 = divide(numerator: 10, 3)  // Syntax error
+result: Float32 = divide(numerator = 10, 3)
 ```
 
 ### Default Parameters
@@ -1690,14 +1870,9 @@ fx greet(name: Str, greeting: Str = "Hello"): Str {
     return "${greeting}, ${name}!"
 }
 
-// Use default greeting
-message1: Str = greet("Alice")  // "Hello, Alice!"
-
-// Override default
-message2: Str = greet("Bob", "Hi")  // "Hi, Bob!"
-
-// Named argument for default parameter
-message3: Str = greet("Charlie", greeting: "Hey")  // "Hey, Charlie!"
+message1: Str = greet("Alice")
+message2: Str = greet("Bob", "Hi")
+message3: Str = greet("Charlie", greeting = "Hey")
 ```
 
 **Rules for Default Parameters:**
@@ -1750,29 +1925,74 @@ Anonymous functions are function literals without a declared name:
 **Syntax:**
 
 ```kira
-fx (parameters): ReturnType {
-    // body
+fx(parameters): ReturnType {
 }
 ```
 
 **Examples:**
 
 ```kira
-// Assigned to variable
-double: Fx<Tuple1<Int32>, Int32> = fx (x: Int32): Int32 {
+double: Fx<Tuple1<Int32>, Int32> = fx(x: Int32): Int32 {
     return x * 2
 }
 
-// Passed as argument
-items: List<Int32> = mut [1, 2, 3, 4, 5]
-filtered: List<Int32> = items.filter(fx (x: Int32): Bool {
+items: List<Int32> = [1, 2, 3, 4, 5]
+filtered: List<Int32> = items.filter(fx(x: Int32): Bool {
     return x > 2
 })
 
-// Single expression (return implicit)
-squared: List<Int32> = items.map(fx (x: Int32): Int32 {
+squared: List<Int32> = items.map(fx(x: Int32): Int32 {
     return x * x
 })
+```
+
+**Closure Capture Semantics:**
+
+Lambdas capture variables from their enclosing scope **by value** and all captures are **immutable**:
+
+```kira
+multiplier: Int32 = 10
+
+createMultiplier: Fx<Tuple1<Int32>, Int32> = fx (x: Int32): Int32 {
+    return x * multiplier
+}
+
+multiplier = 20
+result: Int32 = createMultiplier(5)
+```
+
+**Capture Rules:**
+
+-   Variables are captured by value at the time of lambda creation
+-   Captured variables cannot be mutated inside the lambda
+-   Changes to the original variable after lambda creation do not affect captured value
+-   To share mutable state, use reference types like `Ref<T>`
+
+**Recursion Limitation:**
+
+Lambda/closure expressions **cannot be recursive** because there is no way to reference the nameless function from within itself. If you need recursion, use a named function instead:
+
+```kira
+// ❌ Cannot write recursive lambda (no self-reference mechanism)
+factorial: Fx<Tuple1<Int32>, Int32> = fx(n: Int32): Int32 {
+    return n <= 1 ? 1 : n * ??? // No way to reference self
+}
+
+// ✓ Use named function instead
+pub fx factorial(n: Int32): Int32 {
+    return n <= 1 ? 1 : n * factorial(n - 1)
+}
+```
+
+```kira
+counter: Ref<Int32> = Ref<Int32> { 0 }
+
+increment: Fx<Tuple0, Void> = fx(): Void {
+    counter.value = counter.value + 1
+}
+
+increment()
+increment()
 ```
 
 ### Higher-Order Functions
@@ -2045,15 +2265,77 @@ pub class Vector2 {
 Classes use a declarative constructor syntax. The `require` keyword specifies fields that must be provided during construction:
 
 ```kira
-vec: Vector2 = Vector2 { x: 3.0, y: 4.0 }
+vec: Vector2 = Vector2 { x = 3.0, y = 4.0 }
 ```
 
-Fields can be initialized positionally or by name:
+Fields can be initialized positionally or by name. When using named initialization, use `=` (not `:`) to assign values:
 
 ```kira
-vec1: Vector2 = Vector2 { 3.0, 4.0 }  // positional
-vec2: Vector2 = Vector2 { y: 4.0, x: 3.0 }  // named
+vec1: Vector2 = Vector2 { 3.0, 4.0 }
+vec2: Vector2 = Vector2 { y = 4.0, x = 3.0 }
 ```
+
+**Constructor Design:**
+
+The entire field body of a class serves as its constructor. There is no separate constructor method or overloading:
+
+-   All fields declared in the class body define the constructor signature
+-   Fields marked with `require` must be provided during instantiation
+-   Fields with default values (`field: Type = value`) are optional
+-   **Constructor overloading is not supported** - each class has exactly one constructor shape
+
+**Default Field Value Evaluation:**
+
+When default field values are evaluated is **currently undefined behavior** and depends on the transpilation/compilation target:
+
+-   Some targets may evaluate defaults at class definition time
+-   Others may evaluate them at instance construction time
+-   The exact timing is implementation-specific
+
+Programs should not rely on specific evaluation timing for default values. Avoid side effects in default value expressions.
+
+```kira
+pub class User {
+    require pub name: Str
+    require pub email: Str
+    pub role: Str = "user"
+    pub active: Bool = true
+}
+```
+    pub active: Bool = true
+}
+
+user1: User = User { name = "Alice", email = "alice@example.com" }
+user2: User = User { name = "Bob", email = "bob@example.com", role = "admin" }
+user3: User = User {
+    name = "Charlie",
+    email = "charlie@example.com",
+    role = "moderator",
+    active = false
+}
+```
+
+**Method Implementation During Instantiation:**
+
+Classes can accept method implementations at instantiation time by supplying lambda functions. This eliminates the need for abstract classes since functions are first-class citizens:
+
+```kira
+pub class Handler {
+    pub fx process(data: Str): Void
+}
+
+handler: Handler = Handler {
+    process = fx(data: Str): Void {
+        @trace("Processing: ${data}")
+    }
+}
+
+handler.process("test data")
+```
+
+Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. Any class with unimplemented methods can receive implementations during instantiation.
+
+This allows for flexible object construction where behavior can be customized without requiring subclassing.
 
 ### Inheritance
 
@@ -2078,26 +2360,180 @@ pub class Circle: Shape {
 **Inheritance Rules:**
 
 -   Only single inheritance is permitted
--   Abstract methods must be overridden in concrete subclasses
+-   Methods can be overridden in subclasses
 -   Use `override` keyword when overriding methods
 -   Final classes cannot be inherited (use `final` modifier)
 
-### Abstract Classes
+### Trait Implementation
 
-Abstract classes contain unimplemented methods that must be provided by subclasses or during construction:
+Traits are implemented using the same colon syntax as inheritance. A class can inherit from one parent class and implement multiple traits by listing them in the extension parameter list:
+
+**Syntax:**
 
 ```kira
-pub class Animal {
-    pub fx makeSound(): Void  // abstract method
+pub class ClassName: ParentClass, Trait1, Trait2, Trait3 {
+}
+```
 
-    pub fx sleep(): Void {
-        @trace("Sleeping...")
+**Examples:**
+
+```kira
+pub trait Drawable {
+    fx draw(): Void
+}
+
+pub trait Clickable {
+    fx onClick(): Void
+}
+
+pub class Button: Drawable, Clickable {
+    override fx draw(): Void {
+        @trace("Drawing button")
+    }
+
+    override fx onClick(): Void {
+        @trace("Button clicked")
     }
 }
 
-pub class Dog: Animal {
-    override pub fx makeSound(): Void {
-        @trace("Woof!")
+pub class ImageButton: Button, Serializable {
+    override fx serialize(): Str {
+        return "ImageButton data"
+    }
+}
+```
+
+**Rules:**
+
+-   First type after `:` can be a parent class (if inheriting) or a trait
+-   All subsequent types must be traits
+-   Only one class inheritance allowed, but unlimited trait implementations
+-   All trait methods must be implemented with `override` keyword
+-   Order matters: `ClassName: ParentClass, Trait1, Trait2`
+
+**Traits vs Inheritance - When to Use Which:**
+
+**Use Traits when:**
+-   You need to share logic across unrelated classes
+-   You want to compose behavior from multiple sources
+-   You're defining capabilities or interfaces (e.g., `Drawable`, `Serializable`)
+-   You need multiple inheritance of behavior
+
+**Use Inheritance when:**
+-   There's a clear "is-a" relationship (e.g., `Dog` is an `Animal`)
+-   You need a single inheritable container for shared state and behavior
+-   You want to enforce a type hierarchy
+
+**Key Distinction:**
+
+Since Kira only supports **single inheritance**, you can only inherit from one class. Classes serve as inheritable containers for both data and behavior. Traits, on the other hand, allow unlimited composition of shared logic without the restriction of single inheritance.
+
+### Trait Default Implementations
+
+Traits **can provide default implementations** for their methods. Classes implementing the trait can use the default or override it:
+
+```kira
+pub trait Loggable {
+    fx log(message: Str): Void {
+        @trace("[LOG] ${message}")  // Default implementation
+    }
+}
+
+pub class Service: Loggable {
+    // Uses default log() implementation
+    pub fx run(): Void {
+        log("Service started")
+    }
+}
+
+pub class CustomService: Loggable {
+    // Overrides with custom implementation
+    override fx log(message: Str): Void {
+        @trace("[CUSTOM] ${message}")
+    }
+}
+```
+
+### Trait Inheritance
+
+Traits **can inherit from other traits**, creating trait hierarchies:
+
+```kira
+pub trait Serializable {
+    fx serialize(): Str
+}
+
+pub trait JsonSerializable: Serializable {
+    // Inherits serialize() from Serializable
+    fx toJson(): Str {
+        return "{\"data\": \"" + serialize() + "\"}"  // Default implementation
+    }
+}
+
+pub class User: JsonSerializable {
+    require pub name: Str
+
+    override fx serialize(): Str {
+        return name
+    }
+    // Gets toJson() from JsonSerializable (can override if needed)
+}
+```
+
+Classes implementing a derived trait must implement all methods from the entire trait hierarchy.
+
+```kira
+pub trait Loggable {
+    fx log(message: Str): Void {
+        @trace("[LOG] ${message}")
+    }
+}
+
+pub trait Validatable {
+    fx validate(): Bool
+}
+
+pub class Entity {
+    require pub id: Int64
+}
+
+pub class User: Entity, Loggable, Validatable {
+    require pub name: Str
+
+    override fx validate(): Bool {
+        return name.length() > 0
+    }
+}
+```
+
+### No Abstract Classes
+
+Kira does not have a formal concept of abstract classes. Since functions are first-class citizens and can be provided at runtime during instantiation, any class with unimplemented methods can receive implementations when constructed:
+
+```kira
+pub class Processor {
+    pub fx process(data: Str): Str
+
+    pub fx preProcess(data: Str): Str {
+        return data.trim()
+    }
+}
+
+processor: Processor = Processor {
+    process = fx(data: Str): Str {
+        return data.toUpperCase()
+    }
+}
+
+result: Str = processor.process("hello")
+```
+
+This design eliminates the need for abstract class declarations while providing the same flexibility. If a subclass wants to provide implementation through inheritance, it can override the method normally:
+
+```kira
+pub class UpperCaseProcessor: Processor {
+    override pub fx process(data: Str): Str {
+        return data.toUpperCase()
     }
 }
 ```
@@ -2131,7 +2567,6 @@ pub class Example {
     pub field: Int32 = 0
 
     pub fx publicMethod(): Void {
-        // accessible everywhere
     }
 }
 ```
@@ -2144,11 +2579,119 @@ Accessible only within the class and its methods.
 
 ```kira
 pub class Example {
-    privateField: Int32 = 0  // internal field
+    privateField: Int32 = 0
 
     fx internalMethod(): Void {
-        // accessible only within the class
     }
+}
+```
+
+**Why No Protected Modifier?**
+
+In other languages like Java, the `protected` keyword is another visibility layer that allows only the members of the class and children of that class to view that field.
+
+Kira does not utilize this layer simply because it is extra overhead and increases the learning curve. Creating a binary system where the field is either visible or not makes it not only easier, but gives more freedom to the programmer in designing their APIs.
+
+If a member needs to be accessible to subclasses, make it `pub`. If it should be hidden, use internal visibility (default).
+
+### Static Members
+
+Kira does not support static (class-level) fields or methods. All members must be instance-based. For shared state or utility functions, use module-level constants and functions instead:
+
+```kira
+MAX_CONNECTIONS: Int32 = 100
+
+fx calculateHash(data: Str): Int64 {
+    return @hash(data)
+}
+
+pub class Connection {
+    require id: Int32
+
+    pub fx isValid(): Bool {
+        return id < MAX_CONNECTIONS
+    }
+}
+```
+
+### Enumerations
+
+Enumerations define a type with a fixed set of named constants. Kira's enum syntax follows C-style syntax but with type restrictions.
+
+**Syntax:**
+
+```kira
+pub enum EnumName: BaseType {
+    VARIANT1 = value1,
+    VARIANT2 = value2,
+    VARIANT3 = value3
+}
+```
+
+**Allowed Base Types:**
+
+Enums can only use the following base types, and all variants must use the same type:
+
+-   Integer types: `Int8`, `Int16`, `Int32`, `Int64`
+-   Floating point types: `Float32`, `Float64`
+-   String type: `Str`
+
+**Examples:**
+
+```kira
+pub enum Status: Int32 {
+    PENDING = 0,
+    ACTIVE = 1,
+    COMPLETED = 2,
+    FAILED = 3
+}
+
+pub enum Priority: Str {
+    LOW = "low",
+    MEDIUM = "medium",
+    HIGH = "high",
+    CRITICAL = "critical"
+}
+
+pub enum Threshold: Float32 {
+    MIN = 0.0,
+    MAX = 100.0,
+    DEFAULT = 50.0
+}
+```
+
+**Usage:**
+
+```kira
+currentStatus: Status = Status.ACTIVE
+
+if currentStatus == Status.COMPLETED {
+    @trace("Task completed")
+}
+
+priority: Priority = Priority.HIGH
+message: Str = "Priority: ${priority}"
+```
+
+**Rules:**
+
+-   All enum variants must be explicitly assigned values
+-   All values must be of the same type as the declared base type
+-   Enum values are compile-time constants
+-   Enums cannot have methods or additional fields
+-   Each variant name must follow UPPER_SNAKE_CASE naming convention
+
+**Invalid Examples:**
+
+```kira
+pub enum MixedTypes: Int32 {
+    VALUE1 = 1,
+    VALUE2 = "string"
+}
+
+pub enum WithoutType {
+    VARIANT1,
+    VARIANT2
 }
 ```
 
@@ -2156,17 +2699,34 @@ pub class Example {
 
 **Initializer Block (`initially`):**
 
-Executed immediately after object construction for validation or setup:
+Executed immediately after object construction for validation or setup. The `initially` block behaves like Kotlin's `init` block:
+
+-   Runs after all field initialization (both required and default values)
+-   Has access to all instance fields
+-   Can throw exceptions to abort construction
+-   **Only one `initially` block allowed per class** (compiler error if multiple)
+
+**Execution Order:**
+1. Default field values are evaluated
+2. Required fields are set from constructor arguments
+3. `initially` block executes
 
 > Note: Inheritors cannot modify nor override the initializer blocks. Supplying another initializer block in a child will just mean that initializer block is ran after the parent's.
 
 ```kira
 pub class Person {
     require pub age: Int32
+    pub ageCategory: Str = "unknown"
 
     initially {
         if age < 0 {
             throw "Age cannot be negative"
+        }
+
+        ageCategory = if age < 18 {
+            "minor"
+        } else {
+            "adult"
         }
     }
 }
@@ -2174,7 +2734,12 @@ pub class Person {
 
 **Finalizer Block (`finally`):**
 
-Executed before object deallocation for cleanup of external resources:
+Executed before object deallocation for cleanup of external resources. This is not a destructor but a cleanup hook:
+
+-   Runs during garbage collection or when reference count reaches zero
+-   Used for releasing external resources (files, network connections, etc.)
+-   **Only one `finally` block allowed per class** (compiler error if multiple)
+-   Should not throw exceptions
 
 > Note: Inheritors cannot modify nor override the finalizer blocks. Supplying another finalizer block in a child will just mean that finalizer block is ran after the parent's.
 
@@ -2268,6 +2833,21 @@ fx sort<T: Comparable>(items: List<T>): List<T> {
 }
 ```
 
+**Multiple Trait Bounds:**
+
+When a type parameter must satisfy multiple traits, use **comma-separated** syntax:
+
+```kira
+// ✓ Correct: comma-separated bounds
+fx processItem<T: Comparable, Serializable>(item: T): Str {
+    // T must implement both Comparable and Serializable
+}
+
+// ❌ Incorrect: not T: Comparable + Serializable
+```
+
+The type parameter `T` must implement all specified traits.
+
 ### Variadic Type Parameters and Tuples
 
 Kira uses tuple types to represent variable-length type parameter lists:
@@ -2326,7 +2906,55 @@ callback: Fx<Tuple2<Int32, Str>, Bool> = fx(num: Int32, text: Str): Bool {
 ```
 
 > Note: Although normal functions allow for supplying "named" parameters to functions, using `Tuple`s erases this feature due to the nature of how tuples behave. This is a known issue and is being triaged for implementation.
->
+
+### Type Erasure and Reification
+
+**Platform-Dependent Behavior:**
+
+Type erasure and reification in Kira are purely dependent on the transpilation or compilation target. The behavior varies significantly:
+
+-   **Runtime Type Information:** Not guaranteed to be available on all targets
+-   **Type Identity:** May not be preserved at runtime depending on the target
+-   **Generic Type Information:** May be erased or reified based on target capabilities
+
+**Target Examples:**
+
+```kira
+box: Box<Int32> = Box<Int32> { 42 }
+typeInfo: Type = @type_of(box)
+```
+
+| Target         | Type Info Available | Notes                                    |
+| -------------- | ------------------- | ---------------------------------------- |
+| Native (C/C++) | Partial             | Depends on compilation flags             |
+| JVM            | Full                | Full reification through reflection      |
+| JavaScript     | Erased              | No runtime type information              |
+| .NET           | Full                | Full reification through reflection      |
+| WebAssembly    | Erased              | Limited type information                 |
+
+**Workarounds (In Development):**
+
+Intrinsics are being developed to allow checking and working with type information when the target supports it:
+
+```kira
+if @has_runtime_type_info() {
+    genericType: Type = @get_generic_parameter(box, 0)
+    @trace("Box contains type: ${genericType}")
+}
+```
+
+**Best Practices:**
+
+-   Do not rely on runtime type identity for generic types
+-   Use type constraints and compile-time checks where possible
+-   For target-specific behavior, use conditional compilation (planned feature)
+-   Prefer explicit type parameters over reflection when possible
+
+```kira
+fx processValue<T>(value: Box<T>, handler: Fx<Tuple1<T>, Void>): Void {
+    handler(value.unwrap())
+}
+```
 > However, the consensus at the moment is that parameter names is not crucial.
 
 ---
@@ -2419,6 +3047,19 @@ ptr: Unsafe<Int32> = Unsafe<Int32> { someObject }
 // Accessing ptr after deallocation is undefined behavior
 ```
 
+**Type Conversion:**
+
+There is **no way to convert between safe and unsafe types** directly. However, you can dereference an `Unsafe<T>` pointer to get the underlying value:
+
+```kira
+ptr: Unsafe<Int32> = Unsafe<Int32> { someObject }
+value: Int32 = @dereference(ptr)  // Get value from unsafe pointer
+
+// ❌ Cannot convert safe to unsafe or vice versa directly
+safeRef: Ref<Int32> = ptr  // Not allowed
+unsafePtr: Unsafe<Int32> = safeRef  // Not allowed
+```
+
 Additionally, unsafe references only exist in certain transpilation targets that supports direct memory access such as compiling to machine code or transpiling to C/C++. Thus manipulation of the `Unsafe` type requires the usage of intrinsics:
 
 ```kira
@@ -2442,48 +3083,135 @@ ptr.@store_offset(@type_of(array), array, ptr.@acquire_value() + 10)
 
 ### Null Safety
 
-Kira enforces null safety through the `Maybe<T>` type. Values of non-Maybe types cannot be null:
+Kira enforces null safety through the `Maybe<T>` sealed type. Values of non-Maybe types cannot be null, providing compile-time guarantees against null pointer errors.
+
+**Type Safety:**
 
 ```kira
-value: Int32 = null  // Compile error
+value: Int32 = null
 
-maybeValue: Maybe<Int32> = null  // Valid
+maybeValue: Maybe<Int32> = null
 ```
 
-### Maybe Type
+**Global Variant Values:**
+
+`Maybe<T>` is a sealed type, meaning it can only have specific, predefined variants. There are no user-definable subtypes. The type has two global variant values:
+
+-   A value is present (containing data of type `T`)
+-   A value is absent (`null`)
+
+This is similar to Rust's `Option<T>` or Kotlin's nullable types, but implemented as a sealed type hierarchy.
+
+### Maybe Type API
+
+The `Maybe<T>` type provides a complete API for safe nullable value handling:
 
 **Construction:**
 
 ```kira
-present: Maybe<Int32> = 42  // Auto-boxing
+present: Maybe<Int32> = 42
 absent: Maybe<Int32> = null
 ```
 
-**Checking for Null:**
+**Auto-Boxing:**
+
+Non-null values are automatically boxed into `Maybe<T>`:
 
 ```kira
-if value.isNull() {
+fx findUser(id: Int64): Maybe<User> {
+    user: User = lookupUser(id)
+    return user
+}
+```
+
+**Checking for Presence:**
+
+```kira
+maybeValue: Maybe<Int32> = getValue()
+
+if maybeValue.isNull() {
     @trace("Value is absent")
 }
 
-if value.isSome() {
+if maybeValue.isSome() {
     @trace("Value is present")
 }
 ```
 
 **Safe Unwrapping:**
 
+The `unwrapOr` method provides a default value if the `Maybe` is null:
+
 ```kira
-result: Int32 = maybeValue.unwrapOr(0)  // Returns 0 if null
+maybeValue: Maybe<Int32> = null
+result: Int32 = maybeValue.unwrapOr(0)
+
+maybeStr: Maybe<Str> = getName()
+name: Str = maybeStr.unwrapOr("Unknown")
 ```
 
 **Forced Unwrapping:**
 
+The `.value` property throws a runtime error if the `Maybe` is null:
+
 ```kira
-value: Int32 = maybeValue.value  // Throws if null
+maybeValue: Maybe<Int32> = 42
+value: Int32 = maybeValue.value
+
+nullValue: Maybe<Int32> = null
+willThrow: Int32 = nullValue.value
+```
+
+**Complete API:**
+
+```kira
+pub sealed class Maybe<T> {
+    pub fx isNull(): Bool
+    pub fx isSome(): Bool
+    pub fx unwrapOr(default: T): T
+    pub value: T
+}
+```
+
+**Usage Examples:**
+
+```kira
+fx divide(a: Int32, b: Int32): Maybe<Float32> {
+    if b == 0 {
+        return null
+    }
+    return Float32(a) / Float32(b)
+}
+
+result: Maybe<Float32> = divide(10, 2)
+
+if result.isSome() {
+    @trace("Result: ${result.value}")
+} else {
+    @trace("Division by zero")
+}
+
+safeResult: Float32 = divide(10, 0).unwrapOr(0.0)
 ```
 
 ### Exception Handling
+
+**Throwable Types:**
+
+Kira only allows **`Str` types** to be thrown. Custom exception classes are not supported:
+
+```kira
+// ✓ Correct: throwing Str
+if invalidInput {
+    throw "Invalid input provided"
+}
+
+// ❌ Incorrect: cannot throw custom exception types
+pub class MyException {
+    require pub message: Str
+}
+throw MyException { message = "Error" }  // Not allowed
+```
 
 **Throwing Exceptions:**
 
@@ -2505,7 +3233,7 @@ try {
 
 ### Result Type
 
-For recoverable errors, prefer the `Result<T, E>` type over exceptions:
+For recoverable errors, prefer the `Result<T, E>` type over exceptions. This provides an explicit error handling mechanism in function signatures:
 
 ```kira
 fx divide(a: Int32, b: Int32): Result<Int32, Str> {
