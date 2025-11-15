@@ -978,7 +978,7 @@ equal: Bool = v1 == v2
 result: Int32 = 10 + 5.5  // Cannot mix Int32 and Float32
 
 // Correct: explicit conversion
-result: Float32 = Float32(10) + 5.5
+result: Float32 = 10.0 + 5.5
 ```
 
 ### Comparison Operators
@@ -1249,7 +1249,7 @@ status: Str = "You are ${age >= 18} years old"
 ```kira
 total: Int32 = 100
 tax: Float32 = 0.15
-message: Str = "Total with tax: ${Float32(total) * (1.0 + tax)}"
+message: Str = "Total with tax: ${(total as Float32) * (1.0 + tax)}"
 
 value: Float32 = 3.14159
 precise: Str = "Pi is approximately ${value}"
@@ -1397,12 +1397,12 @@ Explicit type conversion uses constructor-like syntax:
 ```kira
 // Numeric conversions
 x: Int32 = 10
-y: Float32 = Float32(x)
-z: Int64 = Int64(x)
+y: Float32 = x as Float32
+z: Int64 = x as Int64
 
 // String conversion
 number: Int32 = 42
-text: Str = Str(number)
+text: Str = number as Str // automatically calls the intrinsic marker function to_str
 ```
 
 **Type Checking:**
@@ -3189,7 +3189,7 @@ fx divide(a: Int32, b: Int32): Maybe<Float32> {
     if b == 0 {
         return null
     }
-    return Float32(a) / Float32(b)
+    return (a as Float32) / (b as Float32)
 }
 
 result: Maybe<Float32> = divide(10, 2)
