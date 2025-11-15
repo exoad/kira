@@ -345,15 +345,15 @@ This section provides the complete syntactic grammar for Kira using Backus-Naur 
 
 ### Notation Conventions
 
-- `::=` means "is defined as"
-- `|` represents alternatives (OR)
-- `()` groups elements
-- `[]` indicates optional elements (zero or one occurrence)
-- `{}` indicates repetition (zero or more occurrences)
-- `*` suffix indicates zero or more repetitions
-- `+` suffix indicates one or more repetitions
-- `?` suffix indicates optional (zero or one)
-- Terminal symbols are in quotes `'keyword'` or described in CAPS
+-   `::=` means "is defined as"
+-   `|` represents alternatives (OR)
+-   `()` groups elements
+-   `[]` indicates optional elements (zero or one occurrence)
+-   `{}` indicates repetition (zero or more occurrences)
+-   `*` suffix indicates zero or more repetitions
+-   `+` suffix indicates one or more repetitions
+-   `?` suffix indicates optional (zero or one)
+-   Terminal symbols are in quotes `'keyword'` or described in CAPS
 
 ### Lexical Grammar
 
@@ -543,6 +543,7 @@ Interpolation       ::= '${' Expression '}'
 **Precedence and Associativity:**
 
 Expression precedence from lowest to highest:
+
 1. Assignment (`=`) - Right associative
 2. Logical OR (`||`) - Left associative
 3. Logical AND (`&&`) - Left associative
@@ -556,22 +557,22 @@ Expression precedence from lowest to highest:
 
 **Statement Termination:**
 
-- Statements are terminated by newlines when syntactically complete
-- Semicolons can be used to separate multiple statements on one line
-- Line continuation is implicit when parentheses, brackets, or braces are unclosed
-- Line continuation is implicit when a line ends with a binary operator
+-   Statements are terminated by newlines when syntactically complete
+-   Semicolons can be used to separate multiple statements on one line
+-   Line continuation is implicit when parentheses, brackets, or braces are unclosed
+-   Line continuation is implicit when a line ends with a binary operator
 
 **Whitespace:**
 
-- Whitespace (spaces, tabs, newlines) separates tokens
-- Indentation is not syntactically significant
-- Multiple consecutive whitespace characters are treated as one separator
+-   Whitespace (spaces, tabs, newlines) separates tokens
+-   Indentation is not syntactically significant
+-   Multiple consecutive whitespace characters are treated as one separator
 
 **Comments:**
 
-- Single-line comments start with `//` and extend to end of line
-- Comments are treated as whitespace by the parser
-- No multi-line or nested comments
+-   Single-line comments start with `//` and extend to end of line
+-   Comments are treated as whitespace by the parser
+-   No multi-line or nested comments
 
 ---
 
@@ -869,7 +870,7 @@ Expressions in Kira evaluate to values and can be composed using various operato
 Operators are listed from highest to lowest precedence:
 
 | Precedence | Operator            | Description                      | Associativity |
-| ---------- | ------------------- | -------------------------------- | ------------- | ---------- | ------------- |
+| ---------- | ------------------- | -------------------------------- | ------------- |
 | 1          | `.` `[]` `()`       | Member access, indexing, call    | Left to right |
 | 2          | `!` `-` `+` (unary) | Logical NOT, unary minus/plus    | Right to left |
 | 3          | `*` `/` `%`         | Multiplication, division, modulo | Left to right |
@@ -878,7 +879,7 @@ Operators are listed from highest to lowest precedence:
 | 6          | `<` `>` `<=` `>=`   | Relational comparison            | Left to right |
 | 7          | `==` `!=`           | Equality comparison              | Left to right |
 | 8          | `&&`                | Logical AND                      | Left to right |
-| 9          | `                   |                                  | `             | Logical OR | Left to right |
+| 9          | `||`                | Logical OR                       | Left to right |
 | 10         | `=`                 | Assignment                       | Right to left |
 
 ### Arithmetic Operators
@@ -911,25 +912,24 @@ y: Int32 = +10
 
 Kira supports operator overloading through intrinsic markers. Classes can define methods with specific intrinsic names that map to operators, allowing custom types to work with standard operators.
 
-
 **Operator Intrinsic Mapping:**
 
-| Operator | Intrinsic Name      | Signature Example                              |
-| -------- | ------------------- | ---------------------------------------------- |
-| `+`      | `@__op_add__`       | `fx @__op_add__(other: T): T`                  |
-| `-`      | `@__op_sub__`       | `fx @__op_sub__(other: T): T`                  |
-| `*`      | `@__op_mul__`       | `fx @__op_mul__(other: T): T`                  |
-| `/`      | `@__op_div__`       | `fx @__op_div__(other: T): T`                  |
-| `%`      | `@__op_mod__`       | `fx @__op_mod__(other: T): T`                  |
-| `==`     | `@__op_eq__`        | `fx @__op_eq__(other: T): Bool`                |
-| `!=`     | `@__op_neq__`       | `fx @__op_neq__(other: T): Bool`               |
-| `<`      | `@__op_lt__`        | `fx @__op_lt__(other: T): Bool`                |
-| `>`      | `@__op_gt__`        | `fx @__op_gt__(other: T): Bool`                |
-| `<=`     | `@__op_lte__`       | `fx @__op_lte__(other: T): Bool`               |
-| `>=`     | `@__op_gte__`       | `fx @__op_gte__(other: T): Bool`               |
-| `-` (un) | `@__op_neg__`       | `fx @__op_neg__(): T`                          |
-| `[]`     | `@__op_get__`     | `fx @__op_get__(get: Int32): T`            |
-| `[]=`    | `@__op_set__` | `fx @__op_set__(index: Int32, val: T): Void` |
+| Operator | Intrinsic Name | Signature Example                            |
+| -------- | -------------- | -------------------------------------------- |
+| `+`      | `@__op_add__`  | `fx @__op_add__(other: T): T`                |
+| `-`      | `@__op_sub__`  | `fx @__op_sub__(other: T): T`                |
+| `*`      | `@__op_mul__`  | `fx @__op_mul__(other: T): T`                |
+| `/`      | `@__op_div__`  | `fx @__op_div__(other: T): T`                |
+| `%`      | `@__op_mod__`  | `fx @__op_mod__(other: T): T`                |
+| `==`     | `@__op_eq__`   | `fx @__op_eq__(other: T): Bool`              |
+| `!=`     | `@__op_neq__`  | `fx @__op_neq__(other: T): Bool`             |
+| `<`      | `@__op_lt__`   | `fx @__op_lt__(other: T): Bool`              |
+| `>`      | `@__op_gt__`   | `fx @__op_gt__(other: T): Bool`              |
+| `<=`     | `@__op_lte__`  | `fx @__op_lte__(other: T): Bool`             |
+| `>=`     | `@__op_gte__`  | `fx @__op_gte__(other: T): Bool`             |
+| `-` (un) | `@__op_neg__`  | `fx @__op_neg__(): T`                        |
+| `[]`     | `@__op_get__`  | `fx @__op_get__(get: Int32): T`              |
+| `[]=`    | `@__op_set__`  | `fx @__op_set__(index: Int32, val: T): Void` |
 
 > Note: Function Signatures can vary, but using a different signature means you must explicitly invoke the intrinsic as a function instead.
 
@@ -1384,10 +1384,11 @@ result: Str = builder.toString()
 | Kira       | `"${expr}"`     | Double    | **Never**      |
 
 Kira's design choice to require braces for all interpolations provides:
-- Explicit visual boundary between text and code
-- Unambiguous parsing in all contexts
-- Consistency across all interpolation sites
-- Prevention of accidental literal text interpretation
+
+-   Explicit visual boundary between text and code
+-   Unambiguous parsing in all contexts
+-   Consistency across all interpolation sites
+-   Prevention of accidental literal text interpretation
 
 ### Type Casting
 
@@ -2153,6 +2154,7 @@ fx supplier(): Void {
 
 callFx(supplier)
 ```
+
 ---
 
 ## Module System
@@ -2302,18 +2304,21 @@ pub class User {
     pub active: Bool = true
 }
 ```
+
     pub active: Bool = true
+
 }
 
 user1: User = User { name = "Alice", email = "alice@example.com" }
 user2: User = User { name = "Bob", email = "bob@example.com", role = "admin" }
 user3: User = User {
-    name = "Charlie",
-    email = "charlie@example.com",
-    role = "moderator",
-    active = false
+name = "Charlie",
+email = "charlie@example.com",
+role = "moderator",
+active = false
 }
-```
+
+````
 
 **Method Implementation During Instantiation:**
 
@@ -2331,7 +2336,7 @@ handler: Handler = Handler {
 }
 
 handler.process("test data")
-```
+````
 
 Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. Any class with unimplemented methods can receive implementations during instantiation.
 
@@ -2414,12 +2419,14 @@ pub class ImageButton: Button, Serializable {
 **Traits vs Inheritance - When to Use Which:**
 
 **Use Traits when:**
+
 -   You need to share logic across unrelated classes
 -   You want to compose behavior from multiple sources
 -   You're defining capabilities or interfaces (e.g., `Drawable`, `Serializable`)
 -   You need multiple inheritance of behavior
 
 **Use Inheritance when:**
+
 -   There's a clear "is-a" relationship (e.g., `Dog` is an `Animal`)
 -   You need a single inheritable container for shared state and behavior
 -   You want to enforce a type hierarchy
@@ -2707,6 +2714,7 @@ Executed immediately after object construction for validation or setup. The `ini
 -   **Only one `initially` block allowed per class** (compiler error if multiple)
 
 **Execution Order:**
+
 1. Default field values are evaluated
 2. Required fields are set from constructor arguments
 3. `initially` block executes
@@ -2924,13 +2932,13 @@ box: Box<Int32> = Box<Int32> { 42 }
 typeInfo: Type = @type_of(box)
 ```
 
-| Target         | Type Info Available | Notes                                    |
-| -------------- | ------------------- | ---------------------------------------- |
-| Native (C/C++) | Partial             | Depends on compilation flags             |
-| JVM            | Full                | Full reification through reflection      |
-| JavaScript     | Erased              | No runtime type information              |
-| .NET           | Full                | Full reification through reflection      |
-| WebAssembly    | Erased              | Limited type information                 |
+| Target         | Type Info Available | Notes                               |
+| -------------- | ------------------- | ----------------------------------- |
+| Native (C/C++) | Partial             | Depends on compilation flags        |
+| JVM            | Full                | Full reification through reflection |
+| JavaScript     | Erased              | No runtime type information         |
+| .NET           | Full                | Full reification through reflection |
+| WebAssembly    | Erased              | Limited type information            |
 
 **Workarounds (In Development):**
 
@@ -2955,6 +2963,7 @@ fx processValue<T>(value: Box<T>, handler: Fx<Tuple1<T>, Void>): Void {
     handler(value.unwrap())
 }
 ```
+
 > However, the consensus at the moment is that parameter names is not crucial.
 
 ---
@@ -3307,13 +3316,13 @@ Intrinsics are compiler-integrated functions that execute during compilation or 
 
 **Common Intrinsics:**
 
-| Intrinsic           | Description                                 | Example                                     |
-| ------------------- | ------------------------------------------- | ------------------------------------------- |
-| `@trace(...)`       | Outputs values to debug console             | `@trace("Debug message")`                   |
-| `@type_of(...)`     | Returns runtime type representation         | `t: Type = @type_of(Int32)`                 |
-| `@global`           | Makes declaration available at global scope | `@global value: Int32 = 42`                 |
-| `@json_decode(...)` | Parses JSON at compile time                 | `data: Map<Str, Any> = @json_decode("...")` |
-| `@magic`            | Marks compiler-intrinsic types              | `@magic class Tuple { }`                    |
+| Intrinsic | Description | Example |
+| :-------- | :---------- | :------ |
+| `@trace(...)` | Outputs values to debug console | `@trace("Debug message")` |
+| `@type_of(...)` | Returns runtime type representation | `t: Type = @type_of(Int32)` |
+| `@global` | Makes declaration available at global scope | `@global value: Int32 = 42` |
+| `@json_decode(...)` | Parses JSON at compile time | `data: Map<Str, Any> = @json_decode("...")` |
+| `@magic` | Marks compiler-intrinsic types | `@magic class Tuple { }` |
 
 **Usage Example:**
 
@@ -3328,19 +3337,19 @@ config: Map<Str, Any> = @json_decode(`{
 versionType: Type = @type_of(config["version"])
 ```
 
-**Intrinsic Avaliability**
+#### Intrinsic Availability
 
-Intrinsics are meant to be compiler specific functions and tags that are meant to be used to extend the functionality of the language outside of the basic language features. While at the same time being flexible for the maintainers of the compiler to easily modify.
+Intrinsics are compiler-provided functions and tags used to extend the language beyond its core features. They are intentionally flexible so compiler maintainers can adapt or provide additional intrinsics for a particular target.
 
-It is crucial to note that some intrinsics are not available to be declared on certain platforms or transpilation targets.
+Important notes about availability:
 
-If the target does not define a certain intrinsic, the compiler will error out if the intrinsic is encountered even if the intrinsic is not crucial to the runtime of the program (i.e. cruciality is not tested by the compiler simply due to complexity).
+-   Some intrinsics are compiler-target-specific and may not be available on all platforms or backends.
+-   If a target does not provide a required intrinsic, the compiler will report an error when it is used.
+-   Intrinsics that interact with low-level memory (for example, operations used to manipulate `Unsafe<T>` values) are only available on targets that provide direct memory access (for example, native or C/C++ backends). These intrinsics will not be available on targets like JavaScript/TypeScript.
 
-For example, modifying `Unsafe` involves using specific intrinsics which are only available on targets that allow for direct memory access. For example, you will not be able to compile a code that requires the usage of `@acquire_value` on an `Unsafe` type when compiling to JavaScript/TypeScript.
+In-Triage Solution:
 
-> In-Triage Solution:
->
-> Althought there is no direct way as of now to check if an intrinsic is allowed, there is a planned solution to allow for conditional checking to check if intrinsics are available along with conditional compilation guards.
+Although there is currently no direct, portable way to detect if a target supports a given intrinsic, there is a planned feature to provide conditional compilation or target capability checks so code can query or guard against target-specific intrinsics.
 
 ### Standard Library Organization
 
@@ -3375,17 +3384,18 @@ static  const   macro   yield   defer
 
 ### Operator Precedence
 
-| Priority | Operator             | Description                    | Associativity |
-| -------- | -------------------- | ------------------------------ | ------------- | ---------- | ------------- |
+| Precedence | Operator             | Description                    | Associativity |
+| -------- | -------------------- | ------------------------------ | ------------- |
 | 1        | `.`, `[]`, `()`      | Member access, indexing, calls | Left to right |
 | 2        | `!`, `-`, `+`        | Logical NOT, unary minus/plus  | Right to left |
 | 3        | `*`, `/`, `%`        | Multiplication, division, mod  | Left to right |
 | 4        | `+`, `-`             | Addition, subtraction          | Left to right |
-| 5        | `<`, `>`, `<=`, `>=` | Comparison                     | Left to right |
-| 6        | `==`, `!=`           | Equality                       | Left to right |
-| 7        | `&&`                 | Logical AND                    | Left to right |
-| 8        | `                    |                                | `             | Logical OR | Left to right |
-| 9        | `=`                  | Assignment                     | Right to left |
+| 5        | `..`                 | Range operator                 | Left to right |
+| 6        | `<`, `>`, `<=`, `>=` | Relational comparison          | Left to right |
+| 7        | `==`, `!=`           | Equality                       | Left to right |
+| 8        | `&&`                 | Logical AND                    | Left to right |
+| 9        | `||`                 | Logical OR                     | Left to right |
+| 10       | `=`                  | Assignment                     | Right to left |
 
 ### Naming Conventions Summary
 
