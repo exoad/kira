@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.core.IntrinsicRegistry
 import java.text.SimpleDateFormat
 
 /**
@@ -78,112 +77,90 @@ object XMLASTVisitorKira :
     fun visitRootASTNode(rootASTNode: RootASTNode) {
         appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
         appendLine("""<!-- Kira AST Generated at ${SimpleDateFormat().format(System.currentTimeMillis())} -->""")
-        node("KiraProgram")
-        {
+        node("Module") {
             rootASTNode.statements.forEach { it.accept(this) }
         }
     }
 
     override fun visitStatement(statement: Statement) {
-        node("Statement")
-        {
+        node("Statement") {
             statement.expr.accept(this)
         }
     }
 
     override fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement) {
-        node("IfSelectionStatement")
-        {
-            node("Condition")
-            {
+        node("IfSelectionStatement") {
+            node("Condition") {
                 ifSelectionStatement.expr.accept(this)
             }
-            node("Then")
-            {
+            node("Then") {
                 ifSelectionStatement.thenStatements.forEach { it.accept(this) }
             }
-            node("Branches")
-            {
+            node("Branches") {
                 ifSelectionStatement.elseBranches.forEach { it.accept(this) }
             }
         }
     }
 
     override fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement) {
-        node("ElseIfBranch")
-        {
-            node("Condition")
-            {
+        node("ElseIfBranch") {
+            node("Condition") {
                 ifElseIfBranchNode.condition.accept(this)
             }
-            node("Body")
-            {
+            node("Body") {
                 ifElseIfBranchNode.statements.forEach { it.accept(this) }
             }
         }
     }
 
     override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement) {
-        node("ElseBranch")
-        {
-            node("Body")
-            {
+        node("ElseBranch") {
+            node("Body") {
                 elseBranchNode.statements.forEach { it.accept(this) }
             }
         }
     }
 
     override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement) {
-        node("WhileIterationStatement")
-        {
-            node("Condition")
-            {
+        node("WhileIterationStatement") {
+            node("Condition") {
                 whileIterationStatement.condition.accept(this)
             }
-            node("Body")
-            {
+            node("Body") {
                 whileIterationStatement.statements.forEach { it.accept(this) }
             }
         }
     }
 
     override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        node("DoWhileIterationStatement")
-        {
-            node("Condition")
-            {
+        node("DoWhileIterationStatement") {
+            node("Condition") {
                 doWhileIterationStatement.condition.accept(this)
             }
-            node("Body")
-            {
+            node("Body") {
                 doWhileIterationStatement.statements.forEach { it.accept(this) }
             }
         }
     }
 
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
-        node("ReturnStatement")
-        {
+        node("ReturnStatement") {
             returnStatement.expr.accept(this)
         }
     }
 
     override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
-        node("ForIterationStatement")
-        {
+        node("ForIterationStatement") {
             forIterationStatement.expr.accept(this)
-            node("Body")
-            {
+            node("Body") {
                 forIterationStatement.body.forEach { it.accept(this) }
             }
         }
     }
 
     override fun visitUseStatement(useStatement: UseStatement) {
-        node("UseStatement")
-        {
-            node("URI")
-            {
+        node("UseStatement") {
+            node("URI") {
                 useStatement.uri.accept(this)
             }
         }
@@ -198,14 +175,11 @@ object XMLASTVisitorKira :
     }
 
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
-        node("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""")
-        {
-            node("Left")
-            {
+        node("BinaryExpr", """op="${escapeXml(binaryExpr.operator.toString())}"""") {
+            node("Left") {
                 binaryExpr.leftExpr.accept(this)
             }
-            node("Right")
-            {
+            node("Right") {
                 binaryExpr.rightExpr.accept(this)
             }
         }
@@ -226,27 +200,20 @@ object XMLASTVisitorKira :
         xmlSingleLeaf("LString", """value="${stringLiteral.value}"""")
     }
 
-    override fun visitBoolLiteral(boolLiteral: BoolLiteral) {
-        xmlSingleLeaf("LBool", """value="${boolLiteral.value}"""")
-    }
-
     override fun visitFloatLiteral(floatLiteral: FloatLiteral) {
         xmlSingleLeaf("LFloat", """value="${floatLiteral.value}"""")
     }
 
     override fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr) {
-        node("LFunc")
-        {
+        node("LFunc") {
             functionDefExpr.returnTypeSpecifier.accept(this)
-            node("Parameters")
-            {
+            node("Parameters") {
                 functionDefExpr.parameters.forEach { it.accept(this) }
             }
             // todo: this is a bandage situation where function type notation is actually not supported. it makes parsing stubs as types much harder
             // todo: either come up with a complete new system for function type or reuse the already existing one for function literal declarations
             if (functionDefExpr.body != null) {
-                node("Body")
-                {
+                node("Body") {
                     functionDefExpr.body!!.forEach { it.accept(this) }
                 }
             }
@@ -254,35 +221,8 @@ object XMLASTVisitorKira :
     }
 
     override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        node("LArray")
-        {
+        node("LArray") {
             arrayLiteral.value.forEach { it.accept(this) }
-        }
-    }
-
-    override fun visitListLiteral(listLiteral: ListLiteral) {
-        node("LList")
-        {
-            listLiteral.value.forEach { it.accept(this) }
-        }
-    }
-
-    override fun visitMapLiteral(mapLiteral: MapLiteral) {
-        node("LMap")
-        {
-            mapLiteral.value.forEach {
-                node("Entry")
-                {
-                    node("Key")
-                    {
-                        it.key.accept(this)
-                    }
-                    node("Value")
-                    {
-                        it.value.accept(this)
-                    }
-                }
-            }
         }
     }
 
@@ -291,15 +231,14 @@ object XMLASTVisitorKira :
     }
 
     override fun visitType(type: Type) {
-        node("Type", "name=\"${type.identifier}\"")
-        {
-            node("Constraints")
-            {
-                type.constraint?.accept(this)
+        node("Type", "name=\"${type.identifier}\"") {
+            if (type.constraint != null && type.children.isNotEmpty()) {
+                node("Constraints") {
+                    type.constraint!!.accept(this)
+                }
             }
             if (type.children.isNotEmpty()) {
-                node("Children")
-                {
+                node("Children") {
                     type.children.forEach { it.accept(this) }
                 }
             }
@@ -346,9 +285,27 @@ object XMLASTVisitorKira :
                     else -> ""
                 }
             }stub=\"${functionDecl.isStub()}\" anon=\"${functionDecl.isAnonymous()}\""
-        )
-        {
+        ) {
             functionDecl.name.accept(this)
+            if (functionDecl.generics.isNotEmpty()) {
+                node("GenericParameters") {
+                    functionDecl.generics.forEach { typeParam ->
+                        node("TypeParameter") {
+                            typeParam.identifier.accept(this)
+                            if (typeParam.constraint != null) {
+                                node("Constraint") {
+                                    typeParam.constraint!!.accept(this)
+                                }
+                            }
+                            if (typeParam.children.isNotEmpty()) {
+                                node("Children") {
+                                    typeParam.children.forEach { it.accept(this) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             functionDecl.def.accept(this)
         }
     }
@@ -359,27 +316,22 @@ object XMLASTVisitorKira :
                 true -> """modifiers="${classDecl.modifiers.joinToString(",") { it.name }}""""
                 else -> ""
             }
-        )
-        {
+        ) {
             classDecl.name.accept(this)
-            if (classDecl.parent != null) {
-                node("Parent")
-                {
-                    classDecl.parent.accept(this)
+            if (classDecl.parents.isNotEmpty()) {
+                node("Parents") {
+                    classDecl.parents.forEach { it.accept(this) }
                 }
             }
-            node("Members")
-            {
+            node("Members") {
                 classDecl.members.forEach { it.accept(this) }
             }
         }
     }
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {
-        node("ModuleDecl")
-        {
-            node("URI")
-            {
+        node("ModuleDecl") {
+            node("URI") {
                 moduleDecl.uri.accept(this)
             }
         }
@@ -390,44 +342,64 @@ object XMLASTVisitorKira :
             "EnumDecl", """modifiers="${
                 enumDecl.modifiers.joinToString(",") { it.name }
             }""""
-        )
-        {
+        ) {
             enumDecl.name.accept(this)
             enumDecl.members.forEach { it.accept(this) }
         }
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
-        node("TraitDecl", "modifiers=\"${traitDecl.modifiers.joinToString(",") { it.name }}\"")
-        {
+        node("TraitDecl", "modifiers=\"${traitDecl.modifiers.joinToString(",") { it.name }}\"") {
             traitDecl.name.accept(this)
-            node("Members")
-            {
+            if (traitDecl.parents.isNotEmpty()) {
+                node("Parents") {
+                    traitDecl.parents.forEach { it.accept(this) }
+                }
+            }
+            node("Members") {
                 traitDecl.members.forEach { it.accept(this) }
             }
         }
     }
 
+    override fun visitVariantDecl(variantDecl: VariantDecl) {
+        node("VariantDecl", "modifiers=\"${variantDecl.modifiers.joinToString(",") { it.name }}\"") {
+            variantDecl.name.accept(this)
+            node("Variants") {
+                variantDecl.variants.forEach { it.accept(this) }
+            }
+            node("Members") {
+                variantDecl.members.forEach { it.accept(this) }
+            }
+        }
+    }
+
+    override fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {
+        node("TypeAliasDecl", "modifiers=\"${typeAliasDecl.modifiers.joinToString(",") { it.name }}\"") {
+            node("Alias") {
+                typeAliasDecl.alias.accept(this)
+            }
+            node("Target") {
+                typeAliasDecl.target.accept(this)
+            }
+        }
+    }
+
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {
-        node("AssignmentExpr")
-        {
+        node("AssignmentExpr") {
             assignmentExpr.target.accept(this)
             assignmentExpr.value.accept(this)
         }
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
-        node("FunctionCallExpr")
-        {
+        node("FunctionCallExpr") {
             functionCallExpr.name.accept(this)
-            node("Parameters")
-            {
-                node("Positional")
-                {
+            node("Parameters") {
+                node("Positional") {
                     functionCallExpr.positionalParameters.forEach { it.accept(this) }
                 }
-                node("Named")
-                {
+                node("Named") {
                     functionCallExpr.namedParameters.forEach { it.accept(this) }
                 }
             }
@@ -435,28 +407,25 @@ object XMLASTVisitorKira :
     }
 
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
-        node(
-            "IntrinsicCallExpr", """ name ="${
-                IntrinsicRegistry.entries.find { it.name == intrinsicExpr.intrinsicKey.name }?.name
-                    ?: intrinsicExpr.intrinsicKey.name
-            }""""
-        ) {
-            node("Parameters")
-            {
-                intrinsicExpr.parameters?.forEach { it.accept(this) }
-            }
-        }
+//        node(
+//            "IntrinsicCallExpr", """ name ="${
+//                IntrinsicRegistry.entries.find { it.name == intrinsicExpr.intrinsicKey.name }?.name
+//                    ?: intrinsicExpr.intrinsicKey.name
+//            }""""
+//        ) {
+//            node("Parameters")
+//            {
+//                intrinsicExpr.parameters?.forEach { it.accept(this) }
+//            }
+//        }
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
-        node("CompoundAssignmentExpr", """ op ="${escapeXml(compoundAssignmentExpr.operator.toString())}"""")
-        {
-            node("LValue")
-            {
+        node("CompoundAssignmentExpr", """ op ="${escapeXml(compoundAssignmentExpr.operator.toString())}"""") {
+            node("LValue") {
                 compoundAssignmentExpr.left.accept(this)
             }
-            node("RValue")
-            {
+            node("RValue") {
                 compoundAssignmentExpr.right.accept(this)
             }
         }
@@ -468,8 +437,7 @@ object XMLASTVisitorKira :
                 true -> """ modifiers ="${functionDeclParameterExpr.modifiers.joinToString(", ") { it.name }}""""
                 else -> ""
             }
-        )
-        {
+        ) {
             functionDeclParameterExpr.name.accept(this)
             functionDeclParameterExpr.typeSpecifier.accept(this)
         }
@@ -532,8 +500,8 @@ object XMLASTVisitorKira :
         node("Try") {
             node("TryBlock") { tryExpr.tryBlock.forEach { it.accept(this) } }
             node("Handler") {
-                if (tryExpr.exceptionName != null) tryExpr.exceptionName.accept(this)
-                if (tryExpr.exceptionType != null) tryExpr.exceptionType.accept(this)
+                tryExpr.exceptionName?.accept(this)
+                tryExpr.exceptionType?.accept(this)
                 tryExpr.handlerBlock.forEach { it.accept(this) }
             }
         }
@@ -543,9 +511,7 @@ object XMLASTVisitorKira :
         node("EnumMember")
         {
             enumMemberExpr.name.accept(this)
-            if (enumMemberExpr.value != null) {
-                enumMemberExpr.value.accept(this)
-            }
+            enumMemberExpr.value?.accept(this)
         }
     }
 

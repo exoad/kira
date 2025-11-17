@@ -34,11 +34,13 @@ object Keywords {
         "try" to Token.Type.K_TRY,
         "throw" to Token.Type.K_THROW,
         "on" to Token.Type.K_ON,
+        "variant" to Token.Type.K_VARIANT,
+        "alias" to Token.Type.K_ALIAS,
+        "this" to Token.Type.K_THIS,
 //        "global" to Token.Type.K_GLOBAL
     )
-    val literals = mapOf(
-        "true" to Token.Type.L_TRUE_BOOL,
-        "false" to Token.Type.L_FALSE_BOOL,
-    )
-    val all = reserved + literals
+//    val literals = mapOf(
+//        "true" to Token.Type.L_TRUE_BOOL,
+//        "false" to Token.Type.L_FALSE_BOOL,
+//    )
 }

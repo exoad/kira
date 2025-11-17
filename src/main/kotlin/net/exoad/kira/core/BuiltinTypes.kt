@@ -70,11 +70,8 @@ object BuiltinTypes {
      *
      * Has the same implicit precedence as integer types
      */
-    val logicalTypes = mapOf(
-        "Bool" to arrayOf(Token.Type.L_TRUE_BOOL, Token.Type.L_FALSE_BOOL)
-    )
 
     fun allBuiltinTypes(): Map<String, Array<Token.Type>> {
-        return integerTypes + sequenceTypes + logicalTypes + unitTypes + referenceTypes
+        return integerTypes + sequenceTypes + unitTypes + referenceTypes
     }
 }

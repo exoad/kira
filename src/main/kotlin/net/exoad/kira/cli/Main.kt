@@ -115,7 +115,7 @@ fun main(args: Array<String>) {
                         KiraCCodeGenerator(compilationUnit).generate()
                     }
 
-                    else -> Diagnostics.Logging.info("Kira", "No output...")
+                    else -> {}
                 }
             }
             val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
@@ -143,10 +143,30 @@ fun main(args: Array<String>) {
             if (dumpSB != null) {
                 dumpSB.appendLine("############### CANON SYMBOL TABLE ###############")
                 dumpSB.appendLine("Total Symbols: ${compilationUnit.symbolTable.totalSymbols()}")
-                compilationUnit.symbolTable.forEach {
-                    dumpSB.appendLine(": Scope Kind: ${it.kind}")
-                    it.symbols.forEach { (k, v) ->
-                        dumpSB.appendLine("    '$k' to $v")
+                var scopeIdx = 0
+                compilationUnit.symbolTable.forEach { frame ->
+                    scopeIdx += 1
+                    val scopeKind = when (frame.kind) {
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Global -> "Global"
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Module -> "Module"
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Class -> "Class"
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Function -> "Function"
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Enum -> "Enum"
+                        else -> frame.kind.toString()
+                    }
+                    val scopeName = when (frame.kind) {
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Module -> frame.kind.name
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Class -> frame.kind.name
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Function -> frame.kind.name
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Enum -> frame.kind.name
+                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Global -> "(global)"
+                        else -> "(unknown)"
+                    }
+                    dumpSB.appendLine("\nScope #$scopeIdx: Kind=$scopeKind, Name=$scopeName, Symbols=${frame.symbols.size}")
+                    if (frame.symbols.isNotEmpty()) {
+                        frame.symbols.forEach { (k, v) ->
+                            dumpSB.appendLine("    $v")
+                        }
                     }
                 }
                 dumpSB.appendLine("----------- End Dump File -----------")

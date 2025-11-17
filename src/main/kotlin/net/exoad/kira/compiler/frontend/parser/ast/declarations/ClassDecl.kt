@@ -11,7 +11,7 @@ open class ClassDecl(
     override val name: Type,
     val modifiers: List<Modifier> = emptyList(),
     val members: List<FirstClassDecl> = emptyList(),
-    val parent: Type? = null,
+    val parents: List<Type> = emptyList(),
 ) : Decl(name) {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitClassDecl(this)

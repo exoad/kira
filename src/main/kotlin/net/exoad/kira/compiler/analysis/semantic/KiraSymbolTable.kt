@@ -10,7 +10,7 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
     }
 
     fun enter(kind: SemanticScope) {
-        if(kind == SemanticScope.Global && scopeStack.any { it.kind == SemanticScope.Global }) {
+        if (kind == SemanticScope.Global && scopeStack.any { it.kind == SemanticScope.Global }) {
             throw KiraRuntimeException("Cannot enter global scope: already exists!")
         }
         scopeStack.addFirst(KiraScopeFrame(kind))
@@ -55,6 +55,17 @@ class KiraSymbolTable : Iterable<KiraScopeFrame> {
             scope.symbols[identifier]?.let { return it }
         }
         return null
+    }
+
+    fun resolveType(identifier: String): SemanticSymbol? {
+        val symbol = resolve(identifier) ?: return null
+        if (symbol.kind == SemanticSymbolKind.TYPE_ALIAS && symbol.aliasedType != null) {
+            val targetIdentifier = symbol.aliasedType.identifier
+            if (targetIdentifier is net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier) {
+                return resolveType(targetIdentifier.value) ?: symbol
+            }
+        }
+        return symbol
     }
 
     fun containsInCurrentScope(identifier: String): Boolean {

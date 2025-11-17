@@ -196,7 +196,7 @@ class KiraLexer(private val context: SourceContext) {
             val startLoc = SourcePosition(lineNumber, column)
             if (char.isLetter() || (isInIntrinsic && char == Symbols.UNDERSCORE.rep)) {  // identifiers and keywords usually have the same stuffs
                 val identifier = lexIdentifier()
-                val keywordTokenType = Keywords.all[identifier.content]
+                val keywordTokenType = Keywords.reserved[identifier.content]
                 if (keywordTokenType != null) {
                     return Token.Raw(
                         keywordTokenType,

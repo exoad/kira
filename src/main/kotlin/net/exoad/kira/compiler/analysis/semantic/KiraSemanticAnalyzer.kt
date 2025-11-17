@@ -25,6 +25,49 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     private val diagnosticsPump = mutableListOf<DiagnosticsException>()
     lateinit var context: SourceContext
 
+    private fun registerSingleTypeParameter(typeParam: Type) {
+        if (typeParam.identifier is Identifier) {
+            val typeParamName = (typeParam.identifier as Identifier).value
+            compilationUnit.symbolTable.declare(
+                typeParamName,
+                SemanticSymbol(
+                    typeParamName,
+                    SemanticSymbolKind.TYPE_SPECIFIER,
+                    Token.Type.IDENTIFIER,
+                    SourceLocation.fromPosition(
+                        context.astOrigins[typeParam.identifier] ?: SourcePosition.UNKNOWN,
+                        context.file
+                    ),
+                    relativelyVisible = false
+                )
+            )
+        }
+    }
+
+    private fun registerGenericTypeParameters(type: Type) {
+        for (child in type.children) {
+            if (child.identifier is Identifier) {
+                val typeParamName = (child.identifier as Identifier).value
+                compilationUnit.symbolTable.declare(
+                    typeParamName,
+                    SemanticSymbol(
+                        typeParamName,
+                        SemanticSymbolKind.TYPE_SPECIFIER,
+                        Token.Type.IDENTIFIER,
+                        SourceLocation.fromPosition(
+                            context.astOrigins[child.identifier] ?: SourcePosition.UNKNOWN,
+                            context.file
+                        ),
+                        relativelyVisible = false
+                    )
+                )
+                if (child.children.isNotEmpty()) {
+                    registerGenericTypeParameters(child)
+                }
+            }
+        }
+    }
+
     fun validateAST(): SemanticAnalyzerResults {
         try {
             for (source in compilationUnit.allSources()) {
@@ -228,7 +271,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 //            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
 //        )
         // TODO: implement proper validation logic by also double checking valid target ast nodes instead
-        intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit)
+        intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit, context)
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
@@ -271,7 +314,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitObjectInitExpr(objectInitExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr) {
+    override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
         objectInitExpr.positionalArgs.forEach { it.accept(this) }
     }
 
@@ -311,10 +354,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // should be true
     }
 
-    override fun visitBoolLiteral(boolLiteral: BoolLiteral) {
-        // should be true
-    }
-
     override fun visitFloatLiteral(floatLiteral: FloatLiteral) {
         // should be true
     }
@@ -327,14 +366,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitListLiteral(listLiteral: ListLiteral) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitMapLiteral(mapLiteral: MapLiteral) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitNullLiteral(nullLiteral: NullLiteral) {
         // TODO("Not yet implemented")
     }
@@ -344,8 +375,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitIdentifier(identifier: Identifier) {
-        // Identifiers themselves don't need to declare anything - they're just references
-        // Declarations happen in visitVariableDecl, visitClassDecl, visitFunctionDecl, etc.
     }
 
     /**
@@ -355,7 +384,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         StringLiteral::class to { type: String -> type == "String" },
         IntegerLiteral::class to { type: String -> type == "Int32" || type == "Int64" },
         FloatLiteral::class to { type: String -> type == "Float32" || type == "Float64" },
-        BoolLiteral::class to { type: String -> type == "Bool" },
     )
 
     override fun visitVariableDecl(variableDecl: VariableDecl) {
@@ -394,8 +422,14 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             if (variableDecl.value != null) {
                 variableDecl.value!!.accept(this)
                 val literalClass = variableDecl.value!!::class
+                val resolvedSymbol = compilationUnit.symbolTable.resolveType(typeName)
+                val actualTypeName = if (resolvedSymbol != null && resolvedSymbol.name != typeName) {
+                    resolvedSymbol.name
+                } else {
+                    typeName
+                }
                 pumpOnTrue(
-                    !(variableBuiltinPrimitives[literalClass]?.invoke(typeName) ?: true),
+                    !(variableBuiltinPrimitives[literalClass]?.invoke(actualTypeName) ?: true),
                     "Type mismatch. Got a ${
                         literalClass.simpleName?.removeSuffix("Literal")?.lowercase()
                     } literal, but expected a '$typeName'",
@@ -408,7 +442,29 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
-//        TODO("Not yet implemented")
+        if (functionDecl.isStub()) {
+            return
+        }
+        val funcName = when (functionDecl.name) {
+            is Identifier -> (functionDecl.name as Identifier).value
+            else -> "(anonymous)"
+        }
+        compilationUnit.symbolTable.enter(SemanticScope.Function(funcName))
+        if (functionDecl.generics.isNotEmpty()) {
+            functionDecl.generics.forEach { typeParam ->
+                registerSingleTypeParameter(typeParam)
+            }
+        }
+        functionDecl.def.parameters.forEach { param ->
+            param.accept(this)
+        }
+        functionDecl.def.returnTypeSpecifier.accept(this)
+        if (functionDecl.def.body != null) {
+            functionDecl.def.body!!.forEach { stmt ->
+                stmt.accept(this)
+            }
+        }
+        compilationUnit.symbolTable.exit()
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
@@ -418,6 +474,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             if (existingSymbol != null && existingSymbol.kind == SemanticSymbolKind.TYPE_SPECIFIER) {
                 if (classDecl.members.isNotEmpty()) {
                     compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+                    // Register generic type parameters in the class scope
+                    registerGenericTypeParameters(classDecl.name)
                     classDecl.members.forEach { it.accept(this) }
                     compilationUnit.symbolTable.exit()
                 }
@@ -450,6 +508,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             }
             if (classDecl.members.isNotEmpty()) {
                 compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+                registerGenericTypeParameters(classDecl.name)
                 classDecl.members.forEach { it.accept(this) }
                 compilationUnit.symbolTable.exit()
             }
@@ -473,6 +532,83 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
-        TODO("Not yet implemented")
+        // TODO("Not yet implemented")
+    }
+
+    override fun visitVariantDecl(variantDecl: VariantDecl) {
+        if (variantDecl.name.identifier is Identifier) {
+            val typeName = (variantDecl.name.identifier as Identifier).value
+            val symbol = SemanticSymbol(
+                typeName,
+                SemanticSymbolKind.TYPE_SPECIFIER,
+                Token.Type.K_VARIANT,
+                SourceLocation.fromPosition(
+                    context.astOrigins[variantDecl] ?: SourcePosition.UNKNOWN,
+                    context.file
+                ),
+                relativelyVisible = variantDecl.modifiers.contains(Modifier.PUBLIC)
+            )
+
+            expectTypeNotDeclaredInModule(typeName, context.astOrigins[variantDecl])
+            compilationUnit.symbolTable.declare(typeName, symbol)
+
+            if (variantDecl.variants.isNotEmpty() || variantDecl.members.isNotEmpty()) {
+                compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+                // Register generic type parameters in the variant scope
+                registerGenericTypeParameters(variantDecl.name)
+                // Process variant cases (inner classes)
+                variantDecl.variants.forEach { it.accept(this) }
+                // Process variant members (functions, variables)
+                variantDecl.members.forEach { it.accept(this) }
+                compilationUnit.symbolTable.exit()
+            }
+        }
+    }
+
+    override fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {
+        val aliasName = if (typeAliasDecl.alias.identifier is Identifier) {
+            (typeAliasDecl.alias.identifier as Identifier).value
+        } else {
+            pump(
+                "Type alias name must be a simple identifier",
+                location = context.astOrigins[typeAliasDecl.alias] ?: SourcePosition.UNKNOWN,
+                selectorLength = 1
+            )
+            return
+        }
+        expectTypeNotDeclaredInModule(aliasName, context.astOrigins[typeAliasDecl.alias.identifier])
+        if (typeAliasDecl.target.identifier is Identifier) {
+            val targetTypeName = (typeAliasDecl.target.identifier as Identifier).value
+            if (compilationUnit.symbolTable.resolve(targetTypeName) == null) {
+                pump(
+                    "The target type '$targetTypeName' for alias '$aliasName' was not found",
+                    location = context.astOrigins[typeAliasDecl.target] ?: SourcePosition.UNKNOWN,
+                    selectorLength = targetTypeName.length,
+                    help = "Ensure the target type is declared before the alias, or check for typos."
+                )
+            }
+        }
+        val symbol = SemanticSymbol(
+            aliasName,
+            SemanticSymbolKind.TYPE_ALIAS,
+            Token.Type.K_ALIAS,
+            SourceLocation.fromPosition(
+                context.astOrigins[typeAliasDecl.alias] ?: SourcePosition.UNKNOWN,
+                context.file
+            ),
+            relativelyVisible = typeAliasDecl.modifiers.contains(Modifier.PUBLIC),
+            aliasedType = typeAliasDecl.target
+        )
+        compilationUnit.symbolTable.declare(aliasName, symbol)
+        if (typeAliasDecl.alias.children.isNotEmpty()) {
+            compilationUnit.symbolTable.enter(SemanticScope.Class(aliasName))
+            typeAliasDecl.alias.children.forEach { typeParam ->
+                registerSingleTypeParameter(typeParam)
+            }
+            typeAliasDecl.target.accept(this)
+            compilationUnit.symbolTable.exit()
+        } else {
+            typeAliasDecl.target.accept(this)
+        }
     }
 }

@@ -1,3 +1,4 @@
-module "exoad:kira/test"
+module "test:kira"
 
-ab: Int32 = 123
+//@__trace("Hello World :)")
+

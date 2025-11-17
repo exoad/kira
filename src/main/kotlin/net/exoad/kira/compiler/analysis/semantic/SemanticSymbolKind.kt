@@ -6,10 +6,15 @@ enum class SemanticSymbolKind {
     VARIABLE,
     FUNCTION,
     CLASS,
-
-    @ObsoleteLanguageFeat
-    NAMESPACE,
     ENUM,
     PARAMETER,
-    TYPE_SPECIFIER
+    VARIANT,
+    ENUM_MEMBER,
+    CLASS_MEMBER,
+    TRAIT,
+    TRAIT_MEMBER,
+    MODULE,
+
+    TYPE_SPECIFIER,
+    TYPE_ALIAS
 }

@@ -21,7 +21,7 @@ Kira is a statically typed, object-oriented programming language designed with e
 **Hello World**
 
 ```kira
-@trace("Hello World!")
+@_trace_("Hello World!")
 ```
 
 **FizzBuzz Implementation**
@@ -29,13 +29,13 @@ Kira is a statically typed, object-oriented programming language designed with e
 ```kira
 for i in 0..101 {
    if i % 15 == 0 {
-      @trace("FizzBuzz")
+      @_trace_("FizzBuzz")
    } else if i % 3 == 0 {
-      @trace("Fizz")
+      @_trace_("Fizz")
    } else if i % 5 == 0 {
-      @trace("Buzz")
+      @_trace_("Buzz")
    } else {
-      @trace(i)
+      @_trace_(i)
    }
 }
 ```
@@ -103,7 +103,7 @@ x: Int32 = 10; y: Int32 = 20
 Kira supports single-line comments using the `//` delimiter. All text following `//` until the end of the line is treated as a comment and removed during preprocessing.
 
 ```kira
-@trace("Hello World!")
+@_trace_("Hello World!")
 ```
 
 Multi-line or block comments are not supported to maintain parsing simplicity and avoid nested comment ambiguities.
@@ -174,11 +174,11 @@ pub class User { }
 pub class HttpClient { }
 pub class DatabaseConnection { }
 
-pub trait Comparable { }
-pub trait Serializable { }
+    pub trait Comparable { }
+    pub trait Serializable { }
 
-type UserId = Int64
-type Callback = Fx<Tuple1<Str>, Void>
+    alias UserId as Int64
+    alias Callback as Fx<Tuple1<Str>, Void>
 
 class Box<T> { }
 class Pair<A, B> { }
@@ -239,11 +239,11 @@ Compiler intrinsics are prefixed with `@` and use snake_case to visually disting
 **Examples:**
 
 ```kira
-@trace("Debug output")
-@type_of(myValue)
-@json_decode("{}")
+@_trace_("Debug output")
+@_type_of_(myValue)
+@_json_decode_("{}")
 @system_time()
-@trace
+@_trace_
 @get
 @trace_value
 @compute_hash
@@ -306,7 +306,7 @@ MaxSize: Int32 = 100
 | Traits           | PascalCase       | `^[A-Z][a-zA-Z0-9]*$`  | `Comparable`, `Iterator`  |
 | Type Parameters  | PascalCase       | `^[A-Z][a-zA-Z0-9]*$`  | `T`, `Key`, `Value`       |
 | Constants        | UPPER_SNAKE_CASE | `^[A-Z][A-Z0-9_]*$`    | `MAX_SIZE`, `PI`          |
-| Intrinsics       | @snake_case      | `^@[a-z_][a-z0-9_]*$`  | `@trace`, `@type_of`      |
+| Intrinsics       | @snake_case      | `^@[a-z_][a-z0-9_]*$`  | `@_trace_`, `@_type_of_`      |
 | Module Names     | snake_case       | File system compatible | `http_client.kira`        |
 
 ### Rationale
@@ -328,14 +328,10 @@ MaxSize: Int32 = 100
 
 ### Keywords
 
-Reserved keywords cannot be used as identifiers:
+Reserved keywords cannot be used as identifiers. The following keywords are reserved by the language:
 
-```
-class   trait   module  use     pub     mut     require
-if      else    for     while   do      return  throw
-try     on      fx      initially  finally  override
-true    false   null    is      as      in
-```
+`alias`, `as`, `class`, `do`, `else`, `for`, `fx`, `finally`, `if`, `in`, `initially`, `is`, `module`, `mut`, `on`, `override`, `pub`, `require`, `return`, `this`, `throw`, `trait`, `try`, `use`, `variant`, `while`
+
 
 ---
 
@@ -417,7 +413,7 @@ TraitMember         ::= MethodSignature
                       | MethodDeclaration
 EnumDeclaration     ::= [Visibility] 'enum' TypeIdentifier ':' PrimitiveType '{' EnumVariant (',' EnumVariant)* '}'
 EnumVariant         ::= ConstantIdentifier '=' Literal
-TypeAliasDeclaration ::= 'type' TypeIdentifier [TypeParameters] '=' Type
+TypeAliasDeclaration ::= [Visibility] 'alias' TypeIdentifier [TypeParameters] 'as' Type
 MethodSignature     ::= [Visibility] 'fx' Identifier '(' ParameterList? ')' ':' Type
 FunctionDeclaration ::= [Visibility] 'fx' Identifier [TypeParameters]
                         '(' ParameterList? ')' ':' Type Block
@@ -598,6 +594,11 @@ Kira employs a nominal type system where types are identified by their declared 
 
 -   `Bool`: Logical type with values `true` or `false`, stored as 8-bit value
 
+**Bool Sentinels:**
+
+-   The `Bool` type exposes two sentinel literals: `true` and `false`. These are language-level sentinel values declared and used similarly to the `null` literal (that is, they are built-in keywords representing the two possible boolean values). Use `true` and `false` directly in expressions and declarations (for example, `flag: Bool = true`).
+
+
 **Special Types:**
 
 -   `Void`: Represents absence of a return value in function signatures
@@ -608,7 +609,7 @@ Kira employs a nominal type system where types are identified by their declared 
 All primitive types listed above are **guaranteed to exist and be accessible** across all compilation targets and platforms. However, the actual runtime representation may vary:
 
 -   The compiler may map larger types to smaller types on platforms with limited support
--   Type identity is not guaranteed: `@type_of(Int32)` may equal `@type_of(Int16)` on some targets
+-   Type identity is not guaranteed: `@_type_of_(Int32)` may equal `@_type_of_(Int16)` on some targets
 -   Semantic behavior (overflow, precision) matches the declared type even if internally aliased
 -   Programs should not rely on distinct runtime representations for type checking
 
@@ -618,11 +619,11 @@ All primitive types listed above are **guaranteed to exist and be accessible** a
 x: Int32 = 100
 y: Int16 = 50
 
-xType: Type = @type_of(x)
-yType: Type = @type_of(y)
+xType: Type = @_type_of_(x)
+yType: Type = @_type_of_(y)
 
 if xType == yType {
-    @trace("Int32 and Int16 may be same type on this target")
+    @_trace_("Int32 and Int16 may be same type on this target")
 }
 ```
 
@@ -630,25 +631,26 @@ On platforms where `Int32` and `Int16` are aliased, both types are still availab
 
 ### Type Aliases
 
-Type aliases allow creating alternative names for existing types. They work similarly to Dart's typedef feature, where the compiler performs a find-and-replace operation while maintaining full type checking and IntelliSense support.
+Type aliases allow creating alternative names for existing types. They are inlined at compile time.
 
 **Syntax:**
 
 ```kira
-type AliasName = ExistingType
+[Visibility] alias AliasName as ExistingType
 ```
 
 **Examples:**
 
 ```kira
-type UserId = Int64
-type Callback = Fx<Tuple1<Str>, Void>
-type StringMap = Map<Str, Str>
-type Point = Tuple2<Float32, Float32>
+pub alias PublicUserId as Int64
+alias UserId as Int64
+alias Callback as Fx<Tuple1<Str>, Void>
+alias StringMap as Map<Str, Str>
+alias Point as Tuple2<Float32, Float32>
 
 userId: UserId = 12345
 callback: Callback = fx(msg: Str): Void {
-    @trace(msg)
+    @_trace_(msg)
 }
 config: StringMap = Map<Str, Str> {}
 position: Point = Tuple2<Float32, Float32> { 10.0, 20.0 }
@@ -661,8 +663,21 @@ position: Point = Tuple2<Float32, Float32> { 10.0, 20.0 }
 -   Aliases and their underlying types are completely interchangeable
 -   Helps document code intent and reduce repetition of complex generic types
 
+**Visibility:**
+
+-   Aliases may be declared with the `pub` visibility modifier at module scope. When prefixed with `pub`, the alias is exported from the module and can be used by other modules in the same way as `pub` functions and variables.
+-   `pub alias` follows the same module-level export rules as `pub` declarations for values and functions.
+
 ```kira
-type Matrix = Arr<Arr<Float64>>
+// In module 'mylib.kira'
+pub alias PublicUserId as Int64
+
+// In another module that uses 'mylib.kira'
+userId: PublicUserId = 10
+```
+
+```kira
+alias Matrix as Arr<Arr<Float64>>
 
 mat: Matrix = [[1.0, 2.0], [3.0, 4.0]]
 ```
@@ -672,8 +687,8 @@ mat: Matrix = [[1.0, 2.0], [3.0, 4.0]]
 Type aliases can include generic parameters:
 
 ```kira
-type Result<T> = Maybe<T>
-type Pair<A, B> = Tuple2<A, B>
+alias Result<T> as Maybe<T>
+alias Pair<A, B> as Tuple2<A, B>
 
 outcome: Result<Int32> = 42
 coords: Pair<Float32, Float32> = Tuple2<Float32, Float32> { 5.0, 10.0 }
@@ -697,7 +712,7 @@ value = "string"  // Valid reassignment
 Runtime representation of type information. Used for reflection and metaprogramming.
 
 ```kira
-t: Type = @type_of(Int32)
+t: Type = @_type_of_(Int32)
 ```
 
 **`Ref<A>`**
@@ -1412,7 +1427,7 @@ The `is` operator checks if a value is of a specific type:
 ```kira
 value: Any = 42
 if value is Int32 {
-    @trace("value is an integer")
+    @_trace_("value is an integer")
 }
 ```
 
@@ -1440,7 +1455,7 @@ Most expressions can be used as statements:
 
 ```kira
 // Function call as statement
-@trace("message")
+@_trace_("message")
 
 // Assignment as statement
 mut x: Int32 = 10
@@ -1514,17 +1529,17 @@ if condition {
 ```kira
 // Without parentheses (preferred)
 if x > 10 {
-    @trace("x is greater than 10")
+    @_trace_("x is greater than 10")
 }
 
 // With parentheses (allowed but not idiomatic)
 if (x > 10) {
-    @trace("x is greater than 10")
+    @_trace_("x is greater than 10")
 }
 
 // Complex conditions
 if x > 0 && y < 100 {
-    @trace("Condition met")
+    @_trace_("Condition met")
 }
 
 // Chained conditions
@@ -1573,9 +1588,9 @@ Pattern matching on enums and types is planned for a future version:
 ```kira
 // Future syntax (not yet implemented)
 match value {
-    0 => @trace("zero")
-    1 => @trace("one")
-    _ => @trace("other")
+    0 => @_trace_("zero")
+    1 => @_trace_("one")
+    _ => @_trace_("other")
 }
 ```
 
@@ -1599,13 +1614,13 @@ while condition {
 // Without parentheses (preferred)
 mut i: Int32 = 0
 while i < 10 {
-    @trace(i)
+    @_trace_(i)
     i = i + 1
 }
 
 // With parentheses (allowed)
 while (i < 10) {
-    @trace(i)
+    @_trace_(i)
     i = i + 1
 }
 
@@ -1652,12 +1667,12 @@ mut flag: Bool = false
 
 // Body never executes
 while flag {
-    @trace("not printed")
+    @_trace_("not printed")
 }
 
 // Body executes once
 do {
-    @trace("printed once")
+    @_trace_("printed once")
 } while flag
 ```
 
@@ -1678,12 +1693,12 @@ for identifier: Type in expression {
 ```kira
 // Range from 0 to 9 (inclusive start, exclusive end)
 for i: Int32 in 0..10 {
-    @trace(i)  // prints 0 through 9
+    @_trace_(i)  // prints 0 through 9
 }
 
 // Descending ranges (future feature)
 for i: Int32 in 10..0 step -1 {
-    @trace(i)
+    @_trace_(i)
 }
 ```
 
@@ -1692,7 +1707,7 @@ for i: Int32 in 10..0 step -1 {
 ```kira
 items: List<Str> = mut ["apple", "banana", "cherry"]
 for item: Str in items {
-    @trace(item)
+    @_trace_(item)
 }
 ```
 
@@ -1741,7 +1756,7 @@ for i: Int32 in 0..100 {
     if i == 50 {
         break  // Exit loop when i reaches 50
     }
-    @trace(i)
+    @_trace_(i)
 }
 
 // Continue statement
@@ -1749,7 +1764,7 @@ for i: Int32 in 0..10 {
     if i % 2 == 0 {
         continue  // Skip even numbers
     }
-    @trace(i)  // Only prints odd numbers
+    @_trace_(i)  // Only prints odd numbers
 }
 
 // Return from function
@@ -2046,12 +2061,12 @@ Functions that perform side effects without returning a meaningful value use `Vo
 
 ```kira
 fx logMessage(message: Str): Void {
-    @trace(message)
+    @_trace_(message)
 }
 
 // Void functions can omit return statement
 fx printHeader(): Void {
-    @trace("=== Header ===")
+    @_trace_("=== Header ===")
     // implicit return
 }
 
@@ -2076,7 +2091,7 @@ fx runForever(): Never {
 }
 
 fx abort(message: Str): Never {
-    @trace("Fatal error: ${message}")
+    @_trace_("Fatal error: ${message}")
     throw message
     // No code after throw in Never function
 }
@@ -2149,7 +2164,7 @@ fx callFx(func: Fx<Tuple0, Void>): Void {
 }
 
 fx supplier(): Void {
-    @trace("Supplier Function!")
+    @_trace_("Supplier Function!")
 }
 
 callFx(supplier)
@@ -2331,7 +2346,7 @@ pub class Handler {
 
 handler: Handler = Handler {
     process = fx(data: Str): Void {
-        @trace("Processing: ${data}")
+        @_trace_("Processing: ${data}")
     }
 }
 
@@ -2393,11 +2408,11 @@ pub trait Clickable {
 
 pub class Button: Drawable, Clickable {
     override fx draw(): Void {
-        @trace("Drawing button")
+        @_trace_("Drawing button")
     }
 
     override fx onClick(): Void {
-        @trace("Button clicked")
+        @_trace_("Button clicked")
     }
 }
 
@@ -2442,7 +2457,7 @@ Traits **can provide default implementations** for their methods. Classes implem
 ```kira
 pub trait Loggable {
     fx log(message: Str): Void {
-        @trace("[LOG] ${message}")  // Default implementation
+        @_trace_("[LOG] ${message}")  // Default implementation
     }
 }
 
@@ -2456,7 +2471,7 @@ pub class Service: Loggable {
 pub class CustomService: Loggable {
     // Overrides with custom implementation
     override fx log(message: Str): Void {
-        @trace("[CUSTOM] ${message}")
+        @_trace_("[CUSTOM] ${message}")
     }
 }
 ```
@@ -2492,7 +2507,7 @@ Classes implementing a derived trait must implement all methods from the entire 
 ```kira
 pub trait Loggable {
     fx log(message: Str): Void {
-        @trace("[LOG] ${message}")
+        @_trace_("[LOG] ${message}")
     }
 }
 
@@ -2673,7 +2688,7 @@ pub enum Threshold: Float32 {
 currentStatus: Status = Status.ACTIVE
 
 if currentStatus == Status.COMPLETED {
-    @trace("Task completed")
+    @_trace_("Task completed")
 }
 
 priority: Priority = Priority.HIGH
@@ -2929,7 +2944,7 @@ Type erasure and reification in Kira are purely dependent on the transpilation o
 
 ```kira
 box: Box<Int32> = Box<Int32> { 42 }
-typeInfo: Type = @type_of(box)
+typeInfo: Type = @_type_of_(box)
 ```
 
 | Target         | Type Info Available | Notes                               |
@@ -2947,7 +2962,7 @@ Intrinsics are being developed to allow checking and working with type informati
 ```kira
 if @has_runtime_type_info() {
     genericType: Type = @get_generic_parameter(box, 0)
-    @trace("Box contains type: ${genericType}")
+    @_trace_("Box contains type: ${genericType}")
 }
 ```
 
@@ -3077,10 +3092,10 @@ ptr.@acquire_value() // returns an Int32 representing the real memory location
 array: List<Int32> = mut []
 
 // <Type>, <Dest>, <Location>
-ptr.@read_offset(@type_of(array), array, ptr.@aquire_value() + 10)
+ptr.@read_offset(@_type_of_(array), array, ptr.@aquire_value() + 10)
 
 // Used to directly write memory information
-ptr.@store_offset(@type_of(array), array, ptr.@acquire_value() + 10)
+ptr.@store_offset(@_type_of_(array), array, ptr.@acquire_value() + 10)
 
 ```
 
@@ -3139,11 +3154,11 @@ fx findUser(id: Int64): Maybe<User> {
 maybeValue: Maybe<Int32> = getValue()
 
 if maybeValue.isNull() {
-    @trace("Value is absent")
+    @_trace_("Value is absent")
 }
 
 if maybeValue.isSome() {
-    @trace("Value is present")
+    @_trace_("Value is present")
 }
 ```
 
@@ -3195,9 +3210,9 @@ fx divide(a: Int32, b: Int32): Maybe<Float32> {
 result: Maybe<Float32> = divide(10, 2)
 
 if result.isSome() {
-    @trace("Result: ${result.value}")
+    @_trace_("Result: ${result.value}")
 } else {
-    @trace("Division by zero")
+    @_trace_("Division by zero")
 }
 
 safeResult: Float32 = divide(10, 0).unwrapOr(0.0)
@@ -3236,7 +3251,7 @@ if invalidInput {
 try {
     riskyOperation()
 } on error: Str {
-    @trace("Error occurred: ${error}")
+    @_trace_("Error occurred: ${error}")
 }
 ```
 
@@ -3255,10 +3270,10 @@ fx divide(a: Int32, b: Int32): Result<Int32, Str> {
 result: Result<Int32, Str> = divide(10, 2)
 if result.isSuccess() {
     value: Int32 = result.unwrap()
-    @trace("Result: ${value}")
+    @_trace_("Result: ${value}")
 } else {
     error: Str = result.error()
-    @trace("Error: ${error}")
+    @_trace_("Error: ${error}")
 }
 ```
 
@@ -3289,7 +3304,7 @@ pub class Circle: Drawable {
     require pub radius: Float32
 
     override fx draw(): Void {
-        @trace("Drawing circle with radius ${radius}")
+        @_trace_("Drawing circle with radius ${radius}")
     }
 }
 ```
@@ -3301,11 +3316,11 @@ A class can implement multiple traits:
 ```kira
 pub class Button: Drawable, Clickable {
     override fx draw(): Void {
-        @trace("Drawing button")
+        @_trace_("Drawing button")
     }
 
     override fx onClick(): Void {
-        @trace("Button clicked")
+        @_trace_("Button clicked")
     }
 }
 ```
@@ -3318,23 +3333,23 @@ Intrinsics are compiler-integrated functions that execute during compilation or 
 
 | Intrinsic | Description | Example |
 | :-------- | :---------- | :------ |
-| `@trace(...)` | Outputs values to debug console | `@trace("Debug message")` |
-| `@type_of(...)` | Returns runtime type representation | `t: Type = @type_of(Int32)` |
-| `@global` | Makes declaration available at global scope | `@global value: Int32 = 42` |
-| `@json_decode(...)` | Parses JSON at compile time | `data: Map<Str, Any> = @json_decode("...")` |
-| `@magic` | Marks compiler-intrinsic types | `@magic class Tuple { }` |
+| `@_trace_(...)` | Outputs values to debug console | `@_trace_("Debug message")` |
+| `@_type_of_(...)` | Returns runtime type representation | `t: Type = @_type_of_(Int32)` |
+| `@__global` | Makes declaration available at global scope | `@__global value: Int32 = 42` |
+| `@_json_decode_(...)` | Parses JSON at compile time | `data: Map<Str, Any> = @_json_decode_("...")` |
+| `@_magic_` | Marks compiler-intrinsic types | `@_magic_ class Tuple { }` |
 
 **Usage Example:**
 
 ```kira
-@trace("Starting application")
+@_trace_("Starting application")
 
-config: Map<Str, Any> = @json_decode(`{
+config: Map<Str, Any> = @_json_decode_(`{
     "version": "1.0",
     "debug": true
 }`)
 
-versionType: Type = @type_of(config["version"])
+versionType: Type = @_type_of_(config["version"])
 ```
 
 #### Intrinsic Availability
@@ -3373,15 +3388,6 @@ use "kira:lib.collections"
 
 ## Appendix
 
-### Reserved Future Keywords
-
-The following keywords are reserved for potential future features:
-
-```
-async   await   match   enum    namespace   unsafe
-static  const   macro   yield   defer
-```
-
 ### Operator Precedence
 
 | Precedence | Operator             | Description                    | Associativity |
@@ -3403,7 +3409,7 @@ static  const   macro   yield   defer
 -   **Types and classes:** PascalCase (`Int32`, `HttpClient`, `UserAccount`)
 -   **Constants:** UPPER_SNAKE_CASE (`MAX_SIZE`, `DEFAULT_TIMEOUT`)
 -   **Module names:** snake_case for file names (`http_client.kira`)
--   **Intrinsics:** snake_case with `@` prefix (`@json_decode`, `@type_of`)
+-   **Intrinsics:** snake_case with `@` prefix (`@_json_decode_`, `@_type_of_`)
 
 ---
 

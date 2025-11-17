@@ -49,11 +49,8 @@ abstract class KiraASTVisitor {
     // LITERALS
     abstract fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
-    abstract fun visitBoolLiteral(boolLiteral: BoolLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
     abstract fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
-    abstract fun visitListLiteral(listLiteral: ListLiteral)
-    abstract fun visitMapLiteral(mapLiteral: MapLiteral)
     abstract fun visitNullLiteral(nullLiteral: NullLiteral) // this will always be the same instance of null (null isnt a true value)
 
     // ELEMENTS
@@ -67,4 +64,6 @@ abstract class KiraASTVisitor {
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
     abstract fun visitEnumDecl(enumDecl: EnumDecl)
     abstract fun visitTraitDecl(traitDecl: TraitDecl)
+    abstract fun visitVariantDecl(variantDecl: VariantDecl)
+    abstract fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl)
 }

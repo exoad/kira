@@ -29,7 +29,8 @@ object GlobalIntrinsic : CompilerIntrinsic {
         ClassDecl::class,
         FirstClassDecl::class,
         TraitDecl::class,
-        EnumDecl::class
+        EnumDecl::class,
+        VariableDecl::class,
     )
 
     override fun validate(

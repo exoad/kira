@@ -11,7 +11,7 @@ import net.exoad.kira.source.SourceContext
 import kotlin.reflect.KClass
 
 object DeclIntrinsic : CompilerIntrinsic {
-    override val name: String = "__decl__"
+    override val name: String = "_decl_"
 
     override val validTargets: Set<KClass<out ASTNode>> = emptySet()
 
@@ -34,6 +34,6 @@ object DeclIntrinsic : CompilerIntrinsic {
         if (invocation.parameters == null || invocation.parameters.isEmpty()) {
             return NoExpr
         }
-        return Identifier(invocation.parameters!![0].toString())
+        return Identifier(invocation.parameters[0].toString())
     }
 }

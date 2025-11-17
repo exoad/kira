@@ -85,7 +85,6 @@ class SymbolTableTest {
                 intrOut.appendText("  ${src.file}\n")
             }
             intrOut.appendText("\n")
-
             cu.allSources().forEach { srcCtx ->
                 intrOut.appendText("Source: ${srcCtx.file}\n")
                 intrOut.appendText("  Intrinsic markers count: ${srcCtx.astIntrinsicMarked.size}\n")

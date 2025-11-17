@@ -216,10 +216,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.append("\"${stringLiteral.value}\"")
     }
 
-    override fun visitBoolLiteral(boolLiteral: BoolLiteral) {
-        buffer.append(if (boolLiteral.value) "1" else "0")
-    }
-
     override fun visitFloatLiteral(floatLiteral: FloatLiteral) {
         buffer.append(floatLiteral.value)
     }
@@ -232,13 +228,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         TODO("Not yet implemented")
     }
 
-    override fun visitListLiteral(listLiteral: ListLiteral) {
-        TODO("Not yet implemented")
-    }
-
-    override fun visitMapLiteral(mapLiteral: MapLiteral) {
-        TODO("Not yet implemented")
-    }
 
     override fun visitNullLiteral(nullLiteral: NullLiteral) {
         TODO("Not yet implemented")
@@ -288,6 +277,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitVariantDecl(variantDecl: VariantDecl) {
+        TODO("Not yet implemented")
+    }
+
+    override fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {
         TODO("Not yet implemented")
     }
 }

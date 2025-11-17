@@ -1,4 +1,4 @@
-module "test:main"
+module "test:kira"
 
 fx helperCreateMap(): Map<Str, Int32> {
     return { "one": 1, "two": 2, "three": 3 }
@@ -43,42 +43,42 @@ fx compute(values: List<Int32>): Int32 {
 fx main(): Void {
     nums: List<Int32> = mut [1, 2, 3, 4, 5]
     arr: Arr<Int32> = [ 10, 20, 3 0 ]
-    @trace(nums)
+    @__trace(nums)
     total: Int32 = compute(nums)
-    @trace(total)
+    @__trace(total)
     p: Point = Point { 3, 4 }
-    @trace(p.dist())
+    @__trace(p.dist())
     c: Circle = Circle { p, 5 }
-    @trace(c.area())
+    @__trace(c.area())
     col: Color = Color.RED
-    @trace(col)
+    @__trace(col)
     if total % 2 == 0 {
-        @trace("total is even")
+        @__trace("total is even")
     } else if total % 3 == 0 {
-        @trace("divisible by 3")
+        @__trace("divisible by 3")
     } else {
-        @trace("other")
+        @__trace("other")
     }
     mut i: Int32 = 0
     while i < 3 {
-        @trace(i)
+        @__trace(i)
         i = i + 1
     }
     do {
-        @trace("one-time")
+        @__trace("one-time")
     } while false
     for mut k: 0..2 {
-        @trace(k)
+        @__trace(k)
     }
     for mut idx: 0..(arr.size() - 1) {
-        @trace(arr[idx])
+        @__trace(arr[idx])
     }
     fxSum: Int32 = (fx(a: Int32, b: Int32): Int32 { return a + b })(1, 2)
-    @trace(fxSum)
+    @__trace(fxSum)
     try {
         throw "boom"
     } on e: Str {
-        @trace(e)
+        @__trace(e)
     }
 }
 
@@ -103,3 +103,15 @@ fx nestedGenerics(): Map<Map<Map<Str, Str>, List<Int32>>, Arr<Arr<Int32>>> {
 }
 
 complexVar: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>> = helperCreateMap()
+
+fx identity<T>(value: T): T {
+    return value
+}
+
+fx swap<A, B>(first: A, second: B): Tuple2<B, A> {
+    return Tuple2<B, A> { second, first }
+}
+
+fx makeBox<T>(value: T): Box<T> {
+    return Box<T> { value }
+}
