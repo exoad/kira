@@ -9,6 +9,6 @@ open class ContinueStatement : Statement(NoExpr) {
     }
 
     override fun toString(): String {
-        return "CONTINUE{ }"
+        return "ContinueStatement()"
     }
 }

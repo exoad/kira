@@ -8,6 +8,6 @@ open class MemberAccessExpr(val origin: Expr, val member: Expr) : Expr() {
     }
 
     override fun toString(): String {
-        return "MemberAccess{ $origin -> $member }"
+        return "MemberAccess(origin=$origin, member=$member)"
     }
 }

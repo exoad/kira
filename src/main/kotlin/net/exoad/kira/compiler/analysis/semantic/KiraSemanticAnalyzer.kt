@@ -375,6 +375,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitIdentifier(identifier: Identifier) {
+        // todo
     }
 
     /**

@@ -16,6 +16,6 @@ open class TryExpr(
     }
 
     override fun toString(): String {
-        return "Try{ try=${tryBlock.size} handler=${handlerBlock.size} }"
+        return "TryExpr(tryCount=${tryBlock.size}, handlerCount=${handlerBlock.size}, exceptionName=${exceptionName ?: "<none>"}, exceptionType=${exceptionType ?: "<none>"})"
     }
 }

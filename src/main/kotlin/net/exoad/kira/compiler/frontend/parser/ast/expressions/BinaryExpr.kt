@@ -15,6 +15,7 @@ class BinaryExpr(
     }
 
     override fun toString(): String {
-        return "Binary{ $leftExpr ${operator.symbol.joinToString { it.rep.toString() }} $rightExpr }"
+        val op = operator.symbol.joinToString(separator = "") { it.rep.toString() }
+        return "BinaryExpr(left=$leftExpr, op='$op', right=$rightExpr)"
     }
 }

@@ -17,7 +17,7 @@ open class VariableDecl(
     }
 
     override fun toString(): String {
-        return "__VAR__${modifiers.ifEmpty { "" }}{ $name ($type) := $value}"
+        return "Var(name=$name, type=$type, value=${value ?: "<no>"}, mods=${modifiers.ifEmpty { "[]" }})"
     }
 
     override fun isStub(): Boolean {

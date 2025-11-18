@@ -12,6 +12,6 @@ open class ArrayLiteral(override val value: Array<Expr>) : DataLiteral<Array<Exp
     }
 
     override fun toString(): String {
-        return "LArray{ $value }"
+        return "LArr{ ${value.toList()} }"
     }
 }

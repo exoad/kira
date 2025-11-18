@@ -18,7 +18,6 @@ open class ClassDecl(
     }
 
     override fun toString(): String {
-        return "__CLASS__${modifiers.ifEmpty { "" }}{ $name -> $members }"
+        return "Class(name=$name, mods=${modifiers.ifEmpty { "[]" }}, members=$members, parents=${parents.ifEmpty { "[]" }})"
     }
 }
-

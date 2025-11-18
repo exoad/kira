@@ -19,6 +19,8 @@ open class FunctionDefExpr(
     }
 
     override fun toString(): String {
-        return "LFunction{ $returnTypeSpecifier -> $parameters -> $body }"
+        val params = parameters.map { it.name }
+        val bodyDesc = body?.size?.let { "$it stmts" } ?: "<stub>"
+        return "LFunction{ return=$returnTypeSpecifier, params=$params, body=$bodyDesc }"
     }
 }

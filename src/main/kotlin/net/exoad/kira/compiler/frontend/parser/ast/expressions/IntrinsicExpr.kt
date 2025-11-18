@@ -16,6 +16,6 @@ open class IntrinsicExpr(
     }
 
     override fun toString(): String {
-        return "_INTRINSIC_[[ $intrinsicKey @ $sourceLocation ]]{ $parameters }"
+        return "IntrinsicExpr(key=${intrinsicKey.name}, loc=$sourceLocation, params=${parameters ?: "[]"})"
     }
 }

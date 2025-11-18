@@ -4,7 +4,7 @@ import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsSymbols
 
 object AnonymousIdentifier : Identifier(DiagnosticsSymbols.NOT_REPRESENTABLE) {
     override fun toString(): String {
-        return "I{?}"
+        return "AnonymousIdentifier()"
     }
 
     override fun hashCode(): Int {

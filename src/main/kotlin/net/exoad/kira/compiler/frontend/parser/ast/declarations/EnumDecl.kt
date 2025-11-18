@@ -15,14 +15,6 @@ class EnumDecl(
     }
 
     override fun toString(): String {
-        return buildString {
-            append("__ENUM__")
-            append(modifiers.ifEmpty { "" })
-            append("{ ")
-            append(name)
-            append(" -> ")
-            append(members)
-            append(" }")
-        }
+        return "EnumDecl(name=$name, modifiers=${modifiers.ifEmpty { "[]" }}, members=${members.toList()})"
     }
 }

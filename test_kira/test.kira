@@ -1,4 +1,3 @@
 module "test:kira"
 
-//@__trace("Hello World :)")
-
+a: Int32 = 4 # 6

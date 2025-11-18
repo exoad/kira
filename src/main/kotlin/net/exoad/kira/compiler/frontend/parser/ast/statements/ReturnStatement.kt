@@ -9,6 +9,6 @@ open class ReturnStatement(override val expr: Expr) : Statement(expr) {
     }
 
     override fun toString(): String {
-        return "RETURN{ $expr }"
+        return "ReturnStatement(expr=$expr)"
     }
 }

@@ -321,6 +321,13 @@ class KiraLexer(private val context: SourceContext) {
                     startLoc
                 )
 
+                Symbols.HASH_MARK.rep -> Token.Symbol(
+                    Token.Type.OP_HASH_MARK,
+                    Symbols.HASH_MARK,
+                    start,
+                    startLoc
+                )
+
                 Symbols.COLON.rep ->
                     when (localPeek(1)) {
                         Symbols.COLON.rep -> {

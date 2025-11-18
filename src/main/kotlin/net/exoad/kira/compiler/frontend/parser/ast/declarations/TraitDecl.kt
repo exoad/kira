@@ -20,6 +20,6 @@ class TraitDecl(
     }
 
     override fun toString(): String {
-        return "__TRAIT__${modifiers.ifEmpty { "" }}{ $name -> $members }"
+        return "TraitDecl(name=$name, modifiers=${modifiers.ifEmpty { "[]" }}, members=$members, parents=${parents.ifEmpty { "[]" }})"
     }
 }

@@ -5,6 +5,7 @@ import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
+import net.exoad.kira.compiler.analysis.semantic.SemanticScope
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
@@ -146,23 +147,33 @@ fun main(args: Array<String>) {
                 var scopeIdx = 0
                 compilationUnit.symbolTable.forEach { frame ->
                     scopeIdx += 1
-                    val scopeKind = when (frame.kind) {
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Global -> "Global"
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Module -> "Module"
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Class -> "Class"
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Function -> "Function"
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Enum -> "Enum"
-                        else -> frame.kind.toString()
-                    }
-                    val scopeName = when (frame.kind) {
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Module -> frame.kind.name
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Class -> frame.kind.name
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Function -> frame.kind.name
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Enum -> frame.kind.name
-                        is net.exoad.kira.compiler.analysis.semantic.SemanticScope.Global -> "(global)"
-                        else -> "(unknown)"
-                    }
-                    dumpSB.appendLine("\nScope #$scopeIdx: Kind=$scopeKind, Name=$scopeName, Symbols=${frame.symbols.size}")
+                    dumpSB.appendLine(
+                        "\nScope #$scopeIdx: Kind=${
+                            when (frame.kind) {
+                                is SemanticScope.Global -> "Global"
+                                is SemanticScope.Module -> "Module"
+                                is SemanticScope.Class -> "Class"
+                                is SemanticScope.Function -> "Function"
+                                is SemanticScope.Enum -> "Enum"
+                                is SemanticScope.Trait -> "Trait"
+                                is SemanticScope.Variant -> "Variant"
+                                is SemanticScope.VariantMember -> "VariantMember"
+                                else -> frame.kind.toString()
+                            }
+                        }, Name=${
+                            when (frame.kind) {
+                                is SemanticScope.Module -> frame.kind.name
+                                is SemanticScope.Class -> frame.kind.name
+                                is SemanticScope.Function -> frame.kind.name
+                                is SemanticScope.Enum -> frame.kind.name
+                                is SemanticScope.Trait -> frame.kind.name
+                                is SemanticScope.Variant -> frame.kind.name
+                                is SemanticScope.VariantMember -> frame.kind.name
+                                is SemanticScope.Global -> "(global)"
+                                else -> "(unknown)"
+                            }
+                        }, Symbols=${frame.symbols.size}"
+                    )
                     if (frame.symbols.isNotEmpty()) {
                         frame.symbols.forEach { (k, v) ->
                             dumpSB.appendLine("    $v")

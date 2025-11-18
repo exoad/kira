@@ -14,7 +14,7 @@ enum class SemanticSymbolKind {
     TRAIT,
     TRAIT_MEMBER,
     MODULE,
-
     TYPE_SPECIFIER,
-    TYPE_ALIAS
+    TYPE_ALIAS,
+    VARIANT_MEMBER
 }

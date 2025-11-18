@@ -9,6 +9,6 @@ open class UseStatement(val uri: StringLiteral) : Statement(uri) {
     }
 
     override fun toString(): String {
-        return "USE{ $uri }"
+        return "UseStatement(uri=$uri)"
     }
 }

@@ -34,6 +34,7 @@ enum class Symbols(val rep: Char) {
     OPEN_PARENTHESIS('\u0028'),
     CLOSE_PARENTHESIS('\u0029'),
     AT('\u0040'),
+    HASH_MARK('\u0023'),
     TILDE('\u007e'),
     OPEN_BRACE('\u007b'),
     CLOSE_BRACE('\u007d'),

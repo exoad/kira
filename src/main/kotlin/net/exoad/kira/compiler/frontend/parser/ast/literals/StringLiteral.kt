@@ -8,6 +8,8 @@ open class StringLiteral(override val value: String) : DataLiteral<String>(value
     }
 
     override fun toString(): String {
-        return "LString{ $value }"
+        // escape newlines and quotes for safer single-line representation
+        val safe = value.replace("\\", "\\\\").replace("\n", "\\n").replace("\"", "\\\"")
+        return "LStr{ \"$safe\" }"
     }
 }

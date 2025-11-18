@@ -12,6 +12,6 @@ class TypeAliasDecl(val modifiers: List<Modifier>, val alias: Type, val target: 
     }
 
     override fun toString(): String {
-        return "TypeAlias{ $alias -> $target }"
+        return "TypeAliasDecl(alias=$alias, target=$target, modifiers=${modifiers.ifEmpty { "[]" }})"
     }
 }

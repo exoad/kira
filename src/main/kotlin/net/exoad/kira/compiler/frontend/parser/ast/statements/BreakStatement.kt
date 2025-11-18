@@ -9,7 +9,6 @@ open class BreakStatement : Statement(NoExpr) {
     }
 
     override fun toString(): String {
-        return "BREAK{ }"
+        return "BreakStatement()"
     }
 }
-

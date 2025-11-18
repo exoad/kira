@@ -10,6 +10,6 @@ class ForIterationStatement(val forIterationExpr: ForIterationExpr, val body: Li
     }
 
     override fun toString(): String {
-        return "FOR{ $forIterationExpr -> $body }"
+        return "ForIterationStatement(expr=$forIterationExpr, body=$body)"
     }
 }

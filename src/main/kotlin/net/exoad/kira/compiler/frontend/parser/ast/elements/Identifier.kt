@@ -9,7 +9,7 @@ open class Identifier(open val value: String) : Expr() {
     }
 
     override fun toString(): String {
-        return "I{'$value'}"
+        return "'${value.replace("'","\\'") }'"
     }
 
     fun length(): Int {

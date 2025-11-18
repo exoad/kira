@@ -16,6 +16,6 @@ class VariantDecl(
     }
 
     override fun toString(): String {
-        return "__VARIANT__${modifiers.ifEmpty { "" }}{ [ $variants ], $name -> $members }"
+        return "VariantDecl(name=$name, modifiers=${modifiers.ifEmpty { "[]" }}, variants=$variants, members=$members, parents=${parents.ifEmpty { "[]" }})"
     }
 }

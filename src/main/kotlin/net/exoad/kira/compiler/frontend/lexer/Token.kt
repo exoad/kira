@@ -26,6 +26,7 @@ sealed class Token(
         OP_MUL("'*' (Multiply)"),
         OP_SCOPE("'::' (Static Member Access)"),
         OP_DIV("'/' (Divide)"),
+        OP_HASH_MARK("'#' (Hash Mark)"),
         OP_MOD("'%' (Modulo)"),
         S_EQUAL("'=' (Assignment)"),
         OP_ASSIGN_ADD("'+=' (Compound Addition Assignment)"),

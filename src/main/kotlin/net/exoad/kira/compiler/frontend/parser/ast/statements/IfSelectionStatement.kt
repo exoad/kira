@@ -15,7 +15,7 @@ open class IfSelectionStatement(
     }
 
     override fun toString(): String {
-        return "IF{ $expr -> $thenStatements { $elseBranches } }"
+        return "IfSelection(condition=$expr, then=$thenStatements, else=$elseBranches)"
     }
 }
 
@@ -27,7 +27,7 @@ class ElseIfBranchStatement(val condition: Expr, val statements: List<Statement>
     }
 
     override fun toString(): String {
-        return "ELSE_IF{ $condition -> $statements }"
+        return "ElseIfBranch(condition=$condition, body=$statements)"
     }
 }
 
@@ -37,6 +37,6 @@ class ElseBranchStatement(val statements: List<Statement>) : IfElseBranchStateme
     }
 
     override fun toString(): String {
-        return "ELSE{ $statements }"
+        return "ElseBranch(body=$statements)"
     }
 }

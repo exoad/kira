@@ -10,6 +10,6 @@ class DoWhileIterationStatement(val condition: Expr, val statements: List<Statem
     }
 
     override fun toString(): String {
-        return "DoWhile{ $condition -> $statements }"
+        return "DoWhileIterationStatement(condition=$condition, body=$statements)"
     }
 }

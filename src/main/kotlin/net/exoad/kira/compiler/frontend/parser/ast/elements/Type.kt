@@ -29,6 +29,6 @@ open class Type(
     }
 
     override fun toString(): String {
-        return "<$identifier${if (constraint != null) "++${constraint}" else ""} $children>"
+        return "Type($identifier${if (constraint != null) ", constraint=$constraint" else ""}${if (children.isNotEmpty()) ", children=$children" else ""})"
     }
 }

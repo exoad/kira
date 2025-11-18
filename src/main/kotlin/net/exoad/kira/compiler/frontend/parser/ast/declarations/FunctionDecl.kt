@@ -27,12 +27,8 @@ open class FunctionDecl(
     }
 
     override fun toString(): String {
-        return "__FX__${modifiers.ifEmpty { "" }}{ ${
-            if (isAnonymous()) "(_Anon_)"
-            else
-                ""
-        } " +
-                "$name -> $def}"
+        val anon = if (isAnonymous()) "_anon_" else ""
+        return "Fx(name=$name, mods=${modifiers.ifEmpty { "[]" }}, gens=${generics.ifEmpty { "[]" }}, def=$def${if (anon.isNotEmpty()) ", anon=$anon" else ""})"
     }
 
     override fun isStub(): Boolean {

@@ -10,6 +10,6 @@ class WhileIterationStatement(val condition: Expr, val statements: List<Statemen
     }
 
     override fun toString(): String {
-        return "WHILE{ $condition -> $statements }"
+        return "WhileIterationStatement(condition=$condition, body=$statements)"
     }
 }

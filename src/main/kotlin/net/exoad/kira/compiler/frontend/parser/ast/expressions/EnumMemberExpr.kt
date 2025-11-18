@@ -20,6 +20,6 @@ open class EnumMemberExpr(
     }
 
     override fun toString(): String {
-        return "EnumMember{ $name ${if (value != null) "-> $value" else ""} }"
+        return "EnumMember(name=$name${if (value != null) ", value=$value" else ""})"
     }
 }

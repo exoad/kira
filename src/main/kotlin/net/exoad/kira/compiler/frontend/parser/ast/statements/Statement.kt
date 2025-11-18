@@ -10,6 +10,6 @@ open class Statement(open val expr: Expr) : ASTNode {
     }
 
     override fun toString(): String {
-        return "STMT{ $expr }"
+        return "Statement(expr=$expr)"
     }
 }

@@ -8,6 +8,6 @@ open class IntegerLiteral(override val value: Long) : DataLiteral<Long>(value), 
     }
 
     override fun toString(): String {
-        return "LInteger{ $value }"
+        return "LInt{ $value }"
     }
 }

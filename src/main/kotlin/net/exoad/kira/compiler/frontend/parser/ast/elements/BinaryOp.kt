@@ -11,6 +11,7 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int) {
     MUL(arrayOf(Symbols.ASTERISK), 12),
     DIV(arrayOf(Symbols.SLASH), 12),
     MOD(arrayOf(Symbols.PERCENT), 12),
+    HASH_MARK(arrayOf(Symbols.HASH_MARK), 12),
 
     // logical operators
     EQUALS(arrayOf(Symbols.EQUALS, Symbols.EQUALS), 8),
@@ -70,6 +71,7 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int) {
                     Token.Type.OP_BIT_XOR -> XOR
                     Token.Type.OP_CMP_OR -> OR
                     Token.Type.OP_CMP_AND -> AND
+                    Token.Type.OP_HASH_MARK -> HASH_MARK
                     Token.Type.S_PIPE -> CONJUNCTIVE_OR
                     Token.Type.S_AND -> CONJUNCTIVE_AND
                     Token.Type.S_DOT -> CONJUNCTIVE_DOT
