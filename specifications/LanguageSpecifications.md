@@ -15,7 +15,6 @@ user3: User = User {
     role = "moderator",
     active = false
 }
-```
 @_trace_("Hello World!")
 ```
 
@@ -2372,21 +2371,15 @@ pub class User {
     pub role: Str = "user"
     pub active: Bool = true
 }
-```
-
-    pub active: Bool = true
-
-}
 
 user1: User = User { name = "Alice", email = "alice@example.com" }
 user2: User = User { name = "Bob", email = "bob@example.com", role = "admin" }
 user3: User = User {
-name = "Charlie",
-email = "charlie@example.com",
-role = "moderator",
-active = false
-}
-
+                name = "Charlie",
+                email = "charlie@example.com",
+                role = "moderator",
+                active = false
+              }
 ````
 
 **Method Implementation During Instantiation:**
@@ -2445,8 +2438,7 @@ Traits are implemented using the same colon syntax as inheritance. A class can i
 **Syntax:**
 
 ```kira
-pub class ClassName: ParentClass, Trait1, Trait2, Trait3 {
-}
+pub class ClassName: ParentClass, Trait1, Trait2, Trait3 
 ```
 
 **Examples:**
