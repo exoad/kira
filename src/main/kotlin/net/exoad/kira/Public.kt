@@ -16,18 +16,21 @@ object Public {
     var flags by Delegates.notNull<Map<String, Boolean>>()
 
     object Builtin {
-        val intrinsicalStandardLibrarySources: Array<String> by lazy {
+        var intrinsicalStandardLibrarySources: Array<String> = emptyArray()
+
+        // fallback discovery in case no manifest is provided or manifest has no kira deps
+        fun discoverLegacyKiraFolder(): Array<String> {
             val rootPath = Paths.get("kira").toAbsolutePath().normalize()
             if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {
-                return@lazy emptyArray<String>()
+                return emptyArray()
             }
             val entries = mutableListOf<String>()
             Files.walk(rootPath).use { stream ->
                 stream.filter { Files.isRegularFile(it) }.forEach { p: Path ->
-                    entries.add("kira/${rootPath.relativize(p).toString().replace('\\', '/')}")
+                    entries.add(rootPath.resolve(p).toAbsolutePath().toString())
                 }
             }
-            entries.sorted().toTypedArray()
+            return entries.sorted().toTypedArray()
         }
     }
 }

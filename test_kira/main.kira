@@ -1,7 +1,7 @@
 module "test:kira"
 
 fx helperCreateMap(): Map<Str, Int32> {
-    return { "one": 1, "two": 2, "three": 3 }
+    return Map<Str, Int32> { }
 }
 
 pub class Point {
@@ -41,44 +41,37 @@ fx compute(values: List<Int32>): Int32 {
 }
 
 fx main(): Void {
-    nums: List<Int32> = mut [1, 2, 3, 4, 5]
-    arr: Arr<Int32> = [ 10, 20, 3 0 ]
-    @__trace(nums)
+    mut nums: List<Int32> = [1, 2, 3, 4, 5]
+    arr: Arr<Int32> = [ 10, 20, 30 ]
     total: Int32 = compute(nums)
-    @__trace(total)
     p: Point = Point { 3, 4 }
-    @__trace(p.dist())
     c: Circle = Circle { p, 5 }
-    @__trace(c.area())
     col: Color = Color.RED
-    @__trace(col)
     if total % 2 == 0 {
-        @__trace("total is even")
+        // total is even
     } else if total % 3 == 0 {
-        @__trace("divisible by 3")
+        // divisible by 3
     } else {
-        @__trace("other")
+        // other
     }
     mut i: Int32 = 0
     while i < 3 {
-        @__trace(i)
         i = i + 1
     }
     do {
-        @__trace("one-time")
+        // one-time
     } while false
     for mut k: 0..2 {
-        @__trace(k)
+        // loop k
     }
     for mut idx: 0..(arr.size() - 1) {
-        @__trace(arr[idx])
+        // access arr[idx]
     }
     fxSum: Int32 = (fx(a: Int32, b: Int32): Int32 { return a + b })(1, 2)
-    @__trace(fxSum)
     try {
         throw "boom"
     } on e: Str {
-        @__trace(e)
+        // caught exception
     }
 }
 

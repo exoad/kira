@@ -1,43 +1,13 @@
-# Kira Language Specification
+# Kira Specs.
 
-**Version:** 1.0
-**Last Updated:** November 14, 2025
+**Version** _November 18, 2025_
 
----
+Kira is a modern, pure object-oriented programming language with expressive syntax inspired by Swift, Kotlin, and Dart. It functions as a flexible toolkit—similar to Haxe—supporting transpilation and ahead-of-time (AOT) compilation to multiple targets, including source code, bytecode, bitcode, and machine code.
 
-## Introduction
-
-Kira is a statically typed, object-oriented programming language designed with emphasis on safety, performance, and developer ergonomics. The language combines modern type system features including null safety, automatic memory management through reference counting, and compile-time optimizations while maintaining source-level clarity and predictability.
-
-### Design Principles
-
--   **Safety First:** Sound null safety, statically typed expressions, and memory safety through automatic reference counting
--   **Explicit Over Implicit:** Clear syntax with minimal operator overloading and explicit type annotations
--   **Performance:** Compile-time optimizations, zero-cost abstractions, and efficient runtime model
--   **Simplicity:** Minimal feature set with orthogonal language constructs
-
-### Example Programs
-
-**Hello World**
+Kira enforces three core principles: privacy, immutability, and static behavior. All declarations are private and immutable by default.
 
 ```kira
 @_trace_("Hello World!")
-```
-
-**FizzBuzz Implementation**
-
-```kira
-for i in 0..101 {
-   if i % 15 == 0 {
-      @_trace_("FizzBuzz")
-   } else if i % 3 == 0 {
-      @_trace_("Fizz")
-   } else if i % 5 == 0 {
-      @_trace_("Buzz")
-   } else {
-      @_trace_(i)
-   }
-}
 ```
 
 ---
@@ -929,22 +899,22 @@ Kira supports operator overloading through intrinsic markers. Classes can define
 
 **Operator Intrinsic Mapping:**
 
-| Operator | Intrinsic Name | Signature Example                            |
-| -------- | -------------- | -------------------------------------------- |
-| `+`      | `@__op_add__`  | `fx @__op_add__(other: T): T`                |
-| `-`      | `@__op_sub__`  | `fx @__op_sub__(other: T): T`                |
-| `*`      | `@__op_mul__`  | `fx @__op_mul__(other: T): T`                |
-| `/`      | `@__op_div__`  | `fx @__op_div__(other: T): T`                |
-| `%`      | `@__op_mod__`  | `fx @__op_mod__(other: T): T`                |
-| `==`     | `@__op_eq__`   | `fx @__op_eq__(other: T): Bool`              |
-| `!=`     | `@__op_neq__`  | `fx @__op_neq__(other: T): Bool`             |
-| `<`      | `@__op_lt__`   | `fx @__op_lt__(other: T): Bool`              |
-| `>`      | `@__op_gt__`   | `fx @__op_gt__(other: T): Bool`              |
-| `<=`     | `@__op_lte__`  | `fx @__op_lte__(other: T): Bool`             |
-| `>=`     | `@__op_gte__`  | `fx @__op_gte__(other: T): Bool`             |
-| `-` (un) | `@__op_neg__`  | `fx @__op_neg__(): T`                        |
-| `[]`     | `@__op_get__`  | `fx @__op_get__(get: Int32): T`              |
-| `[]=`    | `@__op_set__`  | `fx @__op_set__(index: Int32, val: T): Void` |
+| Operator | Intrinsic Name | Signature Example                          |
+|----------|----------------|--------------------------------------------|
+| `+`      | `@_op_add_`    | `fx @_op_add_(other: T): T`                |
+| `-`      | `@_op_sub_`    | `fx @_op_sub_(other: T): T`                |
+| `*`      | `@_op_mul_`    | `fx @_op_mul_(other: T): T`                |
+| `/`      | `@_op_div_`    | `fx @_op_div_(other: T): T`                |
+| `%`      | `@_op_mod_`    | `fx @_op_mod_(other: T): T`                |
+| `==`     | `@_op_eq_`     | `fx @_op_eq_(other: T): Bool`              |
+| `!=`     | `@_op_neq_`    | `fx @_op_neq_(other: T): Bool`             |
+| `<`      | `@_op_lt_`     | `fx @_op_lt_(other: T): Bool`              |
+| `>`      | `@_op_gt_`     | `fx @_op_gt_(other: T): Bool`              |
+| `<=`     | `@_op_lte_`    | `fx @_op_lte_(other: T): Bool`             |
+| `>=`     | `@_op_gte_`    | `fx @_op_gte_(other: T): Bool`             |
+| `-` (un) | `@_op_neg_`    | `fx @_op_neg_(): T`                        |
+| `[]`     | `@_op_get_`    | `fx @_op_get_(get: Int32): T`              |
+| `[]=`    | `@_op_set_`    | `fx @_op_set_(index: Int32, val: T): Void` |
 
 > Note: Function Signatures can vary, but using a different signature means you must explicitly invoke the intrinsic as a function instead.
 
@@ -955,19 +925,19 @@ pub class Vector2 {
     require pub x: Float32
     require pub y: Float32
 
-    pub fx @__op_add__(other: Vector2): Vector2 {
+    pub fx @_op_add_(other: Vector2): Vector2 {
         return Vector2 { x + other.x, y + other.y }
     }
 
-    pub fx @__op_mul__(scalar: Float32): Vector2 {
+    pub fx @_op_mul_(scalar: Float32): Vector2 {
         return Vector2 { x * scalar, y * scalar }
     }
 
-    pub fx @__op_eq__(other: Vector2): Bool {
+    pub fx @_op_eq_(other: Vector2): Bool {
         return x == other.x && y == other.y
     }
 
-    pub fx @__op_neg__(): Vector2 {
+    pub fx @_op_neg_(): Vector2 {
         return Vector2 { -x, -y }
     }
 }
@@ -1094,7 +1064,8 @@ for i: Int32 in start..end {
 
 **Memory Allocation:**
 
-When a range is created, it allocates an array containing all integer values from the start (inclusive) to end (exclusive):
+When a range is created, it allocates an array containing an integer values from the start (inclusive) to end (
+exclusive):
 
 ```kira
 range: Range = 0..10
@@ -1235,7 +1206,7 @@ Unlike some languages that allow `$variable` as shorthand, Kira **always require
 name: Str = "Alice"
 message: Str = "Hello, ${name}!"
 
-message: Str = "Hello, $name!"
+message: Str = "Hello, $name"
 ```
 
 This makes the interpolation boundaries explicit and unambiguous, preventing parsing errors with adjacent text.
@@ -1321,48 +1292,6 @@ template: Str = "Use \${name} and \${age} as placeholders"
 name: Str = "Alice"
 example: Str = "Replace \${user} with ${name}"
 // Result: "Replace ${user} with Alice"
-```
-
-**Interpolation Rules and Restrictions:**
-
-1. **Braces are mandatory:** `${expression}` is the only valid syntax
-2. **No nested interpolation:** Cannot interpolate strings inside interpolated expressions
-3. **Evaluation order:** Left to right, expressions evaluated when string is constructed
-4. **Type safety:** Expression must have a string representation (implement `toString()` or have built-in conversion)
-5. **No side effects:** Interpolated expressions are evaluated exactly once during string construction
-
-```kira
-// Valid: simple expression
-x: Int32 = 10
-msg: Str = "Value: ${x}"
-
-// Valid: complex expression
-msg: Str = "Result: ${compute(x, y, z)}"
-
-// Invalid: nested interpolation not supported
-inner: Str = "world"
-outer: Str = "Hello, ${"${inner}"}"  // Error: nested interpolation
-
-// Invalid: missing braces
-msg: Str = "Hello, $name"  // Error: treated as literal "$name"
-```
-
-**Multiline Strings:**
-
-Since Kira uses regular quotes (not backticks), multiline strings require explicit newline escapes:
-
-```kira
-// Single line with \n
-message: Str = "Line 1\nLine 2\nLine 3"
-
-// Interpolation with newlines
-name: Str = "Alice"
-greeting: Str = "Hello, ${name}!\nWelcome to Kira."
-
-// Concatenation alternative for readability
-longMessage: Str = "First part " +
-    "second part " +
-    "third part with ${variable}"
 ```
 
 **Performance Considerations:**
@@ -2222,22 +2151,122 @@ use "kira:lib.collections"  // Collection types
 use "kira:lib.io"        // Input/output utilities
 ```
 
-### Visibility
+Note: The compiler discovers the standard library from your project manifest (see KIM below). Declare a dependency with
+`registry = "kira"` (optionally with a local `path`) in `kira.toml` to make the standard library available. If no
+dependency is declared, the compiler falls back to scanning a local `./kira/` folder.
 
-Modules enforce encapsulation through visibility modifiers:
+---
 
--   `pub`: Visible to external modules
--   Internal (default): Visible only within the same module
+## Project Manifest (KIM)
 
-```kira
-pub class PublicApi {
-    // accessible from other modules
-}
+KIM (KIra Manifest) is the manifest format and tooling used by the Kira compiler to locate sources, resolve the standard
+library, and apply build options. The manifest file is named `kira.toml` and must reside at the project root.
 
-class InternalHelper {
-    // only accessible within this module
-}
+Only `kira.toml` is recognized (there is no `kim.toml` or `ki.toml`).
+
+### Goals
+
+- Standardize how projects declare workspace source files and entry points
+- Describe build options (target, output) in a reproducible way
+- Declare dependencies, including the Kira standard library
+
+### File name
+
+- Required: `kira.toml` at the project root
+
+### Minimal example
+
+```toml
+version = "1"
+
+[package]
+name = "hello_kira"
+version = "0.1.0"
+authors = ["you@example.com"]
+
+[workspace]
+src = ["src", "main.kira"]
+
+[build]
+outDir = "build"
+target = "c"
+debug = true
+emitIR = false
+
+[dependencies.kira_std]
+registry = "kira"
 ```
+
+### Sections
+
+- version
+    - Manifest format version. Current: `"1"`.
+
+- [package]
+    - name: Required package name (string)
+    - version: Semantic version (string), default `"1.0.0"`
+    - authors: List of authors (string array)
+    - description: Optional description (string)
+
+- [workspace]
+    - src: List of source paths. Each entry can be a file or directory. Directories are scanned recursively for `.kira`
+      files.
+    - entry: Optional entry-point file (string), relative to project root.
+
+- [build]
+    - outDir: Output directory for artifacts
+    - target: "c" (or "native") or "neko"
+    - debug: Enable debug builds (bool)
+    - emitIR: Emit intermediate representation (bool)
+
+- [dependencies]
+    - Arbitrary keys are dependency names (e.g., `kira_std`)
+    - Each dependency supports:
+        - path: Optional local path to the dependency root
+        - version: Optional version (for registry-backed dependencies)
+        - registry: Registry name. For the Kira standard library, use `"kira"`.
+
+### Standard library resolution
+
+When the compiler runs in a project with `kira.toml`:
+
+1. It loads the manifest and validates it.
+2. It discovers the standard library by scanning dependencies with `registry = "kira"`:
+    - If a dependency also has `path`, all `.kira` files under that path (relative to project root) are included as
+      standard library sources.
+    - Otherwise, it attempts to scan a local `./kira/` directory for `.kira` files.
+3. If no manifest or matching dependency is found, the compiler falls back to scanning `./kira/`.
+
+All discovered stdlib files are merged with the workspace sources before parsing.
+
+### Workspace source discovery
+
+- Each entry in `workspace.src` can be a file or directory
+- Directories are scanned recursively and all `.kira` files are added
+- If `workspace.entry` exists, the compiler prefers it as the program entry point
+
+### CLI integration
+
+- Running the compiler inside a directory with `kira.toml` uses that manifest automatically.
+- Alternatively, you may pass a project directory via a `--project` flag.
+
+Examples (PowerShell):
+
+```powershell
+./gradlew run --args "--project=."
+./gradlew run --args "--project=path/to/project"
+```
+
+### Validation
+
+During validation, the compiler reports issues such as:
+
+- Missing `[package]` section
+- Blank `package.name`
+- `workspace.entry` points to a non-existent file
+- Unsupported `version` of the manifest format
+
+Diagnostics are printed with file/line context when available.
 
 ---
 
@@ -2318,21 +2347,15 @@ pub class User {
     pub role: Str = "user"
     pub active: Bool = true
 }
-```
-
-    pub active: Bool = true
-
-}
 
 user1: User = User { name = "Alice", email = "alice@example.com" }
 user2: User = User { name = "Bob", email = "bob@example.com", role = "admin" }
 user3: User = User {
-name = "Charlie",
-email = "charlie@example.com",
-role = "moderator",
-active = false
-}
-
+                name = "Charlie",
+                email = "charlie@example.com",
+                role = "moderator",
+                active = false
+              }
 ````
 
 **Method Implementation During Instantiation:**
@@ -2353,9 +2376,9 @@ handler: Handler = Handler {
 handler.process("test data")
 ````
 
-Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. Any class with unimplemented methods can receive implementations during instantiation.
-
-This allows for flexible object construction where behavior can be customized without requiring subclassing.
+Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. Any class with
+unimplemented methods can receive implementations during instantiation, allowing for flexible object construction where
+behavior can be customized without requiring subclassing.
 
 ### Inheritance
 
@@ -2391,8 +2414,7 @@ Traits are implemented using the same colon syntax as inheritance. A class can i
 **Syntax:**
 
 ```kira
-pub class ClassName: ParentClass, Trait1, Trait2, Trait3 {
-}
+pub class ClassName: ParentClass, Trait1, Trait2, Trait3 
 ```
 
 **Examples:**
@@ -2979,8 +3001,6 @@ fx processValue<T>(value: Box<T>, handler: Fx<Tuple1<T>, Void>): Void {
 }
 ```
 
-> However, the consensus at the moment is that parameter names is not crucial.
-
 ---
 
 ## Memory Model
@@ -3066,9 +3086,7 @@ pub class Child {
 `Unsafe<T>` provides raw pointer semantics without reference counting. Use only when necessary for performance or FFI:
 
 ```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { someObject }
-// ptr does not affect reference count
-// Accessing ptr after deallocation is undefined behavior
+ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
 ```
 
 **Type Conversion:**
@@ -3076,7 +3094,7 @@ ptr: Unsafe<Int32> = Unsafe<Int32> { someObject }
 There is **no way to convert between safe and unsafe types** directly. However, you can dereference an `Unsafe<T>` pointer to get the underlying value:
 
 ```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { someObject }
+ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
 value: Int32 = @dereference(ptr)  // Get value from unsafe pointer
 
 // Cannot convert safe to unsafe or vice versa directly
@@ -3087,7 +3105,7 @@ unsafePtr: Unsafe<Int32> = safeRef  // Not allowed
 Additionally, unsafe references only exist in certain transpilation targets that supports direct memory access such as compiling to machine code or transpiling to C/C++. Thus manipulation of the `Unsafe` type requires the usage of intrinsics:
 
 ```kira
-ptr.@acquire_value() // returns an Int32 representing the real memory location
+@_trace_(ptr.@acquire_value()) // returns an Int32 representing the real memory location
 
 array: List<Int32> = mut []
 
@@ -3281,94 +3299,20 @@ if result.isSuccess() {
 
 ## Standard Library
 
-### Traits
-
-Traits enable code sharing across unrelated classes without inheritance. They are similar to interfaces but are resolved at compile time.
-
-**Defining a Trait:**
+The Kira standard library is accessible through the `kira` namespace:
 
 ```kira
-pub trait Drawable {
-    fx draw(): Void
-
-    pub fx describe(): Str {
-        return "A drawable object"
-    }
-}
+use "kira:lib.types"     // Core types
+use "kira:lib.collections"  // Collection types
+use "kira:lib.io"        // Input/output utilities
 ```
 
-**Implementing a Trait:**
+Note: The compiler discovers the standard library from your project manifest (see KIM below). Declare a dependency with
+`registry = "kira"` (optionally with a local `path`) in `kira.toml` to make the standard library available. If no
+dependency is declared, the compiler falls back to scanning a local `./kira/` folder.
 
-```kira
-pub class Circle: Drawable {
-    require pub radius: Float32
-
-    override fx draw(): Void {
-        @_trace_("Drawing circle with radius ${radius}")
-    }
-}
-```
-
-**Multiple Traits:**
-
-A class can implement multiple traits:
-
-```kira
-pub class Button: Drawable, Clickable {
-    override fx draw(): Void {
-        @_trace_("Drawing button")
-    }
-
-    override fx onClick(): Void {
-        @_trace_("Button clicked")
-    }
-}
-```
-
-### Compile-Time Intrinsics
-
-Intrinsics are compiler-integrated functions that execute during compilation or provide special runtime behavior. They are prefixed with `@`.
-
-**Common Intrinsics:**
-
-| Intrinsic | Description | Example |
-| :-------- | :---------- | :------ |
-| `@_trace_(...)` | Outputs values to debug console | `@_trace_("Debug message")` |
-| `@_type_of_(...)` | Returns runtime type representation | `t: Type = @_type_of_(Int32)` |
-| `@__global` | Makes declaration available at global scope | `@__global value: Int32 = 42` |
-| `@_json_decode_(...)` | Parses JSON at compile time | `data: Map<Str, Any> = @_json_decode_("...")` |
-| `@_magic_` | Marks compiler-intrinsic types | `@_magic_ class Tuple { }` |
-
-**Usage Example:**
-
-```kira
-@_trace_("Starting application")
-
-config: Map<Str, Any> = @_json_decode_(`{
-    "version": "1.0",
-    "debug": true
-}`)
-
-versionType: Type = @_type_of_(config["version"])
-```
-
-#### Intrinsic Availability
-
-Intrinsics are compiler-provided functions and tags used to extend the language beyond its core features. They are intentionally flexible so compiler maintainers can adapt or provide additional intrinsics for a particular target.
-
-Important notes about availability:
-
--   Some intrinsics are compiler-target-specific and may not be available on all platforms or backends.
--   If a target does not provide a required intrinsic, the compiler will report an error when it is used.
--   Intrinsics that interact with low-level memory (for example, operations used to manipulate `Unsafe<T>` values) are only available on targets that provide direct memory access (for example, native or C/C++ backends). These intrinsics will not be available on targets like JavaScript/TypeScript.
-
-In-Triage Solution:
-
-Although there is currently no direct, portable way to detect if a target supports a given intrinsic, there is a planned feature to provide conditional compilation or target capability checks so code can query or guard against target-specific intrinsics.
-
-### Standard Library Organization
-
-The standard library is organized into the following modules:
+Kira's standard library provides essential types, collection classes, and utility functions to complement the core
+language features. It is organized into several modules:
 
 -   `kira:lib.types`: Core types and primitives
 -   `kira:lib.collections`: Collection types (List, Map, Set)
@@ -3386,31 +3330,3 @@ use "kira:lib.collections"
 
 ---
 
-## Appendix
-
-### Operator Precedence
-
-| Precedence | Operator             | Description                    | Associativity |
-| -------- | -------------------- | ------------------------------ | ------------- |
-| 1        | `.`, `[]`, `()`      | Member access, indexing, calls | Left to right |
-| 2        | `!`, `-`, `+`        | Logical NOT, unary minus/plus  | Right to left |
-| 3        | `*`, `/`, `%`        | Multiplication, division, mod  | Left to right |
-| 4        | `+`, `-`             | Addition, subtraction          | Left to right |
-| 5        | `..`                 | Range operator                 | Left to right |
-| 6        | `<`, `>`, `<=`, `>=` | Relational comparison          | Left to right |
-| 7        | `==`, `!=`           | Equality                       | Left to right |
-| 8        | `&&`                 | Logical AND                    | Left to right |
-| 9        | `||`                 | Logical OR                     | Left to right |
-| 10       | `=`                  | Assignment                     | Right to left |
-
-### Naming Conventions Summary
-
--   **Variables and functions:** camelCase (`myVariable`, `calculateTotal`)
--   **Types and classes:** PascalCase (`Int32`, `HttpClient`, `UserAccount`)
--   **Constants:** UPPER_SNAKE_CASE (`MAX_SIZE`, `DEFAULT_TIMEOUT`)
--   **Module names:** snake_case for file names (`http_client.kira`)
--   **Intrinsics:** snake_case with `@` prefix (`@_json_decode_`, `@_type_of_`)
-
----
-
-**End of Specification**

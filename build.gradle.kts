@@ -16,6 +16,8 @@ dependencies {
     // flatlaf used for the internal editor ui
     implementation("com.formdev:flatlaf:${flatlafVersion}")
     implementation("com.formdev:flatlaf-intellij-themes:${flatlafVersion}")
+    implementation("com.akuleshov7:ktoml-core:0.7.1")
+    implementation("com.akuleshov7:ktoml-file:0.7.1")
 }
 
 tasks.test {
