@@ -1,4 +1,8 @@
 # Kira Language Specification
+
+**Version** _November 18, 2025_
+
+
 ```kira
 pub class User {
     require pub name: Str
