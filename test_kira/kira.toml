@@ -1,0 +1,29 @@
+version = "1"
+
+[package]
+name = "test_kira"
+version = "0.0.4"
+authors = ["Jiaming <jackm@exoad.net>"]
+description = "A small test project for Kira"
+
+[workspace]
+src = ["main.kira", "test.kira"]
+entry = "main.kira"
+
+[build]
+outDir = "build"
+target = "native"
+debug = true
+emitIR = false
+
+[dependencies.kira_std]
+version = "1.0.0"
+registry = "kira"
+
+[dependencies.local_lib]
+path = "../libs/local_lib"
+
+[dependencies.http_example]
+version = "0.2.1"
+registry = "example-registry"
+

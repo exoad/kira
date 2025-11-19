@@ -1362,13 +1362,21 @@ class KiraParser(private val context: SourceContext) {
 
     fun parseModifiers(): Map<Modifier, SourcePosition> {
         val modifier = mutableMapOf<Modifier, SourcePosition>()
-        val intrinsics = mutableListOf<IntrinsicRegistry>()
+        val intrinsics = mutableListOf<net.exoad.kira.core.CompilerIntrinsic>()
         while (at(Token.Type.INTRINSIC_IDENTIFIER)) {
             val intrinsicName = peek().content
-//            val intrinsic = IntrinsicRegistry.entries.find { it.rep == intrinsicName }
-//            if (intrinsic != null) {
-//                intrinsics.add(intrinsic)
-//            }
+            val intrinsic = IntrinsicRegistry.find(intrinsicName)
+            if (intrinsic != null) {
+                intrinsics.add(intrinsic)
+            } else {
+                Diagnostics.panic(
+                    "KiraParser::parseModifiers",
+                    "Unknown intrinsic: @$intrinsicName",
+                    context = context,
+                    location = peek().canonicalLocation,
+                    selectorLength = peek().content.length,
+                )
+            }
             advancePointer()
         }
         while (peek().type in Token.Type.modifiers) {
@@ -1398,7 +1406,7 @@ class KiraParser(private val context: SourceContext) {
         return modifier
     }
 
-    private var pendingIntrinsics: Array<IntrinsicRegistry>? = null
+    private var pendingIntrinsics: Array<net.exoad.kira.core.CompilerIntrinsic>? = null
 
     private fun <T : ASTNode> attachIntrinsics(node: T): T {
         if (pendingIntrinsics != null) {

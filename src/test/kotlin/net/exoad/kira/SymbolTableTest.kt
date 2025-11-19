@@ -38,9 +38,9 @@ class SymbolTableTest {
             try {
                 intrOut.appendText("  Intrinsic markers count: ${srcCtx.astIntrinsicMarked.size}\n")
                 srcCtx.astIntrinsicMarked.forEach { (node, intrinsics) ->
-                    intrOut.appendText("    Node: ${node::class.simpleName} -> ${intrinsics.joinToString { it.rep }}\n")
+                    intrOut.appendText("    Node: ${node::class.simpleName} -> ${intrinsics.joinToString { intrinsic -> intrinsic.name }}\n")
                 }
-            } catch (e: UninitializedPropertyAccessException) {
+            } catch (_: UninitializedPropertyAccessException) {
                 intrOut.appendText("  astIntrinsicMarked not initialized\n")
             } catch (e: Exception) {
                 intrOut.appendText("  Error: ${e.message}\n")
@@ -89,7 +89,7 @@ class SymbolTableTest {
                 intrOut.appendText("Source: ${srcCtx.file}\n")
                 intrOut.appendText("  Intrinsic markers count: ${srcCtx.astIntrinsicMarked.size}\n")
                 srcCtx.astIntrinsicMarked.forEach { (node, intrinsics) ->
-                    intrOut.appendText("    Node: ${node::class.simpleName} -> ${intrinsics.joinToString { it.rep }}\n")
+                    intrOut.appendText("    Node: ${node::class.simpleName} -> ${intrinsics.joinToString { intrinsic -> intrinsic.name }}\n")
                 }
                 intrOut.appendText("\n")
             }
