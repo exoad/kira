@@ -1,4 +1,4 @@
-# Kira Language Specification
+# Kira Specs.
 
 **Version** _November 18, 2025_
 
