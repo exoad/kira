@@ -1,26 +1,21 @@
 # Kira Language Specification
-
-**Version:** 1.0
-**Last Updated:** November 14, 2025
-
----
-
-## Introduction
-
-Kira is a statically typed, object-oriented programming language designed with emphasis on safety, performance, and developer ergonomics. The language combines modern type system features including null safety, automatic memory management through reference counting, and compile-time optimizations while maintaining source-level clarity and predictability.
-
-### Design Principles
-
--   **Safety First:** Sound null safety, statically typed expressions, and memory safety through automatic reference counting
--   **Explicit Over Implicit:** Clear syntax with minimal operator overloading and explicit type annotations
--   **Performance:** Compile-time optimizations, zero-cost abstractions, and efficient runtime model
--   **Simplicity:** Minimal feature set with orthogonal language constructs
-
-### Example Programs
-
-**Hello World**
-
 ```kira
+pub class User {
+    require pub name: Str
+    require pub email: Str
+    pub role: Str = "user"
+    pub active: Bool = true
+}
+
+user1: User = User { name = "Alice", email = "alice@example.com" }
+user2: User = User { name = "Bob", email = "bob@example.com", role = "admin" }
+user3: User = User {
+    name = "Charlie",
+    email = "charlie@example.com",
+    role = "moderator",
+    active = false
+}
+```
 @_trace_("Hello World!")
 ```
 
@@ -2292,10 +2287,7 @@ All discovered stdlib files are merged with the workspace sources before parsing
 Examples (PowerShell):
 
 ```powershell
-# Compile current directory (uses .\kira.toml)
 ./gradlew run --args "--project=."
-
-# Compile a specific project directory
 ./gradlew run --args "--project=path/to/project"
 ```
 
@@ -3415,8 +3407,6 @@ debug = true
 emitIR = false
 
 [dependencies.kira_std]
-# Declare the Kira standard library. The compiler treats dependencies with
-# registry = "kira" as standard-library providers.
 registry = "kira"
 ```
 
@@ -3476,10 +3466,8 @@ All discovered stdlib files are merged with the workspace sources before parsing
 Examples (PowerShell):
 
 ```powershell
-# Compile current directory (uses .\kira.toml)
 ./gradlew run --args "--project=."
 
-# Compile a specific project directory
 ./gradlew run --args "--project=path/to/project"
 ```
 
