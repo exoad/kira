@@ -2,40 +2,12 @@
 
 **Version** _November 18, 2025_
 
+Kira is a modern, pure object-oriented programming language with expressive syntax inspired by Swift, Kotlin, and Dart. It functions as a flexible toolkit—similar to Haxe—supporting transpilation and ahead-of-time (AOT) compilation to multiple targets, including source code, bytecode, bitcode, and machine code.
+
+Kira enforces three core principles: privacy, immutability, and static behavior. All declarations are private and immutable by default.
 
 ```kira
-pub class User {
-    require pub name: Str
-    require pub email: Str
-    pub role: Str = "user"
-    pub active: Bool = true
-}
-
-user1: User = User { name = "Alice", email = "alice@example.com" }
-user2: User = User { name = "Bob", email = "bob@example.com", role = "admin" }
-user3: User = User {
-    name = "Charlie",
-    email = "charlie@example.com",
-    role = "moderator",
-    active = false
-}
 @_trace_("Hello World!")
-```
-
-**FizzBuzz Implementation**
-
-```kira
-for i in 0..101 {
-   if i % 15 == 0 {
-      @_trace_("FizzBuzz")
-   } else if i % 3 == 0 {
-      @_trace_("Fizz")
-   } else if i % 5 == 0 {
-      @_trace_("Buzz")
-   } else {
-      @_trace_(i)
-   }
-}
 ```
 
 ---
