@@ -2210,25 +2210,16 @@ version = "0.1.0"
 authors = ["you@example.com"]
 
 [workspace]
-# Relative to project root. Files or directories are allowed.
 src = ["src", "main.kira"]
-# Optional. If provided, the compiler will prefer this as the program entry.
-entry = "main.kira"
 
 [build]
-# Output directory (tooling may place build artifacts here)
 outDir = "build"
-# Target code generator: "c" (aka native) or "neko"; compiler may expand over time
 target = "c"
 debug = true
 emitIR = false
 
 [dependencies.kira_std]
-# Declare the Kira standard library. The compiler treats dependencies with
-# registry = "kira" as standard-library providers.
 registry = "kira"
-# Optionally, point to a local copy of the stdlib in your repo:
-# path = "kira"
 ```
 
 ### Sections
