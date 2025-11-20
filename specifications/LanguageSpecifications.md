@@ -468,7 +468,7 @@ PostfixExpression   ::= PrimaryExpression (
                         | '(' ArgumentList? ')'
                         | 'as' Type
                         | 'as?' Type
-                        | 'is' Type
+                        | 'is' TypeInt32
                         )*
 PrimaryExpression   ::= Identifier
                       | Literal
@@ -2146,9 +2146,8 @@ use "acme:webserver"
 The Kira standard library is accessible through the `kira` namespace:
 
 ```kira
-use "kira:lib.types"     // Core types
-use "kira:lib.collections"  // Collection types
-use "kira:lib.io"        // Input/output utilities
+use "kira:stl"     // Standard Types Library
+use "kira:io"        // Input/output utilities
 ```
 
 Note: The compiler discovers the standard library from your project manifest (see KIM below). Declare a dependency with
@@ -2161,8 +2160,6 @@ dependency is declared, the compiler falls back to scanning a local `./kira/` fo
 
 KIM (KIra Manifest) is the manifest format and tooling used by the Kira compiler to locate sources, resolve the standard
 library, and apply build options. The manifest file is named `kira.toml` and must reside at the project root.
-
-Only `kira.toml` is recognized (there is no `kim.toml` or `ki.toml`).
 
 ### Goals
 
@@ -2800,11 +2797,12 @@ pub class FileHandle {
 
 ---
 
-## Variant Classes
+## Variant Classes (Discriminated Unions)
 
 Variant classes limit their inheritance pattern to only internally defined inheritors/children. In this case, the closed type serves as more of a container type rather than a type itself.
 
 ```kira
+// Result here is an enclosing "sealed" or "discriminated union" type 
 pub variant Result<A, E> {
     class Success<A> : Result<A, Void> {
         require pub A data

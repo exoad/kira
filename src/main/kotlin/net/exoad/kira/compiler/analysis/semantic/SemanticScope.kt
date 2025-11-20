@@ -18,16 +18,7 @@ sealed class SemanticScope(open val name: String) {
 
     data class Variant(override val name: String) : SemanticScope(name)
 
+    data class VariantVariance(override val name: String) : SemanticScope(name)
+
     data class VariantMember(override val name: String) : SemanticScope(name)
 }
-
-//enum class SemanticScope {
-//    MODULE,
-//    CLASS,
-//    GLOBAL,
-//
-//    @ObsoleteLanguageFeat
-//    NAMESPACE,
-//    ENUM,
-//    FUNCTION,
-//}

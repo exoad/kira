@@ -3,7 +3,9 @@ package net.exoad.kira.compiler.analysis.semantic
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.frontend.IntrinsicTreeWalker
 import net.exoad.kira.compiler.frontend.lexer.Token
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
@@ -12,6 +14,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.intrinsics.GlobalIntrinsic
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
@@ -21,7 +24,7 @@ import net.exoad.kira.utils.EnglishUtils
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
  * to make sure everything follows the rules of the language and everything makes sense.
  */
-class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraASTVisitor() {
+class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraASTVisitor(), IntrinsicTreeWalker {
     private val diagnosticsPump = mutableListOf<DiagnosticsException>()
     lateinit var context: SourceContext
 
@@ -388,6 +391,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     )
 
     override fun visitVariableDecl(variableDecl: VariableDecl) {
+        // Run any intrinsics attached to the variable declaration before semantic checks
+        runIntrinsicsIfPresent(variableDecl)
         val varName = variableDecl.name.value
         if (compilationUnit.symbolTable.containsInCurrentScope(varName)) {
             pump(
@@ -443,6 +448,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
+        // Allow intrinsics to act on functions (e.g., make them global) before entering their scope
+        runIntrinsicsIfPresent(functionDecl)
         if (functionDecl.isStub()) {
             return
         }
@@ -469,6 +476,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
+        // Run intrinsics attached to class declarations (e.g., magic/global markers)
+        runIntrinsicsIfPresent(classDecl)
         if (classDecl.name.identifier is Identifier) {
             val typeName = (classDecl.name.identifier as Identifier).value
             val existingSymbol = compilationUnit.symbolTable.resolve(typeName)
@@ -516,27 +525,78 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
-    private val fullUriMatcher = Regex("^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:/[a-zA-Z0-9_]+)*$")
+    private val moduleUriMatcher = Regex("""^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*$""")
+
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {
+        // Run intrinsics attached to the module declaration
+        runIntrinsicsIfPresent(moduleDecl)
         val uri = moduleDecl.uri.value
+        val originPos = context.astOrigins[moduleDecl.name] ?: SourcePosition.UNKNOWN
         pumpOnTrue(
-            !uri.matches(fullUriMatcher),
-            "A module URI must be in the format 'author:project/submodule/submodule/...' and contain only [a-zA-Z0-9_] characters.",
-            context.astOrigins[moduleDecl.name]!!.offsetBy(0, 1), // skip leading quotation
+            !uri.matches(moduleUriMatcher),
+            "A module URI must be in the format 'package:folder1.folder2.file' using [a-zA-Z0-9_] tokens.",
+            originPos.offsetBy(0, 1),
             selectorLength = uri.length,
-            help = "Here is the regex that is used: ^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:/[a-zA-Z0-9_]+)*$"
+            help = "Expected: <package>:<dot.separated.path.to.file> where the last segment is the source file name (without .kira)."
         )
+        if (uri.matches(moduleUriMatcher)) {
+            val (pkg, dotted) = uri.split(":", limit = 2)
+            val segments = dotted.split(".")
+            if (segments.isEmpty()) {
+                pump(
+                    "Module URI must contain at least a file name after the ':'",
+                    originPos,
+                    selectorLength = uri.length
+                )
+                return
+            }
+            val expectedSuffix = buildString {
+                append(pkg)
+                append("/")
+                append(segments.joinToString("/"))
+                append(".kira")
+            }
+            val actualPath = context.file.replace('\\', '/') // normalize separators
+            if (!actualPath.endsWith(expectedSuffix)) {
+                pumpOnTrue(
+                    true,
+                    "Module URI '$uri' does not match the source file location. Expected path ending with '$expectedSuffix' but found '$actualPath'.",
+                    originPos.offsetBy(0, 1),
+                    selectorLength = uri.length,
+                    help = "The module path segments map to folders under the package name; the final segment must be the source file name without the '.kira' extension."
+                )
+            }
+        }
     }
 
     override fun visitEnumDecl(enumDecl: EnumDecl) {
-        // TODO("Not yet implemented")
+        // Run intrinsics for enum declarations
+        runIntrinsicsIfPresent(enumDecl)
+        val typeName = enumDecl.name.value
+        val symbol = SemanticSymbol(
+            typeName,
+            SemanticSymbolKind.TYPE_SPECIFIER,
+            Token.Type.K_ENUM,
+            SourceLocation.fromPosition(
+                context.astOrigins[enumDecl] ?: SourcePosition.UNKNOWN,
+                context.file
+            ),
+            relativelyVisible = enumDecl.modifiers.contains(Modifier.PUBLIC)
+        )
+
+        expectTypeNotDeclaredInModule(typeName, context.astOrigins[enumDecl])
+        compilationUnit.symbolTable.declare(typeName, symbol)
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
+        // Run intrinsics for trait declarations
+        runIntrinsicsIfPresent(traitDecl)
         // TODO("Not yet implemented")
     }
 
     override fun visitVariantDecl(variantDecl: VariantDecl) {
+        // Run intrinsics for variants
+        runIntrinsicsIfPresent(variantDecl)
         if (variantDecl.name.identifier is Identifier) {
             val typeName = (variantDecl.name.identifier as Identifier).value
             val symbol = SemanticSymbol(
@@ -549,17 +609,12 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 ),
                 relativelyVisible = variantDecl.modifiers.contains(Modifier.PUBLIC)
             )
-
             expectTypeNotDeclaredInModule(typeName, context.astOrigins[variantDecl])
             compilationUnit.symbolTable.declare(typeName, symbol)
-
             if (variantDecl.variants.isNotEmpty() || variantDecl.members.isNotEmpty()) {
                 compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
-                // Register generic type parameters in the variant scope
                 registerGenericTypeParameters(variantDecl.name)
-                // Process variant cases (inner classes)
                 variantDecl.variants.forEach { it.accept(this) }
-                // Process variant members (functions, variables)
                 variantDecl.members.forEach { it.accept(this) }
                 compilationUnit.symbolTable.exit()
             }
@@ -567,6 +622,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {
+        // Run intrinsics for type alias declarations
+        runIntrinsicsIfPresent(typeAliasDecl)
         val aliasName = if (typeAliasDecl.alias.identifier is Identifier) {
             (typeAliasDecl.alias.identifier as Identifier).value
         } else {
@@ -612,4 +669,43 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             typeAliasDecl.target.accept(this)
         }
     }
+
+    private fun runIntrinsicsIfPresent(node: ASTNode) {
+        try {
+            if (!::context.isInitialized) return
+            val present = try {
+                context.isIntrinsified(node)
+            } catch (_: Exception) {
+                node.attachedIntrinsics.isNotEmpty()
+            }
+            if (!present) return
+            for (intrinsic in node.attachedIntrinsics) {
+                val srcLoc = try {
+                    SourceLocation.fromPosition(context.relativeOriginOf(node), context.file)
+                } catch (_: Exception) {
+                    SourceLocation.bakedIn()
+                }
+                val invocation = IntrinsicExpr(
+                    intrinsic,
+                    srcLoc,
+                    null
+                )
+                // validate and apply
+                try {
+                    intrinsic.validate(invocation, compilationUnit, context)
+                    intrinsic.apply(invocation, node, compilationUnit, context)
+                } catch (e: Exception) {
+                    diagnosticsPump.add(Diagnostics.recordPanic("IntrinsicApplication", e.message ?: "Intrinsic error", cause = e, location = srcLoc.toPosition(), context = context))
+                }
+            }
+        } catch (e: Exception) {
+            diagnosticsPump.add(Diagnostics.recordPanic("IntrinsicRunner", "Error while running intrinsics: ${e.message}", cause = e, location = SourcePosition.UNKNOWN, context = context))
+        }
+    }
+
+    override fun walkIntrinsic(node: ASTNode) {
+        // Preserve existing API for callers: simply delegate to our helper which synthesizes an invocation
+        runIntrinsicsIfPresent(node)
+    }
+
 }

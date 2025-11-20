@@ -7,7 +7,7 @@ import net.exoad.kira.core.CompilerIntrinsic
 /**
  * Expression implementation
  */
-abstract class Expr(override val attachedIntrinsics: List<CompilerIntrinsic> = emptyList()) : ASTNode
+abstract class Expr(override val attachedIntrinsics: List<CompilerIntrinsic> = emptyList()) : ASTNode()
 
 /**
  * A simple expression placeholder value to signify for things like [net.exoad.kira.compiler.frontend.parser.ast.statements.Statement] that need an [Expr] passed in.

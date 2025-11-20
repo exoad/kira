@@ -29,6 +29,9 @@ target = "c"
 """.trimIndent()
         Files.writeString(mf, content)
 
+        val mainKira = tempDir.resolve("main.kira")
+        Files.writeString(mainKira, "module \"demo:main\"\n")
+
         val manifest = ManifestLoader.loadFromPath(mf)
         assertEquals("1", manifest.version)
         assertEquals("demo", manifest.pkg?.name)
@@ -69,4 +72,3 @@ entry = "missing.kira"
         assertTrue(issues.any { it.field == "workspace.entry" }, "Expected a 'workspace.entry' validation issue")
     }
 }
-

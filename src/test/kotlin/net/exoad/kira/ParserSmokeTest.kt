@@ -12,7 +12,6 @@ import kotlin.test.assertNotNull
 class ParserSmokeTest {
     @Test
     fun parsesSample() {
-        Public.flags = Public.flagsDefault
         val file = File("test_kira/main.kira")
         val pre = KiraPreprocessor(file.readText())
         val res = pre.process()

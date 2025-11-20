@@ -6,14 +6,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.source.SourceContext
 import kotlin.reflect.KClass
 
-interface CompilerIntrinsic {
-    val name: String
+abstract class CompilerIntrinsic(val name: String, val validTargets: Set<KClass<out ASTNode>>) {
+    abstract fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext)
 
-    val validTargets: Set<KClass<out ASTNode>>
-
-    fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext)
-
-    fun apply(
+    abstract fun apply(
         invocation: IntrinsicExpr,
         target: ASTNode,
         compilationUnit: CompilationUnit,

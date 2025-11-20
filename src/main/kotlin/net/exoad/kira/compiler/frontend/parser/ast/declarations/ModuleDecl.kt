@@ -8,15 +8,19 @@ class ModuleDecl(val uri: StringLiteral) : Decl(uri) {
         visitor.visitModuleDecl(this)
     }
 
-    fun getName(): String {
-        return uri.value.split(":").last()
-    }
-
-    fun getAuthor(): String {
+    fun getPackageName(): String {
         return uri.value.split(":").first()
     }
 
+    fun getModuleName(): String {
+        return uri.value.split(":").last().split(".").last()
+    }
+
+    fun getIncrementals(): List<String> {
+        return uri.value.split(":").last().split(".").dropLast(1)
+    }
+
     override fun toString(): String {
-        return "ModuleDecl(uri=$uri, name=${getName()}, author=${getAuthor()})"
+        return "Module(pkg=${getPackageName()}, uri=${getIncrementals().joinToString { "$it." }}${getModuleName()})"
     }
 }

@@ -1,3 +1,0 @@
-module "test:kira"
-
-a: Int32 = 4 # 6

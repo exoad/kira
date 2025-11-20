@@ -1,23 +1,23 @@
-module "kira:builtin/types"
+module "kira:stl"
 
-pub @__magic class Any
-pub @__magic class Void
-pub @__magic class Never
+pub @_magic class Any
+pub @_magic class Void
+pub @_magic class Never
 
-pub @__magic class Bool
+pub @_magic class Bool
 
-pub true: Bool = Bool { }
-pub false: Bool = Bool { }
+pub @_magic @_global true: Bool = Bool { }
+pub @_magic @_global false: Bool = Bool { }
 
-pub @__magic class Str
+pub @_magic class Str
 
-pub @__magic class Num
-pub @__magic class Int8: Num
-pub @__magic class Int16: Num
-pub @__magic class Int32: Num
-pub @__magic class Int64: Num
-pub @__magic class Float32: Num
-pub @__magic class Float64: Num
+pub @_magic class Num
+pub @_magic class Int8: Num
+pub @_magic class Int16: Num
+pub @_magic class Int32: Num
+pub @_magic class Int64: Num
+pub @_magic class Float32: Num
+pub @_magic class Float64: Num
 
 pub alias Int as Int32
 pub alias Float as Float32
@@ -26,13 +26,13 @@ pub trait Tuple<T> {
     pub fx size(): Int32
 }
 
-pub @__magic class Tuple0: Tuple<Void> {
+pub @_magic class Tuple0: Tuple<Void> {
     pub fx size(): Int32 {
         return 0
     }
 }
 
-pub @__magic class Tuple1<T> : Tuple<Tuple1<T>> {
+pub @_magic class Tuple1<T> : Tuple<Tuple1<T>> {
     require pub first: T
 
     pub fx size(): Int32 {
@@ -40,7 +40,7 @@ pub @__magic class Tuple1<T> : Tuple<Tuple1<T>> {
     }
 }
 
-pub @__magic class Tuple2<A, B>: Tuple<Tuple2<A, B>> {
+pub @_magic class Tuple2<A, B>: Tuple<Tuple2<A, B>> {
     require pub first: A
     require pub second: B
 
@@ -51,7 +51,7 @@ pub @__magic class Tuple2<A, B>: Tuple<Tuple2<A, B>> {
 
 pub alias Pair<A, B> as Tuple2<A, B>
 
-pub @__magic class Tuple3<A, B, C>: Tuple<Tuple3<A, B, C>> {
+pub @_magic class Tuple3<A, B, C>: Tuple<Tuple3<A, B, C>> {
     require pub first: A
     require pub second: B
     require pub third: C
@@ -61,7 +61,7 @@ pub @__magic class Tuple3<A, B, C>: Tuple<Tuple3<A, B, C>> {
     }
 }
 
-pub @__magic class Tuple4<A, B, C, D>: Tuple<Tuple4<A, B, C, D>> {
+pub @_magic class Tuple4<A, B, C, D>: Tuple<Tuple4<A, B, C, D>> {
     require pub first: A
     require pub second: B
     require pub third: C
@@ -72,7 +72,7 @@ pub @__magic class Tuple4<A, B, C, D>: Tuple<Tuple4<A, B, C, D>> {
     }
 }
 
-pub @__magic class Tuple5<A, B, C, D, E>: Tuple<Tuple5<A, B, C, D, E>> {
+pub @_magic class Tuple5<A, B, C, D, E>: Tuple<Tuple5<A, B, C, D, E>> {
     require pub first: A
     require pub second: B
     require pub third: C
@@ -84,7 +84,7 @@ pub @__magic class Tuple5<A, B, C, D, E>: Tuple<Tuple5<A, B, C, D, E>> {
     }
 }
 
-pub @__magic class Tuple6<A, B, C, D, E, F>: Tuple<Tuple6<A, B, C, D, E, F>> {
+pub @_magic class Tuple6<A, B, C, D, E, F>: Tuple<Tuple6<A, B, C, D, E, F>> {
     require pub first: A
     require pub second: B
     require pub third: C
@@ -97,7 +97,7 @@ pub @__magic class Tuple6<A, B, C, D, E, F>: Tuple<Tuple6<A, B, C, D, E, F>> {
     }
 }
 
-pub @__magic class Tuple7<A, B, C, D, E, F, G>: Tuple<Tuple7<A, B, C, D, E, F, G>> {
+pub @_magic class Tuple7<A, B, C, D, E, F, G>: Tuple<Tuple7<A, B, C, D, E, F, G>> {
     require pub first: A
     require pub second: B
     require pub third: C
@@ -111,7 +111,7 @@ pub @__magic class Tuple7<A, B, C, D, E, F, G>: Tuple<Tuple7<A, B, C, D, E, F, G
     }
 }
 
-pub @__magic class Tuple8<A, B, C, D, E, F, G, H>: Tuple<Tuple8<A, B, C, D, E, F, G, H>> {
+pub @_magic class Tuple8<A, B, C, D, E, F, G, H>: Tuple<Tuple8<A, B, C, D, E, F, G, H>> {
     require pub first: A
     require pub second: B
     require pub third: C
@@ -126,7 +126,7 @@ pub @__magic class Tuple8<A, B, C, D, E, F, G, H>: Tuple<Tuple8<A, B, C, D, E, F
     }
 }
 
-pub @__magic class Tuple9<A, B, C, D, E, F, G, H, I>: Tuple<Tuple9<A, B, C, D, E, F, G, H, I>> {
+pub @_magic class Tuple9<A, B, C, D, E, F, G, H, I>: Tuple<Tuple9<A, B, C, D, E, F, G, H, I>> {
     require pub first: A
     require pub second: B
     require pub third: C
@@ -146,16 +146,25 @@ pub trait Iterable<T> {
     pub fx size(): Int32
 }
 
-pub @__magic class Arr<T>: Iterable<T>
+pub @_magic class Arr<T>: Iterable<T>
 
-pub @__magic class List<T>: Iterable<T> {
+pub @_magic class List<T>: Iterable<T> {
     require values: Arr<T>
 }
 
-pub @__magic class Map<K, V> {
+pub @_magic class Map<K, V> {
     require values: Arr<Tuple2<K, V>>
 }
 
-pub @__magic class Set<T> {
+pub @_magic class Set<T> {
     require values: Arr<T>
+}
+
+pub @_magic class Maybe<T> {
+    require pub value: T
+}
+
+pub @_magic class Result<T, E> {
+    require pub value: T
+    require pub error: E
 }

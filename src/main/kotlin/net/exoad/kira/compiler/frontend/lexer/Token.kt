@@ -72,7 +72,6 @@ sealed class Token(
         K_USE("'use'"),
         K_WITH("'with'"),
         K_ENUM("'enum'"),
-        K_NAMESPACE("'object'"),
         K_MODULE("'module'"),
         K_ALIAS("'alias'"),
         //        K_GLOBAL("'global'"),

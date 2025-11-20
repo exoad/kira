@@ -2,6 +2,7 @@ package net.exoad.kira.kim
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Serializer
 
 @Serializable
 data class PackageInfo(
@@ -22,7 +23,7 @@ data class BuildOptions(
     val outDir: String = "build",
     val target: String = "native",
     val debug: Boolean = false,
-    val emitIR: Boolean = false
+    val emitIR: String = "dump_symbols.txt"
 )
 
 @Serializable

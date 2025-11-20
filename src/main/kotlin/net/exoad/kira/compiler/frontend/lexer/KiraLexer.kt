@@ -239,7 +239,7 @@ class KiraLexer(private val context: SourceContext) {
             }
             advancePointer()
             if (char == Symbols.AT.rep) {
-                if (!localPeek(1).isLetter()) {
+                if (!localPeek(1).isLetter() && localPeek(1) != Symbols.UNDERSCORE.rep) {
                     Diagnostics.panic(
                         "KiraLexer::nextToken",
                         "Expected identifier after '@' for intrinsic marking.",

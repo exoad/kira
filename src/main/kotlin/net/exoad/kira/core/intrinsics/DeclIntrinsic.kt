@@ -10,11 +10,7 @@ import net.exoad.kira.core.CompilerIntrinsic
 import net.exoad.kira.source.SourceContext
 import kotlin.reflect.KClass
 
-object DeclIntrinsic : CompilerIntrinsic {
-    override val name: String = "_decl_"
-
-    override val validTargets: Set<KClass<out ASTNode>> = emptySet()
-
+object DeclIntrinsic : CompilerIntrinsic("_decl_", emptySet()) {
     override fun validate(
         invocation: IntrinsicExpr,
         compilationUnit: CompilationUnit,

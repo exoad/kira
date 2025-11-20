@@ -34,7 +34,11 @@ enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<Wrappi
     ),
     REQUIRE(
         Token.Type.K_MODIFIER_REQUIRE,
-        arrayOf(WrappingContext.CLASS_MEMBER, WrappingContext.VARIABLE, WrappingContext.FUNCTION)
+        arrayOf(
+            WrappingContext.CLASS_MEMBER,
+            WrappingContext.VARIABLE,
+            WrappingContext.FUNCTION,
+        )
     ),
     ;
 

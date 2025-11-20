@@ -13,7 +13,8 @@ object Public {
         "enableVisualView" to false,
     )
 
-    var flags by Delegates.notNull<Map<String, Boolean>>()
+    // Restored mutable flags map used by tests and runtime toggles
+    var flags: Map<String, Boolean> = flagsDefault.toMutableMap()
 
     object Builtin {
         var intrinsicalStandardLibrarySources: Array<String> = emptyArray()

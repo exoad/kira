@@ -13,7 +13,6 @@ import org.junit.jupiter.api.assertThrows
 class UnderscoreLexerTest {
     @Test
     fun intrinsicWithUnderscoreIsAllowed() {
-        Public.flags = Public.flagsDefault
         val content = "module \"t\"\nfx main(): Void { @trace_one(123) }"
         val pre = KiraPreprocessor(content)
         val res = pre.process()
@@ -27,7 +26,6 @@ class UnderscoreLexerTest {
 
     @Test
     fun normalIdentifierWithUnderscorePanics() {
-        Public.flags = Public.flagsDefault
         val content = "module \"t\"\nfx main(): Void { my_var: Int32 = 0 }"
         val pre = KiraPreprocessor(content)
         val res = pre.process()

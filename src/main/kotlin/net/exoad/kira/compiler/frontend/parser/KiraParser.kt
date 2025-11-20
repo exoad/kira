@@ -434,10 +434,9 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(ForIterationStatement(ForIterationExpr(identifier, target, emptyList()), body), origin)
     }
 
-    fun parseWhileIterationStatement(): Statement {
-        val origin = here()
-        expectThenAdvance(Token.Type.K_WHILE)
-        val condition = if (at(Token.Type.S_OPEN_PARENTHESIS)) {
+    private fun parseParentheticalConditionExpr(leading: Token.Type): Expr {
+        expectThenAdvance(leading)
+        return if (at(Token.Type.S_OPEN_PARENTHESIS)) {
             expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
             val c = parseExpr()
             expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
@@ -445,6 +444,11 @@ class KiraParser(private val context: SourceContext) {
         } else {
             parseExpr()
         }
+    }
+
+    fun parseWhileIterationStatement(): Statement {
+        val origin = here()
+        val condition = parseParentheticalConditionExpr(Token.Type.K_WHILE)
         return putOrigin(WhileIterationStatement(condition, parseStatementBlock()), origin)
     }
 
@@ -452,30 +456,14 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         expectThenAdvance(Token.Type.K_DO)
         val statements = parseStatementBlock()
-        expectThenAdvance(Token.Type.K_WHILE)
-        val condition = if (at(Token.Type.S_OPEN_PARENTHESIS)) {
-            expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-            val c = parseExpr()
-            expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-            c
-        } else {
-            parseExpr()
-        }
+        val condition = parseParentheticalConditionExpr(Token.Type.K_WHILE)
         expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
         return putOrigin(DoWhileIterationStatement(condition, statements), origin)
     }
 
     fun parseIfSelectionStatement(): Statement {
         val origin = here()
-        expectThenAdvance(Token.Type.K_IF)
-        val condition = if (at(Token.Type.S_OPEN_PARENTHESIS)) {
-            expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-            val c = parseExpr()
-            expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-            c
-        } else {
-            parseExpr()
-        }
+        val condition = parseParentheticalConditionExpr(Token.Type.K_IF)
         val thenStatements = parseStatementBlock()
         val branches = mutableListOf<IfElseBranchStatementNode>()
         while (at(Token.Type.K_ELSE)) {
@@ -615,20 +603,21 @@ class KiraParser(private val context: SourceContext) {
                     expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
                 }
                 val findVal = null // IntrinsicRegistry.entries.find { it.rep == identifier }
-                return when (findVal != null) {
-//                    true -> putOrigin(
-//                        IntrinsicExpr(findVal, startLoc.toLocationFromContext(context), parameters),
-//                        startLoc
+                return NoExpr
+//                return when (findVal != null) {
+////                    true -> putOrigin(
+////                        IntrinsicExpr(findVal, startLoc.toLocationFromContext(context), parameters),
+////                        startLoc
+////                    )
+//
+//                    else -> Diagnostics.panic(
+//                        "KiraParser::parsePrimaryExpr",
+//                        "An intrinsic named '${identifier}' does not exist.",
+//                        location = startLoc,
+//                        selectorLength = identifier.length,
+//                        context = context
 //                    )
-
-                    else -> Diagnostics.panic(
-                        "KiraParser::parsePrimaryExpr",
-                        "An intrinsic named '${identifier}' does not exist.",
-                        location = startLoc,
-                        selectorLength = identifier.length,
-                        context = context
-                    )
-                }
+//                }
             }
 
             Token.Type.K_WITH -> parseWithExpr()
@@ -1127,7 +1116,7 @@ class KiraParser(private val context: SourceContext) {
     }
 
     fun parseVariantDecl(modifier: Map<Modifier, SourcePosition>?): VariantDecl {
-        expectModifiers(modifier, WrappingContext.CLASS)
+        expectModifiers(modifier, WrappingContext.VARIANT)
         advancePointer() // consume 'variant'
         val origin = here()
         val variantName = parseType()
@@ -1145,8 +1134,13 @@ class KiraParser(private val context: SourceContext) {
             }
         }
         if (!at(Token.Type.S_OPEN_BRACE)) {
-            val decl =
-                VariantDecl(variantName, modifier?.keys?.toList() ?: emptyList(), emptyList(), emptyList(), parenTypes)
+            val decl = VariantDecl(
+                variantName,
+                modifier?.keys?.toList() ?: emptyList(),
+                emptyList(),
+                emptyList(),
+                parenTypes
+            )
             attachIntrinsics(decl)
             return putOrigin(decl, origin)
         }

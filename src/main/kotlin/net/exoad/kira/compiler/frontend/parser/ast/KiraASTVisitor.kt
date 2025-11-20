@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 
+
 abstract class KiraASTVisitor {
     // STATEMENTS
     abstract fun visitStatement(statement: Statement)
@@ -30,9 +31,9 @@ abstract class KiraASTVisitor {
     abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
     abstract fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
     abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
-    abstract fun visitArrayIndexExpr(arrayIndexExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr)
-    abstract fun visitThrowExpr(throwExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr)
-    abstract fun visitTryExpr(tryExpr: net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr)
+    abstract fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr)
+    abstract fun visitThrowExpr(throwExpr: ThrowExpr)
+    abstract fun visitTryExpr(tryExpr: TryExpr)
     abstract fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
     abstract fun visitRangeExpr(rangeExpr: RangeExpr)
     abstract fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr)

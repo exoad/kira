@@ -101,26 +101,13 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         assert(locatorLength >= 1) { "Locator length must be visible!" }
         val line = findCanonicalLine(sourcePosition.lineNumber)
         return buildString {
-            appendLine(
-                "${
-                    if (Public.flags["useDiagnosticsUnicode"]!!) {
-                        "⮞"
-                    } else {
-                        "@"
-                    }
-                } [${file}] : $sourcePosition"
-            )
+            appendLine("@[${file}] : $sourcePosition")
             append(
                 when {
                     sourcePosition.column < 0 || line.isNotRepresentableDiagnosticsSymbol() -> line
                     else -> {
                         val builder = StringBuilder()
-                        val gutter = "${
-                            when (Public.flags["useDiagnosticsUnicode"]!!) {
-                                true -> "░"
-                                else -> " "
-                            }.repeat(sourcePosition.lineNumber.toString().length)
-                        }| "
+                        val gutter = "${"X".repeat(sourcePosition.lineNumber.toString().length)}| "
                         builder.appendLine(gutter)
                         builder.appendLine("${sourcePosition.lineNumber}| $line")
                         // makes sure the arrows are always aligned properly to the actual selected portion of the line
@@ -128,10 +115,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
                         builder.append(gutter)
                         builder.append(gap)
                         builder.appendLine(
-                            when {
-                                Public.flags["useDiagnosticsUnicode"]!! -> "▲"
-                                else -> "^"
-                            }.repeat(locatorLength)
+                            "^".repeat(locatorLength)
                         )
                         if (trailingText != null) {
                             // allow for multi line and adjusts the gutter to allow for multi line support!

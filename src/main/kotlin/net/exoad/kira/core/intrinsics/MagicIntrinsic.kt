@@ -11,11 +11,7 @@ import net.exoad.kira.core.CompilerIntrinsic
 import net.exoad.kira.source.SourceContext
 import kotlin.reflect.KClass
 
-object MagicIntrinsic : CompilerIntrinsic {
-    override val name: String = "__magic"
-
-    override val validTargets: Set<KClass<out ASTNode>> = setOf(Identifier::class, Type::class)
-
+object MagicIntrinsic : CompilerIntrinsic("_magic", setOf(Identifier::class, Type::class)) {
     override fun validate(
         invocation: IntrinsicExpr,
         compilationUnit: CompilationUnit,

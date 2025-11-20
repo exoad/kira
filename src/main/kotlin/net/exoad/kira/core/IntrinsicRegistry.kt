@@ -8,7 +8,7 @@ object IntrinsicRegistry {
     private val intrinsics: Map<String, CompilerIntrinsic> = listOf(
         DeclIntrinsic,
         GlobalIntrinsic,
-        MagicIntrinsic
+        MagicIntrinsic,
     ).associateBy { it.name }
 
     fun find(name: String): CompilerIntrinsic? {

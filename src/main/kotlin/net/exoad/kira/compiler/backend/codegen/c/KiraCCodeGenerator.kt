@@ -20,7 +20,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         private var scopedModuleName = "kira_lib"
 
         fun pushScopedModuleName(moduleDecl: ModuleDecl) {
-            scopedModuleName = "${moduleDecl.getName()}_${moduleDecl.getName()}"
+            scopedModuleName = "${moduleDecl.getPackageName()}_${moduleDecl.getModuleName()}"
         }
 
         fun peekScopedModuleName(): String {

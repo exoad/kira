@@ -12,8 +12,8 @@ import kotlin.test.assertNotNull
 class SymbolTableTest {
     @Test
     fun testSymbolTableDump() {
-        Public.flags = Public.flagsDefault
-        val file = File("test_kira/test.kira")
+        // Use the existing sample in test_kira/sub/test.kira
+        val file = File("test_kira/sub/test.kira")
         val pre = KiraPreprocessor(file.readText())
         val res = pre.process()
         val cu = CompilationUnit()
@@ -101,4 +101,3 @@ class SymbolTableTest {
         }
     }
 }
-

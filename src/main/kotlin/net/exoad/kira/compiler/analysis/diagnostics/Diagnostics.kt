@@ -29,22 +29,23 @@ object Diagnostics {
             formatter = SimpleFormatter()
         }
         logger.addHandler(consoleHandler)
-        logger.level = Level.OFF
+        logger.level = Level.ALL
+        logger.handlers.forEach { it.level = Level.ALL }
         logger.useParentHandlers = false
     }
 
-    fun useDiagnostics() {
-        logger.level = Level.ALL
-        // i learned it the hard way that just setting the logger's level doesnt work.
-        // YOU HAVE TO DO IT FOR ALL THE HANDLERS???
-        // bruh why is this a thing, cant they just built it in? i dont really understand why this isnt done under the hood
-        logger.handlers.forEach { it.level = Level.ALL }
-    }
+//    fun useDiagnostics() {
+//        logger.level = Level.ALL
+//        // i learned it the hard way that just setting the logger's level doesnt work.
+//        // YOU HAVE TO DO IT FOR ALL THE HANDLERS???
+//        // bruh why is this a thing, cant they just built it in? i dont really understand why this isnt done under the hood
+//        logger.handlers.forEach { it.level = Level.ALL }
+//    }
 
-    fun silenceDiagnostics() {
-        logger.level = Level.OFF
-        logger.handlers.forEach { it.level = Level.OFF }
-    }
+//    fun silenceDiagnostics() {
+//        logger.level = Level.OFF
+//        logger.handlers.forEach { it.level = Level.OFF }
+//    }
 
     fun recordDiagnostics(exception: DiagnosticsException): String {
         return """${
@@ -89,7 +90,6 @@ object Diagnostics {
         selectorLength: Int = 1,
         context: SourceContext,
     ): Nothing {
-        Logging.finer("Kira", "Target Location = $location")
         throw recordPanic(tag, message, cause, location, selectorLength, context)
     }
 
@@ -127,13 +127,6 @@ object Diagnostics {
     object Logging {
         fun info(tag: String, message: Any) {
             logger.info("Info/$tag: $message")
-        }
-
-        fun finer(tag: String, message: Any) {
-            if (Public.flags["beVerbose"]!!) // i dont want to toggle flags using Level and Logger :(
-            {
-                logger.finer("Finer/$tag: $message")
-            }
         }
 
         fun warn(tag: String, message: Any) {
