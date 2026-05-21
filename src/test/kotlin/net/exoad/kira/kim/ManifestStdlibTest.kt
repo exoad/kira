@@ -14,37 +14,22 @@ class ManifestStdlibTest {
         val sample = kiraDir.resolve("types.kira")
         Files.writeString(sample, "// sample")
 
-        val mf = tempDir.resolve("kira.toml")
+        val mf = tempDir.resolve("kira.yaml")
         val content = """
-version = "1"
+project:
+  name: demo
 
-[package]
-name = "demo"
+srcDir: src
 
-[dependencies.kira_std]
-path = "kira"
-registry = "kira"
+dependencies:
+  kira_std:
+    path: kira
 """.trimIndent()
         Files.writeString(mf, content)
+        Files.createDirectories(tempDir.resolve("src"))
 
         val manifest = ManifestLoader.loadFromPath(mf)
-        // replicate stdlib resolution logic (as in Main.kt)
-        val stdlibEntries = mutableListOf<String>()
-        if (manifest.dependencies.isNotEmpty()) {
-            manifest.dependencies.forEach { (name, spec) ->
-                if (spec.registry == "kira") {
-                    if (spec.path != null) {
-                        val depPath = tempDir.resolve(spec.path).normalize()
-                        if (Files.exists(depPath)) {
-                            Files.walk(depPath).use { stream ->
-                                stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kira") }
-                                    .forEach { stdlibEntries.add(it.toAbsolutePath().toString()) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        val stdlibEntries = DependencyResolver.resolveDependencySources(manifest, tempDir)
         Public.Builtin.intrinsicalStandardLibrarySources = stdlibEntries.distinct().sorted().toTypedArray()
         assertTrue(Public.Builtin.intrinsicalStandardLibrarySources.any { it.endsWith("types.kira") })
     }

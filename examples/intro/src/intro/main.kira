@@ -1,0 +1,8 @@
+module "intro:main"
+
+use "intro:greetings"
+
+fx main(): Void {
+    message: Str = greeting()
+    trace(message)
+}

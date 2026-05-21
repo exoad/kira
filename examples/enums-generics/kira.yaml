@@ -1,0 +1,14 @@
+project:
+  name: enums-generics-example
+
+srcDir: src
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.typed.txt
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

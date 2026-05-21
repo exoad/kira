@@ -1,0 +1,14 @@
+project:
+  name: test_kira
+
+srcDir: sub
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.kira.txt
+
+dependencies:
+  kira_lib:
+    path: kira

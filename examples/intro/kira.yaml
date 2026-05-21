@@ -1,0 +1,14 @@
+project:
+  name: intro-example
+
+srcDir: src
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.intro.txt
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

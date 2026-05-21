@@ -3,6 +3,7 @@ package net.exoad.tests.kira
 import net.exoad.kira.compiler.KiraImmediateCompiler
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.Test
+import kotlin.test.assertNotNull
 
 class TestBroken {
     @Test
@@ -45,14 +46,13 @@ class TestBroken {
 
     @Test
     fun testUnderscoresAllowedInIntrinsincs() {
-        assertThrows<Throwable> {
-            KiraImmediateCompiler.formAST(
-                """
-                module "test:mod/submod"
-                
-                @__dummy__("Hello World")
-                """.trimIndent()
-            )
-        }
+        val ast = KiraImmediateCompiler.formAST(
+            """
+            module "test:mod/submod"
+
+            @__dummy__("Hello World")
+            """.trimIndent()
+        )
+        assertNotNull(ast)
     }
 }

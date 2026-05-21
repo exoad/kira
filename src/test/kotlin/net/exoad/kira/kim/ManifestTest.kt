@@ -9,66 +9,63 @@ class ManifestTest {
     @Test
     fun loadValidManifest() {
         val tempDir = Files.createTempDirectory("kimtest_valid")
-        val mf = tempDir.resolve("kira.toml")
+        val mf = tempDir.resolve("kira.yaml")
         val content = """
-version = "1"
+project:
+    name: demo
 
-[package]
-name = "demo"
-version = "0.1.0"
-authors = ["me"]
-description = "desc"
+srcDir: src
 
-[workspace]
-src = ["main.kira"]
-entry = "main.kira"
-
-[build]
-outDir = "build"
-target = "c"
+build:
+    target: c
 """.trimIndent()
         Files.writeString(mf, content)
 
-        val mainKira = tempDir.resolve("main.kira")
+        val srcDir = tempDir.resolve("src")
+        Files.createDirectories(srcDir)
+        val mainKira = srcDir.resolve("main.kira")
         Files.writeString(mainKira, "module \"demo:main\"\n")
 
         val manifest = ManifestLoader.loadFromPath(mf)
-        assertEquals("1", manifest.version)
-        assertEquals("demo", manifest.pkg?.name)
+        assertEquals("demo", manifest.project.name)
+        assertEquals("src", manifest.srcDir)
 
         val issues = ManifestValidator.validate(manifest, tempDir)
         assertTrue(issues.isEmpty(), "Expected no validation issues for a valid manifest")
     }
 
     @Test
-    fun validateMissingPackage() {
-        val tempDir = Files.createTempDirectory("kimtest_nopkg")
-        val mf = tempDir.resolve("kira.toml")
-        val content = "version = \"1\"\n"
+    fun validateMissingProjectName() {
+        val tempDir = Files.createTempDirectory("kimtest_noname")
+        val mf = tempDir.resolve("kira.yaml")
+        val content = """
+project:
+    name: ""
+
+srcDir: src
+""".trimIndent()
         Files.writeString(mf, content)
+        Files.createDirectories(tempDir.resolve("src"))
 
         val manifest = ManifestLoader.loadFromPath(mf)
         val issues = ManifestValidator.validate(manifest, tempDir)
-        assertTrue(issues.any { it.field == "package" }, "Expected a 'package' validation issue")
+        assertTrue(issues.any { it.field == "project.name" }, "Expected a 'project.name' validation issue")
     }
 
     @Test
-    fun validateEntryNotFound() {
-        val tempDir = Files.createTempDirectory("kimtest_entry")
-        val mf = tempDir.resolve("kira.toml")
+    fun validateSrcDirNotFound() {
+        val tempDir = Files.createTempDirectory("kimtest_srcdir")
+        val mf = tempDir.resolve("kira.yaml")
         val content = """
-version = "1"
+project:
+    name: demo
 
-[package]
-name = "demo"
-
-[workspace]
-entry = "missing.kira"
+srcDir: missing
 """.trimIndent()
         Files.writeString(mf, content)
 
         val manifest = ManifestLoader.loadFromPath(mf)
         val issues = ManifestValidator.validate(manifest, tempDir)
-        assertTrue(issues.any { it.field == "workspace.entry" }, "Expected a 'workspace.entry' validation issue")
+        assertTrue(issues.any { it.field == "srcDir" }, "Expected a 'srcDir' validation issue")
     }
 }

@@ -1,0 +1,11 @@
+module "funhello:choose"
+
+use "funhello:phrases"
+
+fx chooseMessage(isPartyDay: Bool): Str {
+    if isPartyDay {
+        return partyMessage()
+    } else {
+        return morningMessage()
+    }
+}

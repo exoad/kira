@@ -1,0 +1,18 @@
+module "data:main"
+
+use "data:arrays"
+use "data:maps"
+
+fx main(): Void {
+    numbers: Arr<Int32> = [10, 20, 30]
+    head: Int32 = first(numbers)
+
+    entries: Map<Str, Int32> = Map<Str, Int32> { }
+    present: Bool = hasAny(entries)
+
+    if present {
+        trace("map has values")
+    } else {
+        trace(head)
+    }
+}

@@ -1,0 +1,14 @@
+project:
+  name: fun-snack-quest-example
+
+srcDir: src
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.fun_snack_quest.txt
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

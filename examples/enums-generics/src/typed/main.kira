@@ -1,0 +1,14 @@
+module "typed:main"
+
+use "typed:status"
+use "typed:box"
+
+fx main(): Void {
+    state: BuildStatus = BuildStatus.READY
+    wrapped: Box<Int32> = Box<Int32> { 7 }
+    value: Int32 = id<Int32>(wrapped.value)
+
+    if state == BuildStatus.READY {
+        trace(value)
+    }
+}

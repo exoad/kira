@@ -1,44 +1,25 @@
 package net.exoad.kira.kim
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.Serializer
-
-@Serializable
-data class PackageInfo(
-    val name: String,
-    val version: String = "1.0.0",
-    val authors: List<String> = emptyList(),
-    val description: String? = null
+data class ProjectSpec(
+    val name: String
 )
 
-@Serializable
-data class Workspace(
-    val src: List<String> = listOf("*.kira"),
-    val entry: String? = null
-)
-
-@Serializable
 data class BuildOptions(
-    val outDir: String = "build",
-    val target: String = "native",
-    val debug: Boolean = false,
-    val emitIR: String = "dump_symbols.txt"
+    val target: String = "c"
 )
 
-@Serializable
+data class CompilerOptions(
+    val emitIr: String? = null
+)
+
 data class DependencySpec(
-    val path: String? = null,
-    val version: String? = null,
-    val registry: String? = null
+    val path: String? = null
 )
 
-@Serializable
 data class ProjectManifest(
-    val version: String = "1",
-    @SerialName("package")
-    val pkg: PackageInfo? = null,
-    val workspace: Workspace = Workspace(),
+    val project: ProjectSpec,
+    val srcDir: String = "src",
     val build: BuildOptions = BuildOptions(),
+    val compiler: CompilerOptions = CompilerOptions(),
     val dependencies: Map<String, DependencySpec> = emptyMap()
 )

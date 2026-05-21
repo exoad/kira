@@ -1,0 +1,14 @@
+project:
+  name: control-flow-example
+
+srcDir: src
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.flow.txt
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

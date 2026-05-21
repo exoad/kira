@@ -9,9 +9,36 @@ pub @_magic class Bool
 pub @_magic @_global true: Bool = Bool { }
 pub @_magic @_global false: Bool = Bool { }
 
-pub @_magic class Str
+pub trait Equatable<T> {
+    pub fx equals(other: T): Bool;
+}
 
-pub @_magic class Num
+pub trait Hashable {
+    pub fx hashCode(): Int64;
+}
+
+pub @_magic class Str: Equatable<Str>, Hashable {
+    pub fx length(): Int32;
+    pub fx isEmpty(): Bool;
+    pub fx substring(start: Int32, end: Int32): Str;
+    pub fx charAt(index: Int32): Str;
+    pub fx contains(value: Str): Bool;
+    pub fx startsWith(prefix: Str): Bool;
+    pub fx endsWith(suffix: Str): Bool;
+    pub fx split(delimiter: Str): List<Str>;
+    pub fx trim(): Str;
+    pub fx toLower(): Str;
+    pub fx toUpper(): Str;
+}
+
+pub @_magic class Num: Equatable<Num>, Hashable {
+    pub fx abs(): Num;
+    pub fx toInt32(): Int32;
+    pub fx toInt64(): Int64;
+    pub fx toFloat32(): Float32;
+    pub fx toFloat64(): Float64;
+}
+
 pub @_magic class Int8: Num
 pub @_magic class Int16: Num
 pub @_magic class Int32: Num
@@ -144,27 +171,128 @@ pub @_magic class Tuple9<A, B, C, D, E, F, G, H, I>: Tuple<Tuple9<A, B, C, D, E,
 
 pub trait Iterable<T> {
     pub fx size(): Int32
+    pub fx isEmpty(): Bool;
 }
 
-pub @_magic class Arr<T>: Iterable<T>
+pub @_magic class Arr<T>: Iterable<T> {
+    pub fx get(index: Int32): T;
+    pub fx set(index: Int32, value: T): Void;
+    pub fx contains(value: T): Bool;
+    pub fx clone(): Arr<T>;
+}
 
 pub @_magic class List<T>: Iterable<T> {
     require values: Arr<T>
+
+    pub fx add(value: T): Void;
+    pub fx addAll(values: Arr<T>): Void;
+    pub fx get(index: Int32): T;
+    pub fx set(index: Int32, value: T): Void;
+    pub fx removeAt(index: Int32): T;
+    pub fx clear(): Void;
+    pub fx contains(value: T): Bool;
+    pub fx toArr(): Arr<T>;
 }
 
 pub @_magic class Map<K, V> {
     require values: Arr<Tuple2<K, V>>
+
+    pub fx size(): Int32;
+    pub fx isEmpty(): Bool;
+    pub fx put(key: K, value: V): Void;
+    pub fx get(key: K): Maybe<V>;
+    pub fx remove(key: K): Maybe<V>;
+    pub fx containsKey(key: K): Bool;
+    pub fx containsValue(value: V): Bool;
+    pub fx keys(): Arr<K>;
+    pub fx valuesArr(): Arr<V>;
+    pub fx entries(): Arr<Tuple2<K, V>>;
+    pub fx clear(): Void;
 }
 
 pub @_magic class Set<T> {
     require values: Arr<T>
+
+    pub fx size(): Int32;
+    pub fx isEmpty(): Bool;
+    pub fx add(value: T): Bool;
+    pub fx remove(value: T): Bool;
+    pub fx contains(value: T): Bool;
+    pub fx toArr(): Arr<T>;
+    pub fx clear(): Void;
 }
 
 pub @_magic class Maybe<T> {
     require pub value: T
+
+    pub fx isSome(): Bool;
+    pub fx isNone(): Bool;
+    pub fx unwrap(): T;
+    pub fx unwrapOr(defaultValue: T): T;
 }
 
 pub @_magic class Result<T, E> {
     require pub value: T
     require pub error: E
+
+    pub fx isOk(): Bool;
+    pub fx isErr(): Bool;
+    pub fx unwrap(): T;
+    pub fx unwrapErr(): E;
 }
+
+pub @_magic class Stack<T> {
+    require values: List<T>
+
+    pub fx size(): Int32;
+    pub fx isEmpty(): Bool;
+    pub fx push(value: T): Void;
+    pub fx pop(): Maybe<T>;
+    pub fx peek(): Maybe<T>;
+    pub fx clear(): Void;
+}
+
+pub @_magic class Queue<T> {
+    require values: List<T>
+
+    pub fx size(): Int32;
+    pub fx isEmpty(): Bool;
+    pub fx enqueue(value: T): Void;
+    pub fx dequeue(): Maybe<T>;
+    pub fx peek(): Maybe<T>;
+    pub fx clear(): Void;
+}
+
+pub @_magic class Deque<T> {
+    require values: List<T>
+
+    pub fx size(): Int32;
+    pub fx isEmpty(): Bool;
+    pub fx pushFront(value: T): Void;
+    pub fx pushBack(value: T): Void;
+    pub fx popFront(): Maybe<T>;
+    pub fx popBack(): Maybe<T>;
+    pub fx clear(): Void;
+}
+
+pub @_magic class Exception {
+    require pub message: Str
+}
+
+pub @_magic fx print(value: Any): Void;
+pub @_magic fx println(value: Any): Void;
+pub @_magic fx eprint(value: Any): Void;
+
+pub @_magic fx sqrt(value: Float64): Float64;
+pub @_magic fx pow(base: Float64, exponent: Float64): Float64;
+pub @_magic fx floor(value: Float64): Float64;
+pub @_magic fx ceil(value: Float64): Float64;
+pub @_magic fx round(value: Float64): Float64;
+pub @_magic fx sin(value: Float64): Float64;
+pub @_magic fx cos(value: Float64): Float64;
+pub @_magic fx tan(value: Float64): Float64;
+pub @_magic fx abs(value: Float64): Float64;
+pub @_magic fx min(a: Float64, b: Float64): Float64;
+pub @_magic fx max(a: Float64, b: Float64): Float64;
+
+pub @_magic fx assert(condition: Bool, message: Str): Void;

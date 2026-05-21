@@ -22,7 +22,7 @@ object Keywords {
         "for" to Token.Type.K_FOR,
         "module" to Token.Type.K_MODULE,
         "use" to Token.Type.K_USE,
-    "enum" to Token.Type.K_ENUM,
+        "enum" to Token.Type.K_ENUM,
         "as" to Token.Type.K_AS,
         "is" to Token.Type.K_IS,
         "break" to Token.Type.K_BREAK,
@@ -36,10 +36,5 @@ object Keywords {
         "variant" to Token.Type.K_VARIANT,
         "alias" to Token.Type.K_ALIAS,
         "this" to Token.Type.K_THIS,
-//        "global" to Token.Type.K_GLOBAL
     )
-//    val literals = mapOf(
-//        "true" to Token.Type.L_TRUE_BOOL,
-//        "false" to Token.Type.L_FALSE_BOOL,
-//    )
 }

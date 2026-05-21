@@ -385,7 +385,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
      * Used for [visitVariableDecl] which uses this map to find all of the literal types and how they can match
      */
     private val variableBuiltinPrimitives = mapOf(
-        StringLiteral::class to { type: String -> type == "String" },
+        StringLiteral::class to { type: String -> type == "String" || type == "Str" },
         IntegerLiteral::class to { type: String -> type == "Int32" || type == "Int64" },
         FloatLiteral::class to { type: String -> type == "Float32" || type == "Float64" },
     )
@@ -673,17 +673,35 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     private fun runIntrinsicsIfPresent(node: ASTNode) {
         try {
             if (!::context.isInitialized) return
-            val present = try {
-                context.isIntrinsified(node)
+            val intrinsicsToApply = try {
+                if (context.isIntrinsified(node)) {
+                    context.intrinsicsOf(node).toList()
+                } else {
+                    node.attachedIntrinsics
+                }
             } catch (_: Exception) {
-                node.attachedIntrinsics.isNotEmpty()
+                node.attachedIntrinsics
             }
-            if (!present) return
-            for (intrinsic in node.attachedIntrinsics) {
+            if (intrinsicsToApply.isEmpty()) return
+            for (intrinsic in intrinsicsToApply) {
                 val srcLoc = try {
                     SourceLocation.fromPosition(context.relativeOriginOf(node), context.file)
                 } catch (_: Exception) {
                     SourceLocation.bakedIn()
+                }
+                val isValidTarget = intrinsic.validTargets.any { validTarget ->
+                    validTarget.java.isAssignableFrom(node::class.java)
+                }
+                if (!isValidTarget) {
+                    diagnosticsPump.add(
+                        Diagnostics.recordPanic(
+                            "IntrinsicApplication",
+                            "The intrinsic '@${intrinsic.name}' cannot be applied to ${node::class.simpleName}",
+                            location = srcLoc.toPosition(),
+                            context = context
+                        )
+                    )
+                    continue
                 }
                 val invocation = IntrinsicExpr(
                     intrinsic,

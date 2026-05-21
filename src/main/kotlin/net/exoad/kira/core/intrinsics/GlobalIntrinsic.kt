@@ -44,7 +44,6 @@ object GlobalIntrinsic : CompilerIntrinsic(
         compilationUnit: CompilationUnit,
         context: SourceContext
     ): ASTNode {
-        println("AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHU JVCHVUICXUIVXCUUIVHCUIVHVICUVX")
         // TODO: lift the identifier to the top of the scope stack
         if (target is VariableDecl) {
             compilationUnit.symbolTable.declareGlobal(

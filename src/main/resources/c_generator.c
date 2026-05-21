@@ -1,5 +1,8 @@
-typedef int KInt;
-typedef long KLong;
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef int32_t KInt;
+typedef int64_t KLong;
 typedef char KChar;
 typedef float KFloat;
 typedef double KDouble;

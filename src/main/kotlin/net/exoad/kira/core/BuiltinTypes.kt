@@ -58,7 +58,9 @@ object BuiltinTypes {
      * Has always the highest implicit precedence value
      */
     val sequenceTypes = mapOf(
+        "Str" to arrayOf(Token.Type.L_STRING),
         "String" to arrayOf(Token.Type.L_STRING),
+        "Arr" to arrayOf(Token.Type.X_ANY),
         "Array" to arrayOf(Token.Type.X_ANY),
         "Map" to arrayOf(Token.Type.X_ANY),
         "List" to arrayOf(Token.Type.X_ANY),
@@ -70,8 +72,11 @@ object BuiltinTypes {
      *
      * Has the same implicit precedence as integer types
      */
+    val booleanTypes = mapOf(
+        "Bool" to arrayOf(Token.Type.X_ANY)
+    )
 
     fun allBuiltinTypes(): Map<String, Array<Token.Type>> {
-        return integerTypes + sequenceTypes + unitTypes + referenceTypes
+        return integerTypes + floatTypes + booleanTypes + sequenceTypes + unitTypes + referenceTypes
     }
 }

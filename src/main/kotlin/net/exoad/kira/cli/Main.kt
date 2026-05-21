@@ -9,9 +9,10 @@ import net.exoad.kira.compiler.analysis.semantic.SemanticScope
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraParser
+import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
+import net.exoad.kira.kim.DependencyResolver
 import net.exoad.kira.kim.ManifestLoader
 import net.exoad.kira.kim.ManifestValidator
 import net.exoad.kira.kim.ProjectManifest
@@ -37,12 +38,19 @@ fun main() {
 //        Diagnostics.silenceDiagnostics()
         val projectRoot: Path = Paths.get(".").toAbsolutePath().normalize()
         var manifest: ProjectManifest? = null
-        val manifestPath = listOf("kira.toml")
-            .map { projectRoot.resolve(it) }
-            .firstOrNull { it.toFile().exists() }
-        if (manifestPath != null) {
+        val yamlManifestPath = projectRoot.resolve("kira.yaml")
+        val legacyTomlPath = projectRoot.resolve("kira.toml")
+
+        if (!Files.exists(yamlManifestPath) && Files.exists(legacyTomlPath)) {
+            Diagnostics.panic(
+                "Detected legacy 'kira.toml'. KIM TOML manifests were removed. " +
+                    "Please migrate to 'kira.yaml' with keys: project.name, srcDir, build.target, compiler.emitIr, dependencies.<name>.path"
+            )
+        }
+
+        if (Files.exists(yamlManifestPath)) {
             try {
-                manifest = ManifestLoader.loadFromPath(manifestPath)
+                manifest = ManifestLoader.loadFromPath(yamlManifestPath)
                 val issues = ManifestValidator.validate(manifest, projectRoot)
                 if (issues.isNotEmpty()) {
                     issues.forEach { issue ->
@@ -51,159 +59,30 @@ fun main() {
                     Diagnostics.panic("Manifest validation failed. See warnings above.")
                 }
 
-                Diagnostics.Logging.info("Kira", "Loaded project manifest from $manifestPath")
-                val stdlibEntries = mutableListOf<String>()
-                if (manifest.dependencies.isNotEmpty()) {
-                    manifest.dependencies.forEach { (_, spec) ->
-                        if (spec.path != null) {
-                            var depPath = projectRoot.resolve(spec.path).normalize()
-                            if (!Files.exists(depPath)) {
-                                val parent = projectRoot.parent
-                                if (parent != null) {
-                                    val alt = parent.resolve(spec.path).normalize()
-                                    if (Files.exists(alt)) depPath = alt
-                                }
-                            }
-                            if (Files.exists(depPath)) {
-                                if (Files.isRegularFile(depPath) && depPath.toString().endsWith(".kira")) {
-                                    stdlibEntries.add(depPath.toAbsolutePath().toString())
-                                } else if (Files.isDirectory(depPath)) {
-                                    val depManifestPath = depPath.resolve("kira.toml")
-                                    if (Files.exists(depManifestPath)) {
-                                        try {
-                                            val depManifest = ManifestLoader.loadFromPath(depManifestPath)
-                                            depManifest.workspace.src.forEach { pattern ->
-                                                val srcPath = depPath.resolve(pattern).normalize()
-                                                if (srcPath.toFile().exists()) {
-                                                    if (srcPath.toFile().isFile) {
-                                                        stdlibEntries.add(srcPath.toAbsolutePath().toString())
-                                                    } else if (srcPath.toFile().isDirectory) {
-                                                        Files.walk(srcPath).use { stream ->
-                                                            stream.filter {
-                                                                Files.isRegularFile(it) && it.toString()
-                                                                    .endsWith(".kira")
-                                                            }.forEach {
-                                                                stdlibEntries.add(
-                                                                    it.toAbsolutePath().toString()
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        } catch (_: Exception) {
-                                            Files.walk(depPath).use { stream ->
-                                                stream.filter {
-                                                    Files.isRegularFile(it) && it.toString().endsWith(".kira")
-                                                }.forEach { stdlibEntries.add(it.toAbsolutePath().toString()) }
-                                            }
-                                        }
-                                    } else {
-                                        Files.walk(depPath).use { stream ->
-                                            stream.filter {
-                                                Files.isRegularFile(it) && it.toString().endsWith(".kira")
-                                            }.forEach { stdlibEntries.add(it.toAbsolutePath().toString()) }
-                                        }
-                                    }
-                                }
-                            }
-                        } else if (spec.registry == "kira") {
-                            val kiraDir = projectRoot.resolve("kira").normalize()
-                            if (Files.exists(kiraDir) && Files.isDirectory(kiraDir)) {
-                                Files.walk(kiraDir).use { stream ->
-                                    stream.filter {
-                                        Files.isRegularFile(it) && it.toString().endsWith(".kira")
-                                    }.forEach { stdlibEntries.add(it.toAbsolutePath().toString()) }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (stdlibEntries.isEmpty()) {
-                    stdlibEntries.addAll(Public.Builtin.discoverLegacyKiraFolder())
-                }
-                Public.Builtin.intrinsicalStandardLibrarySources = stdlibEntries.distinct().sorted().toTypedArray()
-                if (manifest.build.target.isNotEmpty()) {
-                    when (manifest.build.target.lowercase()) {
-                        "c", "native" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.C
-                        "neko" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NEKO
-                        "none" -> {}
-                        else -> Diagnostics.Logging.warn(
-                            "Kira",
-                            "Unknown build target '${manifest.build.target}', ignoring."
-                        )
-                    }
+                Diagnostics.Logging.info("Kira", "Loaded project config from $yamlManifestPath")
+
+                when (manifest.build.target.lowercase()) {
+                    "c", "native" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.C
+                    "neko" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NEKO
+                    "none" -> {}
                 }
             } catch (e: Exception) {
-                Diagnostics.panic("Failed to load manifest from $manifestPath: ${e.message}")
+                Diagnostics.panic("Failed to load project config from $yamlManifestPath: ${e.message}")
             }
-        }
-        val dumpSB = if (manifest?.build?.emitIR != null) StringBuilder() else null
-        val workspaceSources: Array<String> = if (manifest != null) {
-            val resolvedSources = mutableListOf<String>()
-            if (manifest.workspace.entry != null) {
-                val entryPath = projectRoot.resolve(manifest.workspace.entry).normalize()
-                if (entryPath.toFile().exists()) {
-                    resolvedSources.add(entryPath.toString())
-                } else {
-                    Diagnostics.Logging.warn(
-                        "Kira",
-                        "Entry point '${manifest.workspace.entry}' not found, skipping."
-                    )
-                }
-            }
-            manifest.workspace.src.forEach { srcPattern ->
-                val srcPath = projectRoot.resolve(srcPattern).normalize()
-                if (srcPath.toFile().exists()) {
-                    if (srcPath.toFile().isFile) {
-                        resolvedSources.add(srcPath.toString())
-                    } else if (srcPath.toFile().isDirectory) {
-                        Files.walk(srcPath).use { stream ->
-                            stream.filter {
-                                Files.isRegularFile(it) && it.toString().endsWith(".kira")
-                            }.forEach { resolvedSources.add(it.toString()) }
-                        }
-                    }
-                } else {
-                    val parent = if (srcPattern.contains("/") || srcPattern.contains("\\")) {
-                        projectRoot.resolve(srcPattern.substringBeforeLast("/"))
-                    } else {
-                        projectRoot
-                    }
-                    if (parent.toFile().exists() && parent.toFile().isDirectory) {
-                        Files.walk(parent, 1).use { stream ->
-                            stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kira") }
-                                .forEach { resolvedSources.add(it.toString()) }
-                        }
-                    }
-                }
-            }
-            if (resolvedSources.isEmpty()) {
-                Diagnostics.Logging.warn(
-                    "Kira",
-                    "No source files found in workspace, falling back to searching project directory for .kira files."
-                )
-                // fallthrough to project-wide discovery below
-            }
-            resolvedSources.distinct().toTypedArray()
-        } else {
-            // No manifest: search the project root for .kira files
-            val resolved = mutableListOf<String>()
-            try {
-                Files.walk(projectRoot).use { stream ->
-                    stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kira") }
-                        .forEach { resolved.add(it.toString()) }
-                }
-            } catch (_: Exception) {
-            }
-            resolved.distinct().toTypedArray()
         }
 
+        val stdlibEntries = DependencyResolver.resolveDependencySources(manifest, projectRoot).toMutableList()
+        if (stdlibEntries.isEmpty()) {
+            stdlibEntries.addAll(Public.Builtin.discoverLegacyKiraFolder())
+        }
+        Public.Builtin.intrinsicalStandardLibrarySources = stdlibEntries.distinct().sorted().toTypedArray()
+        val dumpSB = if (manifest?.compiler?.emitIr != null) StringBuilder() else null
+        val workspaceSources: Array<String> = DependencyResolver.resolveProjectSources(manifest, projectRoot).toTypedArray()
         if (workspaceSources.isEmpty() && Public.Builtin.intrinsicalStandardLibrarySources.isEmpty()) {
-            Diagnostics.panic("No source files to compile. Please add sources to the workspace or provide a manifest (kira.toml).")
+            Diagnostics.panic("No source files to compile. Add .kira files to 'src' or configure 'kira.yaml'.")
         }
-
         val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *workspaceSources)
+        Diagnostics.Logging.info("Kira", "Parser backend: ${KiraSourceParsers.activeBackend().name.lowercase()}")
         dumpSB?.appendLine(
             "----------- Kira Processed Symbols Dump File -----------\nGenerated: ${Chronos.formatTimestamp()}\nTotal Source Files: ${sources.size}\nSources List: \n${
                 sources.joinToString(
@@ -211,7 +90,7 @@ fun main() {
                 ) { " $it" }
             }"
         )
-        val dumpFile = if (manifest?.build?.emitIR != null) File(manifest.build.emitIR) else null
+        val dumpFile = if (manifest?.compiler?.emitIr != null) File(manifest.compiler.emitIr) else null
         if (dumpFile?.exists() ?: false) {
             dumpFile.delete()
         }
@@ -249,12 +128,9 @@ fun main() {
                     dumpFile!!.appendText(dumpSB.toString())
                     dumpSB.clear() // save on memory (so not everything is in dumpSB): problematic for large projects
                 }
-                KiraParser(srcContext).parse()
+                KiraSourceParsers.from(srcContext).parse()
 
             }
-//            if (Public.flags["enableVisualView"]!!) {
-//                KiraVisualViewer(srcContext).also { it.run() }
-//            }
             Diagnostics.Logging.info("Kira", "Parsed ${file.name} in $duration")
             if (dumpSB != null) {
                 dumpSB.appendLine("    ############### AST XML '$sourceFile' ###############")
@@ -346,6 +222,10 @@ fun main() {
             dumpFile!!.appendText(dumpSB.toString())
             dumpSB.clear()
             Diagnostics.Logging.info("Kira", "Dumped processed symbols to ${dumpFile.path}.")
+        }
+
+        if (Public.flags["enableVisualView"] == true) {
+            net.exoad.kira.ui.KiraVisualViewer(compilationUnit, semanticAnalyzerResults).run()
         }
     }
     Diagnostics.Logging.info("Kira", "Everything took $duration")

@@ -1,0 +1,7 @@
+module "typed:status"
+
+pub enum BuildStatus {
+    READY,
+    RUNNING,
+    DONE
+}

@@ -1,0 +1,8 @@
+module "oop:service"
+
+use "oop:model"
+
+fx unitSquarePerimeter(): Int32 {
+    rect: Rectangle = Rectangle { Point { 0, 1 }, Point { 1, 0 } }
+    return rect.perimeter()
+}

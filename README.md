@@ -28,6 +28,32 @@ Quick pointers
 
 - Full language spec: `specifications/LanguageSpecifications.md`
 
+### Project Config (Simple)
+
+Kira now uses a single YAML project file named `kira.yaml`.
+
+Minimal example:
+
+```yaml
+project:
+    name: demo
+
+srcDir: src
+
+build:
+    target: c
+
+dependencies:
+    kira_stdlib:
+        path: ./kira
+```
+
+Notes:
+
+- `srcDir` is a single root directory scanned recursively for `.kira` files.
+- Dependencies are local path-based only (`dependencies.<name>.path`).
+- Legacy `kira.toml` manifests are no longer supported.
+
 ### Quick example
 
 ```kira

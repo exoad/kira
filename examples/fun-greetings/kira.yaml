@@ -1,0 +1,14 @@
+project:
+  name: fun-greetings-example
+
+srcDir: src
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.fun_greetings.txt
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

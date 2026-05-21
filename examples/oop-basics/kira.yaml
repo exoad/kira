@@ -1,0 +1,14 @@
+project:
+  name: oop-basics-example
+
+srcDir: src
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.oop.txt
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

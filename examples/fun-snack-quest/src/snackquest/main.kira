@@ -1,0 +1,14 @@
+module "snackquest:main"
+
+use "snackquest:snacks"
+use "snackquest:score"
+
+fx main(): Void {
+    level: Int32 = 2
+    reward: Str = snackName(level)
+    stars: Int32 = starsFor(level)
+
+    trace("Snack quest complete!")
+    trace(reward)
+    trace(stars)
+}

@@ -1,0 +1,14 @@
+project:
+  name: fun-pet-club-example
+
+srcDir: src
+
+build:
+  target: none
+
+compiler:
+  emitIr: dump_symbols.fun_pet_club.txt
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira
