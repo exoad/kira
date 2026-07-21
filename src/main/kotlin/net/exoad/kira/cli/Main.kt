@@ -1,6 +1,5 @@
 package net.exoad.kira.cli
 
-import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatMTAtomOneDarkIJTheme
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
@@ -16,24 +15,17 @@ import net.exoad.kira.kim.DependencyResolver
 import net.exoad.kira.kim.ManifestLoader
 import net.exoad.kira.kim.ManifestValidator
 import net.exoad.kira.kim.ProjectManifest
-import net.exoad.kira.ui.KiraVisualViewer
 import net.exoad.kira.utils.Chronos
 import net.exoad.kira.utils.EnglishUtils
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import javax.swing.UIManager
 import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.time.measureTimedValue
 
 fun main() {
-    try {
-        UIManager.setLookAndFeel(FlatMTAtomOneDarkIJTheme())
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
     val (_, duration) = measureTimedValue {
 //        Diagnostics.silenceDiagnostics()
         val projectRoot: Path = Paths.get(".").toAbsolutePath().normalize()
@@ -223,10 +215,7 @@ fun main() {
             dumpSB.clear()
             Diagnostics.Logging.info("Kira", "Dumped processed symbols to ${dumpFile.path}.")
         }
-
-        if (Public.flags["enableVisualView"] == true) {
-            net.exoad.kira.ui.KiraVisualViewer(compilationUnit, semanticAnalyzerResults).run()
-        }
     }
     Diagnostics.Logging.info("Kira", "Everything took $duration")
 }
+

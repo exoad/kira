@@ -1,0 +1,9 @@
+{
+  "subsystem": "portal-coord",
+  "pid": 16560,
+  "startedAt": "2026-07-21T22:01:46.853Z",
+  "repoRoot": "/Users/jmeng/Code/kira",
+  "mode": "server",
+  "socketPath": "/Users/jmeng/Code/kira/.ming/subsystems/portal-coord.sock",
+  "token": "2982c0bd-c1a8-4f55-ad67-d6c81e2ce3a5"
+}

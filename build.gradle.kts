@@ -16,16 +16,12 @@ version = "1.0-SNAPSHOT"
 repositories {
     mavenCentral()
 }
-val flatlafVersion = "3.6"
 
 dependencies {
     testImplementation(kotlin("test"))
     antlr("org.antlr:antlr4:4.13.2")
     implementation("org.antlr:antlr4-runtime:4.13.2")
     implementation("org.yaml:snakeyaml:2.2")
-    // flatlaf used for the internal editor ui
-    implementation("com.formdev:flatlaf:${flatlafVersion}")
-    implementation("com.formdev:flatlaf-intellij-themes:${flatlafVersion}")
 }
 
 tasks.generateGrammarSource {
