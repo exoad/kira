@@ -55,3 +55,5 @@ bin/
 # coverage
 /htmlReport
 /private
+# Ming local runtime (not part of Kira)
+.ming/
