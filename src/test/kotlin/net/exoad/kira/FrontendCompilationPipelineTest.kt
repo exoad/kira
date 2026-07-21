@@ -31,10 +31,10 @@ class FrontendCompilationPipelineTest {
         )
 
         assertNotNull(result.sourceContext.ast)
-        assertNotNull(result.semanticResults)
+        val semantics = assertNotNull(result.semanticResults)
         assertTrue(
-            result.semanticResults!!.isHealthy,
-            result.semanticResults!!.diagnostics.joinToString("\n") { it.message }
+            semantics.isHealthy,
+            semantics.diagnostics.joinToString("\n") { it.message }
         )
     }
 
@@ -67,10 +67,10 @@ class FrontendCompilationPipelineTest {
         )
 
         assertNotNull(result.sourceContext.ast)
-        assertNotNull(result.semanticResults)
+        val semantics = assertNotNull(result.semanticResults)
         assertTrue(
-            result.semanticResults!!.isHealthy,
-            result.semanticResults!!.diagnostics.joinToString("\n") { it.message }
+            semantics.isHealthy,
+            semantics.diagnostics.joinToString("\n") { it.message }
         )
         assertNotNull(result.compilationUnit.resolveSymbol("TestEnum"))
     }

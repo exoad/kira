@@ -148,6 +148,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (statement.expr is NoExpr) {
             return
         }
+        // Control-flow nodes (if/while/for/...) subclass Statement and override accept(),
+        // so they never arrive here as statement.expr. Only Expr-shaped payloads do.
         val isBlockLike = when (statement.expr) {
             is ClassDecl,
             is FunctionDecl,
@@ -156,10 +158,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             is TraitDecl,
             is VariantDecl,
             is TypeAliasDecl,
-            is IfSelectionStatement,
-            is WhileIterationStatement,
-            is DoWhileIterationStatement,
-            is ForIterationStatement,
             is TryExpr -> true
 
             else -> false
@@ -505,7 +503,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
         appendIndented("")
         val functionName = functionLikeName(functionDecl.name)
-        if (functionName == "main" && functionDecl.def.returnTypeSpecifier is Type && (functionDecl.def.returnTypeSpecifier.identifier as? Identifier)?.value == "Void") {
+        val returnsVoid =
+            (functionDecl.def.returnTypeSpecifier.identifier as? Identifier)?.value == "Void"
+        if (functionName == "main" && returnsVoid) {
             buffer.append("int")
         } else {
             functionDecl.def.returnTypeSpecifier.accept(this)

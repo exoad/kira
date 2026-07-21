@@ -1,8 +1,13 @@
 plugins {
     antlr
+    application
     kotlin("jvm") version "2.3.20"
     id("org.jetbrains.dokka") version "2.0.0"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.3.20"
+}
+
+application {
+    mainClass.set("net.exoad.kira.cli.MainKt")
 }
 
 group = "net.exoad"
@@ -59,6 +64,13 @@ tasks.compileTestKotlin {
 tasks.test {
     useJUnitPlatform()
 }
+
+// Compiler reads kira.yaml from the process working directory. Default the run
+// task at the in-repo sample project so `./gradlew run` works out of the box.
+tasks.named<JavaExec>("run") {
+    workingDir = rootProject.file("test_kira")
+}
+
 kotlin {
     jvmToolchain(17)
 }

@@ -102,7 +102,7 @@ class KiraVisualViewer(
         sourceCodePane.text = ctx.content
         sourceCodePane.caretPosition = 0
 
-        if (ctx.ast != null) {
+        if (ctx.hasAst()) {
             val rootNode = buildASTNode(ctx.ast, ctx, "Root")
             astTree.model = DefaultTreeModel(rootNode)
             expandLevel1(astTree)

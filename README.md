@@ -63,3 +63,31 @@ fx main(): Void {
     @trace("Hello, Kira!")
 }
 ```
+
+### Build & run
+
+Requires JDK 17+.
+
+```bash
+./gradlew test          # unit + pipeline smoke tests
+./gradlew run           # compile the in-repo sample at test_kira/
+./gradlew installDist   # package a runnable distribution under build/install/
+```
+
+`./gradlew run` uses `test_kira/` as the working directory (it has a sample
+`kira.yaml`). The compiler always reads `kira.yaml` from the process cwd, so to
+compile your own project either point a custom Gradle run config at that
+directory, or:
+
+```bash
+./gradlew installDist
+cd /path/to/your/kira/project   # directory containing kira.yaml
+/path/to/kira/build/install/kira_lang/bin/kira_lang
+```
+
+Optional parser backend override (default is the hand-written legacy parser):
+
+```bash
+KIRA_PARSER=antlr ./gradlew run
+# or: -Dkira.parser=antlr
+```

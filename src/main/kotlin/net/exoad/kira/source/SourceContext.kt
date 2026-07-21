@@ -31,6 +31,10 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
      */
     private lateinit var moduleUri: String
 
+    fun hasAst(): Boolean {
+        return ::ast.isInitialized
+    }
+
     fun getModuleUri(): String {
         if (!::ast.isInitialized) {
             Diagnostics.panic("Failed to acquire module_uri for '$file' because the AST was not loaded yet!")
