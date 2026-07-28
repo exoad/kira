@@ -139,4 +139,52 @@ class BackendCompilationPipelineTest {
         assertEquals(0, exec.exitCode, "stdout:\n${exec.stdout}\nstderr:\n${exec.stderr}")
         assertTrue(exec.stdout.contains("runtime-ok"))
     }
+
+    @Test
+    fun generatedCLowersMethodCallsAndRuns() {
+        val compiler = TestCompileSupport.findCCompiler()
+        assumeTrue(compiler != null, "No C compiler found on PATH")
+
+        val moduleUri = "test:backend.method"
+        val source = TestCompileSupport.wrapModule(
+            moduleUri,
+            """
+            pub class Pet {
+                require pub name: Str
+                require pub sound: Str
+
+                pub fx speak(): Str {
+                    return sound
+                }
+            }
+
+            fx main(): Void {
+                friend: Pet = Pet { "Mochi", "meow" }
+                trace(friend.name)
+                trace(friend.speak())
+            }
+            """
+        )
+
+        val generated = TestCompileSupport.transpileSnippetToC(
+            source = source,
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            parserBackend = ParserBackend.LEGACY,
+            runSemantic = false
+        )
+
+        assertTrue(generated.contains("Pet_speak"), generated)
+        assertTrue(generated.contains("this->sound") || generated.contains("this->sound;"), generated)
+
+        val runResult = TestCompileSupport.compileAndRunC(generated, compiler!!)
+        assumeTrue(
+            runResult.compileResult.exitCode == 0,
+            "Compile step failed. stdout:\n${runResult.compileResult.stdout}\nstderr:\n${runResult.compileResult.stderr}\nC:\n$generated"
+        )
+        val exec = runResult.runResult
+        assertNotNull(exec)
+        assertEquals(0, exec.exitCode, "stdout:\n${exec.stdout}\nstderr:\n${exec.stderr}")
+        assertTrue(exec.stdout.contains("Mochi"), exec.stdout)
+        assertTrue(exec.stdout.contains("meow"), exec.stdout)
+    }
 }

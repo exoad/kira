@@ -51,9 +51,22 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
     /** Simple name -> Kira type name for print-format heuristics in the current unit. */
     private val knownValueTypes = mutableMapOf<String, String>()
+    /**
+     * Class methods lowered as free functions: mangledName -> return type.
+     * Call site: `recv.method(args)` becomes `Class_method(&recv, args)`.
+     */
+    private val methodReturnTypes = mutableMapOf<String, String>()
+    /** Simple method name -> list of (className, mangledName) for call-site resolution. */
+    private val methodsBySimpleName = mutableMapOf<String, MutableList<Pair<String, String>>>()
+    /** Class field name -> field type (best-effort; last writer wins on collisions). */
+    private val fieldTypes = mutableMapOf<String, String>()
     private var indentLevel = 0
     private var currentModuleUri: String? = null
     private var emittingClassMembers = false
+    /** When emitting a method body, the receiver type name (for bare field refs). */
+    private var currentMethodClass: String? = null
+    /** True while emitting the `.member` side of MemberAccess -- no this-> rewrite. */
+    private var suppressThisRewrite = false
 
     /**
      * One-shot emit of the whole compilation unit into [outputPath].
@@ -83,15 +96,20 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // Collected while walking; prepended after the walk.
         val bodyStart = buffer.length
 
-        // Forward-declare every non-magic free function so multi-module emit
-        // order does not matter for C (definitions may appear after calls).
+        // 1) Forward-declare structs
+        // 2) Emit full struct + enum bodies (complete types before prototypes)
+        // 3) Forward-declare free functions + methods
+        // 4) Emit everything else -- classes/enums already emitted
+        emitStructForwardDecls()
+        emitStructBodies()
+        emitEnumBodies()
         emitFunctionPrototypes()
 
         compilationUnit.allSources().forEach { source ->
             if (shouldSkipSource(source)) {
                 return@forEach
             }
-            visitRootASTNode(source.ast)
+            visitRootASTNodeSkippingTypes(source.ast)
         }
 
         if (requiredIncludes.isNotEmpty()) {
@@ -109,6 +127,71 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return buffer.toString()
     }
 
+    private fun eachClassDecl(action: (ClassDecl) -> Unit) {
+        compilationUnit.allSources().forEach { source ->
+            if (shouldSkipSource(source)) return@forEach
+            source.ast.statements.forEach { stmt ->
+                val expr: Any? = when (stmt) {
+                    is ClassDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                if (expr is ClassDecl && !isMagicDecl(expr)) {
+                    action(expr)
+                }
+            }
+        }
+    }
+
+    private fun emitStructForwardDecls() {
+        val names = linkedSetOf<String>()
+        eachClassDecl { names.add(typeNameOf(it.name)) }
+        if (names.isEmpty()) return
+        names.forEach { name ->
+            buffer.appendLine("typedef struct $name $name;")
+        }
+        buffer.appendLine()
+    }
+
+    private fun emitStructBodies() {
+        eachClassDecl { visitClassDecl(it) }
+    }
+
+    private fun eachEnumDecl(action: (EnumDecl) -> Unit) {
+        compilationUnit.allSources().forEach { source ->
+            if (shouldSkipSource(source)) return@forEach
+            source.ast.statements.forEach { stmt ->
+                val expr: Any? = when (stmt) {
+                    is EnumDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                if (expr is EnumDecl && !isMagicDecl(expr)) {
+                    action(expr)
+                }
+            }
+        }
+    }
+
+    private fun emitEnumBodies() {
+        eachEnumDecl { visitEnumDecl(it) }
+    }
+
+    private fun visitRootASTNodeSkippingTypes(node: RootASTNode) {
+        node.statements.forEach { stmt ->
+            val expr: Any? = when (stmt) {
+                is ClassDecl, is EnumDecl -> stmt
+                is Statement -> stmt.expr
+                else -> stmt
+            }
+            if (expr is ClassDecl || expr is EnumDecl) {
+                // Already emitted in emitStructBodies / emitEnumBodies
+                return@forEach
+            }
+            stmt.accept(this)
+        }
+    }
+
     private fun emitFunctionPrototypes() {
         val prototypes = linkedSetOf<String>()
         compilationUnit.allSources().forEach { source ->
@@ -122,13 +205,43 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun collectFunctionPrototypes(node: RootASTNode, out: MutableSet<String>) {
         node.statements.forEach { stmt ->
-            val decl: FunctionDecl? = when (stmt) {
+            val expr: Any? = when (stmt) {
                 is FunctionDecl -> stmt
-                is Statement -> stmt.expr as? FunctionDecl
+                is ClassDecl -> stmt
+                is Statement -> stmt.expr
                 else -> null
             }
-            if (decl != null && !isMagicDecl(decl)) {
-                out.add(functionPrototypeLine(decl))
+            when (expr) {
+                is FunctionDecl -> {
+                    if (!isMagicDecl(expr)) {
+                        out.add(functionPrototypeLine(expr))
+                    }
+                }
+                is ClassDecl -> {
+                    if (isMagicDecl(expr)) return@forEach
+                    val className = typeNameOf(expr.name)
+                    // Register fields early for print-format / method body rewriting
+                    expr.members.filterIsInstance<VariableDecl>().forEach { field ->
+                        fieldTypes[field.name.value] = typeNameOf(field.type)
+                    }
+                    expr.members.filterIsInstance<FunctionDecl>().forEach { method ->
+                        if (method.isStub()) return@forEach
+                        val methodName = functionLikeName(method.name)
+                        val returnTypeName = typeNameOf(method.def.returnTypeSpecifier)
+                        val mangled = registerMethod(className, methodName, returnTypeName)
+                        val params = buildString {
+                            append(className)
+                            append("* this")
+                            method.def.parameters.forEach { param ->
+                                append(", ")
+                                append(mapTypeName(typeNameOf(param.typeSpecifier)))
+                                append(" ")
+                                append(param.name.value)
+                            }
+                        }
+                        out.add("${mapTypeName(returnTypeName)} $mangled($params);")
+                    }
+                }
             }
         }
     }
@@ -255,9 +368,52 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.clear()
         requiredIncludes.clear()
         knownValueTypes.clear()
+        methodReturnTypes.clear()
+        methodsBySimpleName.clear()
+        fieldTypes.clear()
         indentLevel = 0
         currentModuleUri = null
         emittingClassMembers = false
+        currentMethodClass = null
+        suppressThisRewrite = false
+    }
+
+    private fun mangleMethodName(className: String, methodName: String): String {
+        return "${className}_$methodName"
+    }
+
+    private fun registerMethod(className: String, methodName: String, returnType: String): String {
+        val mangled = mangleMethodName(className, methodName)
+        methodReturnTypes[mangled] = returnType
+        methodsBySimpleName.getOrPut(methodName) { mutableListOf() }.add(className to mangled)
+        knownValueTypes[mangled] = returnType
+        return mangled
+    }
+
+    private fun resolveMethodMangled(methodName: String, receiverType: String?): String? {
+        val candidates = methodsBySimpleName[methodName] ?: return null
+        if (receiverType != null) {
+            candidates.firstOrNull { it.first == receiverType }?.let { return it.second }
+        }
+        // Single candidate: unambiguous even without receiver type.
+        if (candidates.size == 1) return candidates[0].second
+        return null
+    }
+
+    private fun receiverTypeOf(expr: Expr): String? {
+        return when (expr) {
+            is Identifier -> knownValueTypes[expr.value]
+            is MemberAccessExpr -> {
+                // nested.field -- look up field type if known
+                val memberName = (expr.member as? Identifier)?.value
+                memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName]
+            }
+            is FunctionCallExpr -> {
+                val name = functionLikeName(expr.name)
+                knownValueTypes[name] ?: methodReturnTypes[name]
+            }
+            else -> null
+        }
     }
 
     override fun toString(): String {
@@ -446,13 +602,26 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             is FloatLiteral -> "%f"
             is IntegerLiteral -> "%d"
             is FunctionCallExpr -> {
-                val ret = knownValueTypes[functionLikeName(expr.name)]
-                formatForTypeName(ret)
+                // Method call: name is MemberAccess
+                val nameExpr = expr.name
+                if (nameExpr is MemberAccessExpr) {
+                    val methodName = (nameExpr.member as? Identifier)?.value
+                    val recvType = receiverTypeOf(nameExpr.origin)
+                    val mangled = methodName?.let { resolveMethodMangled(it, recvType) }
+                    formatForTypeName(mangled?.let { methodReturnTypes[it] })
+                } else {
+                    val ret = knownValueTypes[functionLikeName(expr.name)]
+                    formatForTypeName(ret)
+                }
+            }
+            is MemberAccessExpr -> {
+                val memberName = (expr.member as? Identifier)?.value
+                formatForTypeName(memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName])
             }
             is Identifier -> {
                 when (expr.value) {
                     "true", "false" -> "%d"
-                    else -> formatForTypeName(knownValueTypes[expr.value])
+                    else -> formatForTypeName(knownValueTypes[expr.value] ?: fieldTypes[expr.value])
                 }
             }
             else -> "%d"
@@ -509,7 +678,30 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
-        val rawName = functionLikeName(functionCallExpr.name)
+        val nameExpr = functionCallExpr.name
+        // Method call: receiver.method(args) -> Class_method(&receiver, args)
+        if (nameExpr is MemberAccessExpr) {
+            val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
+            val recvType = receiverTypeOf(nameExpr.origin)
+            val mangled = resolveMethodMangled(methodName, recvType) ?: methodName
+            buffer.append(mangled)
+            buffer.append("(")
+            // Receiver by pointer for mutable field access in method bodies.
+            buffer.append("&")
+            nameExpr.origin.accept(this)
+            functionCallExpr.positionalParameters.forEach { param ->
+                buffer.append(", ")
+                param.value.accept(this)
+            }
+            functionCallExpr.namedParameters.forEach { param ->
+                buffer.append(", ")
+                param.value.accept(this)
+            }
+            buffer.append(")")
+            return
+        }
+
+        val rawName = functionLikeName(nameExpr)
         val args = buildList {
             functionCallExpr.positionalParameters.forEach { add(it.value) }
             functionCallExpr.namedParameters.forEach { add(it.value) }
@@ -579,8 +771,31 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             }
         }
         origin.accept(this)
+        // Baseline: receivers are values/locals, so "." is correct.
+        // Member side must not get this-> rewriting (nested.field stays .field).
         buffer.append(".")
+        val prev = suppressThisRewrite
+        suppressThisRewrite = true
         member.accept(this)
+        suppressThisRewrite = prev
+    }
+
+    override fun visitIdentifier(identifier: Identifier) {
+        val name = identifier.value
+        // Inside a method body, bare field names become this->field.
+        // Skip when we are already emitting the member side of a MemberAccess
+        // (nested.field must stay ".field", not ".this->field").
+        val cls = currentMethodClass
+        if (cls != null &&
+            !suppressThisRewrite &&
+            fieldTypes.containsKey(name) &&
+            !knownValueTypes.containsKey(name)
+        ) {
+            buffer.append("this->")
+            buffer.append(name)
+            return
+        }
+        buffer.append(name)
     }
 
     override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
@@ -711,25 +926,23 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.append(mapTypeName(typeNameOf(type)))
     }
 
-    override fun visitIdentifier(identifier: Identifier) {
-        buffer.append(identifier.value)
-    }
-
     override fun visitVariableDecl(variableDecl: VariableDecl) {
         if (isMagicDecl(variableDecl)) {
             return
         }
         val typeName = typeNameOf(variableDecl.type)
-        knownValueTypes[variableDecl.name.value] = typeName
         if (emittingClassMembers) {
+            fieldTypes[variableDecl.name.value] = typeName
             // Field only -- no initializer inside struct
             appendIndented("")
             variableDecl.type.accept(this)
             buffer.append(" ")
-            variableDecl.name.accept(this)
+            // Field names must not go through this-> rewriting
+            buffer.append(variableDecl.name.value)
             buffer.appendLine(";")
             return
         }
+        knownValueTypes[variableDecl.name.value] = typeName
         appendIndented("")
         variableDecl.type.accept(this)
         buffer.append(" ")
@@ -799,10 +1012,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
         val className = typeNameOf(classDecl.name)
-        // Fields only -- methods are free functions later (baseline)
         val fields = classDecl.members.filterIsInstance<VariableDecl>()
+        val methods = classDecl.members.filterIsInstance<FunctionDecl>()
 
-        appendIndented("typedef struct ")
+        // Forward decl already emitted `typedef struct Class Class;`.
+        // Define the body with a tagged struct so the typedef alias completes.
+        appendIndented("struct ")
         buffer.append(className)
         buffer.appendLine()
         appendIndentedLine("{")
@@ -816,10 +1031,45 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             emittingClassMembers = false
         }
         indentLevel--
-        appendIndented("} ")
-        buffer.append(className)
-        buffer.appendLine(";")
+        appendIndentedLine("};")
         buffer.appendLine()
+
+        // Lower methods as free functions: Ret Class_method(Class* this, ...)
+        methods.forEach { method ->
+            if (method.isStub()) return@forEach
+            val methodName = functionLikeName(method.name)
+            val returnTypeName = typeNameOf(method.def.returnTypeSpecifier)
+            val mangled = registerMethod(className, methodName, returnTypeName)
+
+            appendIndented("")
+            buffer.append(mapTypeName(returnTypeName))
+            buffer.append(" ")
+            buffer.append(mangled)
+            buffer.append("(")
+            buffer.append(className)
+            buffer.append("* this")
+            method.def.parameters.forEach { param ->
+                buffer.append(", ")
+                param.accept(this)
+            }
+            buffer.appendLine(")")
+            appendIndentedLine("{")
+            indentLevel++
+            // Parameters are locals for this body
+            method.def.parameters.forEach { param ->
+                knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            }
+            currentMethodClass = className
+            method.def.body?.forEach { it.accept(this) }
+            currentMethodClass = null
+            // Drop param locals so they don't leak
+            method.def.parameters.forEach { param ->
+                knownValueTypes.remove(param.name.value)
+            }
+            indentLevel--
+            appendIndentedLine("}")
+            buffer.appendLine()
+        }
     }
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {

@@ -73,17 +73,56 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     fun validateAST(): SemanticAnalyzerResults {
         try {
+            // Pass 1: declare every module and its top-level types/functions so
+            // later `use` imports can see them regardless of source file order.
             for (source in compilationUnit.allSources()) {
                 context = source
-                // enter a module scope for this source so declarations have a place to be stored
                 val moduleName = try {
                     context.getModuleUri()
                 } catch (_: Exception) {
                     "(unknown):(unknown)"
                 }
                 compilationUnit.symbolTable.enter(SemanticScope.Module(moduleName))
-                // process the AST - keep module scopes alive so symbols persist for the entire compilation
                 source.ast.accept(this)
+            }
+
+            // Pass 2: re-apply `use` imports now that every module scope exists.
+            // Type-not-found diagnostics from pass 1 that become resolvable after
+            // import are filtered out below.
+            for (source in compilationUnit.allSources()) {
+                context = source
+                val moduleName = try {
+                    context.getModuleUri()
+                } catch (_: Exception) {
+                    continue
+                }
+                val moduleFrame = compilationUnit.symbolTable.findScope(SemanticScope.Module(moduleName))
+                    ?: continue
+                source.ast.statements.forEach { node ->
+                    // UseStatement is itself a Statement; root lists hold them directly.
+                    val use = node as? UseStatement ?: return@forEach
+                    val foreign = compilationUnit.symbolTable.findScope(
+                        SemanticScope.Module(use.uri.value)
+                    ) ?: return@forEach
+                    foreign.symbols.values
+                        .filter {
+                            it.relativelyVisible && (
+                                it.kind == SemanticSymbolKind.TYPE_SPECIFIER ||
+                                    it.kind == SemanticSymbolKind.TYPE_ALIAS
+                                )
+                        }
+                        .forEach { symbol ->
+                            moduleFrame.symbols.putIfAbsent(symbol.name, symbol)
+                        }
+                }
+            }
+
+            // Drop "type not found" diagnostics that are now resolvable after imports.
+            diagnosticsPump.removeAll { diag ->
+                val match = Regex("The type '([^']+)' was not found").find(diag.message)
+                    ?: return@removeAll false
+                val typeName = match.groupValues[1]
+                compilationUnit.symbolTable.any { frame -> frame.symbols.containsKey(typeName) }
             }
         } catch (e: Exception) {
             // choose a context to attach the diagnostic to; prefer the current one if available
@@ -229,7 +268,26 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitUseStatement(useStatement: UseStatement) {
-        // TODO("Not yet implemented")
+        // Import public type symbols from the named module into the current module scope.
+        // Baseline: only TYPE_SPECIFIER / TYPE_ALIAS / enums that were marked relativelyVisible.
+        val uri = useStatement.uri.value
+        val foreignModule = compilationUnit.symbolTable.findScope(SemanticScope.Module(uri))
+        if (foreignModule == null) {
+            // Module may not have been analyzed yet (source order). Soft-skip:
+            // a later multipass would fix this; for now record nothing so we do
+            // not block emit on ordering. Types still fail if truly missing.
+            return
+        }
+        foreignModule.symbols.values
+            .filter { it.relativelyVisible && (
+                it.kind == SemanticSymbolKind.TYPE_SPECIFIER ||
+                    it.kind == SemanticSymbolKind.TYPE_ALIAS
+                ) }
+            .forEach { symbol ->
+                // Re-declare into the current module scope (top of stack under any function).
+                // declare() no-ops on collision, which is fine.
+                compilationUnit.symbolTable.declare(symbol.name, symbol)
+            }
     }
 
     override fun visitBreakStatement(breakStatement: BreakStatement) {

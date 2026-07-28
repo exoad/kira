@@ -52,6 +52,9 @@ bin/
 **.n
 **.kira.xml
 **.kira.c
+# IR / symbol dumps from compiler.emitIr (examples and local runs)
+**/dump_symbols*.txt
+dump_symbols*.txt
 # coverage
 /htmlReport
 /private
