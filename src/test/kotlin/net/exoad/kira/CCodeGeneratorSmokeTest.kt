@@ -40,15 +40,18 @@ class CCodeGeneratorSmokeTest {
 
             KiraSourceParsers.from(srcWithTokens).parse()
 
-            val generator = KiraCCodeGenerator(cu)
-            generator.visitRootASTNode(srcWithTokens.ast)
-            val output = generator.toString()
+            val output = KiraCCodeGenerator(cu).emitToString()
 
-            assertTrue(output.contains("typedef int32_t KInt;"))
-            assertTrue(output.contains("KInt x = 10;"))
-            assertTrue(output.contains("KInt add(KInt a, KInt b)"))
-            assertTrue(output.contains("#include <stdio.h>"))
-            assertTrue(output.contains("printf(z);"))
+            assertTrue(output.contains("typedef int32_t Int32;"), output)
+            assertTrue(output.contains("Int32 x = 10;"), output)
+            assertTrue(output.contains("Int32 add(Int32 a, Int32 b)"), output)
+            assertTrue(output.contains("#include <stdio.h>"), output)
+            assertTrue(
+                output.contains("print(\"%d\\n\", z)") ||
+                    output.contains("print(\"%d\", z)") ||
+                    output.contains("print(z)"),
+                output
+            )
         } finally {
             if (previous == null) {
                 System.clearProperty("kira.parser")

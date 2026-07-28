@@ -26,7 +26,7 @@ import kotlin.math.log10
 import kotlin.time.measureTimedValue
 
 fun main() {
-    val (_, duration) = measureTimedValue {
+    val result = measureTimedValue {
 //        Diagnostics.silenceDiagnostics()
         val projectRoot: Path = Paths.get(".").toAbsolutePath().normalize()
         var manifest: ProjectManifest? = null
@@ -140,19 +140,14 @@ fun main() {
                 dumpFile.appendText(dumpSB.toString())
                 dumpSB.clear()
             }
-            when (GeneratedProvider.outputMode) {
-                GeneratedProvider.OutputTarget.C -> {
-                    Diagnostics.Logging.info("Kira", "Outputting to 'target C'")
-                    KiraCCodeGenerator(compilationUnit).generate()
-                }
-
-                else -> {}
-            }
         }
+
+        // Semantics before any backend emit so bad programs do not produce half-written C.
         val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
         val semanticAnalyzerResults = semanticAnalyzer.validateAST()
-        if (semanticAnalyzerResults.diagnostics.isNotEmpty()) {
-            repeat(semanticAnalyzerResults.diagnostics.size) {
+        val diagnosticCount = semanticAnalyzerResults.diagnostics.size
+        if (diagnosticCount > 0) {
+            repeat(diagnosticCount) {
                 Diagnostics.Logging.warn(
                     "Kira",
                     "\n-- Diagnostic Report #${it + 1} ${
@@ -164,13 +159,14 @@ fun main() {
             }
             Diagnostics.Logging.info(
                 "Kira",
-                "** Found ${semanticAnalyzerResults.diagnostics.size} issues. See the diagnostic${
-                    EnglishUtils.getPluralSuffix(
-                        semanticAnalyzerResults.diagnostics.size
-                    )
+                "** Found $diagnosticCount issue${
+                    EnglishUtils.getPluralSuffix(diagnosticCount)
+                }. See the diagnostic${
+                    EnglishUtils.getPluralSuffix(diagnosticCount)
                 } above."
             )
         }
+
         if (dumpSB != null) {
             dumpSB.appendLine("############### CANON SYMBOL TABLE ###############")
             dumpSB.appendLine("Total Symbols: ${compilationUnit.symbolTable.totalSymbols()}")
@@ -215,7 +211,32 @@ fun main() {
             dumpSB.clear()
             Diagnostics.Logging.info("Kira", "Dumped processed symbols to ${dumpFile.path}.")
         }
+
+        // Backend emit only after a clean semantic pass.
+        if (diagnosticCount == 0) {
+            when (GeneratedProvider.outputMode) {
+                GeneratedProvider.OutputTarget.C -> {
+                    Diagnostics.Logging.info("Kira", "Outputting to 'target C' -> out.kira.c")
+                    KiraCCodeGenerator(compilationUnit).generate()
+                }
+
+                else -> {}
+            }
+        } else {
+            Diagnostics.Logging.warn(
+                "Kira",
+                "Skipping backend emit because of $diagnosticCount diagnostic${
+                    EnglishUtils.getPluralSuffix(diagnosticCount)
+                }."
+            )
+        }
+
+        diagnosticCount
     }
-    Diagnostics.Logging.info("Kira", "Everything took $duration")
+    Diagnostics.Logging.info("Kira", "Everything took ${result.duration}")
+    if (result.value > 0) {
+        kotlin.system.exitProcess(1)
+    }
 }
+
 

@@ -7,11 +7,13 @@ object CIntrinsicsTable {
     )
 
     private val bindings = mapOf(
-        "trace" to CIntrinsicBinding("printf", setOf("stdio.h")),
-        "print" to CIntrinsicBinding("printf", setOf("stdio.h")),
-        "println" to CIntrinsicBinding("printf", setOf("stdio.h")),
-        "eprint" to CIntrinsicBinding("fprintf", setOf("stdio.h")),
-        "_trace_" to CIntrinsicBinding("printf", setOf("stdio.h")),
+        // I/O -- Jack style print/println macros from the runtime prelude
+        "trace" to CIntrinsicBinding("print"),
+        "print" to CIntrinsicBinding("print"),
+        "println" to CIntrinsicBinding("println"),
+        "eprint" to CIntrinsicBinding("fprintf"),
+        "_trace_" to CIntrinsicBinding("print"),
+        // Math
         "sqrt" to CIntrinsicBinding("sqrt", setOf("math.h")),
         "pow" to CIntrinsicBinding("pow", setOf("math.h")),
         "floor" to CIntrinsicBinding("floor", setOf("math.h")),
@@ -28,6 +30,11 @@ object CIntrinsicsTable {
 
     fun resolveFunction(name: String): String {
         return bindings[name]?.functionName ?: name
+    }
+
+    /** Null when [name] is not a known intrinsic -- callers should keep the original spelling. */
+    fun resolveFunctionOrNull(name: String): String? {
+        return bindings[name]?.functionName
     }
 
     fun resolveIncludes(name: String): Set<String> {

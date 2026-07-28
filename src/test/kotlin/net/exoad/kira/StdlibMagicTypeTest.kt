@@ -44,9 +44,9 @@ class StdlibMagicTypeTest {
             runSemantic = false
         )
 
-        assertTrue(generated.contains("#include <stdint.h>"))
+        assertTrue(generated.contains("#include <stdint.h>"), generated)
         assertTrue(
-            generated.contains("int32_t value = 42;") || generated.contains("KInt value = 42;"),
+            generated.contains("Int32 value = 42;"),
             generated
         )
     }

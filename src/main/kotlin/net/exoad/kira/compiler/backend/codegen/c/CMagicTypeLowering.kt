@@ -5,20 +5,26 @@ data class CMagicTypeBinding(
     val requiredIncludes: Set<String> = emptySet()
 )
 
+/**
+ * Maps Kira magic / builtin type names onto the Jack-style C runtime types
+ * defined in the embedded prelude (`c_generator.c`).
+ */
 object CMagicTypeLowering {
     private val cMappings = mapOf(
-        "Int8" to CMagicTypeBinding("int8_t", setOf("stdint.h")),
-        "Int16" to CMagicTypeBinding("int16_t", setOf("stdint.h")),
-        "Int32" to CMagicTypeBinding("int32_t", setOf("stdint.h")),
-        "Int64" to CMagicTypeBinding("int64_t", setOf("stdint.h")),
-        "Float32" to CMagicTypeBinding("float"),
-        "Float64" to CMagicTypeBinding("double"),
-        "Bool" to CMagicTypeBinding("bool", setOf("stdbool.h")),
-        "Void" to CMagicTypeBinding("void"),
-        "Never" to CMagicTypeBinding("void"),
-        "Str" to CMagicTypeBinding("const char*"),
-        "String" to CMagicTypeBinding("const char*"),
-        "Any" to CMagicTypeBinding("void*"),
+        "Int8" to CMagicTypeBinding("Int8"),
+        "Int16" to CMagicTypeBinding("Int16"),
+        "Int32" to CMagicTypeBinding("Int32"),
+        "Int64" to CMagicTypeBinding("Int64"),
+        "Int" to CMagicTypeBinding("Int32"),
+        "Float32" to CMagicTypeBinding("Float32"),
+        "Float64" to CMagicTypeBinding("Float64"),
+        "Float" to CMagicTypeBinding("Float32"),
+        "Bool" to CMagicTypeBinding("Bool"),
+        "Void" to CMagicTypeBinding("Void"),
+        "Never" to CMagicTypeBinding("Void"),
+        "Str" to CMagicTypeBinding("Str"),
+        "String" to CMagicTypeBinding("Str"),
+        "Any" to CMagicTypeBinding("Any"),
     )
 
     fun resolve(typeName: String): CMagicTypeBinding? {

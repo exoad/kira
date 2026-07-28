@@ -87,9 +87,7 @@ object TestCompileSupport {
         runSemantic: Boolean = false
     ): String {
         val result = compileSnippet(source, logicalPath, parserBackend, runSemantic)
-        val generator = KiraCCodeGenerator(result.compilationUnit)
-        generator.visitRootASTNode(result.sourceContext.ast)
-        return generator.toString()
+        return KiraCCodeGenerator(result.compilationUnit).emitToString()
     }
 
     fun transpileFileToC(
@@ -98,9 +96,7 @@ object TestCompileSupport {
         runSemantic: Boolean = false
     ): String {
         val result = compileFile(filePath, parserBackend, runSemantic)
-        val generator = KiraCCodeGenerator(result.compilationUnit)
-        generator.visitRootASTNode(result.sourceContext.ast)
-        return generator.toString()
+        return KiraCCodeGenerator(result.compilationUnit).emitToString()
     }
 
     fun findCCompiler(): String? {

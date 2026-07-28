@@ -16,10 +16,10 @@ class BackendCompilationPipelineTest {
             runSemantic = true
         )
 
-        assertTrue(generated.contains("typedef enum TestEnum"))
-        assertTrue(generated.contains("A"))
-        assertTrue(generated.contains("B"))
-        assertTrue(generated.contains("C"))
+        assertTrue(generated.contains("typedef enum TestEnum"), generated)
+        assertTrue(generated.contains("TEST_ENUM_A"), generated)
+        assertTrue(generated.contains("TEST_ENUM_B"), generated)
+        assertTrue(generated.contains("TEST_ENUM_C"), generated)
     }
 
     @Test
@@ -45,11 +45,19 @@ class BackendCompilationPipelineTest {
             runSemantic = false
         )
 
-        assertTrue(generated.contains("typedef int32_t KInt;"))
-        assertTrue(generated.contains("#include <stdio.h>"))
-        assertTrue(generated.contains("KInt add(KInt a, KInt b)"))
-        assertTrue(generated.contains("int main()"))
-        assertTrue(generated.contains("printf(\"OK\\\\n\")"))
+        assertTrue(generated.contains("typedef int32_t Int32;"), generated)
+        assertTrue(generated.contains("#include <stdio.h>"), generated)
+        assertTrue(generated.contains("Int32 add(Int32 a, Int32 b)"), generated)
+        assertTrue(
+            generated.contains("Int32 main(Void)") || generated.contains("Int32 main()"),
+            generated
+        )
+        assertTrue(
+            generated.contains("print(\"%s\\n\", \"OK\\\\n\")") ||
+                generated.contains("print(\"%s\", \"OK\\\\n\")") ||
+                generated.contains("print(\"OK\\\\n\")"),
+            generated
+        )
     }
 
     @Test
