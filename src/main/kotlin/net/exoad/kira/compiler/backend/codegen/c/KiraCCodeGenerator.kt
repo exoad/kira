@@ -69,6 +69,23 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private var suppressThisRewrite = false
 
     /**
+     * Generic class templates keyed by base name (`Box` for `class Box<T>`).
+     * Specialized forms are emitted on demand from call/init sites.
+     */
+    private val genericClassTemplates = mutableMapOf<String, ClassDecl>()
+    /** Generic free-function templates keyed by function name (`id` for `fx id<T>`). */
+    private val genericFunctionTemplates = mutableMapOf<String, FunctionDecl>()
+    /** Requested class specializations: mangled name -> (template, type-arg names). */
+    private val classSpecializations = linkedMapOf<String, Pair<ClassDecl, List<String>>>()
+    /** Requested function specializations: mangled name -> (template, type-arg names). */
+    private val functionSpecializations = linkedMapOf<String, Pair<FunctionDecl, List<String>>>()
+    /**
+     * Active type-parameter substitution while emitting a monomorphized body
+     * (`T` -> `Int32`). Empty outside specialized emission.
+     */
+    private var typeSubst: Map<String, String> = emptyMap()
+
+    /**
      * One-shot emit of the whole compilation unit into [outputPath].
      * Returns the generated C source (also written to disk).
      */
@@ -96,14 +113,20 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // Collected while walking; prepended after the walk.
         val bodyStart = buffer.length
 
-        // 1) Forward-declare structs
+        // Discover generic templates + monomorphization sites before any emit.
+        collectGenericTemplates()
+        collectSpecializationSites()
+
+        // 1) Forward-declare structs (concrete + specialized)
         // 2) Emit full struct + enum bodies (complete types before prototypes)
-        // 3) Forward-declare free functions + methods
-        // 4) Emit everything else -- classes/enums already emitted
+        // 3) Forward-declare free functions + methods (+ specialized generics)
+        // 4) Emit everything else -- classes/enums/specialized already emitted
         emitStructForwardDecls()
         emitStructBodies()
+        emitSpecializedClassBodies()
         emitEnumBodies()
         emitFunctionPrototypes()
+        emitSpecializedFunctionBodies()
 
         compilationUnit.allSources().forEach { source ->
             if (shouldSkipSource(source)) {
@@ -143,9 +166,221 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
     }
 
+    private fun eachFunctionDecl(action: (FunctionDecl) -> Unit) {
+        compilationUnit.allSources().forEach { source ->
+            if (shouldSkipSource(source)) return@forEach
+            source.ast.statements.forEach { stmt ->
+                val expr: Any? = when (stmt) {
+                    is FunctionDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                if (expr is FunctionDecl && !isMagicDecl(expr)) {
+                    action(expr)
+                }
+            }
+        }
+    }
+
+    /** True when the class declaration introduces type parameters (`class Box<T>`). */
+    private fun isGenericClass(classDecl: ClassDecl): Boolean {
+        return classDecl.name.children.isNotEmpty()
+    }
+
+    private fun isGenericFunction(functionDecl: FunctionDecl): Boolean {
+        return functionDecl.generics.isNotEmpty()
+    }
+
+    private fun specializedName(base: String, typeArgs: List<String>): String {
+        if (typeArgs.isEmpty()) return base
+        return base + typeArgs.joinToString(separator = "") { "_$it" }
+    }
+
+    private fun baseTypeNameOf(type: Type): String {
+        return when (val identifier = type.identifier) {
+            is Identifier -> identifier.value
+            is IntrinsicExpr -> identifier.intrinsicKey.name
+            else -> "Any"
+        }
+    }
+
+    /**
+     * Resolve a Kira type name with active type-param substitution and
+     * specialization mangling (`Box<Int32>` -> `Box_Int32`, bare `T` -> `Int32`).
+     * Magic collections (`Arr`/`Map`/...) erase type args at the C boundary.
+     */
+    private fun resolveKiraTypeName(type: Type): String {
+        val base = baseTypeNameOf(type)
+        val resolvedBase = typeSubst[base] ?: base
+        if (type.children.isEmpty()) {
+            return resolvedBase
+        }
+        // Only monomorphize user generic classes we hold a template for.
+        // Prelude/magic generics (Arr, Map, ...) keep the erased base name.
+        if (!genericClassTemplates.containsKey(resolvedBase)) {
+            return resolvedBase
+        }
+        val args = type.children.map { resolveKiraTypeName(it) }
+        return specializedName(resolvedBase, args)
+    }
+
+    private fun collectGenericTemplates() {
+        eachClassDecl { decl ->
+            if (isGenericClass(decl)) {
+                genericClassTemplates[baseTypeNameOf(decl.name)] = decl
+            }
+        }
+        eachFunctionDecl { decl ->
+            if (isGenericFunction(decl)) {
+                genericFunctionTemplates[functionLikeName(decl.name)] = decl
+            }
+        }
+    }
+
+    private fun requestClassSpecialization(type: Type) {
+        val base = baseTypeNameOf(type)
+        if (type.children.isEmpty()) return
+        val template = genericClassTemplates[base] ?: return
+        val args = type.children.map { resolveKiraTypeName(it) }
+        val mangled = specializedName(base, args)
+        classSpecializations.putIfAbsent(mangled, template to args)
+        // Nested type args may themselves need specialization.
+        type.children.forEach { requestClassSpecialization(it) }
+    }
+
+    private fun requestFunctionSpecialization(name: String, typeArgs: List<Type>) {
+        if (typeArgs.isEmpty()) return
+        val template = genericFunctionTemplates[name] ?: return
+        val args = typeArgs.map { resolveKiraTypeName(it) }
+        val mangled = specializedName(name, args)
+        functionSpecializations.putIfAbsent(mangled, template to args)
+        typeArgs.forEach { requestClassSpecialization(it) }
+    }
+
+    private fun collectSpecializationSites() {
+        compilationUnit.allSources().forEach { source ->
+            if (shouldSkipSource(source)) return@forEach
+            walkExprs(source.ast) { expr ->
+                when (expr) {
+                    is ObjectInitExpr -> requestClassSpecialization(expr.typeName)
+                    is FunctionCallExpr -> {
+                        val fname = functionLikeName(expr.name)
+                        if (expr.typeArguments.isNotEmpty()) {
+                            requestFunctionSpecialization(fname, expr.typeArguments)
+                        }
+                    }
+                    is VariableDecl -> requestClassSpecialization(expr.type)
+                    else -> {}
+                }
+            }
+            // VariableDecl is a Decl, not always reached via expr walk of statements
+            source.ast.statements.forEach { stmt ->
+                val node: Any? = when (stmt) {
+                    is VariableDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                if (node is VariableDecl) {
+                    requestClassSpecialization(node.type)
+                }
+            }
+        }
+    }
+
+    /**
+     * Lightweight AST walk for specialization discovery. Covers the node shapes
+     * the baseline backend actually emits; unknown nodes are skipped.
+     */
+    private fun walkExprs(node: Any?, visit: (Any) -> Unit) {
+        if (node == null) return
+        visit(node)
+        when (node) {
+            is RootASTNode -> node.statements.forEach { walkExprs(it, visit) }
+            is Statement -> walkExprs(node.expr, visit)
+            is FunctionDecl -> {
+                walkExprs(node.def, visit)
+            }
+            is FunctionDefExpr -> {
+                node.parameters.forEach { walkExprs(it, visit) }
+                node.body?.forEach { walkExprs(it, visit) }
+            }
+            is ClassDecl -> node.members.forEach { walkExprs(it, visit) }
+            is VariableDecl -> {
+                walkExprs(node.type, visit)
+                walkExprs(node.value, visit)
+            }
+            is FunctionCallExpr -> {
+                walkExprs(node.name, visit)
+                node.typeArguments.forEach { walkExprs(it, visit) }
+                node.positionalParameters.forEach { walkExprs(it.value, visit) }
+                node.namedParameters.forEach { walkExprs(it.value, visit) }
+            }
+            is ObjectInitExpr -> {
+                walkExprs(node.typeName, visit)
+                node.positionalArgs.forEach { walkExprs(it, visit) }
+            }
+            is BinaryExpr -> {
+                walkExprs(node.leftExpr, visit)
+                walkExprs(node.rightExpr, visit)
+            }
+            is UnaryExpr -> walkExprs(node.operand, visit)
+            is AssignmentExpr -> {
+                walkExprs(node.target, visit)
+                walkExprs(node.value, visit)
+            }
+            is MemberAccessExpr -> {
+                walkExprs(node.origin, visit)
+                walkExprs(node.member, visit)
+            }
+            is ArrayIndexExpr -> {
+                walkExprs(node.originExpr, visit)
+                walkExprs(node.indexExpr, visit)
+            }
+            is IfSelectionStatement -> {
+                walkExprs(node.expr, visit)
+                node.thenStatements.forEach { walkExprs(it, visit) }
+                node.elseBranches.forEach { walkExprs(it, visit) }
+            }
+            is ElseIfBranchStatement -> {
+                walkExprs(node.condition, visit)
+                node.statements.forEach { walkExprs(it, visit) }
+            }
+            is ElseBranchStatement -> node.statements.forEach { walkExprs(it, visit) }
+            is WhileIterationStatement -> {
+                walkExprs(node.condition, visit)
+                node.statements.forEach { walkExprs(it, visit) }
+            }
+            is DoWhileIterationStatement -> {
+                node.statements.forEach { walkExprs(it, visit) }
+                walkExprs(node.condition, visit)
+            }
+            is ForIterationStatement -> {
+                walkExprs(node.forIterationExpr, visit)
+                node.body.forEach { walkExprs(it, visit) }
+            }
+            is ReturnStatement -> walkExprs(node.expr, visit)
+            is TypeCheckExpr -> {
+                walkExprs(node.value, visit)
+                walkExprs(node.type, visit)
+            }
+            is TypeCastExpr -> {
+                walkExprs(node.value, visit)
+                walkExprs(node.type, visit)
+            }
+            is ArrayLiteral -> node.value.forEach { walkExprs(it, visit) }
+            is Type -> node.children.forEach { walkExprs(it, visit) }
+            else -> {}
+        }
+    }
+
     private fun emitStructForwardDecls() {
         val names = linkedSetOf<String>()
-        eachClassDecl { names.add(typeNameOf(it.name)) }
+        eachClassDecl {
+            if (!isGenericClass(it)) {
+                names.add(baseTypeNameOf(it.name))
+            }
+        }
+        classSpecializations.keys.forEach { names.add(it) }
         if (names.isEmpty()) return
         names.forEach { name ->
             buffer.appendLine("typedef struct $name $name;")
@@ -154,7 +389,144 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun emitStructBodies() {
-        eachClassDecl { visitClassDecl(it) }
+        eachClassDecl {
+            if (!isGenericClass(it)) {
+                visitClassDecl(it)
+            }
+        }
+    }
+
+    private fun emitSpecializedClassBodies() {
+        // Snapshot keys -- specialization set is fixed after collection.
+        classSpecializations.entries.toList().forEach { (mangled, pair) ->
+            val (template, args) = pair
+            emitSpecializedClass(mangled, template, args)
+        }
+    }
+
+    private fun emitSpecializedClass(mangled: String, template: ClassDecl, args: List<String>) {
+        val paramNames = template.name.children.map { baseTypeNameOf(it) }
+        val subst = paramNames.zip(args).toMap()
+        val prev = typeSubst
+        typeSubst = subst
+
+        val fields = template.members.filterIsInstance<VariableDecl>()
+        val methods = template.members.filterIsInstance<FunctionDecl>()
+
+        appendIndented("struct ")
+        buffer.append(mangled)
+        buffer.appendLine()
+        appendIndentedLine("{")
+        indentLevel++
+        if (fields.isEmpty()) {
+            appendIndentedLine("Utf8 _empty;")
+        } else {
+            emittingClassMembers = true
+            fields.forEach { field ->
+                fieldTypes[field.name.value] = resolveKiraTypeName(field.type)
+                appendIndented("")
+                buffer.append(mapTypeName(resolveKiraTypeName(field.type)))
+                buffer.append(" ")
+                buffer.append(field.name.value)
+                buffer.appendLine(";")
+            }
+            emittingClassMembers = false
+        }
+        indentLevel--
+        appendIndentedLine("};")
+        buffer.appendLine()
+
+        methods.forEach { method ->
+            if (method.isStub()) return@forEach
+            val methodName = functionLikeName(method.name)
+            val returnTypeName = resolveKiraTypeName(method.def.returnTypeSpecifier)
+            val mangledMethod = registerMethod(mangled, methodName, returnTypeName)
+
+            appendIndented("")
+            buffer.append(mapTypeName(returnTypeName))
+            buffer.append(" ")
+            buffer.append(mangledMethod)
+            buffer.append("(")
+            buffer.append(mangled)
+            buffer.append("* this")
+            method.def.parameters.forEach { param ->
+                buffer.append(", ")
+                buffer.append(mapTypeName(resolveKiraTypeName(param.typeSpecifier)))
+                buffer.append(" ")
+                buffer.append(param.name.value)
+            }
+            buffer.appendLine(")")
+            appendIndentedLine("{")
+            indentLevel++
+            method.def.parameters.forEach { param ->
+                knownValueTypes[param.name.value] = resolveKiraTypeName(param.typeSpecifier)
+            }
+            currentMethodClass = mangled
+            method.def.body?.forEach { it.accept(this) }
+            currentMethodClass = null
+            method.def.parameters.forEach { param ->
+                knownValueTypes.remove(param.name.value)
+            }
+            indentLevel--
+            appendIndentedLine("}")
+            buffer.appendLine()
+        }
+
+        typeSubst = prev
+    }
+
+    private fun emitSpecializedFunctionBodies() {
+        functionSpecializations.entries.toList().forEach { (mangled, pair) ->
+            val (template, args) = pair
+            emitSpecializedFunction(mangled, template, args)
+        }
+    }
+
+    private fun emitSpecializedFunction(mangled: String, template: FunctionDecl, args: List<String>) {
+        val paramNames = template.generics.map { baseTypeNameOf(it) }
+        val subst = paramNames.zip(args).toMap()
+        val prev = typeSubst
+        typeSubst = subst
+
+        val returnTypeName = resolveKiraTypeName(template.def.returnTypeSpecifier)
+        knownValueTypes[mangled] = returnTypeName
+        template.def.parameters.forEach { param ->
+            knownValueTypes[param.name.value] = resolveKiraTypeName(param.typeSpecifier)
+        }
+
+        appendIndented("")
+        buffer.append(mapTypeName(returnTypeName))
+        buffer.append(" ")
+        buffer.append(mangled)
+        buffer.append("(")
+        if (template.def.parameters.isEmpty()) {
+            buffer.append("Void")
+        } else {
+            template.def.parameters.forEachIndexed { idx, parameter ->
+                if (idx > 0) buffer.append(", ")
+                buffer.append(mapTypeName(resolveKiraTypeName(parameter.typeSpecifier)))
+                buffer.append(" ")
+                buffer.append(parameter.name.value)
+            }
+        }
+        buffer.append(")")
+        if (template.def.body == null) {
+            buffer.appendLine(";")
+            typeSubst = prev
+            return
+        }
+        buffer.appendLine()
+        appendIndentedLine("{")
+        indentLevel++
+        template.def.body!!.forEach { it.accept(this) }
+        indentLevel--
+        appendIndentedLine("}")
+        buffer.appendLine()
+
+        template.def.parameters.forEach { param ->
+            knownValueTypes.remove(param.name.value)
+        }
+        typeSubst = prev
     }
 
     private fun eachEnumDecl(action: (EnumDecl) -> Unit) {
@@ -213,12 +585,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             }
             when (expr) {
                 is FunctionDecl -> {
-                    if (!isMagicDecl(expr)) {
+                    if (!isMagicDecl(expr) && !isGenericFunction(expr)) {
                         out.add(functionPrototypeLine(expr))
                     }
                 }
                 is ClassDecl -> {
-                    if (isMagicDecl(expr)) return@forEach
+                    if (isMagicDecl(expr) || isGenericClass(expr)) return@forEach
                     val className = typeNameOf(expr.name)
                     // Register fields early for print-format / method body rewriting
                     expr.members.filterIsInstance<VariableDecl>().forEach { field ->
@@ -243,6 +615,54 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                     }
                 }
             }
+        }
+        // Specialized generic free functions
+        functionSpecializations.forEach { (mangled, pair) ->
+            val (template, args) = pair
+            val paramNames = template.generics.map { baseTypeNameOf(it) }
+            val subst = paramNames.zip(args).toMap()
+            val prev = typeSubst
+            typeSubst = subst
+            val returnTypeName = resolveKiraTypeName(template.def.returnTypeSpecifier)
+            knownValueTypes[mangled] = returnTypeName
+            val params = if (template.def.parameters.isEmpty()) {
+                "Void"
+            } else {
+                template.def.parameters.joinToString(", ") { param ->
+                    "${mapTypeName(resolveKiraTypeName(param.typeSpecifier))} ${param.name.value}"
+                }
+            }
+            out.add("${mapTypeName(returnTypeName)} $mangled($params);")
+            typeSubst = prev
+        }
+        // Specialized generic class methods
+        classSpecializations.forEach { (classMangled, pair) ->
+            val (template, args) = pair
+            val paramNames = template.name.children.map { baseTypeNameOf(it) }
+            val subst = paramNames.zip(args).toMap()
+            val prev = typeSubst
+            typeSubst = subst
+            template.members.filterIsInstance<VariableDecl>().forEach { field ->
+                fieldTypes[field.name.value] = resolveKiraTypeName(field.type)
+            }
+            template.members.filterIsInstance<FunctionDecl>().forEach { method ->
+                if (method.isStub()) return@forEach
+                val methodName = functionLikeName(method.name)
+                val returnTypeName = resolveKiraTypeName(method.def.returnTypeSpecifier)
+                val mangled = registerMethod(classMangled, methodName, returnTypeName)
+                val params = buildString {
+                    append(classMangled)
+                    append("* this")
+                    method.def.parameters.forEach { param ->
+                        append(", ")
+                        append(mapTypeName(resolveKiraTypeName(param.typeSpecifier)))
+                        append(" ")
+                        append(param.name.value)
+                    }
+                }
+                out.add("${mapTypeName(returnTypeName)} $mangled($params);")
+            }
+            typeSubst = prev
         }
     }
 
@@ -301,11 +721,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun typeNameOf(type: Type): String {
-        return when (val identifier = type.identifier) {
-            is Identifier -> identifier.value
-            is IntrinsicExpr -> identifier.intrinsicKey.name
-            else -> "Any"
-        }
+        // Prefer specialized / substituted names so Box<Int32> and bare T lower correctly.
+        return resolveKiraTypeName(type)
     }
 
     private fun mapIntrinsicName(rawName: String): String {
@@ -392,10 +809,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         // Also treat known magic type names as skippable even if marker missed
         val name = when (decl) {
-            is ClassDecl -> typeNameOf(decl.name)
+            is ClassDecl -> baseTypeNameOf(decl.name)
             is EnumDecl -> decl.name.value
-            is TraitDecl -> typeNameOf(decl.name)
-            is VariantDecl -> typeNameOf(decl.name)
+            is TraitDecl -> baseTypeNameOf(decl.name)
+            is VariantDecl -> baseTypeNameOf(decl.name)
             is TypeAliasDecl -> when (val id = decl.alias.identifier) {
                 is Identifier -> id.value
                 else -> null
@@ -426,6 +843,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         methodReturnTypes.clear()
         methodsBySimpleName.clear()
         fieldTypes.clear()
+        genericClassTemplates.clear()
+        genericFunctionTemplates.clear()
+        classSpecializations.clear()
+        functionSpecializations.clear()
+        typeSubst = emptyMap()
         indentLevel = 0
         currentModuleUri = null
         emittingClassMembers = false
@@ -774,7 +1196,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
         includeForIntrinsic(rawName)
-        val functionName = mapIntrinsicName(rawName)
+        val functionName = if (functionCallExpr.typeArguments.isNotEmpty()) {
+            val typeArgNames = functionCallExpr.typeArguments.map { resolveKiraTypeName(it) }
+            specializedName(mapIntrinsicName(rawName), typeArgNames)
+        } else {
+            mapIntrinsicName(rawName)
+        }
         buffer.append(functionName)
         buffer.append("(")
         args.forEachIndexed { index, arg ->
@@ -901,10 +1328,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
+        val baseName = baseTypeNameOf(objectInitExpr.typeName)
         val typeName = typeNameOf(objectInitExpr.typeName)
         // Empty Map/Arr/List constructors use runtime helpers.
         if (objectInitExpr.positionalArgs.isEmpty()) {
-            when (typeName) {
+            when (baseName) {
                 "Map", "Set" -> {
                     buffer.append("Map_new()")
                     return
@@ -1066,6 +1494,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (isMagicDecl(functionDecl)) {
             return
         }
+        // Generic templates are monomorphized separately; skip the template body.
+        if (isGenericFunction(functionDecl)) {
+            return
+        }
         // Methods inside classes: skip body emission in baseline (no vtable yet)
         if (emittingClassMembers) {
             return
@@ -1117,6 +1549,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     override fun visitClassDecl(classDecl: ClassDecl) {
         if (isMagicDecl(classDecl)) {
+            return
+        }
+        // Generic class templates are monomorphized into specialized structs.
+        if (isGenericClass(classDecl)) {
             return
         }
         val className = typeNameOf(classDecl.name)

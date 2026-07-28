@@ -558,6 +558,17 @@ class KiraParser(private val context: SourceContext) {
                     expr = putOrigin(MemberAccessExpr(expr, member), here())
                 }
 
+                // Explicit generic call: name<T, U>(...), not a comparison.
+                // Disambiguate by requiring '(' immediately after the matching '>'.
+                at(Token.Type.S_OPEN_ANGLE) && looksLikeGenericCall() -> {
+                    val typeArgs = parseTypeArgumentList()
+                    val params = parseFunctionCallParameter()
+                    expr = putOrigin(
+                        FunctionCallExpr(expr, params.second, params.first, typeArgs),
+                        here()
+                    )
+                }
+
                 at(Token.Type.S_OPEN_PARENTHESIS) -> {
                     // function call on arbitrary expression (e.g., p.dist())
                     val params = parseFunctionCallParameter()
@@ -568,6 +579,56 @@ class KiraParser(private val context: SourceContext) {
             }
         }
         return expr
+    }
+
+    /**
+     * True when `<...>` at the current pointer is a call-site type-argument list
+     * (`foo<T>(...)`), not a less-than comparison. Requires the matching `>` to be
+     * followed immediately by `(`.
+     */
+    private fun looksLikeGenericCall(): Boolean {
+        if (!at(Token.Type.S_OPEN_ANGLE)) {
+            return false
+        }
+        var depth = 0
+        // TokenBuffer only allows peeks inside its window (size 16). Stay inside
+        // that window: offsets 0..14, and check offset+1 for the following '('.
+        val maxOffset = 14
+        var i = 0
+        while (i <= maxOffset) {
+            when (peek(i).type) {
+                Token.Type.S_OPEN_ANGLE -> depth++
+                Token.Type.S_CLOSE_ANGLE -> {
+                    depth--
+                    if (depth == 0) {
+                        // Need one more token for the '(' check.
+                        if (i + 1 > maxOffset + 1) {
+                            return false
+                        }
+                        // i+1 is at most 15 -- still inside the window.
+                        return peek(i + 1).type == Token.Type.S_OPEN_PARENTHESIS
+                    }
+                }
+                Token.Type.S_EOF -> return false
+                else -> {}
+            }
+            i++
+        }
+        return false
+    }
+
+    /** Parse `<T, U>` type-argument list; pointer must be on `<`. */
+    private fun parseTypeArgumentList(): List<Type> {
+        expectThenAdvance(Token.Type.S_OPEN_ANGLE)
+        val args = mutableListOf<Type>()
+        while (!at(Token.Type.S_CLOSE_ANGLE) && !at(Token.Type.S_EOF)) {
+            args.add(parseType())
+            if (!at(Token.Type.S_CLOSE_ANGLE)) {
+                expectThenAdvance(Token.Type.S_COMMA)
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
+        return args
     }
 
     private fun parsePrimaryOrUnaryExpr(): Expr {

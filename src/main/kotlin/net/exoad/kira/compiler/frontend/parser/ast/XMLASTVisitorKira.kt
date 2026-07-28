@@ -395,6 +395,11 @@ object XMLASTVisitorKira :
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         node("FunctionCallExpr") {
             functionCallExpr.name.accept(this)
+            if (functionCallExpr.typeArguments.isNotEmpty()) {
+                node("TypeArguments") {
+                    functionCallExpr.typeArguments.forEach { it.accept(this) }
+                }
+            }
             node("Parameters") {
                 node("Positional") {
                     functionCallExpr.positionalParameters.forEach { it.accept(this) }
