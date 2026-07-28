@@ -1,9 +1,0 @@
-module "snackquest:score"
-
-fx starsFor(level: Int32): Int32 {
-    mut stars: Int32 = 0
-    for mut i: 1..level {
-        stars = stars + 1
-    }
-    return stars
-}

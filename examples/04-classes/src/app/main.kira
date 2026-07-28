@@ -1,0 +1,12 @@
+module "app:main"
+
+use "app:model"
+
+fx main(): Void {
+    rect: Rectangle = Rectangle { Point { 0, 1 }, Point { 1, 0 } }
+    friend: Pet = Pet { "Mochi", "meow" }
+
+    trace(rect.perimeter())
+    trace(friend.name)
+    trace(friend.speak())
+}

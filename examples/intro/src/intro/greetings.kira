@@ -1,7 +1,0 @@
-module "intro:greetings"
-
-use "intro:utils"
-
-fx greeting(): Str {
-    return normalize("hello from intro")
-}

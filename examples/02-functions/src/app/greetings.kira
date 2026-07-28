@@ -1,0 +1,7 @@
+module "app:greetings"
+
+use "app:utils"
+
+fx greeting(): Str {
+    return normalize("hello from functions")
+}

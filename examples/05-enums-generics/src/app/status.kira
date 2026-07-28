@@ -1,0 +1,7 @@
+module "app:status"
+
+pub enum BuildStatus {
+    READY,
+    RUNNING,
+    DONE
+}

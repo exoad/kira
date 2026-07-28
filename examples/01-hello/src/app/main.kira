@@ -1,0 +1,5 @@
+module "app:main"
+
+fx main(): Void {
+    trace("hello, kira")
+}

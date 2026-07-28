@@ -1,0 +1,9 @@
+module "app:ranges"
+
+fx sumTo(limit: Int32): Int32 {
+    mut total: Int32 = 0
+    for mut i: 0..limit {
+        total = total + i
+    }
+    return total
+}

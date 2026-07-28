@@ -1,5 +1,0 @@
-module "data:maps"
-
-fx hasAny(values: Map<Str, Int32>): Bool {
-    return !values.isEmpty()
-}

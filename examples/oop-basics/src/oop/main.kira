@@ -1,8 +1,0 @@
-module "oop:main"
-
-use "oop:service"
-
-fx main(): Void {
-    p: Int32 = unitSquarePerimeter()
-    trace(p)
-}

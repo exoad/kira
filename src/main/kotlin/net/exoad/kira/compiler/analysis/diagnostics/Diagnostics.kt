@@ -7,7 +7,6 @@ import java.util.logging.ConsoleHandler
 import java.util.logging.Level
 import java.util.logging.Logger
 import java.util.logging.SimpleFormatter
-import kotlin.system.exitProcess
 
 
 /**
@@ -94,34 +93,9 @@ object Diagnostics {
     }
 
     fun panic(message: String): Nothing {
-        println("\n=====================[ Kira Panicked ]=====================")
-        for (segment in message.split('\n')) {
-            val words = segment.split(" ")
-            var buffer = StringBuilder()
-            for (word in words) {
-                when (buffer.length + word.length + (if (buffer.isNotEmpty()) 1 else 0) > 64) {
-                    true -> {
-                        println(buffer.toString())
-                        buffer = StringBuilder(word)
-                    }
-
-                    else -> {
-                        if (buffer.isNotEmpty()) {
-                            buffer.append(" ")
-                        }
-                        buffer.append(word)
-                    }
-                }
-            }
-            println(
-                when {
-                    buffer.isNotEmpty() -> buffer.toString()
-                    else -> ""
-                }
-            )
-        }
-        println("===========================================================")
-        exitProcess(1)
+        // Throw instead of exitProcess so the language server and tests can
+        // recover. The CLI main still surfaces these as fatal failures.
+        throw IllegalStateException(message)
     }
 
     object Logging {

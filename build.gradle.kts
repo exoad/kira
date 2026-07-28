@@ -6,7 +6,6 @@ plugins {
 
 application {
     mainClass.set("net.exoad.kira.cli.MainKt")
-    // Install as `kira` instead of the Gradle project name.
     applicationName = "kira"
 }
 
@@ -22,6 +21,8 @@ dependencies {
     antlr("org.antlr:antlr4:4.13.2")
     implementation("org.antlr:antlr4-runtime:4.13.2")
     implementation("org.yaml:snakeyaml:2.2")
+    // Language Server Protocol (stdio JSON-RPC)
+    implementation("org.eclipse.lsp4j:org.eclipse.lsp4j:0.24.0")
 }
 
 tasks.generateGrammarSource {
@@ -61,10 +62,25 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// Compiler reads kira.yaml from the process working directory. Default the run
-// task at the in-repo sample project so `./gradlew run` works out of the box.
+// Compiler reads kira.yaml from the process working directory.
 tasks.named<JavaExec>("run") {
     workingDir = rootProject.file("test_kira")
+}
+
+// Second application script: language server over stdio.
+// installDist ships both `kira` and `kira-lsp` under build/install/kira/bin/.
+tasks.register<CreateStartScripts>("startLspScripts") {
+    applicationName = "kira-lsp"
+    mainClass.set("net.exoad.kira.lsp.LspMainKt")
+    classpath = tasks.jar.get().outputs.files + configurations.runtimeClasspath.get()
+    outputDir = layout.buildDirectory.dir("scripts-lsp").get().asFile
+}
+
+tasks.named<Sync>("installDist") {
+    dependsOn("startLspScripts")
+    from(tasks.named("startLspScripts")) {
+        into("bin")
+    }
 }
 
 kotlin {

@@ -1,9 +1,0 @@
-module "funhello:phrases"
-
-fx morningMessage(): Str {
-    return "Good morning, sunshine!"
-}
-
-fx partyMessage(): Str {
-    return "Today is a great day to learn Kira!"
-}

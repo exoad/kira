@@ -1,0 +1,26 @@
+module "app:model"
+
+pub class Point {
+    require pub x: Int32
+    require pub y: Int32
+}
+
+pub class Rectangle {
+    require pub topLeft: Point
+    require pub bottomRight: Point
+
+    pub fx perimeter(): Int32 {
+        width: Int32 = bottomRight.x - topLeft.x
+        height: Int32 = topLeft.y - bottomRight.y
+        return (width + height) * 2
+    }
+}
+
+pub class Pet {
+    require pub name: Str
+    require pub sound: Str
+
+    pub fx speak(): Str {
+        return sound
+    }
+}

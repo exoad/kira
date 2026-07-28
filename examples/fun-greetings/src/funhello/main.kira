@@ -1,9 +1,0 @@
-module "funhello:main"
-
-use "funhello:choose"
-
-fx main(): Void {
-    message: Str = chooseMessage(true)
-    trace("Welcome, friend!")
-    trace(message)
-}
