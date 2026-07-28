@@ -28,9 +28,23 @@ import java.io.File
  */
 class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCodeGenerator(compilationUnit) {
     companion object {
+        /** Layer 0 -- cupup-style compiler bundle substrate (mangle hooks). */
+        const val BUNDLE_FILE = "c_bundle.h"
+        /** Layer 1 -- Kira facade types + thin Arr/Map runtime. */
         const val TEMPLATE_FILE = "c_generator.c"
         const val DEFAULT_OUTPUT = "out.kira.c"
+        private lateinit var bundleFileContents: String
         private lateinit var templateFileContents: String
+
+        fun fetchBundleFileContents(): String {
+            if (!::bundleFileContents.isInitialized) {
+                val resource = Public::class.java.getResource("/$BUNDLE_FILE")
+                    ?: Public::class.java.getResource(BUNDLE_FILE)
+                bundleFileContents = resource?.readText()
+                    ?: File("src/main/resources/$BUNDLE_FILE").readText()
+            }
+            return bundleFileContents
+        }
 
         fun fetchTemplateFileContents(): String {
             if (!::templateFileContents.isInitialized) {
@@ -105,7 +119,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun buildTranslationUnit(): String {
-        // Prelude once
+        // Cupup-style layering: substrate first, then facade/runtime, then user.
+        // Layer 0 -- compiler bundle (fixed-width types + named hooks)
+        buffer.appendLine(fetchBundleFileContents().trimEnd())
+        buffer.appendLine()
+        // Layer 1 -- Kira-facing typedefs + thin collections
         buffer.appendLine(fetchTemplateFileContents().trimEnd())
         buffer.appendLine()
 
@@ -117,6 +135,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         collectGenericTemplates()
         collectSpecializationSites()
 
+        // Layer 2 -- user program
         // 1) Forward-declare structs (concrete + specialized)
         // 2) Emit full struct + enum bodies (complete types before prototypes)
         // 3) Forward-declare free functions + methods (+ specialized generics)

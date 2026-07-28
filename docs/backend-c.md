@@ -14,9 +14,10 @@ brand is required -- the artifact is ordinary `.c` (`out.kira.c`).
   JVM compiler (frontend: lex → parse → semantic)
        │
        ▼
-  out.kira.c          ← C-as-IR
-       │  • runtime prelude (types, print, thin Arr/Map, ...)
-       │  • lowered user modules (one translation unit)
+  out.kira.c          ← C-as-IR (one translation unit, three layers)
+       │  0. compiler bundle  (c_bundle.h)   -- substrate, mangle hooks
+       │  1. language facade  (c_generator.c) -- Int32/Str/Arr/Map, print
+       │  2. user lowering                    -- modules, main, classes, ...
        ▼
   cc -std=c17 ...       ← system optimizer, linker, sanitizers
        │
@@ -26,6 +27,26 @@ brand is required -- the artifact is ordinary `.c` (`out.kira.c`).
 
 NekoVM was an earlier runtime hope. It may return later as a **second**
 backend; it is not how programs run on mainline now.
+
+### Bundle substrate (cupup-inspired)
+
+Early [cupup](https://github.com/exoad/cupup) (Kira spin-off) emitted a **shared
+compiler bundle** before any user code: header guard, `stdint` types, and
+named hooks for true/false/static/const so the rest of the transpiler only
+composed symbols. Kira copies that *structure* (not the abandoned half-emit):
+
+| Layer | Resource | Role |
+|-------|----------|------|
+| 0 | `src/main/resources/c_bundle.h` | `kira_i32`, `KIRA_TRUE`, `KIRA_INLINE`, `KIRA_NULL`, ... |
+| 1 | `src/main/resources/c_generator.c` | `typedef kira_i32 Int32`, Arr/Map helpers, `print` |
+| 2 | codegen | User structs, monomorphized generics, `main` |
+
+**Why:** further generation stays natural -- helpers and a future **name
+mangler** retarget layer-0 / layer-1 *names* without reshaping control flow.
+Readable Jack-facing names stay on layer 1 for demos; release builds can mangle
+layer 0+ symbols by default later (preserve `main` / explicit exports).
+
+See also [examples/c-as-ir/](../examples/c-as-ir/) for side-by-side snapshots.
 
 ---
 
@@ -46,11 +67,12 @@ backend; it is not how programs run on mainline now.
 | Piece | Role |
 |-------|------|
 | `out.kira.c` | Single translation unit written by `kira` |
-| Prelude | From `src/main/resources/c_generator.c`, prepended into that file |
-| User code | Modules, functions, structs, enums, `main` |
+| Layer 0 bundle | `c_bundle.h` -- substrate types + hooks |
+| Layer 1 facade | `c_generator.c` -- Kira names + thin runtime |
+| Layer 2 user | Modules, functions, structs, enums, `main` |
 | Host compile | e.g. `cc -std=c17 -O2 -o app out.kira.c` |
 
-There is **no** separate `libkira-rt` you link by default: the prelude is
+There is **no** separate `libkira-rt` you link by default: bundle + facade are
 **source-included**. After `cc`, everything is native code in one binary.
 
 Entry convention: Kira `fx main(): Void` becomes C `Int32 main(Void)` and
@@ -151,13 +173,15 @@ Practical notes:
 
 Ordered for this backend; not a Neko plan.
 
-1. **Ownership design note** -- what is ARC'd vs borrowed vs manual (hybrid).
-2. **Prelude RC** -- heap class instances: header, retain/release, then codegen.
-3. **Collections** -- real Map put/get; owning List; keep Arr as view or split types.
-4. **More of `stl.kira`** -- only what we can lower honestly.
-5. **Emit quality** -- fewer redundant parens, clearer names, optional split
-   headers later if TU size hurts (still C-as-IR).
-6. **Optional second backend** -- Neko or other, only after C-as-IR is boring.
+1. **Name mangler (default on)** -- rename layer-0/1 hooks + user symbols;
+   keep `main` / exports; seedable; `compiler.mangle: false` for demos.
+2. **Ownership design note** -- what is ARC'd vs borrowed vs manual (hybrid).
+3. **Bundle/prelude RC** -- heap class instances: header, retain/release, then codegen.
+4. **Collections** -- real Map put/get; owning List; keep Arr as view or split types.
+5. **More of `stl.kira`** -- only what we can lower honestly.
+6. **Emit quality** -- fewer redundant parens; optional denser cupup-like packing
+   when mangling is on.
+7. **Optional second backend** -- Neko or other, only after C-as-IR is boring.
 
 ---
 
@@ -169,5 +193,6 @@ Ordered for this backend; not a Neko plan.
 | [tutorial/07-projects-and-tooling.md](tutorial/07-projects-and-tooling.md) | Manifest + compile commands |
 | [../examples/c-as-ir/](../examples/c-as-ir/) | **Side-by-side demos** -- Kira vs real `generated.user.c` |
 | [Language specifications](../specifications/LanguageSpecifications.md) | Full language (may exceed C-as-IR) |
-| `src/main/resources/c_generator.c` | Prelude source of truth |
+| `src/main/resources/c_bundle.h` | Layer 0 bundle substrate |
+| `src/main/resources/c_generator.c` | Layer 1 facade + thin runtime |
 | `src/main/kotlin/.../codegen/c/KiraCCodeGenerator.kt` | Lowering source of truth |

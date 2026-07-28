@@ -30,9 +30,13 @@ Background: [docs/backend-c.md](../../docs/backend-c.md).
 ```text
 *.kira  --kira-->  out.kira.c  --cc -std=c17-->  native app
               │
-              ├─ prelude (types, print, Arr/Map helpers)
-              └─ user lowering (this page)
+              ├─ 0. compiler bundle (c_bundle.h) -- substrate / mangle hooks
+              ├─ 1. language facade (c_generator.c) -- Int32, print, Arr/Map
+              └─ 2. user lowering (generated.user.c on this page)
 ```
+
+`generated.full.c` is layers 0+1+2. Bundle layout is cupup-inspired so further
+generation (and default name mangling later) retargets names, not structure.
 
 ---
 

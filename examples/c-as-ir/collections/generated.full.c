@@ -1,44 +1,94 @@
 /*
- * Kira C runtime prelude (C-as-IR, ISO C17).
- * Types and helpers follow Jack's C style guide (shared-type naming).
+ * Kira C-as-IR -- compiler bundle substrate (cupup-inspired).
  *
- * Baseline collections (Arr / Map) are intentionally thin: enough for the
- * in-repo examples and smoke tests. Generics are erased at the C boundary.
+ * Layer 0 of every translation unit. Fixed-width C types and a small set of
+ * named hooks (true/false/static/inline/const/null) so later layers and a
+ * future mangler only rewrite *names*, not structure.
+ *
+ * Do not put Arr/Map/user helpers here -- that is c_generator.c (layer 1).
+ * ISO C17. Keep this header self-contained and order-stable.
+ */
+
+#ifndef KIRA_COMPILER_BUNDLE_H
+#define KIRA_COMPILER_BUNDLE_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+/* ---- boolean / linkage / qualifiers (mangle targets) -------------------- */
+#define KIRA_TRUE 1
+#define KIRA_FALSE 0
+#define KIRA_PERSISTENT static
+#define KIRA_INLINE static inline
+#define KIRA_IMMUTABLE const
+#define KIRA_NULL ((void*)0)
+
+#ifdef __GNUC__
+#define KIRA_UNUSED __attribute__((unused))
+#else
+#define KIRA_UNUSED
+#endif
+
+/* ---- fixed-width machine types (mangle targets) ------------------------- */
+typedef int32_t  kira_i32;
+typedef int64_t  kira_i64;
+typedef int16_t  kira_i16;
+typedef int8_t   kira_i8;
+typedef uint32_t kira_u32;
+typedef uint64_t kira_u64;
+typedef uint16_t kira_u16;
+typedef uint8_t  kira_u8;
+typedef float    kira_f32;
+typedef double   kira_f64;
+typedef void     kira_unit;
+typedef uint8_t  kira_bool;   /* 0 / 1 -- not C _Bool, so mangling stays simple */
+typedef char     kira_utf8;
+
+#endif /* KIRA_COMPILER_BUNDLE_H */
+
+/*
+ * Kira C-as-IR -- language facade + thin runtime (layer 1).
+ *
+ * Assumes layer 0 (c_bundle.h / KIRA_COMPILER_BUNDLE_*) is already in the TU.
+ * Maps Kira/Jack-facing names onto the bundle substrate so user lowering and
+ * demos stay readable while a future mangler can rename the kira_* / KIRA_*
+ * hooks without rewriting this logic.
+ *
+ * Baseline collections (Arr / Map) are intentionally thin. ISO C17.
  */
 
 #ifndef KIRA_RUNTIME_H
 #define KIRA_RUNTIME_H
 
-#include <stdint.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stddef.h>
 #include <string.h>
+#include <stdbool.h>
 
-typedef int32_t Int32;
-typedef int64_t Int64;
-typedef int16_t Int16;
-typedef int8_t Int8;
-typedef uint32_t UInt32;
-typedef uint64_t UInt64;
-typedef uint16_t UInt16;
-typedef uint8_t UInt8;
-typedef float Float32;
-typedef double Float64;
-typedef void Void;
-typedef bool Bool;
-typedef char Utf8;
-typedef Void* Any;
+/* ---- Kira surface types (aliases over bundle substrate) ----------------- */
+typedef kira_i32   Int32;
+typedef kira_i64   Int64;
+typedef kira_i16   Int16;
+typedef kira_i8    Int8;
+typedef kira_u32   UInt32;
+typedef kira_u64   UInt64;
+typedef kira_u16   UInt16;
+typedef kira_u8    UInt8;
+typedef kira_f32   Float32;
+typedef kira_f64   Float64;
+typedef kira_unit  Void;
+typedef bool       Bool;       /* stdbool for existing emit; values 0/1 */
+typedef kira_utf8  Utf8;
+typedef Void*      Any;
 
-#define CharSeq const Utf8*
+#define CharSeq KIRA_IMMUTABLE Utf8*
 typedef CharSeq Str;
 
-#define null NULL
-#define simple static inline
+#define null   KIRA_NULL
+#define simple KIRA_INLINE
 
-#define print(...) fprintf(stdout, __VA_ARGS__)
-#define println(...) do { print(__VA_ARGS__); print("\n"); } while(0)
+#define print(...)   fprintf(stdout, __VA_ARGS__)
+#define println(...) do { print(__VA_ARGS__); print("\n"); } while (0)
 
 /* -------------------------------------------------------------------------- */
 /* Arr -- erased dynamic/fixed view over Int32 elements (baseline)            */
@@ -68,7 +118,7 @@ simple Arr Arr_empty(Void)
 
 simple Int32 Arr_get_i32(Arr a, Int32 index)
 {
-    if(a.data == null || index < 0 || index >= a.length)
+    if (a.data == null || index < 0 || index >= a.length)
     {
         abort();
     }
@@ -77,7 +127,7 @@ simple Int32 Arr_get_i32(Arr a, Int32 index)
 
 simple Void Arr_set_i32(Arr a, Int32 index, Int32 value)
 {
-    if(a.data == null || index < 0 || index >= a.length)
+    if (a.data == null || index < 0 || index >= a.length)
     {
         abort();
     }

@@ -45,7 +45,14 @@ class BackendCompilationPipelineTest {
             runSemantic = false
         )
 
-        assertTrue(generated.contains("typedef int32_t Int32;"), generated)
+        // Layer 0 bundle substrate + layer 1 Kira facade
+        assertTrue(generated.contains("KIRA_COMPILER_BUNDLE_H") || generated.contains("kira_i32"), generated)
+        assertTrue(
+            generated.contains("typedef kira_i32   Int32;") ||
+                generated.contains("typedef kira_i32 Int32;") ||
+                generated.contains("typedef int32_t Int32;"),
+            generated
+        )
         assertTrue(generated.contains("#include <stdio.h>"), generated)
         assertTrue(generated.contains("Int32 add(Int32 a, Int32 b)"), generated)
         assertTrue(

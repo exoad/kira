@@ -9,7 +9,7 @@ if [[ ! -x "$KIRA_BIN" ]]; then
 fi
 
 extract_user() {
-  # Everything after the runtime prelude guard.
+  # Everything after language facade (layer 1). Bundle + facade stay in full.c.
   awk 'p; /#endif \/\* KIRA_RUNTIME_H \*\//{p=1}' "$1" | sed '/^$/N;/^\n$/D'
 }
 

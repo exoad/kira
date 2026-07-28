@@ -42,7 +42,11 @@ class CCodeGeneratorSmokeTest {
 
             val output = KiraCCodeGenerator(cu).emitToString()
 
-            assertTrue(output.contains("typedef int32_t Int32;"), output)
+            assertTrue(
+            output.contains("typedef kira_i32") || output.contains("typedef int32_t Int32;"),
+            output
+        )
+        assertTrue(output.contains("Int32"), output)
             assertTrue(output.contains("Int32 x = 10;"), output)
             assertTrue(output.contains("Int32 add(Int32 a, Int32 b)"), output)
             assertTrue(output.contains("#include <stdio.h>"), output)
