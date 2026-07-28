@@ -31,7 +31,7 @@ Or by hand:
 export KIRA="$(pwd)/build/install/kira/bin/kira"
 cd examples/01-hello
 "$KIRA"
-cc -std=c11 -O2 -o app out.kira.c && ./app
+cc -std=c17 -O2 -o app out.kira.c && ./app
 ```
 
 ## Conventions used here

@@ -4,7 +4,7 @@
 
 Kira is a small object-oriented language with expressive syntax inspired by
 Swift, Kotlin, and Dart. The reference implementation is a JVM compiler that
-typechecks a project and emits **C** (`out.kira.c`) for a C11 toolchain. A
+typechecks a project and emits **C** (`out.kira.c`) for a C17 toolchain. A
 stdio **Language Server** (`kira-lsp`) provides editor diagnostics over LSP.
 
 Other targets (historical Neko, future backends) may appear in the toolchain
@@ -2268,7 +2268,7 @@ Dependency sources are merged with workspace sources before parsing.
 ```bash
 cd path/to/project
 kira
-cc -std=c11 -O2 -o app out.kira.c && ./app
+cc -std=c17 -O2 -o app out.kira.c && ./app
 ```
 
 ### Validation

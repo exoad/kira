@@ -1,5 +1,5 @@
 /*
- * Kira C runtime prelude.
+ * Kira C runtime prelude (C-as-IR, ISO C17).
  * Types and helpers follow Jack's C style guide (shared-type naming).
  *
  * Baseline collections (Arr / Map) are intentionally thin: enough for the

@@ -3,7 +3,7 @@
 ## What you need
 
 - **JDK 17+** (the compiler is a JVM program)
-- A **C11** toolchain on `PATH` (`cc`, `clang`, or `gcc`) to run programs
+- A **C17** toolchain on `PATH` (`cc`, `clang`, or `gcc`) to run programs
 - This repository checked out
 
 ## Build the tools
@@ -71,7 +71,7 @@ Notes:
 ```bash
 cd examples/01-hello
 kira                         # or $KIRA
-cc -std=c11 -O2 -o app out.kira.c
+cc -std=c17 -O2 -o app out.kira.c
 ./app
 # hello, kira
 ```

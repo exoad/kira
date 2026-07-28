@@ -36,7 +36,7 @@ The CLI loads `kira.yaml` from the **current working directory** only.
 
 ```bash
 kira
-cc -std=c11 -O2 -o app out.kira.c
+cc -std=c17 -O2 -o app out.kira.c
 ./app
 ```
 
@@ -73,6 +73,7 @@ so stdlib resolution and multi-file `use` see the whole graph.
 
 | Doc | Use when |
 |-----|----------|
+| [C-as-IR backend](../backend-c.md) | How programs run; ISO C17 lowering status |
 | [Language specifications](../../specifications/LanguageSpecifications.md) | Full syntax and semantics |
 | [Grammar notes](../../specifications/Grammar.md) | Compact grammar / style |
 | [examples/README](../../examples/README.md) | Ladder catalog |

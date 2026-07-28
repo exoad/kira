@@ -5,10 +5,13 @@
 </p>
 
 Private and immutable by default (`pub` / `mut` to opt in). The compiler is a
-JVM CLI: read `kira.yaml`, typecheck, emit `out.kira.c`. A stdio language
-server (`kira-lsp`) covers editor diagnostics.
+JVM CLI: read `kira.yaml`, typecheck, lower to **ISO C17** (`out.kira.c` --
+C-as-IR), then your `cc` builds a native binary. A stdio language server
+(`kira-lsp`) covers editor diagnostics. Not a JIT and not NekoVM on the
+default path.
 
 **Docs:** [tutorial](docs/tutorial/) ·
+[C-as-IR backend](docs/backend-c.md) ·
 [language reference](specifications/LanguageSpecifications.md) ·
 [examples](examples/)
 
@@ -17,7 +20,7 @@ server (`kira-lsp`) covers editor diagnostics.
 ### Requirements
 
 - JDK 17+
-- C11 compiler on `PATH` (`cc`, `clang`, or `gcc`)
+- C17 compiler on `PATH` (`cc`, `clang`, or `gcc`)
 
 ### Install
 
@@ -46,7 +49,7 @@ By hand:
 ```bash
 cd examples/01-hello
 kira
-cc -std=c11 -O2 -o app out.kira.c && ./app
+cc -std=c17 -O2 -o app out.kira.c && ./app
 ```
 
 `kira` always loads `kira.yaml` from the **current directory** -- `cd` into the
@@ -104,7 +107,7 @@ Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 
 ### Status
 
-C backend runs the example ladder: modules, functions, classes/methods, enums,
+C-as-IR runs the example ladder: modules, functions, classes/methods, enums,
 monomorphized generics, thin Arr/Map (literals, index, `isEmpty` / `size`).
-Map put/get and growing lists are still stubs. Hover / completion / go-to-def
-in the LSP are not wired yet.
+Map put/get, growing lists, and ARC are not implemented yet. LSP: diagnostics
+only (no hover / completion / go-to-def). Detail: [docs/backend-c.md](docs/backend-c.md).

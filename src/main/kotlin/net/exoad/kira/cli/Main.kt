@@ -221,7 +221,7 @@ fun main() {
                     KiraCCodeGenerator(compilationUnit).generate(out)
                     Diagnostics.Logging.info(
                         "Kira",
-                        "Done. Compile with: cc -std=c11 -O2 -o app $out && ./app"
+                        "Done. Compile with: cc -std=c17 -O2 -o app $out && ./app"
                     )
                 }
 

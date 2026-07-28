@@ -26,7 +26,7 @@ run_one() {
     cd "$dir"
     rm -f out.kira.c app
     "$KIRA_BIN"
-    cc -std=c11 -O2 -o app out.kira.c
+    cc -std=c17 -O2 -o app out.kira.c
     ./app
     rm -f out.kira.c app
   )
