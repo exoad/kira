@@ -63,6 +63,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         compilationUnit.collectIntrinsicMarkedTypeNames(MagicIntrinsic.name) +
             compilationUnit.allMagicTypes()
     }
+    private val opaqueTypes by lazy {
+        compilationUnit.collectIntrinsicMarkedTypeNames("_opaque") +
+            compilationUnit.allOpaqueTypes()
+    }
+    private val externFunctions by lazy {
+        compilationUnit.allExternFunctions()
+    }
     /** Simple name -> Kira type name for print-format heuristics in the current unit. */
     private val knownValueTypes = mutableMapOf<String, String>()
     /**
@@ -131,6 +138,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // Collected while walking; prepended after the walk.
         val bodyStart = buffer.length
 
+        // Ensure @_opaque / @_extern marks are registered even if semantics skipped apply().
+        harvestForeignMarks()
+
         // Discover generic templates + monomorphization sites before any emit.
         collectGenericTemplates()
         collectSpecializationSites()
@@ -180,6 +190,61 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 }
                 if (expr is ClassDecl && !isMagicDecl(expr)) {
                     action(expr)
+                }
+            }
+        }
+    }
+
+    /**
+     * Pull @_opaque / @_extern from parser marks into CompilationUnit registries.
+     * Semantic apply() may not run on all stub shapes; emit must still see them.
+     */
+    private fun harvestForeignMarks() {
+        compilationUnit.allSources().forEach { source ->
+            if (shouldSkipSource(source)) return@forEach
+            val marks = runCatching { source.astIntrinsicMarked }.getOrNull() ?: return@forEach
+            marks.forEach { (node, intrinsics) ->
+                val names = intrinsics.map { it.name }.toSet()
+                if ("_opaque" in names) {
+                    when (node) {
+                        is ClassDecl -> compilationUnit.registerOpaqueType(baseTypeNameOf(node.name))
+                        is TypeAliasDecl -> {
+                            val n = (node.alias.identifier as? Identifier)?.value
+                            if (n != null) compilationUnit.registerOpaqueType(n)
+                        }
+                        else -> {}
+                    }
+                }
+                if ("_extern" in names && node is FunctionDecl) {
+                    val kiraName = functionLikeName(node.name)
+                    // Optional C symbol not recovered from mark alone; default to Kira name.
+                    // Full apply() path can override via registerExternFunction.
+                    if (compilationUnit.externCNameOrNull(kiraName) == null) {
+                        compilationUnit.registerExternFunction(kiraName, kiraName)
+                    }
+                }
+            }
+            // Also walk AST for class/function decls that carry marks only on nested nodes
+            source.ast.statements.forEach { stmt ->
+                val expr: Any? = when (stmt) {
+                    is ClassDecl, is FunctionDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                when (expr) {
+                    is ClassDecl -> {
+                        val marked = marks[expr]?.any { it.name == "_opaque" } == true
+                        if (marked) compilationUnit.registerOpaqueType(baseTypeNameOf(expr.name))
+                    }
+                    is FunctionDecl -> {
+                        val marked = marks[expr]?.any { it.name == "_extern" } == true
+                        if (marked) {
+                            val kiraName = functionLikeName(expr.name)
+                            if (compilationUnit.externCNameOrNull(kiraName) == null) {
+                                compilationUnit.registerExternFunction(kiraName, kiraName)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -395,21 +460,30 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private fun emitStructForwardDecls() {
         val names = linkedSetOf<String>()
         eachClassDecl {
-            if (!isGenericClass(it)) {
+            if (!isGenericClass(it) && !isOpaqueTypeName(baseTypeNameOf(it.name))) {
                 names.add(baseTypeNameOf(it.name))
             }
         }
         classSpecializations.keys.forEach { names.add(it) }
-        if (names.isEmpty()) return
+        // Opaque foreign types: incomplete struct + pointer typedef handled in emitOpaqueTypedefs
+        if (names.isEmpty() && opaqueTypes.isEmpty()) return
         names.forEach { name ->
             buffer.appendLine("typedef struct $name $name;")
         }
+        emitOpaqueTypedefs()
         buffer.appendLine()
+    }
+
+    private fun emitOpaqueTypedefs() {
+        opaqueTypes.sorted().forEach { name ->
+            // Incomplete struct tag; values are name* in mapTypeName.
+            buffer.appendLine("typedef struct $name $name;")
+        }
     }
 
     private fun emitStructBodies() {
         eachClassDecl {
-            if (!isGenericClass(it)) {
+            if (!isGenericClass(it) && !isOpaqueTypeName(baseTypeNameOf(it.name))) {
                 visitClassDecl(it)
             }
         }
@@ -609,7 +683,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                     }
                 }
                 is ClassDecl -> {
-                    if (isMagicDecl(expr) || isGenericClass(expr)) return@forEach
+                    if (isMagicDecl(expr) || isGenericClass(expr) || isOpaqueTypeName(baseTypeNameOf(expr.name))) return@forEach
                     val className = typeNameOf(expr.name)
                     // Register fields early for print-format / method body rewriting
                     expr.members.filterIsInstance<VariableDecl>().forEach { field ->
@@ -686,10 +760,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun functionPrototypeLine(functionDecl: FunctionDecl): String {
-        val functionName = functionLikeName(functionDecl.name)
+        val kiraName = functionLikeName(functionDecl.name)
+        val functionName = if (isExternFunction(kiraName)) externCName(kiraName) else kiraName
         val returnTypeName = typeNameOf(functionDecl.def.returnTypeSpecifier)
         val returnsVoid = returnTypeName == "Void"
-        val retC = if (functionName == "main" && returnsVoid) {
+        val retC = if (kiraName == "main" && returnsVoid) {
             "Int32"
         } else {
             mapTypeName(returnTypeName)
@@ -703,11 +778,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         // Register return type early so print-format works even if a call
         // appears before the definition in the walk order.
-        knownValueTypes[functionName] = returnTypeName
+        knownValueTypes[kiraName] = returnTypeName
+        if (functionName != kiraName) {
+            knownValueTypes[functionName] = returnTypeName
+        }
         functionDecl.def.parameters.forEach { param ->
             knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
         }
-        return "$retC $functionName($params);"
+        val linkage = if (isExternFunction(kiraName)) "extern " else ""
+        return "$linkage$retC $functionName($params);"
     }
 
     private fun shouldSkipSource(source: SourceContext): Boolean {
@@ -757,6 +836,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun mapTypeName(typeName: String): String {
         CMagicTypeLowering.resolve(typeName)?.let { return it.cType }
+        // Foreign opaque handles are C pointers (never Kira ARC objects).
+        if (opaqueTypes.contains(typeName)) {
+            return "$typeName*"
+        }
         // Always map well-known builtins even without magic registration
         return when (typeName) {
             "Int8", "Int16", "Int32", "Int64",
@@ -766,6 +849,18 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 CMagicTypeLowering.resolve(typeName)?.cType ?: typeName
             else -> typeName
         }
+    }
+
+    private fun isOpaqueTypeName(typeName: String): Boolean {
+        return opaqueTypes.contains(typeName)
+    }
+
+    private fun isExternFunction(name: String): Boolean {
+        return externFunctions.containsKey(name)
+    }
+
+    private fun externCName(name: String): String {
+        return externFunctions[name] ?: name
     }
 
     private fun isCollectionType(typeName: String?): Boolean {
@@ -823,7 +918,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun isMagicDecl(decl: Decl): Boolean {
-        if (decl is FirstClassDecl && decl.isMagic()) {
+        // Marks live on SourceContext.astIntrinsicMarked, not decl.attachedIntrinsics
+        // (that list is rarely populated). Treat @_magic only -- not @_opaque/@_extern.
+        if (declHasIntrinsic(decl, "_magic")) {
             return true
         }
         // Also treat known magic type names as skippable even if marker missed
@@ -834,13 +931,24 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             is VariantDecl -> baseTypeNameOf(decl.name)
             is TypeAliasDecl -> when (val id = decl.alias.identifier) {
                 is Identifier -> id.value
-                else -> null
+            else -> null
             }
             is FunctionDecl -> functionLikeName(decl.name)
             is VariableDecl -> decl.name.value
             else -> null
         }
         return name != null && discoveredMagicTypes.contains(name)
+    }
+
+    private fun declHasIntrinsic(decl: Decl, intrinsicName: String): Boolean {
+        compilationUnit.allSources().forEach { source ->
+            val marks = runCatching { source.astIntrinsicMarked }.getOrNull() ?: return@forEach
+            val arr = marks[decl] ?: return@forEach
+            if (arr.any { it.name == intrinsicName }) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun toScreamingSnake(name: String): String {
@@ -1215,11 +1323,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
         includeForIntrinsic(rawName)
-        val functionName = if (functionCallExpr.typeArguments.isNotEmpty()) {
-            val typeArgNames = functionCallExpr.typeArguments.map { resolveKiraTypeName(it) }
-            specializedName(mapIntrinsicName(rawName), typeArgNames)
-        } else {
-            mapIntrinsicName(rawName)
+        val functionName = when {
+            isExternFunction(rawName) -> externCName(rawName)
+            functionCallExpr.typeArguments.isNotEmpty() -> {
+                val typeArgNames = functionCallExpr.typeArguments.map { resolveKiraTypeName(it) }
+                specializedName(mapIntrinsicName(rawName), typeArgNames)
+            }
+            else -> mapIntrinsicName(rawName)
         }
         buffer.append(functionName)
         buffer.append("(")
@@ -1522,7 +1632,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
 
-        val functionName = functionLikeName(functionDecl.name)
+        val kiraName = functionLikeName(functionDecl.name)
+        // @_extern stubs: prototype only (already emitted); never emit a body.
+        if (isExternFunction(kiraName)) {
+            knownValueTypes[kiraName] = typeNameOf(functionDecl.def.returnTypeSpecifier)
+            return
+        }
+        val functionName = kiraName
         val returnTypeName = typeNameOf(functionDecl.def.returnTypeSpecifier)
         val returnsVoid = returnTypeName == "Void"
         knownValueTypes[functionName] = returnTypeName
@@ -1572,6 +1688,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         // Generic class templates are monomorphized into specialized structs.
         if (isGenericClass(classDecl)) {
+            return
+        }
+        // @_opaque foreign types: incomplete struct only (no Kira fields/ARC).
+        if (isOpaqueTypeName(baseTypeNameOf(classDecl.name))) {
             return
         }
         val className = typeNameOf(classDecl.name)

@@ -320,6 +320,19 @@ class KiraParser(private val context: SourceContext) {
             Token.Type.K_USE -> parseUseStatement()
             Token.Type.K_BREAK -> parseBreakStatement()
             Token.Type.K_CONTINUE -> parseContinueStatement()
+            // Leading known decl intrinsics (@_opaque / @_extern / @_magic) before pub/class/fx.
+            // Unknown @foo(...) stays an expression statement (see TestBroken dummy intrinsic).
+            Token.Type.INTRINSIC_IDENTIFIER -> {
+                val raw = peek().content.removePrefix("@")
+                if (IntrinsicRegistry.find(raw) != null) {
+                    parseWithModifiers()
+                } else {
+                    val baseLocation = here()
+                    val expr = parseExpr()
+                    expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+                    putOrigin(Statement(expr), baseLocation)
+                }
+            }
             in Token.Type.modifiers -> parseWithModifiers()
             Token.Type.K_CLASS -> // this part covers the case where the class decl has no modifiers on it. THIS CONDITION NEEDS TO BE UNDER THE PREVIOUS CONDITION
             {
@@ -903,6 +916,8 @@ class KiraParser(private val context: SourceContext) {
 
     private fun parseFunctionDecl(modifier: Map<Modifier, SourcePosition>?): FunctionDecl {
         val origin = here()
+        // Capture @_extern before expectModifiers / nested parseModifiers clears it.
+        val functionIntrinsicsEarly = pendingIntrinsics
         expectModifiers(modifier, WrappingContext.FUNCTION)
         expectThenAdvance(Token.Type.K_FX)
         var functionName: Expr = AnonymousIdentifier
@@ -925,7 +940,7 @@ class KiraParser(private val context: SourceContext) {
         val params = parseFunctionDeclParameters()
         expectThenAdvance(Token.Type.S_COLON)
         val returnType = parseType()
-        val functionIntrinsics = pendingIntrinsics
+        val functionIntrinsics = functionIntrinsicsEarly ?: pendingIntrinsics
         pendingIntrinsics = null
         var body: List<Statement>? = null
         if (at(Token.Type.S_OPEN_BRACE)) {
@@ -1135,6 +1150,9 @@ class KiraParser(private val context: SourceContext) {
 
 
     fun parseClassDecl(modifier: Map<Modifier, SourcePosition>?): ClassDecl {
+        // Capture @_opaque / @_magic before expectModifiers parses `pub` and
+        // clears pendingIntrinsics via a fresh parseModifiers path.
+        val classIntrinsicsEarly = pendingIntrinsics
         expectModifiers(modifier, WrappingContext.CLASS)
         advancePointer() //consume the class keyword
         val origin = here()
@@ -1155,10 +1173,15 @@ class KiraParser(private val context: SourceContext) {
         }
         if (!at(Token.Type.S_OPEN_BRACE)) {
             val classDecl = ClassDecl(className, modifier?.keys?.toList() ?: emptyList(), emptyList(), parenTypes)
+            val marks = classIntrinsicsEarly ?: pendingIntrinsics
+            if (marks != null) {
+                context.astIntrinsicMarked[classDecl] = marks
+                pendingIntrinsics = null
+            }
             attachIntrinsics(classDecl)
             return putOrigin(classDecl, origin)
         }
-        val classIntrinsics = pendingIntrinsics
+        val classIntrinsics = classIntrinsicsEarly ?: pendingIntrinsics
         pendingIntrinsics = null
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<FirstClassDecl>()

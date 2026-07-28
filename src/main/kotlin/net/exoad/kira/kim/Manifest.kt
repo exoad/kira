@@ -5,7 +5,11 @@ data class ProjectSpec(
 )
 
 data class BuildOptions(
-    val target: String = "c"
+    val target: String = "c",
+    /** Extra .c/.o files linked with out.kira.c (paths relative to project root). */
+    val cSources: List<String> = emptyList(),
+    /** Extra flags passed to cc after sources (e.g. -framework Cocoa). */
+    val linkFlags: List<String> = emptyList(),
 )
 
 data class CompilerOptions(

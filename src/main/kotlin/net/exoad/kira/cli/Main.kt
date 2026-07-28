@@ -219,9 +219,15 @@ fun main() {
                     val out = KiraCCodeGenerator.DEFAULT_OUTPUT
                     Diagnostics.Logging.info("Kira", "Emitting C -> $out")
                     KiraCCodeGenerator(compilationUnit).generate(out)
+                    val cSources = manifest?.build?.cSources.orEmpty()
+                    val linkFlags = manifest?.build?.linkFlags.orEmpty()
+                    val extras = buildString {
+                        cSources.forEach { append(' ').append(it) }
+                        linkFlags.forEach { append(' ').append(it) }
+                    }
                     Diagnostics.Logging.info(
                         "Kira",
-                        "Done. Compile with: cc -std=c17 -O2 -o app $out && ./app"
+                        "Done. Compile with: cc -std=c17 -O2 -o app $out$extras && ./app"
                     )
                 }
 

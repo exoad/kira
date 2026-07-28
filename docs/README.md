@@ -3,6 +3,9 @@
 | Path | What it is |
 |------|------------|
 | [tutorial/](tutorial/) | Hands-on path from zero to the full example ladder |
+| [doctrine.md](doctrine.md) | Pure simple OOP doctrine (non-negotiable) |
+| [roadmap.md](roadmap.md) | Working milestones (FFI → ARC → stdlib) |
+| [ownership-arc.md](ownership-arc.md) | Kira heap ARC vs foreign handles |
 | [backend-c.md](backend-c.md) | **C-as-IR** status: ISO C17 lowering, runtime, roadmap |
 | [../specifications/LanguageSpecifications.md](../specifications/LanguageSpecifications.md) | Language reference (syntax, types, modules, OOP) |
 | [../specifications/Grammar.md](../specifications/Grammar.md) | Compact grammar / style notes |

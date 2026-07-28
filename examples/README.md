@@ -49,6 +49,14 @@ Side-by-side Kira → real emitted C17 (checked-in snapshots):
 ./examples/c-as-ir/regenerate.sh
 ```
 
+## Foreign C edge
+
+**[ffi-mini/](ffi-mini/)** -- pure OOP Kira calling a tiny C "surface" lib
+(`@_opaque` + `@_extern` + `build.cSources`). Manual foreign free; not ARC.
+
+```bash
+./examples/ffi-mini/run.sh
+```
 ## Layout convention
 
 ```

@@ -43,6 +43,52 @@ typedef CharSeq Str;
 #define println(...) do { print(__VA_ARGS__); print("\n"); } while (0)
 
 /* -------------------------------------------------------------------------- */
+/* Kira ARC hooks (class heap only -- never foreign/opaque pointers)          */
+/* Strong RC v1 foundation; codegen wiring lands incrementally.               */
+/* -------------------------------------------------------------------------- */
+
+typedef struct KiraRcHeader
+{
+    Int32 strong;
+} KiraRcHeader;
+
+simple Void* kira_rc_alloc(Int32 nbytes)
+{
+    /* header + payload; payload begins immediately after header */
+    KiraRcHeader* h = (KiraRcHeader*)malloc((size_t)nbytes + sizeof(KiraRcHeader));
+    if (h == null)
+    {
+        abort();
+    }
+    h->strong = 1;
+    return (Void*)(h + 1);
+}
+
+simple Void kira_rc_retain(Void* obj)
+{
+    if (obj == null)
+    {
+        return;
+    }
+    KiraRcHeader* h = ((KiraRcHeader*)obj) - 1;
+    h->strong += 1;
+}
+
+simple Void kira_rc_release(Void* obj)
+{
+    if (obj == null)
+    {
+        return;
+    }
+    KiraRcHeader* h = ((KiraRcHeader*)obj) - 1;
+    h->strong -= 1;
+    if (h->strong <= 0)
+    {
+        free(h);
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Arr -- erased dynamic/fixed view over Int32 elements (baseline)            */
 /* -------------------------------------------------------------------------- */
 

@@ -102,6 +102,8 @@ Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 | `kira/` | Stdlib (`stl.kira`) |
 | `examples/` | Ladder `01-hello` ... `06-collections` |
 | `examples/c-as-ir/` | C-as-IR demos (Kira ↔ emitted C side-by-side) |
+| `examples/ffi-mini/` | Foreign C edge (`@_extern` / `@_opaque`) |
+| `docs/doctrine.md` | Pure OOP doctrine |
 | `docs/tutorial/` | Hands-on guide |
 | `specifications/` | Language reference |
 | `test_kira/` | Smoke project for `./gradlew run` |

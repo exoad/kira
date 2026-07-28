@@ -11,11 +11,11 @@ abstract class FirstClassDecl(
 ) : Decl(name) {
 
     /**
-     * A magic declaration is one that is intrinsified by the compiler itself
+     * True when marked @_magic (stdlib / compiler-owned). Foreign @_opaque / @_extern
+     * are not magic -- they still participate in C-as-IR lowering.
      */
     fun isMagic(): Boolean {
-        // TODO: Make this actually point to a magic declarative intrinsic
-        return attachedIntrinsics.any { true }
+        return attachedIntrinsics.any { it.name == "_magic" || it.name == "magic" }
     }
 
     abstract fun isStub(): Boolean

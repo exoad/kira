@@ -23,6 +23,12 @@ object ManifestLoader {
 
         val buildMap = root.optionalMap("build")
         val target = buildMap?.optionalString("target") ?: "c"
+        val cSources = buildMap?.optionalStringList("cSources")
+            ?: buildMap?.optionalStringList("c_sources")
+            ?: emptyList()
+        val linkFlags = buildMap?.optionalStringList("linkFlags")
+            ?: buildMap?.optionalStringList("link_flags")
+            ?: emptyList()
 
         val compilerMap = root.optionalMap("compiler")
         val emitIr = compilerMap?.optionalString("emitIr") ?: compilerMap?.optionalString("emit_ir")
@@ -35,7 +41,7 @@ object ManifestLoader {
         return ProjectManifest(
             project = ProjectSpec(name = projectName),
             srcDir = srcDir,
-            build = BuildOptions(target = target),
+            build = BuildOptions(target = target, cSources = cSources, linkFlags = linkFlags),
             compiler = CompilerOptions(emitIr = emitIr),
             dependencies = dependencies
         )
@@ -70,5 +76,16 @@ object ManifestLoader {
     private fun Map<String, Any?>.optionalMap(key: String): Map<String, Any?>? {
         val value = this[key] ?: return null
         return value.toStringKeyMap(key)
+    }
+
+    private fun Map<String, Any?>.optionalStringList(key: String): List<String>? {
+        val value = this[key] ?: return null
+        if (value !is List<*>) {
+            throw IllegalArgumentException("Field '$key' must be a list of strings")
+        }
+        return value.mapIndexed { index, item ->
+            item as? String
+                ?: throw IllegalArgumentException("Field '$key[$index]' must be a string")
+        }.map { it.trim() }.filter { it.isNotEmpty() }
     }
 }

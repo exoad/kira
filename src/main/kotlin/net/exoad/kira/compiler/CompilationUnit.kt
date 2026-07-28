@@ -20,6 +20,10 @@ import java.io.File
 class CompilationUnit {
     private val sources = mutableMapOf<String, SourceContext>()
     private val magicTypeNames = mutableSetOf<String>()
+    /** Foreign opaque class names → C pointer handles (no Kira ARC). */
+    private val opaqueTypeNames = mutableSetOf<String>()
+    /** Kira function name → C symbol for @_extern stubs. */
+    private val externFunctions = linkedMapOf<String, String>()
     val symbolTable = KiraSymbolTable()
 
     init {
@@ -77,6 +81,34 @@ class CompilationUnit {
 
     fun allMagicTypes(): Set<String> {
         return magicTypeNames.toSet()
+    }
+
+    fun registerOpaqueType(name: String) {
+        if (name.isNotBlank()) {
+            opaqueTypeNames.add(name)
+        }
+    }
+
+    fun isOpaqueType(name: String): Boolean {
+        return opaqueTypeNames.contains(name)
+    }
+
+    fun allOpaqueTypes(): Set<String> {
+        return opaqueTypeNames.toSet()
+    }
+
+    fun registerExternFunction(kiraName: String, cName: String) {
+        if (kiraName.isNotBlank() && cName.isNotBlank()) {
+            externFunctions[kiraName] = cName
+        }
+    }
+
+    fun externCNameOrNull(kiraName: String): String? {
+        return externFunctions[kiraName]
+    }
+
+    fun allExternFunctions(): Map<String, String> {
+        return externFunctions.toMap()
     }
 
     fun collectIntrinsicMarkedTypeNames(intrinsicName: String): Set<String> {

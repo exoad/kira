@@ -100,8 +100,11 @@ emit, compile as C17, and run.
 | `Map` empty / `isEmpty` / `size` | **Baseline** | Count-only; no real put/get hashing |
 | `List` grow / `add` | **Stub** | Alias-ish to Arr at C boundary |
 | Traits / inheritance / variants | **Not lowered** | Skipped or commented in emit |
-| ARC / RC heap / weak refs | **Not implemented** | Spec describes ARC; runtime is plain C lifetimes |
-| Hybrid ARC + manual C | **Planned** | Design direction; not started |
+| `@_opaque` foreign types | **Green** | Incomplete struct; values are `T*` |
+| `@_extern` C stubs | **Green** | Unmangled prototypes + calls; no body |
+| `build.cSources` / `linkFlags` | **Green** | Printed on emit; used by ffi-mini |
+| ARC / RC heap (Kira classes) | **Hooks only** | `kira_rc_alloc/retain/release` in prelude; codegen TBD |
+| Weak refs | **Not implemented** | |
 | Separate Neko backend | **Not active** | `target: neko` reserved only |
 
 **Proof surface:** `examples/01-hello` ... `06-collections` via `./examples/run.sh`,

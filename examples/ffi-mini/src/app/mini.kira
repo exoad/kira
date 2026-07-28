@@ -1,0 +1,20 @@
+module "app:mini"
+
+// Foreign opaque handle -- no body (like @_magic class Int32). C pointer in emit.
+@_opaque
+pub class MiniSurface
+
+@_extern
+fx miniCreate(w: Int32, h: Int32, title: Str): MiniSurface
+
+@_extern
+fx miniClosed(s: MiniSurface): Int32
+
+@_extern
+fx miniClear(s: MiniSurface, color: Int32): Void
+
+@_extern
+fx miniPresent(s: MiniSurface): Void
+
+@_extern
+fx miniDestroy(s: MiniSurface): Void
