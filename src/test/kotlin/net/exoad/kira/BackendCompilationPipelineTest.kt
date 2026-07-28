@@ -141,6 +141,62 @@ class BackendCompilationPipelineTest {
     }
 
     @Test
+    fun generatedCLowersArrAndMapAndRuns() {
+        val compiler = TestCompileSupport.findCCompiler()
+        assumeTrue(compiler != null, "No C compiler found on PATH")
+
+        val moduleUri = "test:backend.collections"
+        val source = TestCompileSupport.wrapModule(
+            moduleUri,
+            """
+            fx first(values: Arr<Int32>): Int32 {
+                return values[0]
+            }
+
+            fx hasAny(values: Map<Str, Int32>): Bool {
+                return !values.isEmpty()
+            }
+
+            fx main(): Void {
+                numbers: Arr<Int32> = [10, 20, 30]
+                head: Int32 = first(numbers)
+                entries: Map<Str, Int32> = Map<Str, Int32> { }
+                present: Bool = hasAny(entries)
+                if present {
+                    trace("map has values")
+                } else {
+                    trace(head)
+                }
+            }
+            """
+        )
+
+        val generated = TestCompileSupport.transpileSnippetToC(
+            source = source,
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            parserBackend = ParserBackend.LEGACY,
+            runSemantic = false
+        )
+
+        assertTrue(generated.contains("typedef struct Arr"), generated)
+        assertTrue(generated.contains("typedef struct Map"), generated)
+        assertTrue(generated.contains("Arr_i32"), generated)
+        assertTrue(generated.contains("Arr_get_i32"), generated)
+        assertTrue(generated.contains("Map_new()"), generated)
+        assertTrue(generated.contains("Map_isEmpty"), generated)
+
+        val runResult = TestCompileSupport.compileAndRunC(generated, compiler!!)
+        assumeTrue(
+            runResult.compileResult.exitCode == 0,
+            "Compile step failed. stdout:\n${runResult.compileResult.stdout}\nstderr:\n${runResult.compileResult.stderr}\nC:\n$generated"
+        )
+        val exec = runResult.runResult
+        assertNotNull(exec)
+        assertEquals(0, exec.exitCode, "stdout:\n${exec.stdout}\nstderr:\n${exec.stderr}")
+        assertTrue(exec.stdout.contains("10"), exec.stdout)
+    }
+
+    @Test
     fun generatedCLowersMethodCallsAndRuns() {
         val compiler = TestCompileSupport.findCCompiler()
         assumeTrue(compiler != null, "No C compiler found on PATH")

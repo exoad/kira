@@ -25,6 +25,11 @@ object CMagicTypeLowering {
         "Str" to CMagicTypeBinding("Str"),
         "String" to CMagicTypeBinding("Str"),
         "Any" to CMagicTypeBinding("Any"),
+        // Baseline collections -- generics erased; bodies live in c_generator.c
+        "Arr" to CMagicTypeBinding("Arr"),
+        "List" to CMagicTypeBinding("List"),
+        "Map" to CMagicTypeBinding("Map"),
+        "Set" to CMagicTypeBinding("Map"), // count-bag stand-in until Set lands
     )
 
     fun resolve(typeName: String): CMagicTypeBinding? {

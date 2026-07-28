@@ -325,9 +325,64 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return when (typeName) {
             "Int8", "Int16", "Int32", "Int64",
             "Float32", "Float64", "Bool", "Void", "Never",
-            "Str", "String", "Any", "Int", "Float" ->
+            "Str", "String", "Any", "Int", "Float",
+            "Arr", "List", "Map", "Set" ->
                 CMagicTypeLowering.resolve(typeName)?.cType ?: typeName
             else -> typeName
+        }
+    }
+
+    private fun isCollectionType(typeName: String?): Boolean {
+        return typeName == "Arr" || typeName == "List" || typeName == "Map" || typeName == "Set"
+    }
+
+    /**
+     * Lower a known collection method on a receiver. Returns true if handled.
+     * Call shape in C: Arr_isEmpty(&recv) / Map_isEmpty(&recv) / Arr_size(&recv).
+     */
+    private fun tryEmitCollectionMethod(methodName: String, receiver: Expr, args: List<Expr>): Boolean {
+        val recvType = receiverTypeOf(receiver) ?: return false
+        val prefix = when (recvType) {
+            "Arr", "List" -> recvType
+            "Map", "Set" -> "Map"
+            else -> return false
+        }
+
+        when (methodName) {
+            "isEmpty" -> {
+                buffer.append(prefix)
+                buffer.append("_isEmpty(&")
+                receiver.accept(this)
+                buffer.append(")")
+                return true
+            }
+            "size" -> {
+                buffer.append(prefix)
+                buffer.append("_size(&")
+                receiver.accept(this)
+                buffer.append(")")
+                return true
+            }
+            "clear" -> {
+                if (prefix != "Map") return false
+                buffer.append("Map_clear(&")
+                receiver.accept(this)
+                buffer.append(")")
+                return true
+            }
+            "get" -> {
+                // Arr_get_i32(arr, index) -- value receiver, not pointer
+                if (prefix != "Arr" && prefix != "List") return false
+                buffer.append("Arr_get_i32(")
+                receiver.accept(this)
+                if (args.isNotEmpty()) {
+                    buffer.append(", ")
+                    args[0].accept(this)
+                }
+                buffer.append(")")
+                return true
+            }
+            else -> return false
         }
     }
 
@@ -680,8 +735,16 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         val nameExpr = functionCallExpr.name
         // Method call: receiver.method(args) -> Class_method(&receiver, args)
+        // or Arr/Map runtime helpers for magic collection types.
         if (nameExpr is MemberAccessExpr) {
             val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
+            val args = buildList {
+                functionCallExpr.positionalParameters.forEach { add(it.value) }
+                functionCallExpr.namedParameters.forEach { add(it.value) }
+            }
+            if (tryEmitCollectionMethod(methodName, nameExpr.origin, args)) {
+                return
+            }
             val recvType = receiverTypeOf(nameExpr.origin)
             val mangled = resolveMethodMangled(methodName, recvType) ?: methodName
             buffer.append(mangled)
@@ -815,10 +878,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {
+        // Arr is a struct { data, length }; index through Arr_get_i32.
+        buffer.append("Arr_get_i32(")
         arrayIndexExpr.originExpr.accept(this)
-        buffer.append("[")
+        buffer.append(", ")
         arrayIndexExpr.indexExpr.accept(this)
-        buffer.append("]")
+        buffer.append(")")
     }
 
     override fun visitThrowExpr(throwExpr: ThrowExpr) {
@@ -837,6 +902,23 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
         val typeName = typeNameOf(objectInitExpr.typeName)
+        // Empty Map/Arr/List constructors use runtime helpers.
+        if (objectInitExpr.positionalArgs.isEmpty()) {
+            when (typeName) {
+                "Map", "Set" -> {
+                    buffer.append("Map_new()")
+                    return
+                }
+                "Arr" -> {
+                    buffer.append("Arr_empty()")
+                    return
+                }
+                "List" -> {
+                    buffer.append("List_empty()")
+                    return
+                }
+            }
+        }
         buffer.append("(")
         buffer.append(mapTypeName(typeName))
         buffer.append(") { ")
@@ -910,12 +992,25 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        buffer.append("{ ")
+        // Compound-literal backed Arr view. Elements are Int32 in the baseline
+        // backend (matches Arr_i32). Lifetime is the enclosing block -- fine
+        // for locals and immediate call arguments in the examples.
+        val n = arrayLiteral.value.size
+        buffer.append("Arr_i32((Int32[]){ ")
         arrayLiteral.value.forEachIndexed { i, expr ->
             if (i > 0) buffer.append(", ")
             expr.accept(this)
         }
-        buffer.append(" }")
+        if (n == 0) {
+            // Empty compound literal still needs a valid pointer; use null via Arr_empty.
+            // (Int32[]){ } is a GCC extension with zero size; prefer helper.
+            buffer.setLength(buffer.length - "Arr_i32((Int32[]){ ".length)
+            buffer.append("Arr_empty()")
+            return
+        }
+        buffer.append(" }, ")
+        buffer.append(n)
+        buffer.append(")")
     }
 
     override fun visitNullLiteral(nullLiteral: NullLiteral) {
@@ -949,7 +1044,20 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         variableDecl.name.accept(this)
         if (variableDecl.value != null) {
             buffer.append(" = ")
-            variableDecl.value!!.accept(this)
+            // Empty Map/Arr typed locals with missing/empty init
+            val value = variableDecl.value!!
+            if (value is ObjectInitExpr && value.positionalArgs.isEmpty() && isCollectionType(typeName)) {
+                value.accept(this)
+            } else {
+                value.accept(this)
+            }
+        } else if (isCollectionType(typeName)) {
+            buffer.append(" = ")
+            when (typeName) {
+                "Map", "Set" -> buffer.append("Map_new()")
+                "List" -> buffer.append("List_empty()")
+                else -> buffer.append("Arr_empty()")
+            }
         }
         buffer.appendLine(";")
     }
