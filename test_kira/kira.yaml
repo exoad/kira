@@ -4,11 +4,8 @@ project:
 srcDir: sub
 
 build:
-  target: none
-
-compiler:
-  emitIr: dump_symbols.kira.txt
+  target: c
 
 dependencies:
-  kira_lib:
-    path: kira
+  kira_stdlib:
+    path: ../kira

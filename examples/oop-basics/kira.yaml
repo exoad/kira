@@ -4,10 +4,7 @@ project:
 srcDir: src
 
 build:
-  target: none
-
-compiler:
-  emitIr: dump_symbols.oop.txt
+  target: c
 
 dependencies:
   kira_stdlib:

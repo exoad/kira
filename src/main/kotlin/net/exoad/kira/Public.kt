@@ -25,9 +25,10 @@ object Public {
             }
             val entries = mutableListOf<String>()
             Files.walk(rootPath).use { stream ->
-                stream.filter { Files.isRegularFile(it) }.forEach { p: Path ->
-                    entries.add(rootPath.resolve(p).toAbsolutePath().toString())
-                }
+                stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kira") }
+                    .forEach { p: Path ->
+                        entries.add(p.toAbsolutePath().normalize().toString())
+                    }
             }
             return entries.sorted().toTypedArray()
         }

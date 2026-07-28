@@ -1,62 +1,41 @@
-.gradle
+.gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
+### IDE ###
+.idea/
 *.iws
 *.iml
 *.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-
-### Kotlin ###
-.kotlin
-
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
 .vscode/
+.project
+.classpath
+.settings/
+.factorypath
+out/
+bin/
 
-### Mac OS ###
+### Kotlin / Java ###
+.kotlin/
+*.class
+
+### OS ###
 .DS_Store
 
-.idea
-
-/meta
-**.kira.txt
-**.neko
-**.n
-**.kira.xml
-**.kira.c
-# IR / symbol dumps from compiler.emitIr (examples and local runs)
+### Compiler outputs ###
+*.kira.c
+*.kira.xml
+*.kira.txt
+*.neko
 **/dump_symbols*.txt
 dump_symbols*.txt
-# coverage
+a.out
+app
+
+### Coverage / local ###
 /htmlReport
 /private
-# Ming local runtime (not part of Kira)
+/meta
+
+### Ming local runtime (not part of Kira) ###
 .ming/

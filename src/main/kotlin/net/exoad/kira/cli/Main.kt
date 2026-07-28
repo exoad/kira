@@ -216,8 +216,13 @@ fun main() {
         if (diagnosticCount == 0) {
             when (GeneratedProvider.outputMode) {
                 GeneratedProvider.OutputTarget.C -> {
-                    Diagnostics.Logging.info("Kira", "Outputting to 'target C' -> out.kira.c")
-                    KiraCCodeGenerator(compilationUnit).generate()
+                    val out = KiraCCodeGenerator.DEFAULT_OUTPUT
+                    Diagnostics.Logging.info("Kira", "Emitting C -> $out")
+                    KiraCCodeGenerator(compilationUnit).generate(out)
+                    Diagnostics.Logging.info(
+                        "Kira",
+                        "Done. Compile with: cc -std=c11 -O2 -o app $out && ./app"
+                    )
                 }
 
                 else -> {}

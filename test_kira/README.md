@@ -1,6 +1,7 @@
-# Test_Kira Samples
+# test_kira
 
-This directory contains some of the sample test files used
-to test the outputs of the compiler.
+Smoke project for `./gradlew run` and a few unit tests.
 
-Project configuration for this sample uses `kira.yaml`.
+- `kira.yaml` -- `srcDir: sub`, `build.target: c`, stdlib at `../kira`
+- `sub/test.kira` -- sample used by backend/frontend pipeline tests
+- `main.kira` -- extra fixture read directly by parser smoke tests (not on `srcDir`)

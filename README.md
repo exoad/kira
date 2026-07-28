@@ -2,59 +2,75 @@
 <img src="./public/display_logo.png" width=96/><br/>Kira
 </h1>
 <p align="center">
-<strong>
-A modern object-oriented programming language focused on simplicity & practicality.
-</strong>
+<strong>A small object-oriented language that compiles to C.</strong>
 </p>
 
-> [!NOTE]
-> This project is currently under active development. Documentation may be incomplete.
+> Active development. The C backend is the supported target today.
 
-**Kira** is a modern, pure object-oriented programming language with expressive syntax inspired by Swift, Kotlin, and
-Dart. It functions as a flexible toolkit—similar to Haxe—supporting transpilation and ahead-of-time (AOT) compilation to
-multiple targets, including source code, bytecode, bitcode, and machine code.
+Kira is private and immutable by default (`pub` / `mut` to opt in). The
+compiler is a JVM CLI: it reads a `kira.yaml` from the current directory,
+typechecks, and emits one C translation unit (`out.kira.c`) you compile with
+any C11 toolchain.
 
-Kira enforces three core principles: **privacy**, **immutability**, and **static behavior**. All declarations are
-private and immutable by default. To enable mutability or public access, use the `mut` or `pub` modifiers respectively.
-Classes contain only instance-level data; static and companion members are managed via namespaces.
+Language reference: [`specifications/LanguageSpecifications.md`](specifications/LanguageSpecifications.md).
+Runnable samples: [`examples/`](examples/).
 
 ---
 
-For the full language reference and detailed specifications, see the canonical specification document:
+### Requirements
 
-- `specifications/LanguageSpecifications.md`
+- JDK 17+
+- A C11 compiler on `PATH` (`cc`, `clang`, or `gcc`) for running programs
 
-Quick pointers
+### Build the compiler
 
-- Full language spec: `specifications/LanguageSpecifications.md`
+```bash
+./gradlew test          # unit + pipeline tests
+./gradlew installDist   # -> build/install/kira/bin/kira
+```
 
-### Project Config (Simple)
+`./gradlew run` compiles the in-repo smoke project at `test_kira/`.
 
-Kira now uses a single YAML project file named `kira.yaml`.
+### Compile a Kira project
 
-Minimal example:
+Every project is a directory with a `kira.yaml` and a source root:
 
 ```yaml
 project:
-    name: demo
+  name: demo
 
 srcDir: src
 
 build:
-    target: c
+  target: c
 
 dependencies:
-    kira_stdlib:
-        path: ./kira
+  kira_stdlib:
+    path: /path/to/kira/repo/kira   # the stdlib folder in this repo
 ```
 
-Notes:
+```bash
+# from this repo, after installDist:
+export KIRA="$(pwd)/build/install/kira/bin/kira"
+export KIRA_STDLIB="$(pwd)/kira"
 
-- `srcDir` is a single root directory scanned recursively for `.kira` files.
-- Dependencies are local path-based only (`dependencies.<name>.path`).
-- Legacy `kira.toml` manifests are no longer supported.
+cd examples/intro
+# kira.yaml already points at ../../kira
+"$KIRA"
+cc -std=c11 -O2 -o app out.kira.c && ./app
+```
 
-### Quick example
+The compiler always uses the process working directory for `kira.yaml`.
+There is no project-path flag yet -- `cd` into the project first.
+
+Optional parser backend (default is the hand-written legacy parser):
+
+```bash
+KIRA_PARSER=antlr "$KIRA"
+# or: -Dkira.parser=antlr when launching via Gradle
+```
+
+### Quick language sketch
 
 ```kira
 module "example:main"
@@ -64,30 +80,20 @@ fx main(): Void {
 }
 ```
 
-### Build & run
+### Layout
 
-Requires JDK 17+.
+| Path | Role |
+|------|------|
+| `src/` | Compiler (Kotlin/JVM) |
+| `kira/` | Standard library (`stl.kira`) |
+| `examples/` | Multi-file projects that emit and run |
+| `test_kira/` | Smoke project for `./gradlew run` and a few tests |
+| `specifications/` | Language + grammar notes |
+| `public/` | Logo asset for this README |
 
-```bash
-./gradlew test          # unit + pipeline smoke tests
-./gradlew run           # compile the in-repo sample at test_kira/
-./gradlew installDist   # package a runnable distribution under build/install/
-```
+### Status (C backend)
 
-`./gradlew run` uses `test_kira/` as the working directory (it has a sample
-`kira.yaml`). The compiler always reads `kira.yaml` from the process cwd, so to
-compile your own project either point a custom Gradle run config at that
-directory, or:
-
-```bash
-./gradlew installDist
-cd /path/to/your/kira/project   # directory containing kira.yaml
-/path/to/kira/build/install/kira_lang/bin/kira_lang
-```
-
-Optional parser backend override (default is the hand-written legacy parser):
-
-```bash
-KIRA_PARSER=antlr ./gradlew run
-# or: -Dkira.parser=antlr
-```
+Works end-to-end on the in-repo examples: modules, functions, classes/methods,
+enums, monomorphized generics (`Box<T>`, `id<T>`), and a thin Arr/Map runtime
+(literals, index, `isEmpty` / `size`). Map put/get hashing and growing lists
+are still baseline stubs.

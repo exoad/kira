@@ -1,40 +1,37 @@
-# Kira Multi-File Examples
+# Kira examples
 
-This directory contains beginner-friendly and baseline multi-file example projects.
+Each subdirectory is a self-contained project (`kira.yaml` + `src/`).
+All of them target C and depend on the repo stdlib at `../../kira`.
 
-## Beginner-Friendly Fun Projects (Start Here)
+## Run one
 
-- fun-greetings: simple message functions and friendly output
-- fun-pet-club: tiny pet story with one beginner class and methods
-- fun-snack-quest: short game-like flow with if and for
+From the repo root, after `./gradlew installDist`:
 
-These are intentionally playful and low-ceremony for first-time language learners.
+```bash
+KIRA="$(pwd)/build/install/kira/bin/kira"
+cd examples/intro
+"$KIRA"
+cc -std=c11 -O2 -o app out.kira.c && ./app
+# hello from intro
+```
 
-## Baseline Projects
+`out.kira.c` is gitignored; re-run the compiler after edits.
 
-- intro: minimal cross-file function usage
-- control-flow: loops and conditional branching
-- oop-basics: classes, fields, methods, and object initialization
-- enums-generics: enum usage and generic types
-- collections: array and map-focused data patterns
+## Catalog
 
-Each project has:
-
-- a dedicated `kira.yaml`
-- a single `srcDir` root for source discovery
-- module URIs aligned to file paths
-
-## Layout
-
-- examples/fun-greetings
-- examples/fun-pet-club
-- examples/fun-snack-quest
-- examples/intro
-- examples/control-flow
-- examples/oop-basics
-- examples/enums-generics
-- examples/collections
+| Project | What it shows |
+|---------|----------------|
+| `intro` | Cross-file functions |
+| `fun-greetings` | Simple messages |
+| `fun-pet-club` | Class + method call |
+| `fun-snack-quest` | Branching / small flow |
+| `control-flow` | if / loops |
+| `oop-basics` | Fields, methods, init |
+| `enums-generics` | Enums + monomorphized generics |
+| `collections` | Arr literal/index, empty Map + `isEmpty` |
 
 ## Notes
 
-These examples are intentionally limited to parser and semantic-safe language patterns known to work in this repository's current compiler state.
+- `build.target` is `c` so a plain compiler invocation emits `out.kira.c`.
+- Stdlib path is relative (`../../kira`); keep that if you move a project.
+- These stay inside language features the current C backend lowers cleanly.
