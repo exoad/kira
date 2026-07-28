@@ -13,8 +13,9 @@ typechecks, and emits one C translation unit (`out.kira.c`) you compile with
 any C11 toolchain. A Language Server (`kira-lsp`) speaks standard LSP over
 stdio for editor diagnostics.
 
-Language reference: [`specifications/LanguageSpecifications.md`](specifications/LanguageSpecifications.md).
-Runnable samples: [`examples/`](examples/).
+**Docs:** [tutorial](docs/tutorial/) (start here) ·
+[language reference](specifications/LanguageSpecifications.md) ·
+[examples](examples/)
 
 ---
 

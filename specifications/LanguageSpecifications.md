@@ -1,16 +1,35 @@
 # Kira Specs.
 
-**Version** _November 18, 2025_
+**Version** _July 28, 2026_
 
-Kira is a modern, pure object-oriented programming language with expressive syntax inspired by Swift, Kotlin, and Dart. It functions as a flexible toolkit—similar to Haxe—supporting transpilation and ahead-of-time (AOT) compilation to multiple targets, including source code, bytecode, bitcode, and machine code.
+Kira is a small object-oriented language with expressive syntax inspired by
+Swift, Kotlin, and Dart. The reference implementation is a JVM compiler that
+typechecks a project and emits **C** (`out.kira.c`) for a C11 toolchain. A
+stdio **Language Server** (`kira-lsp`) provides editor diagnostics over LSP.
 
-Kira enforces three core principles: privacy, immutability, and static behavior. All declarations are private and immutable by default.
+Other targets (historical Neko, future backends) may appear in the toolchain
+but are not the supported path today. Prefer the [tutorial](../docs/tutorial/)
+for a hands-on path that matches what the C backend can run.
+
+Kira enforces three core principles: privacy, immutability, and static
+behavior. All declarations are private and immutable by default (`pub` / `mut`
+to opt in).
 
 ```kira
-@_trace_("Hello World!")
+module "app:main"
+
+fx main(): Void {
+    trace("Hello World!")
+}
 ```
 
+**Implementation status:** this document describes the language. Where the
+current C backend only lowers a subset (collections, traits, inheritance, ...),
+the [tutorial status notes](../docs/tutorial/07-projects-and-tooling.md) and
+example ladder are authoritative for "will this run end-to-end?".
+
 ---
+
 
 ## Lexical Structure
 
@@ -73,10 +92,16 @@ x: Int32 = 10; y: Int32 = 20
 Kira supports single-line comments using the `//` delimiter. All text following `//` until the end of the line is treated as a comment and removed during preprocessing.
 
 ```kira
-@_trace_("Hello World!")
+// greet the world
+trace("Hello World!")
 ```
 
 Multi-line or block comments are not supported to maintain parsing simplicity and avoid nested comment ambiguities.
+
+**Printing:** `trace(...)` is the usual line-oriented print intrinsic (C backend:
+`printf` + newline). Older spelling `@_trace_(...)` refers to the same intrinsic
+family; both may appear in sources and docs.
+
 
 ### Identifiers and Naming Conventions
 
@@ -2110,162 +2135,153 @@ The module system in Kira provides namespacing and code organization capabilitie
 Every Kira source file must begin with a module declaration specifying its fully qualified name:
 
 ```kira
-module "author:project.component"
+module "app:main"
 ```
 
-**Components:**
+**Form:** `"package:path.segments"` (colon separates package from path).
 
--   `author`: Organization or individual identifier
--   `project`: Project or library name
--   `component`: Submodule or source file name
+The file path under `srcDir` must end with the package and path segments as
+directories/files. Examples:
 
-**Example:**
+| Module URI | File under `srcDir` |
+|------------|---------------------|
+| `"app:main"` | `app/main.kira` |
+| `"app:model"` | `app/model.kira` |
+| `"acme:webserver.routing"` | `acme/webserver/routing.kira` |
 
-```kira
-module "acme:webserver.routing"
-```
+The first declaration in a file must be the module line. A mismatch between URI
+and path is a semantic error.
 
 ### Importing Modules
 
-Use the `use` keyword to import submodules or entire modules:
-
-**Import Specific Submodule:**
+Use the `use` keyword to import another module by URI:
 
 ```kira
+use "app:model"
 use "acme:webserver.routing"
 ```
 
-**Import All Submodules from a Module:**
-
-```kira
-use "acme:webserver"
-```
+After `use`, exported (`pub`) names from that module are available in the
+current file. Application examples in this repo often keep helpers in the same
+package; mark cross-module API `pub`.
 
 ### Standard Library
 
-The Kira standard library is accessible through the `kira` namespace:
+The reference stdlib ships as sources under the repo's `kira/` directory
+(entry module `kira:stl` in `stl.kira`). Magic types (`Int32`, `Str`, `Arr`,
+`Map`, ...) are introduced there with `@_magic` and become ambient once the
+stdlib is on the compile set.
 
 ```kira
-use "kira:stl"     // Standard Types Library
-use "kira:io"        // Input/output utilities
+// Usually pulled in via kira.yaml dependencies -- no use required for magic types
 ```
 
-Note: The compiler discovers the standard library from your project manifest (see KIM below). Declare a dependency with
-`registry = "kira"` (optionally with a local `path`) in `kira.toml` to make the standard library available. If no
-dependency is declared, the compiler falls back to scanning a local `./kira/` folder.
+The compiler discovers the standard library from the project manifest (see KIM
+below): a dependency entry with a local `path` to the stdlib folder. If no
+dependency is declared, it falls back to scanning `./kira/` relative to the
+process working directory.
 
 ---
 
 ## Project Manifest (KIM)
 
-KIM (KIra Manifest) is the manifest format and tooling used by the Kira compiler to locate sources, resolve the standard
-library, and apply build options. The manifest file is named `kira.toml` and must reside at the project root.
+KIM (KIra Manifest) is the manifest format used by the compiler to locate
+sources, resolve the standard library, and select a backend. The manifest file
+is named **`kira.yaml`** and must reside at the project root.
+
+> **Migration:** the legacy `kira.toml` format has been **removed**. If the
+> compiler sees only `kira.toml`, it panics and asks you to migrate to
+> `kira.yaml`.
 
 ### Goals
 
-- Standardize how projects declare workspace source files and entry points
-- Describe build options (target, output) in a reproducible way
-- Declare dependencies, including the Kira standard library
+- Declare the project name and source root
+- Select the backend target (`c` today)
+- Point at local path dependencies (stdlib)
 
 ### File name
 
-- Required: `kira.toml` at the project root
+- Required: `kira.yaml` at the project root
 
 ### Minimal example
 
-```toml
-version = "1"
+```yaml
+project:
+  name: hello_kira
 
-[package]
-name = "hello_kira"
-version = "0.1.0"
-authors = ["you@example.com"]
+srcDir: src
 
-[workspace]
-src = ["src", "main.kira"]
+build:
+  target: c
 
-[build]
-outDir = "build"
-target = "c"
-debug = true
-emitIR = false
-
-[dependencies.kira_std]
-registry = "kira"
+dependencies:
+  kira_stdlib:
+    path: ./kira
 ```
 
 ### Sections
 
-- version
-    - Manifest format version. Current: `"1"`.
+- **project**
+    - `name` (string, required): package / project name
 
-- [package]
-    - name: Required package name (string)
-    - version: Semantic version (string), default `"1.0.0"`
-    - authors: List of authors (string array)
-    - description: Optional description (string)
+- **srcDir** (string, default `"src"`): single root directory scanned
+  recursively for `.kira` files
 
-- [workspace]
-    - src: List of source paths. Each entry can be a file or directory. Directories are scanned recursively for `.kira`
-      files.
-    - entry: Optional entry-point file (string), relative to project root.
+- **build**
+    - `target` (string): `"c"` or `"native"` → emit `out.kira.c`;
+      `"neko"` → reserved; `"none"` → frontend only (no backend emit)
 
-- [build]
-    - outDir: Output directory for artifacts
-    - target: "c" (or "native") or "neko"
-    - debug: Enable debug builds (bool)
-    - emitIR: Emit intermediate representation (bool)
+- **compiler** (optional)
+    - `emitIr` (string): path to write a lexer/AST/symbol dump for debugging
 
-- [dependencies]
-    - Arbitrary keys are dependency names (e.g., `kira_std`)
-    - Each dependency supports:
-        - path: Optional local path to the dependency root
-        - version: Optional version (for registry-backed dependencies)
-        - registry: Registry name. For the Kira standard library, use `"kira"`.
+- **dependencies** (map)
+    - Each key is a dependency name (e.g. `kira_stdlib`)
+    - `path` (string): local filesystem path to a directory (or file) of
+      `.kira` sources, resolved relative to the project root (with a parent-dir
+      fallback used by in-repo examples)
 
 ### Standard library resolution
 
-When the compiler runs in a project with `kira.toml`:
+When the compiler runs in a directory with `kira.yaml`:
 
-1. It loads the manifest and validates it.
-2. It discovers the standard library by scanning dependencies with `registry = "kira"`:
-    - If a dependency also has `path`, all `.kira` files under that path (relative to project root) are included as
-      standard library sources.
-    - Otherwise, it attempts to scan a local `./kira/` directory for `.kira` files.
-3. If no manifest or matching dependency is found, the compiler falls back to scanning `./kira/`.
+1. Load and validate the manifest.
+2. For each dependency with a `path`, scan that path for `.kira` files and
+   treat them as stdlib / dependency sources.
+3. If no dependency sources are found, fall back to `./kira/` under the
+   project root, then the process working directory.
 
-All discovered stdlib files are merged with the workspace sources before parsing.
+Dependency sources are merged with workspace sources before parsing.
 
 ### Workspace source discovery
 
-- Each entry in `workspace.src` can be a file or directory
-- Directories are scanned recursively and all `.kira` files are added
-- If `workspace.entry` exists, the compiler prefers it as the program entry point
+- All `.kira` files under `srcDir` are included (recursive)
+- Module URIs inside those files must match their path layout
+  (`module "app:main"` ↔ `.../app/main.kira`)
 
 ### CLI integration
 
-- Running the compiler inside a directory with `kira.toml` uses that manifest automatically.
-- Alternatively, you may pass a project directory via a `--project` flag.
+- The CLI always uses the process **current working directory** to find
+  `kira.yaml`. There is no `--project` flag yet -- `cd` into the project.
+- Install: `./gradlew installDist` → `build/install/kira/bin/kira`
+- Language server: `build/install/kira/bin/kira-lsp` (LSP over stdio)
 
-Examples (PowerShell):
-
-```powershell
-./gradlew run --args "--project=."
-./gradlew run --args "--project=path/to/project"
+```bash
+cd path/to/project
+kira
+cc -std=c11 -O2 -o app out.kira.c && ./app
 ```
 
 ### Validation
 
-During validation, the compiler reports issues such as:
+The compiler reports manifest issues such as:
 
-- Missing `[package]` section
-- Blank `package.name`
-- `workspace.entry` points to a non-existent file
-- Unsupported `version` of the manifest format
-
-Diagnostics are printed with file/line context when available.
+- Missing or unreadable `kira.yaml`
+- Invalid / missing `project.name`
+- `srcDir` that does not exist
+- Unresolvable dependency `path`
 
 ---
+
 
 ## Object-Oriented Programming
 
@@ -3297,34 +3313,31 @@ if result.isSuccess() {
 
 ## Standard Library
 
-The Kira standard library is accessible through the `kira` namespace:
+The reference stdlib is the `kira/` tree in the compiler repository. The main
+surface today is a single module:
 
-```kira
-use "kira:lib.types"     // Core types
-use "kira:lib.collections"  // Collection types
-use "kira:lib.io"        // Input/output utilities
+- **`kira:stl`** (`kira/stl.kira`) -- magic primitives, collections, `Maybe`,
+  `Result`, and related traits
+
+Wire it through `kira.yaml`:
+
+```yaml
+dependencies:
+  kira_stdlib:
+    path: ./kira   # or ../../kira from an examples/* project
 ```
 
-Note: The compiler discovers the standard library from your project manifest (see KIM below). Declare a dependency with
-`registry = "kira"` (optionally with a local `path`) in `kira.toml` to make the standard library available. If no
-dependency is declared, the compiler falls back to scanning a local `./kira/` folder.
+Magic types from `kira:stl` are ambient once that dependency is loaded; you
+typically do not write `use "kira:stl"` in application code.
 
-Kira's standard library provides essential types, collection classes, and utility functions to complement the core
-language features. It is organized into several modules:
+**C backend coverage (collections):** `Arr` literals and indexing, empty
+`Map` / `isEmpty` / `size` are lowered. Full `Map.put`/`get`, growing `List`,
+and most method bodies remain baseline stubs -- see the tutorial chapter on
+collections and `src/main/resources/c_generator.c`.
 
--   `kira:lib.types`: Core types and primitives
--   `kira:lib.collections`: Collection types (List, Map, Set)
--   `kira:lib.io`: Input/output operations
--   `kira:lib.math`: Mathematical functions
--   `kira:lib.string`: String manipulation utilities
--   `kira:lib.async`: Asynchronous programming primitives
-
-**Importing Standard Library:**
-
-```kira
-use "kira:lib.types"
-use "kira:lib.collections"
-```
+Broader library modules (`io`, `math`, `async`, ...) are planned surfaces, not
+separate shipped packages in the current tree.
 
 ---
+
 
