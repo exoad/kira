@@ -1,0 +1,15 @@
+module "app:model"
+
+pub class Point {
+    require pub x: Int32
+    require pub y: Int32
+}
+
+pub class Pet {
+    require pub name: Str
+    require pub sound: Str
+
+    pub fx speak(): Str {
+        return sound
+    }
+}

@@ -39,6 +39,16 @@ cc -std=c17 -O2 -o app out.kira.c && ./app
 | 05 | `05-enums-generics` | enums + monomorphized generics | `7` |
 | 06 | `06-collections` | Arr literal/index, Map `isEmpty` | `10` |
 
+## C-as-IR showcase
+
+Side-by-side Kira → real emitted C17 (checked-in snapshots):
+
+**[c-as-ir/](c-as-ir/)** -- hello, classes, generics, collections.
+
+```bash
+./examples/c-as-ir/regenerate.sh
+```
+
 ## Layout convention
 
 ```

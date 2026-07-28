@@ -167,6 +167,7 @@ Ordered for this backend; not a Neko plan.
 |-----|------|
 | [tutorial/](tutorial/) | Language path that stays inside green lowering |
 | [tutorial/07-projects-and-tooling.md](tutorial/07-projects-and-tooling.md) | Manifest + compile commands |
+| [../examples/c-as-ir/](../examples/c-as-ir/) | **Side-by-side demos** -- Kira vs real `generated.user.c` |
 | [Language specifications](../specifications/LanguageSpecifications.md) | Full language (may exceed C-as-IR) |
 | `src/main/resources/c_generator.c` | Prelude source of truth |
 | `src/main/kotlin/.../codegen/c/KiraCCodeGenerator.kt` | Lowering source of truth |

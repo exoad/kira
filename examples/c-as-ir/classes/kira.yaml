@@ -1,0 +1,8 @@
+project:
+  name: cair-classes
+srcDir: src
+build:
+  target: c
+dependencies:
+  kira_stdlib:
+    path: ../../../kira

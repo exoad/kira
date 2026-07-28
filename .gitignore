@@ -33,6 +33,7 @@ dump_symbols*.txt
 a.out
 # native binary produced by examples/run.sh (lives next to kira.yaml)
 examples/*/app
+examples/c-as-ir/*/app
 
 # Coverage / local
 /htmlReport
