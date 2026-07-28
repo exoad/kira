@@ -42,3 +42,5 @@ examples/c-as-ir/*/app
 
 # Ming local runtime (not part of Kira)
 .ming/
+*.dSYM/
+examples/ffi-mini/app
