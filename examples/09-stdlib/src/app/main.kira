@@ -1,0 +1,60 @@
+module "app:main"
+
+use "app:text"
+
+fx main: () Void {
+    // --- Str ---------------------------------------------------------
+    name: Str = "  kira  "
+    trimmed: Str = name.trim()
+    trace(trimmed.length())
+    trace(shout(trimmed))
+    trace(initials(trimmed))
+    trace(trimmed.startsWith("ki"))
+    trace(trimmed.substring(0, 2))
+
+    // --- Num ---------------------------------------------------------
+    count: Int32 = 7
+    trace(count.toInt64())
+
+    // --- Set ---------------------------------------------------------
+    seen: Set<Int32> = Set<Int32> { }
+    seen.add(1)
+    seen.add(2)
+    seen.add(1)
+    trace(seen.size())
+    trace(seen.contains(2))
+
+    // --- Stack / Queue -----------------------------------------------
+    undo: Stack<Int32> = Stack<Int32> { }
+    undo.push(10)
+    undo.push(20)
+    top: Maybe<Int32> = undo.pop()
+    trace(top.unwrapOr(0))
+
+    jobs: Queue<Int32> = Queue<Int32> { }
+    jobs.enqueue(1)
+    jobs.enqueue(2)
+    next: Maybe<Int32> = jobs.dequeue()
+    trace(next.unwrapOr(0))
+
+    // --- Map + Maybe --------------------------------------------------
+    ages: Map<Str, Int32> = Map<Str, Int32> { }
+    ages.put("ada", 36)
+    found: Maybe<Int32> = ages.get("ada")
+    trace(found.isSome())
+    trace(found.unwrapOr(0))
+
+    missing: Maybe<Int32> = ages.get("nobody")
+    trace(missing.unwrapOr(-1))
+
+    // --- List ---------------------------------------------------------
+    nums: List<Int32> = List<Int32> { }
+    nums.add(3)
+    nums.add(4)
+    trace(nums.get(1))
+    trace(nums.contains(3))
+
+    // --- assert -------------------------------------------------------
+    assert(nums.size() == 2, "list should hold two entries")
+    trace("ok")
+}

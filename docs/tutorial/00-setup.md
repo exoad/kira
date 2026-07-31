@@ -63,8 +63,10 @@ Notes:
   `cd` into the project before running `kira`. There is no `--project` flag yet.
 - `build.target: c` is the supported emit path. Without it (or with `none`),
   the frontend still runs but no `out.kira.c` is written.
-- The stdlib is the `kira/` folder in this repo (`stl.kira`). Point
-  `dependencies.kira_stdlib.path` at it.
+- The stdlib is the `kira/` folder in this repo, split across `core.kira`,
+  `collections.kira`, `tuples.kira`, `result.kira`, `io.kira` and `math.kira`
+  (`stl.kira` just indexes them). Point `dependencies.kira_stdlib.path` at the
+  **folder** -- every `.kira` file under it is loaded.
 
 ## Compile once
 

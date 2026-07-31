@@ -1,0 +1,11 @@
+module "kira:io"
+
+// Free functions that touch stdout/stderr or abort the process. `trace` is a
+// compiler intrinsic rather than a declaration here -- it lowers straight to
+// the prelude `print` macro.
+
+pub @_magic fx print: (value: Any) Void;
+pub @_magic fx println: (value: Any) Void;
+pub @_magic fx eprint: (value: Any) Void;
+
+pub @_magic fx assert: (condition: Bool, message: Str) Void;

@@ -1,8 +1,0 @@
-project:
-  name: cair-hello
-srcDir: src
-build:
-  target: c
-dependencies:
-  kira_stdlib:
-    path: ../../../kira

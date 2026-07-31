@@ -2,6 +2,8 @@ package net.exoad.kira
 
 import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Test
+import java.io.File
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class StdlibMagicTypeTest {
@@ -51,24 +53,57 @@ class StdlibMagicTypeTest {
         )
     }
 
+    /**
+     * The stdlib is split by concern across several files under `kira/`, so
+     * assert per file rather than against one monolith. `sourceFilter` is what
+     * keeps this honest: CompilationUnit bootstraps every stdlib source into
+     * itself, so an unfiltered scan would pass no matter what one file holds.
+     */
     @Test
-    fun stdlibDeclaresCoreMagicTypes() {
-        val result = TestCompileSupport.compileFile(
-            filePath = "kira/stl.kira",
-            parserBackend = ParserBackend.LEGACY,
-            runSemantic = false
+    fun stdlibDeclaresCoreMagicTypesInTheExpectedModules() {
+        val expected = mapOf(
+            "core.kira" to listOf("Bool", "Str", "Num", "Int32", "Int64", "Float32", "Float64"),
+            "collections.kira" to listOf("Arr", "List", "Map", "Set", "Stack", "Queue", "Deque"),
+            "result.kira" to listOf("Maybe", "Result", "Exception"),
+            "tuples.kira" to listOf("Tuple0", "Tuple2", "Tuple9")
         )
 
-        val marked = result.compilationUnit.collectIntrinsicMarkedTypeNames("_magic")
-        assertTrue(marked.contains("Int32"))
-        assertTrue(marked.contains("Float64"))
-        assertTrue(marked.contains("Bool"))
-        assertTrue(marked.contains("Str"))
-        assertTrue(marked.contains("Arr"))
-        assertTrue(marked.contains("List"))
-        assertTrue(marked.contains("Map"))
-        assertTrue(marked.contains("Set"))
-        assertTrue(marked.contains("Maybe"))
-        assertTrue(marked.contains("Result"))
+        expected.forEach { (fileName, typeNames) ->
+            val path = File("kira", fileName)
+            assertTrue(path.isFile, "missing stdlib source $path")
+
+            val marked = magicTypesDeclaredIn(path)
+            typeNames.forEach { typeName ->
+                assertTrue(
+                    marked.contains(typeName),
+                    "'$typeName' should be @_magic in $fileName, but that file declares $marked"
+                )
+            }
+        }
+    }
+
+    /** No magic type may be declared by two stdlib files at once. */
+    @Test
+    fun stdlibDeclaresEachMagicTypeExactlyOnce() {
+        val stdlibFiles = File("kira")
+            .listFiles { f -> f.isFile && f.extension == "kira" }
+            .orEmpty()
+        assertTrue(stdlibFiles.isNotEmpty(), "no stdlib sources found under kira/")
+
+        val duplicates = stdlibFiles
+            .flatMap { file -> magicTypesDeclaredIn(file).map { it to file.name } }
+            .groupBy({ it.first }, { it.second })
+            .filterValues { it.size > 1 }
+
+        assertEquals(emptyMap(), duplicates, "magic types declared in more than one stdlib file")
+    }
+
+    /** Magic type names declared by [file] alone. */
+    private fun magicTypesDeclaredIn(file: File): Set<String> {
+        val result = TestCompileSupport.compileFile(file.path, ParserBackend.LEGACY, runSemantic = false)
+        val canonicalPath = file.canonicalPath
+        return result.compilationUnit.collectIntrinsicMarkedTypeNames("_magic") { source ->
+            source.file == canonicalPath
+        }
     }
 }

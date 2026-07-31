@@ -3,7 +3,7 @@ module "app:main"
 use "app:ranges"
 use "app:checks"
 
-fx main(): Void {
+fx main: () Void {
     mut i: Int32 = 0
     while i < 2 {
         i = i + 1

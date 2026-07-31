@@ -73,6 +73,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     /** Simple name -> Kira type name for print-format heuristics in the current unit. */
     private val knownValueTypes = mutableMapOf<String, String>()
     /**
+     * Simple name -> Kira type arguments of a container-typed value
+     * (`entries: Map<Str, Int32>` records `[Str, Int32]`).
+     *
+     * Containers erase to `KiraSlot` in C, so this is what lets codegen cast a
+     * slot back to the element type the program declared.
+     */
+    private val containerTypeArgs = mutableMapOf<String, List<String>>()
+    /**
      * Class methods lowered as free functions: mangledName -> return type.
      * Call site: `recv.method(args)` becomes `Class_method(&recv, args)`.
      */
@@ -1067,7 +1075,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             knownValueTypes[functionName] = returnTypeName
         }
         functionDecl.def.parameters.forEach { param ->
-            knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            val paramType = typeNameOf(param.typeSpecifier)
+            knownValueTypes[param.name.value] = paramType
+            recordContainerTypeArgs(param.name.value, paramType, param.typeSpecifier)
         }
         val linkage = if (isExternFunction(kiraName)) "extern " else ""
         return "$linkage$retC $functionName($params);"
@@ -1152,139 +1162,394 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun isCollectionType(typeName: String?): Boolean {
-        return typeName == "Arr" || typeName == "List" || typeName == "Map" || typeName == "Set"
+        return typeName != null && typeName in CMagicTypeLowering.slotContainers
     }
 
     /**
-     * Lower a known collection method on a receiver. Returns true if handled.
-     * Call shape in C: Arr_isEmpty(&recv) / Map_isEmpty(&recv) / Arr_size(&recv).
+     * Remember `Map<Str, Int32>` as `[Str, Int32]` for [name] so slot casts can
+     * recover the element type later. No-op for non-container types.
+     */
+    private fun recordContainerTypeArgs(name: String, typeName: String, type: Type) {
+        if (typeName !in CMagicTypeLowering.slotContainers) return
+        if (type.children.isEmpty()) return
+        containerTypeArgs[name] = type.children.map { resolveKiraTypeName(it) }
+    }
+
+    /** Element type of the Arr literal currently being emitted, when known. */
+    private var pendingArrayElementType: String? = null
+
+    private fun isStrType(kiraType: String?): Boolean {
+        return kiraType == "Str" || kiraType == "String"
+    }
+
+    /** Kira types whose C representation is a pointer, so they slot via intptr_t. */
+    private fun isPointerSlotType(kiraType: String?): Boolean {
+        if (kiraType == null) return false
+        return kiraType == "Str" || kiraType == "String" || kiraType == "Any" ||
+            userClassNames.contains(kiraType) || opaqueTypes.contains(kiraType)
+    }
+
+    /** Wrap an element as it goes *into* a slot container. */
+    private fun emitSlotIn(elementType: String?, value: Expr) {
+        buffer.append(if (isPointerSlotType(elementType)) "KIRA_SLOT_PTR(" else "KIRA_SLOT(")
+        value.accept(this)
+        buffer.append(")")
+    }
+
+    /** Unwrap a slot back to [elementType]; emits [inner] as the slot expression. */
+    private fun emitSlotOut(elementType: String?, inner: () -> Unit) {
+        if (elementType == null || elementType == "Void") {
+            inner()
+            return
+        }
+        val cType = mapTypeName(elementType)
+        buffer.append(if (isPointerSlotType(elementType)) "KIRA_UNSLOT_PTR(" else "KIRA_UNSLOT(")
+        buffer.append(cType)
+        buffer.append(", ")
+        inner()
+        buffer.append(")")
+    }
+
+    /** Kira type arguments recorded for a container-typed value (`Map<Str, Int32>` -> [Str, Int32]). */
+    private fun receiverTypeArgs(expr: Expr): List<String> {
+        val name = when (expr) {
+            is Identifier -> expr.value
+            is MemberAccessExpr -> (expr.member as? Identifier)?.value
+            is FunctionCallExpr -> functionLikeName(expr.name)
+            else -> null
+        } ?: return emptyList()
+        return containerTypeArgs[name] ?: emptyList()
+    }
+
+    /** `Type_method(&recv, ...)` with each argument emitted by its own lambda. */
+    private fun emitRuntimeCall(
+        fn: String,
+        receiver: Expr,
+        byPointer: Boolean = true,
+        argEmitters: List<() -> Unit> = emptyList()
+    ) {
+        buffer.append(fn)
+        buffer.append("(")
+        if (byPointer) buffer.append("&")
+        receiver.accept(this)
+        argEmitters.forEach {
+            buffer.append(", ")
+            it()
+        }
+        buffer.append(")")
+    }
+
+    /**
+     * Lower a stdlib method call on a magic receiver. Returns true if handled.
+     *
+     * Containers erase their element type to `KiraSlot`, so anything crossing
+     * that boundary is wrapped on the way in and cast back on the way out using
+     * the type arguments recorded at declaration time.
      */
     private fun tryEmitCollectionMethod(methodName: String, receiver: Expr, args: List<Expr>): Boolean {
         val recvType = receiverTypeOf(receiver) ?: return false
-        val prefix = when (recvType) {
-            "Arr", "List" -> recvType
-            "Map", "Set" -> "Map"
+        val targs = receiverTypeArgs(receiver)
+        return when (recvType) {
+            "Str", "String" -> emitStrMethod(methodName, receiver, args)
+            "Num", "Int", "Int8", "Int16", "Int32", "Int64",
+            "Float", "Float32", "Float64" -> emitNumMethod(methodName, recvType, receiver, args)
+            "Arr" -> emitArrMethod(methodName, receiver, args, targs.getOrNull(0))
+            "List" -> emitListMethod(methodName, receiver, args, targs.getOrNull(0))
+            "Map" -> emitMapMethod(methodName, receiver, args, targs.getOrNull(0), targs.getOrNull(1))
+            "Set" -> emitSetMethod(methodName, receiver, args, targs.getOrNull(0))
+            "Stack", "Queue", "Deque" -> emitLinearAdtMethod(methodName, recvType, receiver, args, targs.getOrNull(0))
+            "Maybe" -> emitMaybeMethod(methodName, receiver, args, targs.getOrNull(0))
+            "Result" -> emitResultMethod(methodName, receiver, args, targs.getOrNull(0), targs.getOrNull(1))
+            else -> false
+        }
+    }
+
+    // ---- Str -------------------------------------------------------------
+
+    private fun emitStrMethod(methodName: String, receiver: Expr, args: List<Expr>): Boolean {
+        val arity = when (methodName) {
+            "length", "isEmpty", "trim", "toLower", "toUpper", "hashCode" -> 0
+            "charAt", "contains", "startsWith", "endsWith", "equals", "split" -> 1
+            "substring" -> 2
             else -> return false
         }
+        if (args.size != arity) return false
+        // Str is already a pointer, so these take the receiver by value.
+        buffer.append("Str_")
+        buffer.append(methodName)
+        buffer.append("(")
+        receiver.accept(this)
+        args.forEach {
+            buffer.append(", ")
+            it.accept(this)
+        }
+        buffer.append(")")
+        return true
+    }
 
+    // ---- Num -------------------------------------------------------------
+
+    private fun emitNumMethod(methodName: String, recvType: String, receiver: Expr, args: List<Expr>): Boolean {
+        // Numeric conversions are plain C casts; abs picks the right libc call.
+        val target = when (methodName) {
+            "toInt32" -> "Int32"
+            "toInt64" -> "Int64"
+            "toFloat32" -> "Float32"
+            "toFloat64" -> "Float64"
+            "abs" -> null
+            else -> return false
+        }
+        if (args.isNotEmpty()) return false
+        if (target != null) {
+            buffer.append("((")
+            buffer.append(mapTypeName(target))
+            buffer.append(")(")
+            receiver.accept(this)
+            buffer.append("))")
+            return true
+        }
+        val isFloat = recvType == "Float" || recvType == "Float32" || recvType == "Float64"
+        if (isFloat) {
+            requiredIncludes.add("math.h")
+            buffer.append("fabs(")
+        } else {
+            requiredIncludes.add("stdlib.h")
+            buffer.append("llabs(")
+        }
+        receiver.accept(this)
+        buffer.append(")")
+        return true
+    }
+
+    // ---- Arr -------------------------------------------------------------
+
+    private fun emitArrMethod(methodName: String, receiver: Expr, args: List<Expr>, elem: String?): Boolean {
         when (methodName) {
-            "isEmpty" -> {
-                buffer.append(prefix)
-                buffer.append("_isEmpty(&")
-                receiver.accept(this)
-                buffer.append(")")
-                return true
-            }
-            "size" -> {
-                buffer.append(prefix)
-                buffer.append("_size(&")
-                receiver.accept(this)
-                buffer.append(")")
-                return true
-            }
-            "clear" -> {
-                buffer.append(prefix)
-                buffer.append("_clear(&")
-                receiver.accept(this)
-                buffer.append(")")
+            "size", "isEmpty" -> {
+                emitRuntimeCall("Arr_$methodName", receiver)
                 return true
             }
             "get" -> {
-                if (prefix == "Map" || prefix == "Set") {
-                    // Map_get(map, key) -- pointer receiver
-                    buffer.append("Map_get(&")
+                if (args.size != 1) return false
+                // Arr_get takes the receiver by value, not by pointer.
+                emitSlotOut(elem) {
+                    buffer.append("Arr_get(")
                     receiver.accept(this)
                     buffer.append(", ")
                     args[0].accept(this)
                     buffer.append(")")
-                    return true
                 }
-                // Arr_get_i32(arr, index) -- value receiver, not pointer
-                buffer.append("Arr_get_i32(")
-                receiver.accept(this)
-                if (args.isNotEmpty()) {
-                    buffer.append(", ")
-                    args[0].accept(this)
-                }
-                buffer.append(")")
                 return true
             }
             "set" -> {
-                if (prefix == "Map") return false // Map uses put
-                if (prefix == "List") {
-                    buffer.append("List_set(&")
-                    receiver.accept(this)
-                    buffer.append(", ")
-                    args[0].accept(this)
-                    buffer.append(", ")
-                    args[1].accept(this)
-                    buffer.append(")")
-                    return true
-                }
-                // Arr_set_i32
-                buffer.append("Arr_set_i32(")
+                if (args.size != 2) return false
+                buffer.append("Arr_set(")
                 receiver.accept(this)
                 buffer.append(", ")
                 args[0].accept(this)
                 buffer.append(", ")
-                args[1].accept(this)
+                emitSlotIn(elem, args[1])
                 buffer.append(")")
+                return true
+            }
+            "contains" -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("Arr_contains", receiver, argEmitters = listOf { emitSlotIn(elem, args[0]) })
+                return true
+            }
+            "clone" -> {
+                emitRuntimeCall("Arr_clone", receiver)
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    // ---- List ------------------------------------------------------------
+
+    private fun emitListMethod(methodName: String, receiver: Expr, args: List<Expr>, elem: String?): Boolean {
+        when (methodName) {
+            "size", "isEmpty", "clear", "toArr" -> {
+                emitRuntimeCall("List_$methodName", receiver)
+                return true
+            }
+            "add" -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("List_add", receiver, argEmitters = listOf { emitSlotIn(elem, args[0]) })
+                return true
+            }
+            "addAll" -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("List_addAll", receiver, argEmitters = listOf { args[0].accept(this) })
+                return true
+            }
+            "contains" -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("List_contains", receiver, argEmitters = listOf { emitSlotIn(elem, args[0]) })
+                return true
+            }
+            "get" -> {
+                if (args.size != 1) return false
+                emitSlotOut(elem) {
+                    emitRuntimeCall("List_get", receiver, argEmitters = listOf { args[0].accept(this) })
+                }
+                return true
+            }
+            "set" -> {
+                if (args.size != 2) return false
+                emitRuntimeCall(
+                    "List_set", receiver,
+                    argEmitters = listOf({ args[0].accept(this) }, { emitSlotIn(elem, args[1]) })
+                )
+                return true
+            }
+            // `remove` on a List is positional, matching removeAt.
+            "removeAt", "remove" -> {
+                if (args.size != 1) return false
+                emitSlotOut(elem) {
+                    emitRuntimeCall("List_removeAt", receiver, argEmitters = listOf { args[0].accept(this) })
+                }
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    // ---- Map -------------------------------------------------------------
+
+    private fun emitMapMethod(
+        methodName: String,
+        receiver: Expr,
+        args: List<Expr>,
+        keyType: String?,
+        valueType: String?
+    ): Boolean {
+        when (methodName) {
+            "size", "isEmpty", "clear" -> {
+                emitRuntimeCall("Map_$methodName", receiver)
                 return true
             }
             "put" -> {
-                if (prefix != "Map") return false
-                buffer.append("Map_put(&")
-                receiver.accept(this)
-                buffer.append(", ")
-                args[0].accept(this)
-                buffer.append(", ")
-                args[1].accept(this)
-                buffer.append(")")
+                if (args.size != 2) return false
+                emitRuntimeCall(
+                    "Map_put", receiver,
+                    argEmitters = listOf({ emitSlotIn(keyType, args[0]) }, { emitSlotIn(valueType, args[1]) })
+                )
+                return true
+            }
+            // get / remove return Maybe<V>; the payload is unwrapped at use sites.
+            "get", "remove" -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("Map_$methodName", receiver, argEmitters = listOf { emitSlotIn(keyType, args[0]) })
                 return true
             }
             "containsKey" -> {
-                if (prefix != "Map") return false
-                buffer.append("Map_containsKey(&")
-                receiver.accept(this)
-                buffer.append(", ")
-                args[0].accept(this)
-                buffer.append(")")
+                if (args.size != 1) return false
+                emitRuntimeCall("Map_containsKey", receiver, argEmitters = listOf { emitSlotIn(keyType, args[0]) })
                 return true
             }
-            "remove" -> {
-                if (prefix == "Map") {
-                    buffer.append("Map_remove(&")
-                    receiver.accept(this)
-                    buffer.append(", ")
-                    args[0].accept(this)
-                    buffer.append(")")
-                    return true
-                }
-                if (prefix == "List") {
-                    // List_removeAt for List.remove(index)
-                    buffer.append("List_removeAt(&")
-                    receiver.accept(this)
-                    buffer.append(", ")
-                    args[0].accept(this)
-                    buffer.append(")")
-                    return true
-                }
-                return false
-            }
-            "add" -> {
-                if (prefix != "List") return false
-                buffer.append("List_add(&")
-                receiver.accept(this)
-                buffer.append(", ")
-                args[0].accept(this)
-                buffer.append(")")
+            "containsValue" -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("Map_containsValue", receiver, argEmitters = listOf { emitSlotIn(valueType, args[0]) })
                 return true
             }
-            "toArr" -> {
-                if (prefix != "List") return false
-                buffer.append("List_toArr(&")
-                receiver.accept(this)
-                buffer.append(")")
+            "keys", "valuesArr", "entries" -> {
+                emitRuntimeCall("Map_$methodName", receiver)
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    // ---- Set -------------------------------------------------------------
+
+    private fun emitSetMethod(methodName: String, receiver: Expr, args: List<Expr>, elem: String?): Boolean {
+        when (methodName) {
+            "size", "isEmpty", "clear", "toArr" -> {
+                emitRuntimeCall("Set_$methodName", receiver)
+                return true
+            }
+            "add", "remove", "contains" -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("Set_$methodName", receiver, argEmitters = listOf { emitSlotIn(elem, args[0]) })
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    // ---- Stack / Queue / Deque -------------------------------------------
+
+    private fun emitLinearAdtMethod(
+        methodName: String,
+        recvType: String,
+        receiver: Expr,
+        args: List<Expr>,
+        elem: String?
+    ): Boolean {
+        val pushLike = setOf("push", "enqueue", "pushFront", "pushBack")
+        // pop/peek variants return Maybe<T>; payload unwrapped at use sites.
+        val popLike = setOf("pop", "dequeue", "peek", "popFront", "popBack")
+        when {
+            methodName in setOf("size", "isEmpty", "clear") -> {
+                emitRuntimeCall("${recvType}_$methodName", receiver)
+                return true
+            }
+            methodName in pushLike -> {
+                if (args.size != 1) return false
+                emitRuntimeCall("${recvType}_$methodName", receiver, argEmitters = listOf { emitSlotIn(elem, args[0]) })
+                return true
+            }
+            methodName in popLike -> {
+                if (args.isNotEmpty()) return false
+                emitRuntimeCall("${recvType}_$methodName", receiver)
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    // ---- Maybe / Result --------------------------------------------------
+
+    private fun emitMaybeMethod(methodName: String, receiver: Expr, args: List<Expr>, elem: String?): Boolean {
+        when (methodName) {
+            "isSome", "isNone" -> {
+                emitRuntimeCall("Maybe_$methodName", receiver)
+                return true
+            }
+            "unwrap" -> {
+                emitSlotOut(elem) { emitRuntimeCall("Maybe_unwrap", receiver) }
+                return true
+            }
+            "unwrapOr" -> {
+                if (args.size != 1) return false
+                emitSlotOut(elem) {
+                    emitRuntimeCall("Maybe_unwrapOr", receiver, argEmitters = listOf { emitSlotIn(elem, args[0]) })
+                }
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    private fun emitResultMethod(
+        methodName: String,
+        receiver: Expr,
+        args: List<Expr>,
+        okType: String?,
+        errType: String?
+    ): Boolean {
+        when (methodName) {
+            "isOk", "isErr" -> {
+                emitRuntimeCall("Result_$methodName", receiver)
+                return true
+            }
+            "unwrap" -> {
+                emitSlotOut(okType) { emitRuntimeCall("Result_unwrap", receiver) }
+                return true
+            }
+            "unwrapErr" -> {
+                emitSlotOut(errType) { emitRuntimeCall("Result_unwrapErr", receiver) }
                 return true
             }
             else -> return false
@@ -1615,8 +1880,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                     } else {
                         null
                     }
+                    val stdlibRet = stdlibMethodReturnType(
+                        recvType, methodName, receiverTypeArgs(nameExpr.origin)
+                    )
                     if (traitRet != null) {
                         formatForTypeName(traitRet)
+                    } else if (stdlibRet != null) {
+                        formatForTypeName(stdlibRet)
                     } else {
                         val mangled = methodName?.let { resolveMethodMangled(it, recvType) }
                         formatForTypeName(mangled?.let { methodReturnTypes[it] })
@@ -1646,7 +1916,80 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             "Str", "String" -> "%s"
             "Float32", "Float64", "Float" -> "%f"
             "Bool" -> "%d"
-            else -> if (typeName.startsWith("Int") || typeName.startsWith("UInt")) "%d" else "%d"
+            // int64_t is `long` on LP64 and `long long` on LLP64; the print site
+            // casts to long long so %lld is right on both.
+            "Int64", "UInt64" -> "%lld"
+            else -> "%d"
+        }
+    }
+
+    /**
+     * Return type of a stdlib method on a magic receiver, mirroring
+     * [tryEmitCollectionMethod]. Used for print-format selection, where the
+     * user-class method table has nothing to say.
+     */
+    private fun stdlibMethodReturnType(
+        recvType: String?,
+        methodName: String?,
+        typeArgs: List<String>
+    ): String? {
+        if (recvType == null || methodName == null) return null
+        return when (recvType) {
+            "Str", "String" -> when (methodName) {
+                "length" -> "Int32"
+                "isEmpty", "contains", "startsWith", "endsWith", "equals" -> "Bool"
+                "substring", "charAt", "trim", "toLower", "toUpper" -> "Str"
+                "hashCode" -> "Int64"
+                "split" -> "List"
+                else -> null
+            }
+            "Num", "Int", "Int8", "Int16", "Int32", "Int64",
+            "Float", "Float32", "Float64" -> when (methodName) {
+                "toInt32" -> "Int32"
+                "toInt64" -> "Int64"
+                "toFloat32" -> "Float32"
+                "toFloat64" -> "Float64"
+                "abs" -> recvType
+                else -> null
+            }
+            "Arr", "List" -> when (methodName) {
+                "size" -> "Int32"
+                "isEmpty", "contains" -> "Bool"
+                "get", "removeAt", "remove" -> typeArgs.getOrNull(0)
+                "clone", "toArr" -> "Arr"
+                else -> null
+            }
+            "Map" -> when (methodName) {
+                "size" -> "Int32"
+                "isEmpty", "containsKey", "containsValue" -> "Bool"
+                "get", "remove" -> "Maybe"
+                "keys", "valuesArr", "entries" -> "Arr"
+                else -> null
+            }
+            "Set" -> when (methodName) {
+                "size" -> "Int32"
+                "isEmpty", "add", "remove", "contains" -> "Bool"
+                "toArr" -> "Arr"
+                else -> null
+            }
+            "Stack", "Queue", "Deque" -> when (methodName) {
+                "size" -> "Int32"
+                "isEmpty" -> "Bool"
+                "pop", "peek", "dequeue", "popFront", "popBack" -> "Maybe"
+                else -> null
+            }
+            "Maybe" -> when (methodName) {
+                "isSome", "isNone" -> "Bool"
+                "unwrap", "unwrapOr" -> typeArgs.getOrNull(0)
+                else -> null
+            }
+            "Result" -> when (methodName) {
+                "isOk", "isErr" -> "Bool"
+                "unwrap" -> typeArgs.getOrNull(0)
+                "unwrapErr" -> typeArgs.getOrNull(1)
+                else -> null
+            }
+            else -> null
         }
     }
 
@@ -1673,20 +2016,16 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         // Single-arg path covers the common case.
         val arg = args.first()
-        val fmt = printfFormatFor(arg) + if (isPrintln) "\\n" else ""
-        if (isEprint) {
-            buffer.append("fprintf(stderr, \"")
-            buffer.append(fmt)
-            buffer.append("\", ")
-            arg.accept(this)
-            buffer.append(")")
-        } else {
-            buffer.append("print(\"")
-            buffer.append(fmt)
-            buffer.append("\", ")
-            arg.accept(this)
-            buffer.append(")")
-        }
+        val spec = printfFormatFor(arg)
+        val fmt = spec + if (isPrintln) "\\n" else ""
+        val needsWiden = spec == "%lld"
+        buffer.append(if (isEprint) "fprintf(stderr, \"" else "print(\"")
+        buffer.append(fmt)
+        buffer.append("\", ")
+        if (needsWiden) buffer.append("(long long)(")
+        arg.accept(this)
+        if (needsWiden) buffer.append(")")
+        buffer.append(")")
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
@@ -1920,19 +2259,21 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append(")")
             return
         }
-        // Empty Map/Arr/List constructors use runtime helpers.
+        // Empty container constructors use runtime helpers.
         if (objectInitExpr.positionalArgs.isEmpty()) {
             when (baseName) {
-                "Map", "Set" -> {
-                    buffer.append("Map_new()")
+                "Map" -> {
+                    // Key kind decides hashing/equality: Str keys compare by content.
+                    val keyType = objectInitExpr.typeName.children.firstOrNull()?.let { resolveKiraTypeName(it) }
+                    buffer.append(if (isStrType(keyType)) "Map_new_s()" else "Map_new_i()")
                     return
                 }
                 "Arr" -> {
                     buffer.append("Arr_empty()")
                     return
                 }
-                "List" -> {
-                    buffer.append("List_new()")
+                "List", "Set", "Stack", "Queue", "Deque" -> {
+                    buffer.append("${baseName}_new()")
                     return
                 }
             }
@@ -2010,21 +2351,20 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        // Compound-literal backed Arr view. Elements are Int32 in the baseline
-        // backend (matches Arr_i32). Lifetime is the enclosing block -- fine
-        // for locals and immediate call arguments in the examples.
+        // Compound-literal backed Arr view over KiraSlot elements. Lifetime is
+        // the enclosing block -- fine for locals and immediate call arguments.
         val n = arrayLiteral.value.size
-        buffer.append("Arr_i32((Int32[]){ ")
-        arrayLiteral.value.forEachIndexed { i, expr ->
-            if (i > 0) buffer.append(", ")
-            expr.accept(this)
-        }
         if (n == 0) {
-            // Empty compound literal still needs a valid pointer; use null via Arr_empty.
-            // (Int32[]){ } is a GCC extension with zero size; prefer helper.
-            buffer.setLength(buffer.length - "Arr_i32((Int32[]){ ".length)
+            // (KiraSlot[]){ } is a GCC extension with zero size; prefer the helper.
             buffer.append("Arr_empty()")
             return
+        }
+        val elem = pendingArrayElementType
+        buffer.append("Arr_lit((KiraSlot[]){ ")
+        arrayLiteral.value.forEachIndexed { i, expr ->
+            if (i > 0) buffer.append(", ")
+            // Integer literals already widen to KiraSlot; only pointers need the cast.
+            if (isPointerSlotType(elem)) emitSlotIn(elem, expr) else expr.accept(this)
         }
         buffer.append(" }, ")
         buffer.append(n)
@@ -2044,6 +2384,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
         val typeName = typeNameOf(variableDecl.type)
+        recordContainerTypeArgs(variableDecl.name.value, typeName, variableDecl.type)
         if (emittingClassMembers) {
             fieldTypes[variableDecl.name.value] = typeName
             // Field only -- no initializer inside struct
@@ -2068,17 +2409,24 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append(" = ")
             // Empty Map/Arr typed locals with missing/empty init
             val value = variableDecl.value!!
+            // Let an Arr literal see its declared element type so pointer
+            // elements (Arr<Str>) get slot-cast instead of truncated.
+            val previousElem = pendingArrayElementType
+            pendingArrayElementType = containerTypeArgs[variableDecl.name.value]?.firstOrNull()
             if (value is ObjectInitExpr && value.positionalArgs.isEmpty() && isCollectionType(typeName)) {
                 value.accept(this)
             } else {
                 emitCoercedTraitValue(value, typeName)
             }
+            pendingArrayElementType = previousElem
         } else if (isCollectionType(typeName)) {
             buffer.append(" = ")
             when (typeName) {
-                "Map", "Set" -> buffer.append("Map_new()")
-                "List" -> buffer.append("List_empty()")
-                else -> buffer.append("Arr_empty()")
+                "Map" -> buffer.append("Map_new_i()")
+                "Arr" -> buffer.append("Arr_empty()")
+                "Maybe" -> buffer.append("Maybe_none()")
+                "Result" -> buffer.append("Result_err(0)")
+                else -> buffer.append("${typeName}_new()")
             }
         } else if (userClassNames.contains(typeName)) {
             // Uninitialized class-typed local: null-init so scope-end release is safe.
@@ -2113,7 +2461,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         // Parameters are visible for print-format heuristics inside the body.
         functionDecl.def.parameters.forEach { param ->
-            knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            val paramType = typeNameOf(param.typeSpecifier)
+            knownValueTypes[param.name.value] = paramType
+            recordContainerTypeArgs(param.name.value, paramType, param.typeSpecifier)
         }
 
         appendIndented("")

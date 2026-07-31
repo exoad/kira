@@ -173,7 +173,7 @@ class KiraParser(private val context: SourceContext) {
                                 }
 
                                 Token.Type.S_COLON -> {
-                                    append("Missing '(' before parameters. Function syntax is: fx name(params): ReturnType { ... }")
+                                    append("Missing '(' before parameters. Function syntax is: fx name: (params) ReturnType { ... }")
                                 }
 
                                 else -> {
@@ -195,10 +195,18 @@ class KiraParser(private val context: SourceContext) {
                         }
 
                         Token.Type.S_COLON -> {
-                            if (peek().type == Token.Type.S_EQUAL) {
-                                append("Use ':' for type annotations, not '='. Syntax: name: Type = value")
-                            } else {
-                                append("Missing ':' for type annotation. Variables and functions require type specifications.")
+                            when (peek().type) {
+                                Token.Type.S_EQUAL -> {
+                                    append("Use ':' for type annotations, not '='. Syntax: name: Type = value")
+                                }
+                                // `fx name(params): Ret` is the pre-migration form; point at
+                                // the colon-binds-the-name shape instead of the generic hint.
+                                Token.Type.S_OPEN_PARENTHESIS -> {
+                                    append("Missing ':' after the function name. Kira function syntax is: fx name: (params) ReturnType { ... } -- the colon binds the name to its signature, the same way 'value: Int32' binds a variable to its type.")
+                                }
+                                else -> {
+                                    append("Missing ':' for type annotation. Variables and functions require type specifications.")
+                                }
                             }
                         }
 
@@ -223,7 +231,7 @@ class KiraParser(private val context: SourceContext) {
                         }
 
                         Token.Type.S_OPEN_ANGLE -> {
-                            append("Missing '<' to begin generic type parameters. Syntax: Type<T, U> or fx name<T>(params): ReturnType")
+                            append("Missing '<' to begin generic type parameters. Syntax: Type<T, U> or fx name<T>: (params) ReturnType")
                         }
 
                         Token.Type.S_CLOSE_ANGLE -> {
@@ -926,7 +934,7 @@ class KiraParser(private val context: SourceContext) {
         } else if (at(Token.Type.IDENTIFIER)) {
             functionName = parseIdentifier()
         }
-        // optional generics: fx name<T, U: Bound> (...)
+        // optional generics: fx name<T, U: Bound>: (...) Ret
         val generics = mutableListOf<Type>()
         if (at(Token.Type.S_OPEN_ANGLE)) {
             expectThenAdvance(Token.Type.S_OPEN_ANGLE)
@@ -937,8 +945,13 @@ class KiraParser(private val context: SourceContext) {
             }
             expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         }
+        // `fx name: (params) Ret` -- the colon binds the name to its signature the
+        // same way `value: Int32` binds a variable to its type. Anonymous function
+        // literals have no name to bind, so they go straight to `fx (params) Ret`.
+        if (functionName !== AnonymousIdentifier) {
+            expectThenAdvance(Token.Type.S_COLON)
+        }
         val params = parseFunctionDeclParameters()
-        expectThenAdvance(Token.Type.S_COLON)
         val returnType = parseType()
         val functionIntrinsics = functionIntrinsicsEarly ?: pendingIntrinsics
         pendingIntrinsics = null
@@ -997,7 +1010,10 @@ class KiraParser(private val context: SourceContext) {
                     )
                 }
                 val origin = here()
-                val expr = parsePrimaryWithIndexing()
+                // Full expression, matching the named-argument branch above.
+                // parsePrimaryWithIndexing() stops at the first operator, which
+                // made `abs(a - 1)` a parse error while `abs(x = a - 1)` worked.
+                val expr = parseExpr()
                 if (expr is CompoundAssignmentExpr || expr is AssignmentExpr) {
                     Diagnostics.panic(
                         "KiraParser::parseFunctionCallParameter",

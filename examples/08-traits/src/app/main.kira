@@ -2,17 +2,17 @@ module "app:main"
 
 use "app:animals"
 
-fx makeDog(): Dog {
+fx makeDog: () Dog {
     dog: Dog = Dog { "Rex" }
     return dog
 }
 
-fx makeSpeaker(): Speaker {
+fx makeSpeaker: () Speaker {
     cat: Cat = Cat { "Luna" }
     return cat
 }
 
-fx main(): Void {
+fx main: () Void {
     dog: Dog = makeDog()
     cat: Cat = Cat { "Luna" }
 

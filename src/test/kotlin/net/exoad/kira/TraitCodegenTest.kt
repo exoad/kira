@@ -11,26 +11,26 @@ class TraitCodegenTest {
             module "tests:traits"
 
             trait Speaker {
-                pub fx speak(): Str
-                pub fx name(): Str
+                pub fx speak: () Str
+                pub fx name: () Str
             }
 
             trait Noisy: Speaker {
-                pub fx loudness(): Int32
+                pub fx loudness: () Int32
             }
 
             class Dog: Noisy {
                 require pub label: Str
 
-                pub fx speak(): Str {
+                pub fx speak: () Str {
                     return "woof"
                 }
 
-                pub fx name(): Str {
+                pub fx name: () Str {
                     return label
                 }
 
-                pub fx loudness(): Int32 {
+                pub fx loudness: () Int32 {
                     return 8
                 }
             }
@@ -38,25 +38,25 @@ class TraitCodegenTest {
             class Cat: Speaker {
                 require pub label: Str
 
-                pub fx speak(): Str {
+                pub fx speak: () Str {
                     return "meow"
                 }
 
-                pub fx name(): Str {
+                pub fx name: () Str {
                     return label
                 }
             }
 
-            fx announce(s: Speaker): Void {
+            fx announce: (s: Speaker) Void {
                 trace(s.name())
                 trace(s.speak())
             }
 
-            fx noiseLevel(s: Noisy): Int32 {
+            fx noiseLevel: (s: Noisy) Int32 {
                 return s.loudness()
             }
 
-            fx main(): Void {
+            fx main: () Void {
                 dog: Dog = Dog { "Rex" }
                 cat: Cat = Cat { "Luna" }
                 announce(dog)
@@ -68,7 +68,7 @@ class TraitCodegenTest {
                 trace(makeCatSpeaker().name())
             }
 
-            fx makeCatSpeaker(): Speaker {
+            fx makeCatSpeaker: () Speaker {
                 c: Cat = Cat { "Mochi" }
                 return c
             }

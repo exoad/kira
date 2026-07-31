@@ -1,6 +1,6 @@
 module "app:checks"
 
-fx parityLabel(value: Int32): Str {
+fx parityLabel: (value: Int32) Str {
     if value % 2 == 0 {
         return "even"
     } else {

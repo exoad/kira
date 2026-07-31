@@ -20,7 +20,7 @@ backend** lowers a real, owning baseline:
 ```kira
 module "app:arrays"
 
-fx first(values: Arr<Int32>): Int32 {
+fx first: (values: Arr<Int32>) Int32 {
     return values[0]
 }
 ```
@@ -37,7 +37,7 @@ Out-of-range index aborts in the C runtime helper (`Arr_get_i32`).
 ```kira
 module "app:maps"
 
-fx hasAny(values: Map<Str, Int32>): Bool {
+fx hasAny: (values: Map<Str, Int32>) Bool {
     return !values.isEmpty()
 }
 ```
@@ -69,7 +69,7 @@ head: Int32 = items.get(0)
 ## Putting it together
 
 ```kira
-fx main(): Void {
+fx main: () Void {
     numbers: Arr<Int32> = [10, 20, 30]
     head: Int32 = first(numbers)
 
@@ -91,10 +91,16 @@ fx main(): Void {
 
 ## Stdlib home
 
-Types live in [`kira/stl.kira`](../../kira/stl.kira) (`module "kira:stl"`).
-Your `kira.yaml` dependency on `../../kira` pulls that file in automatically.
-You do not `use "kira:stl"` in every file for magic types -- they are ambient
-once the stdlib is on the compile set.
+Container types live in
+[`kira/collections.kira`](../../kira/collections.kira) (`module
+"kira:collections"`); `Maybe`, the return type of `Map.get`, lives in
+[`kira/result.kira`](../../kira/result.kira).
+
+Your `kira.yaml` dependency on `../../kira` pulls in **every** `.kira` file
+under that folder, so all stdlib modules arrive together. You do not `use` them
+for magic types -- they are ambient once the stdlib is on the compile set.
+[`kira/stl.kira`](../../kira/stl.kira) is an index of the split modules, not a
+file you need to import.
 
 ## Next
 

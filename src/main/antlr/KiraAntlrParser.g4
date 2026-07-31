@@ -43,7 +43,7 @@ classMember
     ;
 
 methodDecl
-    : OVERRIDE? modifiers? MUT? FX callableName typeParams? LPAREN parameterList? RPAREN COLON typeRef (block | SEMI)
+    : OVERRIDE? modifiers? MUT? FX callableName typeParams? COLON LPAREN parameterList? RPAREN typeRef (block | SEMI)
     ;
 
 initiallyBlock
@@ -69,7 +69,7 @@ traitMember
     ;
 
 methodSignature
-    : modifiers? FX callableName LPAREN parameterList? RPAREN COLON typeRef
+    : modifiers? FX callableName COLON LPAREN parameterList? RPAREN typeRef
     ;
 
 enumDecl
@@ -100,7 +100,7 @@ typeAliasDecl
     ;
 
 functionDecl
-    : modifiers? FX callableName typeParams? LPAREN parameterList? RPAREN COLON typeRef (block | SEMI)
+    : modifiers? FX callableName typeParams? COLON LPAREN parameterList? RPAREN typeRef (block | SEMI)
     ;
 
 variableDecl
@@ -256,7 +256,7 @@ primaryExpression
     ;
 
 lambdaExpression
-    : FX LPAREN parameterList? RPAREN COLON typeRef block
+    : FX LPAREN parameterList? RPAREN typeRef block
     ;
 
 objectCreation

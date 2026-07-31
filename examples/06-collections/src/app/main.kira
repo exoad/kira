@@ -3,7 +3,7 @@ module "app:main"
 use "app:arrays"
 use "app:maps"
 
-fx main(): Void {
+fx main: () Void {
     numbers: Arr<Int32> = [10, 20, 30]
     head: Int32 = first(numbers)
 

@@ -1,5 +1,5 @@
 module "app:arrays"
 
-fx first(values: Arr<Int32>): Int32 {
+fx first: (values: Arr<Int32>) Int32 {
     return values[0]
 }

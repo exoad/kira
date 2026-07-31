@@ -7,7 +7,7 @@
 ```kira
 module "app:main"
 
-fx main(): Void {
+fx main: () Void {
     trace("hello, kira")
 }
 ```
@@ -39,7 +39,7 @@ module "app:main"
 ### Functions
 
 ```kira
-fx main(): Void {
+fx main: () Void {
     ...
 }
 ```

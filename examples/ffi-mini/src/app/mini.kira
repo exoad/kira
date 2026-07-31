@@ -5,16 +5,16 @@ module "app:mini"
 pub class MiniSurface
 
 @_extern
-fx miniCreate(w: Int32, h: Int32, title: Str): MiniSurface
+fx miniCreate: (w: Int32, h: Int32, title: Str) MiniSurface
 
 @_extern
-fx miniClosed(s: MiniSurface): Int32
+fx miniClosed: (s: MiniSurface) Int32
 
 @_extern
-fx miniClear(s: MiniSurface, color: Int32): Void
+fx miniClear: (s: MiniSurface, color: Int32) Void
 
 @_extern
-fx miniPresent(s: MiniSurface): Void
+fx miniPresent: (s: MiniSurface) Void
 
 @_extern
-fx miniDestroy(s: MiniSurface): Void
+fx miniDestroy: (s: MiniSurface) Void

@@ -34,8 +34,8 @@ Never run `rc_retain` / `rc_release` on foreign pointers.
 // Illustrative -- see language surface as implemented
 @_opaque class Tigr  // no Kira fields; C pointer in emit
 
-@_extern fx tigrWindow(w: Int32, h: Int32, title: Str, flags: Int32): Tigr
-@_extern fx tigrFree(bmp: Tigr): Void
+@_extern fx tigrWindow: (w: Int32, h: Int32, title: Str, flags: Int32) Tigr
+@_extern fx tigrFree: (bmp: Tigr) Void
 ```
 
 - Emit uses the **C symbol names as written** (no mangling).

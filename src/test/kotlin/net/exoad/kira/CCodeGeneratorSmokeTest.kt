@@ -17,11 +17,11 @@ class CCodeGeneratorSmokeTest {
             x: Int32 = 10
             y: Int32 = 20
 
-            fx add(a: Int32, b: Int32): Int32 {
+            fx add: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
-            fx main(): Void {
+            fx main: () Void {
                 mut z: Int32 = add(x, y)
                 trace(z)
             }

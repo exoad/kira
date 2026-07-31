@@ -1,5 +1,0 @@
-module "app:main"
-
-fx main(): Void {
-    trace("hello from C-as-IR")
-}

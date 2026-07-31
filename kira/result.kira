@@ -1,0 +1,27 @@
+module "kira:result"
+
+// Fallible-value types. `Maybe` is the return shape for the partial `Map` /
+// `Stack` / `Queue` / `Deque` lookups in `kira:collections`.
+
+pub @_magic class Maybe<T> {
+    require pub value: T
+
+    pub fx isSome: () Bool;
+    pub fx isNone: () Bool;
+    pub fx unwrap: () T;
+    pub fx unwrapOr: (defaultValue: T) T;
+}
+
+pub @_magic class Result<T, E> {
+    require pub value: T
+    require pub error: E
+
+    pub fx isOk: () Bool;
+    pub fx isErr: () Bool;
+    pub fx unwrap: () T;
+    pub fx unwrapErr: () E;
+}
+
+pub @_magic class Exception {
+    require pub message: Str
+}

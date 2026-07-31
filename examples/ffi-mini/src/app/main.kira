@@ -2,7 +2,7 @@ module "app:main"
 
 use "app:mini"
 
-fx main(): Void {
+fx main: () Void {
     screen: MiniSurface = miniCreate(320, 240, "kira-ffi")
     // miniPresent marks the surface closed (one-shot stub).
     miniClear(screen, 0)

@@ -1,0 +1,124 @@
+module "kira:tuples"
+
+// Fixed-arity product types. `Tuple2` doubles as the entry type for `Map`,
+// so `kira:collections` leans on this module.
+
+pub trait Tuple<T> {
+    pub fx size: () Int32
+}
+
+pub @_magic class Tuple0: Tuple<Void> {
+    pub fx size: () Int32 {
+        return 0
+    }
+}
+
+pub @_magic class Tuple1<T> : Tuple<Tuple1<T>> {
+    require pub first: T
+
+    pub fx size: () Int32 {
+        return 1
+    }
+}
+
+pub @_magic class Tuple2<A, B>: Tuple<Tuple2<A, B>> {
+    require pub first: A
+    require pub second: B
+
+    pub fx size: () Int32 {
+        return 2
+    }
+}
+
+pub alias Pair<A, B> as Tuple2<A, B>
+
+pub @_magic class Tuple3<A, B, C>: Tuple<Tuple3<A, B, C>> {
+    require pub first: A
+    require pub second: B
+    require pub third: C
+
+    pub fx size: () Int32 {
+        return 3
+    }
+}
+
+pub @_magic class Tuple4<A, B, C, D>: Tuple<Tuple4<A, B, C, D>> {
+    require pub first: A
+    require pub second: B
+    require pub third: C
+    require pub fourth: D
+
+    pub fx size: () Int32 {
+        return 4
+    }
+}
+
+pub @_magic class Tuple5<A, B, C, D, E>: Tuple<Tuple5<A, B, C, D, E>> {
+    require pub first: A
+    require pub second: B
+    require pub third: C
+    require pub fourth: D
+    require pub fifth: E
+
+    pub fx size: () Int32 {
+        return 5
+    }
+}
+
+pub @_magic class Tuple6<A, B, C, D, E, F>: Tuple<Tuple6<A, B, C, D, E, F>> {
+    require pub first: A
+    require pub second: B
+    require pub third: C
+    require pub fourth: D
+    require pub fifth: E
+    require pub sixth: F
+
+    pub fx size: () Int32 {
+        return 6
+    }
+}
+
+pub @_magic class Tuple7<A, B, C, D, E, F, G>: Tuple<Tuple7<A, B, C, D, E, F, G>> {
+    require pub first: A
+    require pub second: B
+    require pub third: C
+    require pub fourth: D
+    require pub fifth: E
+    require pub sixth: F
+    require pub seventh: G
+
+    pub fx size: () Int32 {
+        return 7
+    }
+}
+
+pub @_magic class Tuple8<A, B, C, D, E, F, G, H>: Tuple<Tuple8<A, B, C, D, E, F, G, H>> {
+    require pub first: A
+    require pub second: B
+    require pub third: C
+    require pub fourth: D
+    require pub fifth: E
+    require pub sixth: F
+    require pub seventh: G
+    require pub eighth: H
+
+    pub fx size: () Int32 {
+        return 8
+    }
+}
+
+pub @_magic class Tuple9<A, B, C, D, E, F, G, H, I>: Tuple<Tuple9<A, B, C, D, E, F, G, H, I>> {
+    require pub first: A
+    require pub second: B
+    require pub third: C
+    require pub fourth: D
+    require pub fifth: E
+    require pub sixth: F
+    require pub seventh: G
+    require pub eighth: H
+    require pub ninth: I
+
+    pub fx size: () Int32 {
+        return 9
+    }
+}

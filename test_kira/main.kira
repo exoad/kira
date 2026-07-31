@@ -1,6 +1,6 @@
 module "test:kira"
 
-fx helperCreateMap(): Map<Str, Int32> {
+fx helperCreateMap: () Map<Str, Int32> {
     return Map<Str, Int32> { }
 }
 
@@ -8,20 +8,20 @@ pub class Point {
     require pub mut x: Int32
     require pub mut y: Int32
 
-    pub fx dist(): Float64 {
+    pub fx dist: () Float64 {
         return (x * x + y * y) as Float64
     }
 }
 
 trait Printable {
-    fx toStr(): Str
+    fx toStr: () Str
 }
 
 pub class Circle {
     require pub center: Point
     require pub mut radius: Int32
 
-    pub fx area(): Float64 {
+    pub fx area: () Float64 {
         return 3.14159 * (radius as Float64) * (radius as Float64)
     }
 }
@@ -32,7 +32,7 @@ enum Color {
     BLUE = "blue"
 }
 
-fx compute(values: List<Int32>): Int32 {
+fx compute: (values: List<Int32>) Int32 {
     mut acc: Int32 = 0
     for mut i: 0..(values.size() - 1) {
         acc = acc + values[i]
@@ -40,7 +40,7 @@ fx compute(values: List<Int32>): Int32 {
     return acc
 }
 
-fx main(): Void {
+fx main: () Void {
     mut nums: List<Int32> = [1, 2, 3, 4, 5]
     arr: Arr<Int32> = [ 10, 20, 30 ]
     total: Int32 = compute(nums)
@@ -67,7 +67,7 @@ fx main(): Void {
     for mut idx: 0..(arr.size() - 1) {
         // access arr[idx]
     }
-    fxSum: Int32 = (fx(a: Int32, b: Int32): Int32 { return a + b })(1, 2)
+    fxSum: Int32 = (fx(a: Int32, b: Int32) Int32 { return a + b })(1, 2)
     try {
         throw "boom"
     } on e: Str {
@@ -87,24 +87,24 @@ pub class Deep {
     require pub data: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>>
 }
 
-fx genericIdentity<T: Int32>(x: T): T {
+fx genericIdentity<T: Int32>: (x: T) T {
     return x
 }
 
-fx nestedGenerics(): Map<Map<Map<Str, Str>, List<Int32>>, Arr<Arr<Int32>>> {
+fx nestedGenerics: () Map<Map<Map<Str, Str>, List<Int32>>, Arr<Arr<Int32>>> {
     return helperCreateMap()
 }
 
 complexVar: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>> = helperCreateMap()
 
-fx identity<T>(value: T): T {
+fx identity<T>: (value: T) T {
     return value
 }
 
-fx swap<A, B>(first: A, second: B): Tuple2<B, A> {
+fx swap<A, B>: (first: A, second: B) Tuple2<B, A> {
     return Tuple2<B, A> { second, first }
 }
 
-fx makeBox<T>(value: T): Box<T> {
+fx makeBox<T>: (value: T) Box<T> {
     return Box<T> { value }
 }

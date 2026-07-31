@@ -4,6 +4,6 @@ pub class Box<T> {
     require pub value: T
 }
 
-fx id<T>(value: T): T {
+fx id<T>: (value: T) T {
     return value
 }

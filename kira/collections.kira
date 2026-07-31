@@ -1,0 +1,92 @@
+module "kira:collections"
+
+// Container types. `Arr`, `List` and `Map` are the three the C backend lowers
+// today (see docs/backend-c.md); `Set` / `Stack` / `Queue` / `Deque` are
+// declared so signatures typecheck but still resolve prelude-side.
+
+pub trait Iterable<T> {
+    pub fx size: () Int32
+    pub fx isEmpty: () Bool;
+}
+
+pub @_magic class Arr<T>: Iterable<T> {
+    pub fx get: (index: Int32) T;
+    pub fx set: (index: Int32, value: T) Void;
+    pub fx contains: (value: T) Bool;
+    pub fx clone: () Arr<T>;
+}
+
+pub @_magic class List<T>: Iterable<T> {
+    require values: Arr<T>
+
+    pub fx add: (value: T) Void;
+    pub fx addAll: (values: Arr<T>) Void;
+    pub fx get: (index: Int32) T;
+    pub fx set: (index: Int32, value: T) Void;
+    pub fx removeAt: (index: Int32) T;
+    pub fx clear: () Void;
+    pub fx contains: (value: T) Bool;
+    pub fx toArr: () Arr<T>;
+}
+
+pub @_magic class Map<K, V> {
+    require values: Arr<Tuple2<K, V>>
+
+    pub fx size: () Int32;
+    pub fx isEmpty: () Bool;
+    pub fx put: (key: K, value: V) Void;
+    pub fx get: (key: K) Maybe<V>;
+    pub fx remove: (key: K) Maybe<V>;
+    pub fx containsKey: (key: K) Bool;
+    pub fx containsValue: (value: V) Bool;
+    pub fx keys: () Arr<K>;
+    pub fx valuesArr: () Arr<V>;
+    pub fx entries: () Arr<Tuple2<K, V>>;
+    pub fx clear: () Void;
+}
+
+pub @_magic class Set<T> {
+    require values: Arr<T>
+
+    pub fx size: () Int32;
+    pub fx isEmpty: () Bool;
+    pub fx add: (value: T) Bool;
+    pub fx remove: (value: T) Bool;
+    pub fx contains: (value: T) Bool;
+    pub fx toArr: () Arr<T>;
+    pub fx clear: () Void;
+}
+
+pub @_magic class Stack<T> {
+    require values: List<T>
+
+    pub fx size: () Int32;
+    pub fx isEmpty: () Bool;
+    pub fx push: (value: T) Void;
+    pub fx pop: () Maybe<T>;
+    pub fx peek: () Maybe<T>;
+    pub fx clear: () Void;
+}
+
+pub @_magic class Queue<T> {
+    require values: List<T>
+
+    pub fx size: () Int32;
+    pub fx isEmpty: () Bool;
+    pub fx enqueue: (value: T) Void;
+    pub fx dequeue: () Maybe<T>;
+    pub fx peek: () Maybe<T>;
+    pub fx clear: () Void;
+}
+
+pub @_magic class Deque<T> {
+    require values: List<T>
+
+    pub fx size: () Int32;
+    pub fx isEmpty: () Bool;
+    pub fx pushFront: (value: T) Void;
+    pub fx pushBack: (value: T) Void;
+    pub fx popFront: () Maybe<T>;
+    pub fx popBack: () Maybe<T>;
+    pub fx clear: () Void;
+}

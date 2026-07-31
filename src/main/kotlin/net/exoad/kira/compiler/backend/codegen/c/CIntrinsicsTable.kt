@@ -11,7 +11,9 @@ object CIntrinsicsTable {
         "trace" to CIntrinsicBinding("print"),
         "print" to CIntrinsicBinding("print"),
         "println" to CIntrinsicBinding("println"),
-        "eprint" to CIntrinsicBinding("fprintf"),
+        // eprint writes to stderr; the prelude macro supplies the stream so the
+        // call site keeps the Kira arity (bare `fprintf` dropped it).
+        "eprint" to CIntrinsicBinding("eprint"),
         "_trace_" to CIntrinsicBinding("print"),
         // Math
         "sqrt" to CIntrinsicBinding("sqrt", setOf("math.h")),
@@ -25,7 +27,9 @@ object CIntrinsicsTable {
         "abs" to CIntrinsicBinding("fabs", setOf("math.h")),
         "min" to CIntrinsicBinding("fmin", setOf("math.h")),
         "max" to CIntrinsicBinding("fmax", setOf("math.h")),
-        "assert" to CIntrinsicBinding("assert", setOf("assert.h")),
+        // Kira's assert takes (condition, message); C's assert macro takes one
+        // argument, so route to the prelude's two-argument helper instead.
+        "assert" to CIntrinsicBinding("kira_assert"),
     )
 
     fun resolveFunction(name: String): String {
