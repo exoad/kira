@@ -143,20 +143,169 @@ simple Bool Arr_isEmpty(Arr* a)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Map -- baseline empty/count-only map (enough for isEmpty / size examples)  */
-/* Full put/get hashing lands later; length tracks entry count.               */
+/* Map -- open-addressing hash table (linear probing)                         */
+/* Keys/values are Any pointers; occupied tracks tombstones.                  */
 /* -------------------------------------------------------------------------- */
 
 typedef struct Map
 {
-    Int32 length;
+    Any*    keys;
+    Any*    values;
+    Bool*   occupied;  /* true = live entry, false = empty/tombstone */
+    Int32   length;
+    Int32   capacity;
 } Map;
+
+/* djb2 hash on a string key; fallback for non-string Any keys uses pointer value. */
+/* Map function prototypes (forward references for mutual recursion) */
+simple Void Map_put(Map* m, Any key, Any value);
+simple Void Map_resize(Map* m, Int32 newCap);
+
+simple UInt64 Map_hash(Any key)
+{
+    if (key == null) return 0;
+    Str s = (Str)key;
+    UInt64 h = 5381;
+    while (*s)
+    {
+        h = h * 33 + (UInt64)(*s);
+        s++;
+    }
+    return h;
+}
+
+simple Void Map_resize(Map* m, Int32 newCap)
+{
+    Any*    oldKeys    = m->keys;
+    Any*    oldValues  = m->values;
+    Bool*   oldOccupied = m->occupied;
+    Int32   oldCap     = m->capacity;
+
+    m->keys     = (Any*)calloc((size_t)newCap, sizeof(Any));
+    m->values   = (Any*)calloc((size_t)newCap, sizeof(Any));
+    m->occupied = (Bool*)calloc((size_t)newCap, sizeof(Bool));
+    if (m->keys == null || m->values == null || m->occupied == null) abort();
+    m->capacity = newCap;
+    m->length   = 0;
+
+    Int32 i;
+    for (i = 0; i < oldCap; i++)
+    {
+        if (oldOccupied[i])
+        {
+            Map_put(m, oldKeys[i], oldValues[i]);
+        }
+    }
+    free(oldKeys);
+    free(oldValues);
+    free(oldOccupied);
+}
 
 simple Map Map_new(Void)
 {
     Map m;
-    m.length = 0;
+    m.capacity = 8;
+    m.length   = 0;
+    m.keys     = (Any*)calloc((size_t)m.capacity, sizeof(Any));
+    m.values   = (Any*)calloc((size_t)m.capacity, sizeof(Any));
+    m.occupied = (Bool*)calloc((size_t)m.capacity, sizeof(Bool));
+    if (m.keys == null || m.values == null || m.occupied == null) abort();
     return m;
+}
+
+simple Void Map_put(Map* m, Any key, Any value)
+{
+    if (m->keys == null)
+    {
+        m->capacity = 8;
+        m->length   = 0;
+        m->keys     = (Any*)calloc((size_t)m->capacity, sizeof(Any));
+        m->values   = (Any*)calloc((size_t)m->capacity, sizeof(Any));
+        m->occupied = (Bool*)calloc((size_t)m->capacity, sizeof(Bool));
+        if (m->keys == null || m->values == null || m->occupied == null) abort();
+    }
+
+    /* Grow if load factor > 0.75 */
+    if (m->length >= m->capacity * 3 / 4)
+    {
+        Map_resize(m, m->capacity * 2);
+    }
+
+    UInt64 h = Map_hash(key);
+    Int32  idx = (Int32)(h % (UInt64)m->capacity);
+    Int32  start = idx;
+
+    for (;;)
+    {
+        if (!m->occupied[idx])
+        {
+            /* Empty slot -- insert here */
+            m->keys[idx]     = key;
+            m->values[idx]   = value;
+            m->occupied[idx] = true;
+            m->length++;
+            return;
+        }
+        if (m->keys[idx] == key)
+        {
+            /* Same key -- update value */
+            m->values[idx] = value;
+            return;
+        }
+        idx = (idx + 1) % m->capacity;
+        if (idx == start) break; /* should not happen if we grew */
+    }
+}
+
+simple Bool Map_containsKey(Map* m, Any key)
+{
+    if (m->keys == null || m->length == 0) return false;
+    UInt64 h = Map_hash(key);
+    Int32  idx = (Int32)(h % (UInt64)m->capacity);
+    Int32  start = idx;
+    for (;;)
+    {
+        if (!m->occupied[idx]) return false;
+        if (m->keys[idx] == key) return true;
+        idx = (idx + 1) % m->capacity;
+        if (idx == start) return false;
+    }
+}
+
+simple Any Map_get(Map* m, Any key)
+{
+    if (m->keys == null || m->length == 0) return null;
+    UInt64 h = Map_hash(key);
+    Int32  idx = (Int32)(h % (UInt64)m->capacity);
+    Int32  start = idx;
+    for (;;)
+    {
+        if (!m->occupied[idx]) return null;
+        if (m->keys[idx] == key) return m->values[idx];
+        idx = (idx + 1) % m->capacity;
+        if (idx == start) return null;
+    }
+}
+
+simple Any Map_remove(Map* m, Any key)
+{
+    if (m->keys == null || m->length == 0) return null;
+    UInt64 h = Map_hash(key);
+    Int32  idx = (Int32)(h % (UInt64)m->capacity);
+    Int32  start = idx;
+    for (;;)
+    {
+        if (!m->occupied[idx]) return null;
+        if (m->keys[idx] == key)
+        {
+            Any val = m->values[idx];
+            m->occupied[idx] = false; /* tombstone */
+            m->length--;
+            return val;
+        }
+        idx = (idx + 1) % m->capacity;
+        if (idx == start) return null;
+    }
 }
 
 simple Bool Map_isEmpty(Map* m)
@@ -171,25 +320,112 @@ simple Int32 Map_size(Map* m)
 
 simple Void Map_clear(Map* m)
 {
+    if (m->occupied != null)
+    {
+        Int32 i;
+        for (i = 0; i < m->capacity; i++)
+        {
+            m->occupied[i] = false;
+        }
+    }
     m->length = 0;
 }
 
-/* List is an Arr alias at the C boundary for the baseline backend. */
-typedef Arr List;
+/* -------------------------------------------------------------------------- */
+/* List -- owning dynamic list over Int32 elements                            */
+/* Grows by doubling capacity on overflow; starts at 4.                       */
+/* -------------------------------------------------------------------------- */
 
-simple List List_empty(Void)
+typedef struct List
 {
-    return Arr_empty();
+    Int32* data;
+    Int32  length;
+    Int32  capacity;
+} List;
+
+simple Void List_grow(List* l)
+{
+    Int32 newCap = l->capacity == 0 ? 4 : l->capacity * 2;
+    Int32* newData = (Int32*)realloc(l->data, (size_t)newCap * sizeof(Int32));
+    if (newData == null) abort();
+    l->data     = newData;
+    l->capacity = newCap;
 }
 
-simple Int32 List_size(List* list)
+simple List List_new(Void)
 {
-    return Arr_size(list);
+    List l;
+    l.data     = null;
+    l.length   = 0;
+    l.capacity = 0;
+    return l;
 }
 
-simple Bool List_isEmpty(List* list)
+simple Void List_add(List* l, Int32 value)
 {
-    return Arr_isEmpty(list);
+    if (l->length >= l->capacity)
+    {
+        List_grow(l);
+    }
+    l->data[l->length] = value;
+    l->length++;
+}
+
+simple Int32 List_get(List* l, Int32 index)
+{
+    if (l->data == null || index < 0 || index >= l->length) abort();
+    return l->data[index];
+}
+
+simple Void List_set(List* l, Int32 index, Int32 value)
+{
+    if (l->data == null || index < 0 || index >= l->length) abort();
+    l->data[index] = value;
+}
+
+simple Int32 List_removeAt(List* l, Int32 index)
+{
+    if (l->data == null || index < 0 || index >= l->length) abort();
+    Int32 val = l->data[index];
+    /* Shift elements left */
+    Int32 i;
+    for (i = index; i < l->length - 1; i++)
+    {
+        l->data[i] = l->data[i + 1];
+    }
+    l->length--;
+    return val;
+}
+
+simple Void List_clear(List* l)
+{
+    if (l->data != null)
+    {
+        free(l->data);
+        l->data = null;
+    }
+    l->length   = 0;
+    l->capacity = 0;
+}
+
+simple Int32 List_size(List* l)
+{
+    return l->length;
+}
+
+simple Bool List_isEmpty(List* l)
+{
+    return l->length == 0;
+}
+
+simple Arr List_toArr(List* l)
+{
+    if (l->data == null || l->length == 0) return Arr_empty();
+    /* Copy into a fresh array so List can still mutate */
+    Int32* copy = (Int32*)malloc((size_t)l->length * sizeof(Int32));
+    if (copy == null) abort();
+    memcpy(copy, l->data, (size_t)l->length * sizeof(Int32));
+    return Arr_i32(copy, l->length);
 }
 
 #endif /* KIRA_RUNTIME_H */

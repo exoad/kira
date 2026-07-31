@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kira</title>
+  <script>
+    // SPA-style redirect helper for GitHub Pages project sites.
+    (function () {
+      var path = window.location.pathname;
+      var repo = "/kira";
+      if (path.indexOf(repo) === 0) {
+        window.location.replace(repo + "/");
+      } else {
+        window.location.replace("/");
+      }
+    })();
+  </script>
+  <meta http-equiv="refresh" content="0; url=./" />
+</head>
+<body style="background:#000;color:#fff;font-family:system-ui,sans-serif;padding:2rem">
+  <p><a href="./" style="color:#fff">Back to Kira</a></p>
+</body>
+</html>

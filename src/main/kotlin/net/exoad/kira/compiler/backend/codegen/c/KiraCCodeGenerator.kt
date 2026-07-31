@@ -895,21 +895,107 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 return true
             }
             "clear" -> {
-                if (prefix != "Map") return false
-                buffer.append("Map_clear(&")
+                buffer.append(prefix)
+                buffer.append("_clear(&")
                 receiver.accept(this)
                 buffer.append(")")
                 return true
             }
             "get" -> {
+                if (prefix == "Map" || prefix == "Set") {
+                    // Map_get(map, key) -- pointer receiver
+                    buffer.append("Map_get(&")
+                    receiver.accept(this)
+                    buffer.append(", ")
+                    args[0].accept(this)
+                    buffer.append(")")
+                    return true
+                }
                 // Arr_get_i32(arr, index) -- value receiver, not pointer
-                if (prefix != "Arr" && prefix != "List") return false
                 buffer.append("Arr_get_i32(")
                 receiver.accept(this)
                 if (args.isNotEmpty()) {
                     buffer.append(", ")
                     args[0].accept(this)
                 }
+                buffer.append(")")
+                return true
+            }
+            "set" -> {
+                if (prefix == "Map") return false // Map uses put
+                if (prefix == "List") {
+                    buffer.append("List_set(&")
+                    receiver.accept(this)
+                    buffer.append(", ")
+                    args[0].accept(this)
+                    buffer.append(", ")
+                    args[1].accept(this)
+                    buffer.append(")")
+                    return true
+                }
+                // Arr_set_i32
+                buffer.append("Arr_set_i32(")
+                receiver.accept(this)
+                buffer.append(", ")
+                args[0].accept(this)
+                buffer.append(", ")
+                args[1].accept(this)
+                buffer.append(")")
+                return true
+            }
+            "put" -> {
+                if (prefix != "Map") return false
+                buffer.append("Map_put(&")
+                receiver.accept(this)
+                buffer.append(", ")
+                args[0].accept(this)
+                buffer.append(", ")
+                args[1].accept(this)
+                buffer.append(")")
+                return true
+            }
+            "containsKey" -> {
+                if (prefix != "Map") return false
+                buffer.append("Map_containsKey(&")
+                receiver.accept(this)
+                buffer.append(", ")
+                args[0].accept(this)
+                buffer.append(")")
+                return true
+            }
+            "remove" -> {
+                if (prefix == "Map") {
+                    buffer.append("Map_remove(&")
+                    receiver.accept(this)
+                    buffer.append(", ")
+                    args[0].accept(this)
+                    buffer.append(")")
+                    return true
+                }
+                if (prefix == "List") {
+                    // List_removeAt for List.remove(index)
+                    buffer.append("List_removeAt(&")
+                    receiver.accept(this)
+                    buffer.append(", ")
+                    args[0].accept(this)
+                    buffer.append(")")
+                    return true
+                }
+                return false
+            }
+            "add" -> {
+                if (prefix != "List") return false
+                buffer.append("List_add(&")
+                receiver.accept(this)
+                buffer.append(", ")
+                args[0].accept(this)
+                buffer.append(")")
+                return true
+            }
+            "toArr" -> {
+                if (prefix != "List") return false
+                buffer.append("List_toArr(&")
+                receiver.accept(this)
                 buffer.append(")")
                 return true
             }
@@ -1471,7 +1557,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                     return
                 }
                 "List" -> {
-                    buffer.append("List_empty()")
+                    buffer.append("List_new()")
                     return
                 }
             }
