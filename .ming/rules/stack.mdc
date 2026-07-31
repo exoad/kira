@@ -1,0 +1,38 @@
+---
+description: Kira build, test, and commit conventions that apply to every task in this repo.
+alwaysApply: true
+---
+
+# Kira stack conventions
+
+Kira is a Kotlin/JVM compiler (Gradle, ANTLR) that lowers a small OOP language
+to ISO C17 source (C-as-IR). Native toolchain finishes the job.
+
+## Build and test
+
+- Gradle wrapper: `gradle-9.5.1`, Kotlin 2.3.20, ANTLR 4.13.2.
+- Java toolchain: `jvmToolchain(17)`. CI pins Temurin 17; a newer local JDK is
+  fine because Gradle resolves the 17 toolchain.
+- Verify gate for any compiler change: `./gradlew test`.
+- CLI install: `./gradlew installDist` -> `build/install/kira/bin/kira` and
+  `.../kira-lsp`. Rebuild after codegen changes before using the CLI.
+- `./gradlew run` compiles the `test_kira/` smoke project (workingDir is set
+  to `test_kira` in build.gradle.kts).
+
+## Parser backends
+
+- Default parser is LEGACY (`KiraSourceParsers`). Select ANTLR with
+  `-Dkira.parser=antlr` or `KIRA_PARSER=antlr`.
+- ANTLR backend is syntax validation only; the LEGACY backend builds the AST
+  that semantic analysis and codegen consume. Do not assume the two agree.
+
+## Commit conventions
+
+- Author every commit as `Ming <daoxe@users.noreply.github.com>` (the
+  run_shell wrapper injects `--author` automatically).
+- Commit coherent verified units with a short subject line
+  (`feat:`, `fix:`, `docs:`, `chore:` prefixes).
+- `.ming/` is gitignored in this repo: rules and skills here are local to
+  Ming and never committed.
+- Committed generated artifacts (example C snapshots, expected.txt) are
+  intentional; see snapshots rule.
