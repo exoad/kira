@@ -1,0 +1,74 @@
+module "app:grid"
+
+class Grid {
+    require pub width: Int32
+    require pub height: Int32
+    require pub cells: Arr<Int32>
+
+    fx countNeighbors(row: Int32, col: Int32): Int32 {
+        mut count: Int32 = 0
+        mut r: Int32 = -1
+        while r <= 1 {
+            mut c: Int32 = -1
+            while c <= 1 {
+                if r == 0 && c == 0 {
+                    c = c + 1
+                    continue
+                }
+                mut nr: Int32 = row + r
+                mut nc: Int32 = col + c
+                if nr >= 0 && nr < height && nc >= 0 && nc < width {
+                    mut idx: Int32 = nr * width + nc
+                    mut val: Int32 = cells[idx]
+                    count = count + val
+                }
+                c = c + 1
+            }
+            r = r + 1
+        }
+        return count
+    }
+
+    fx step(): Void {
+        mut next: Arr<Int32> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        mut i: Int32 = 0
+        while i < width * height {
+            mut row: Int32 = i / width
+            mut col: Int32 = i % width
+            mut alive: Int32 = cells[i]
+            mut n: Int32 = countNeighbors(row, col)
+            if alive == 1 && (n == 2 || n == 3) {
+                next.set(i, 1)
+            } else if alive == 0 && n == 3 {
+                next.set(i, 1)
+            } else {
+                next.set(i, 0)
+            }
+            i = i + 1
+        }
+        i = 0
+        while i < width * height {
+            mut srcVal: Int32 = next[i]
+            cells.set(i, srcVal)
+            i = i + 1
+        }
+    }
+
+    fx printGrid(): Void {
+        mut r: Int32 = 0
+        while r < height {
+            mut c: Int32 = 0
+            while c < width {
+                mut idx: Int32 = r * width + c
+                if cells[idx] == 1 {
+                    trace("#")
+                } else {
+                    trace(".")
+                }
+                c = c + 1
+            }
+            trace("")
+            r = r + 1
+        }
+    }
+}

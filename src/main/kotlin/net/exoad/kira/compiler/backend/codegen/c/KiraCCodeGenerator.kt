@@ -106,6 +106,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
      */
     private var typeSubst: Map<String, String> = emptyMap()
 
+    /** User-defined (non-magic) class names. These get ARC heap allocation. */
+    private val userClassNames = mutableSetOf<String>()
+    /** User class name -> ordered list of (fieldName, fieldType) for init lowering. */
+    private val userClassFields = mutableMapOf<String, List<Pair<String, String>>>()
+
     /**
      * One-shot emit of the whole compilation unit into [outputPath].
      * Returns the generated C source (also written to disk).
@@ -1092,7 +1097,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun receiverTypeOf(expr: Expr): String? {
         return when (expr) {
-            is Identifier -> knownValueTypes[expr.value]
+            is Identifier -> {
+                // Check locals first, then fields (for bare field refs inside methods like `cells`)
+                knownValueTypes[expr.value] ?: fieldTypes[expr.value]
+            }
             is MemberAccessExpr -> {
                 // nested.field -- look up field type if known
                 val memberName = (expr.member as? Identifier)?.value
@@ -1104,6 +1112,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             }
             else -> null
         }
+    }
+
+    /**
+     * Check if a bare function call name is actually a method on the current class.
+     * Returns the mangled method name if found, null otherwise.
+     */
+    private fun tryResolveAsCurrentMethod(funcName: String): String? {
+        if (currentMethodClass == null) return null
+        return resolveMethodMangled(funcName, currentMethodClass!!)
     }
 
     override fun toString(): String {
@@ -1406,6 +1423,18 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         if (isPrintLike(rawName)) {
             emitPrintCall(rawName, args)
+            return
+        }
+        // Bare method call inside a class method: `methodName(args)` → `Class_method(this, args)`
+        val currentMethodMangled = tryResolveAsCurrentMethod(rawName)
+        if (currentMethodMangled != null) {
+            buffer.append(currentMethodMangled)
+            buffer.append("(this")
+            args.forEach { arg ->
+                buffer.append(", ")
+                arg.accept(this)
+            }
+            buffer.append(")")
             return
         }
         includeForIntrinsic(rawName)

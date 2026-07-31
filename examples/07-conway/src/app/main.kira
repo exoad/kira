@@ -1,0 +1,14 @@
+module "app:main"
+
+use "app:grid"
+
+fx main(): Void {
+    g: Grid = Grid { 5, 5, [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+    mut gen: Int32 = 0
+    while gen < 5 {
+        g.printGrid()
+        trace("")
+        g.step()
+        gen = gen + 1
+    }
+}
