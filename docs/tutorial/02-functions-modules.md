@@ -11,7 +11,7 @@ Three files under `src/app/`:
 ```kira
 module "app:utils"
 
-fx normalize(text: Str): Str {
+fx normalize: (text: Str) Str {
     return text
 }
 ```
@@ -23,7 +23,7 @@ module "app:greetings"
 
 use "app:utils"
 
-fx greeting(): Str {
+fx greeting: () Str {
     return normalize("hello from functions")
 }
 ```
@@ -35,7 +35,7 @@ module "app:main"
 
 use "app:greetings"
 
-fx main(): Void {
+fx main: () Void {
     message: Str = greeting()
     trace(message)
 }
@@ -61,7 +61,7 @@ use "app:utils"
 ## Function shape (recap)
 
 ```kira
-fx name(param: Type, other: Type): ReturnType {
+fx name: (param: Type, other: Type) ReturnType {
     return value
 }
 ```
@@ -79,7 +79,7 @@ Rules that matter day one:
 Returning a value:
 
 ```kira
-fx add(a: Int32, b: Int32): Int32 {
+fx add: (a: Int32, b: Int32) Int32 {
     return a + b
 }
 ```
@@ -108,7 +108,7 @@ aligned when you rename files.
 
 ## Try this
 
-Add `fx shout(text: Str): Str` in `utils.kira` that returns the same string,
+Add `fx shout: (text: Str) Str` in `utils.kira` that returns the same string,
 call it from `greeting()`, re-run.
 
 ## Next

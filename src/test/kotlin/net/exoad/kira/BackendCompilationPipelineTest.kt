@@ -28,11 +28,11 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx add(a: Int32, b: Int32): Int32 {
+            fx add: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
-            fx main(): Void {
+            fx main: () Void {
                 trace("OK\\n")
             }
             """
@@ -76,11 +76,11 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx sum(a: Int32, b: Int32): Int32 {
+            fx sum: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
-            fx main(): Void {
+            fx main: () Void {
                 mut v: Int32 = sum(3, 4)
                 trace("syntax-ok\\n")
             }
@@ -122,7 +122,7 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx main(): Void {
+            fx main: () Void {
                 trace("runtime-ok\\n")
             }
             """
@@ -156,15 +156,15 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx first(values: Arr<Int32>): Int32 {
+            fx first: (values: Arr<Int32>) Int32 {
                 return values[0]
             }
 
-            fx hasAny(values: Map<Str, Int32>): Bool {
+            fx hasAny: (values: Map<Str, Int32>) Bool {
                 return !values.isEmpty()
             }
 
-            fx main(): Void {
+            fx main: () Void {
                 numbers: Arr<Int32> = [10, 20, 30]
                 head: Int32 = first(numbers)
                 entries: Map<Str, Int32> = Map<Str, Int32> { }
@@ -187,9 +187,12 @@ class BackendCompilationPipelineTest {
 
         assertTrue(generated.contains("typedef struct Arr"), generated)
         assertTrue(generated.contains("typedef struct Map"), generated)
-        assertTrue(generated.contains("Arr_i32"), generated)
+        // Arr literals build a KiraSlot compound literal; the typed accessor
+        // macro keeps Int32 element reads readable.
+        assertTrue(generated.contains("Arr_lit((KiraSlot[])"), generated)
         assertTrue(generated.contains("Arr_get_i32"), generated)
-        assertTrue(generated.contains("Map_new()"), generated)
+        // Str-keyed maps hash and compare by content, so they use Map_new_s.
+        assertTrue(generated.contains("Map_new_s()"), generated)
         assertTrue(generated.contains("Map_isEmpty"), generated)
 
         val runResult = TestCompileSupport.compileAndRunC(generated, compiler!!)
@@ -222,11 +225,11 @@ class BackendCompilationPipelineTest {
                 require pub value: T
             }
 
-            fx id<T>(value: T): T {
+            fx id<T>: (value: T) T {
                 return value
             }
 
-            fx main(): Void {
+            fx main: () Void {
                 state: BuildStatus = BuildStatus.READY
                 wrapped: Box<Int32> = Box<Int32> { 7 }
                 value: Int32 = id<Int32>(wrapped.value)
@@ -275,12 +278,12 @@ class BackendCompilationPipelineTest {
                 require pub name: Str
                 require pub sound: Str
 
-                pub fx speak(): Str {
+                pub fx speak: () Str {
                     return sound
                 }
             }
 
-            fx main(): Void {
+            fx main: () Void {
                 friend: Pet = Pet { "Mochi", "meow" }
                 trace(friend.name)
                 trace(friend.speak())

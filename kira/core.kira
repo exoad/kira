@@ -1,0 +1,55 @@
+module "kira:core"
+
+// Root of the type lattice plus the primitive scalars every other stdlib
+// module builds on. Everything here is `@_magic`: the declaration exists so
+// the frontend can typecheck against it, and the C backend supplies the real
+// definition from the prelude (`src/main/resources/c_generator.c`).
+
+pub @_magic class Any
+pub @_magic class Void
+pub @_magic class Never
+
+pub @_magic class Bool
+
+pub @_magic @_global true: Bool = Bool { }
+pub @_magic @_global false: Bool = Bool { }
+
+pub trait Equatable<T> {
+    pub fx equals: (other: T) Bool;
+}
+
+pub trait Hashable {
+    pub fx hashCode: () Int64;
+}
+
+pub @_magic class Str: Equatable<Str>, Hashable {
+    pub fx length: () Int32;
+    pub fx isEmpty: () Bool;
+    pub fx substring: (start: Int32, end: Int32) Str;
+    pub fx charAt: (index: Int32) Str;
+    pub fx contains: (value: Str) Bool;
+    pub fx startsWith: (prefix: Str) Bool;
+    pub fx endsWith: (suffix: Str) Bool;
+    pub fx split: (delimiter: Str) List<Str>;
+    pub fx trim: () Str;
+    pub fx toLower: () Str;
+    pub fx toUpper: () Str;
+}
+
+pub @_magic class Num: Equatable<Num>, Hashable {
+    pub fx abs: () Num;
+    pub fx toInt32: () Int32;
+    pub fx toInt64: () Int64;
+    pub fx toFloat32: () Float32;
+    pub fx toFloat64: () Float64;
+}
+
+pub @_magic class Int8: Num
+pub @_magic class Int16: Num
+pub @_magic class Int32: Num
+pub @_magic class Int64: Num
+pub @_magic class Float32: Num
+pub @_magic class Float64: Num
+
+pub alias Int as Int32
+pub alias Float as Float32

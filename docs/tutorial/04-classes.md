@@ -18,7 +18,7 @@ pub class Rectangle {
     require pub topLeft: Point
     require pub bottomRight: Point
 
-    pub fx perimeter(): Int32 {
+    pub fx perimeter: () Int32 {
         width: Int32 = bottomRight.x - topLeft.x
         height: Int32 = topLeft.y - bottomRight.y
         return (width + height) * 2
@@ -29,7 +29,7 @@ pub class Pet {
     require pub name: Str
     require pub sound: Str
 
-    pub fx speak(): Str {
+    pub fx speak: () Str {
         return sound
     }
 }
@@ -42,7 +42,7 @@ module "app:main"
 
 use "app:model"
 
-fx main(): Void {
+fx main: () Void {
     rect: Rectangle = Rectangle { Point { 0, 1 }, Point { 1, 0 } }
     friend: Pet = Pet { "Mochi", "meow" }
 
@@ -78,7 +78,7 @@ require pub x: Int32
 ### Methods
 
 ```kira
-pub fx perimeter(): Int32 {
+pub fx perimeter: () Int32 {
     ...
 }
 ```
@@ -117,7 +117,7 @@ variants, and generic traits are not lowered. Constructors are positional-only
 
 ## Try this
 
-Add `pub fx area(): Int32` on `Rectangle` and print it from `main`.
+Add `pub fx area: () Int32` on `Rectangle` and print it from `main`.
 
 ## Next
 

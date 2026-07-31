@@ -5,7 +5,7 @@ class Grid {
     require pub height: Int32
     require pub cells: Arr<Int32>
 
-    fx countNeighbors(row: Int32, col: Int32): Int32 {
+    fx countNeighbors: (row: Int32, col: Int32) Int32 {
         mut count: Int32 = 0
         mut r: Int32 = -1
         while r <= 1 {
@@ -29,7 +29,7 @@ class Grid {
         return count
     }
 
-    fx step(): Void {
+    fx step: () Void {
         mut next: Arr<Int32> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         mut i: Int32 = 0
         while i < width * height {
@@ -54,7 +54,7 @@ class Grid {
         }
     }
 
-    fx printGrid(): Void {
+    fx printGrid: () Void {
         mut r: Int32 = 0
         while r < height {
             mut c: Int32 = 0

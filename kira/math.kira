@@ -1,0 +1,16 @@
+module "kira:math"
+
+// Scalar math. Every entry lowers to the matching `<math.h>` call, so the
+// backend adds the include on first use (see CIntrinsicsTable).
+
+pub @_magic fx sqrt: (value: Float64) Float64;
+pub @_magic fx pow: (base: Float64, exponent: Float64) Float64;
+pub @_magic fx floor: (value: Float64) Float64;
+pub @_magic fx ceil: (value: Float64) Float64;
+pub @_magic fx round: (value: Float64) Float64;
+pub @_magic fx sin: (value: Float64) Float64;
+pub @_magic fx cos: (value: Float64) Float64;
+pub @_magic fx tan: (value: Float64) Float64;
+pub @_magic fx abs: (value: Float64) Float64;
+pub @_magic fx min: (a: Float64, b: Float64) Float64;
+pub @_magic fx max: (a: Float64, b: Float64) Float64;

@@ -10,7 +10,7 @@
 | [../specifications/LanguageSpecifications.md](../specifications/LanguageSpecifications.md) | Language reference (syntax, types, modules, OOP) |
 | [../specifications/Grammar.md](../specifications/Grammar.md) | Compact grammar / style notes |
 | [../examples/](../examples/) | Runnable projects the tutorial walks through |
-| [../examples/c-as-ir/](../examples/c-as-ir/) | C-as-IR demos with real Kira ↔ C side-by-sides |
+| [../examples/c-as-ir/](../examples/c-as-ir/) | Annotated tour of the committed C each example emits |
 | [../README.md](../README.md) | Install, CLI, and language server |
 
 **Start here:** [tutorial/00-setup.md](tutorial/00-setup.md)

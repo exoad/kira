@@ -18,7 +18,7 @@ to opt in).
 ```kira
 module "app:main"
 
-fx main(): Void {
+fx main: () Void {
     trace("Hello World!")
 }
 ```
@@ -143,9 +143,9 @@ totalCount: Int32 = 42
 isValid: Bool = true
 x: Int32 = 10
 
-fx calculateTotal(items: List<Int32>): Int32 { }
-fx getUserById(id: Int64): User { }
-fx process(): Void { }
+fx calculateTotal: (items: List<Int32>) Int32 { }
+fx getUserById: (id: Int64) User { }
+fx process: () Void { }
 ```
 
 **Invalid Examples:**
@@ -211,7 +211,7 @@ Constants must be declared at module level (not inside functions or classes) and
 ```kira
 MAX_CONNECTIONS: Int32 = 100
 
-fx someFunction(): Void {
+fx someFunction: () Void {
     LOCAL_CONSTANT: Int32 = 10
     mut localValue: Int32 = 10
 }
@@ -644,7 +644,7 @@ alias StringMap as Map<Str, Str>
 alias Point as Tuple2<Float32, Float32>
 
 userId: UserId = 12345
-callback: Callback = fx(msg: Str): Void {
+callback: Callback = fx(msg: Str) Void {
     @_trace_(msg)
 }
 config: StringMap = Map<Str, Str> {}
@@ -926,20 +926,20 @@ Kira supports operator overloading through intrinsic markers. Classes can define
 
 | Operator | Intrinsic Name | Signature Example                          |
 |----------|----------------|--------------------------------------------|
-| `+`      | `@_op_add_`    | `fx @_op_add_(other: T): T`                |
-| `-`      | `@_op_sub_`    | `fx @_op_sub_(other: T): T`                |
-| `*`      | `@_op_mul_`    | `fx @_op_mul_(other: T): T`                |
-| `/`      | `@_op_div_`    | `fx @_op_div_(other: T): T`                |
-| `%`      | `@_op_mod_`    | `fx @_op_mod_(other: T): T`                |
-| `==`     | `@_op_eq_`     | `fx @_op_eq_(other: T): Bool`              |
-| `!=`     | `@_op_neq_`    | `fx @_op_neq_(other: T): Bool`             |
-| `<`      | `@_op_lt_`     | `fx @_op_lt_(other: T): Bool`              |
-| `>`      | `@_op_gt_`     | `fx @_op_gt_(other: T): Bool`              |
-| `<=`     | `@_op_lte_`    | `fx @_op_lte_(other: T): Bool`             |
-| `>=`     | `@_op_gte_`    | `fx @_op_gte_(other: T): Bool`             |
-| `-` (un) | `@_op_neg_`    | `fx @_op_neg_(): T`                        |
-| `[]`     | `@_op_get_`    | `fx @_op_get_(get: Int32): T`              |
-| `[]=`    | `@_op_set_`    | `fx @_op_set_(index: Int32, val: T): Void` |
+| `+`      | `@_op_add_`    | `fx @_op_add_: (other: T) T`                |
+| `-`      | `@_op_sub_`    | `fx @_op_sub_: (other: T) T`                |
+| `*`      | `@_op_mul_`    | `fx @_op_mul_: (other: T) T`                |
+| `/`      | `@_op_div_`    | `fx @_op_div_: (other: T) T`                |
+| `%`      | `@_op_mod_`    | `fx @_op_mod_: (other: T) T`                |
+| `==`     | `@_op_eq_`     | `fx @_op_eq_: (other: T) Bool`              |
+| `!=`     | `@_op_neq_`    | `fx @_op_neq_: (other: T) Bool`             |
+| `<`      | `@_op_lt_`     | `fx @_op_lt_: (other: T) Bool`              |
+| `>`      | `@_op_gt_`     | `fx @_op_gt_: (other: T) Bool`              |
+| `<=`     | `@_op_lte_`    | `fx @_op_lte_: (other: T) Bool`             |
+| `>=`     | `@_op_gte_`    | `fx @_op_gte_: (other: T) Bool`             |
+| `-` (un) | `@_op_neg_`    | `fx @_op_neg_: () T`                        |
+| `[]`     | `@_op_get_`    | `fx @_op_get_: (get: Int32) T`              |
+| `[]=`    | `@_op_set_`    | `fx @_op_set_: (index: Int32, val: T) Void` |
 
 > Note: Function Signatures can vary, but using a different signature means you must explicitly invoke the intrinsic as a function instead.
 
@@ -950,19 +950,19 @@ pub class Vector2 {
     require pub x: Float32
     require pub y: Float32
 
-    pub fx @_op_add_(other: Vector2): Vector2 {
+    pub fx @_op_add_: (other: Vector2) Vector2 {
         return Vector2 { x + other.x, y + other.y }
     }
 
-    pub fx @_op_mul_(scalar: Float32): Vector2 {
+    pub fx @_op_mul_: (scalar: Float32) Vector2 {
         return Vector2 { x * scalar, y * scalar }
     }
 
-    pub fx @_op_eq_(other: Vector2): Bool {
+    pub fx @_op_eq_: (other: Vector2) Bool {
         return x == other.x && y == other.y
     }
 
-    pub fx @_op_neg_(): Vector2 {
+    pub fx @_op_neg_: () Vector2 {
         return Vector2 { -x, -y }
     }
 }
@@ -1290,7 +1290,7 @@ pub class Point {
     require pub x: Int32
     require pub y: Int32
 
-    pub fx toString(): Str {
+    pub fx toString: () Str {
         return "(${x}, ${y})"
     }
 }
@@ -1425,7 +1425,7 @@ Single-expression functions can omit braces and return keyword:
 
 ```kira
 // Future feature (not yet implemented)
-fx double(x: Int32): Int32 = x * 2
+fx double: (x: Int32) Int32 = x * 2
 ```
 
 ---
@@ -1687,12 +1687,12 @@ Collections must implement the `Iterable<T>` trait to be used in for loops:
 
 ```kira
 pub trait Iterable<T> {
-    fx iterator(): Iterator<T>
+    fx iterator: () Iterator<T>
 }
 
 pub trait Iterator<T> {
-    fx hasNext(): Bool
-    fx next(): T
+    fx hasNext: () Bool
+    fx next: () T
 }
 ```
 
@@ -1722,7 +1722,7 @@ for i: Int32 in 0..10 {
 }
 
 // Return from function
-fx findFirst(items: List<Int32>, target: Int32): Maybe<Int32> {
+fx findFirst: (items: List<Int32>, target: Int32) Maybe<Int32> {
     for item: Int32 in items {
         if item == target {
             return item  // Early return
@@ -1747,7 +1747,8 @@ Functions in Kira are first-class values that can be passed as arguments, return
 **Grammar:**
 
 ```
-FunctionDeclaration ::= 'fx' Identifier '(' ParameterList? ')' ':' Type Block
+FunctionDeclaration ::= 'fx' Identifier TypeParams? ':' '(' ParameterList? ')' Type (Block | ';')
+LambdaExpression    ::= 'fx' '(' ParameterList? ')' Type Block
 ParameterList       ::= Parameter (',' Parameter)*
 Parameter           ::= Identifier ':' Type ('=' Expression)?
 Block               ::= '{' Statement* '}'
@@ -1756,7 +1757,7 @@ Block               ::= '{' Statement* '}'
 **Basic Syntax:**
 
 ```kira
-fx functionName(param1: Type1, param2: Type2): ReturnType {
+fx functionName: (param1: Type1, param2: Type2) ReturnType {
     // function body
     return value
 }
@@ -1765,27 +1766,30 @@ fx functionName(param1: Type1, param2: Type2): ReturnType {
 **Key Syntax Rules:**
 
 -   Function declarations use the `fx` keyword
+-   A colon binds the function **name** to its signature, mirroring how a colon
+    binds a variable to its type (`value: Int32 = 7`)
 -   Parameter list is enclosed in parentheses (required even for zero parameters)
 -   Each parameter must have an explicit type annotation
--   Return type is specified after a colon following the parameter list
--   Function body is enclosed in braces (mandatory)
+-   The return type follows the closing parenthesis, with no colon before it
+-   Function body is enclosed in braces, or `;` for an abstract / magic signature
+-   Anonymous function literals have no name, so they take no colon: `fx(x: Int32) Int32 { ... }`
 -   Functions returning non-Void must have a `return` statement on all code paths
 
 **Examples:**
 
 ```kira
 // Simple function
-fx add(a: Int32, b: Int32): Int32 {
+fx add: (a: Int32, b: Int32) Int32 {
     return a + b
 }
 
 // No parameters
-fx getCurrentTime(): Int64 {
+fx getCurrentTime: () Int64 {
     return @systemTime()
 }
 
 // Multiple statements
-fx calculateTax(amount: Float32, rate: Float32): Float32 {
+fx calculateTax: (amount: Float32, rate: Float32) Float32 {
     taxAmount: Float32 = amount * rate
     return taxAmount
 }
@@ -1798,7 +1802,7 @@ fx calculateTax(amount: Float32, rate: Float32): Float32 {
 Arguments are matched to parameters by position:
 
 ```kira
-fx divide(numerator: Int32, denominator: Int32): Float32 {
+fx divide: (numerator: Int32, denominator: Int32) Float32 {
     return numerator / denominator
 }
 
@@ -1828,7 +1832,7 @@ Parameters can have default values, making them optional at the call site:
 **Syntax:**
 
 ```kira
-fx functionName(required: Type, optional: Type = defaultValue): ReturnType {
+fx functionName: (required: Type, optional: Type = defaultValue) ReturnType {
     // implementation
 }
 ```
@@ -1836,7 +1840,7 @@ fx functionName(required: Type, optional: Type = defaultValue): ReturnType {
 **Examples:**
 
 ```kira
-fx greet(name: Str, greeting: Str = "Hello"): Str {
+fx greet: (name: Str, greeting: Str = "Hello") Str {
     return "${greeting}, ${name}!"
 }
 
@@ -1853,10 +1857,10 @@ message3: Str = greet("Charlie", greeting = "Hey")
 
 ```kira
 // Valid: defaults after required
-fx configure(host: Str, port: Int32 = 8080, ssl: Bool = true): Void { }
+fx configure: (host: Str, port: Int32 = 8080, ssl: Bool = true) Void { }
 
 // Invalid: required after default
-fx invalid(port: Int32 = 8080, host: Str): Void { }  // Error
+fx invalid: (port: Int32 = 8080, host: Str) Void { }  // Error
 ```
 
 ### Function Types
@@ -1875,12 +1879,12 @@ Where `ParameterTuple` is a tuple type representing the parameter list.
 
 ```kira
 // Function taking two Int32s and returning Bool
-comparator: Fx<Tuple2<Int32, Int32>, Bool> = fx(a: Int32, b: Int32): Bool {
+comparator: Fx<Tuple2<Int32, Int32>, Bool> = fx(a: Int32, b: Int32) Bool {
     return a > b
 }
 
 // Function taking no parameters and returning Str
-generator: Fx<Tuple0, Str> = fx(): Str {
+generator: Fx<Tuple0, Str> = fx() Str {
     return "generated"
 }
 
@@ -1895,23 +1899,23 @@ Anonymous functions are function literals without a declared name:
 **Syntax:**
 
 ```kira
-fx(parameters): ReturnType {
+fx(parameters) ReturnType {
 }
 ```
 
 **Examples:**
 
 ```kira
-double: Fx<Tuple1<Int32>, Int32> = fx(x: Int32): Int32 {
+double: Fx<Tuple1<Int32>, Int32> = fx(x: Int32) Int32 {
     return x * 2
 }
 
 items: List<Int32> = [1, 2, 3, 4, 5]
-filtered: List<Int32> = items.filter(fx(x: Int32): Bool {
+filtered: List<Int32> = items.filter(fx(x: Int32) Bool {
     return x > 2
 })
 
-squared: List<Int32> = items.map(fx(x: Int32): Int32 {
+squared: List<Int32> = items.map(fx(x: Int32) Int32 {
     return x * x
 })
 ```
@@ -1923,7 +1927,7 @@ Lambdas capture variables from their enclosing scope **by value** and all captur
 ```kira
 multiplier: Int32 = 10
 
-createMultiplier: Fx<Tuple1<Int32>, Int32> = fx (x: Int32): Int32 {
+createMultiplier: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 {
     return x * multiplier
 }
 
@@ -1944,12 +1948,12 @@ Lambda/closure expressions **cannot be recursive** because there is no way to re
 
 ```kira
 // Cannot write recursive lambda (no self-reference mechanism)
-factorial: Fx<Tuple1<Int32>, Int32> = fx(n: Int32): Int32 {
+factorial: Fx<Tuple1<Int32>, Int32> = fx(n: Int32) Int32 {
     return n <= 1 ? 1 : n * ??? // No way to reference self
 }
 
 // ✓ Use named function instead
-pub fx factorial(n: Int32): Int32 {
+pub fx factorial: (n: Int32) Int32 {
     return n <= 1 ? 1 : n * factorial(n - 1)
 }
 ```
@@ -1957,7 +1961,7 @@ pub fx factorial(n: Int32): Int32 {
 ```kira
 counter: Ref<Int32> = Ref<Int32> { 0 }
 
-increment: Fx<Tuple0, Void> = fx(): Void {
+increment: Fx<Tuple0, Void> = fx() Void {
     counter.value = counter.value + 1
 }
 
@@ -1972,11 +1976,11 @@ Functions can accept other functions as parameters and return functions:
 **Functions as Parameters:**
 
 ```kira
-fx applyOperation(a: Int32, b: Int32, op: Fx<Tuple2<Int32, Int32>, Int32>): Int32 {
+fx applyOperation: (a: Int32, b: Int32, op: Fx<Tuple2<Int32, Int32>, Int32>) Int32 {
     return op(a, b)
 }
 
-result: Int32 = applyOperation(5, 3, fx(x: Int32, y: Int32): Int32 {
+result: Int32 = applyOperation(5, 3, fx(x: Int32, y: Int32) Int32 {
     return x + y
 })
 ```
@@ -1984,8 +1988,8 @@ result: Int32 = applyOperation(5, 3, fx(x: Int32, y: Int32): Int32 {
 **Functions as Return Values:**
 
 ```kira
-fx makeMultiplier(factor: Int32): Fx<Tuple1<Int32>, Int32> {
-    return fx(x: Int32): Int32 {
+fx makeMultiplier: (factor: Int32) Fx<Tuple1<Int32>, Int32> {
+    return fx(x: Int32) Int32 {
         return x * factor
     }
 }
@@ -1997,11 +2001,11 @@ result: Int32 = double(5)  // result = 10
 **Function Composition:**
 
 ```kira
-fx compose<A, B, C>(
+fx compose<A, B, C>: (
     f: Fx<Tuple1<B>, C>,
     g: Fx<Tuple1<A>, B>
-): Fx<Tuple1<A>, C> {
-    return fx(x: A): C {
+) Fx<Tuple1<A>, C> {
+    return fx(x: A) C {
         return f(g(x))
     }
 }
@@ -2014,18 +2018,18 @@ fx compose<A, B, C>(
 Functions that perform side effects without returning a meaningful value use `Void`:
 
 ```kira
-fx logMessage(message: Str): Void {
+fx logMessage: (message: Str) Void {
     @_trace_(message)
 }
 
 // Void functions can omit return statement
-fx printHeader(): Void {
+fx printHeader: () Void {
     @_trace_("=== Header ===")
     // implicit return
 }
 
 // Explicit return with no value
-fx earlyExit(condition: Bool): Void {
+fx earlyExit: (condition: Bool) Void {
     if condition {
         return  // early exit
     }
@@ -2038,13 +2042,13 @@ fx earlyExit(condition: Bool): Void {
 Functions that never return normally (infinite loops, program termination, always throw) use `Never`:
 
 ```kira
-fx runForever(): Never {
+fx runForever: () Never {
     while true {
         processEvents()
     }
 }
 
-fx abort(message: Str): Never {
+fx abort: (message: Str) Never {
     @_trace_("Fatal error: ${message}")
     throw message
     // No code after throw in Never function
@@ -2054,7 +2058,7 @@ fx abort(message: Str): Never {
 **Usage in Control Flow:**
 
 ```kira
-fx getValue(useDefault: Bool): Int32 {
+fx getValue: (useDefault: Bool) Int32 {
     if useDefault {
         return 42
     } else {
@@ -2069,7 +2073,7 @@ fx getValue(useDefault: Bool): Int32 {
 Kira supports recursive function calls:
 
 ```kira
-fx factorial(n: Int32): Int32 {
+fx factorial: (n: Int32) Int32 {
     if n <= 1 {
         return 1
     }
@@ -2077,7 +2081,7 @@ fx factorial(n: Int32): Int32 {
 }
 
 // Tail recursion
-fx factorialTail(n: Int32, accumulator: Int32 = 1): Int32 {
+fx factorialTail: (n: Int32, accumulator: Int32 = 1) Int32 {
     if n <= 1 {
         return accumulator
     }
@@ -2095,15 +2099,15 @@ Kira does not support function overloading. Each function name must be unique wi
 
 ```kira
 // Not allowed: overloading
-fx process(value: Int32): Void { }
-fx process(value: Str): Void { }  // Error: duplicate function name
+fx process: (value: Int32) Void { }
+fx process: (value: Str) Void { }  // Error: duplicate function name
 
 // Alternative: different names
-fx processInt(value: Int32): Void { }
-fx processStr(value: Str): Void { }
+fx processInt: (value: Int32) Void { }
+fx processStr: (value: Str) Void { }
 
 // Alternative: generic function
-fx process<T>(value: T): Void { }
+fx process<T>: (value: T) Void { }
 ```
 
 ### Function Reference
@@ -2113,11 +2117,11 @@ Since functions are treated as first class citizens, there is no special operato
 Instead directly reference it as is or use the member access operator `.`
 
 ```kira
-fx callFx(func: Fx<Tuple0, Void>): Void {
+fx callFx: (func: Fx<Tuple0, Void>) Void {
     func()
 }
 
-fx supplier(): Void {
+fx supplier: () Void {
     @_trace_("Supplier Function!")
 }
 
@@ -2167,10 +2171,11 @@ package; mark cross-module API `pub`.
 
 ### Standard Library
 
-The reference stdlib ships as sources under the repo's `kira/` directory
-(entry module `kira:stl` in `stl.kira`). Magic types (`Int32`, `Str`, `Arr`,
-`Map`, ...) are introduced there with `@_magic` and become ambient once the
-stdlib is on the compile set.
+The reference stdlib ships as sources under the repo's `kira/` directory, split
+by concern across `kira:core`, `kira:tuples`, `kira:collections`,
+`kira:result`, `kira:io` and `kira:math` (with `kira:stl` indexing them). Magic
+types (`Int32`, `Str`, `Arr`, `Map`, ...) are introduced there with `@_magic`
+and become ambient once the stdlib is on the compile set.
 
 ```kira
 // Usually pulled in via kira.yaml dependencies -- no use required for magic types
@@ -2296,7 +2301,7 @@ pub class ClassName {
     require pub field1: Type1
     require mut field2: Type2
 
-    pub fx method(): ReturnType {
+    pub fx method: () ReturnType {
         // method implementation
     }
 }
@@ -2309,11 +2314,11 @@ pub class Vector2 {
     require pub mut x: Float32
     require pub mut y: Float32
 
-    pub fx magnitude(): Float32 {
+    pub fx magnitude: () Float32 {
         return @sqrt(x * x + y * y)
     }
 
-    pub fx dot(other: Vector2): Float32 {
+    pub fx dot: (other: Vector2) Float32 {
         return (other.x * x) + (other.y * y)
     }
 }
@@ -2377,11 +2382,11 @@ Classes can accept method implementations at instantiation time by supplying lam
 
 ```kira
 pub class Handler {
-    pub fx process(data: Str): Void
+    pub fx process: (data: Str) Void
 }
 
 handler: Handler = Handler {
-    process = fx(data: Str): Void {
+    process = fx(data: Str) Void {
         @_trace_("Processing: ${data}")
     }
 }
@@ -2401,13 +2406,13 @@ Classes support single inheritance using the colon syntax:
 pub class Shape {
     require pub color: Str
 
-    pub fx area(): Float32
+    pub fx area: () Float32
 }
 
 pub class Circle: Shape {
     require pub radius: Float32
 
-    override pub fx area(): Float32 {
+    override pub fx area: () Float32 {
         return 3.14159 * radius * radius
     }
 }
@@ -2434,25 +2439,25 @@ pub class ClassName: ParentClass, Trait1, Trait2, Trait3
 
 ```kira
 pub trait Drawable {
-    fx draw(): Void
+    fx draw: () Void
 }
 
 pub trait Clickable {
-    fx onClick(): Void
+    fx onClick: () Void
 }
 
 pub class Button: Drawable, Clickable {
-    override fx draw(): Void {
+    override fx draw: () Void {
         @_trace_("Drawing button")
     }
 
-    override fx onClick(): Void {
+    override fx onClick: () Void {
         @_trace_("Button clicked")
     }
 }
 
 pub class ImageButton: Button, Serializable {
-    override fx serialize(): Str {
+    override fx serialize: () Str {
         return "ImageButton data"
     }
 }
@@ -2491,21 +2496,21 @@ Traits **can provide default implementations** for their methods. Classes implem
 
 ```kira
 pub trait Loggable {
-    fx log(message: Str): Void {
+    fx log: (message: Str) Void {
         @_trace_("[LOG] ${message}")  // Default implementation
     }
 }
 
 pub class Service: Loggable {
     // Uses default log() implementation
-    pub fx run(): Void {
+    pub fx run: () Void {
         log("Service started")
     }
 }
 
 pub class CustomService: Loggable {
     // Overrides with custom implementation
-    override fx log(message: Str): Void {
+    override fx log: (message: Str) Void {
         @_trace_("[CUSTOM] ${message}")
     }
 }
@@ -2517,12 +2522,12 @@ Traits **can inherit from other traits**, creating trait hierarchies:
 
 ```kira
 pub trait Serializable {
-    fx serialize(): Str
+    fx serialize: () Str
 }
 
 pub trait JsonSerializable: Serializable {
     // Inherits serialize() from Serializable
-    fx toJson(): Str {
+    fx toJson: () Str {
         return "{\"data\": \"" + serialize() + "\"}"  // Default implementation
     }
 }
@@ -2530,7 +2535,7 @@ pub trait JsonSerializable: Serializable {
 pub class User: JsonSerializable {
     require pub name: Str
 
-    override fx serialize(): Str {
+    override fx serialize: () Str {
         return name
     }
     // Gets toJson() from JsonSerializable (can override if needed)
@@ -2541,13 +2546,13 @@ Classes implementing a derived trait must implement all methods from the entire 
 
 ```kira
 pub trait Loggable {
-    fx log(message: Str): Void {
+    fx log: (message: Str) Void {
         @_trace_("[LOG] ${message}")
     }
 }
 
 pub trait Validatable {
-    fx validate(): Bool
+    fx validate: () Bool
 }
 
 pub class Entity {
@@ -2557,7 +2562,7 @@ pub class Entity {
 pub class User: Entity, Loggable, Validatable {
     require pub name: Str
 
-    override fx validate(): Bool {
+    override fx validate: () Bool {
         return name.length() > 0
     }
 }
@@ -2569,15 +2574,15 @@ Kira does not have a formal concept of abstract classes. Since functions are fir
 
 ```kira
 pub class Processor {
-    pub fx process(data: Str): Str
+    pub fx process: (data: Str) Str
 
-    pub fx preProcess(data: Str): Str {
+    pub fx preProcess: (data: Str) Str {
         return data.trim()
     }
 }
 
 processor: Processor = Processor {
-    process = fx(data: Str): Str {
+    process = fx(data: Str) Str {
         return data.toUpperCase()
     }
 }
@@ -2589,7 +2594,7 @@ This design eliminates the need for abstract class declarations while providing 
 
 ```kira
 pub class UpperCaseProcessor: Processor {
-    override pub fx process(data: Str): Str {
+    override pub fx process: (data: Str) Str {
         return data.toUpperCase()
     }
 }
@@ -2603,7 +2608,7 @@ Methods that modify instance state must be marked with `mut`:
 pub class Counter {
     require mut count: Int32
 
-    pub mut fx increment(): Void {
+    pub mut fx increment: () Void {
         count = count + 1
     }
 }
@@ -2623,7 +2628,7 @@ Accessible from outside the class and module.
 pub class Example {
     pub field: Int32 = 0
 
-    pub fx publicMethod(): Void {
+    pub fx publicMethod: () Void {
     }
 }
 ```
@@ -2638,7 +2643,7 @@ Accessible only within the class and its methods.
 pub class Example {
     privateField: Int32 = 0
 
-    fx internalMethod(): Void {
+    fx internalMethod: () Void {
     }
 }
 ```
@@ -2658,14 +2663,14 @@ Kira does not support static (class-level) fields or methods. All members must b
 ```kira
 MAX_CONNECTIONS: Int32 = 100
 
-fx calculateHash(data: Str): Int64 {
+fx calculateHash: (data: Str) Int64 {
     return @hash(data)
 }
 
 pub class Connection {
     require id: Int32
 
-    pub fx isValid(): Bool {
+    pub fx isValid: () Bool {
         return id < MAX_CONNECTIONS
     }
 }
@@ -2850,7 +2855,7 @@ Generics enable type-safe code reuse through parametric polymorphism. Type param
 pub class Box<T> {
     require pub value: T
 
-    pub fx unwrap(): T {
+    pub fx unwrap: () T {
         return value
     }
 }
@@ -2866,7 +2871,7 @@ pub class Pair<A, B> {
     require pub first: A
     require pub second: B
 
-    pub fx swap(): Pair<B, A> {
+    pub fx swap: () Pair<B, A> {
         return Pair<B, A> { second, first }
     }
 }
@@ -2875,7 +2880,7 @@ pub class Pair<A, B> {
 ### Generic Functions
 
 ```kira
-fx identity<T>(value: T): T {
+fx identity<T>: (value: T) T {
     return value
 }
 
@@ -2887,7 +2892,7 @@ result: Int32 = identity<Int32>(42)
 Constrain type parameters to ensure they implement specific traits:
 
 ```kira
-fx sort<T: Comparable>(items: List<T>): List<T> {
+fx sort<T: Comparable>: (items: List<T>) List<T> {
     // implementation using T's comparison methods
 }
 ```
@@ -2898,7 +2903,7 @@ When a type parameter must satisfy multiple traits, use **comma-separated** synt
 
 ```kira
 // ✓ Correct: comma-separated bounds
-fx processItem<T: Comparable, Serializable>(item: T): Str {
+fx processItem<T: Comparable, Serializable>: (item: T) Str {
     // T must implement both Comparable and Serializable
 }
 
@@ -2915,8 +2920,8 @@ Kira uses tuple types to represent variable-length type parameter lists:
 
 ```kira
 pub class Tuple {
-    pub fx size(): Int32
-    pub fx @get(index: Int32): Any
+    pub fx size: () Int32
+    pub fx @get: (index: Int32) Any
 }
 ```
 
@@ -2927,11 +2932,11 @@ pub class Tuple2<A, B>: Tuple {
     require pub first: A
     require pub second: B
 
-    override pub fx size(): Int32 {
+    override pub fx size: () Int32 {
         return 2
     }
 
-    override pub fx @get(index: Int32): Any {
+    override pub fx @get: (index: Int32) Any {
         if index == 0 {
             return first
         } else if index == 1 {
@@ -2959,7 +2964,7 @@ Kira's STL provides concrete tuple types from `Tuple0` to `Tuple9` by default to
 Function types use tuples to represent parameter lists:
 
 ```kira
-callback: Fx<Tuple2<Int32, Str>, Bool> = fx(num: Int32, text: Str): Bool {
+callback: Fx<Tuple2<Int32, Str>, Bool> = fx(num: Int32, text: Str) Bool {
     return num > 0
 }
 ```
@@ -3010,7 +3015,7 @@ if @has_runtime_type_info() {
 -   Prefer explicit type parameters over reflection when possible
 
 ```kira
-fx processValue<T>(value: Box<T>, handler: Fx<Tuple1<T>, Void>): Void {
+fx processValue<T>: (value: Box<T>, handler: Fx<Tuple1<T>, Void>) Void {
     handler(value.unwrap())
 }
 ```
@@ -3174,7 +3179,7 @@ absent: Maybe<Int32> = null
 Non-null values are automatically boxed into `Maybe<T>`:
 
 ```kira
-fx findUser(id: Int64): Maybe<User> {
+fx findUser: (id: Int64) Maybe<User> {
     user: User = lookupUser(id)
     return user
 }
@@ -3222,9 +3227,9 @@ willThrow: Int32 = nullValue.value
 
 ```kira
 pub sealed class Maybe<T> {
-    pub fx isNull(): Bool
-    pub fx isSome(): Bool
-    pub fx unwrapOr(default: T): T
+    pub fx isNull: () Bool
+    pub fx isSome: () Bool
+    pub fx unwrapOr: (default: T) T
     pub value: T
 }
 ```
@@ -3232,7 +3237,7 @@ pub sealed class Maybe<T> {
 **Usage Examples:**
 
 ```kira
-fx divide(a: Int32, b: Int32): Maybe<Float32> {
+fx divide: (a: Int32, b: Int32) Maybe<Float32> {
     if b == 0 {
         return null
     }
@@ -3292,7 +3297,7 @@ try {
 For recoverable errors, prefer the `Result<T, E>` type over exceptions. This provides an explicit error handling mechanism in function signatures:
 
 ```kira
-fx divide(a: Int32, b: Int32): Result<Int32, Str> {
+fx divide: (a: Int32, b: Int32) Result<Int32, Str> {
     if b == 0 {
         return Result.error("Division by zero")
     }
@@ -3313,13 +3318,21 @@ if result.isSuccess() {
 
 ## Standard Library
 
-The reference stdlib is the `kira/` tree in the compiler repository. The main
-surface today is a single module:
+The reference stdlib is the `kira/` tree in the compiler repository, split by
+concern across one module per file:
 
-- **`kira:stl`** (`kira/stl.kira`) -- magic primitives, collections, `Maybe`,
-  `Result`, and related traits
+| Module | File | Surface |
+|--------|------|---------|
+| `kira:core` | `core.kira` | `Any` / `Void` / `Never` / `Bool` / `Str` / `Num`, fixed-width scalars, `Equatable`, `Hashable`, the `Int` / `Float` aliases |
+| `kira:tuples` | `tuples.kira` | `Tuple` trait, `Tuple0`..`Tuple9`, `Pair` |
+| `kira:collections` | `collections.kira` | `Iterable`, `Arr`, `List`, `Map`, `Set`, `Stack`, `Queue`, `Deque` |
+| `kira:result` | `result.kira` | `Maybe`, `Result`, `Exception` |
+| `kira:io` | `io.kira` | `print`, `println`, `eprint`, `assert` |
+| `kira:math` | `math.kira` | `sqrt`, `pow`, `floor`, `ceil`, `round`, trig, `min`, `max` |
+| `kira:stl` | `stl.kira` | Index module; `use`s all of the above |
 
-Wire it through `kira.yaml`:
+Wire it through `kira.yaml` by pointing at the **directory** -- the resolver
+walks it and loads every `.kira` file it finds:
 
 ```yaml
 dependencies:
@@ -3327,12 +3340,28 @@ dependencies:
     path: ./kira   # or ../../kira from an examples/* project
 ```
 
-Magic types from `kira:stl` are ambient once that dependency is loaded; you
-typically do not write `use "kira:stl"` in application code.
+Magic types are ambient once that dependency is loaded; you typically do not
+write `use "kira:..."` for them in application code.
 
-**C backend coverage (collections):** `Arr` literals and indexing,
-`Map.put`/`get`/`remove`/`containsKey`/`clear` (open-addressing hash), and an
-owning `List` (`add`/`get`/`set`/`removeAt`/`clear`/`toArr`) are all lowered.
+**C backend coverage.** Every method declared above has C backing in the
+runtime prelude:
+
+- **`Str`** -- `length`, `isEmpty`, `substring`, `charAt`, `contains`,
+  `startsWith`, `endsWith`, `split`, `trim`, `toLower`, `toUpper`
+- **`Num`** -- `abs`, `toInt32`, `toInt64`, `toFloat32`, `toFloat64` (C casts)
+- **`Arr`** -- literals, indexing, `get`/`set`/`size`/`isEmpty`/`contains`/`clone`
+- **`List`** -- `add`/`addAll`/`get`/`set`/`removeAt`/`contains`/`clear`/`toArr`
+- **`Map`** -- `put`/`get`/`remove`/`containsKey`/`containsValue`/`keys`/
+  `valuesArr`/`entries`/`size`/`isEmpty`/`clear` (open-addressing hash; `Str`
+  keys compare by content)
+- **`Set`, `Stack`, `Queue`, `Deque`** -- full declared surface
+- **`Maybe`, `Result`** -- `isSome`/`isNone`/`isOk`/`isErr`/`unwrap`/
+  `unwrapOr`/`unwrapErr`
+
+Containers erase their element type to a uniform 64-bit slot, which covers
+integers, `Bool`, `Str`, and class references. **`Float32` / `Float64` elements
+are not supported** -- see [backend-c.md](../docs/backend-c.md). Str-producing
+methods allocate and are not freed today.
 Classes are heap-allocated with ARC (scope-end release). Traits lower to
 interface structs + vtables with call-site coercion. Variants, generic traits,
 and full Str helpers remain baseline stubs -- see the tutorial chapter on

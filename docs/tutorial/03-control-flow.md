@@ -15,7 +15,7 @@ With the in-repo sources that total is odd:
 ## `if` / `else if` / `else`
 
 ```kira
-fx parityLabel(value: Int32): Str {
+fx parityLabel: (value: Int32) Str {
     if value % 2 == 0 {
         return "even"
     } else {
@@ -55,7 +55,7 @@ while i < 2 {
 ## `for` and ranges
 
 ```kira
-fx sumTo(limit: Int32): Int32 {
+fx sumTo: (limit: Int32) Int32 {
     mut total: Int32 = 0
     for mut i: 0..limit {
         total = total + i

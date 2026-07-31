@@ -42,7 +42,7 @@ class FrontendServiceTest {
             main.writeText(
                 """
                 module "tmp:main"
-                fx main(): Void {
+                fx main: () Void {
                     trace("ok")
                 }
                 """.trimIndent()
@@ -50,7 +50,7 @@ class FrontendServiceTest {
 
             val broken = """
                 module "tmp:main"
-                fx main(): Void {
+                fx main: () Void {
                     this is not valid kira !!!
                 }
             """.trimIndent()

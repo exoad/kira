@@ -1,6 +1,0 @@
-module "app:status"
-
-pub enum Phase {
-    READY,
-    DONE
-}

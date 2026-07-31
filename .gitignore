@@ -32,8 +32,9 @@ bin/
 dump_symbols*.txt
 a.out
 # native binary produced by examples/run.sh (lives next to kira.yaml)
+# NOTE: the C snapshots examples/*/generated.user.c, examples/*/expected.txt and
+# examples/prelude.reference.c are checked in on purpose -- see examples/regenerate.sh
 examples/*/app
-examples/c-as-ir/*/app
 
 # Coverage / local
 /htmlReport

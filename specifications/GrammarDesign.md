@@ -114,12 +114,25 @@ math: Int32 = 123 + 123;
 
 #### Declarations
 
+A colon binds the function name to its signature, the same way it binds a
+variable to its type. The parameter list is parenthesized; the return type
+follows it directly.
+
+```bnf
+<function> ::= "fx" <identifier> [ <type-params> ] ":" "(" [ <params> ] ")" <type> <block>
 ```
-sum(a: Int32, b: Int32) -> Int32 
+
+```
+fx sum: (a: Int32, b: Int32) Int32
 {
     return a + b;
 }
 ```
+
+> This file is the **early design sketch**. It previously showed an
+> arrow-return form (`sum(a, b) -> Int32`) that was never implemented. The
+> normative reference is
+> [LanguageSpecifications.md](LanguageSpecifications.md).
 
 #### Call
 

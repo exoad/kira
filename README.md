@@ -57,6 +57,11 @@ cc -std=c17 -O2 -o app out.kira.c && ./app
 `kira` always loads `kira.yaml` from the **current directory** -- `cd` into the
 project first.
 
+Every example commits the C it produces, so you can read the lowering without
+running anything: [`examples/01-hello/generated.user.c`](examples/01-hello/generated.user.c).
+`./examples/regenerate.sh --check` fails if a snapshot or an example's output
+has drifted.
+
 ## Project shape
 
 ```text
@@ -79,7 +84,7 @@ dependencies:
 ```kira
 module "app:main"
 
-fx main(): Void {
+fx main: () Void {
     trace("hello, kira")
 }
 ```
@@ -105,8 +110,12 @@ Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 - **Enums** -- tagged C enums
 - **Traits** -- interface structs + vtables; inheritance between traits;
   polymorphic dispatch; class values coerce to trait slots at call sites
-- **Collections** -- `Arr` literals/indexing, owning `List`, real `Map`
-  (open-addressing hash: put/get/remove/containsKey/clear)
+- **Collections** -- `Arr`, owning `List`, real `Map` (open-addressing hash),
+  plus `Set` / `Stack` / `Queue` / `Deque`, all over a uniform 64-bit slot
+- **Str & Num** -- `length`/`substring`/`trim`/`split`/`toUpper`/... and the
+  numeric conversions, each with real C backing in the prelude
+- **Maybe / Result** -- `Map.get`, `Stack.pop` and `Queue.dequeue` return
+  `Maybe<T>`; payloads cast back to the declared element type
 - **Control flow** -- `if` / `else` / `while` / `for` ranges
 - **Foreign edge** -- `@_opaque` types and `@_extern` stubs link real C libs
   (see `examples/ffi-mini`)
@@ -116,8 +125,8 @@ Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 | Path | Role |
 |------|------|
 | `src/` | Compiler + LSP (Kotlin/JVM) |
-| `kira/` | Stdlib (`stl.kira`) |
-| `examples/` | Ladder `01-hello` ... `08-traits` (+ `c-as-ir`, `ffi-mini`) |
+| `kira/` | Stdlib, split by concern (`core`, `collections`, `tuples`, `result`, `io`, `math`; `stl` indexes them) |
+| `examples/` | Ladder `01-hello` ... `09-stdlib`, each with its committed C (+ `c-as-ir` tour, `ffi-mini`) |
 | `docs/` | Doctrine, ARC, backend status, roadmap |
 | `specifications/` | Language reference |
 | `test_kira/` | Smoke project for `./gradlew run` |
@@ -126,6 +135,8 @@ Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 
 C-as-IR runs the full example ladder: modules, functions, classes/methods with
 ARC, enums, monomorphized generics, real Map/List/Arr, traits with vtables,
-and Conway's Game of Life (`examples/07-conway`) end-to-end. Known gaps:
-no weak refs (cycles leak), no variant lowering, generic traits stay
-prelude-side, LSP is diagnostics-only. Detail: [docs/backend-c.md](docs/backend-c.md).
+Conway's Game of Life (`examples/07-conway`), and the stdlib tour
+(`examples/09-stdlib`) end-to-end. Known gaps: no weak refs (cycles leak),
+no variant lowering, generic traits stay prelude-side, container elements erase
+to a 64-bit slot so `Float` elements are unsupported, `Str` results are never
+freed, LSP is diagnostics-only. Detail: [docs/backend-c.md](docs/backend-c.md).

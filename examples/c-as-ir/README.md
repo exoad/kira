@@ -1,114 +1,102 @@
-# C-as-IR demos
+# C-as-IR: what Kira actually emits
 
-Small projects that show what Kira **actually emits** today: ISO C17 source
-(C-as-IR), not Neko bytecode and not a JIT.
+Kira lowers to **ISO C17** source (`out.kira.c`), which your `cc` then builds.
+Not Neko bytecode, not a JIT.
 
-Each folder is a normal Kira project. Checked in next to the sources:
+Every example in the ladder checks in its own lowering, so this page is a
+**tour of real committed output** rather than a set of parallel demo projects:
 
 | File | Contents |
 |------|----------|
-| `src/**/*.kira` | Input |
-| `generated.user.c` | Post-prelude lowering only (easy to read) |
-| `generated.full.c` | Full `out.kira.c` including the runtime prelude |
+| `examples/0N-*/src/**/*.kira` | Input |
+| `examples/0N-*/generated.user.c` | The user lowering (post-prelude) |
+| `examples/0N-*/expected.txt` | Exact stdout of the built binary |
+| `examples/prelude.reference.c` | The runtime prelude, byte-identical for every example |
 
-Regenerate after backend changes:
+`out.kira.c` = `prelude.reference.c` + that example's `generated.user.c`.
+
+Refresh all of it after a backend change, and verify nothing drifted:
 
 ```bash
 ./gradlew installDist
-./examples/c-as-ir/regenerate.sh
+./examples/regenerate.sh          # rewrite snapshots + run every example
+./examples/regenerate.sh --check  # CI mode: fail if a snapshot is stale
 ```
-
-That re-runs `kira`, refreshes both generated files, and smoke-runs each binary
-with `cc -std=c17`.
 
 Background: [docs/backend-c.md](../../docs/backend-c.md).
 
 ---
 
-## Pipeline (every demo)
+## Pipeline
 
 ```text
 *.kira  --kira-->  out.kira.c  --cc -std=c17-->  native app
               │
               ├─ 0. compiler bundle (c_bundle.h) -- substrate / mangle hooks
               ├─ 1. language facade (c_generator.c) -- Int32, print, Arr/Map
-              └─ 2. user lowering (generated.user.c on this page)
+              └─ 2. user lowering (generated.user.c, per example)
 ```
 
-`generated.full.c` is layers 0+1+2. Bundle layout is cupup-inspired so further
-generation (and default name mangling later) retargets names, not structure.
+Layers 0+1 are `prelude.reference.c`. Bundle layout is cupup-inspired so
+further generation (and default name mangling later) retargets names, not
+structure.
 
 ---
 
-## 1. Hello -- `trace` and `main`
-
-**Kira** (`hello/src/app/main.kira`):
+## 1. Hello — [`01-hello`](../01-hello/generated.user.c)
 
 ```kira
-module "app:main"
-
-fx main(): Void {
-    trace("hello from C-as-IR")
+fx main: () Void {
+    trace("hello, kira")
 }
 ```
 
-**C-as-IR** (`hello/generated.user.c`, real emit):
-
 ```c
-Int32 main(Void);
-
-/* module app:main */
 Int32 main(Void)
 {
-    print("%s\n", "hello from C-as-IR");
+    print("%s\n", "hello, kira");
     return 0;
 }
 ```
 
 | Lowering | Rule |
 |----------|------|
-| `fx main(): Void` | `Int32 main(Void)` + `return 0` |
+| `fx main: () Void` | `Int32 main(Void)` + `return 0` |
 | `trace("...")` | `print("%s\n", "...")` (prelude macro → `fprintf`) |
-
-```bash
-./examples/c-as-ir/regenerate.sh   # includes hello
-# run: hello from C-as-IR
-```
 
 ---
 
-## 2. Classes -- structs, methods, init
+## 2. Modules — [`02-functions`](../02-functions/generated.user.c)
 
-**Kira** (excerpt):
+Modules are flattened into one translation unit; the `/* module ... */` and
+`/* use ... */` comments mark where each file's declarations landed. Prototypes
+are hoisted so definition order does not matter.
+
+---
+
+## 3. Control flow — [`03-control-flow`](../03-control-flow/generated.user.c)
+
+`if` / `while` / `for` ranges map onto their C equivalents directly; a `for`
+over a range becomes a counted `for` loop.
+
+---
+
+## 4. Classes — structs, methods, ARC — [`04-classes`](../04-classes/generated.user.c)
 
 ```kira
 pub class Pet {
     require pub name: Str
     require pub sound: Str
 
-    pub fx speak(): Str {
+    pub fx speak: () Str {
         return sound
     }
 }
 
-// main:
 friend: Pet = Pet { "Mochi", "meow" }
-trace(friend.name)
-trace(friend.speak())
 ```
 
-**C-as-IR** (`classes/generated.user.c`, real emit):
-
 ```c
-typedef struct Point Point;
-typedef struct Pet Pet;
-
-struct Point
-{
-    Int32 x;
-    Int32 y;
-};
-
 struct Pet
 {
     Str name;
@@ -120,12 +108,21 @@ Str Pet_speak(Pet* this)
     return this->sound;
 }
 
+simple Pet* Pet_new(Str name, Str sound)
+{
+    Pet* self = (Pet*)kira_rc_alloc(sizeof(Pet));
+    self->name = name;
+    self->sound = sound;
+    return self;
+}
+
 Int32 main(Void)
 {
-    Point origin = (Point) { 0, 0 };
-    Pet friend = (Pet) { "Mochi", "meow" };
-    print("%s\n", friend.name);
-    print("%s\n", Pet_speak(&friend));
+    Rectangle* rect = Rectangle_new(Point_new(0, 1), Point_new(1, 0));
+    Pet* friend = Pet_new("Mochi", "meow");
+    ...
+    kira_rc_release(rect);
+    kira_rc_release(friend);
     return 0;
 }
 ```
@@ -133,63 +130,45 @@ Int32 main(Void)
 | Lowering | Rule |
 |----------|------|
 | `class` | `typedef struct` + field layout |
-| `require` fields | Constructor args → compound literal `(Pet) { ... }` |
+| `require` fields | Constructor `Type_new(...)` over `kira_rc_alloc` |
 | method | Free function `Type_method(Type* this, ...)` |
-| `friend.speak()` | `Pet_speak(&friend)` |
-| field read | `friend.name` |
+| `friend.speak()` | `Pet_speak(friend)` |
+| scope end | `kira_rc_release(...)` per owned local |
 
-No vtables, no ARC -- stack structs and pointers.
+Objects are **heap-allocated and refcounted**, not stack structs.
+
+> **Known gap, visible in this snapshot:** the two `Point_new(...)` temporaries
+> passed into `Rectangle_new` never get a matching `kira_rc_release` — only
+> named locals are tracked. See [docs/backend-c.md](../../docs/backend-c.md).
 
 ---
 
-## 3. Generics -- monomorphize, not erase (user types)
-
-**Kira**:
+## 5. Generics + enums — [`05-enums-generics`](../05-enums-generics/generated.user.c)
 
 ```kira
 pub class Box<T> {
     require pub value: T
 }
 
-fx id<T>(value: T): T {
-    return value
-}
-
-wrapped: Box<Int32> = Box<Int32> { 42 }
-value: Int32 = id<Int32>(wrapped.value)
+fx id<T>: (value: T) T { return value }
 ```
 
-**C-as-IR** (`generics/generated.user.c`, real emit):
-
 ```c
-typedef struct Box_Int32 Box_Int32;
-
 struct Box_Int32
 {
     Int32 value;
 };
 
-typedef enum Phase
+typedef enum BuildStatus
 {
-    PHASE_READY,
-    PHASE_DONE
-} Phase;
+    BUILD_STATUS_READY,
+    BUILD_STATUS_RUNNING,
+    BUILD_STATUS_DONE
+} BuildStatus;
 
 Int32 id_Int32(Int32 value)
 {
     return value;
-}
-
-Int32 main(Void)
-{
-    Phase phase = PHASE_READY;
-    Box_Int32 wrapped = (Box_Int32) { 42 };
-    Int32 value = id_Int32(wrapped.value);
-    if((phase == PHASE_READY))
-    {
-        print("%d\n", value);
-    }
-    return 0;
 }
 ```
 
@@ -197,63 +176,93 @@ Int32 main(Void)
 |----------|------|
 | `Box<Int32>` | Distinct type `Box_Int32` (monomorphized) |
 | `id<Int32>` | Function `id_Int32` |
-| `enum Phase` | C enum, members `PHASE_*` |
+| `enum BuildStatus` | C enum, members `BUILD_STATUS_*` |
 
-Stdlib `Arr`/`Map` stay **erased** at the C boundary (next demo) -- only *user*
-generics get per-instantiation names today.
+Stdlib `Arr`/`Map` stay **erased** at the C boundary — only *user* generics get
+per-instantiation names today.
 
 ---
 
-## 4. Collections -- prelude helpers
-
-**Kira**:
-
-```kira
-numbers: Arr<Int32> = [1, 2, 3]
-head: Int32 = numbers[0]
-bag: Map<Str, Int32> = Map<Str, Int32> { }
-if bag.isEmpty() {
-    trace(head)
-}
-```
-
-**C-as-IR** (`collections/generated.user.c`, real emit):
+## 6. Collections — prelude helpers — [`06-collections`](../06-collections/generated.user.c)
 
 ```c
 Int32 main(Void)
 {
-    Arr numbers = Arr_i32((Int32[]){ 1, 2, 3 }, 3);
-    Int32 head = Arr_get_i32(numbers, 0);
-    Map bag = Map_new();
-    if(Map_isEmpty(&bag))
-    {
-        print("%d\n", head);
-    }
-    return 0;
+    Arr numbers = Arr_i32((Int32[]){ 10, 20, 30 }, 3);
+    Int32 head = first(numbers);
+    Map entries = Map_new();
+    ...
 }
 ```
 
 | Lowering | Rule |
 |----------|------|
-| `[1, 2, 3]` | Compound literal + `Arr_i32(ptr, len)` |
+| `[10, 20, 30]` | Compound literal + `Arr_i32(ptr, len)` |
 | `numbers[0]` | `Arr_get_i32(numbers, 0)` |
-| `Map<...> { }` | `Map_new()` (count-only baseline map) |
-| `.isEmpty()` | `Map_isEmpty(&bag)` |
+| `Map<...> { }` | `Map_new()` (open-addressing hash map) |
+| `.isEmpty()` | `Map_isEmpty(&entries)` |
 
-Helpers live in the **prelude** half of `generated.full.c` (same file the
-compiler ships as `src/main/resources/c_generator.c`).
+Helpers live in `prelude.reference.c` (the file the compiler ships as
+`src/main/resources/c_generator.c`).
 
 ---
 
-## What these demos are for
+## 7. Conway — [`07-conway`](../07-conway/generated.user.c)
 
-- **Show the IR contract** -- Kira in, readable C17 out, `cc` finishes.
-- **Multi-backend later** -- same frontend could grow a Neko (or other) target;
-  these folders document the **C** generation style we optimize for now.
-- **Regressions** -- if lowering changes, `regenerate.sh` + diff on
-  `generated.user.c` is the review surface.
+The largest end-to-end lowering: an ARC-managed grid class, nested loops,
+neighbour counting, and generation stepping — 125 lines of C.
 
-## Not shown (yet)
+---
 
-ARC/RC heap, Map put/get, growing List, traits, inheritance -- see the status
-matrix in [docs/backend-c.md](../../docs/backend-c.md).
+## 8. Traits — vtables — [`08-traits`](../08-traits/generated.user.c)
+
+```kira
+s: Speaker = dog
+trace(s.name())
+```
+
+```c
+struct SpeakerVTable
+{
+    Str (*speak)(void* self);
+    Str (*name)(void* self);
+};
+
+struct Speaker
+{
+    void* data;
+    SpeakerVTable* vtable;
+};
+
+static Str Speaker_speak_tramp_Dog(void* self) { return Dog_speak((Dog*)self); }
+static Str Speaker_name_tramp_Dog(void* self) { return Dog_name((Dog*)self); }
+static SpeakerVTable Speaker_vtable_Dog = { Speaker_speak_tramp_Dog, Speaker_name_tramp_Dog };
+
+Speaker s = ((Speaker){ .data = dog, .vtable = &Speaker_vtable_Dog });
+print("%s\n", s.vtable->name(s.data));
+```
+
+| Lowering | Rule |
+|----------|------|
+| `trait T` | `struct T { void* data; TVTable* vtable; }` |
+| impl per class | `static` trampolines + one `static TVTable T_vtable_C` |
+| class → trait slot | Compound literal binding `data` + `&T_vtable_C` |
+| `s.name()` | `s.vtable->name(s.data)` |
+
+> **Known gaps, visible in this snapshot:** `kira_rc_release(cat)` in
+> `makeSpeaker` is emitted *after* the `return` (dead code — `cc
+> -Wunreachable-code` flags it), and `trace(makeSpeaker().name())` lowers the
+> receiver twice, calling `makeSpeaker()` once for `.vtable` and again for
+> `.data`. Both are tracked in [docs/backend-c.md](../../docs/backend-c.md).
+
+---
+
+## What these snapshots are for
+
+- **Show the IR contract** — Kira in, readable C17 out, `cc` finishes.
+- **Review surface** — if lowering changes, the diff on `generated.user.c` is
+  what reviewers read.
+- **Regression net** — `regenerate.sh --check` fails when output drifts, and
+  `expected.txt` pins observable behaviour, not just the text of the C.
+- **Multi-backend later** — the same frontend could grow another target; these
+  files document the **C** style we optimize for now.

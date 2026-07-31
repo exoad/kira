@@ -36,7 +36,7 @@ pub class Box<T> {
     require pub value: T
 }
 
-fx id<T>(value: T): T {
+fx id<T>: (value: T) T {
     return value
 }
 ```
@@ -70,7 +70,7 @@ module "app:main"
 use "app:status"
 use "app:box"
 
-fx main(): Void {
+fx main: () Void {
     state: BuildStatus = BuildStatus.READY
     wrapped: Box<Int32> = Box<Int32> { 7 }
     value: Int32 = id<Int32>(wrapped.value)

@@ -18,12 +18,12 @@ class ForeignEdgePipelineTest {
             pub class Handle
 
             @_extern
-            fx foreignOpen(name: Str): Handle
+            fx foreignOpen: (name: Str) Handle
 
             @_extern
-            fx foreignClose(h: Handle): Void
+            fx foreignClose: (h: Handle) Void
 
-            fx main(): Void {
+            fx main: () Void {
                 h: Handle = foreignOpen("x")
                 foreignClose(h)
             }

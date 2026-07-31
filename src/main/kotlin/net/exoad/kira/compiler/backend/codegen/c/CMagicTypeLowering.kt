@@ -25,11 +25,22 @@ object CMagicTypeLowering {
         "Str" to CMagicTypeBinding("Str"),
         "String" to CMagicTypeBinding("Str"),
         "Any" to CMagicTypeBinding("Any"),
-        // Baseline collections -- generics erased; bodies live in c_generator.c
+        // Containers -- generics erased to KiraSlot elements; bodies in c_generator.c
         "Arr" to CMagicTypeBinding("Arr"),
         "List" to CMagicTypeBinding("List"),
         "Map" to CMagicTypeBinding("Map"),
-        "Set" to CMagicTypeBinding("Map"), // count-bag stand-in until Set lands
+        "Set" to CMagicTypeBinding("Set"),
+        "Stack" to CMagicTypeBinding("Stack"),
+        "Queue" to CMagicTypeBinding("Queue"),
+        "Deque" to CMagicTypeBinding("Deque"),
+        // Fallible values -- slot payloads, unwrapped back to the declared type
+        "Maybe" to CMagicTypeBinding("Maybe"),
+        "Result" to CMagicTypeBinding("Result"),
+    )
+
+    /** Container / wrapper types whose elements are erased to `KiraSlot`. */
+    val slotContainers = setOf(
+        "Arr", "List", "Map", "Set", "Stack", "Queue", "Deque", "Maybe", "Result"
     )
 
     fun resolve(typeName: String): CMagicTypeBinding? {

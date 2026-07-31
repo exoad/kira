@@ -111,9 +111,20 @@ class CompilationUnit {
         return externFunctions.toMap()
     }
 
-    fun collectIntrinsicMarkedTypeNames(intrinsicName: String): Set<String> {
+    /**
+     * Type names carrying [intrinsicName], across every loaded source.
+     *
+     * [sourceFilter] narrows the scan to a subset of sources -- useful when a
+     * caller needs to know which *file* a magic type came from, since the
+     * `kira/` bootstrap in [CompilationUnit.init] means the stdlib is always
+     * present in a unit whether or not the caller asked for it.
+     */
+    fun collectIntrinsicMarkedTypeNames(
+        intrinsicName: String,
+        sourceFilter: (SourceContext) -> Boolean = { true }
+    ): Set<String> {
         val collected = mutableSetOf<String>()
-        allSources().forEach { source ->
+        allSources().filter(sourceFilter).forEach { source ->
             val marks = runCatching { source.astIntrinsicMarked }.getOrNull() ?: return@forEach
             marks.forEach { (node, intrinsics) ->
                 if (intrinsics.none { it.name == intrinsicName }) {

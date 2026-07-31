@@ -15,7 +15,7 @@ class FrontendCompilationPipelineTest {
             x: Int32 = 1
             y: Int32 = 2
 
-            fx add(a: Int32, b: Int32): Int32 {
+            fx add: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
