@@ -1,0 +1,33 @@
+module "app:main"
+
+use "app:animals"
+
+fx makeDog(): Dog {
+    dog: Dog = Dog { "Rex" }
+    return dog
+}
+
+fx makeSpeaker(): Speaker {
+    cat: Cat = Cat { "Luna" }
+    return cat
+}
+
+fx main(): Void {
+    dog: Dog = makeDog()
+    cat: Cat = Cat { "Luna" }
+
+    announce(dog)
+    announce(cat)
+
+    dogLoud: Int32 = noiseLevel(dog)
+    trace(dogLoud)
+
+    s: Speaker = dog
+    trace(s.name())
+
+    // Object literal coerced directly to a trait-typed slot.
+    bolt: Speaker = Dog { "Bolt" }
+    trace(bolt.speak())
+
+    trace(makeSpeaker().name())
+}

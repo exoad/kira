@@ -137,6 +137,193 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         arcClassLocals.clear()
     }
 
+    /** One trait method signature, with concrete (resolved) param and return types. */
+    private data class TraitMethodSig(
+        val name: String,
+        val params: List<String>,
+        val returnType: String,
+    )
+
+    /** Non-generic user trait names (lower to by-value interface structs). */
+    private val traitNames = mutableSetOf<String>()
+    /** Trait name -> ordered method signatures (flattened with trait ancestors). */
+    private val traitMethodSigs = mutableMapOf<String, List<TraitMethodSig>>()
+    /** Class name -> trait names it implements (transitively through trait parents). */
+    private val classTraits = mutableMapOf<String, MutableList<String>>()
+    /** Mangled method name -> parameter type names, for call-site trait coercion. */
+    private val methodParamTypes = mutableMapOf<String, List<String>>()
+    /** Free/specialized function name -> parameter type names, for call-site trait coercion. */
+    private val functionParamTypes = mutableMapOf<String, List<String>>()
+    /** Return type of the function/method body currently being emitted. */
+    private var currentReturnType: String? = null
+
+    /**
+     * Discover user traits, their flattened method sets, and which classes
+     * implement them (via the class parent list). Generic traits are skipped
+     * for now: they are used by magic prelude classes, never lowered here.
+     */
+    private fun collectTraits() {
+        val rawTraits = linkedMapOf<String, TraitDecl>()
+        compilationUnit.allSources().forEach { source ->
+            if (shouldSkipSource(source)) return@forEach
+            source.ast.statements.forEach { stmt ->
+                val expr: Any? = when (stmt) {
+                    is TraitDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                if (expr is TraitDecl && !isMagicDecl(expr)) {
+                    val base = baseTypeNameOf(expr.name)
+                    if (base !in rawTraits) rawTraits[base] = expr
+                }
+            }
+        }
+
+        fun flattenTrait(t: TraitDecl): List<TraitMethodSig> {
+            val out = mutableListOf<TraitMethodSig>()
+            t.parents.forEach { parent ->
+                rawTraits[baseTypeNameOf(parent)]?.let { out.addAll(flattenTrait(it)) }
+            }
+            // Trait members are signature declarations (no body), so isStub()
+            // is true by design -- include every member regardless.
+            t.members.forEach { member ->
+                out.add(
+                    TraitMethodSig(
+                        functionLikeName(member.name),
+                        member.def.parameters.map { typeNameOf(it.typeSpecifier) },
+                        typeNameOf(member.def.returnTypeSpecifier),
+                    )
+                )
+            }
+            return out
+        }
+
+        rawTraits.forEach { (name, decl) ->
+            traitNames.add(name)
+            traitMethodSigs[name] = flattenTrait(decl)
+        }
+
+        eachClassDecl { decl ->
+            val className = typeNameOf(decl.name)
+            decl.parents.forEach { parent ->
+                val parentBase = baseTypeNameOf(parent)
+                if (parentBase in traitNames) {
+                    classTraits.getOrPut(className) { mutableListOf() }.add(parentBase)
+                }
+            }
+        }
+
+        // Transitive: implementing trait T also satisfies T's trait parents.
+        fun addAncestors(trait: String, seen: MutableSet<String>) {
+            rawTraits[trait]?.parents?.forEach { parent ->
+                val parentBase = baseTypeNameOf(parent)
+                if (parentBase in traitNames && seen.add(parentBase)) {
+                    classTraits.forEach { (cls, traits) ->
+                        if (trait in traits && parentBase !in traits) traits.add(parentBase)
+                    }
+                    addAncestors(parentBase, seen)
+                }
+            }
+        }
+        traitNames.toList().forEach { addAncestors(it, mutableSetOf()) }
+    }
+
+    /** Emit trait interface structs + vtable structs (no trampolines yet). */
+    private fun emitTraitStructs() {
+        traitNames.sorted().forEach { trait ->
+            val sigs = traitMethodSigs[trait] ?: return@forEach
+            if (sigs.isEmpty()) return@forEach
+            buffer.appendLine("typedef struct $trait $trait;")
+            buffer.appendLine("typedef struct ${trait}VTable ${trait}VTable;")
+            buffer.appendLine("struct ${trait}VTable")
+            buffer.appendLine("{")
+            indentLevel++
+            sigs.forEach { sig ->
+                appendIndented("")
+                buffer.append(mapTypeName(sig.returnType))
+                buffer.append(" (*")
+                buffer.append(sig.name)
+                buffer.appendLine(")(void* self);")
+            }
+            indentLevel--
+            buffer.appendLine("};")
+            buffer.appendLine()
+            buffer.appendLine("struct $trait")
+            buffer.appendLine("{")
+            indentLevel++
+            appendIndentedLine("void* data;")
+            appendIndented("")
+            buffer.append(trait)
+            buffer.appendLine("VTable* vtable;")
+            indentLevel--
+            buffer.appendLine("};")
+            buffer.appendLine()
+        }
+    }
+
+    /**
+     * Emit per (class, trait) trampolines + static vtables. Must run after
+     * emitFunctionPrototypes so every class method is registered. Also
+     * validates that the class actually provides every trait method.
+     */
+    private fun emitTraitTables() {
+        classTraits.forEach { (className, traits) ->
+            traits.distinct().sorted().forEach { trait ->
+                val sigs = traitMethodSigs[trait] ?: return@forEach
+                if (sigs.isEmpty()) return@forEach
+                sigs.forEach { sig ->
+                    if (resolveMethodMangled(sig.name, className) == null) {
+                        throw IllegalStateException(
+                            "Class '$className' implements trait '$trait' but is missing method '${sig.name}'"
+                        )
+                    }
+                }
+                sigs.forEach { sig ->
+                    val mangled = resolveMethodMangled(sig.name, className)!!
+                    appendIndented("static ")
+                    buffer.append(mapTypeName(sig.returnType))
+                    buffer.append(" ${trait}_${sig.name}_tramp_$className(void* self")
+                    sig.params.forEach { param ->
+                        buffer.append(", ")
+                        buffer.append(mapTypeName(param))
+                        buffer.append(" arg${sig.params.indexOf(param)}")
+                    }
+                    buffer.append(") { return ")
+                    buffer.append(mangled)
+                    buffer.append("(($className*)self")
+                    sig.params.forEachIndexed { i, _ -> buffer.append(", arg$i") }
+                    buffer.appendLine("); }")
+                }
+                appendIndented("static ${trait}VTable ${trait}_vtable_$className = { ")
+                buffer.append(sigs.joinToString(", ") { "${trait}_${it.name}_tramp_$className" })
+                buffer.appendLine(" };")
+            }
+        }
+    }
+
+    /**
+     * Emit an expression, wrapping it in `(Trait){ .data = expr, .vtable = &Trait_vtable_Class }`
+     * when the declared target type is a trait and the expression is a class
+     * value of a type implementing it.
+     */
+    private fun emitCoercedTraitValue(expr: Expr, declaredType: String) {
+        val argType = receiverTypeOf(expr)
+        val implTraits = argType?.let { classTraits[it] }
+        if (declaredType in traitNames && implTraits != null && declaredType in implTraits) {
+            buffer.append("((")
+            buffer.append(declaredType)
+            buffer.append("){ .data = ")
+            expr.accept(this)
+            buffer.append(", .vtable = &")
+            buffer.append(declaredType)
+            buffer.append("_vtable_")
+            buffer.append(argType)
+            buffer.append(" })")
+        } else {
+            expr.accept(this)
+        }
+    }
+
     /**
      * One-shot emit of the whole compilation unit into [outputPath].
      * Returns the generated C source (also written to disk).
@@ -176,17 +363,22 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         collectGenericTemplates()
         collectSpecializationSites()
         collectUserClasses()
+        collectTraits()
 
         // Layer 2 -- user program
         // 1) Forward-declare structs (concrete + specialized)
         // 2) Emit full struct + enum bodies (complete types before prototypes)
-        // 3) Forward-declare free functions + methods (+ specialized generics)
-        // 4) Emit everything else -- classes/enums/specialized already emitted
+        // 3) Trait interface + vtable structs
+        // 4) Forward-declare free functions + methods (+ specialized generics)
+        // 5) Trait trampolines + static vtables (needs registered methods)
+        // 6) Emit everything else -- classes/enums/specialized already emitted
         emitStructForwardDecls()
         emitStructBodies()
         emitSpecializedClassBodies()
+        emitTraitStructs()
         emitEnumBodies()
         emitFunctionPrototypes()
+        emitTraitTables()
         emitSpecializedFunctionBodies()
 
         compilationUnit.allSources().forEach { source ->
@@ -565,7 +757,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             if (method.isStub()) return@forEach
             val methodName = functionLikeName(method.name)
             val returnTypeName = resolveKiraTypeName(method.def.returnTypeSpecifier)
-            val mangledMethod = registerMethod(mangled, methodName, returnTypeName)
+            val mangledMethod = registerMethod(
+                mangled,
+                methodName,
+                returnTypeName,
+                method.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) }
+            )
 
             appendIndented("")
             buffer.append(mapTypeName(returnTypeName))
@@ -587,7 +784,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 knownValueTypes[param.name.value] = resolveKiraTypeName(param.typeSpecifier)
             }
             currentMethodClass = mangled
+            val savedReturnType = currentReturnType
+            currentReturnType = returnTypeName
             method.def.body?.forEach { it.accept(this) }
+            currentReturnType = savedReturnType
             currentMethodClass = null
             method.def.parameters.forEach { param ->
                 knownValueTypes.remove(param.name.value)
@@ -748,6 +948,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             when (expr) {
                 is FunctionDecl -> {
                     if (!isMagicDecl(expr) && !isGenericFunction(expr)) {
+                        val kiraName = functionLikeName(expr.name)
+                        functionParamTypes[kiraName] =
+                            expr.def.parameters.map { typeNameOf(it.typeSpecifier) }
                         out.add(functionPrototypeLine(expr))
                     }
                 }
@@ -762,7 +965,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                         if (method.isStub()) return@forEach
                         val methodName = functionLikeName(method.name)
                         val returnTypeName = typeNameOf(method.def.returnTypeSpecifier)
-                        val mangled = registerMethod(className, methodName, returnTypeName)
+                        val mangled = registerMethod(
+                            className,
+                            methodName,
+                            returnTypeName,
+                            method.def.parameters.map { typeNameOf(it.typeSpecifier) }
+                        )
                         val params = buildString {
                             append(className)
                             append("* this")
@@ -787,6 +995,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             typeSubst = subst
             val returnTypeName = resolveKiraTypeName(template.def.returnTypeSpecifier)
             knownValueTypes[mangled] = returnTypeName
+            functionParamTypes[mangled] =
+                template.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) }
             val params = if (template.def.parameters.isEmpty()) {
                 "Void"
             } else {
@@ -811,7 +1021,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 if (method.isStub()) return@forEach
                 val methodName = functionLikeName(method.name)
                 val returnTypeName = resolveKiraTypeName(method.def.returnTypeSpecifier)
-                val mangled = registerMethod(classMangled, methodName, returnTypeName)
+                val mangled = registerMethod(
+                    classMangled,
+                    methodName,
+                    returnTypeName,
+                    method.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) }
+                )
                 val params = buildString {
                     append(classMangled)
                     append("* this")
@@ -1145,9 +1360,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return "${className}_$methodName"
     }
 
-    private fun registerMethod(className: String, methodName: String, returnType: String): String {
+    private fun registerMethod(
+        className: String,
+        methodName: String,
+        returnType: String,
+        paramTypes: List<String> = emptyList(),
+    ): String {
         val mangled = mangleMethodName(className, methodName)
         methodReturnTypes[mangled] = returnType
+        methodParamTypes[mangled] = paramTypes
         methodsBySimpleName.getOrPut(methodName) { mutableListOf() }.add(className to mangled)
         knownValueTypes[mangled] = returnType
         return mangled
@@ -1178,6 +1399,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 val name = functionLikeName(expr.name)
                 knownValueTypes[name] ?: methodReturnTypes[name]
             }
+            is ObjectInitExpr -> typeNameOf(expr.typeName)
             else -> null
         }
     }
@@ -1297,7 +1519,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         appendIndented("return")
         if (returnStatement.expr !is NoExpr) {
             buffer.append(" ")
-            returnStatement.expr.accept(this)
+            val rt = currentReturnType
+            if (rt != null && rt in traitNames) {
+                emitCoercedTraitValue(returnStatement.expr, rt)
+            } else {
+                returnStatement.expr.accept(this)
+            }
         }
         buffer.appendLine(";")
     }
@@ -1382,8 +1609,18 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 if (nameExpr is MemberAccessExpr) {
                     val methodName = (nameExpr.member as? Identifier)?.value
                     val recvType = receiverTypeOf(nameExpr.origin)
-                    val mangled = methodName?.let { resolveMethodMangled(it, recvType) }
-                    formatForTypeName(mangled?.let { methodReturnTypes[it] })
+                    // Trait dispatch: use the trait signature's return type.
+                    val traitRet = if (recvType != null && recvType in traitNames && methodName != null) {
+                        traitMethodSigs[recvType]?.firstOrNull { it.name == methodName }?.returnType
+                    } else {
+                        null
+                    }
+                    if (traitRet != null) {
+                        formatForTypeName(traitRet)
+                    } else {
+                        val mangled = methodName?.let { resolveMethodMangled(it, recvType) }
+                        formatForTypeName(mangled?.let { methodReturnTypes[it] })
+                    }
                 } else {
                     val ret = knownValueTypes[functionLikeName(expr.name)]
                     formatForTypeName(ret)
@@ -1466,6 +1703,27 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 return
             }
             val recvType = receiverTypeOf(nameExpr.origin)
+            // Trait dispatch: recv.vtable->method(recv.data, args)
+            if (recvType != null && recvType in traitNames &&
+                traitMethodSigs[recvType]?.any { it.name == methodName } == true
+            ) {
+                nameExpr.origin.accept(this)
+                buffer.append(".vtable->")
+                buffer.append(methodName)
+                buffer.append("(")
+                nameExpr.origin.accept(this)
+                buffer.append(".data")
+                functionCallExpr.positionalParameters.forEach { param ->
+                    buffer.append(", ")
+                    param.value.accept(this)
+                }
+                functionCallExpr.namedParameters.forEach { param ->
+                    buffer.append(", ")
+                    param.value.accept(this)
+                }
+                buffer.append(")")
+                return
+            }
             val mangled = resolveMethodMangled(methodName, recvType) ?: methodName
             buffer.append(mangled)
             buffer.append("(")
@@ -1477,9 +1735,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 buffer.append("&")
                 nameExpr.origin.accept(this)
             }
-            functionCallExpr.positionalParameters.forEach { param ->
+            val paramTypes = methodParamTypes[mangled]
+            functionCallExpr.positionalParameters.forEachIndexed { i, param ->
                 buffer.append(", ")
-                param.value.accept(this)
+                emitCoercedTraitValue(param.value, paramTypes?.getOrNull(i) ?: "Any")
             }
             functionCallExpr.namedParameters.forEach { param ->
                 buffer.append(", ")
@@ -1503,9 +1762,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (currentMethodMangled != null) {
             buffer.append(currentMethodMangled)
             buffer.append("(this")
-            args.forEach { arg ->
+            val paramTypes = methodParamTypes[currentMethodMangled]
+            args.forEachIndexed { index, arg ->
                 buffer.append(", ")
-                arg.accept(this)
+                emitCoercedTraitValue(arg, paramTypes?.getOrNull(index) ?: "Any")
             }
             buffer.append(")")
             return
@@ -1521,9 +1781,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         buffer.append(functionName)
         buffer.append("(")
+        val paramTypes = functionParamTypes[rawName] ?: functionParamTypes[functionName]
         args.forEachIndexed { index, arg ->
             if (index > 0) buffer.append(", ")
-            arg.accept(this)
+            emitCoercedTraitValue(arg, paramTypes?.getOrNull(index) ?: "Any")
         }
         buffer.append(")")
     }
@@ -1810,7 +2071,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             if (value is ObjectInitExpr && value.positionalArgs.isEmpty() && isCollectionType(typeName)) {
                 value.accept(this)
             } else {
-                value.accept(this)
+                emitCoercedTraitValue(value, typeName)
             }
         } else if (isCollectionType(typeName)) {
             buffer.append(" = ")
@@ -1883,7 +2144,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         indentLevel++
         val savedArc = arcClassLocals.toList()
         arcClassLocals.clear()
+        val savedReturnType = currentReturnType
+        currentReturnType = returnTypeName
         functionDecl.def.body!!.forEach { it.accept(this) }
+        currentReturnType = savedReturnType
         // ARC: release class-typed locals unless we return one (borrowed to caller).
         // main returns Void: release before the synthesized `return 0;` so it actually runs.
         val releaseBeforeReturn = userClassNames.contains(returnTypeName).not()
@@ -1941,7 +2205,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             if (method.isStub()) return@forEach
             val methodName = functionLikeName(method.name)
             val returnTypeName = typeNameOf(method.def.returnTypeSpecifier)
-            val mangled = registerMethod(className, methodName, returnTypeName)
+            val mangled = registerMethod(
+                className,
+                methodName,
+                returnTypeName,
+                method.def.parameters.map { typeNameOf(it.typeSpecifier) }
+            )
 
             appendIndented("")
             buffer.append(mapTypeName(returnTypeName))
@@ -1964,7 +2233,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             val savedArc = arcClassLocals.toList()
             arcClassLocals.clear()
             currentMethodClass = className
+            val savedReturnType = currentReturnType
+            currentReturnType = returnTypeName
             method.def.body?.forEach { it.accept(this) }
+            currentReturnType = savedReturnType
             currentMethodClass = null
             // ARC: release class-typed locals unless we return one (borrowed to caller).
             if (!userClassNames.contains(returnTypeName)) {
@@ -2055,10 +2327,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
-        if (isMagicDecl(traitDecl)) {
-            return
-        }
-        appendIndentedLine("/* trait ${typeNameOf(traitDecl.name)}: no C lowering in baseline backend */")
+        // Traits are lowered structurally in emitTraitStructs / emitTraitTables.
+        // Nothing to emit at the statement site.
     }
 
     override fun visitVariantDecl(variantDecl: VariantDecl) {

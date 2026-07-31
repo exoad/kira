@@ -649,7 +649,27 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         // Run intrinsics for trait declarations
         runIntrinsicsIfPresent(traitDecl)
-        // TODO("Not yet implemented")
+        if (traitDecl.name.identifier is Identifier) {
+            val typeName = (traitDecl.name.identifier as Identifier).value
+            val symbol = SemanticSymbol(
+                typeName,
+                SemanticSymbolKind.TYPE_SPECIFIER,
+                Token.Type.K_TRAIT,
+                SourceLocation.fromPosition(
+                    context.astOrigins[traitDecl] ?: SourcePosition.UNKNOWN,
+                    context.file
+                ),
+                relativelyVisible = traitDecl.modifiers.contains(Modifier.PUBLIC)
+            )
+            expectTypeNotDeclaredInModule(typeName, context.astOrigins[traitDecl])
+            compilationUnit.symbolTable.declare(typeName, symbol)
+            if (traitDecl.members.isNotEmpty()) {
+                compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+                registerGenericTypeParameters(traitDecl.name)
+                traitDecl.members.forEach { it.accept(this) }
+                compilationUnit.symbolTable.exit()
+            }
+        }
     }
 
     override fun visitVariantDecl(variantDecl: VariantDecl) {

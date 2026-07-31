@@ -1,0 +1,47 @@
+module "app:animals"
+
+trait Speaker {
+    pub fx speak(): Str
+    pub fx name(): Str
+}
+
+trait Noisy: Speaker {
+    pub fx loudness(): Int32
+}
+
+class Dog: Noisy {
+    require pub label: Str
+
+    pub fx speak(): Str {
+        return "woof"
+    }
+
+    pub fx name(): Str {
+        return label
+    }
+
+    pub fx loudness(): Int32 {
+        return 8
+    }
+}
+
+class Cat: Speaker {
+    require pub label: Str
+
+    pub fx speak(): Str {
+        return "meow"
+    }
+
+    pub fx name(): Str {
+        return label
+    }
+}
+
+fx announce(s: Speaker): Void {
+    trace(s.name())
+    trace(s.speak())
+}
+
+fx noiseLevel(s: Noisy): Int32 {
+    return s.loudness()
+}
