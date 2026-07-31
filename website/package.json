@@ -1,0 +1,42 @@
+{
+  "name": "kira",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "module": "es2020",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm run postbuild",
+    "postbuild": "cp public/404.html dist/404.html",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "serve": "vite preview --host"
+  },
+  "dependencies": {
+    "@types/react-window": "^1.8.8",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-icons": "^5.5.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.12.0",
+    "react-virtualized-auto-sizer": "^1.0.26",
+    "react-window": "^2.2.2",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@tailwindcss/vite": "^4.1.7",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.25.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "tailwindcss": "^4.1.7",
+    "terser": "^5.44.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
