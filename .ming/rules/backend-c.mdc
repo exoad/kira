@@ -1,0 +1,30 @@
+---
+description: Conventions for the C runtime prelude and emitted C (C-as-IR backend).
+globs: src/main/resources/*, examples/*/generated.user.c, examples/prelude.reference.c
+---
+
+# C-as-IR backend conventions
+
+The emitted artifact is one ISO C17 translation unit, three layers:
+
+1. `c_bundle.h` - substrate types (`kira_i32`, `KIRA_TRUE`, `KIRA_INLINE`,
+   `KIRA_NULL`) and mangle hooks.
+2. `c_generator.c` - the Kira facade: `Int32`, `Str`, `Arr`, `List`, `Map`,
+   `Set`, `Stack`, `Queue`, `Deque`, `Maybe`/`Result`, `print`, `assert`.
+3. Codegen output - user structs, monomorphized generics, classes, `main`.
+
+## Rules
+
+- Stay ISO C17: `cc -std=c17 -O2`. No GNU-only extensions in the prelude or
+  emit unless gated and documented.
+- The prelude is byte-identical for every example; `regenerate.sh` verifies
+  that invariant. A per-example difference is a bug, not a feature.
+- `KiraSlot` is the uniform 64-bit erased element: integer, Bool, or pointer
+  cast through `intptr_t`. Float elements are intentionally unsupported.
+- `Str` producers return freshly malloc'd storage and are never freed today
+  (documented limit; same as unowned ARC temporaries).
+- House style is Allman braces and `/* ---- section ---- */` divider banners
+  in the runtime; match it in prelude edits.
+- Lowering policy: prefer prelude `static inline`/macros for small shared ops;
+  use codegen rewrite when the shape depends on types or call sites
+  (monomorphization, method mangling, collection method names).

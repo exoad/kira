@@ -41,7 +41,11 @@ examples/*/app
 /private
 /meta
 
-# Ming local runtime (not part of Kira)
-.ming/
+# Ming project config and skills are tracked (manifest.json, rules/, skills/)
+# Runtime scratch stays local:
+.ming/analyze-output/
+.ming/shell-output/
+.ming/instances.json
+.ming/subsystems/
 *.dSYM/
 examples/ffi-mini/app
