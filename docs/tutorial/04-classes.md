@@ -101,16 +101,19 @@ Positional args match `require` field order. Nested inits work:
 Rectangle { Point { 0, 1 }, Point { 1, 0 } }
 ```
 
-## What is not in the baseline backend yet
+### Memory (ARC)
 
-The language reference describes inheritance, traits, and richer constructors.
-The C backend today focuses on:
+Class instances are **heap objects** with a strong refcount. Construction
+lowers to `Class_new(...)` → `kira_rc_alloc` (RC=1); the compiler emits
+`kira_rc_release` at scope end. Nested class values (like the `Point`s inside
+`Rectangle`) use borrowed ownership today -- see
+[`docs/ownership-arc.md`](../ownership-arc.md).
 
-- flat classes with `require` fields
-- instance methods
-- field reads and method calls
+## What the C backend does not do yet
 
-Stay inside that shape for programs you want to run end-to-end.
+Traits exist and run (`examples/08-traits`), but inheritance between classes,
+variants, and generic traits are not lowered. Constructors are positional-only
+(no named args / defaults).
 
 ## Try this
 

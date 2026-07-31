@@ -21,26 +21,38 @@ Acceptance mindset: pure OOP in Kira; C only at an explicit foreign edge.
 
 - [x] Design note locked (strong-only v1; foreign excluded) -- `ownership-arc.md`
 - [x] Prelude: alloc header, retain, release hooks
-- [ ] Codegen: retain on copy/store/arg; release on scope end
-- [ ] Class examples still green under ASan-friendly discipline
+- [x] Codegen: `Class_new` factories (heap + RC=1), `->` access, scope-end release
+- [x] Class examples still green under ASan-friendly discipline
 
 **Done when:** Kira class instances are heap+RC; `examples/04-classes` and
-FFI hello both still correct; extern pointers never go through RC.
+FFI hello both still correct; extern pointers never go through RC. -- **met**
+
+**Known limits:** release skipped on explicit return paths (leak, not crash);
+field stores are borrowed (no retain); copies/args not retained.
 
 ### M3 -- Stdlib that runs
 
-- Map put/get, owning List, real Str helpers (Kira and/or thin C behind OOP API)
-- Error types usable in app code without lying about emit
+- [x] Map put/get/remove/containsKey/clear (open-addressing hash)
+- [x] Owning List (add/get/set/removeAt/clear/toArr)
+- [x] Traits: fat-pointer interface structs, vtables, dispatch, call-site coercion
+- [ ] Real Str helpers (`substring`, `split`, ...) -- partial today
+- [ ] Error types usable in app code without lying about emit
+
+**Met by:** `examples/06-collections` (Map/List), `examples/08-traits`,
+`examples/07-conway` (full program: grid + ARC class + loops).
 
 ### M4 -- Tooling hardness
 
-- Mangling default-on (preserve `main` + extern names); demos opt out
-- Diagnostics collector (less process panic)
-- LSP hover / go-to-def (after symbols are stable)
+- [ ] Mangling default-on (preserve `main` + extern names); demos opt out
+- [ ] Diagnostics collector (less process panic)
+- [ ] LSP hover / go-to-def (after symbols are stable)
 
 ## Later
 
-- Weak refs, traits/inheritance lowering, concurrency via C event/thread libs
+- Variant lowering (tagged unions)
+- Generic traits (`trait T<X>` monomorphized like user generics)
+- ARC tightening: retain on copy/field-store/arg; release on return paths
+- Weak refs, concurrency via C event/thread libs
 - Optional second backend (Neko) only after C-as-IR is boring
 - Self-host / stack migration is a **north star**, not a near milestone
 

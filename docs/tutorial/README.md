@@ -13,8 +13,12 @@ Each chapter ends with a project under `examples/` you can compile and run.
 | 3 | [Control flow](03-control-flow.md) | `03-control-flow` | `if`, `while`, `for` + ranges |
 | 4 | [Classes](04-classes.md) | `04-classes` | fields, methods, object init |
 | 5 | [Enums and generics](05-enums-generics.md) | `05-enums-generics` | enums, `Box<T>`, `id<T>` |
-| 6 | [Collections](06-collections.md) | `06-collections` | `Arr`, `Map` baseline |
+| 6 | [Collections](06-collections.md) | `06-collections` | `Arr`, `Map` (hash), `List` (owning) |
 | 7 | [Projects and tooling](07-projects-and-tooling.md) | -- | `kira.yaml`, C emit, LSP |
+
+Beyond the ladder, `examples/07-conway` runs Conway's Game of Life end-to-end
+and `examples/08-traits` demonstrates traits + vtables (see the
+[examples README](../../examples/README.md)).
 
 ## How to run any example
 

@@ -37,7 +37,9 @@ cc -std=c17 -O2 -o app out.kira.c && ./app
 | 03 | `03-control-flow` | `if` / `while` / `for` ranges | `odd` |
 | 04 | `04-classes` | classes, fields, methods | `4` / `Mochi` / `meow` |
 | 05 | `05-enums-generics` | enums + monomorphized generics | `7` |
-| 06 | `06-collections` | Arr literal/index, Map `isEmpty` | `10` |
+| 06 | `06-collections` | Arr literal/index, Map put/get, List add | `10` |
+| 07 | `07-conway` | Conway's Game of Life (grid, step, ARC class) | 5 generations of a glider |
+| 08 | `08-traits` | traits, trait inheritance, vtables, dispatch | `Rex` / `woof` / `Luna` / `meow` / `8` |
 
 ## C-as-IR showcase
 

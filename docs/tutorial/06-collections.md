@@ -5,19 +5,15 @@
 ## What works today
 
 The stdlib declares rich APIs on `Arr`, `List`, `Map`, and friends. The **C
-backend** currently lowers a thin baseline:
+backend** lowers a real, owning baseline:
 
 | Feature | Status |
 |---------|--------|
 | `Arr` literal `[10, 20, 30]` | yes (Int32 elements in practice) |
-| Index `values[0]` | yes |
+| Index `values[0]` / `values.set(i, v)` | yes |
 | `Arr` / `Map` `isEmpty()` / `size()` | yes |
-| Empty `Map<K,V> { }` | yes (count-only map) |
-| `Map.put` / `get` hashing | not yet |
-| Growing `List.add` | not yet |
-
-Enough to write real control flow around collections; not enough to pretend
-they are a full collections library.
+| `Map<K,V>` put / get / remove / containsKey / clear | yes (open-addressing hash) |
+| `List.add` / `get` / `set` / `removeAt` / `clear` / `toArr` | yes (owning dynamic array) |
 
 ## Arrays
 
@@ -49,10 +45,26 @@ fx hasAny(values: Map<Str, Int32>): Bool {
 ```kira
 entries: Map<Str, Int32> = Map<Str, Int32> { }
 present: Bool = hasAny(entries)
+
+entries.put("a", 1)
+entries.put("b", 2)
+count: Int32 = entries.size()
 ```
 
-Empty maps are useful as placeholders and for `isEmpty` checks. Putting entries
-needs the fuller runtime (still ahead).
+`Map` is an open-addressing hash table (djb2 hash, linear probing, auto-resize
+at 0.75 load). `put` / `get` / `remove` / `containsKey` / `clear` all lower to
+C runtime helpers.
+
+## Lists
+
+```kira
+items: List<Int32> = List<Int32> { }
+items.add(10)
+items.add(20)
+head: Int32 = items.get(0)
+```
+
+`List` is an owning dynamic array that doubles on overflow.
 
 ## Putting it together
 
@@ -83,11 +95,6 @@ Types live in [`kira/stl.kira`](../../kira/stl.kira) (`module "kira:stl"`).
 Your `kira.yaml` dependency on `../../kira` pulls that file in automatically.
 You do not `use "kira:stl"` in every file for magic types -- they are ambient
 once the stdlib is on the compile set.
-
-## Try this
-
-Print `numbers` length if you wire `size()` (method form `values.size()` on
-`Arr` in the baseline backend).
 
 ## Next
 

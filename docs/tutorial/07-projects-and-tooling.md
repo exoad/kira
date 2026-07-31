@@ -86,13 +86,15 @@ Works end-to-end on the tutorial ladder:
 - modules + `use`
 - functions, locals, `mut`
 - `if` / `while` / `for` ranges
-- classes, fields, methods, object init
+- classes, fields, methods, object init (heap-allocated with ARC)
 - enums
 - monomorphized user generics (`Box<T>`, `id<T>`)
-- thin `Arr` / `Map` runtime
+- `Arr` / `Map` (open-addressing hash) / `List` (owning dynamic array)
+- traits + vtables (`examples/08-traits`), full Conway program (`examples/07-conway`)
 
-Still baseline / not lowered: full Map put/get, growing lists, traits,
-inheritance, and most of the richer stdlib surface.
+Still baseline / not lowered: variants, generic traits, full Str helpers, and
+most of the richer stdlib surface. ARC retains on copy/store/arg is a known gap
+(borrowed ownership there).
 
 ## You made it
 

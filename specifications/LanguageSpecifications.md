@@ -3330,9 +3330,12 @@ dependencies:
 Magic types from `kira:stl` are ambient once that dependency is loaded; you
 typically do not write `use "kira:stl"` in application code.
 
-**C backend coverage (collections):** `Arr` literals and indexing, empty
-`Map` / `isEmpty` / `size` are lowered. Full `Map.put`/`get`, growing `List`,
-and most method bodies remain baseline stubs -- see the tutorial chapter on
+**C backend coverage (collections):** `Arr` literals and indexing,
+`Map.put`/`get`/`remove`/`containsKey`/`clear` (open-addressing hash), and an
+owning `List` (`add`/`get`/`set`/`removeAt`/`clear`/`toArr`) are all lowered.
+Classes are heap-allocated with ARC (scope-end release). Traits lower to
+interface structs + vtables with call-site coercion. Variants, generic traits,
+and full Str helpers remain baseline stubs -- see the tutorial chapter on
 collections and `src/main/resources/c_generator.c`.
 
 Broader library modules (`io`, `math`, `async`, ...) are planned surfaces, not

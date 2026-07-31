@@ -1,3 +1,5 @@
+# Kira
+
 <p align="center">
   <img src="./public/display_logo.png" width="96" alt="Kira"/><br/>
   <strong>Kira</strong><br/>
@@ -17,12 +19,12 @@ default path.
 
 ---
 
-### Requirements
+## Requirements
 
 - JDK 17+
 - C17 compiler on `PATH` (`cc`, `clang`, or `gcc`)
 
-### Install
+## Install
 
 ```bash
 ./gradlew installDist
@@ -35,13 +37,13 @@ export PATH="$(pwd)/build/install/kira/bin:$PATH"
 ./gradlew test    # optional
 ```
 
-### Quick start
+## Quick start
 
 ```bash
 ./examples/run.sh 01-hello
 # hello, kira
 
-./examples/run.sh          # full ladder 01..06
+./examples/run.sh          # full ladder 01..08
 ```
 
 By hand:
@@ -55,7 +57,7 @@ cc -std=c17 -O2 -o app out.kira.c && ./app
 `kira` always loads `kira.yaml` from the **current directory** -- `cd` into the
 project first.
 
-### Project shape
+## Project shape
 
 ```text
 my-project/
@@ -84,7 +86,7 @@ fx main(): Void {
 
 Module URI `"app:main"` maps to `src/app/main.kira`.
 
-### Language server
+## Language server
 
 ```bash
 kira-lsp    # LSP over stdio
@@ -94,23 +96,36 @@ Baseline: full doc sync for `*.kira`, `publishDiagnostics` (parse + semantic).
 Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 `kira.yaml`. Editor snippets: [tutorial ch.7](docs/tutorial/07-projects-and-tooling.md).
 
-### Repo layout
+## What Kira can do today
+
+- **Modules & functions** -- multi-file projects, `use`, typed params/returns
+- **Classes & OOP** -- fields (`require`), methods, construction; heap-allocated
+  with ARC (strong refcount, scope-end release)
+- **Generics** -- user `class Box<T>` / `fx id<T>` monomorphized at compile time
+- **Enums** -- tagged C enums
+- **Traits** -- interface structs + vtables; inheritance between traits;
+  polymorphic dispatch; class values coerce to trait slots at call sites
+- **Collections** -- `Arr` literals/indexing, owning `List`, real `Map`
+  (open-addressing hash: put/get/remove/containsKey/clear)
+- **Control flow** -- `if` / `else` / `while` / `for` ranges
+- **Foreign edge** -- `@_opaque` types and `@_extern` stubs link real C libs
+  (see `examples/ffi-mini`)
+
+## Repo layout
 
 | Path | Role |
 |------|------|
 | `src/` | Compiler + LSP (Kotlin/JVM) |
 | `kira/` | Stdlib (`stl.kira`) |
-| `examples/` | Ladder `01-hello` ... `06-collections` |
-| `examples/c-as-ir/` | C-as-IR demos (Kira ↔ emitted C side-by-side) |
-| `examples/ffi-mini/` | Foreign C edge (`@_extern` / `@_opaque`) |
-| `docs/doctrine.md` | Pure OOP doctrine |
-| `docs/tutorial/` | Hands-on guide |
+| `examples/` | Ladder `01-hello` ... `08-traits` (+ `c-as-ir`, `ffi-mini`) |
+| `docs/` | Doctrine, ARC, backend status, roadmap |
 | `specifications/` | Language reference |
 | `test_kira/` | Smoke project for `./gradlew run` |
 
-### Status
+## Status
 
-C-as-IR runs the example ladder: modules, functions, classes/methods, enums,
-monomorphized generics, thin Arr/Map (literals, index, `isEmpty` / `size`).
-Map put/get, growing lists, and ARC are not implemented yet. LSP: diagnostics
-only (no hover / completion / go-to-def). Detail: [docs/backend-c.md](docs/backend-c.md).
+C-as-IR runs the full example ladder: modules, functions, classes/methods with
+ARC, enums, monomorphized generics, real Map/List/Arr, traits with vtables,
+and Conway's Game of Life (`examples/07-conway`) end-to-end. Known gaps:
+no weak refs (cycles leak), no variant lowering, generic traits stay
+prelude-side, LSP is diagnostics-only. Detail: [docs/backend-c.md](docs/backend-c.md).

@@ -93,35 +93,45 @@ emit, compile as C17, and run.
 | `if` / `else` / `while` / `for` + ranges | **Green** | |
 | `trace` / print intrinsics | **Green** | → `printf` + newline |
 | Enums | **Green** | Tagged C enums |
-| Classes: `require` fields, methods, init | **Green** | Methods → `Type_method(Type* this, ...)` |
+| Classes: `require` fields, methods, init | **Green** | Heap objects via `Class_new(...)` factories |
+| ARC / RC heap (Kira classes) | **Green** | `kira_rc_alloc` at construction, `->` access, scope-end `kira_rc_release`; limits below |
 | User generics (`Box<T>`, `fx id<T>`) | **Green** | **Monomorphized** (`Box_Int32`, `id_Int32`) |
-| Stdlib magic types in prelude | **Partial** | Typedefs + thin helpers; not full `stl.kira` bodies |
-| `Arr` literal / index / `size` / `isEmpty` | **Baseline** | Erased; Int32-oriented helpers |
-| `Map` empty / `isEmpty` / `size` | **Baseline** | Count-only; no real put/get hashing |
-| `List` grow / `add` | **Stub** | Alias-ish to Arr at C boundary |
-| Traits / inheritance / variants | **Not lowered** | Skipped or commented in emit |
-| `@_opaque` foreign types | **Green** | Incomplete struct; values are `T*` |
+| `Arr` literal / index / `set` / `get` / `size` | **Green** | Erased; Int32-oriented helpers |
+| `Map` put/get/remove/containsKey/clear | **Green** | Open-addressing hash (djb2, linear probing, auto-resize) |
+| `List` add/get/set/removeAt/clear/toArr | **Green** | Owning dynamic array (doubles on overflow) |
+| Traits / trait inheritance | **Green** | Fat-pointer interface structs + vtables; trampolines per class; call-site coercion |
+| Variants | **Not lowered** | Skipped or commented in emit |
+| Generic traits | **Not lowered** | Prelude magic only (e.g. `Equatable<T>`) |
+| `@_opaque` foreign types | **Green** | Incomplete struct; values are `T*`; never ARC'd |
 | `@_extern` C stubs | **Green** | Unmangled prototypes + calls; no body |
 | `build.cSources` / `linkFlags` | **Green** | Printed on emit; used by ffi-mini |
-| ARC / RC heap (Kira classes) | **Hooks only** | `kira_rc_alloc/retain/release` in prelude; codegen TBD |
-| Weak refs | **Not implemented** | |
+| Weak refs | **Not implemented** | Cycles leak until weak exists |
 | Separate Neko backend | **Not active** | `target: neko` reserved only |
 
-**Proof surface:** `examples/01-hello` ... `06-collections` via `./examples/run.sh`,
-plus `BackendCompilationPipelineTest` / frontend tests.
+**Proof surface:** `examples/01-hello` ... `08-traits` via `./examples/run.sh`,
+plus `BackendCompilationPipelineTest` / frontend tests / `TraitCodegenTest`.
+
+**ARC limits (documented in code):** release is skipped on explicit `return`
+paths (leak, not crash); class objects embedded in fields use borrowed
+ownership (no retain on store); non-lvalue trait receivers like
+`makeSpeaker().name()` evaluate the receiver twice.
 
 ---
 
 ## Runtime model (today)
 
-- **Lifetimes:** C stack / local; struct-by-value; method receiver as pointer.
-- **No** retain/release, **no** GC, **no** Neko heap.
-- **Arr** is a view (`data` + `length`), not a full owning RC container.
+- **Lifetimes:** Kira classes are **heap objects** with a strong refcount
+  (`kira_rc_alloc` at construction, `kira_rc_release` at scope end). Value
+  types, enums, and small structs stay on the C stack.
+- **Retain:** v1 only retains on construction; copies and field stores use
+  **borrowed** ownership (documented limit). Full copy/arg retain is future
+  tightening.
+- **Arr / List / Map** are owning runtime containers; Map is an open-addressing
+  hash table (djb2, linear probing, auto-resize).
+- **Traits** are by-value fat pointers (`{ void* data; VTable* vtable }`) with
+  static per-(class, trait) vtables; dispatch goes through the vtable.
 - Out-of-range index: runtime helper may `abort()`.
-
-Future hybrid ownership (ARC for heap classes + explicit manual/raw for C
-buffers) would extend the **prelude + codegen**, still as C-as-IR -- not a VM
-switch.
+- **Foreign handles** (`@_opaque`) are raw C pointers and never go through RC.
 
 ---
 
@@ -176,12 +186,13 @@ Practical notes:
 
 Ordered for this backend; not a Neko plan.
 
-1. **Name mangler (default on)** -- rename layer-0/1 hooks + user symbols;
+1. **ARC tightening** -- retain on copy/field-store/arg; release on explicit
+   return paths (currently borrowed-ownership on stores, leak-on-return).
+2. **Variants** -- tagged union lowering (currently skipped in emit).
+3. **Generic traits** -- lower user `trait T<X>` the way user generics monomorphize.
+4. **Name mangler (default on)** -- rename layer-0/1 hooks + user symbols;
    keep `main` / exports; seedable; `compiler.mangle: false` for demos.
-2. **Ownership design note** -- what is ARC'd vs borrowed vs manual (hybrid).
-3. **Bundle/prelude RC** -- heap class instances: header, retain/release, then codegen.
-4. **Collections** -- real Map put/get; owning List; keep Arr as view or split types.
-5. **More of `stl.kira`** -- only what we can lower honestly.
+5. **More of `stl.kira`** -- only what we can lower honestly (real Str helpers).
 6. **Emit quality** -- fewer redundant parens; optional denser cupup-like packing
    when mangling is on.
 7. **Optional second backend** -- Neko or other, only after C-as-IR is boring.
