@@ -110,6 +110,32 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private val userClassNames = mutableSetOf<String>()
     /** User class name -> ordered list of (fieldName, fieldType) for init lowering. */
     private val userClassFields = mutableMapOf<String, List<Pair<String, String>>>()
+    /** Class-typed locals in the current function/method body: (name, className). */
+    private val arcClassLocals = mutableListOf<Pair<String, String>>()
+
+    /** Collect non-magic user classes (concrete + specialized) for ARC lowering. */
+    private fun collectUserClasses() {
+        eachClassDecl { decl ->
+            val base = baseTypeNameOf(decl.name)
+            if (isMagicDecl(decl) || isOpaqueTypeName(base)) return@eachClassDecl
+            userClassNames.add(base)
+            val fields = decl.members.filterIsInstance<VariableDecl>().map { field ->
+                field.name.value to typeNameOf(field.type)
+            }
+            userClassFields[base] = fields
+        }
+        classSpecializations.keys.forEach { userClassNames.add(it) }
+    }
+
+    /** Emit kira_rc_release for every class-typed local collected in this body. */
+    private fun emitArcReleases() {
+        arcClassLocals.forEach { (name, _) ->
+            appendIndented("kira_rc_release(")
+            buffer.append(name)
+            buffer.appendLine(");")
+        }
+        arcClassLocals.clear()
+    }
 
     /**
      * One-shot emit of the whole compilation unit into [outputPath].
@@ -149,6 +175,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // Discover generic templates + monomorphization sites before any emit.
         collectGenericTemplates()
         collectSpecializationSites()
+        collectUserClasses()
 
         // Layer 2 -- user program
         // 1) Forward-declare structs (concrete + specialized)
@@ -570,6 +597,43 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.appendLine()
         }
 
+        // ARC factory for the specialized class: Box_Int32_new(...) with RC=1.
+        if (!fields.isEmpty()) {
+            appendIndented("simple ")
+            buffer.append(mapTypeName(mangled))
+            buffer.append(" ")
+            buffer.append(mangled)
+            buffer.append("_new(")
+            fields.forEachIndexed { i, field ->
+                if (i > 0) buffer.append(", ")
+                buffer.append(mapTypeName(resolveKiraTypeName(field.type)))
+                buffer.append(" ")
+                buffer.append(field.name.value)
+            }
+            buffer.appendLine(")")
+            appendIndentedLine("{")
+            indentLevel++
+            appendIndented("")
+            buffer.append(mapTypeName(mangled))
+            buffer.append(" self = (")
+            buffer.append(mangled)
+            buffer.append("*)kira_rc_alloc(sizeof(")
+            buffer.append(mangled)
+            buffer.append("));")
+            buffer.appendLine()
+            fields.forEach { field ->
+                appendIndented("self->")
+                buffer.append(field.name.value)
+                buffer.append(" = ")
+                buffer.append(field.name.value)
+                buffer.appendLine(";")
+            }
+            appendIndentedLine("return self;")
+            indentLevel--
+            appendIndentedLine("}")
+            buffer.appendLine()
+        }
+
         typeSubst = prev
     }
 
@@ -843,6 +907,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         CMagicTypeLowering.resolve(typeName)?.let { return it.cType }
         // Foreign opaque handles are C pointers (never Kira ARC objects).
         if (opaqueTypes.contains(typeName)) {
+            return "$typeName*"
+        }
+        // User classes are ARC heap objects: every reference is a pointer.
+        if (userClassNames.contains(typeName)) {
             return "$typeName*"
         }
         // Always map well-known builtins even without magic registration
@@ -1401,9 +1469,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             val mangled = resolveMethodMangled(methodName, recvType) ?: methodName
             buffer.append(mangled)
             buffer.append("(")
-            // Receiver by pointer for mutable field access in method bodies.
-            buffer.append("&")
-            nameExpr.origin.accept(this)
+            if (recvType != null && userClassNames.contains(recvType)) {
+                // ARC class receiver is already a heap pointer.
+                nameExpr.origin.accept(this)
+            } else {
+                // Value/struct receiver: pass by address for mutable field access.
+                buffer.append("&")
+                nameExpr.origin.accept(this)
+            }
             functionCallExpr.positionalParameters.forEach { param ->
                 buffer.append(", ")
                 param.value.accept(this)
@@ -1505,9 +1578,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             }
         }
         origin.accept(this)
-        // Baseline: receivers are values/locals, so "." is correct.
-        // Member side must not get this-> rewriting (nested.field stays .field).
-        buffer.append(".")
+        // ARC user classes are heap pointers: member access uses "->".
+        // Magic collections / value types stay on ".".
+        val originType = receiverTypeOf(origin)
+        buffer.append(if (originType != null && userClassNames.contains(originType)) "->" else ".")
         val prev = suppressThisRewrite
         suppressThisRewrite = true
         member.accept(this)
@@ -1574,6 +1648,17 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
         val baseName = baseTypeNameOf(objectInitExpr.typeName)
         val typeName = typeNameOf(objectInitExpr.typeName)
+        // User classes (concrete + specialized) construct via ARC factory: Class_new(...)
+        if (userClassNames.contains(typeName) || genericClassTemplates.containsKey(baseName)) {
+            buffer.append(typeName)
+            buffer.append("_new(")
+            objectInitExpr.positionalArgs.forEachIndexed { i, arg ->
+                if (i > 0) buffer.append(", ")
+                arg.accept(this)
+            }
+            buffer.append(")")
+            return
+        }
         // Empty Map/Arr/List constructors use runtime helpers.
         if (objectInitExpr.positionalArgs.isEmpty()) {
             when (baseName) {
@@ -1710,6 +1795,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
         knownValueTypes[variableDecl.name.value] = typeName
+        // ARC: track class-typed locals for scope-end release.
+        if (userClassNames.contains(typeName)) {
+            arcClassLocals.add(variableDecl.name.value to typeName)
+        }
         appendIndented("")
         variableDecl.type.accept(this)
         buffer.append(" ")
@@ -1730,6 +1819,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 "List" -> buffer.append("List_empty()")
                 else -> buffer.append("Arr_empty()")
             }
+        } else if (userClassNames.contains(typeName)) {
+            // Uninitialized class-typed local: null-init so scope-end release is safe.
+            buffer.append(" = null")
         }
         buffer.appendLine(";")
     }
@@ -1789,9 +1881,21 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine()
         appendIndentedLine("{")
         indentLevel++
+        val savedArc = arcClassLocals.toList()
+        arcClassLocals.clear()
         functionDecl.def.body!!.forEach { it.accept(this) }
+        // ARC: release class-typed locals unless we return one (borrowed to caller).
+        // main returns Void: release before the synthesized `return 0;` so it actually runs.
+        val releaseBeforeReturn = userClassNames.contains(returnTypeName).not()
         if (functionName == "main" && returnsVoid) {
+            if (releaseBeforeReturn) emitArcReleases()
             appendIndentedLine("return 0;")
+        } else {
+            if (releaseBeforeReturn) {
+                emitArcReleases()
+            } else {
+                arcClassLocals.clear()
+            }
         }
         indentLevel--
         appendIndentedLine("}")
@@ -1857,13 +1961,58 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             method.def.parameters.forEach { param ->
                 knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
             }
+            val savedArc = arcClassLocals.toList()
+            arcClassLocals.clear()
             currentMethodClass = className
             method.def.body?.forEach { it.accept(this) }
             currentMethodClass = null
+            // ARC: release class-typed locals unless we return one (borrowed to caller).
+            if (!userClassNames.contains(returnTypeName)) {
+                emitArcReleases()
+            } else {
+                arcClassLocals.clear()
+            }
             // Drop param locals so they don't leak
             method.def.parameters.forEach { param ->
                 knownValueTypes.remove(param.name.value)
             }
+            indentLevel--
+            appendIndentedLine("}")
+            buffer.appendLine()
+        }
+
+        // ARC factory: Class_new(field args...) -> heap-allocated Class* with RC=1
+        if (!fields.isEmpty()) {
+            appendIndented("simple ")
+            buffer.append(mapTypeName(className))
+            buffer.append(" ")
+            buffer.append(className)
+            buffer.append("_new(")
+            fields.forEachIndexed { i, field ->
+                if (i > 0) buffer.append(", ")
+                buffer.append(mapTypeName(typeNameOf(field.type)))
+                buffer.append(" ")
+                buffer.append(field.name.value)
+            }
+            buffer.appendLine(")")
+            appendIndentedLine("{")
+            indentLevel++
+            appendIndented("")
+            buffer.append(mapTypeName(className))
+            buffer.append(" self = (")
+            buffer.append(className)
+            buffer.append("*)kira_rc_alloc(sizeof(")
+            buffer.append(className)
+            buffer.append("));")
+            buffer.appendLine()
+            fields.forEach { field ->
+                appendIndented("self->")
+                buffer.append(field.name.value)
+                buffer.append(" = ")
+                buffer.append(field.name.value)
+                buffer.appendLine(";")
+            }
+            appendIndentedLine("return self;")
             indentLevel--
             appendIndentedLine("}")
             buffer.appendLine()
