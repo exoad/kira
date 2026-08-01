@@ -416,6 +416,77 @@ class ParserSuiteTest {
         )
     }
 
+    // --- generics and the closing-angle-bracket parity ---------------------------
+
+    @Test
+    fun nestedGenericsParseDeepOnLegacyBackend() {
+        // The C++ `>>` problem, legacy side: conservative single-'>' lexing
+        // means arbitrarily deep generic nesting parses (three adjacent closers).
+        val ast = parseModule(
+            """
+            fx main: () Void {
+                a: Arr<Arr<Arr<Int32>>> = [[[1]]]
+                b: Arr<Arr<Arr<Arr<Int32>>>> = [[[[1]]]]
+            }
+            """
+        )
+        assertTrue(exprsOf(ast).any { it is FunctionDecl }, "deep generic program should parse")
+    }
+
+    @Test
+    fun nestedGenericsRejectedByAntlrBackend() {
+        // Pinned gap: the ANTLR lexer greedily lexes '>>' as one OP_SHR token,
+        // but the parser grammar only accepts GT to close a typeArguments list.
+        // So `Arr<Arr<Int32>>` fails on the ANTLR gate while the legacy parser
+        // accepts it. A fix to KiraAntlrLexer (emit GT GT) flips this test.
+        val source = module(
+            """
+            fx main: () Void {
+                a: Arr<Arr<Int32>> = [[1]]
+            }
+            """
+        )
+        assertThrows<Throwable>("ANTLR should reject nested generics today") {
+            parse(source, ParserBackend.ANTLR)
+        }
+    }
+
+    @Test
+    fun singleLevelGenericsAndComparisonsWorkOnBothBackends() {
+        val source = module(
+            """
+            fx main: () Void {
+                a: Arr<Int32> = [1]
+                b: Bool = a.size() > 0
+                c: Bool = a.size() >= 1
+                d: Bool = a.size() < 2
+            }
+            """
+        )
+        for (backend in ParserBackend.entries) {
+            parse(source, backend)
+        }
+    }
+
+    @Test
+    fun genericCallsWithExplicitTypeArgumentsWorkOnBothBackends() {
+        val source = module(
+            """
+            fx id<T>: (v: T) T {
+                return v
+            }
+
+            fx main: () Void {
+                x: Int32 = id<Int32>(1)
+                s: Str = id<Str>("a")
+            }
+            """
+        )
+        for (backend in ParserBackend.entries) {
+            parse(source, backend)
+        }
+    }
+
     @Test
     fun parsesIntrinsicCalls() {
         parseModule(

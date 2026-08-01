@@ -69,6 +69,23 @@ carries a comment naming the gap. Current set:
 - **Bare `return`, nullable `?`, `this`, lambdas, `initially`/`finally`
   blocks are rejected** (`ParserSuiteTest` boundary tests): grammar surface
   that the ANTLR grammar declares but the legacy parser does not implement yet.
+- **ANTLR rejects nested generics that close with `>>`** (`ParserSuiteTest`,
+  `nestedGenericsRejectedByAntlrBackend`): the ANTLR lexer greedily lexes
+  `>>` as one `OP_SHR` token, but the parser grammar only accepts `GT` to
+  close a `typeArguments` list. The classic C++ pre-11 `> >` problem: the
+  legacy backend solved it with conservative single-`>` lexing (verified by
+  `LexerSuiteTest.nestedGenericClosersLexAsIndividualAngles` and
+  `ParserSuiteTest.nestedGenericsParseDeepOnLegacyBackend`), but the ANTLR
+  gate has not. Single-level generics, comparisons next to generics, and
+  explicit type-argument calls all work on both backends.
+- **Generic call return types are not threaded into print format**
+  (`CodegenSuiteTest`,
+  `genericCallReturnTypeNotThreadedIntoPrintFormat`): monomorphization emits
+  `id_Str`/`id_Int64` correctly, but the print-format heuristic at the call
+  site falls back to `%d` for every generic call. Int32 works by luck;
+  `id<Int64>(x)` prints wrong, `id<Str>(x)` prints a pointer as a number
+  (`RuntimeSuiteTest.genericIdentityInstantiatesAcrossNumericTypes` covers
+  the %d-safe happy path).
 
 The older tests in `src/test/kotlin/net/exoad/kira/` and
 `src/test/kotlin/net/exoad/tests/kira/` (parser smoke, stdlib lowering, trait
