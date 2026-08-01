@@ -43,7 +43,9 @@ field stores are borrowed (no retain); copies/args not retained.
 
 ### M4 -- Tooling hardness
 
-- [ ] Mangling default-on (preserve `main` + extern names); demos opt out
+- [x] Mangling default-on (preserve `main` + extern names); demos opt out
+      -- done as user-layer minify+obfuscate (prelude stays readable;
+      `--readable` / `build.minify: false` to opt out)
 - [ ] Diagnostics collector (less process panic)
 - [ ] LSP hover / go-to-def (after symbols are stable)
 

@@ -38,8 +38,10 @@ private fun applyTargetOverride(target: String) {
 
 fun main(args: Array<String>) {
     // Minimal CLI: `kira --target js|c|neko|none` overrides build.target from
-    // kira.yaml. Nothing else is read today; the compiler is cwd-driven.
+    // kira.yaml; `--readable` emits pretty (non-minified) output. Nothing else
+    // is read today; the compiler is cwd-driven.
     var targetOverride: String? = null
+    var readableOverride = false
     var i = 0
     while (i < args.size) {
         when (args[i]) {
@@ -50,8 +52,12 @@ fun main(args: Array<String>) {
                 targetOverride = args[i + 1].lowercase()
                 i += 2
             }
+            "--readable" -> {
+                readableOverride = true
+                i += 1
+            }
             "--help", "-h" -> {
-                println("Usage: kira [--target c|js|neko|none]")
+                println("Usage: kira [--target c|js|neko|none] [--readable]")
                 kotlin.system.exitProcess(0)
             }
             else -> Diagnostics.panic("Unknown argument '${args[i]}' (try --help)")
@@ -100,6 +106,13 @@ fun main(args: Array<String>) {
         } else if (targetOverride != null) {
             // No manifest: the flag is the only target source.
             applyTargetOverride(targetOverride!!)
+        }
+
+        // Minified + obfuscated output is the default; `build.minify: false`
+        // in kira.yaml, or the --readable flag, restores pretty output.
+        GeneratedProvider.minifyOutput = manifest?.build?.minify ?: true
+        if (readableOverride) {
+            GeneratedProvider.minifyOutput = false
         }
 
         val stdlibEntries = DependencyResolver.resolveDependencySources(manifest, projectRoot).toMutableList()

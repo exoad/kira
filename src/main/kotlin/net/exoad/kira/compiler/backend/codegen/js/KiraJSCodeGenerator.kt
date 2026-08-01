@@ -3,7 +3,10 @@ package net.exoad.kira.compiler.backend.codegen.js
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
+import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
+import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
@@ -43,6 +46,27 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         /** Layer 1 -- Kira stdlib surface as plain JS (see js_generator.js). */
         const val TEMPLATE_FILE = "js_generator.js"
         const val DEFAULT_OUTPUT = "out.kira.js"
+        /**
+         * JS keywords + globals/builtins the codegen or runtime may reference
+         * literally (Math.*, Object.freeze, process, ...): never renamed.
+         */
+        private val JS_RESERVED = setOf(
+            "break", "case", "catch", "class", "const", "continue", "debugger",
+            "default", "delete", "do", "else", "enum", "export", "extends",
+            "false", "finally", "for", "function", "if", "import", "in",
+            "instanceof", "new", "null", "return", "super", "switch", "this",
+            "throw", "true", "try", "typeof", "var", "void", "while", "with",
+            "yield", "let", "static", "await", "async",
+            "Object", "Array", "Function", "String", "Number", "Boolean",
+            "Symbol", "BigInt", "Math", "JSON", "Date", "RegExp", "Error",
+            "Promise", "Map", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect",
+            "Intl", "ArrayBuffer", "DataView", "undefined", "NaN", "Infinity",
+            "globalThis", "process", "require", "module", "exports", "console",
+            "Buffer", "arguments", "freeze",
+            "max", "min", "abs", "floor", "ceil", "round", "sqrt", "pow",
+            "random", "trunc", "sign", "hypot", "cbrt", "clz32", "exp", "log",
+            "main",
+        )
         private lateinit var templateFileContents: String
 
         fun fetchTemplateFileContents(): String {
@@ -61,6 +85,12 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     private val buffer = StringBuilder()
+    /**
+     * User-declared identifiers the minifier may rename in the emitted user
+     * layer. Registered where codegen creates names; missing a name only
+     * leaves it readable, never breaks the build.
+     */
+    private val userSymbols = linkedSetOf<String>()
     private val discoveredMagicTypes by lazy {
         compilationUnit.collectIntrinsicMarkedTypeNames(MagicIntrinsic.name) +
             compilationUnit.allMagicTypes()
@@ -82,6 +112,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val methodsByClass = mutableMapOf<String, MutableSet<String>>()
     /** Non-magic user class names (generic templates included -- erased in JS). */
     private val userClassNames = mutableSetOf<String>()
+    /** Enum type names in the current unit -- int-like, keep direct operators. */
+    private val enumTypeNames = mutableSetOf<String>()
     private var indentLevel = 0
     private var emittingClassMembers = false
     /** True while emitting a method body -- bare field names become this.field. */
@@ -147,18 +179,73 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         }
     }
 
-    /** One-shot emit of the whole compilation unit into [outputPath]. */
+    /**
+     * One-shot emit of the whole compilation unit into [outputPath].
+     *
+     * By default the user layer (everything after the runtime prelude) is
+     * minified and obfuscated via [OutputMinifier]; the prelude stays
+     * byte-identical and readable. `GeneratedProvider.minifyOutput = false`
+     * (the `--readable` CLI flag, or `build.minify: false`) restores the
+     * pretty formatting.
+     */
     fun generate(outputPath: String = DEFAULT_OUTPUT): String {
         clean()
         val source = buildTranslationUnit()
-        File(outputPath).writeText(source)
-        return source
+        val written = if (GeneratedProvider.minifyOutput) minifyWritten(source) else source
+        File(outputPath).writeText(written)
+        return written
+    }
+
+    /** Minify + obfuscate the user layer, keeping the prelude untouched. */
+    private fun minifyWritten(source: String): String {
+        val marker = "// __KIRA_JS_PRELUDE_END__"
+        val idx = source.lastIndexOf(marker)
+        require(idx >= 0) { "JS prelude end marker not found in emitted source" }
+        val cut = idx + marker.length
+        val prelude = source.substring(0, cut)
+        val user = source.substring(cut)
+        val reserved = OutputMinifier.extractIdentifiers(fetchTemplateFileContents()) +
+            JS_RESERVED
+        val rename = OutputMinifier.buildRenameMap(collectUserSymbols(), reserved)
+        return prelude + "\n" + OutputMinifier.minify(MinifyLanguage.JS, user, rename)
+    }
+
+    /**
+     * Every identifier codegen created while emitting the user layer: user
+     * class names, method names, and field names (collected from the
+     * signature registries) plus everything registered during the walk.
+     */
+    private fun collectUserSymbols(): Set<String> {
+        userSymbols.addAll(userClassNames)
+        userSymbols.addAll(fieldTypes.keys)
+        methodsByClass.values.forEach { userSymbols.addAll(it) }
+        return userSymbols.toSet()
     }
 
     /** Build JS text without writing a file -- used by tests. */
     fun emitToString(): String {
         clean()
         return buildTranslationUnit()
+    }
+
+    /**
+     * Pre-register enum type names before the statement walk. Source order can
+     * put `main` before the enum declaration, and operator lowering must know
+     * a type is an int-like enum even before its decl is emitted.
+     */
+    private fun collectEnumTypes() {
+        emittableSources().forEach { source ->
+            source.ast.statements.forEach { stmt ->
+                val expr: Any? = when (stmt) {
+                    is EnumDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                if (expr is EnumDecl && !isMagicDecl(expr)) {
+                    enumTypeNames.add(expr.name.value)
+                }
+            }
+        }
     }
 
     private fun buildTranslationUnit(): String {
@@ -170,6 +257,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         // Ensure @_opaque / @_extern marks are registered even if semantics skipped apply().
         harvestForeignMarks()
         collectSignatures()
+        collectEnumTypes()
 
         emittableSources().forEach { source ->
             visitRootASTNode(source.ast)
@@ -374,7 +462,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
         val t = receiverTypeOf(expr) ?: return false
-        return t !in primitiveTypeNames
+        // Enum types are int-like value types: direct JS operators work and no
+        // @op_* definition is ever emitted for them.
+        return t !in primitiveTypeNames && t !in enumTypeNames
     }
 
     /** Emit a call to an operator intrinsic (`op_add(...)`, ...). */
@@ -498,11 +588,13 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     fun clean() {
         buffer.clear()
+        userSymbols.clear()
         knownValueTypes.clear()
         fieldTypes.clear()
         methodReturnTypes.clear()
         methodsByClass.clear()
         userClassNames.clear()
+        enumTypeNames.clear()
         indentLevel = 0
         emittingClassMembers = false
         currentMethodClass = null
@@ -1181,6 +1273,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (isMagicDecl(variableDecl)) {
             return
         }
+        userSymbols.add(variableDecl.name.value)
         val typeName = typeNameOf(variableDecl.type)
         val name = variableDecl.name.value
         if (emittingClassMembers) {
@@ -1239,6 +1332,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             appendIndentedLine("// @_extern $kiraName: foreign edge not supported on the JS backend yet")
             return
         }
+        userSymbols.add(kiraName)
+        functionDecl.def.parameters.forEach { userSymbols.add(it.name.value) }
         val returnTypeName = typeNameOf(functionDecl.def.returnTypeSpecifier)
         knownValueTypes[kiraName] = returnTypeName
 
@@ -1285,6 +1380,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         val defaultFields = fields.filter { field ->
             field.modifiers.none { it == Modifier.REQUIRE } && field.value != null
         }
+        userSymbols.add(className)
+        methods.forEach { userSymbols.add(functionLikeName(it.name)) }
 
         appendIndented("class ")
         buffer.append(className)
@@ -1325,6 +1422,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         methods.forEach { method ->
             if (method.isStub()) return@forEach
             val methodName = functionLikeName(method.name)
+            method.def.parameters.forEach { userSymbols.add(it.name.value) }
             appendIndented(methodName)
             buffer.append("(")
             method.def.parameters.forEachIndexed { idx, param ->
@@ -1360,6 +1458,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (isMagicDecl(enumDecl)) {
             return
         }
+        userSymbols.add(enumDecl.name.value)
+        enumTypeNames.add(enumDecl.name.value)
+        enumDecl.members.forEach { userSymbols.add(it.name.value) }
         appendIndented("const ")
         buffer.append(enumDecl.name.value)
         buffer.append(" = Object.freeze({ ")

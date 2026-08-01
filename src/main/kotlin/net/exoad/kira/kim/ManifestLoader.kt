@@ -29,6 +29,7 @@ object ManifestLoader {
         val linkFlags = buildMap?.optionalStringList("linkFlags")
             ?: buildMap?.optionalStringList("link_flags")
             ?: emptyList()
+        val minify = buildMap?.optionalBoolean("minify") ?: true
 
         val compilerMap = root.optionalMap("compiler")
         val emitIr = compilerMap?.optionalString("emitIr") ?: compilerMap?.optionalString("emit_ir")
@@ -41,7 +42,7 @@ object ManifestLoader {
         return ProjectManifest(
             project = ProjectSpec(name = projectName),
             srcDir = srcDir,
-            build = BuildOptions(target = target, cSources = cSources, linkFlags = linkFlags),
+            build = BuildOptions(target = target, cSources = cSources, linkFlags = linkFlags, minify = minify),
             compiler = CompilerOptions(emitIr = emitIr),
             dependencies = dependencies
         )
@@ -76,6 +77,19 @@ object ManifestLoader {
     private fun Map<String, Any?>.optionalMap(key: String): Map<String, Any?>? {
         val value = this[key] ?: return null
         return value.toStringKeyMap(key)
+    }
+
+    private fun Map<String, Any?>.optionalBoolean(key: String): Boolean? {
+        val value = this[key] ?: return null
+        return when (value) {
+            is Boolean -> value
+            is String -> when (value.trim().lowercase()) {
+                "true", "yes", "on", "1" -> true
+                "false", "no", "off", "0" -> false
+                else -> throw IllegalArgumentException("Field '$key' must be a boolean")
+            }
+            else -> throw IllegalArgumentException("Field '$key' must be a boolean")
+        }
     }
 
     private fun Map<String, Any?>.optionalStringList(key: String): List<String>? {

@@ -33,11 +33,19 @@ emitted C is reviewable without running the compiler:
 
 | File | Contents |
 |------|----------|
-| `0N-name/generated.user.c` | That example's lowering (post-prelude) |
-| `0N-name/expected.txt` | Exact stdout of the built binary |
-| `prelude.reference.c` | The runtime prelude — byte-identical for every example, so it is stored once |
+| `0N-name/generated.user.c` | That example's C lowering (post-prelude) |
+| `0N-name/generated.user.js` | That example's JS lowering (post-prelude) |
+| `0N-name/expected.txt` | Exact stdout of the built binary (both backends agree) |
+| `prelude.reference.c` | The C runtime prelude — byte-identical for every example, stored once |
+| `prelude.reference.js` | The JS runtime prelude — byte-identical, stored once |
 
-`out.kira.c` = `prelude.reference.c` + `generated.user.c`.
+`out.kira.c` = `prelude.reference.c` + `generated.user.c` (same split for JS).
+
+The committed `generated.user.*` files are **minified and obfuscated** by
+default (user identifiers renamed, comments stripped; `main` and foreign
+externs preserved). The prelude halves stay readable and byte-identical, which
+is what makes the single reference copy honest. To inspect a readable user
+layer, emit with `kira --readable` (or set `build.minify: false`).
 
 Refresh them after a backend change, and verify nothing drifted:
 
@@ -87,8 +95,9 @@ the output.
 examples/0N-name/
   kira.yaml          # build.target: c, stdlib -> ../../kira
   src/app/*.kira     # module URIs: "app:..."
-  generated.user.c   # committed snapshot of the emitted C
-  expected.txt       # committed stdout
+  generated.user.c   # committed snapshot of the emitted C (minified)
+  generated.user.js  # committed snapshot of the emitted JS (minified)
+  expected.txt       # committed stdout (both backends agree)
 ```
 
 Module package is always `app` so files stay easy to copy between steps.

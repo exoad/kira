@@ -21,4 +21,10 @@ object GeneratedProvider {
      */
     lateinit var outputFile: String
     var outputMode: OutputTarget = OutputTarget.NONE
+
+    /**
+     * When true (default), the user layer of generated C/JS is minified and
+     * obfuscated. Set false via `--readable` or `build.minify: false`.
+     */
+    var minifyOutput: Boolean = true
 }
