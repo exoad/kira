@@ -6,7 +6,7 @@ import TextRoller from "../components/TextRoller";
 import { strings } from "../data/strings";
 import logoImg from "../assets/logo.png";
 import OutlinedButton from "../components/Button";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useState, useRef } from "react";
 import { SiPython, SiCplusplus, SiSwift, SiDart } from "react-icons/si";
 import { FaJava } from "react-icons/fa";
