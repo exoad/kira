@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -12,7 +11,6 @@ class BackendCompilationPipelineTest {
     fun transpilesExistingSampleFileDirectlyToC() {
         val generated = TestCompileSupport.transpileFileToC(
             filePath = "test_kira/sub/test.kira",
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true
         )
 
@@ -41,7 +39,6 @@ class BackendCompilationPipelineTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 
@@ -90,7 +87,6 @@ class BackendCompilationPipelineTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 
@@ -105,7 +101,6 @@ class BackendCompilationPipelineTest {
 
         val generated = TestCompileSupport.transpileFileToC(
             filePath = "test_kira/sub/test.kira",
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true
         )
 
@@ -131,7 +126,6 @@ class BackendCompilationPipelineTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 
@@ -181,7 +175,6 @@ class BackendCompilationPipelineTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 
@@ -243,7 +236,6 @@ class BackendCompilationPipelineTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 
@@ -294,7 +286,6 @@ class BackendCompilationPipelineTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 

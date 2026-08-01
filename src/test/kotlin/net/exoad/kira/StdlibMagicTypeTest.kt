@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
@@ -21,7 +20,6 @@ class StdlibMagicTypeTest {
         val result = TestCompileSupport.compileSnippet(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true
         )
 
@@ -42,7 +40,6 @@ class StdlibMagicTypeTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 
@@ -100,7 +97,7 @@ class StdlibMagicTypeTest {
 
     /** Magic type names declared by [file] alone. */
     private fun magicTypesDeclaredIn(file: File): Set<String> {
-        val result = TestCompileSupport.compileFile(file.path, ParserBackend.LEGACY, runSemantic = false)
+        val result = TestCompileSupport.compileFile(file.path, runSemantic = false)
         val canonicalPath = file.canonicalPath
         return result.compilationUnit.collectIntrinsicMarkedTypeNames("_magic") { source ->
             source.file == canonicalPath

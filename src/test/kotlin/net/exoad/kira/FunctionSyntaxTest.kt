@@ -1,7 +1,6 @@
 package net.exoad.kira
 
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertNotNull
@@ -19,7 +18,6 @@ class FunctionSyntaxTest {
         TestCompileSupport.compileSnippet(
             source = TestCompileSupport.wrapModule(uri, body),
             logicalPath = TestCompileSupport.logicalPathForModule(uri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true
         )
 

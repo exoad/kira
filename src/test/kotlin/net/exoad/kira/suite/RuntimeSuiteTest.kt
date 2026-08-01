@@ -1,7 +1,6 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -34,7 +33,6 @@ class RuntimeSuiteTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = TestCompileSupport.wrapModule(uri, body),
             logicalPath = TestCompileSupport.logicalPathForModule(uri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false,
         )
         val result = TestCompileSupport.compileAndRunC(generated, cc)

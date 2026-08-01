@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -33,7 +32,6 @@ class ForeignEdgePipelineTest {
         val generated = TestCompileSupport.transpileSnippetToC(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
 

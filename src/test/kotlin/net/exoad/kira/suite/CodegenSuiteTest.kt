@@ -1,7 +1,6 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -20,7 +19,6 @@ class CodegenSuiteTest {
         TestCompileSupport.transpileSnippetToC(
             source = TestCompileSupport.wrapModule(uri, body),
             logicalPath = TestCompileSupport.logicalPathForModule(uri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false,
         )
 

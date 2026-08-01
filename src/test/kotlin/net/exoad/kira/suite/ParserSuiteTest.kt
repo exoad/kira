@@ -1,7 +1,6 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
@@ -20,12 +19,11 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Full parser coverage: every declaration, statement, and expression form the
- * grammar accepts, exercised through both the legacy LL(k) parser and the
- * ANTLR parser, plus malformed-program diagnostics. Forms the legacy parser
- * does not yet implement (nullable types, `this`, lambdas, bare `return`,
- * initially/finally blocks) are pinned as rejected so the surface boundary is
- * explicit.
+ * Full parser coverage for the Kotlin-native frontend (KiraLexer + KiraParser):
+ * every declaration, statement, and expression form the grammar accepts, plus
+ * malformed-program diagnostics. Unsupported surface (nullable types, `this`,
+ * lambdas, bare `return`, initially/finally blocks) is pinned as rejected so
+ * the boundary is explicit.
  */
 class ParserSuiteTest {
 
@@ -33,13 +31,11 @@ class ParserSuiteTest {
 
     private fun parse(
         source: String,
-        backend: ParserBackend = ParserBackend.LEGACY,
         logicalPath: String = "tests/parser.kira",
     ): RootASTNode {
         val result = TestCompileSupport.compileSnippet(
             source = source,
             logicalPath = logicalPath,
-            parserBackend = backend,
             runSemantic = false,
         )
         return assertNotNull(result.sourceContext.ast, "expected an AST for: $source") as RootASTNode
@@ -50,57 +46,15 @@ class ParserSuiteTest {
         $body
     """.trimIndent()
 
-    private fun parseModule(body: String, backend: ParserBackend = ParserBackend.LEGACY): RootASTNode =
-        parse(module(body), backend)
+    private fun parseModule(body: String): RootASTNode =
+        parse(module(body))
 
-    /** Top-level nodes arrive wrapped in [Statement] from the legacy parser but bare from ANTLR. */
+    /** Top-level nodes arrive wrapped in [Statement] from the parser. */
     private fun exprsOf(ast: RootASTNode): List<net.exoad.kira.compiler.frontend.parser.ast.ASTNode> =
         ast.statements.map { if (it is Statement) it.expr else it }
 
     private fun declsOf(ast: RootASTNode): List<net.exoad.kira.compiler.frontend.parser.ast.ASTNode> =
         exprsOf(ast).filter { it !is ModuleDecl }
-
-    // --- both backends -----------------------------------------------------
-
-    @Test
-    fun bothBackendsParseARealisticProgram() {
-        // The legacy lexer discards newlines, so statement separators must be
-        // explicit ';' for the ANTLR grammar to see them. Valid in both backends.
-        val source = module(
-            """
-            use "kira:core"
-
-            pub class Pet {
-                require pub name: Str;
-
-                pub fx speak: () Str {
-                    return name
-                }
-            }
-
-            fx main: () Void {
-                friend: Pet = Pet { "Mochi" };
-                if friend.name == "Mochi" {
-                    trace(friend.speak())
-                }
-            }
-            """
-        )
-        for (backend in ParserBackend.entries) {
-            val ast = parse(source, backend)
-            assertTrue(exprsOf(ast).any { it is ClassDecl }, "$backend: class not parsed")
-            assertTrue(exprsOf(ast).any { it is FunctionDecl }, "$backend: function not parsed")
-        }
-    }
-
-    @Test
-    fun bothBackendsRequireModuleFirst() {
-        for (backend in ParserBackend.entries) {
-            assertThrows<Throwable>("backend $backend should reject a module-less program") {
-                parse("fx main: () Void { }", backend)
-            }
-        }
-    }
 
     // --- declarations -------------------------------------------------------
 
@@ -116,6 +70,13 @@ class ParserSuiteTest {
     @Test
     fun parsesUseImport() {
         parseModule("""use "kira:core" """)
+    }
+
+    @Test
+    fun requiresModuleFirst() {
+        assertThrows<Throwable>("a program must start with a module declaration") {
+            parse("fx main: () Void { }")
+        }
     }
 
     @Test
@@ -238,6 +199,54 @@ class ParserSuiteTest {
             """
         )
         assertEquals(3, declsOf(ast).size)
+    }
+
+    // --- generics and the closing-angle-bracket parity ---------------------------
+
+    @Test
+    fun nestedGenericsParseDeep() {
+        // The C++ `>>` problem, solved lexically: conservative single-'>' lexing
+        // means arbitrarily deep generic nesting parses (three/four adjacent
+        // closers at once, no `> >` required).
+        val ast = parseModule(
+            """
+            fx main: () Void {
+                a: Arr<Arr<Arr<Int32>>> = [[[1]]]
+                b: Arr<Arr<Arr<Arr<Int32>>>> = [[[[1]]]]
+            }
+            """
+        )
+        assertTrue(exprsOf(ast).any { it is FunctionDecl }, "deep generic program should parse")
+    }
+
+    @Test
+    fun genericsAndComparisonsOnTheSameLine() {
+        parseModule(
+            """
+            fx main: () Void {
+                a: Arr<Int32> = [1]
+                b: Bool = a.size() > 0
+                c: Bool = a.size() >= 1
+                d: Bool = a.size() < 2
+            }
+            """
+        )
+    }
+
+    @Test
+    fun genericCallsWithExplicitTypeArguments() {
+        parseModule(
+            """
+            fx id<T>: (v: T) T {
+                return v
+            }
+
+            fx main: () Void {
+                x: Int32 = id<Int32>(1)
+                s: Str = id<Str>("a")
+            }
+            """
+        )
     }
 
     // --- statements ---------------------------------------------------------
@@ -414,77 +423,6 @@ class ParserSuiteTest {
             }
             """
         )
-    }
-
-    // --- generics and the closing-angle-bracket parity ---------------------------
-
-    @Test
-    fun nestedGenericsParseDeepOnLegacyBackend() {
-        // The C++ `>>` problem, legacy side: conservative single-'>' lexing
-        // means arbitrarily deep generic nesting parses (three adjacent closers).
-        val ast = parseModule(
-            """
-            fx main: () Void {
-                a: Arr<Arr<Arr<Int32>>> = [[[1]]]
-                b: Arr<Arr<Arr<Arr<Int32>>>> = [[[[1]]]]
-            }
-            """
-        )
-        assertTrue(exprsOf(ast).any { it is FunctionDecl }, "deep generic program should parse")
-    }
-
-    @Test
-    fun nestedGenericsRejectedByAntlrBackend() {
-        // Pinned gap: the ANTLR lexer greedily lexes '>>' as one OP_SHR token,
-        // but the parser grammar only accepts GT to close a typeArguments list.
-        // So `Arr<Arr<Int32>>` fails on the ANTLR gate while the legacy parser
-        // accepts it. A fix to KiraAntlrLexer (emit GT GT) flips this test.
-        val source = module(
-            """
-            fx main: () Void {
-                a: Arr<Arr<Int32>> = [[1]]
-            }
-            """
-        )
-        assertThrows<Throwable>("ANTLR should reject nested generics today") {
-            parse(source, ParserBackend.ANTLR)
-        }
-    }
-
-    @Test
-    fun singleLevelGenericsAndComparisonsWorkOnBothBackends() {
-        val source = module(
-            """
-            fx main: () Void {
-                a: Arr<Int32> = [1]
-                b: Bool = a.size() > 0
-                c: Bool = a.size() >= 1
-                d: Bool = a.size() < 2
-            }
-            """
-        )
-        for (backend in ParserBackend.entries) {
-            parse(source, backend)
-        }
-    }
-
-    @Test
-    fun genericCallsWithExplicitTypeArgumentsWorkOnBothBackends() {
-        val source = module(
-            """
-            fx id<T>: (v: T) T {
-                return v
-            }
-
-            fx main: () Void {
-                x: Int32 = id<Int32>(1)
-                s: Str = id<Str>("a")
-            }
-            """
-        )
-        for (backend in ParserBackend.entries) {
-            parse(source, backend)
-        }
     }
 
     @Test

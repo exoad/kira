@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -49,7 +48,6 @@ object TestCompileSupport {
     fun compileSnippet(
         source: String,
         logicalPath: String,
-        parserBackend: ParserBackend = ParserBackend.LEGACY,
         runSemantic: Boolean = false
     ): FrontendCompilationResult {
         val pre = KiraPreprocessor(source)
@@ -59,9 +57,7 @@ object TestCompileSupport {
         val tokens = KiraLexer(src).tokenize()
         val srcWithTokens = cu.addSource(logicalPath, src.content, tokens)
 
-        withParserBackend(parserBackend) {
-            KiraSourceParsers.from(srcWithTokens).parse()
-        }
+        KiraSourceParsers.from(srcWithTokens).parse()
 
         val semantics = if (runSemantic) {
             KiraSemanticAnalyzer(cu).validateAST()
@@ -74,48 +70,43 @@ object TestCompileSupport {
 
     fun compileFile(
         filePath: String,
-        parserBackend: ParserBackend = ParserBackend.LEGACY,
         runSemantic: Boolean = false
     ): FrontendCompilationResult {
         val file = File(filePath)
-        return compileSnippet(file.readText(), file.canonicalPath, parserBackend, runSemantic)
+        return compileSnippet(file.readText(), file.canonicalPath, runSemantic)
     }
 
     fun transpileSnippetToC(
         source: String,
         logicalPath: String,
-        parserBackend: ParserBackend = ParserBackend.LEGACY,
         runSemantic: Boolean = false
     ): String {
-        val result = compileSnippet(source, logicalPath, parserBackend, runSemantic)
+        val result = compileSnippet(source, logicalPath, runSemantic)
         return KiraCCodeGenerator(result.compilationUnit).emitToString()
     }
 
     fun transpileFileToC(
         filePath: String,
-        parserBackend: ParserBackend = ParserBackend.LEGACY,
         runSemantic: Boolean = false
     ): String {
-        val result = compileFile(filePath, parserBackend, runSemantic)
+        val result = compileFile(filePath, runSemantic)
         return KiraCCodeGenerator(result.compilationUnit).emitToString()
     }
 
     fun transpileSnippetToJS(
         source: String,
         logicalPath: String,
-        parserBackend: ParserBackend = ParserBackend.LEGACY,
         runSemantic: Boolean = false
     ): String {
-        val result = compileSnippet(source, logicalPath, parserBackend, runSemantic)
+        val result = compileSnippet(source, logicalPath, runSemantic)
         return KiraJSCodeGenerator(result.compilationUnit).emitToString()
     }
 
     fun transpileFileToJS(
         filePath: String,
-        parserBackend: ParserBackend = ParserBackend.LEGACY,
         runSemantic: Boolean = false
     ): String {
-        val result = compileFile(filePath, parserBackend, runSemantic)
+        val result = compileFile(filePath, runSemantic)
         return KiraJSCodeGenerator(result.compilationUnit).emitToString()
     }
 
@@ -189,19 +180,5 @@ object TestCompileSupport {
         val code = process.waitFor()
 
         return ProcessResult(code, stdout, stderr)
-    }
-
-    private inline fun <T> withParserBackend(backend: ParserBackend, block: () -> T): T {
-        val previous = System.getProperty("kira.parser")
-        System.setProperty("kira.parser", backend.name.lowercase())
-        try {
-            return block()
-        } finally {
-            if (previous == null) {
-                System.clearProperty("kira.parser")
-            } else {
-                System.setProperty("kira.parser", previous)
-            }
-        }
     }
 }

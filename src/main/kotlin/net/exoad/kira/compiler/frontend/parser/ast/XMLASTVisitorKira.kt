@@ -22,8 +22,8 @@ import java.text.SimpleDateFormat
  * spitting it out makes developing kira much easier than scrolling through a terminal sometimes
  */
 object XMLASTVisitorKira :
-    KiraASTVisitor() // having to come back here to implement members from the ASTVisitor is just idk, is it too much boilerplate?
-// antlr and stuffs already pregenerate the code and all of those "visit" functions for you which is helpful lol
+    KiraASTVisitor()
+// generated visitor boilerplate is not needed; KiraASTVisitor is hand-written in Kotlin
 {
     private val builder = StringBuilder()
     private val currentIndent = mutableListOf<String>()

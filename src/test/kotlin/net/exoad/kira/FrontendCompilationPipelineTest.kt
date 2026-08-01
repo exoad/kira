@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -26,7 +25,6 @@ class FrontendCompilationPipelineTest {
         val result = TestCompileSupport.compileSnippet(
             source = source,
             logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true
         )
 
@@ -39,30 +37,9 @@ class FrontendCompilationPipelineTest {
     }
 
     @Test
-    fun compilesInlineSampleThroughAntlrFrontend() {
-        val moduleUri = "test:frontend.antlr"
-        val source = TestCompileSupport.wrapModule(
-            moduleUri,
-            """
-            x: Int32 = 10
-            """
-        )
-
-        val result = TestCompileSupport.compileSnippet(
-            source = source,
-            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
-            parserBackend = ParserBackend.ANTLR,
-            runSemantic = false
-        )
-
-        assertNotNull(result.sourceContext.ast)
-    }
-
-    @Test
     fun compilesExistingSampleFileThroughFrontendPipeline() {
         val result = TestCompileSupport.compileFile(
             filePath = "test_kira/sub/test.kira",
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true
         )
 

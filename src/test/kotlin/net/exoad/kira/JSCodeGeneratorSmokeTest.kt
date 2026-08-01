@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -31,7 +30,6 @@ class JSCodeGeneratorSmokeTest {
         return TestCompileSupport.transpileSnippetToJS(
             source = TestCompileSupport.wrapModule(uri, body),
             logicalPath = TestCompileSupport.logicalPathForModule(uri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = false
         )
     }

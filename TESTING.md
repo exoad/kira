@@ -11,6 +11,12 @@ end-to-end runtime behavior, and the real CLI -- plus the legacy smoke tests
 that predate it. Everything is JUnit 5 + kotlin.test on the JVM; no external
 services, no network.
 
+The frontend is Kotlin-native only: `KiraLexer` + `KiraParser` are the one
+parser. The ANTLR grammar backend was removed (August 2026) -- there is no
+generated grammar, no `ParserBackend` knob, and no second parser to keep in
+sync. That deletion is what collapsed the suite's "both backends" loops into
+single-frontend coverage.
+
 ## The suite at a glance
 
 The comprehensive suite lives in
@@ -18,11 +24,11 @@ The comprehensive suite lives in
 
 | Class | Tests | What it pins |
 |-------|-------|--------------|
-| `LexerSuiteTest` | 28 | Every literal form (dec/hex/float/string), keyword table, operators (incl. the conservative `>`-group), intrinsics, underscores, comments, source positions, and every lexer error path |
-| `ParserSuiteTest` | 32 | Every declaration/statement/expression form the grammar accepts, run through **both** the legacy LL(k) parser and the ANTLR parser, plus malformed-program diagnostics and the unsupported-surface boundary |
+| `LexerSuiteTest` | 29 | Every literal form (dec/hex/float/string), keyword table, operators (incl. the conservative `>`-group), intrinsics, underscores, comments, source positions, and every lexer error path |
+| `ParserSuiteTest` | 34 | Every declaration/statement/expression form the Kotlin-native parser accepts, generics and the closing-angle-bracket parity, plus malformed-program diagnostics and the unsupported-surface boundary |
 | `SemanticSuiteTest` | 25 | Symbol declaration/resolution, scope stack, module URI validation, duplicate names, unknown types, literal/type mismatch, visibility, and `use` imports across real multi-file compilation units |
-| `CodegenSuiteTest` | 22 | Emitted C **shape**: prelude substrate + facade, ARC hooks, function/global lowering, control flow, class struct + constructor + methods, enums, monomorphized generics, trait vtables, collections, externs |
-| `RuntimeSuiteTest` | 19 | End-to-end: transpile Kira -> C, compile with the native toolchain, run the binary, assert **exact stdout** across the whole language ladder |
+| `CodegenSuiteTest` | 24 | Emitted C **shape**: prelude substrate + facade, ARC hooks, function/global lowering, control flow, class struct + constructor + methods, enums, monomorphized generics, trait vtables, collections, externs |
+| `RuntimeSuiteTest` | 21 | End-to-end: transpile Kira -> C, compile with the native toolchain, run the binary, assert **exact stdout** across the whole language ladder |
 | `CliSuiteTest` | 6 | Spawns the real `net.exoad.kira.cli.MainKt` as a subprocess on throwaway projects: manifest load, emit, diagnostics exit codes, and running the produced binary |
 
 A shared harness (`TestCompileSupport` in the parent package) drives the
@@ -67,17 +73,8 @@ carries a comment naming the gap. Current set:
   `externLowersToLiteralCNamePlaceholder`): the intended call is not yet
   generated.
 - **Bare `return`, nullable `?`, `this`, lambdas, `initially`/`finally`
-  blocks are rejected** (`ParserSuiteTest` boundary tests): grammar surface
-  that the ANTLR grammar declares but the legacy parser does not implement yet.
-- **ANTLR rejects nested generics that close with `>>`** (`ParserSuiteTest`,
-  `nestedGenericsRejectedByAntlrBackend`): the ANTLR lexer greedily lexes
-  `>>` as one `OP_SHR` token, but the parser grammar only accepts `GT` to
-  close a `typeArguments` list. The classic C++ pre-11 `> >` problem: the
-  legacy backend solved it with conservative single-`>` lexing (verified by
-  `LexerSuiteTest.nestedGenericClosersLexAsIndividualAngles` and
-  `ParserSuiteTest.nestedGenericsParseDeepOnLegacyBackend`), but the ANTLR
-  gate has not. Single-level generics, comparisons next to generics, and
-  explicit type-argument calls all work on both backends.
+  blocks are rejected** (`ParserSuiteTest` boundary tests): surface the
+  Kotlin-native parser does not implement yet.
 - **Generic call return types are not threaded into print format**
   (`CodegenSuiteTest`,
   `genericCallReturnTypeNotThreadedIntoPrintFormat`): monomorphization emits
@@ -89,9 +86,10 @@ carries a comment naming the gap. Current set:
 
 The older tests in `src/test/kotlin/net/exoad/kira/` and
 `src/test/kotlin/net/exoad/tests/kira/` (parser smoke, stdlib lowering, trait
-codegen, manifest/KIM, LSP paths, foreign-edge, function syntax, and the
-JS codegen smoke test) still run in the same `./gradlew test` gate. They are
-kept alongside the suite; new coverage belongs in `net.exoad.kira.suite`.
+codegen, manifest/KIM, LSP paths, foreign-edge, function syntax, ARC, null
+safety, and the JS codegen smoke test) still run in the same `./gradlew test`
+gate. They are kept alongside the suite; new coverage belongs in
+`net.exoad.kira.suite`.
 
 ## CI
 
