@@ -75,6 +75,50 @@ a: Int32 = 123
 
 Operators are syntax sugar over functions without the functional syntax. They provide a much more common way to express operations. For example, compare the following:
 
+### Operator Overloading (`@op_*`)
+
+When an operand is statically a **non-primitive** type (a user class, enum, opaque
+handle, or container), the operator desugars to a call on an `@op_*` intrinsic.
+Declaring a function under the same intrinsic name overloads the operator for
+that type:
+
+```
+pub class Point { require pub x: Int32; require pub y: Int32 }
+
+pub fx @op_add: (a: Point, b: Point) Point { return Point { a.x + b.x, a.y + b.y } }
+pub fx @op_neg: (a: Point) Point          { return Point { -a.x, -a.y } }
+
+fx main: () Void {
+    p1: Point = Point { 1, 2 }
+    p2: Point = Point { 3, 4 }
+    p3: Point = p1 + p2      // lowers to @op_add(p1, p2)
+    n: Point = -p1           // lowers to @op_neg(p1)
+    p1 += p2                 // lowers to p1 = @op_add(p1, p2)
+}
+```
+
+Operator intrinsics follow the same naming rules as all intrinsics: they start
+with `op_` and use underscores between words (never a bare `@add`). The
+overloadable set is exactly the operators in the tables below, mapped as:
+
+| Operator | Intrinsic | | Operator | Intrinsic |
+| :------- | :-------- | - | :------- | :-------- |
+| `+` (binary) | `@op_add` | | `==` | `@op_eq` |
+| `-` (binary) | `@op_sub` | | `!=` | `@op_neq` |
+| `*` | `@op_mul` | | `>=` | `@op_ge` |
+| `/` | `@op_div` | | `<=` | `@op_le` |
+| `%` | `@op_mod` | | `>` | `@op_gt` |
+| `#` | `@op_hash` | | `<` | `@op_lt` |
+| `&&` | `@op_and` | | `\|\|` | `@op_or` |
+| `<<` | `@op_shl` | | `>>` | `@op_shr` |
+| `>>>` | `@op_ushr` | | `^` | `@op_xor` |
+| `\|` | `@op_bitor` | | `&` | `@op_bitand` |
+| `-` (unary) | `@op_neg` | | `+` (unary) | `@op_pos` |
+| `!` | `@op_not` | | `~` | `@op_bitnot` |
+
+Syntax rather than operators -- member access `.`, range `..`, and the type
+checks `is` / `as` -- are **not** overloadable and have no intrinsic.
+
 In a language like Java, where operator-overloading is not allowed, having custom classes (e.g. a `Vector2D` type) that can support arithmetic operations can become verbose:
 
 ```java

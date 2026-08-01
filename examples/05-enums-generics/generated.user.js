@@ -1,4 +1,13 @@
 
+// module "kira:math"
+function clamp(value, lo, hi) {
+    return Math.max(lo, Math.min(value, hi));
+}
+
+function lerp(a, b, t) {
+    return (a + ((b - a) * t));
+}
+
 // module "app:box"
 class Box {
     constructor(value) {
@@ -17,7 +26,7 @@ function main() {
     const state = BuildStatus.READY;
     const wrapped = new Box(7);
     const value = id(wrapped.value);
-    if ((state == BuildStatus.READY)) {
+    if (op_eq(state, BuildStatus.READY)) {
         kira_trace(value);
     }
 }

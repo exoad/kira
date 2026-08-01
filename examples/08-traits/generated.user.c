@@ -1,4 +1,6 @@
 
+#include <math.h>
+
 typedef struct Dog Dog;
 typedef struct Cat Cat;
 
@@ -80,6 +82,8 @@ struct Speaker
     SpeakerVTable* vtable;
 };
 
+Float64 clamp(Float64 value, Float64 lo, Float64 hi);
+Float64 lerp(Float64 a, Float64 b, Float64 t);
 Str Dog_speak(Dog* this);
 Str Dog_name(Dog* this);
 Int32 Dog_loudness(Dog* this);
@@ -101,6 +105,15 @@ static SpeakerVTable Speaker_vtable_Dog = { Speaker_speak_tramp_Dog, Speaker_nam
 static Str Speaker_speak_tramp_Cat(void* self) { return Cat_speak((Cat*)self); }
 static Str Speaker_name_tramp_Cat(void* self) { return Cat_name((Cat*)self); }
 static SpeakerVTable Speaker_vtable_Cat = { Speaker_speak_tramp_Cat, Speaker_name_tramp_Cat };
+/* module kira:math */
+Float64 clamp(Float64 value, Float64 lo, Float64 hi)
+{
+    return fmax(lo, fmin(value, hi));
+}
+Float64 lerp(Float64 a, Float64 b, Float64 t)
+{
+    return (a + ((b - a) * t));
+}
 /* module app:animals */
 Void announce(Speaker s)
 {

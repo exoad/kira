@@ -329,10 +329,10 @@ class KiraParser(private val context: SourceContext) {
             Token.Type.K_BREAK -> parseBreakStatement()
             Token.Type.K_CONTINUE -> parseContinueStatement()
             // Leading known decl intrinsics (@_opaque / @_extern / @_magic) before pub/class/fx.
-            // Unknown @foo(...) stays an expression statement (see TestBroken dummy intrinsic).
+            // Callable intrinsics (@op_add, @_trace_) parse as expression statements.
             Token.Type.INTRINSIC_IDENTIFIER -> {
                 val raw = peek().content.removePrefix("@")
-                if (IntrinsicRegistry.find(raw) != null) {
+                if (IntrinsicRegistry.isDeclMarker(raw)) {
                     parseWithModifiers()
                 } else {
                     val baseLocation = here()
@@ -685,22 +685,24 @@ class KiraParser(private val context: SourceContext) {
                     }
                     expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
                 }
-                val findVal = null // IntrinsicRegistry.entries.find { it.rep == identifier }
-                return NoExpr
-//                return when (findVal != null) {
-////                    true -> putOrigin(
-////                        IntrinsicExpr(findVal, startLoc.toLocationFromContext(context), parameters),
-////                        startLoc
-////                    )
-//
-//                    else -> Diagnostics.panic(
-//                        "KiraParser::parsePrimaryExpr",
-//                        "An intrinsic named '${identifier}' does not exist.",
-//                        location = startLoc,
-//                        selectorLength = identifier.length,
-//                        context = context
-//                    )
-//                }
+                val findVal = IntrinsicRegistry.find(identifier)
+                return when (findVal != null) {
+                    true -> putOrigin(
+                        IntrinsicExpr(
+                            findVal,
+                            startLoc.toLocationFromContext(context),
+                            parameters
+                        ), startLoc
+                    )
+
+                    else -> Diagnostics.panic(
+                        "KiraParser::parsePrimaryExpr",
+                        "An intrinsic named '@$identifier' does not exist.",
+                        location = startLoc,
+                        selectorLength = identifier.length,
+                        context = context
+                    )
+                }
             }
 
             Token.Type.K_WITH -> parseWithExpr()
@@ -840,41 +842,28 @@ class KiraParser(private val context: SourceContext) {
     }
 
     fun parseIntrinsicExpr(isFunctionContext: Boolean = false): Expr {
-//        val startLoc = peek().canonicalLocation
-//        val identifier = peek().content
-//        // intrinsic identifiers are lexed as INTRINSIC_IDENTIFIER by the lexer
-//        expectThenAdvance(Token.Type.INTRINSIC_IDENTIFIER)
-//        var parameters: List<Expr>? = null
-//        if (!isFunctionContext && at(Token.Type.S_OPEN_PARENTHESIS)) {
-//            parameters = mutableListOf()
-//            expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-//            while (!at(Token.Type.S_CLOSE_PARENTHESIS) && !at(Token.Type.S_EOF)) {
-//                if (parameters.isNotEmpty()) {
-//                    expectThenAdvance(Token.Type.S_COMMA)
-//                }
-//                parameters.add(parsePrimaryWithIndexing())
-//            }
-//            expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-//        }
-//        val findVal = IntrinsicRegistry.entries.find { it.rep == identifier }
-//        return when (findVal != null) {
-//            true -> putOrigin(
-//                IntrinsicExpr(
-//                    findVal,
-//                    startLoc.toLocationFromContext(context),
-//                    parameters
-//                ), startLoc
-//            )
-//
-//            else -> Diagnostics.panic(
-//                "KiraParser::parseIntrinsicExpr",
-//                "An intrinsic named '${identifier}' does not exist.",
-//                location = startLoc,
-//                selectorLength = identifier.length,
-//                context = context
-//            )
-//        }
-        return NoExpr
+        val startLoc = peek().canonicalLocation
+        val identifier = peek().content
+        // intrinsic identifiers are lexed as INTRINSIC_IDENTIFIER by the lexer
+        expectThenAdvance(Token.Type.INTRINSIC_IDENTIFIER)
+        val findVal = IntrinsicRegistry.find(identifier)
+        return when (findVal != null) {
+            true -> putOrigin(
+                IntrinsicExpr(
+                    findVal,
+                    startLoc.toLocationFromContext(context),
+                    null
+                ), startLoc
+            )
+
+            else -> Diagnostics.panic(
+                "KiraParser::parseIntrinsicExpr",
+                "An intrinsic named '@$identifier' does not exist.",
+                location = startLoc,
+                selectorLength = identifier.length,
+                context = context
+            )
+        }
     }
 
     fun parseFunctionDeclParameters(): List<FunctionDeclParameterExpr> {
@@ -1006,8 +995,13 @@ class KiraParser(private val context: SourceContext) {
 
 
     private fun parseIdentifierExpr(modifier: Map<Modifier, SourcePosition>?): Expr {
-        if (tryCompoundAssignmentOperators(1) != null) // skip the identifier with peekoffset +1 (similar to why we also peek(1) below in the when statement
-        {
+        // Compound assignment: >>= / >>>= are multi-token (angle brackets are
+        // shared with generics), the rest are single OP_ASSIGN_* tokens. All of
+        // them must route here; parseExpr would otherwise read `a += b` as a
+        // plain BinaryExpr and silently drop the assignment.
+        if (tryCompoundAssignmentOperators(1) != null ||
+            peek(1).type in compoundAssignmentTokenTypes
+        ) {
             return parseCompoundAssignmentExpr()
         }
         return when (peek(1).type) {
@@ -1016,6 +1010,18 @@ class KiraParser(private val context: SourceContext) {
             else -> parseIdentifier()
         }
     }
+
+    private val compoundAssignmentTokenTypes = setOf(
+        Token.Type.OP_ASSIGN_MUL,
+        Token.Type.OP_ASSIGN_DIV,
+        Token.Type.OP_ASSIGN_ADD,
+        Token.Type.OP_ASSIGN_SUB,
+        Token.Type.OP_ASSIGN_MOD,
+        Token.Type.OP_ASSIGN_BIT_XOR,
+        Token.Type.OP_ASSIGN_BIT_SHL,
+        Token.Type.OP_ASSIGN_BIT_OR,
+        Token.Type.OP_ASSIGN_BIT_AND,
+    )
 
     fun parseUseStatement(): Statement {
         val origin = here()

@@ -358,7 +358,10 @@ class JSCodeGeneratorSmokeTest {
             """,
             "test:js.skip"
         )
-        assertFalse(generated.contains("module \"kira:"), generated)
+        // The runtime prelude ships exactly once from the runtime file.
+        // Kira-written stdlib bodies (e.g. kira:math clamp/lerp) are emitted
+        // like user code, so a kira:* module comment is expected noise.
+        assertEquals(1, generated.split("__KIRA_JS_PRELUDE_END__").size - 1, generated)
         assertTrue(generated.contains("kira_trace("), generated)
     }
 }

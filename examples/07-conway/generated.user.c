@@ -1,4 +1,6 @@
 
+#include <math.h>
+
 typedef struct Grid Grid;
 
 struct Grid
@@ -101,11 +103,22 @@ simple Grid* Grid_new(Int32 width, Int32 height, Arr cells)
     return self;
 }
 
+Float64 clamp(Float64 value, Float64 lo, Float64 hi);
+Float64 lerp(Float64 a, Float64 b, Float64 t);
 Int32 Grid_countNeighbors(Grid* this, Int32 row, Int32 col);
 Void Grid_step(Grid* this);
 Void Grid_printGrid(Grid* this);
 Int32 main(Void);
 
+/* module kira:math */
+Float64 clamp(Float64 value, Float64 lo, Float64 hi)
+{
+    return fmax(lo, fmin(value, hi));
+}
+Float64 lerp(Float64 a, Float64 b, Float64 t)
+{
+    return (a + ((b - a) * t));
+}
 /* module app:grid */
 /* module app:main */
 /* use app:grid */

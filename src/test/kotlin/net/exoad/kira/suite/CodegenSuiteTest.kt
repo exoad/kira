@@ -152,9 +152,9 @@ class CodegenSuiteTest {
     }
 
     @Test
-    fun compoundAssignmentsAreCurrentlyEmittedAsDiscardedExpressions() {
-        // Known lowering gap, pinned: `a += 2` currently emits `(a + 2);`
-        // which discards the result. A fix should make this test fail.
+    fun compoundAssignmentsEmitRealStores() {
+        // `a += 2` must lower to a real store, not the old discarded
+        // `(a + 2);` expression. Primitives keep the native compound op.
         val output = emit(
             """
             fx main: () Void {
@@ -163,8 +163,8 @@ class CodegenSuiteTest {
             }
             """
         )
-        assertTrue(output.contains("(a + 2);"), output)
-        assertFalse(output.contains("a = (a + 2);"), output)
+        assertTrue(output.contains("a += 2;"), output)
+        assertFalse(output.contains("(a + 2);"), output)
     }
 
     // --- classes and methods ---------------------------------------------------
