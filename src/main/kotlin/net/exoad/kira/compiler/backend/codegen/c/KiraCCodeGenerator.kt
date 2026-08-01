@@ -1198,13 +1198,19 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun mapIntrinsicName(rawName: String): String {
         val canonical = rawName.removePrefix("@").trim('_').lowercase()
-        // Only rewrite known intrinsics; user functions keep their original casing.
-        return CIntrinsicsTable.resolveFunctionOrNull(canonical) ?: rawName.removePrefix("@")
+        // Magic names resolve through the loaded binding manifest first; the
+        // intrinsic table remains as a fallback for unbound names (print family
+        // is handled before this point, so it never arrives here in practice).
+        return CMagicBindingTable.resolveFunctionOrNull(canonical)
+            ?: CIntrinsicsTable.resolveFunctionOrNull(canonical)
+            ?: rawName.removePrefix("@")
     }
 
     private fun includeForIntrinsic(rawName: String) {
         val canonical = rawName.removePrefix("@").trim('_').lowercase()
-        requiredIncludes.addAll(CIntrinsicsTable.resolveIncludes(canonical))
+        val includes = CMagicBindingTable.includesOrNull(canonical)
+            ?: CIntrinsicsTable.resolveIncludes(canonical)
+        requiredIncludes.addAll(includes)
     }
 
     private fun mapTypeName(typeName: String): String {

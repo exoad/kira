@@ -1,0 +1,9 @@
+# Magic binding manifest for kira:io (C backend).
+#
+# print / println / eprint / trace are NOT bindable here: their format string
+# is synthesized from the Kira argument type at each call site, so they stay a
+# codegen intrinsic (isPrintLike / emitPrintCall) rather than a fixed symbol.
+# assert is a plain symbol binding -- and it must keep pointing at the prelude
+# helper, not C's one-argument assert macro, because Kira's form takes a
+# message argument too.
+assert: { symbol: kira_assert }
