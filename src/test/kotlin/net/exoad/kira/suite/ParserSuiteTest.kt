@@ -430,8 +430,8 @@ class ParserSuiteTest {
         parseModule(
             """
             fx main: () Void {
-                @__dummy__("hello")
-                trace("plain")
+                @op_add(1, 2)
+                @_trace_("plain")
             }
             """
         )

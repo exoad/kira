@@ -1,4 +1,6 @@
 
+#include <math.h>
+
 typedef struct Point Point;
 typedef struct Rectangle Rectangle;
 typedef struct Pet Pet;
@@ -64,10 +66,21 @@ simple Pet* Pet_new(Str name, Str sound)
     return self;
 }
 
+Float64 clamp(Float64 value, Float64 lo, Float64 hi);
+Float64 lerp(Float64 a, Float64 b, Float64 t);
 Int32 main(Void);
 Int32 Rectangle_perimeter(Rectangle* this);
 Str Pet_speak(Pet* this);
 
+/* module kira:math */
+Float64 clamp(Float64 value, Float64 lo, Float64 hi)
+{
+    return fmax(lo, fmin(value, hi));
+}
+Float64 lerp(Float64 a, Float64 b, Float64 t)
+{
+    return (a + ((b - a) * t));
+}
 /* module app:main */
 /* use app:model */
 Int32 main(Void)

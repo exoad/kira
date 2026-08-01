@@ -1,7 +1,12 @@
 module "kira:math"
 
-// Scalar math. Every entry lowers to the matching `<math.h>` call, so the
-// backend adds the include on first use (see CIntrinsicsTable).
+// Scalar math.
+//
+// The @_magic entries below lower to the matching `<math.h>` call, so the
+// backend adds the include on first use (see kira/math.bind.yaml). The
+// non-magic functions at the bottom are the stdlib written in Kira itself:
+// they have real bodies compiled like user code, built on top of the magic
+// surface (clamp/lerp are min/max in disguise).
 
 pub @_magic fx sqrt: (value: Float64) Float64;
 pub @_magic fx pow: (base: Float64, exponent: Float64) Float64;
@@ -14,3 +19,11 @@ pub @_magic fx tan: (value: Float64) Float64;
 pub @_magic fx abs: (value: Float64) Float64;
 pub @_magic fx min: (a: Float64, b: Float64) Float64;
 pub @_magic fx max: (a: Float64, b: Float64) Float64;
+
+pub fx clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
+    return max(lo, min(value, hi))
+}
+
+pub fx lerp: (a: Float64, b: Float64, t: Float64) Float64 {
+    return a + (b - a) * t
+}

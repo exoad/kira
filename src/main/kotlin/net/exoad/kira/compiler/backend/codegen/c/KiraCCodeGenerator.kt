@@ -3,17 +3,21 @@ package net.exoad.kira.compiler.backend.codegen.c
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.source.SourceContext
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Baseline C backend.
@@ -38,9 +42,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         fun fetchBundleFileContents(): String {
             if (!::bundleFileContents.isInitialized) {
+                // The stdlib owns its runtime: kira/c/ sits next to the modules
+                // (see StdlibLayout). Resources remain a fallback for packaged jars.
+                val fromStdlib = StdlibLayout.cFile(BUNDLE_FILE)
                 val resource = Public::class.java.getResource("/$BUNDLE_FILE")
                     ?: Public::class.java.getResource(BUNDLE_FILE)
-                bundleFileContents = resource?.readText()
+                bundleFileContents = fromStdlib?.let { Files.readString(it) }
+                    ?: resource?.readText()
                     ?: File("src/main/resources/$BUNDLE_FILE").readText()
             }
             return bundleFileContents
@@ -48,9 +56,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         fun fetchTemplateFileContents(): String {
             if (!::templateFileContents.isInitialized) {
+                val fromStdlib = StdlibLayout.cFile(TEMPLATE_FILE)
                 val resource = Public::class.java.getResource("/$TEMPLATE_FILE")
                     ?: Public::class.java.getResource(TEMPLATE_FILE)
-                templateFileContents = resource?.readText()
+                templateFileContents = fromStdlib?.let { Files.readString(it) }
+                    ?: resource?.readText()
                     ?: File("src/main/resources/$TEMPLATE_FILE").readText()
             }
             return templateFileContents
@@ -461,10 +471,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         emitTraitTables()
         emitSpecializedFunctionBodies()
 
-        compilationUnit.allSources().forEach { source ->
-            if (shouldSkipSource(source)) {
-                return@forEach
-            }
+        emittableSources().forEach { source ->
             visitRootASTNodeSkippingTypes(source.ast)
         }
 
@@ -1015,8 +1022,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun emitFunctionPrototypes() {
         val prototypes = linkedSetOf<String>()
-        compilationUnit.allSources().forEach { source ->
-            if (shouldSkipSource(source)) return@forEach
+        emittableSources().forEach { source ->
             collectFunctionPrototypes(source.ast, prototypes)
         }
         if (prototypes.isEmpty()) return
@@ -1167,6 +1173,34 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // getModuleUri panics if AST is missing; treat that as skippable noise.
         val uri = runCatching { source.getModuleUri() }.getOrNull() ?: return true
         return uri == "kira:stl" || uri.startsWith("kira:")
+    }
+
+    /**
+     * True when a stdlib source carries real Kira code that must be emitted.
+     *
+     * `@_magic` declarations are typechecker-only signatures (the runtime
+     * prelude defines them), so a stdlib module full of magic stays skipped.
+     * A module with non-magic function bodies -- the stdlib written in Kira
+     * itself -- must be walked like user code: `visitFunctionDecl` emits the
+     * body and skips the magic members.
+     */
+    private fun hasEmittableStdlibFunctions(source: SourceContext): Boolean {
+        if (!shouldSkipSource(source)) return false
+        return source.ast.statements.any { stmt ->
+            val expr: Any? = when (stmt) {
+                is FunctionDecl -> stmt
+                is Statement -> stmt.expr
+                else -> null
+            }
+            expr is FunctionDecl && !isMagicDecl(expr)
+        }
+    }
+
+    /** Sources whose declarations may contribute to the emitted program. */
+    private fun emittableSources(): List<SourceContext> {
+        return compilationUnit.allSources().filter { source ->
+            !shouldSkipSource(source) || hasEmittableStdlibFunctions(source)
+        }
     }
 
     private fun appendIndented(value: String) {
@@ -1788,6 +1822,37 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     /**
+     * Types that keep direct C operators: scalars, bools, strings, and the
+     * Any/Num roots. Anything else statically known (user classes, enums,
+     * opaque handles, containers) is a candidate for an `@op_*` overload.
+     */
+    private val primitiveTypeNames = setOf(
+        "Int8", "Int16", "Int32", "Int64",
+        "Float32", "Float64", "Bool", "Char",
+        "Str", "String", "Num", "Int", "Float", "Any"
+    )
+
+    private fun isKnownNonPrimitive(expr: Expr): Boolean {
+        val t = receiverTypeOf(expr) ?: return false
+        return t !in primitiveTypeNames
+    }
+
+    /**
+     * Emit a call to an operator intrinsic (`op_add(...)`, ...). User
+     * overloads named `@op_add` lower to the same C identifier, so an
+     * overloaded expression and a literal `@op_add(a, b)` call agree.
+     */
+    private fun emitOperatorCall(opName: String, args: List<Expr>) {
+        buffer.append(mapIntrinsicName(opName))
+        buffer.append("(")
+        args.forEachIndexed { index, arg ->
+            if (index > 0) buffer.append(", ")
+            arg.accept(this)
+        }
+        buffer.append(")")
+    }
+
+    /**
      * Check if a bare function call name is actually a method on the current class.
      * Returns the mangled method name if found, null otherwise.
      */
@@ -1980,6 +2045,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
+        val opName = OperatorIntrinsics.binaryName(binaryExpr.operator)
+        // Non-primitive operands desugar to the op_* overload. When a side's
+        // type is unknown we keep the direct C operator (status quo).
+        if (opName != null &&
+            (isKnownNonPrimitive(binaryExpr.leftExpr) || isKnownNonPrimitive(binaryExpr.rightExpr))
+        ) {
+            emitOperatorCall(opName, listOf(binaryExpr.leftExpr, binaryExpr.rightExpr))
+            return
+        }
         buffer.append("(")
         binaryExpr.leftExpr.accept(this)
         buffer.append(" ${binaryOpSymbol(binaryExpr.operator)} ")
@@ -1988,32 +2062,42 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
+        val opName = OperatorIntrinsics.unaryName(unaryExpr.operator)
+        if (opName != null && isKnownNonPrimitive(unaryExpr.operand)) {
+            emitOperatorCall(opName, listOf(unaryExpr.operand))
+            return
+        }
         buffer.append(unaryExpr.operator.symbol.rep)
         unaryExpr.operand.accept(this)
     }
 
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {
-        // Storing into a class-typed slot must release the previous occupant.
-        // kira_rc_store retains first (so `a = a` is safe); kira_rc_store_owned
-        // takes over a +1 that a constructor or callee already produced.
-        val targetType = receiverTypeOf(assignmentExpr.target)
+        storeInto(assignmentExpr.target, owned = !isBorrowedRef(assignmentExpr.value)) {
+            assignmentExpr.value.accept(this)
+        }
+    }
+
+    /**
+     * Emit `target = <value>`, routing class-typed stores through ARC helpers.
+     * [owned] says the incoming value is a fresh +1 (constructor or callee
+     * return); borrowed values (plain reads like `a = a`) go through
+     * kira_rc_store which retains first.
+     */
+    private fun storeInto(target: Expr, owned: Boolean, emitValue: () -> Unit) {
+        val targetType = receiverTypeOf(target)
         if (targetType != null && userClassNames.contains(targetType)) {
-            val helper = if (isBorrowedRef(assignmentExpr.value)) {
-                "kira_rc_store"
-            } else {
-                "kira_rc_store_owned"
-            }
+            val helper = if (owned) "kira_rc_store_owned" else "kira_rc_store"
             buffer.append(helper)
             buffer.append("((Void**)&")
-            assignmentExpr.target.accept(this)
+            target.accept(this)
             buffer.append(", ")
-            assignmentExpr.value.accept(this)
+            emitValue()
             buffer.append(")")
             return
         }
-        assignmentExpr.target.accept(this)
+        target.accept(this)
         buffer.append(" = ")
-        assignmentExpr.value.accept(this)
+        emitValue()
     }
 
     /**
@@ -2024,7 +2108,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private fun printfFormatFor(expr: Expr): String {
         return when (expr) {
             is StringLiteral -> "%s"
-            is FloatLiteral -> "%f"
+            is FloatLiteral -> "%g"
             is IntegerLiteral -> "%d"
             is FunctionCallExpr -> {
                 // Method call: name is MemberAccess
@@ -2072,7 +2156,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return when (typeName) {
             null -> "%d"
             "Str", "String" -> "%s"
-            "Float32", "Float64", "Float" -> "%f"
+            "Float32", "Float64", "Float" -> "%g"
             "Bool" -> "%d"
             // int64_t is `long` on LP64 and `long long` on LLP64; the print site
             // casts to long long so %lld is right on both.
@@ -2309,6 +2393,16 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
+        val opName = OperatorIntrinsics.binaryName(compoundAssignmentExpr.operator)
+        // a += b on a non-primitive becomes a = op_add(a, b). The call result
+        // is a fresh +1 (owned); storeInto keeps class-typed stores on ARC.
+        if (opName != null && isKnownNonPrimitive(compoundAssignmentExpr.left)) {
+            val target = compoundAssignmentExpr.left
+            storeInto(target, owned = true) {
+                emitOperatorCall(opName, listOf(target, compoundAssignmentExpr.right))
+            }
+            return
+        }
         compoundAssignmentExpr.left.accept(this)
         buffer.append(" ${binaryOpSymbol(compoundAssignmentExpr.operator)}= ")
         compoundAssignmentExpr.right.accept(this)

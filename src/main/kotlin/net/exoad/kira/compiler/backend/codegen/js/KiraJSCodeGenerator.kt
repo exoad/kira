@@ -3,18 +3,22 @@ package net.exoad.kira.compiler.backend.codegen.js
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.source.SourceContext
 import java.io.File
+import java.nio.file.Files
 
 /**
  * JavaScript backend.
@@ -43,9 +47,13 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
         fun fetchTemplateFileContents(): String {
             if (!::templateFileContents.isInitialized) {
+                // The stdlib owns its runtime: kira/js/ sits next to the modules
+                // (see StdlibLayout). Resources remain a fallback for packaged jars.
+                val fromStdlib = StdlibLayout.jsFile(TEMPLATE_FILE)
                 val resource = Public::class.java.getResource("/$TEMPLATE_FILE")
                     ?: Public::class.java.getResource(TEMPLATE_FILE)
-                templateFileContents = resource?.readText()
+                templateFileContents = fromStdlib?.let { Files.readString(it) }
+                    ?: resource?.readText()
                     ?: File("src/main/resources/$TEMPLATE_FILE").readText()
             }
             return templateFileContents
@@ -102,8 +110,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
      * the walk must still know what `shout` returns before `main` uses it).
      */
     private fun collectSignatures() {
-        compilationUnit.allSources().forEach { source ->
-            if (shouldSkipSource(source)) return@forEach
+        emittableSources().forEach { source ->
             source.ast.statements.forEach { stmt ->
                 val expr: Any? = when (stmt) {
                     is FunctionDecl -> stmt
@@ -164,10 +171,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         harvestForeignMarks()
         collectSignatures()
 
-        compilationUnit.allSources().forEach { source ->
-            if (shouldSkipSource(source)) {
-                return@forEach
-            }
+        emittableSources().forEach { source ->
             visitRootASTNode(source.ast)
         }
 
@@ -236,6 +240,31 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private fun shouldSkipSource(source: SourceContext): Boolean {
         val uri = runCatching { source.getModuleUri() }.getOrNull() ?: return true
         return uri == "kira:stl" || uri.startsWith("kira:")
+    }
+
+    /**
+     * True when a stdlib source carries real Kira code that must be emitted.
+     * `@_magic` declarations are typechecker-only signatures (the runtime
+     * prelude defines them); a stdlib module with non-magic function bodies
+     * is walked like user code so the real implementations ship in the output.
+     */
+    private fun hasEmittableStdlibFunctions(source: SourceContext): Boolean {
+        if (!shouldSkipSource(source)) return false
+        return source.ast.statements.any { stmt ->
+            val expr: Any? = when (stmt) {
+                is FunctionDecl -> stmt
+                is Statement -> stmt.expr
+                else -> null
+            }
+            expr is FunctionDecl && !isMagicDecl(expr)
+        }
+    }
+
+    /** Sources whose declarations may contribute to the emitted program. */
+    private fun emittableSources(): List<SourceContext> {
+        return compilationUnit.allSources().filter { source ->
+            !shouldSkipSource(source) || hasEmittableStdlibFunctions(source)
+        }
     }
 
     private fun isMagicDecl(decl: Decl): Boolean {
@@ -330,6 +359,33 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     private fun binaryOpSymbol(op: BinaryOp): String {
         return op.symbol.joinToString(separator = "") { it.rep.toString() }
+    }
+
+    /**
+     * Types that keep direct JS operators. Anything else statically known
+     * (user classes, enums, opaque handles, containers) is a candidate for
+     * an `@op_*` overload.
+     */
+    private val primitiveTypeNames = setOf(
+        "Int8", "Int16", "Int32", "Int64",
+        "Float32", "Float64", "Bool", "Char",
+        "Str", "String", "Num", "Int", "Float", "Any"
+    )
+
+    private fun isKnownNonPrimitive(expr: Expr): Boolean {
+        val t = receiverTypeOf(expr) ?: return false
+        return t !in primitiveTypeNames
+    }
+
+    /** Emit a call to an operator intrinsic (`op_add(...)`, ...). */
+    private fun emitOperatorCall(opName: String, args: List<Expr>) {
+        buffer.append(opName)
+        buffer.append("(")
+        args.forEachIndexed { index, arg ->
+            if (index > 0) buffer.append(", ")
+            arg.accept(this)
+        }
+        buffer.append(")")
     }
 
     /** True when an expression is statically a float-typed scalar. */
@@ -590,6 +646,16 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
         val op = binaryExpr.operator
+        // Non-primitive operands desugar to the op_* overload.
+        if (OperatorIntrinsics.binaryName(op) != null &&
+            (isKnownNonPrimitive(binaryExpr.leftExpr) || isKnownNonPrimitive(binaryExpr.rightExpr))
+        ) {
+            emitOperatorCall(
+                OperatorIntrinsics.binaryName(op)!!,
+                listOf(binaryExpr.leftExpr, binaryExpr.rightExpr)
+            )
+            return
+        }
         // Kira int / int is integer division (C truncates toward zero); JS /
         // is float division, so non-float operands must be truncated.
         if (op == BinaryOp.DIV &&
@@ -611,6 +677,11 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
+        val opName = OperatorIntrinsics.unaryName(unaryExpr.operator)
+        if (opName != null && isKnownNonPrimitive(unaryExpr.operand)) {
+            emitOperatorCall(opName, listOf(unaryExpr.operand))
+            return
+        }
         buffer.append(unaryExpr.operator.symbol.rep)
         unaryExpr.operand.accept(this)
     }
@@ -815,6 +886,15 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
+        val opName = OperatorIntrinsics.binaryName(compoundAssignmentExpr.operator)
+        // a += b on a non-primitive becomes a = op_add(a, b).
+        if (opName != null && isKnownNonPrimitive(compoundAssignmentExpr.left)) {
+            val target = compoundAssignmentExpr.left
+            target.accept(this)
+            buffer.append(" = ")
+            emitOperatorCall(opName, listOf(target, compoundAssignmentExpr.right))
+            return
+        }
         // Same integer-division rule as visitBinaryExpr: /= on int operands
         // must truncate. Emitted as an explicit assignment (left twice; fine
         // for identifier targets, the shape the language actually uses).

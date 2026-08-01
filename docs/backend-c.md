@@ -208,6 +208,13 @@ Lowering policy:
 4. Do not invent a Kira SSA optimizer; keep semantics in the frontend and
    dumb-but-correct C in the backend.
 
+**Operator overloading** desugars in the frontend-facing rule set: when a
+binary/unary/compound operator has a statically non-primitive operand, it
+lowers to a call on the matching `@op_*` intrinsic (`a + b` → `op_add(a, b)`,
+`a += b` → `a = op_add(a, b)`). Primitives keep the native C operator. User
+overloads are ordinary functions declared as `fx @op_add: ...`; the JS
+backend mirrors the same desugar for parity.
+
 Two magic families are **not** manifest-bindable, on purpose:
 
 - **Print family** (`trace` / `print` / `println` / `eprint`) synthesizes its

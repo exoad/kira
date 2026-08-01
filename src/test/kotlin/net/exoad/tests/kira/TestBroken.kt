@@ -50,7 +50,7 @@ class TestBroken {
             """
             module "test:mod/submod"
 
-            @__dummy__("Hello World")
+            @op_add(1, 2)
             """.trimIndent()
         )
         assertNotNull(ast)

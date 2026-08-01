@@ -1,8 +1,21 @@
 
+#include <math.h>
+
+Float64 clamp(Float64 value, Float64 lo, Float64 hi);
+Float64 lerp(Float64 a, Float64 b, Float64 t);
 Int32 first(Arr values);
 Int32 main(Void);
 Bool hasAny(Map values);
 
+/* module kira:math */
+Float64 clamp(Float64 value, Float64 lo, Float64 hi)
+{
+    return fmax(lo, fmin(value, hi));
+}
+Float64 lerp(Float64 a, Float64 b, Float64 t)
+{
+    return (a + ((b - a) * t));
+}
 /* module app:arrays */
 Int32 first(Arr values)
 {
