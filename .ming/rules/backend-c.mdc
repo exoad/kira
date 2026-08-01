@@ -19,6 +19,12 @@ The emitted artifact is one ISO C17 translation unit, three layers:
   emit unless gated and documented.
 - The prelude is byte-identical for every example; `regenerate.sh` verifies
   that invariant. A per-example difference is a bug, not a feature.
+- Generated user code is **minified + obfuscated by default** (`OutputMinifier`):
+  the prelude stays readable, the user layer loses comments/whitespace and
+  gets user identifiers renamed. `main`, `@_extern` symbols, and `@_opaque`
+  names are never renamed. `kira --readable` / `build.minify: false` restore
+  the pretty form. Changes to OutputMinifier.kt require regenerating snapshots
+  (see snapshots rule).
 - `KiraSlot` is the uniform 64-bit erased element: integer, Bool, or pointer
   cast through `intptr_t`. Float elements are intentionally unsupported.
 - `Str` producers return freshly malloc'd storage and are never freed today

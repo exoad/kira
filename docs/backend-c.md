@@ -43,8 +43,9 @@ composed symbols. Kira copies that *structure* (not the abandoned half-emit):
 
 **Why:** further generation stays natural -- helpers and a future **name
 mangler** retarget layer-0 / layer-1 *names* without reshaping control flow.
-Readable Jack-facing names stay on layer 1 for demos; release builds can mangle
-layer 0+ symbols by default later (preserve `main` / explicit exports).
+Readable Jack-facing names stay on layer 1 for demos; the **user layer** is
+minified and obfuscated by default today (see "Minified + obfuscated output"),
+while the prelude stays readable and byte-identical.
 
 Every example in the ladder commits its own lowering as `generated.user.c`
 (layer 2) alongside one shared `examples/prelude.reference.c` (layers 0+1), so
@@ -52,6 +53,34 @@ the emitted C is reviewable in a diff. `./examples/regenerate.sh --check`
 fails when a snapshot or an example's stdout drifts.
 [examples/c-as-ir/](../examples/c-as-ir/) walks through those snapshots
 construct by construct.
+
+---
+
+## Minified + obfuscated output
+
+Generated user code (both backends) is **minified and obfuscated by default**:
+comments and insignificant whitespace are stripped, and every user-declared
+identifier (functions, classes, methods, fields, locals, enum names and
+members, mangled method names, specialization names) is renamed to a short
+deterministic name. `main` stays `main`; `@_extern` C symbols and `@_opaque`
+types are never renamed, so the foreign edge is untouched.
+
+The runtime prelude (layers 0+1 for C, the JS prelude) is **not** minified: it
+is the shared runtime, stays byte-identical across examples, and is what
+`regenerate.sh` splits on. Only the user layer is compressed.
+
+Control:
+
+- `kira --readable` (or `--target c --readable`) restores the pretty
+  Jack-style formatting for inspection.
+- `build.minify: false` in `kira.yaml` makes readable output the default for
+  that project.
+
+The pass is a deterministic tokenizer (`OutputMinifier`): tokens are never
+merged (operator combinations like `- -` or `/ *` get a separating space), so
+the minified artifact lexes to the same token stream and behaves identically.
+Example snapshots commit the minified user layer, so `regenerate.sh --check`
+still guards drift.
 
 ---
 
@@ -256,12 +285,14 @@ shared type names, etc.).
 export PATH="$(pwd)/build/install/kira/bin:$PATH"
 
 cd my-project    # directory with kira.yaml
-kira             # writes out.kira.c
+kira             # writes out.kira.c (minified + obfuscated user layer)
+kira --readable  # same, but pretty Jack-style formatting
 cc -std=c17 -O2 -o app out.kira.c
 ./app
 ```
 
-- Manifest: `build.target: c` (or `native` → same emit).
+- Manifest: `build.target: c` (or `native` → same emit);
+  `build.minify: false` disables minification for the project.
 - Output file: `out.kira.c` (gitignored).
 - LSP (`kira-lsp`) shares the frontend only; it does not emit C.
 
@@ -304,8 +335,9 @@ Ordered for this backend; not a Neko plan.
      to a temporary before dispatch.
 2. **Variants** -- tagged union lowering (currently skipped in emit).
 3. **Generic traits** -- lower user `trait T<X>` the way user generics monomorphize.
-4. **Name mangler (default on)** -- rename layer-0/1 hooks + user symbols;
-   keep `main` / exports; seedable; `compiler.mangle: false` for demos.
+4. **Name mangler (default on)** -- user-layer minify+obfuscate is done and
+   default-on (`OutputMinifier`); remaining work is mangling layer-0/1 prelude
+   hooks and a seedable rename, with `main` / externs always preserved.
 5. **More of the stdlib** -- only what we can lower honestly (real Str
    helpers). The stdlib is now split per concern under `kira/`, so growth lands
    in `core.kira` / `collections.kira` / ... rather than one file.

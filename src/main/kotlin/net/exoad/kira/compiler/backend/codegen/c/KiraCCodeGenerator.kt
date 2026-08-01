@@ -3,7 +3,10 @@ package net.exoad.kira.compiler.backend.codegen.c
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
+import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
+import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
@@ -37,6 +40,16 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         /** Layer 1 -- Kira facade types + thin Arr/Map runtime. */
         const val TEMPLATE_FILE = "c_generator.c"
         const val DEFAULT_OUTPUT = "out.kira.c"
+        /** C keywords: never renamed by the minifier. */
+        private val C_KEYWORDS = setOf(
+            "auto", "break", "case", "char", "const", "continue", "default", "do",
+            "double", "else", "enum", "extern", "float", "for", "goto", "if",
+            "inline", "int", "long", "register", "restrict", "return", "short",
+            "signed", "sizeof", "static", "struct", "switch", "typedef", "union",
+            "unsigned", "void", "volatile", "while", "_Bool", "_Complex",
+            "_Imaginary", "_Alignas", "_Alignof", "_Atomic", "_Generic",
+            "_Noreturn", "_Static_assert", "_Thread_local",
+        )
         private lateinit var bundleFileContents: String
         private lateinit var templateFileContents: String
 
@@ -68,6 +81,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private val buffer = StringBuilder()
+    /**
+     * User-declared identifiers that the minifier may rename in the emitted
+     * user layer. Registered at the exact points where codegen creates names,
+     * so the set is always precisely what was emitted (missing a name only
+     * leaves it readable -- never breaks the build).
+     */
+    private val userSymbols = linkedSetOf<String>()
     private val requiredIncludes = linkedSetOf<String>()
     private val discoveredMagicTypes by lazy {
         compilationUnit.collectIntrinsicMarkedTypeNames(MagicIntrinsic.name) +
@@ -82,6 +102,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
     /** Simple name -> Kira type name for print-format heuristics in the current unit. */
     private val knownValueTypes = mutableMapOf<String, String>()
+    /** Enum type names in the current unit -- int-like, keep direct operators. */
+    private val enumTypeNames = mutableSetOf<String>()
     /**
      * Simple name -> Kira type arguments of a container-typed value
      * (`entries: Map<Str, Int32>` records `[Str, Int32]`).
@@ -417,12 +439,59 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     /**
      * One-shot emit of the whole compilation unit into [outputPath].
      * Returns the generated C source (also written to disk).
+     *
+     * By default the user layer (everything after the runtime prelude) is
+     * minified and obfuscated via [OutputMinifier]. The prelude itself stays
+     * byte-identical and readable. `GeneratedProvider.minifyOutput = false`
+     * (the `--readable` CLI flag, or `build.minify: false`) restores the
+     * pretty Jack-style formatting.
      */
     fun generate(outputPath: String = DEFAULT_OUTPUT): String {
         clean()
         val source = buildTranslationUnit()
-        File(outputPath).writeText(source)
-        return source
+        val written = if (GeneratedProvider.minifyOutput) minifyWritten(source) else source
+        File(outputPath).writeText(written)
+        return written
+    }
+
+    /** Minify + obfuscate the user layer, keeping the prelude untouched. */
+    private fun minifyWritten(source: String): String {
+        val marker = "#endif /* KIRA_RUNTIME_H */"
+        val idx = source.lastIndexOf(marker)
+        require(idx >= 0) { "C prelude end marker not found in emitted source" }
+        val cut = idx + marker.length
+        val prelude = source.substring(0, cut)
+        val user = source.substring(cut)
+        val reserved = OutputMinifier.extractIdentifiers(fetchBundleFileContents()) +
+            OutputMinifier.extractIdentifiers(fetchTemplateFileContents()) +
+            C_KEYWORDS + externFunctions.values + opaqueTypes + setOf("main", "this", "_empty")
+        val rename = OutputMinifier.buildRenameMap(collectUserSymbols(), reserved)
+        return prelude + "\n" + OutputMinifier.minify(MinifyLanguage.C, user, rename)
+    }
+
+    /**
+     * Every identifier codegen created while emitting the user layer: module
+     * surface names plus the composed forms (mangled methods, specializations,
+     * vtable / trampoline names) the emitter actually wrote.
+     */
+    private fun collectUserSymbols(): Set<String> {
+        userSymbols.addAll(userClassNames)
+        userSymbols.addAll(methodReturnTypes.keys)
+        userSymbols.addAll(classSpecializations.keys)
+        userSymbols.addAll(functionSpecializations.keys)
+        traitNames.forEach { trait ->
+            userSymbols.add(trait)
+            userSymbols.add("${trait}VTable")
+        }
+        classTraits.forEach { (cls, traits) ->
+            traits.distinct().forEach { trait ->
+                traitMethodSigs[trait]?.forEach { sig ->
+                    userSymbols.add("${trait}_${sig.name}_tramp_$cls")
+                }
+                userSymbols.add("${trait}_vtable_$cls")
+            }
+        }
+        return userSymbols.toSet()
     }
 
     /**
@@ -828,6 +897,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             emittingClassMembers = true
             fields.forEach { field ->
                 fieldTypes[field.name.value] = resolveKiraTypeName(field.type)
+                userSymbols.add(field.name.value)
                 appendIndented("")
                 buffer.append(mapTypeName(resolveKiraTypeName(field.type)))
                 buffer.append(" ")
@@ -850,6 +920,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 returnTypeName,
                 method.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) }
             )
+            userSymbols.add(methodName)
+            method.def.parameters.forEach { userSymbols.add(it.name.value) }
 
             appendIndented("")
             buffer.append(mapTypeName(returnTypeName))
@@ -886,6 +958,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         // ARC factory for the specialized class: Box_Int32_new(...) with RC=1.
         if (!fields.isEmpty()) {
+            userSymbols.add("${mangled}_new")
+            userSymbols.add("${mangled}_finalize")
             emitClassFinalizer(
                 mangled,
                 fields.filter { userClassNames.contains(resolveKiraTypeName(it.type)) }.map { it.name.value }
@@ -948,6 +1022,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         knownValueTypes[mangled] = returnTypeName
         template.def.parameters.forEach { param ->
             knownValueTypes[param.name.value] = resolveKiraTypeName(param.typeSpecifier)
+            userSymbols.add(param.name.value)
         }
 
         appendIndented("")
@@ -1744,8 +1819,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     fun clean() {
         buffer.clear()
+        userSymbols.clear()
         requiredIncludes.clear()
         knownValueTypes.clear()
+        enumTypeNames.clear()
         methodReturnTypes.clear()
         methodsBySimpleName.clear()
         fieldTypes.clear()
@@ -1776,6 +1853,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         methodParamTypes[mangled] = paramTypes
         methodsBySimpleName.getOrPut(methodName) { mutableListOf() }.add(className to mangled)
         knownValueTypes[mangled] = returnType
+        userSymbols.add(mangled)
         return mangled
     }
 
@@ -1834,7 +1912,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
         val t = receiverTypeOf(expr) ?: return false
-        return t !in primitiveTypeNames
+        // Enum types are int-like value types: direct C operators (==, <, ...)
+        // work and no @op_* definition is ever emitted for them.
+        return t !in primitiveTypeNames && t !in enumTypeNames
     }
 
     /**
@@ -2648,6 +2728,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (isMagicDecl(variableDecl)) {
             return
         }
+        userSymbols.add(variableDecl.name.value)
         val typeName = typeNameOf(variableDecl.type)
         recordContainerTypeArgs(variableDecl.name.value, typeName, variableDecl.type)
         if (emittingClassMembers) {
@@ -2736,6 +2817,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val returnTypeName = typeNameOf(functionDecl.def.returnTypeSpecifier)
         val returnsVoid = returnTypeName == "Void"
         knownValueTypes[functionName] = returnTypeName
+        userSymbols.add(functionName)
+        functionDecl.def.parameters.forEach { userSymbols.add(it.name.value) }
 
         // Parameters are visible for print-format heuristics inside the body.
         functionDecl.def.parameters.forEach { param ->
@@ -2803,6 +2886,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val className = typeNameOf(classDecl.name)
         val fields = classDecl.members.filterIsInstance<VariableDecl>()
         val methods = classDecl.members.filterIsInstance<FunctionDecl>()
+        userSymbols.add(className)
 
         // Forward decl already emitted `typedef struct Class Class;`.
         // Define the body with a tagged struct so the typedef alias completes.
@@ -2834,6 +2918,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 returnTypeName,
                 method.def.parameters.map { typeNameOf(it.typeSpecifier) }
             )
+            userSymbols.add(methodName)
+            method.def.parameters.forEach { userSymbols.add(it.name.value) }
 
             appendIndented("")
             buffer.append(mapTypeName(returnTypeName))
@@ -2872,6 +2958,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         // ARC factory: Class_new(field args...) -> heap-allocated Class* with RC=1
         if (!fields.isEmpty()) {
+            userSymbols.add("${className}_new")
+            userSymbols.add("${className}_finalize")
             emitClassFinalizer(
                 className,
                 fields.filter { userClassNames.contains(typeNameOf(it.type)) }.map { it.name.value }
@@ -2956,6 +3044,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         val typeName = enumDecl.name.value
         val prefix = toScreamingSnake(typeName)
+        userSymbols.add(typeName)
+        enumTypeNames.add(typeName)
 
         appendIndented("typedef enum ")
         buffer.append(typeName)
@@ -2964,6 +3054,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         indentLevel++
         enumDecl.members.forEachIndexed { index, member ->
             val memberName = member.name.value
+            userSymbols.add("${prefix}_$memberName")
             appendIndented("")
             buffer.append(prefix)
             buffer.append("_")
@@ -3000,7 +3091,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         typeAliasDecl.target.accept(this)
         buffer.append(" ")
         when (val id = typeAliasDecl.alias.identifier) {
-            is Identifier -> buffer.append(id.value)
+            is Identifier -> {
+                userSymbols.add(id.value)
+                buffer.append(id.value)
+            }
             else -> typeAliasDecl.alias.accept(this)
         }
         buffer.appendLine(";")

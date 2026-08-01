@@ -1,26 +1,40 @@
 ---
-description: Snapshot discipline for examples - the committed C lowering and expected stdout must be regenerated after backend changes or CI fails.
+description: Snapshot discipline for examples - the committed C and JS lowering and expected stdout must be regenerated after backend changes or CI fails.
 alwaysApply: true
 ---
 
 # Example snapshot discipline
 
-Every ladder example commits its emitted C and expected stdout so the
+Every ladder example commits its emitted C and JS and expected stdout so the
 lowering is reviewable in diffs and drift is caught:
 
-- `examples/0N-name/generated.user.c` - the user lowering (post-prelude)
+- `examples/0N-name/generated.user.c` - the C user lowering (post-prelude)
+- `examples/0N-name/generated.user.js` - the JS user lowering (post-prelude)
 - `examples/0N-name/expected.txt` - exact stdout of the built binary
-- `examples/prelude.reference.c` - the runtime prelude, byte-identical
+- `examples/prelude.reference.c` - the C runtime prelude, byte-identical
   across every example, stored once
+- `examples/prelude.reference.js` - the JS runtime prelude, byte-identical,
+  stored once
 
 `out.kira.c` itself is gitignored. `out.kira.c = prelude.reference.c +
-generated.user.c`.
+generated.user.c` (same split for JS).
+
+## Minification
+
+Generated user layers are **minified + obfuscated by default** (`OutputMinifier`):
+comments/whitespace stripped, user identifiers renamed, `main` + extern/opaque
+names preserved, prelude untouched and readable. The committed snapshots are
+the minified form; `--readable` / `build.minify: false` produce the pretty
+form for inspection. Never hand-edit generated.user.c / generated.user.js /
+expected.txt.
 
 ## The rule
 
-Any change that affects emitted C (KiraCCodeGenerator.kt, CMagicTypeLowering.kt,
-CIntrinsicsTable.kt, c_generator.c, c_bundle.h, kira/*.kira stdlib surface)
-MUST regenerate and commit snapshots in the same change:
+Any change that affects emitted C/JS (KiraCCodeGenerator.kt,
+KiraJSCodeGenerator.kt, OutputMinifier.kt, CMagicTypeLowering.kt,
+CIntrinsicsTable.kt, c_generator.c, c_bundle.h, js_generator.js,
+kira/*.kira stdlib surface) MUST regenerate and commit snapshots in the same
+change:
 
 ```bash
 ./gradlew installDist          # rebuild CLI with the change
@@ -35,4 +49,4 @@ MUST regenerate and commit snapshots in the same change:
 - CI runs `regenerate.sh --check` and `examples/ffi-mini/run.sh`; a backend
   change without refreshed snapshots breaks CI.
 - If a snapshot diff is purely mechanical from a deliberate lowering change,
-  regenerate and commit it. Never hand-edit generated.user.c or expected.txt.
+  regenerate and commit it.

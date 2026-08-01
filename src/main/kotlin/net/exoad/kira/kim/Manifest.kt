@@ -10,6 +10,8 @@ data class BuildOptions(
     val cSources: List<String> = emptyList(),
     /** Extra flags passed to cc after sources (e.g. -framework Cocoa). */
     val linkFlags: List<String> = emptyList(),
+    /** When true (default), generated C/JS user code is minified + obfuscated. */
+    val minify: Boolean = true,
 )
 
 data class CompilerOptions(

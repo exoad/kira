@@ -32,7 +32,9 @@ to ISO C17 source (C-as-IR). Native toolchain finishes the job.
   run_shell wrapper injects `--author` automatically).
 - Commit coherent verified units with a short subject line
   (`feat:`, `fix:`, `docs:`, `chore:` prefixes).
-- `.ming/` is gitignored in this repo: rules and skills here are local to
-  Ming and never committed.
+- `.ming/rules/` is tracked in this repo: backend-c, kira-surface, snapshots,
+  and stack conventions are committed and apply to every task. Runtime
+  scratch (`.ming/analyze-output/`, `.ming/shell-output/`,
+  `.ming/instances.json`, `.ming/subsystems/`) is gitignored.
 - Committed generated artifacts (example C snapshots, expected.txt) are
   intentional; see snapshots rule.
