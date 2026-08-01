@@ -25,6 +25,7 @@ bin/
 
 # Compiler outputs
 *.kira.c
+*.kira.js
 *.kira.xml
 *.kira.txt
 *.neko
