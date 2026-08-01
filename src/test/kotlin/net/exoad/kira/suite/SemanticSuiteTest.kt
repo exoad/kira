@@ -4,7 +4,6 @@ import net.exoad.kira.TestCompileSupport
 import net.exoad.kira.compiler.analysis.semantic.SemanticAnalyzerResults
 import net.exoad.kira.compiler.analysis.semantic.SemanticSymbolKind
 import net.exoad.kira.compiler.analysis.semantic.SemanticScope
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,7 +27,6 @@ class SemanticSuiteTest {
         val result = TestCompileSupport.compileSnippet(
             source = TestCompileSupport.wrapModule(uri, body),
             logicalPath = TestCompileSupport.logicalPathForModule(uri),
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = runSemantic,
         )
         return assertNotNull(result.semanticResults)
@@ -182,7 +180,6 @@ class SemanticSuiteTest {
         val results = TestCompileSupport.compileSnippet(
             source = "module \"bad uri\"\nx: Int32 = 1",
             logicalPath = "test/semantic/basic.kira",
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true,
         )
         val msgs = messages(assertNotNull(results.semanticResults))
@@ -194,7 +191,6 @@ class SemanticSuiteTest {
         val result = TestCompileSupport.compileSnippet(
             source = """module "test:semantic.basic" """ + "\n",
             logicalPath = "somewhere/else.kira",
-            parserBackend = ParserBackend.LEGACY,
             runSemantic = true,
         )
         val results = assertNotNull(result.semanticResults)

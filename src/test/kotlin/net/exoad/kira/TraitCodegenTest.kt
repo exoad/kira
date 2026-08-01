@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import net.exoad.kira.compiler.frontend.parser.ParserBackend
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -77,7 +76,6 @@ class TraitCodegenTest {
         val output = TestCompileSupport.transpileSnippetToC(
             source,
             "tests/traits.kira",
-            ParserBackend.LEGACY,
             runSemantic = true
         )
 

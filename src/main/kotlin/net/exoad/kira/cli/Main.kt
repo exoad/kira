@@ -113,7 +113,7 @@ fun main(args: Array<String>) {
             Diagnostics.panic("No source files to compile. Add .kira files to 'src' or configure 'kira.yaml'.")
         }
         val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *workspaceSources)
-        Diagnostics.Logging.info("Kira", "Parser backend: ${KiraSourceParsers.activeBackend().name.lowercase()}")
+        Diagnostics.Logging.info("Kira", "Parser: kotlin-native (KiraLexer + KiraParser)")
         dumpSB?.appendLine(
             "----------- Kira Processed Symbols Dump File -----------\nGenerated: ${Chronos.formatTimestamp()}\nTotal Source Files: ${sources.size}\nSources List: \n${
                 sources.joinToString(

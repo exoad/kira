@@ -2,28 +2,13 @@ package net.exoad.kira.compiler.frontend.parser
 
 import net.exoad.kira.source.SourceContext
 
-enum class ParserBackend {
-    LEGACY,
-    ANTLR
-}
-
+/**
+ * Factory for the frontend parser. Kira's parser is implemented in Kotlin
+ * against the native lexer ([KiraLexer]) -- there is no generated grammar
+ * backend, so this always produces the one real parser.
+ */
 object KiraSourceParsers {
-    private fun backendFromConfig(): ParserBackend {
-        val raw = (System.getProperty("kira.parser") ?: System.getenv("KIRA_PARSER") ?: "legacy").lowercase()
-        return when (raw) {
-            "antlr" -> ParserBackend.ANTLR
-            else -> ParserBackend.LEGACY
-        }
-    }
-
-    fun activeBackend(): ParserBackend {
-        return backendFromConfig()
-    }
-
     fun from(context: SourceContext): KiraSourceParser {
-        return when (backendFromConfig()) {
-            ParserBackend.ANTLR -> AntlrKiraSourceParser(context)
-            ParserBackend.LEGACY -> LegacyKiraSourceParser(context)
-        }
+        return LegacyKiraSourceParser(context)
     }
 }
