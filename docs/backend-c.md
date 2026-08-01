@@ -208,6 +208,22 @@ Lowering policy:
 4. Do not invent a Kira SSA optimizer; keep semantics in the frontend and
    dumb-but-correct C in the backend.
 
+**Stdlib layout.** The stdlib is one self-contained directory: `kira/*.kira`
+holds the declarations, `kira/*.bind.yaml` holds the magic binding manifests,
+and the per-backend runtime implementations live beside them under `kira/c/`
+(`c_bundle.h` + `c_generator.c`, the C prelude) and `kira/js/`
+(`js_generator.js`). `StdlibLayout` resolves the stdlib root from the loaded
+`kira:` dependencies and loads the runtime file from the matching backend
+folder; the backends no longer embed stdlib resources in the jar (jar lookup
+remains as a fallback for packaged builds).
+
+Most stdlib declarations are `@_magic` signatures whose bodies live in that
+prelude, but a module may also carry **real Kira code**: non-magic functions
+with bodies are emitted like user code (`hasEmittableStdlibFunctions`).
+`kira:math` is the first hybrid module -- `clamp` and `lerp` are written in
+Kira on top of the magic `min`/`max`. That is the bootstrap path: as the
+language matures, stdlib surface moves from prelude C into Kira itself.
+
 **Operator overloading** desugars in the frontend-facing rule set: when a
 binary/unary/compound operator has a statically non-primitive operand, it
 lowers to a call on the matching `@op_*` intrinsic (`a + b` → `op_add(a, b)`,
