@@ -11,7 +11,7 @@ struct Point
 
 simple Point* Point_new(Int32 x, Int32 y)
 {
-    Point* self = (Point*)kira_rc_alloc(sizeof(Point));
+    Point* self = (Point*)kira_rc_alloc_with(sizeof(Point), null);
     self->x = x;
     self->y = y;
     return self;
@@ -30,9 +30,16 @@ Int32 Rectangle_perimeter(Rectangle* this)
     return ((width + height) * 2);
 }
 
+static Void Rectangle_finalize(Void* p)
+{
+    Rectangle* self = (Rectangle*)p;
+    kira_rc_release(self->topLeft);
+    kira_rc_release(self->bottomRight);
+}
+
 simple Rectangle* Rectangle_new(Point* topLeft, Point* bottomRight)
 {
-    Rectangle* self = (Rectangle*)kira_rc_alloc(sizeof(Rectangle));
+    Rectangle* self = (Rectangle*)kira_rc_alloc_with(sizeof(Rectangle), Rectangle_finalize);
     self->topLeft = topLeft;
     self->bottomRight = bottomRight;
     return self;
@@ -51,7 +58,7 @@ Str Pet_speak(Pet* this)
 
 simple Pet* Pet_new(Str name, Str sound)
 {
-    Pet* self = (Pet*)kira_rc_alloc(sizeof(Pet));
+    Pet* self = (Pet*)kira_rc_alloc_with(sizeof(Pet), null);
     self->name = name;
     self->sound = sound;
     return self;
@@ -70,8 +77,8 @@ Int32 main(Void)
     print("%d\n", Rectangle_perimeter(rect));
     print("%s\n", friend->name);
     print("%s\n", Pet_speak(friend));
-    kira_rc_release(rect);
     kira_rc_release(friend);
+    kira_rc_release(rect);
     return 0;
 }
 /* module app:model */

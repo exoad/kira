@@ -105,7 +105,11 @@ Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 
 - **Modules & functions** -- multi-file projects, `use`, typed params/returns
 - **Classes & OOP** -- fields (`require`), methods, construction; heap-allocated
-  with ARC (strong refcount, scope-end release)
+  with ARC: retain on alias, block-scoped release, field finalizers, and
+  ownership transfer on `return`
+- **Null safety** -- `null` is a stdlib global (like `true`/`false`), not a
+  keyword; every type is non-nullable and `Maybe<T>` is the only way to say
+  "absent"
 - **Generics** -- user `class Box<T>` / `fx id<T>` monomorphized at compile time
 - **Enums** -- tagged C enums
 - **Traits** -- interface structs + vtables; inheritance between traits;
@@ -136,7 +140,10 @@ Point any LSP client at `build/install/kira/bin/kira-lsp` with root marker
 C-as-IR runs the full example ladder: modules, functions, classes/methods with
 ARC, enums, monomorphized generics, real Map/List/Arr, traits with vtables,
 Conway's Game of Life (`examples/07-conway`), and the stdlib tour
-(`examples/09-stdlib`) end-to-end. Known gaps: no weak refs (cycles leak),
-no variant lowering, generic traits stay prelude-side, container elements erase
-to a 64-bit slot so `Float` elements are unsupported, `Str` results are never
-freed, LSP is diagnostics-only. Detail: [docs/backend-c.md](docs/backend-c.md).
+(`examples/09-stdlib`) end-to-end. ARC is verified under AddressSanitizer and
+`leaks` across aliasing, fields, temporaries, reassignment and loops. Known
+gaps: no weak refs (cycles leak), no variant lowering, generic traits stay
+prelude-side, container elements erase to a 64-bit slot so `Float` elements and
+nested containers are unsupported, `Str` results are never freed (open design
+question), LSP is diagnostics-only.
+Detail: [docs/backend-c.md](docs/backend-c.md).

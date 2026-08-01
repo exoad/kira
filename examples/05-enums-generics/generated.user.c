@@ -8,7 +8,7 @@ struct Box_Int32
 
 simple Box_Int32* Box_Int32_new(Int32 value)
 {
-    Box_Int32* self = (Box_Int32*)kira_rc_alloc(sizeof(Box_Int32));
+    Box_Int32* self = (Box_Int32*)kira_rc_alloc_with(sizeof(Box_Int32), null);
     self->value = value;
     return self;
 }

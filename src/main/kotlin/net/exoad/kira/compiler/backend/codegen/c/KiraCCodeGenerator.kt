@@ -118,8 +118,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private val userClassNames = mutableSetOf<String>()
     /** User class name -> ordered list of (fieldName, fieldType) for init lowering. */
     private val userClassFields = mutableMapOf<String, List<Pair<String, String>>>()
-    /** Class-typed locals in the current function/method body: (name, className). */
-    private val arcClassLocals = mutableListOf<Pair<String, String>>()
+    /**
+     * Stack of ARC scopes, innermost last. Each holds the class-typed locals
+     * declared directly in that block, so a release lands inside the C block
+     * that declared the variable rather than at function scope.
+     */
+    private val arcScopes = ArrayDeque<MutableList<Pair<String, String>>>()
 
     /** Collect non-magic user classes (concrete + specialized) for ARC lowering. */
     private fun collectUserClasses() {
@@ -135,14 +139,82 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         classSpecializations.keys.forEach { userClassNames.add(it) }
     }
 
-    /** Emit kira_rc_release for every class-typed local collected in this body. */
-    private fun emitArcReleases() {
-        arcClassLocals.forEach { (name, _) ->
-            appendIndented("kira_rc_release(")
+    private fun pushArcScope() {
+        arcScopes.addLast(mutableListOf())
+    }
+
+    /** Register a class-typed local in the innermost open scope. */
+    private fun registerArcLocal(name: String, className: String) {
+        arcScopes.lastOrNull()?.add(name to className)
+    }
+
+    /** Containers that own heap storage and must be disposed at scope end. */
+    private val disposableContainers = setOf("List", "Map", "Set", "Stack", "Queue", "Deque")
+
+    /**
+     * Emit the cleanup for one scope entry. Class references are refcounted;
+     * containers own a buffer and are disposed. `Arr` is deliberately absent --
+     * an Arr literal points at a stack compound literal, so freeing it by type
+     * alone would be wrong.
+     */
+    private fun emitArcRelease(name: String, kind: String) {
+        if (kind in disposableContainers) {
+            appendIndented(kind)
+            buffer.append("_dispose(&")
             buffer.append(name)
             buffer.appendLine(");")
+            return
         }
-        arcClassLocals.clear()
+        appendIndented("kira_rc_release(")
+        buffer.append(name)
+        buffer.appendLine(");")
+    }
+
+    /**
+     * Close the innermost scope, releasing its locals in reverse declaration
+     * order. [exclude] names a local whose ownership is moving out (a returned
+     * value), so it must survive.
+     *
+     * When the block already ended in `return`, the return path emitted its own
+     * releases; emitting again here would be unreachable code (and a second
+     * release on any path that did reach it).
+     */
+    private fun popArcScope(exclude: String? = null, terminated: Boolean = false) {
+        val scope = arcScopes.removeLastOrNull() ?: return
+        if (terminated) return
+        scope.asReversed().forEach { (name, kind) ->
+            if (name != exclude) emitArcRelease(name, kind)
+        }
+    }
+
+    /** True when [statements] ends in a `return`, so control cannot fall through. */
+    private fun endsWithReturn(statements: List<Statement>?): Boolean {
+        val last = statements?.lastOrNull() ?: return false
+        return last is ReturnStatement || last.expr is ReturnStatement
+    }
+
+    /**
+     * Releases for every open scope, innermost first, *without* popping --
+     * used just before an early `return`, where the C block braces have not
+     * been closed yet.
+     */
+    private fun emitArcReleasesBeforeReturn(exclude: String?) {
+        arcScopes.asReversed().forEach { scope ->
+            scope.asReversed().forEach { (name, kind) ->
+                if (name != exclude) emitArcRelease(name, kind)
+            }
+        }
+    }
+
+    /** True when [expr] is a bare reference we do not own (needs a retain to store). */
+    private fun isBorrowedRef(expr: Expr): Boolean {
+        return expr is Identifier || expr is MemberAccessExpr
+    }
+
+    /** The scope-tracked local a return statement hands ownership of, if any. */
+    private fun returnedArcLocal(expr: Expr): String? {
+        val name = (expr as? Identifier)?.value ?: return null
+        return if (arcScopes.any { scope -> scope.any { it.first == name } }) name else null
     }
 
     /** One trait method signature, with concrete (resolved) param and return types. */
@@ -807,6 +879,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         // ARC factory for the specialized class: Box_Int32_new(...) with RC=1.
         if (!fields.isEmpty()) {
+            emitClassFinalizer(
+                mangled,
+                fields.filter { userClassNames.contains(resolveKiraTypeName(it.type)) }.map { it.name.value }
+            )
             appendIndented("simple ")
             buffer.append(mapTypeName(mangled))
             buffer.append(" ")
@@ -821,14 +897,17 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.appendLine(")")
             appendIndentedLine("{")
             indentLevel++
+            val ownedM = fields.filter { userClassNames.contains(resolveKiraTypeName(it.type)) }
+                .map { it.name.value }
             appendIndented("")
             buffer.append(mapTypeName(mangled))
             buffer.append(" self = (")
             buffer.append(mangled)
-            buffer.append("*)kira_rc_alloc(sizeof(")
+            buffer.append("*)kira_rc_alloc_with(sizeof(")
             buffer.append(mangled)
-            buffer.append("));")
-            buffer.appendLine()
+            buffer.append("), ")
+            buffer.append(if (ownedM.isEmpty()) "null" else "${mangled}_finalize")
+            buffer.appendLine(");")
             fields.forEach { field ->
                 appendIndented("self->")
                 buffer.append(field.name.value)
@@ -1180,6 +1259,27 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun isStrType(kiraType: String?): Boolean {
         return kiraType == "Str" || kiraType == "String"
+    }
+
+    /** True when [expr] already produces a `Maybe` (so it needs no wrapping). */
+    private fun isMaybeTyped(expr: Expr): Boolean {
+        return receiverTypeOf(expr) == "Maybe"
+    }
+
+    /** True when [expr] is the stdlib `null` global. */
+    private fun isNullLiteral(expr: Expr): Boolean {
+        return expr is NullLiteral || (expr is Identifier && expr.value == "null")
+    }
+
+    /** Wrap a plain value into `Maybe<T>`; `null` becomes the absent case. */
+    private fun emitMaybeCoercion(expr: Expr, elementType: String?) {
+        if (isNullLiteral(expr)) {
+            buffer.append("Maybe_none()")
+            return
+        }
+        buffer.append("Maybe_some(")
+        emitSlotIn(elementType, expr)
+        buffer.append(")")
     }
 
     /** Kira types whose C representation is a pointer, so they slot via intptr_t. */
@@ -1661,8 +1761,20 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName]
             }
             is FunctionCallExpr -> {
-                val name = functionLikeName(expr.name)
-                knownValueTypes[name] ?: methodReturnTypes[name]
+                val nameExpr = expr.name
+                if (nameExpr is MemberAccessExpr) {
+                    // Chained call: the receiver's type is the inner method's
+                    // return type, so `s.trim().length()` can see a Str receiver.
+                    val methodName = (nameExpr.member as? Identifier)?.value
+                    val innerType = receiverTypeOf(nameExpr.origin)
+                    stdlibMethodReturnType(innerType, methodName, receiverTypeArgs(nameExpr.origin))
+                        ?: traitMethodSigs[innerType]?.firstOrNull { it.name == methodName }?.returnType
+                        ?: methodName?.let { resolveMethodMangled(it, innerType) }
+                            ?.let { methodReturnTypes[it] }
+                } else {
+                    val name = functionLikeName(nameExpr)
+                    knownValueTypes[name] ?: methodReturnTypes[name]
+                }
             }
             is ObjectInitExpr -> typeNameOf(expr.typeName)
             else -> null
@@ -1724,7 +1836,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine(")")
         appendIndentedLine("{")
         indentLevel++
+        pushArcScope()
         ifSelectionStatement.thenStatements.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(ifSelectionStatement.thenStatements))
         indentLevel--
         appendIndented("}")
         if (ifSelectionStatement.elseBranches.isEmpty()) {
@@ -1744,7 +1858,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine(")")
         appendIndentedLine("{")
         indentLevel++
+        pushArcScope()
         ifElseIfBranchNode.statements.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(ifElseIfBranchNode.statements))
         indentLevel--
         appendIndentedLine("}")
     }
@@ -1753,7 +1869,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine("else")
         appendIndentedLine("{")
         indentLevel++
+        pushArcScope()
         elseBranchNode.statements.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(elseBranchNode.statements))
         indentLevel--
         appendIndentedLine("}")
     }
@@ -1764,7 +1882,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine(")")
         appendIndentedLine("{")
         indentLevel++
+        pushArcScope()
         whileIterationStatement.statements.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(whileIterationStatement.statements))
         indentLevel--
         appendIndentedLine("}")
     }
@@ -1773,7 +1893,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         appendIndentedLine("do")
         appendIndentedLine("{")
         indentLevel++
+        pushArcScope()
         doWhileIterationStatement.statements.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(doWhileIterationStatement.statements))
         indentLevel--
         appendIndented("} while(")
         doWhileIterationStatement.condition.accept(this)
@@ -1781,6 +1903,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
+        // Releases must precede the `return`, or they are dead code. The
+        // returned local (if any) keeps its +1 -- ownership moves to the caller.
+        val moved = if (returnStatement.expr !is NoExpr) {
+            returnedArcLocal(returnStatement.expr)
+        } else {
+            null
+        }
+        emitArcReleasesBeforeReturn(moved)
         appendIndented("return")
         if (returnStatement.expr !is NoExpr) {
             buffer.append(" ")
@@ -1811,7 +1941,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.appendLine(")")
             appendIndentedLine("{")
             indentLevel++
+            pushArcScope()
             forIterationStatement.body.forEach { it.accept(this) }
+            popArcScope(terminated = endsWithReturn(forIterationStatement.body))
             indentLevel--
             appendIndentedLine("}")
             return
@@ -1821,7 +1953,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         appendIndentedLine("for(;;)")
         appendIndentedLine("{")
         indentLevel++
+        pushArcScope()
         forIterationStatement.body.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(forIterationStatement.body))
         appendIndentedLine("break;")
         indentLevel--
         appendIndentedLine("}")
@@ -1853,6 +1987,24 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {
+        // Storing into a class-typed slot must release the previous occupant.
+        // kira_rc_store retains first (so `a = a` is safe); kira_rc_store_owned
+        // takes over a +1 that a constructor or callee already produced.
+        val targetType = receiverTypeOf(assignmentExpr.target)
+        if (targetType != null && userClassNames.contains(targetType)) {
+            val helper = if (isBorrowedRef(assignmentExpr.value)) {
+                "kira_rc_store"
+            } else {
+                "kira_rc_store_owned"
+            }
+            buffer.append(helper)
+            buffer.append("((Void**)&")
+            assignmentExpr.target.accept(this)
+            buffer.append(", ")
+            assignmentExpr.value.accept(this)
+            buffer.append(")")
+            return
+        }
         assignmentExpr.target.accept(this)
         buffer.append(" = ")
         assignmentExpr.value.accept(this)
@@ -2250,11 +2402,24 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val typeName = typeNameOf(objectInitExpr.typeName)
         // User classes (concrete + specialized) construct via ARC factory: Class_new(...)
         if (userClassNames.contains(typeName) || genericClassTemplates.containsKey(baseName)) {
+            val fieldTypes = userClassFields[typeName].orEmpty()
             buffer.append(typeName)
             buffer.append("_new(")
             objectInitExpr.positionalArgs.forEachIndexed { i, arg ->
                 if (i > 0) buffer.append(", ")
-                arg.accept(this)
+                // A field takes ownership of what it holds, so each class-typed
+                // argument must arrive with a +1. Fresh temporaries already have
+                // one; a borrowed local needs a retain first.
+                val fieldType = fieldTypes.getOrNull(i)?.second
+                if (fieldType != null && userClassNames.contains(fieldType) && isBorrowedRef(arg)) {
+                    buffer.append("(")
+                    buffer.append(mapTypeName(fieldType))
+                    buffer.append(")kira_rc_retained(")
+                    arg.accept(this)
+                    buffer.append(")")
+                } else {
+                    arg.accept(this)
+                }
             }
             buffer.append(")")
             return
@@ -2397,9 +2562,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
         knownValueTypes[variableDecl.name.value] = typeName
-        // ARC: track class-typed locals for scope-end release.
-        if (userClassNames.contains(typeName)) {
-            arcClassLocals.add(variableDecl.name.value to typeName)
+        // Track locals needing scope-end cleanup: class references (refcounted)
+        // and containers (own a heap buffer).
+        if (userClassNames.contains(typeName) || typeName in disposableContainers) {
+            registerArcLocal(variableDecl.name.value, typeName)
         }
         appendIndented("")
         variableDecl.type.accept(this)
@@ -2415,10 +2581,22 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             pendingArrayElementType = containerTypeArgs[variableDecl.name.value]?.firstOrNull()
             if (value is ObjectInitExpr && value.positionalArgs.isEmpty() && isCollectionType(typeName)) {
                 value.accept(this)
+            } else if (typeName == "Maybe" && !isMaybeTyped(value)) {
+                // `p: Maybe<Pet> = null` -> Maybe_none(); any other value is
+                // wrapped as present. Maybe is the only nullable shape.
+                emitMaybeCoercion(value, containerTypeArgs[variableDecl.name.value]?.firstOrNull())
             } else {
                 emitCoercedTraitValue(value, typeName)
             }
             pendingArrayElementType = previousElem
+            // `b: Pet = a` copies a reference we do not own; without a retain
+            // both names would release the same object.
+            if (userClassNames.contains(typeName) && isBorrowedRef(value)) {
+                buffer.appendLine(";")
+                appendIndented("kira_rc_retain(")
+                variableDecl.name.accept(this)
+                buffer.append(")")
+            }
         } else if (isCollectionType(typeName)) {
             buffer.append(" = ")
             when (typeName) {
@@ -2492,24 +2670,19 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine()
         appendIndentedLine("{")
         indentLevel++
-        val savedArc = arcClassLocals.toList()
-        arcClassLocals.clear()
+        pushArcScope()
         val savedReturnType = currentReturnType
         currentReturnType = returnTypeName
         functionDecl.def.body!!.forEach { it.accept(this) }
         currentReturnType = savedReturnType
-        // ARC: release class-typed locals unless we return one (borrowed to caller).
-        // main returns Void: release before the synthesized `return 0;` so it actually runs.
-        val releaseBeforeReturn = userClassNames.contains(returnTypeName).not()
+        // Fall-through path: an explicit `return` already emitted its own
+        // releases, so this only covers reaching the closing brace.
+        val bodyTerminated = endsWithReturn(functionDecl.def.body)
         if (functionName == "main" && returnsVoid) {
-            if (releaseBeforeReturn) emitArcReleases()
+            popArcScope(terminated = bodyTerminated)
             appendIndentedLine("return 0;")
         } else {
-            if (releaseBeforeReturn) {
-                emitArcReleases()
-            } else {
-                arcClassLocals.clear()
-            }
+            popArcScope(terminated = bodyTerminated)
         }
         indentLevel--
         appendIndentedLine("}")
@@ -2580,20 +2753,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             method.def.parameters.forEach { param ->
                 knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
             }
-            val savedArc = arcClassLocals.toList()
-            arcClassLocals.clear()
+            pushArcScope()
             currentMethodClass = className
             val savedReturnType = currentReturnType
             currentReturnType = returnTypeName
             method.def.body?.forEach { it.accept(this) }
             currentReturnType = savedReturnType
             currentMethodClass = null
-            // ARC: release class-typed locals unless we return one (borrowed to caller).
-            if (!userClassNames.contains(returnTypeName)) {
-                emitArcReleases()
-            } else {
-                arcClassLocals.clear()
-            }
+            popArcScope(terminated = endsWithReturn(method.def.body))
             // Drop param locals so they don't leak
             method.def.parameters.forEach { param ->
                 knownValueTypes.remove(param.name.value)
@@ -2605,6 +2772,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         // ARC factory: Class_new(field args...) -> heap-allocated Class* with RC=1
         if (!fields.isEmpty()) {
+            emitClassFinalizer(
+                className,
+                fields.filter { userClassNames.contains(typeNameOf(it.type)) }.map { it.name.value }
+            )
             appendIndented("simple ")
             buffer.append(mapTypeName(className))
             buffer.append(" ")
@@ -2619,14 +2790,17 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.appendLine(")")
             appendIndentedLine("{")
             indentLevel++
+            val owned = fields.filter { userClassNames.contains(typeNameOf(it.type)) }
+                .map { it.name.value }
             appendIndented("")
             buffer.append(mapTypeName(className))
             buffer.append(" self = (")
             buffer.append(className)
-            buffer.append("*)kira_rc_alloc(sizeof(")
+            buffer.append("*)kira_rc_alloc_with(sizeof(")
             buffer.append(className)
-            buffer.append("));")
-            buffer.appendLine()
+            buffer.append("), ")
+            buffer.append(if (owned.isEmpty()) "null" else "${className}_finalize")
+            buffer.appendLine(");")
             fields.forEach { field ->
                 appendIndented("self->")
                 buffer.append(field.name.value)
@@ -2639,6 +2813,36 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             appendIndentedLine("}")
             buffer.appendLine()
         }
+    }
+
+    /**
+     * Emit `Class_finalize` when the class owns class-typed fields, and return
+     * the finalizer argument for kira_rc_alloc_with (`null` when it owns none).
+     *
+     * Constructor arguments arrive borrowed, so the factory retains each owned
+     * field; the finalizer releases them when the owner's count hits zero.
+     */
+    private fun emitClassFinalizer(cName: String, ownedFields: List<String>): String {
+        if (ownedFields.isEmpty()) return "null"
+        appendIndented("static Void ")
+        buffer.append(cName)
+        buffer.appendLine("_finalize(Void* p)")
+        appendIndentedLine("{")
+        indentLevel++
+        appendIndented("")
+        buffer.append(cName)
+        buffer.append("* self = (")
+        buffer.append(cName)
+        buffer.appendLine("*)p;")
+        ownedFields.forEach { field ->
+            appendIndented("kira_rc_release(self->")
+            buffer.append(field)
+            buffer.appendLine(");")
+        }
+        indentLevel--
+        appendIndentedLine("}")
+        buffer.appendLine()
+        return "${cName}_finalize"
     }
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {

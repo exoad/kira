@@ -807,32 +807,6 @@ class KiraParser(private val context: SourceContext) {
         }!!, operand), origin)
     }
 
-    fun parseBinaryExpr(): Expr {
-        val origin = here()
-        var left = parsePrimaryExpr(null)
-        while (Token.Type.isBinaryOperator(peek().type)) {
-            val operator = peek()
-            advancePointer()
-            val right = parsePrimaryExpr(null)
-            left = when (operator.type) {
-                Token.Type.S_DOT -> MemberAccessExpr(left, right)
-                else -> BinaryExpr(
-                    left,
-                    right,
-                    BinaryOp.byTokenTypeMaybe(arrayOf(operator.type)) {
-                        Diagnostics.panic(
-                            "BinaryOperator::byTokenTypeMaybe",
-                            "$operator is not a binary operator!",
-                            context = context,
-                            location = operator.canonicalLocation,
-                            selectorLength = operator.content.length
-                        )
-                    }!!
-                )
-            }
-        }
-        return putOrigin(left, origin)
-    }
 
     fun parseWithExpr(): Expr {
         val origin = here()
@@ -1079,7 +1053,11 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         val identifier = parseIdentifier()
         expectThenAdvance(Token.Type.S_EQUAL)
-        val value = parseBinaryExpr()
+        // Full precedence-climbing parse, matching declaration initializers and
+        // compound assignment. The old flat parseBinaryExpr() had no precedence
+        // and treated '.' as a binary operator, so `n = n + p.get()` built
+        // MemberAccess(BinaryExpr(n, p), get) -- i.e. `(n + p).get()`.
+        val value = parseExpr()
 //        if (identifier !is Identifier) {
 //            Diagnostics.panic(
 //                "KiraParser::parseAssignmentExpr",

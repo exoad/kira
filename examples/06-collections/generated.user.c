@@ -24,6 +24,7 @@ Int32 main(Void)
     {
         print("%d\n", head);
     }
+    Map_dispose(&entries);
     return 0;
 }
 /* module app:maps */

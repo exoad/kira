@@ -44,8 +44,19 @@ Int32 main(Void)
     List_add(&nums, KIRA_SLOT(4));
     print("%d\n", KIRA_UNSLOT(Int32, List_get(&nums, 1)));
     print("%d\n", List_contains(&nums, KIRA_SLOT(3)));
+    Maybe absent = Maybe_none();
+    print("%d\n", Maybe_isNone(&absent));
+    print("%s\n", KIRA_UNSLOT_PTR(Str, Maybe_unwrapOr(&absent, KIRA_SLOT_PTR("fallback"))));
+    Maybe present = Maybe_some(KIRA_SLOT_PTR("here"));
+    print("%d\n", Maybe_isSome(&present));
+    print("%s\n", KIRA_UNSLOT_PTR(Str, Maybe_unwrapOr(&present, KIRA_SLOT_PTR("fallback"))));
     kira_assert((List_size(&nums) == 2), "list should hold two entries");
     print("%s\n", "ok");
+    List_dispose(&nums);
+    Map_dispose(&ages);
+    Queue_dispose(&jobs);
+    Stack_dispose(&undo);
+    Set_dispose(&seen);
     return 0;
 }
 /* module app:text */
