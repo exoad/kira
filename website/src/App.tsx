@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import Landing from "./pages/Landing";
 import LanguageDocs from "./pages/LanguageDocs";

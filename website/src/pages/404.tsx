@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Column } from "../components/FlexLayouter";
 import OutlinedButton from "../components/Button.tsx";
 import { Serif, Sans } from "../components/Typograph";
