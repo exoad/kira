@@ -494,6 +494,13 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             }
             is FunctionCallExpr -> receiverTypeOf(expr) in floatTypes
             is ObjectInitExpr -> typeNameOf(expr.typeName) in floatTypes
+            is UnaryExpr -> isFloatTyped(expr.operand)
+            // Arithmetic on a float propagates float-ness (mixed int/float
+            // follows the same promotion the C backend gets for free). Without
+            // this, `(value - a) / (b - a)` looked like integer division and
+            // Math.trunc turned 0.4 into 0.
+            is BinaryExpr ->
+                isFloatTyped(expr.leftExpr) || isFloatTyped(expr.rightExpr)
             else -> false
         }
     }
