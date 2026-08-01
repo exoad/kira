@@ -4,6 +4,7 @@ import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
 import net.exoad.kira.compiler.analysis.semantic.SemanticAnalyzerResults
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.parser.ParserBackend
@@ -99,6 +100,25 @@ object TestCompileSupport {
         return KiraCCodeGenerator(result.compilationUnit).emitToString()
     }
 
+    fun transpileSnippetToJS(
+        source: String,
+        logicalPath: String,
+        parserBackend: ParserBackend = ParserBackend.LEGACY,
+        runSemantic: Boolean = false
+    ): String {
+        val result = compileSnippet(source, logicalPath, parserBackend, runSemantic)
+        return KiraJSCodeGenerator(result.compilationUnit).emitToString()
+    }
+
+    fun transpileFileToJS(
+        filePath: String,
+        parserBackend: ParserBackend = ParserBackend.LEGACY,
+        runSemantic: Boolean = false
+    ): String {
+        val result = compileFile(filePath, parserBackend, runSemantic)
+        return KiraJSCodeGenerator(result.compilationUnit).emitToString()
+    }
+
     fun findCCompiler(): String? {
         val candidates = listOf("clang", "cc", "gcc")
         for (candidate in candidates) {
@@ -110,6 +130,26 @@ object TestCompileSupport {
             }
         }
         return null
+    }
+
+    fun findNode(): String? {
+        val candidates = listOf("node", "nodejs")
+        for (candidate in candidates) {
+            val proc = ProcessBuilder("which", candidate).start()
+            val out = proc.inputStream.bufferedReader().readText().trim()
+            proc.waitFor()
+            if (proc.exitValue() == 0 && out.isNotBlank()) {
+                return out
+            }
+        }
+        return null
+    }
+
+    fun runJS(jsSource: String, nodePath: String): ProcessResult {
+        val dir = File("build/tmp/js-run").apply { mkdirs() }
+        val jsFile = File(dir, "program_${System.nanoTime()}.js")
+        jsFile.writeText(jsSource)
+        return runProcess(listOf(nodePath, jsFile.absolutePath), dir)
     }
 
     fun syntaxCheckC(cSource: String, compilerPath: String): ProcessResult {

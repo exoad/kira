@@ -12,6 +12,7 @@ object GeneratedProvider {
          */
         NEKO,
         C,
+        JS,
         NONE
     }
 

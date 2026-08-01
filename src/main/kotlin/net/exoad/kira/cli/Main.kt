@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
 import net.exoad.kira.compiler.analysis.semantic.SemanticScope
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
@@ -25,7 +26,37 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.time.measureTimedValue
 
-fun main() {
+private fun applyTargetOverride(target: String) {
+    GeneratedProvider.outputMode = when (target) {
+        "c", "native" -> GeneratedProvider.OutputTarget.C
+        "js", "javascript" -> GeneratedProvider.OutputTarget.JS
+        "neko" -> GeneratedProvider.OutputTarget.NEKO
+        "none" -> GeneratedProvider.OutputTarget.NONE
+        else -> Diagnostics.panic("Unknown target '$target' (expected c, js, neko, none)")
+    }
+}
+
+fun main(args: Array<String>) {
+    // Minimal CLI: `kira --target js|c|neko|none` overrides build.target from
+    // kira.yaml. Nothing else is read today; the compiler is cwd-driven.
+    var targetOverride: String? = null
+    var i = 0
+    while (i < args.size) {
+        when (args[i]) {
+            "--target", "-t" -> {
+                if (i + 1 >= args.size) {
+                    Diagnostics.panic("--target requires a value (c, js, neko, none)")
+                }
+                targetOverride = args[i + 1].lowercase()
+                i += 2
+            }
+            "--help", "-h" -> {
+                println("Usage: kira [--target c|js|neko|none]")
+                kotlin.system.exitProcess(0)
+            }
+            else -> Diagnostics.panic("Unknown argument '${args[i]}' (try --help)")
+        }
+    }
     val result = measureTimedValue {
 //        Diagnostics.silenceDiagnostics()
         val projectRoot: Path = Paths.get(".").toAbsolutePath().normalize()
@@ -55,12 +86,20 @@ fun main() {
 
                 when (manifest.build.target.lowercase()) {
                     "c", "native" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.C
+                    "js", "javascript" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.JS
                     "neko" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NEKO
                     "none" -> {}
+                }
+                // A --target flag beats the manifest.
+                if (targetOverride != null) {
+                    applyTargetOverride(targetOverride!!)
                 }
             } catch (e: Exception) {
                 Diagnostics.panic("Failed to load project config from $yamlManifestPath: ${e.message}")
             }
+        } else if (targetOverride != null) {
+            // No manifest: the flag is the only target source.
+            applyTargetOverride(targetOverride!!)
         }
 
         val stdlibEntries = DependencyResolver.resolveDependencySources(manifest, projectRoot).toMutableList()
@@ -228,6 +267,16 @@ fun main() {
                     Diagnostics.Logging.info(
                         "Kira",
                         "Done. Compile with: cc -std=c17 -O2 -o app $out$extras && ./app"
+                    )
+                }
+
+                GeneratedProvider.OutputTarget.JS -> {
+                    val out = KiraJSCodeGenerator.DEFAULT_OUTPUT
+                    Diagnostics.Logging.info("Kira", "Emitting JS -> $out")
+                    KiraJSCodeGenerator(compilationUnit).generate(out)
+                    Diagnostics.Logging.info(
+                        "Kira",
+                        "Done. Run with: node $out"
                     )
                 }
 
