@@ -196,11 +196,30 @@ rejects `null` against a non-`Maybe` type and rejects reaching through a
 
 Lowering policy:
 
-1. Prefer **prelude** `static inline` / macros for small, shared ops.
-2. Prefer **codegen rewrite** when the shape depends on types or call site
+1. `@_magic` declarations are typechecker-only signatures: the backend never
+   emits their bodies. Free functions resolve through **binding manifests**
+   (`kira/<module>.bind.yaml`, loaded beside the stdlib modules) that map the
+   canonical Kira name to its C symbol and required includes. Adding a stdlib
+   function is a data change next to the module, not a compiler edit -- see
+   `CMagicBindingTable`.
+2. Prefer **prelude** `static inline` / macros for small, shared ops.
+3. Prefer **codegen rewrite** when the shape depends on types or call site
    (e.g. monomorphized generics, method mangling, collection method names).
-3. Do not invent a Kira SSA optimizer; keep semantics in the frontend and
+4. Do not invent a Kira SSA optimizer; keep semantics in the frontend and
    dumb-but-correct C in the backend.
+
+Two magic families are **not** manifest-bindable, on purpose:
+
+- **Print family** (`trace` / `print` / `println` / `eprint`) synthesizes its
+  printf format string from the Kira argument type at each call site, so it
+  stays a codegen intrinsic (`isPrintLike` / `emitPrintCall`).
+- **Collection methods** (`Arr.get`, `List.add`, ...) need slot-erasure
+  adapters derived from the declaration's type parameters plus receiver
+  passing; today they lower through `tryEmitCollectionMethod`. The same
+  manifest mechanism is the intended home for their binding data.
+
+`CIntrinsicsTable` remains as a fallback for names the manifest does not bind;
+it is not the primary resolution source.
 
 Jack's C style guide applies to prelude and emitted shape (Allman braces,
 shared type names, etc.).
