@@ -27,3 +27,37 @@ pub fx clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
 pub fx lerp: (a: Float64, b: Float64, t: Float64) Float64 {
     return a + (b - a) * t
 }
+
+pub fx sign: (value: Float64) Int32 {
+    if value > 0 {
+        return 1
+    } else if value < 0 {
+        return -1
+    } else {
+        return 0
+    }
+}
+
+pub fx step: (edge: Float64, value: Float64) Float64 {
+    if value >= edge {
+        return 1.0
+    } else {
+        return 0.0
+    }
+}
+
+pub fx inverseLerp: (a: Float64, b: Float64, value: Float64) Float64 {
+    return (value - a) / (b - a)
+}
+
+pub fx deg2rad: (degrees: Float64) Float64 {
+    return degrees * 3.141592653589793 / 180.0
+}
+
+pub fx rad2deg: (radians: Float64) Float64 {
+    return radians * 180.0 / 3.141592653589793
+}
+
+pub fx isBetween: (value: Float64, lo: Float64, hi: Float64) Bool {
+    return value >= lo && value <= hi
+}

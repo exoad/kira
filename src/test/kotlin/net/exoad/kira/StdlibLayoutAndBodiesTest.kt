@@ -114,4 +114,51 @@ class StdlibLayoutAndBodiesTest {
         assumeTrue(result.exitCode == 0, "node failed: ${result.stderr}\n$generated")
         assertEquals("5\n0\n10\n5\n", result.stdout)
     }
+
+    @Test
+    fun mathCombinatorsRunInC() {
+        val cc = compiler ?: return
+        val generated = emitC(
+            """
+            fx main: () Void {
+                trace(sign(-5.0))
+                trace(sign(0.0))
+                trace(sign(3.5))
+                trace(step(2.0, 1.0))
+                trace(step(2.0, 2.0))
+                trace(inverseLerp(0.0, 10.0, 4.0))
+                trace(rad2deg(deg2rad(45.0)))
+                trace(isBetween(5.0, 0.0, 10.0))
+                trace(isBetween(11.0, 0.0, 10.0))
+            }
+            """
+        )
+        val result = TestCompileSupport.compileAndRunC(generated, cc)
+        assumeTrue(result.compileResult.exitCode == 0, "cc failed:\n${result.compileResult.stderr}\n$generated")
+        assertEquals("-1\n0\n1\n0\n1\n0.4\n45\n1\n0\n", result.runResult?.stdout)
+    }
+
+    @Test
+    fun mathCombinatorsRunInJSAndMatchC() {
+        val nodePath = node ?: return
+        val generated = emitJS(
+            """
+            fx main: () Void {
+                trace(sign(-5.0))
+                trace(sign(0.0))
+                trace(sign(3.5))
+                trace(step(2.0, 1.0))
+                trace(step(2.0, 2.0))
+                trace(inverseLerp(0.0, 10.0, 4.0))
+                trace(rad2deg(deg2rad(45.0)))
+                trace(isBetween(5.0, 0.0, 10.0))
+                trace(isBetween(11.0, 0.0, 10.0))
+            }
+            """
+        )
+        assertTrue(generated.contains("function sign("), generated)
+        val result = TestCompileSupport.runJS(generated, nodePath)
+        assumeTrue(result.exitCode == 0, "node failed: ${result.stderr}\n$generated")
+        assertEquals("-1\n0\n1\n0\n1\n0.4\n45\n1\n0\n", result.stdout)
+    }
 }

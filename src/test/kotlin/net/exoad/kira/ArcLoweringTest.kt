@@ -90,8 +90,15 @@ class ArcLoweringTest {
 
         // The release must precede the loop's closing brace; hoisting it to
         // function scope referenced `p` out of scope and would not compile.
+        // Anchor to main's BODY: the first "Int32 main(Void)" is the
+        // prototype, and the first "return 0;" may belong to a stdlib body
+        // (e.g. math.sign's else branch), not to main.
+        val proto = c.indexOf("Int32 main(Void)")
+        assertTrue(proto >= 0, "main not found:\n$c")
+        val mainBody = c.indexOf("Int32 main(Void)", proto + 1)
+        assertTrue(mainBody >= 0, "main body not found:\n$c")
+        val loopEnd = c.indexOf("return 0;", mainBody)
         val release = c.indexOf("kira_rc_release(p)")
-        val loopEnd = c.indexOf("return 0;")
         assertTrue(release in 1 until loopEnd, "release should sit inside the loop body:\n$c")
     }
 
