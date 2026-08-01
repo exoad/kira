@@ -124,19 +124,22 @@ for dir in "${DIRS[@]}"; do
     js_user_of out.kira.js > "$WORK/user.js"
     js_prelude_of out.kira.js > "$WORK/prelude.js"
 
-    "$NODE_BIN" out.kira.js > "$WORK/actual-js.txt"
+    "$NODE_BIN" out.kira.js > "$WORK/actual-js.txt" 2>"$WORK/node.err" || {
+      echo "  node failed:" >&2; cat "$WORK/node.err" >&2; exit 1;
+    }
     rm -f out.kira.js
   ); then
     js_failed=1
   fi
 
-  if [[ $c_failed -eq 1 && $js_failed -eq 1 ]]; then
+  if [[ $c_failed -eq 1 || $js_failed -eq 1 ]]; then
     failures=$((failures + 1))
     continue
   fi
 
   # Both backends must print exactly the same thing; expected.txt is shared.
-  if [[ $c_failed -eq 0 && $js_failed -eq 0 ]] && ! diff -q "$WORK/actual-c.txt" "$WORK/actual-js.txt" >/dev/null; then
+  # (Only when node actually ran -- without it we verify the C side alone.)
+  if [[ $NODE_OK -eq 1 && $c_failed -eq 0 && $js_failed -eq 0 ]] && ! diff -q "$WORK/actual-c.txt" "$WORK/actual-js.txt" >/dev/null; then
     echo "  MISMATCH: C and JS stdout differ" >&2
     diff -u "$WORK/actual-c.txt" "$WORK/actual-js.txt" | head -40 >&2 || true
     failures=$((failures + 1))
@@ -153,7 +156,7 @@ for dir in "${DIRS[@]}"; do
       failures=$((failures + 1))
     fi
   fi
-  if [[ $js_failed -eq 0 ]]; then
+  if [[ $NODE_OK -eq 1 && $js_failed -eq 0 ]]; then
     if [[ -z "$js_prelude_seen" ]]; then
       js_prelude_seen="$WORK/prelude.first.js"
       cp "$WORK/prelude.js" "$js_prelude_seen"
@@ -166,7 +169,7 @@ for dir in "${DIRS[@]}"; do
   if [[ $c_failed -eq 0 ]]; then
     emit "$dir/generated.user.c" "$WORK/user.c" "$name/generated.user.c" || failures=$((failures + 1))
   fi
-  if [[ $js_failed -eq 0 ]]; then
+  if [[ $NODE_OK -eq 1 && $js_failed -eq 0 ]]; then
     emit "$dir/generated.user.js" "$WORK/user.js" "$name/generated.user.js" || failures=$((failures + 1))
   fi
   if [[ $c_failed -eq 0 ]]; then
