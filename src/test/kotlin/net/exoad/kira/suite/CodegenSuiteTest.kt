@@ -301,6 +301,47 @@ class CodegenSuiteTest {
         assertFalse(output.contains("T id(T"), output)
     }
 
+    @Test
+    fun nestedGenericsLowerToNestedLiteralsAndAccessors() {
+        val output = emit(
+            """
+            fx main: () Void {
+                grid: Arr<Arr<Int32>> = [[1, 2], [3, 4]]
+                trace(grid[1][0])
+            }
+            """
+        )
+        // Outer and inner Arr literals both appear, nested.
+        assertTrue(output.contains("Arr_lit((KiraSlot[]){ Arr_lit((KiraSlot[]){ 1, 2 }, 2)"), output)
+        // Chained element access composes the get helper.
+        assertTrue(output.contains("Arr_get_i32(Arr_get_i32(grid, 1), 0)"), output)
+    }
+
+    @Test
+    fun genericCallReturnTypeNotThreadedIntoPrintFormat() {
+        // Pinned gap: monomorphization itself is correct (id_Str returns Str),
+        // but the print-format heuristic at a generic call site cannot see the
+        // return type and falls back to %d. Int32 works by luck; Int64 should
+        // widen to %lld and Str needs %s. A fix flips this test.
+        val output = emit(
+            """
+            fx id<T>: (value: T) T {
+                return value
+            }
+
+            fx main: () Void {
+                trace(id<Int32>(7))
+                trace(id<Int64>(7))
+                trace(id<Str>("ada"))
+            }
+            """
+        )
+        assertTrue(output.contains("Str id_Str(Str value)"), output)
+        assertTrue(output.contains("print(\"%d\\n\", id_Int64(7));"), output)
+        assertTrue(output.contains("print(\"%d\\n\", id_Str(\"ada\"));"), output)
+        assertFalse(output.contains("id_Str(\"ada\")") && output.contains("print(\"%s\\n\", id_Str"), output)
+    }
+
     // --- traits ----------------------------------------------------------------
 
     @Test

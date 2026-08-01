@@ -251,6 +251,23 @@ class LexerSuiteTest {
     }
 
     @Test
+    fun nestedGenericClosersLexAsIndividualAngles() {
+        // The C++ `>>` problem, solved lexically: every '>' that could close a
+        // generic type is its own S_CLOSE_ANGLE token, so nesting is unambiguous.
+        val tokens = lex("Arr<Arr<Arr<Int32>>>")
+        assertEquals(
+            listOf(
+                Token.Type.IDENTIFIER, Token.Type.S_OPEN_ANGLE,
+                Token.Type.IDENTIFIER, Token.Type.S_OPEN_ANGLE,
+                Token.Type.IDENTIFIER, Token.Type.S_OPEN_ANGLE,
+                Token.Type.IDENTIFIER,
+                Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE, Token.Type.S_CLOSE_ANGLE,
+            ),
+            tokens.map { it.type }
+        )
+    }
+
+    @Test
     fun rangeScopeAndMiscSymbols() {
         assertLexes("a .. b", Token.Type.IDENTIFIER to "a", Token.Type.OP_RANGE to "..", Token.Type.IDENTIFIER to "b")
         assertLexes("A :: B", Token.Type.IDENTIFIER to "A", Token.Type.OP_SCOPE to "::", Token.Type.IDENTIFIER to "B")

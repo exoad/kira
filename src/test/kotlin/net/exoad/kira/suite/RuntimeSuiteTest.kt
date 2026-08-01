@@ -302,6 +302,38 @@ class RuntimeSuiteTest {
     }
 
     @Test
+    fun nestedGenericArrayIndexing() {
+        assertStdout("3\n") {
+            """
+            fx main: () Void {
+                grid: Arr<Arr<Int32>> = [[1, 2], [3, 4]]
+                trace(grid[1][0])
+            }
+            """
+        }
+    }
+
+    @Test
+    fun genericIdentityInstantiatesAcrossNumericTypes() {
+        // Int8/Int16/Int32 all print as %d, so the happy path works through
+        // generic calls. Str/Int64 returns hit the print-format gap pinned in
+        // CodegenSuiteTest.genericCallReturnTypeNotThreadedIntoPrintFormat.
+        assertStdout("1\n2\n3\n") {
+            """
+            fx id<T>: (value: T) T {
+                return value
+            }
+
+            fx main: () Void {
+                trace(id<Int8>(1))
+                trace(id<Int16>(2))
+                trace(id<Int32>(3))
+            }
+            """
+        }
+    }
+
+    @Test
     fun mapPutGetWithMaybe() {
         assertStdout("1\n36\n-1\n") {
             """
