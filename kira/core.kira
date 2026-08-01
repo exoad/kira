@@ -14,6 +14,16 @@ pub @_magic class Bool
 pub @_magic @_global true: Bool = Bool { }
 pub @_magic @_global false: Bool = Bool { }
 
+// `null` is not a keyword -- it is a built-in global of the bottom-ish type
+// `Null`, exactly like `true` and `false` are globals of type `Bool`.
+//
+// `Null` is only assignable to `Maybe<T>` (see kira:result). Every other type
+// is non-nullable, so a `Pet` always denotes a live object and a possibly
+// absent one is spelled `Maybe<Pet>`.
+pub @_magic class Null
+
+pub @_magic @_global null: Null = Null { }
+
 pub trait Equatable<T> {
     pub fx equals: (other: T) Bool;
 }

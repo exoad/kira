@@ -39,6 +39,12 @@ function main() {
     nums.add(4);
     kira_trace(nums.get(1));
     kira_trace(nums.contains(3));
+    const absent = kira_none();
+    kira_trace(absent.isNone());
+    kira_trace(absent.unwrapOr("fallback"));
+    const present = kira_some("here");
+    kira_trace(present.isSome());
+    kira_trace(present.unwrapOr("fallback"));
     kira_assert((nums.size() == 2), "list should hold two entries");
     kira_trace("ok");
 }

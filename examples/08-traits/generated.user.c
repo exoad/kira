@@ -24,7 +24,7 @@ Int32 Dog_loudness(Dog* this)
 
 simple Dog* Dog_new(Str label)
 {
-    Dog* self = (Dog*)kira_rc_alloc(sizeof(Dog));
+    Dog* self = (Dog*)kira_rc_alloc_with(sizeof(Dog), null);
     self->label = label;
     return self;
 }
@@ -46,7 +46,7 @@ Str Cat_name(Cat* this)
 
 simple Cat* Cat_new(Str label)
 {
-    Cat* self = (Cat*)kira_rc_alloc(sizeof(Cat));
+    Cat* self = (Cat*)kira_rc_alloc_with(sizeof(Cat), null);
     self->label = label;
     return self;
 }
@@ -122,7 +122,6 @@ Speaker makeSpeaker(Void)
 {
     Cat* cat = Cat_new("Luna");
     return ((Speaker){ .data = cat, .vtable = &Speaker_vtable_Cat });
-    kira_rc_release(cat);
 }
 Int32 main(Void)
 {
@@ -137,7 +136,7 @@ Int32 main(Void)
     Speaker bolt = ((Speaker){ .data = Dog_new("Bolt"), .vtable = &Speaker_vtable_Dog });
     print("%s\n", bolt.vtable->speak(bolt.data));
     print("%s\n", makeSpeaker().vtable->name(makeSpeaker().data));
-    kira_rc_release(dog);
     kira_rc_release(cat);
+    kira_rc_release(dog);
     return 0;
 }

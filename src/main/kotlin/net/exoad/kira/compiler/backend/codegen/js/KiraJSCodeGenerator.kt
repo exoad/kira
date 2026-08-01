@@ -1074,6 +1074,29 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         // Types are erased in JS output.
     }
 
+    /** True when [expr] is the stdlib `null` global (or the legacy null literal). */
+    private fun isNullValue(expr: Expr): Boolean {
+        return expr is NullLiteral || (expr is Identifier && expr.value == "null")
+    }
+
+    /** Stdlib methods that already hand back a `Maybe`, keyed by receiver type. */
+    private val maybeReturningMethods = mapOf(
+        "Map" to setOf("get", "remove"),
+        "Stack" to setOf("pop", "peek"),
+        "Queue" to setOf("dequeue", "peek"),
+        "Deque" to setOf("popFront", "popBack")
+    )
+
+    /** True when [expr] already evaluates to a `Maybe`, so wrapping would nest one. */
+    private fun producesMaybe(expr: Expr): Boolean {
+        if (receiverTypeOf(expr) == "Maybe") return true
+        val call = expr as? FunctionCallExpr ?: return false
+        val member = call.name as? MemberAccessExpr ?: return false
+        val method = (member.member as? Identifier)?.value ?: return false
+        val recv = receiverTypeOf(member.origin) ?: return false
+        return maybeReturningMethods[recv]?.contains(method) == true
+    }
+
     override fun visitVariableDecl(variableDecl: VariableDecl) {
         if (isMagicDecl(variableDecl)) {
             return
@@ -1094,6 +1117,17 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 val value = variableDecl.value!!
                 if (value is ObjectInitExpr && value.positionalArgs.isEmpty() && isCollectionType(typeName)) {
                     emitEmptyContainerFactory(baseTypeNameOf(value.typeName))
+                } else if (typeName == "Maybe" && !producesMaybe(value)) {
+                    // `p: Maybe<T> = null` -> kira_none(); any other value is the
+                    // present case. Mirrors the C backend so null safety behaves
+                    // the same on both targets.
+                    if (isNullValue(value)) {
+                        buffer.append("kira_none()")
+                    } else {
+                        buffer.append("kira_some(")
+                        value.accept(this)
+                        buffer.append(")")
+                    }
                 } else {
                     value.accept(this)
                 }

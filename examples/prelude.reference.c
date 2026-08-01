@@ -96,12 +96,20 @@ typedef CharSeq Str;
 /* Strong RC v1 foundation; codegen wiring lands incrementally.               */
 /* -------------------------------------------------------------------------- */
 
+/*
+ * Finalizer for one class: releases whatever that class's fields own. Codegen
+ * emits one per class with class-typed fields and hands it to kira_rc_alloc_with,
+ * so releasing an owner transitively releases what it holds.
+ */
+typedef Void (*KiraFinalizer)(Void*);
+
 typedef struct KiraRcHeader
 {
-    Int32 strong;
+    Int32         strong;
+    KiraFinalizer finalize;   /* null when the class owns no references */
 } KiraRcHeader;
 
-simple Void* kira_rc_alloc(Int32 nbytes)
+simple Void* kira_rc_alloc_with(Int32 nbytes, KiraFinalizer finalize)
 {
     /* header + payload; payload begins immediately after header */
     KiraRcHeader* h = (KiraRcHeader*)malloc((size_t)nbytes + sizeof(KiraRcHeader));
@@ -109,8 +117,14 @@ simple Void* kira_rc_alloc(Int32 nbytes)
     {
         abort();
     }
-    h->strong = 1;
+    h->strong   = 1;
+    h->finalize = finalize;
     return (Void*)(h + 1);
+}
+
+simple Void* kira_rc_alloc(Int32 nbytes)
+{
+    return kira_rc_alloc_with(nbytes, null);
 }
 
 simple Void kira_rc_retain(Void* obj)
@@ -133,8 +147,50 @@ simple Void kira_rc_release(Void* obj)
     h->strong -= 1;
     if (h->strong <= 0)
     {
+        if (h->finalize != null)
+        {
+            h->finalize(obj);
+        }
         free(h);
     }
+}
+
+/* Retain and hand back, so a borrowed argument can be passed where a +1 is expected. */
+simple Void* kira_rc_retained(Void* obj)
+{
+    kira_rc_retain(obj);
+    return obj;
+}
+
+/*
+ * Store a *borrowed* reference into an owning slot: retain the incoming value
+ * before releasing the outgoing one, so self-assignment (`a = a`) and aliased
+ * stores cannot free the object mid-swap.
+ */
+simple Void kira_rc_store(Void** slot, Void* value)
+{
+    if (*slot == value)
+    {
+        return;
+    }
+    kira_rc_retain(value);
+    kira_rc_release(*slot);
+    *slot = value;
+}
+
+/*
+ * Store an *owned* reference (a fresh allocation, or one handed over by a
+ * callee) into an owning slot. The +1 transfers, so no retain -- only the
+ * previous occupant is released.
+ */
+simple Void kira_rc_store_owned(Void** slot, Void* value)
+{
+    if (*slot == value)
+    {
+        return;
+    }
+    kira_rc_release(*slot);
+    *slot = value;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -930,6 +986,34 @@ simple Arr Map_valuesArr(Map* m) { return Map_collect(m, false, false); }
 simple Arr Map_entries(Map* m)   { return Map_collect(m, true,  true); }
 
 /* -------------------------------------------------------------------------- */
+/* Scope-end disposal                                                          */
+/*                                                                            */
+/* `clear()` is the user-facing "empty me but stay usable" operation. `dispose`*/
+/* releases the backing storage and is emitted by codegen when a container     */
+/* local goes out of scope.                                                    */
+/* -------------------------------------------------------------------------- */
+
+simple Void List_dispose(List* l)
+{
+    if (l->data != null) free(l->data);
+    l->data     = null;
+    l->length   = 0;
+    l->capacity = 0;
+}
+
+simple Void Map_dispose(Map* m)
+{
+    if (m->keys != null)     free(m->keys);
+    if (m->values != null)   free(m->values);
+    if (m->occupied != null) free(m->occupied);
+    m->keys     = null;
+    m->values   = null;
+    m->occupied = null;
+    m->length   = 0;
+    m->capacity = 0;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Set -- unique slots, linear membership over KiraVec                         */
 /* Baseline: O(n) contains. Swap for a hash probe when profiles justify it.    */
 /* -------------------------------------------------------------------------- */
@@ -1070,5 +1154,10 @@ simple Maybe Deque_popBack(Deque* d)
     if (d->items.length == 0) return Maybe_none();
     return Maybe_some(KiraVec_removeAt(&d->items, d->items.length - 1));
 }
+
+simple Void Set_dispose(Set* s)     { KiraVec_clear(&s->items); }
+simple Void Stack_dispose(Stack* s) { KiraVec_clear(&s->items); }
+simple Void Queue_dispose(Queue* q) { KiraVec_clear(&q->items); }
+simple Void Deque_dispose(Deque* d) { KiraVec_clear(&d->items); }
 
 #endif /* KIRA_RUNTIME_H */

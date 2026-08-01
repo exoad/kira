@@ -54,6 +54,18 @@ fx main: () Void {
     trace(nums.get(1))
     trace(nums.contains(3))
 
+    // --- null safety --------------------------------------------------
+    // `null` is a stdlib global of type Null, not a keyword. Every type is
+    // non-nullable, so absence is spelled Maybe<T>. `missing: Int32 = null`
+    // would be a compile error.
+    absent: Maybe<Str> = null
+    trace(absent.isNone())
+    trace(absent.unwrapOr("fallback"))
+
+    present: Maybe<Str> = "here"
+    trace(present.isSome())
+    trace(present.unwrapOr("fallback"))
+
     // --- assert -------------------------------------------------------
     assert(nums.size() == 2, "list should hold two entries")
     trace("ok")

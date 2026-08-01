@@ -311,7 +311,12 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
-        // TODO("Not yet implemented")
+        // Walk the callee and arguments so checks that live on inner nodes --
+        // notably the Maybe member-access guard -- also apply inside calls
+        // like `trace(p.name)`.
+        functionCallExpr.name.accept(this)
+        functionCallExpr.positionalParameters.forEach { it.value.accept(this) }
+        functionCallExpr.namedParameters.forEach { it.value.accept(this) }
     }
 
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
@@ -344,7 +349,27 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
-        // TODO("Not yet implemented")
+        // Null safety: a Maybe<T> must be unwrapped before its payload is
+        // reachable, so only the Maybe API itself may be accessed on one.
+        val receiver = memberAccessExpr.origin as? Identifier ?: return
+        if (declaredValueTypes[receiver.value] != "Maybe") {
+            return
+        }
+        val member = (memberAccessExpr.member as? Identifier)?.value
+            ?: (memberAccessExpr.member as? FunctionCallExpr)?.let { call ->
+                (call.name as? Identifier)?.value
+            }
+            ?: return
+        if (member in maybeMembers) {
+            return
+        }
+        pump(
+            "'$member' is not available on a 'Maybe' -- the value may be absent",
+            location = context.astOrigins[memberAccessExpr.member] ?: SourcePosition.UNKNOWN,
+            selectorLength = member.length,
+            help = "Unwrap it first: '${receiver.value}.unwrapOr(default).$member', " +
+                "or guard with 'if ${receiver.value}.isSome() { ... ${receiver.value}.unwrap().$member ... }'."
+        )
     }
 
     override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
@@ -442,6 +467,21 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     /**
      * Used for [visitVariableDecl] which uses this map to find all of the literal types and how they can match
      */
+    /**
+     * Declared type of each local currently in scope, for null-safety checks.
+     * `Maybe` is the only nullable shape, so this is what tells us whether a
+     * `null` initializer is legal and whether a member access needs unwrapping.
+     */
+    private val declaredValueTypes = mutableMapOf<String, String>()
+
+    /** The Maybe API -- the only members reachable without unwrapping first. */
+    private val maybeMembers = setOf("isSome", "isNone", "unwrap", "unwrapOr")
+
+    /** True when [expr] is the stdlib `null` global (or the legacy null literal). */
+    private fun isNullValue(expr: Expr?): Boolean {
+        return expr is NullLiteral || (expr is Identifier && expr.value == "null")
+    }
+
     private val variableBuiltinPrimitives = mapOf(
         StringLiteral::class to { type: String -> type == "String" || type == "Str" },
         IntegerLiteral::class to { type: String -> type == "Int32" || type == "Int64" },
@@ -492,15 +532,33 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 } else {
                     typeName
                 }
+                // A literal initializing Maybe<T> is checked against T -- the
+                // backend wraps it as the present case.
+                val expectedTypeName = if (typeName == "Maybe") {
+                    (variableDecl.type.children.firstOrNull()?.identifier as? Identifier)?.value
+                        ?: actualTypeName
+                } else {
+                    actualTypeName
+                }
                 pumpOnTrue(
-                    !(variableBuiltinPrimitives[literalClass]?.invoke(actualTypeName) ?: true),
+                    !(variableBuiltinPrimitives[literalClass]?.invoke(expectedTypeName) ?: true),
                     "Type mismatch. Got a ${
                         literalClass.simpleName?.removeSuffix("Literal")?.lowercase()
-                    } literal, but expected a '$typeName'",
+                    } literal, but expected a '$expectedTypeName'",
                     context.astOrigins[variableDecl.value],
                     help = "Correct the declaration type or the value itself.",
                 )
+                // Null safety: every type except Maybe<T> is non-nullable.
+                pumpOnTrue(
+                    isNullValue(variableDecl.value) && typeName != "Maybe",
+                    "'null' cannot be assigned to the non-nullable type '$typeName'",
+                    context.astOrigins[variableDecl.value],
+                    selectorLength = 4,
+                    help = "Types are non-nullable in Kira. Declare it as 'Maybe<$typeName>' " +
+                        "to allow absence, then read it with unwrapOr(...) or guard on isSome()."
+                )
             }
+            declaredValueTypes[varName] = typeName
         }
 
     }

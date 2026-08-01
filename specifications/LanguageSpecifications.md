@@ -3316,6 +3316,52 @@ if result.isSuccess() {
 
 ---
 
+## Null Safety
+
+`null` is **not a keyword**. It is a built-in global declared by the standard
+library, exactly the way `true` and `false` are:
+
+```kira
+pub @_magic class Bool
+pub @_magic @_global true: Bool = Bool { }
+pub @_magic @_global false: Bool = Bool { }
+
+pub @_magic class Null
+pub @_magic @_global null: Null = Null { }
+```
+
+Every type in Kira is **non-nullable**. A `Pet` always denotes a live object;
+there is no null `Pet`. Absence is expressed with `Maybe<T>` from `kira:result`,
+and `null` is the only value assignable to it:
+
+```kira
+p: Maybe<Pet> = null            // ok -- absent
+q: Maybe<Pet> = Pet { "Mochi" } // ok -- present
+r: Pet        = null            // error: 'null' cannot be assigned to the
+                                //        non-nullable type 'Pet'
+```
+
+Reaching through a `Maybe` without unwrapping is rejected, so a possibly-absent
+value cannot be dereferenced by accident:
+
+```kira
+p: Maybe<Pet> = null
+name: Str = p.name              // error: 'name' is not available on a 'Maybe'
+
+// Instead, unwrap explicitly:
+name: Str = p.unwrapOr(fallback).name
+if p.isSome() {
+    trace(p.unwrap().name)
+}
+```
+
+Only the `Maybe` API itself -- `isSome`, `isNone`, `unwrap`, `unwrapOr` -- is
+reachable on a `Maybe` value. `Map.get`, `Stack.pop`, `Queue.dequeue` and the
+other partial operations all return `Maybe<T>`, so absence is threaded through
+the type system rather than through a sentinel.
+
+---
+
 ## Standard Library
 
 The reference stdlib is the `kira/` tree in the compiler repository, split by

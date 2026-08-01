@@ -94,7 +94,7 @@ Void Grid_printGrid(Grid* this)
 
 simple Grid* Grid_new(Int32 width, Int32 height, Arr cells)
 {
-    Grid* self = (Grid*)kira_rc_alloc(sizeof(Grid));
+    Grid* self = (Grid*)kira_rc_alloc_with(sizeof(Grid), null);
     self->width = width;
     self->height = height;
     self->cells = cells;

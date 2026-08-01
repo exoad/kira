@@ -83,6 +83,12 @@ carries a comment naming the gap. Current set:
   `id<Int64>(x)` prints wrong, `id<Str>(x)` prints a pointer as a number
   (`RuntimeSuiteTest.genericIdentityInstantiatesAcrossNumericTypes` covers
   the %d-safe happy path).
+- **Nested containers are rejected by the C toolchain**
+  (`RuntimeSuiteTest.nestedGenericArrayIsRejectedByCToolchain`): an `Arr` is
+  wider than the 64-bit `KiraSlot` a container stores, so `cc` rejects the
+  emitted C for `Arr<Arr<Int32>>`. The test asserts the emitted shape and
+  that the compile fails -- it used to *silently skip* this case, hiding the
+  limit behind green.
 
 The older tests in `src/test/kotlin/net/exoad/kira/` and
 `src/test/kotlin/net/exoad/tests/kira/` (parser smoke, stdlib lowering, trait

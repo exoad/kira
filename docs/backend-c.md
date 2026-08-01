@@ -122,10 +122,29 @@ each with a committed `generated.user.c` + `expected.txt` verified by
 `./examples/regenerate.sh --check`, plus `BackendCompilationPipelineTest` /
 `StdlibLoweringTest` / `TraitCodegenTest` / frontend tests.
 
-**ARC limits (documented in code):** release is skipped on explicit `return`
-paths (leak, not crash); class objects embedded in fields use borrowed
-ownership (no retain on store); non-lvalue trait receivers like
-`makeSpeaker().name()` evaluate the receiver twice.
+**Ownership model.** A class value is a refcounted heap object. The rules the
+backend enforces:
+
+| Situation | Lowering |
+|---|---|
+| `a: Pet = Pet { ... }` | `Pet_new(...)` -- fresh `+1` |
+| `b: Pet = a` (alias) | `kira_rc_retain(b)` after the store |
+| `a = value` (reassign) | `kira_rc_store` (retains first, so `a = a` is safe) or `kira_rc_store_owned` for a fresh value |
+| constructor argument | Fields **consume** a `+1`; a borrowed local is wrapped in `kira_rc_retained(...)` |
+| field cleanup | `Class_finalize` released by `kira_rc_release` when the count hits zero |
+| block exit | `kira_rc_release` per local, **inside** the block that declared it |
+| `return x` | Releases precede the `return`; the returned local keeps its `+1` |
+| container local | `List_dispose` / `Map_dispose` / ... at scope end |
+
+Verified with AddressSanitizer plus `leaks` over aliasing, field storage,
+constructor temporaries, reassignment, loop allocation, argument passing and
+return paths.
+
+**Remaining limits:** no weak refs, so reference *cycles* still leak;
+`Str`-producing methods allocate and are never freed (see below); non-lvalue
+trait receivers like `makeSpeaker().name()` still evaluate the receiver twice;
+containers cannot nest (an `Arr` is wider than a slot, so `Arr<Arr<Int32>>` is
+rejected by `cc`).
 
 **Container erasure:** every container stores `KiraSlot` (64-bit). That covers
 `Int8`..`Int64`, `Bool`, `Str`, and class references, which slot through
@@ -135,9 +154,24 @@ a supported case. Codegen casts each slot back to the declared element type
 using the type arguments recorded at declaration, so element types must be
 statically known at the use site.
 
-**Str lifetime:** `substring` / `charAt` / `trim` / `toLower` / `toUpper` /
-`split` return freshly `malloc`'d storage that is never freed -- Kira has no Str
-ownership model yet. Same class of gap as unowned ARC temporaries.
+**Str lifetime (open design question):** `substring` / `charAt` / `trim` /
+`toLower` / `toUpper` / `split` return freshly `malloc`'d storage that is never
+freed -- 50k `trim()` calls leak ~800 KB. This is *not* a simple bug fix: a C
+string literal has no RC header, so `release` cannot blindly read the memory in
+front of the pointer. Picking one of these is a language decision:
+
+1. a registry of heap `Str` pointers with refcounts (safe, costs a lookup per op),
+2. intern every literal into RC storage on first use (uniform, changes literal cost),
+3. an arena with a defined reset point (cheapest, needs a scope to reset at).
+
+Until then, `Str` results are borrowed-forever.
+
+**Null safety:** `null` is a stdlib global of type `Null`, not a keyword --
+exactly like `true` / `false` are globals of type `Bool`. Every type is
+non-nullable; `Maybe<T>` is the only shape that admits absence. The frontend
+rejects `null` against a non-`Maybe` type and rejects reaching through a
+`Maybe` without unwrapping. Both the C and JS backends lower the coercion
+(`Maybe_none()` / `Maybe_some(...)`, `kira_none()` / `kira_some(...)`).
 
 ---
 
