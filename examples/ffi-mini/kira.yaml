@@ -1,0 +1,14 @@
+project:
+  name: ffi-mini
+
+srcDir: src
+
+build:
+  target: c
+  cSources:
+    - native/mini_gfx.c
+  linkFlags: []
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

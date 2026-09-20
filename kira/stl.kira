@@ -1,0 +1,22 @@
+module "kira:stl"
+
+// Prelude index. The stdlib is split by concern across the sibling files in
+// this folder; this module pulls all of them into one URI so `kira:stl` stays
+// the single name that describes "everything the language ships with".
+//
+// You do not normally write `use "kira:stl"` in application code -- every
+// `kira:*` module is loaded as a dependency and its magic types are ambient.
+//
+//   kira:core         Any / Void / Never / Bool / Str / Num + fixed-width scalars
+//   kira:tuples       Tuple0..Tuple9, Pair
+//   kira:collections  Iterable, Arr, List, Map, Set, Stack, Queue, Deque
+//   kira:result       Maybe, Result, Exception
+//   kira:io           print / println / eprint / assert
+//   kira:math         sqrt / pow / floor / ceil / trig / min / max
+
+use "kira:core"
+use "kira:tuples"
+use "kira:collections"
+use "kira:result"
+use "kira:io"
+use "kira:math"

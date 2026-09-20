@@ -1,0 +1,25 @@
+package net.exoad.kira.compiler.frontend.parser.ast.expressions
+
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
+import net.exoad.kira.core.CompilerIntrinsic
+
+/**
+ * Expression implementation
+ */
+abstract class Expr(override val attachedIntrinsics: List<CompilerIntrinsic> = emptyList()) : ASTNode()
+
+/**
+ * A simple expression placeholder value to signify for things like [net.exoad.kira.compiler.frontend.parser.ast.statements.Statement] that need an [Expr] passed in.
+ *
+ * It signifies that this is just a single keyword statement
+ */
+object NoExpr : Expr() {
+    override fun accept(visitor: KiraASTVisitor) {
+        visitor.visitNoExpr(this)
+    }
+
+    override fun toString(): String {
+        return "_{ }"
+    }
+}

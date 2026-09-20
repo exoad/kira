@@ -1,0 +1,39 @@
+---
+description: Kira source language surface facts when writing or editing .kira files (stdlib and examples).
+globs: kira/*.kira, examples/**/*.kira, test_kira/**/*.kira
+---
+
+# Kira language surface
+
+Facts that trip up new writers. The full reference is
+`specifications/LanguageSpecifications.md`; the tutorial stays inside what the
+C backend lowers today.
+
+## Syntax facts
+
+- Mutable locals: `mut name: Type = expr`. There is no `var` and no `this`.
+  Immutable default: `name: Type = expr`.
+- Class fields: `require pub name: Type` (constructor parameter + public field).
+  Construction is positional: `Point { 0, 1 }`, nested `Rect { Point { 0, 1 }, Point { 1, 0 } }`.
+- Methods: `pub fx name: (args) ReturnType { ... }`. The C backend lowers
+  methods to `Type_method(Type* this, ...)`.
+- Modules: `module "app:main"` maps to `src/app/main.kira`. Multi-file use:
+  `use "app:model"`.
+- Stdlib modules are `kira:*` (`kira:stl` indexes core/tuples/collections/
+  result/io/math). Magic types are ambient once the stdlib dependency loads;
+  you do not write `use "kira:stl"` in app code.
+- `trace(...)` prints with a newline; `print` / `println` / `eprint` / `assert`
+  come from `kira:io`.
+
+## Backend truth
+
+- `for` ranges, `if/else`, and `while` lower today. Variants and generic
+  traits are not lowered; trait inheritance and dispatch are.
+- Classes are heap ARC (scope-end release). Field-embedded objects are
+  borrowed; release on explicit return paths is skipped (leak, not crash).
+- Container elements erase to a 64-bit `KiraSlot`: `Float32`/`Float64`
+  elements are rejected, not silently reinterpreted.
+- `Map.get`, `Stack.pop`, `Queue.dequeue` return `Maybe<T>`; payloads cast
+  back at use sites.
+- `@_opaque` / `@_extern` are the foreign edge: C symbols as written, never
+  ARC'd. `build.cSources` / `build.linkFlags` carry extra C.

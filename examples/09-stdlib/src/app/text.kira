@@ -1,0 +1,10 @@
+module "app:text"
+
+// Str methods lower to the Str_* helpers in the runtime prelude.
+pub fx shout: (value: Str) Str {
+    return value.toUpper()
+}
+
+pub fx initials: (value: Str) Str {
+    return value.charAt(0)
+}

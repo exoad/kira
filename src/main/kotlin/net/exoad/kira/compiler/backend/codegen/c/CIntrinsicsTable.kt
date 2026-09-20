@@ -1,0 +1,47 @@
+package net.exoad.kira.compiler.backend.codegen.c
+
+object CIntrinsicsTable {
+    private data class CIntrinsicBinding(
+        val functionName: String,
+        val requiredIncludes: Set<String> = emptySet()
+    )
+
+    private val bindings = mapOf(
+        // I/O -- Jack style print/println macros from the runtime prelude
+        "trace" to CIntrinsicBinding("print"),
+        "print" to CIntrinsicBinding("print"),
+        "println" to CIntrinsicBinding("println"),
+        // eprint writes to stderr; the prelude macro supplies the stream so the
+        // call site keeps the Kira arity (bare `fprintf` dropped it).
+        "eprint" to CIntrinsicBinding("eprint"),
+        "_trace_" to CIntrinsicBinding("print"),
+        // Math
+        "sqrt" to CIntrinsicBinding("sqrt", setOf("math.h")),
+        "pow" to CIntrinsicBinding("pow", setOf("math.h")),
+        "floor" to CIntrinsicBinding("floor", setOf("math.h")),
+        "ceil" to CIntrinsicBinding("ceil", setOf("math.h")),
+        "round" to CIntrinsicBinding("round", setOf("math.h")),
+        "sin" to CIntrinsicBinding("sin", setOf("math.h")),
+        "cos" to CIntrinsicBinding("cos", setOf("math.h")),
+        "tan" to CIntrinsicBinding("tan", setOf("math.h")),
+        "abs" to CIntrinsicBinding("fabs", setOf("math.h")),
+        "min" to CIntrinsicBinding("fmin", setOf("math.h")),
+        "max" to CIntrinsicBinding("fmax", setOf("math.h")),
+        // Kira's assert takes (condition, message); C's assert macro takes one
+        // argument, so route to the prelude's two-argument helper instead.
+        "assert" to CIntrinsicBinding("kira_assert"),
+    )
+
+    fun resolveFunction(name: String): String {
+        return bindings[name]?.functionName ?: name
+    }
+
+    /** Null when [name] is not a known intrinsic -- callers should keep the original spelling. */
+    fun resolveFunctionOrNull(name: String): String? {
+        return bindings[name]?.functionName
+    }
+
+    fun resolveIncludes(name: String): Set<String> {
+        return bindings[name]?.requiredIncludes ?: emptySet()
+    }
+}

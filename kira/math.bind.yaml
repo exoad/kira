@@ -1,0 +1,23 @@
+# Magic binding manifest for kira:math (C backend).
+#
+# Each @_magic declaration in kira/math.kira is typechecked from its Kira
+# signature; the C symbol it lowers to and the include it needs live here,
+# beside the declaration, instead of inside the compiler. The C backend loads
+# every *.bind.yaml next to the stdlib modules and resolves magic names
+# through the table (see CMagicBindingTable).
+#
+# A binding is either a bare symbol (`sqrt: sqrt`) or a map with `symbol` and
+# optional `includes`. The key is the canonical Kira name, lowercased with
+# leading `@` and surrounding `_` stripped (same canonicalization the codegen
+# applies to intrinsic spellings like `@_trace_`).
+sqrt: { symbol: sqrt, includes: [math.h] }
+pow: { symbol: pow, includes: [math.h] }
+floor: { symbol: floor, includes: [math.h] }
+ceil: { symbol: ceil, includes: [math.h] }
+round: { symbol: round, includes: [math.h] }
+sin: { symbol: sin, includes: [math.h] }
+cos: { symbol: cos, includes: [math.h] }
+tan: { symbol: tan, includes: [math.h] }
+abs: { symbol: fabs, includes: [math.h] }
+min: { symbol: fmin, includes: [math.h] }
+max: { symbol: fmax, includes: [math.h] }

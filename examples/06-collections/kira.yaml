@@ -1,0 +1,11 @@
+project:
+  name: collections
+
+srcDir: src
+
+build:
+  target: c
+
+dependencies:
+  kira_stdlib:
+    path: ../../kira

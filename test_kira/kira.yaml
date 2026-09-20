@@ -1,0 +1,11 @@
+project:
+  name: test_kira
+
+srcDir: sub
+
+build:
+  target: c
+
+dependencies:
+  kira_stdlib:
+    path: ../kira
