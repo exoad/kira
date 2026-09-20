@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "id": "kira",
-  "displayName": "Kira",
-  "kosmosNamespace": "kira",
-  "trustDefault": "project",
-  "rulesDir": "rules",
-  "skillsDir": "skills"
-}
