@@ -17,7 +17,9 @@ fx main: () Void {
     trace(count.toInt64())
 
     // --- Set ---------------------------------------------------------
-    seen: Set<Int32> = Set<Int32> { }
+    // Containers are values, and add / push / enqueue / put change their
+    // receiver, so the binding that is mutated is declared `mut`.
+    mut seen: Set<Int32> = Set<Int32> { }
     seen.add(1)
     seen.add(2)
     seen.add(1)
@@ -25,20 +27,20 @@ fx main: () Void {
     trace(seen.contains(2))
 
     // --- Stack / Queue -----------------------------------------------
-    undo: Stack<Int32> = Stack<Int32> { }
+    mut undo: Stack<Int32> = Stack<Int32> { }
     undo.push(10)
     undo.push(20)
     top: Maybe<Int32> = undo.pop()
     trace(top.unwrapOr(0))
 
-    jobs: Queue<Int32> = Queue<Int32> { }
+    mut jobs: Queue<Int32> = Queue<Int32> { }
     jobs.enqueue(1)
     jobs.enqueue(2)
     next: Maybe<Int32> = jobs.dequeue()
     trace(next.unwrapOr(0))
 
     // --- Map + Maybe --------------------------------------------------
-    ages: Map<Str, Int32> = Map<Str, Int32> { }
+    mut ages: Map<Str, Int32> = Map<Str, Int32> { }
     ages.put("ada", 36)
     found: Maybe<Int32> = ages.get("ada")
     trace(found.isSome())
@@ -48,7 +50,7 @@ fx main: () Void {
     trace(missing.unwrapOr(-1))
 
     // --- List ---------------------------------------------------------
-    nums: List<Int32> = List<Int32> { }
+    mut nums: List<Int32> = List<Int32> { }
     nums.add(3)
     nums.add(4)
     trace(nums.get(1))

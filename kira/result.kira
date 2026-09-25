@@ -2,12 +2,16 @@ module "kira:result"
 
 // Fallible-value types. `Maybe` is the return shape for the partial `Map` /
 // `Stack` / `Queue` / `Deque` lookups in `kira:collections`.
+//
+// `Maybe` answers to both spellings (D40): `isNull` / `value` and
+// `isNone` / `unwrap`.
 
 pub @_magic class Maybe<T> {
     require pub value: T
 
     pub fx isSome: () Bool;
     pub fx isNone: () Bool;
+    pub fx isNull: () Bool;
     pub fx unwrap: () T;
     pub fx unwrapOr: (defaultValue: T) T;
 }
@@ -25,3 +29,19 @@ pub @_magic class Result<T, E> {
 pub @_magic class Exception {
     require pub message: Str
 }
+
+// A shared, mutable cell (the spec's `Ref<T>`, D46): every copy of a `Ref`
+// names the same `value`.
+pub @_magic class Ref<T> {
+    require pub mut value: T
+}
+
+// A non-owning reference to a class instance. `upgrade` yields the live
+// object, or none once every owning reference is gone.
+pub @_magic class Weak<T> {
+    pub fx upgrade: () Maybe<T>;
+}
+
+// An unchecked pointer for FFI seams: no lifetime, no bounds, no nullability.
+// Only `@_extern` code hands these out.
+pub @_magic class Unsafe<T>

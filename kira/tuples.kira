@@ -7,6 +7,12 @@ pub trait Tuple<T> {
     pub fx size: () Int32
 }
 
+// The type of a function value: `P` is the parameter tuple (`Tuple0` for
+// none), `R` the return type. A `mut` in a parameter position of `P`
+// (`Fx<Tuple1<mut T>, Void>`, D24) means the callee gets the argument by
+// reference.
+pub @_magic class Fx<P, R>
+
 pub @_magic class Tuple0: Tuple<Void> {
     pub fx size: () Int32 {
         return 0

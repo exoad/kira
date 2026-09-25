@@ -1,0 +1,21 @@
+# Magic binding manifest for kira:bytes (C++ backend only).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
+# (kira:bytes has no C lowering). The targets live in kira/core.hxx, so they
+# are constexpr and available in the freestanding profile. The read*Le are
+# `pure` because they only read their view, yet each panics on a short view
+# (D10): the flag means "no spill needed", never "may be dropped" (see
+# core.bind.yaml).
+readU16Le: { cpp: { expr: "kira::readU16Le({0}, {1})", pure: true, constexpr: true } }
+readU32Le: { cpp: { expr: "kira::readU32Le({0}, {1})", pure: true, constexpr: true } }
+readU64Le: { cpp: { expr: "kira::readU64Le({0}, {1})", pure: true, constexpr: true } }
+readF32Le: { cpp: { expr: "kira::readF32Le({0}, {1})", pure: true, constexpr: true } }
+readF64Le: { cpp: { expr: "kira::readF64Le({0}, {1})", pure: true, constexpr: true } }
+
+writeU16Le: { cpp: { expr: "kira::writeU16Le({0}, {1}, {2})", constexpr: true } }
+writeU32Le: { cpp: { expr: "kira::writeU32Le({0}, {1}, {2})", constexpr: true } }
+writeU64Le: { cpp: { expr: "kira::writeU64Le({0}, {1}, {2})", constexpr: true } }
+writeF32Le: { cpp: { expr: "kira::writeF32Le({0}, {1}, {2})", constexpr: true } }
+writeF64Le: { cpp: { expr: "kira::writeF64Le({0}, {1}, {2})", constexpr: true } }
+
+parseInt64: { cpp: { expr: "kira::parseInt64({0})", pure: true, constexpr: true } }

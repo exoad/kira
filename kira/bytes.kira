@@ -1,0 +1,24 @@
+module "kira:bytes"
+
+// Byte-order-explicit reads and writes over borrowed byte views, and a strict
+// decimal parser over a borrowed character view. None of these allocate, so
+// they are available in the freestanding profile too.
+//
+// Every `read*Le` reads little-endian at byte offset `at` and panics when
+// the view is too short; every `write*Le` is the inverse over a `MutView`.
+
+pub @_magic fx readU16Le: (buf: View<UInt8>, at: Size) UInt16;
+pub @_magic fx readU32Le: (buf: View<UInt8>, at: Size) UInt32;
+pub @_magic fx readU64Le: (buf: View<UInt8>, at: Size) UInt64;
+pub @_magic fx readF32Le: (buf: View<UInt8>, at: Size) Float32;
+pub @_magic fx readF64Le: (buf: View<UInt8>, at: Size) Float64;
+
+pub @_magic fx writeU16Le: (buf: MutView<UInt8>, at: Size, value: UInt16) Void;
+pub @_magic fx writeU32Le: (buf: MutView<UInt8>, at: Size, value: UInt32) Void;
+pub @_magic fx writeU64Le: (buf: MutView<UInt8>, at: Size, value: UInt64) Void;
+pub @_magic fx writeF32Le: (buf: MutView<UInt8>, at: Size, value: Float32) Void;
+pub @_magic fx writeF64Le: (buf: MutView<UInt8>, at: Size, value: Float64) Void;
+
+// Strict: an optional sign, then decimal digits and nothing else; none on
+// any other text or on overflow. Locale-free.
+pub @_magic fx parseInt64: (text: View<Char>) Maybe<Int64>;

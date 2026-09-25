@@ -2,8 +2,9 @@ module "kira:core"
 
 // Root of the type lattice plus the primitive scalars every other stdlib
 // module builds on. Everything here is `@_magic`: the declaration exists so
-// the frontend can typecheck against it, and the C backend supplies the real
-// definition from the prelude (`src/main/resources/c_generator.c`).
+// the frontend can typecheck against it, and each backend supplies the real
+// definition -- the C backend from the prelude (`kira/c/c_generator.c`), the
+// C++ backend from the runtime named in `core.bind.yaml`.
 
 pub @_magic class Any
 pub @_magic class Void
@@ -32,18 +33,27 @@ pub trait Hashable {
     pub fx hashCode: () Int64;
 }
 
+// Every length and index is a `Size` (D2). `at` reads one code unit as a
+// `Char` (D3); `charAt` keeps the older one-character `Str` form.
 pub @_magic class Str: Equatable<Str>, Hashable {
-    pub fx length: () Int32;
+    pub fx length: () Size;
+    pub fx size: () Size;
     pub fx isEmpty: () Bool;
-    pub fx substring: (start: Int32, end: Int32) Str;
-    pub fx charAt: (index: Int32) Str;
+    pub fx substring: (start: Size, end: Size) Str;
+    pub fx charAt: (index: Size) Str;
+    pub fx at: (index: Size) Char;
     pub fx contains: (value: Str) Bool;
     pub fx startsWith: (prefix: Str) Bool;
     pub fx endsWith: (suffix: Str) Bool;
+    pub fx find: (value: Str) Maybe<Size>;
     pub fx split: (delimiter: Str) List<Str>;
     pub fx trim: () Str;
     pub fx toLower: () Str;
     pub fx toUpper: () Str;
+    pub fx toInt64: () Maybe<Int64>;
+    pub fx toFloat64: () Maybe<Float64>;
+    pub fx padStart: (width: Size, fill: Char) Str;
+    pub fx view: () View<Char>;
 }
 
 pub @_magic class Num: Equatable<Num>, Hashable {
@@ -58,8 +68,27 @@ pub @_magic class Int8: Num
 pub @_magic class Int16: Num
 pub @_magic class Int32: Num
 pub @_magic class Int64: Num
+
+// Unsigned integers wrap (D8). `Size` is pointer-width and mixes with no
+// other integer type: `i < s.length()` needs `i: Size`.
+pub @_magic class UInt8: Num
+pub @_magic class UInt16: Num
+pub @_magic class UInt32: Num
+pub @_magic class UInt64: Num
+pub @_magic class Size: Num
+
 pub @_magic class Float32: Num
 pub @_magic class Float64: Num
 
+// An 8-bit code unit. `==`, `!=` and the relational operators compare it
+// (relational as unsigned, so every target agrees); nothing arithmetic
+// applies. `c as UInt8` and `n as Char` convert.
+pub @_magic class Char
+
 pub alias Int as Int32
 pub alias Float as Float32
+
+// Reinterprets the bits of `value` as a `T` of the same width. The typer
+// special-cases the call: `T` is always the explicit type argument and the
+// argument must have `T`'s width.
+pub @_magic fx bitCast<T>: (value: Any) T;

@@ -1,0 +1,88 @@
+# Magic binding manifest for kira:core (C++ backend only).
+#
+# Every entry here is a map with a `cpp` sub-map and no `symbol` key, so the
+# C loader (CMagicBindingTable) skips all of them: the C backend keeps
+# lowering Str and Num methods through its own Str_* / prelude helpers. The
+# C++ backend reads the `cpp` map -- see design section 7.4.
+#
+# Keys: methods as `Type.method`, free functions by name. A method a magic
+# class takes from a trait without a body (Str.equals from Equatable<Str>) is
+# keyed on the class, because the call is magic there. A scalar reaches Num's
+# entries through its parent: Int32.abs is Num.abs, and the emitter walks the
+# parent chain when the receiver's own class has no entry.
+#
+# Placeholders in `expr`: `{self}` the receiver; `{0}`, `{1}`, ... the
+# arguments in order; `{T0}`, `{T1}`, ... the type arguments of the bound
+# declaration as the typer instantiated them at the call. For a generic free
+# function they are its own type parameters (`bitCast<Float32>(u)` gives
+# `{T0}` = float); for a method of a generic class they are the class's type
+# parameters, read from the receiver's type (`mv.view()` on a MutView<UInt8>
+# gives `{T0}` = std::uint8_t). A generic method of a generic class would
+# number the class's parameters first, then its own; no stdlib entry needs
+# that.
+#
+# `pure`: the call has no side effects, and its result depends only on the
+# values of its receiver and arguments at the moment it runs. It may read its
+# receiver (List.size, Map.get, Str.length, Weak.upgrade all do); that read
+# is what a plain variable read is to D33, which spills call arguments only
+# when two or more operands hold impure calls. So `f(xs.size(), xs.grow())`
+# is not spilled by this flag alone, exactly as `f(n, g())` is not when g()
+# writes n; whether ExclusivityPass or a receiver-overlap rule covers that
+# pair is W2.5's, not the flag's. A pure call may still panic (a checked
+# index, unwrap on none: D10); the flag never licenses dropping or reordering
+# it.
+# `constexpr`: the target is declared constexpr, so the call is usable in a
+# constant expression whenever the receiver and arguments are literal types;
+# whether they are is ConstEligibilityPass's literal-type rule, not this flag.
+#
+# Runtime names this manifest uses beyond design section 6. W1.3's
+# kira/cpp/kira/rt.hxx defines the kira::str ones; kira::abs and the scalar
+# kira::hashCode below are not in that header yet and must be added before
+# W2.3 emits Num.abs or Num.hashCode:
+#   kira::str::equals(const Str&, const Str&) -> bool   (content equality; a
+#     free function so a `const char*` Str constant converts on either side,
+#     where `LIDAR_IP == "..."` would compare pointers and fail -Werror=address)
+#   kira::str::find(const Str&, const Str&) -> std::optional<Size>
+#   kira::str::hashCode(const Str&) -> std::int64_t   (djb2 as Str_hashCode in
+#     kira/c/c_generator.c: h = h * 33 + byte over uint64, cast to int64)
+#   template<class T> constexpr T abs(T) noexcept      (type-preserving; unsigned
+#     is the identity, INT_MIN stays INT_MIN by wrapping, D8; a floating-point
+#     T clears the sign bit, so abs(-0.0) is +0.0 as fabs and Math.abs give,
+#     which the C and JS backends print as 0, never -0)
+#   template<class T> constexpr std::int64_t hashCode(T) noexcept   (integers by
+#     value, floats by the bits of the double, bool 0/1, Char by ord)
+Str.equals:    { cpp: { expr: "kira::str::equals({self}, {0})", pure: true } }
+Str.hashCode:  { cpp: { expr: "kira::str::hashCode({self})", pure: true } }
+Str.length:    { cpp: { expr: "kira::str::length({self})", pure: true } }
+Str.size:      { cpp: { expr: "kira::str::length({self})", pure: true } }
+Str.isEmpty:   { cpp: { expr: "kira::str::isEmpty({self})", pure: true } }
+Str.substring: { cpp: { expr: "kira::str::substring({self}, {0}, {1})", pure: true } }
+Str.charAt:    { cpp: { expr: "kira::text(kira::str::at({self}, {0}))", pure: true } }
+Str.at:        { cpp: { expr: "kira::str::at({self}, {0})", pure: true } }
+Str.contains:  { cpp: { expr: "kira::str::contains({self}, {0})", pure: true } }
+Str.startsWith: { cpp: { expr: "kira::str::startsWith({self}, {0})", pure: true } }
+Str.endsWith:  { cpp: { expr: "kira::str::endsWith({self}, {0})", pure: true } }
+Str.find:      { cpp: { expr: "kira::str::find({self}, {0})", pure: true } }
+Str.split:     { cpp: { expr: "kira::str::split({self}, {0})", pure: true } }
+Str.trim:      { cpp: { expr: "kira::str::trim({self})", pure: true } }
+Str.toLower:   { cpp: { expr: "kira::str::toLower({self})", pure: true } }
+Str.toUpper:   { cpp: { expr: "kira::str::toUpper({self})", pure: true } }
+Str.toInt64:   { cpp: { expr: "kira::str::toInt64({self})", pure: true } }
+Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true } }
+Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true } }
+Str.view:      { cpp: { expr: "kira::str::view({self})", pure: true } }
+
+# Num is the parent of every scalar, so these entries serve Int8..Int64,
+# UInt8..UInt64, Size, Float32 and Float64; the receiver's own C++ type picks
+# the instantiation. `abs` is kira::abs, a template that returns its argument
+# type: std::abs is ambiguous for uint32_t, uint64_t and size_t, and returns
+# int for the 8- and 16-bit types (a narrowing under brace-init).
+Num.equals:    { cpp: { expr: "({self} == {0})", pure: true, constexpr: true } }
+Num.hashCode:  { cpp: { expr: "kira::hashCode({self})", pure: true, constexpr: true } }
+Num.abs:       { cpp: { expr: "kira::abs({self})", pure: true, constexpr: true } }
+Num.toInt32:   { cpp: { expr: "kira::as<std::int32_t>({self})", pure: true, constexpr: true } }
+Num.toInt64:   { cpp: { expr: "kira::as<std::int64_t>({self})", pure: true, constexpr: true } }
+Num.toFloat32: { cpp: { expr: "kira::as<float>({self})", pure: true, constexpr: true } }
+Num.toFloat64: { cpp: { expr: "kira::as<double>({self})", pure: true, constexpr: true } }
+
+bitCast:       { cpp: { expr: "kira::bitCast<{T0}>({0})", pure: true, constexpr: true } }

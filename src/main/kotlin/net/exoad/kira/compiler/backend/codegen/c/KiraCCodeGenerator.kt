@@ -5,6 +5,7 @@ import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
+import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
@@ -96,6 +97,33 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private val discoveredMagicTypes by lazy {
         compilationUnit.collectIntrinsicMarkedTypeNames(MagicIntrinsic.name) +
             compilationUnit.allMagicTypes()
+    }
+    /**
+     * Which function names each module's calls reach before the ambient
+     * magic names (its own members, then its `use`d modules' `pub` ones).
+     * Lazy, because method bodies are emitted before the prototype pass that
+     * fills [functionParamNames], so that table cannot serve the call side.
+     */
+    private val functionScopes: ModuleFunctionScopes by lazy {
+        ModuleFunctionScopes.collect(compilationUnit) { isMagicDecl(it) }
+    }
+    /**
+     * The module whose code is being emitted, so a call in it resolves in
+     * that module's scope. Set at every top-level declaration and at each
+     * source of the final walk; null only outside any module's code, where
+     * a call falls back to the binding table.
+     */
+    private var callerModuleUri: String? = null
+    /**
+     * The C symbols the magic tables lower calls to (`floor`, `fmin`,
+     * `kira_assert`, ...) and the magic names they lower (`abs`, `min`,
+     * `assert`, ...). A user function may carry one of these as its Kira
+     * name (a private `fx floor` in `app:util`, an Int32 `fx abs`), but its
+     * C definition may not: see [userFunctionCName].
+     */
+    private val cReservedFunctionNames: Set<String> by lazy {
+        CMagicBindingTable.symbols() + CIntrinsicsTable.symbols() +
+            CMagicBindingTable.names() + CIntrinsicsTable.names()
     }
     private val opaqueTypes by lazy {
         compilationUnit.collectIntrinsicMarkedTypeNames("_opaque") +
@@ -674,8 +702,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         emitSpecializedFunctionBodies()
 
         emittableSources().forEach { source ->
+            callerModuleUri = runCatching { source.getModuleUri() }.getOrNull()
             visitRootASTNodeSkippingTypes(source.ast)
         }
+        callerModuleUri = null
 
         if (requiredIncludes.isNotEmpty()) {
             val body = buffer.substring(bodyStart)
@@ -1014,6 +1044,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun emitSpecializedClass(mangled: String, template: ClassDecl, args: List<String>) {
+        enterModuleOf(template)
         val paramNames = template.name.children.map { baseTypeNameOf(it) }
         val subst = paramNames.zip(args).toMap()
         val prev = typeSubst
@@ -1150,6 +1181,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun emitSpecializedFunction(mangled: String, template: FunctionDecl, args: List<String>) {
+        enterModuleOf(template)
         val paramNames = template.generics.map { baseTypeNameOf(it) }
         val subst = paramNames.zip(args).toMap()
         val prev = typeSubst
@@ -1354,7 +1386,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun functionPrototypeLine(functionDecl: FunctionDecl): String {
         val kiraName = functionLikeName(functionDecl.name)
-        val functionName = if (isExternFunction(kiraName)) externCName(kiraName) else kiraName
+        val functionName = if (isExternFunction(kiraName)) externCName(kiraName) else userFunctionCName(kiraName)
         val returnTypeName = typeNameOf(functionDecl.def.returnTypeSpecifier)
         val returnsVoid = returnTypeName == "Void"
         val retC = if (kiraName == "main" && returnsVoid) {
@@ -1928,6 +1960,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return true
         }
         // Also treat known magic type names as skippable even if marker missed
+        // -- but only for a declaration the stdlib itself made. A user module
+        // may declare its own `Ref` or `parseInt64` (module members shadow the
+        // ambient `kira:*` names), and that declaration must be emitted, not
+        // mistaken for the stdlib's signature of the same name.
+        if (!isStdlibDecl(decl)) {
+            return false
+        }
         val name = when (decl) {
             is ClassDecl -> baseTypeNameOf(decl.name)
             is EnumDecl -> decl.name.value
@@ -1942,6 +1981,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             else -> null
         }
         return name != null && discoveredMagicTypes.contains(name)
+    }
+
+    /** True when [decl] is a top-level declaration of a `kira:*` stdlib source. */
+    private fun isStdlibDecl(decl: Decl): Boolean {
+        return compilationUnit.allSources().any { source ->
+            shouldSkipSource(source) && runCatching { source.ast.statements }.getOrNull()?.any { stmt ->
+                stmt === decl || (stmt is Statement && stmt.expr === decl)
+            } == true
+        }
     }
 
     private fun declHasIntrinsic(decl: Decl, intrinsicName: String): Boolean {
@@ -1969,6 +2017,30 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
      */
     private fun cName(name: String): String {
         return if (name.indexOf('_') < 0) name else name.replace("_", "_0")
+    }
+
+    /**
+     * The C name of a user free function. Its Kira name may be one of the C
+     * symbols the magic tables lower calls to (a private `fx floor` in
+     * `app:util`, a `fx sqrt` in the module that calls it), and C has one
+     * global namespace: defined as `floor`, the user's function would be the
+     * `floor` every other module's `floor(2.7)` reaches, redefine libc's,
+     * and make the minifier rename every `floor` token with it. Such a
+     * function is `floor_user` in C. So is one whose Kira name is a magic
+     * name the tables lower (`abs`, `min`, `max`, `assert`): the table's
+     * symbol differs (`fabs`, `fmin`), but the prelude's `<stdlib.h>`
+     * declares `int abs(int)` itself, so an Int32 `fx abs` defined as `abs`
+     * conflicted with it or, where the types happened to agree, replaced
+     * libc's; the Windows SDK makes `min` and `max` macros, and `assert`
+     * is C's one-argument macro. Every other function keeps its Kira name,
+     * as today (free function names do not go through [cName]: the
+     * operator lowering calls a user `op_add` by that spelling, so a user
+     * `fx floor_user` could meet the suffix, as a user `fx Point_new` can
+     * meet a constructor). Extern functions never come here: they carry
+     * their own C name.
+     */
+    private fun userFunctionCName(kiraName: String): String {
+        return if (kiraName in cReservedFunctionNames) "${kiraName}_user" else kiraName
     }
 
     private fun toScreamingSnake(name: String): String {
@@ -2000,9 +2072,19 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         typeSubst = emptyMap()
         indentLevel = 0
         currentModuleUri = null
+        callerModuleUri = null
         emittingClassMembers = false
         currentMethodClass = null
         suppressThisRewrite = false
+    }
+
+    /**
+     * Makes [decl]'s module the scope calls resolve in while its body is
+     * emitted. A declaration no source owns at top level (none today) keeps
+     * the enclosing scope.
+     */
+    private fun enterModuleOf(decl: Decl) {
+        functionScopes.moduleOf(decl)?.let { callerModuleUri = it }
     }
 
     private fun mangleMethodName(className: String, methodName: String): String {
@@ -2716,13 +2798,25 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append(")")
             return
         }
-        includeForIntrinsic(rawName)
+        // A function in the caller's scope (its module's own, or a `pub` one
+        // of a module it `use`s) shadows the ambient magic name of the same
+        // spelling: a user `fx ceil` is not libc's, so it is called as itself
+        // and never resolved through the binding table. A function some other
+        // module declares is out of scope, and the magic name stands. The
+        // user's function is called by its C name (`floor_user` when its
+        // Kira name is a C symbol the table lowers to), so the call never
+        // reaches libc's symbol of the same spelling.
+        val declaredHere = !isExternFunction(rawName) && functionScopes.resolves(callerModuleUri, rawName)
+        if (!declaredHere) {
+            includeForIntrinsic(rawName)
+        }
         val functionName = when {
             isExternFunction(rawName) -> externCName(rawName)
             functionCallExpr.typeArguments.isNotEmpty() -> {
                 val typeArgNames = functionCallExpr.typeArguments.map { resolveKiraTypeName(it) }
-                specializedName(mapIntrinsicName(rawName), typeArgNames)
+                specializedName(if (declaredHere) rawName else mapIntrinsicName(rawName), typeArgNames)
             }
+            declaredHere -> userFunctionCName(rawName)
             else -> mapIntrinsicName(rawName)
         }
         val args = boundArguments(
@@ -3174,6 +3268,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (isMagicDecl(functionDecl)) {
             return
         }
+        enterModuleOf(functionDecl)
         // Generic templates are monomorphized separately; skip the template body.
         if (isGenericFunction(functionDecl)) {
             return
@@ -3189,9 +3284,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             knownValueTypes[kiraName] = typeNameOf(functionDecl.def.returnTypeSpecifier)
             return
         }
-        val functionName = kiraName
+        val functionName = userFunctionCName(kiraName)
         val returnTypeName = typeNameOf(functionDecl.def.returnTypeSpecifier)
         val returnsVoid = returnTypeName == "Void"
+        knownValueTypes[kiraName] = returnTypeName
         knownValueTypes[functionName] = returnTypeName
         userSymbols.add(functionName)
         functionDecl.def.parameters.forEach { userSymbols.add(it.name.value) }
@@ -3257,6 +3353,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (isMagicDecl(classDecl)) {
             return
         }
+        enterModuleOf(classDecl)
         // Generic class templates are monomorphized into specialized structs.
         if (isGenericClass(classDecl)) {
             return
