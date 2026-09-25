@@ -29,6 +29,7 @@ The comprehensive suite lives in
 | `SemanticSuiteTest` | 25 | Symbol declaration/resolution, scope stack, module URI validation, duplicate names, unknown types, literal/type mismatch, visibility, and `use` imports across real multi-file compilation units |
 | `CodegenSuiteTest` | 24 | Emitted C **shape**: prelude substrate + facade, ARC hooks, function/global lowering, control flow, class struct + constructor + methods, enums, monomorphized generics, trait vtables, collections, externs |
 | `RuntimeSuiteTest` | 21 | End-to-end: transpile Kira -> C, compile with the native toolchain, run the binary, assert **exact stdout** across the whole language ladder |
+| `ParitySuiteTest` | 15 | Regressions for silent miscompiles (shifts, literals, escapes, enums, underscores, element reads, for-in, named arguments): each program runs on **both** the C and JS backends and must print the same exact text |
 | `CliSuiteTest` | 6 | Spawns the real `net.exoad.kira.cli.MainKt` as a subprocess on throwaway projects: manifest load, emit, diagnostics exit codes, and running the produced binary |
 
 A shared harness (`TestCompileSupport` in the parent package) drives the
@@ -76,7 +77,9 @@ carries a comment naming the gap. Current set:
   early-returns when the type name already resolves.
 - **Undeclared function calls are not diagnosed** (`SemanticSuiteTest`,
   `unknownFunctionReferenceIsCurrentlyNotDiagnosed`): function-call resolution
-  is a TODO in the analyzer.
+  is a TODO in the analyzer. (The one exception is a call that uses named
+  arguments: those must bind to a resolvable callee's parameters, or they are
+  diagnosed -- `namedArgumentsOnAnUnresolvableCalleeAreDiagnosed`.)
 - **`@_extern` emits the C name as a literal string** (`CodegenSuiteTest`,
   `externLowersToLiteralCNamePlaceholder`): the intended call is not yet
   generated.
