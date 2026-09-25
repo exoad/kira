@@ -75,6 +75,16 @@ internal class StmtChecker(private val c: PhaseC) {
     private val resultFns = HashMap<String, FnSymbol>()
 
     fun all() {
+        // Defaults first, every module's: a construction that leaves a field to its default and
+        // a call that leaves a parameter to its default run the default's expression, and
+        // notConstant reads that expression's typing to say whether the whole is a constant.
+        // Modules and declarations come in source order, so a struct's default could otherwise
+        // be typed after the global that constructs it.
+        for (m in c.program.modules) {
+            for (s in m.declarations) {
+                KiraTyper.guard(c.program, "typing the defaults of ${s.qualifiedName}", s.decl) { defaults(s) }
+            }
+        }
         for (m in c.program.modules) {
             for (s in m.declarations) {
                 KiraTyper.guard(c.program, "typing ${s.qualifiedName}", s.decl) { declaration(s) }
@@ -85,12 +95,28 @@ internal class StmtChecker(private val c: PhaseC) {
         }
     }
 
+    /** The field defaults of a struct or class, and the parameter defaults of every function and method. */
+    private fun defaults(s: Symbol) {
+        when (s) {
+            is FnSymbol -> paramDefaults(s)
+            is ClassSymbol -> {
+                s.fields.forEach { f -> f.default?.let { fieldDefault(f, it) } }
+                s.methods.forEach { paramDefaults(it) }
+            }
+            is TraitSymbol -> s.methods.forEach { paramDefaults(it) }
+            else -> {}
+        }
+    }
+
+    private fun paramDefaults(fn: FnSymbol) {
+        fn.params.forEach { p -> p.default?.let { paramDefault(fn, p, it) } }
+    }
+
     private fun declaration(s: Symbol) {
         when (s) {
             is GlobalSymbol -> global(s)
             is FnSymbol -> function(s)
             is ClassSymbol -> {
-                s.fields.forEach { f -> f.default?.let { fieldDefault(f, it) } }
                 val initCtx = BodyContext(s.module, null, s, KType.Void, null, true, "${s.name}'s initializer block")
                 s.initially?.let { body(it, initCtx, Scope.root()) }
                 s.finally?.let { body(it, BodyContext(s.module, null, s, KType.Void, null, true, "${s.name}'s finally block"), Scope.root()) }
@@ -170,10 +196,13 @@ internal class StmtChecker(private val c: PhaseC) {
      * is a constant expression ([notConstant]). A global of any other type (`Arr<Int32>`, a
      * struct holding a `List`, a `StrBuf`) is built at run time, and D49 asks only that no
      * static-initialization order can matter: its initializer is an array literal, or a
-     * construction of a struct, a fixed array, a tuple or a StrBuf, whose operands are such
-     * initializers or constant expressions. Reading another run-time global there would
-     * depend on the order the C++ runtime picks, so `DYN.clone()` and `Bag { n = BAG.n }` are
-     * refused as `DYN.size()` is.
+     * construction of a struct or a magic container (`List<Int32> { }` as much as `[]`; a
+     * fixed array, a tuple, a StrBuf, a Map), whose operands are such initializers or constant
+     * expressions. A field the construction leaves out runs its default, so the default is
+     * held to the same rule. Reading another run-time global anywhere in there would depend
+     * on the order the C++ runtime picks, so `DYN.clone()`, `Bag { n = BAG.n }` and a
+     * `W2 { }` whose `n` defaults to `DYN.size()` are refused as `DYN.size()` is. A class
+     * construction runs its `initially` block, which may read anything: refused.
      */
     private fun notConstantInit(init: Expr, type: KType): String? {
         if (facts.isLiteralType(type)) {
@@ -184,12 +213,15 @@ internal class StmtChecker(private val c: PhaseC) {
             is ObjectInitExpr -> {
                 val ri = model.inits[init] ?: return NO_REASON
                 val cls = ri.cls ?: return NO_REASON
-                val built = cls.kind == ClassKind.STRUCT ||
-                    (cls.kind == ClassKind.MAGIC && (facts.isFixedArr(ri.type) || Builtins.tupleArity(cls.name) != null || cls.name == Builtins.STRBUF))
-                if (!built) {
+                if (cls.kind != ClassKind.STRUCT && cls.kind != ClassKind.MAGIC) {
                     return NO_REASON
                 }
-                ri.fields.firstNotNullOfOrNull { f -> (f as? FieldInit.Given)?.let { notConstantInit(it.expr, it.field.type) } }
+                ri.fields.firstNotNullOfOrNull { f ->
+                    when (f) {
+                        is FieldInit.Given -> notConstantInit(f.expr, f.field.type)
+                        is FieldInit.Default -> f.field.default?.let { d -> notConstantInit(d, f.field.type)?.let { defaulted("field '${f.field.name}'", d, it) } }
+                    }
+                }
             }
             else -> notConstant(init)
         }
@@ -197,8 +229,8 @@ internal class StmtChecker(private val c: PhaseC) {
 
     /**
      * An expression C++ can evaluate in a constant expression on the gcc 11.4 floor: it
-     * folded, or it is built with operators, indexing and field access from literals, enum
-     * entries, module constants of literal types (a `Str` constant is its folded `const
+     * folded, or it is built with builtin operators, indexing and field access from literals,
+     * enum entries, module constants of literal types (a `Str` constant is its folded `const
      * char*`), constructions of literal types (a struct of literal fields, `Arr<T, N>`, a
      * tuple), `@_const` calls and magic calls whose cpp binding is `constexpr: true`
      * ([MagicBindings]) - and every value on the way is of a literal type
@@ -209,6 +241,14 @@ internal class StmtChecker(private val c: PhaseC) {
      * no C++ spelling at all. The manifests' `constexpr` flag holds only under the same
      * condition (`Arr.size` is constexpr on a std::array, not on the std::vector an `Arr<T>`
      * is), which is why a constexpr call's receiver and arguments are literal-typed too.
+     *
+     * Three calls hide in other shapes and are held to the call rule: an operator with an
+     * `@op_*` overload ([TypedModel.opCalls]) is a call of that function, constant only when
+     * it is `@_const`; a construction that leaves a field to its default runs the default
+     * (`W { }` with `n: Int32 = seed()` is `W{}` over a default member initializer that calls
+     * `seed()`), and a call that leaves a parameter to its default passes the default. And
+     * `s[i]` on a `Str` is `kira::str::at`, which is not constexpr (rt.hxx), even on a folded
+     * `Str` constant: it would build a std::string from the `const char*` first.
      */
     fun isConstantExpr(e: Expr): Boolean = notConstant(e) == null
 
@@ -218,6 +258,7 @@ internal class StmtChecker(private val c: PhaseC) {
      * [NO_REASON] when the shape itself is the reason (a plain call, a local).
      */
     fun notConstant(e: Expr): String? {
+        model.opCalls[e]?.let { return notConstantCall(e, it) }
         val folded = model.consts[e]
         if (folded != null && (folded is ConstValue.StrConst || folded is ConstValue.NullConst || facts.isLiteralType(folded.type))) {
             // A folded Str is a `const char*`, null is kira::none; an ArrConst of a std::vector
@@ -236,13 +277,22 @@ internal class StmtChecker(private val c: PhaseC) {
                 null -> (e.member as? FunctionCallExpr)?.let { notConstant(it) } ?: NO_REASON
                 else -> NO_REASON
             }
-            is FunctionCallExpr -> notConstantCall(e)
+            is FunctionCallExpr -> {
+                val rc = model.calls[e] ?: return NO_REASON
+                notConstantCall(e, rc)
+            }
             is ObjectInitExpr -> {
                 val ri = model.inits[e] ?: return NO_REASON
                 if (!facts.isLiteralType(ri.type)) {
                     return runTime(KiraUnparser.text(e), ri.type)
                 }
-                ri.fields.firstNotNullOfOrNull { f -> (f as? FieldInit.Given)?.let { notConstant(it.expr) } }
+                ri.fields.firstNotNullOfOrNull { f ->
+                    when (f) {
+                        is FieldInit.Given -> notConstant(f.expr)
+                        // A defaultless field is value-initialized (D38): constant.
+                        is FieldInit.Default -> f.field.default?.let { d -> notConstant(d)?.let { defaulted("field '${f.field.name}'", d, it) } }
+                    }
+                }
             }
             is ArrayLiteral -> {
                 val t = model.types[e] ?: return NO_REASON
@@ -251,13 +301,21 @@ internal class StmtChecker(private val c: PhaseC) {
                 }
                 e.value.firstNotNullOfOrNull { notConstant(it) }
             }
-            is ArrayIndexExpr -> notConstant(e.originExpr) ?: notConstant(e.indexExpr)
+            is ArrayIndexExpr -> when {
+                model.types[e.originExpr] == KType.Str -> " (indexing a Str runs at run time: kira::str::at is not constexpr)"
+                else -> notConstant(e.originExpr) ?: notConstant(e.indexExpr)
+            }
             is IfExpr -> notConstant(e.condition) ?: listOf(e.thenBranch, e.elseBranch).firstNotNullOfOrNull { b ->
                 if (b.size == 1 && b[0].javaClass == Statement::class.java) notConstant(b[0].expr) else NO_REASON
             }
             else -> NO_REASON
         }
     }
+
+    /** The clause for a default the expression runs: names the default, then the leaf inside it (when there is one). */
+    private fun defaulted(what: String, default: Expr, why: String): String =
+        if (why == NO_REASON) " (the default of $what, ${KiraUnparser.text(default)}, runs at run time)"
+        else " (the default of $what is ${KiraUnparser.text(default)}$why)"
 
     /** A module constant is a constant operand when its type is literal; a `Str` one only through its folded value. */
     private fun constantGlobal(g: GlobalSymbol?): String? {
@@ -271,19 +329,34 @@ internal class StmtChecker(private val c: PhaseC) {
         return if (facts.isLiteralType(g.type)) null else runTime("'${g.name}'", g.type)
     }
 
-    private fun notConstantCall(e: FunctionCallExpr): String? {
-        val rc = model.calls[e] ?: return NO_REASON
+    /**
+     * A call ([TypedModel.calls]) or an operator with an `@op_*` overload ([TypedModel.opCalls]):
+     * the callee is `@_const` or a constexpr magic binding, its receiver and every argument
+     * (a defaulted parameter's default among them) is a constant operand, and its result is
+     * of a literal type.
+     */
+    private fun notConstantCall(e: Expr, rc: ResolvedCall): String? {
         val fn = rc.fn ?: return NO_REASON
         if (!fn.isConst) {
-            if (rc.kind != CallKind.MAGIC) {
-                return NO_REASON
-            }
-            if (!c.bindings.isConstexpr(fn)) {
-                return " ('${fn.name}' runs at run time: its C++ binding is not constexpr)"
+            when (rc.kind) {
+                CallKind.MAGIC -> if (!c.bindings.isConstexpr(fn)) {
+                    return " ('${fn.name}' runs at run time: its C++ binding is not constexpr)"
+                }
+                // The operator looks builtin; say that it is a call.
+                CallKind.OP_OVERLOAD -> return " ('@${fn.name}' runs at run time: it is not @_const)"
+                else -> return NO_REASON
             }
         }
         rc.receiver?.let { constantOperand(it) }?.let { return it }
-        rc.args.firstNotNullOfOrNull { a -> (a as? ArgBinding.Given)?.let { constantOperand(it.expr) } }?.let { return it }
+        rc.args.firstNotNullOfOrNull { a ->
+            when (a) {
+                is ArgBinding.Given -> constantOperand(a.expr)
+                is ArgBinding.Default -> {
+                    val d = a.param.default ?: return NO_REASON
+                    constantOperand(d)?.let { defaulted("'${a.param.name}'", d, it) }
+                }
+            }
+        }?.let { return it }
         val t = model.types[e] ?: return NO_REASON
         return if (facts.isLiteralType(t)) null else runTime("what '${fn.name}' returns", t)
     }
@@ -359,7 +432,6 @@ internal class StmtChecker(private val c: PhaseC) {
         if (fn.owner == null && fn.name == "main" && !fn.module.isStdlib) {
             entryPoint(fn)
         }
-        fn.params.forEach { p -> p.default?.let { paramDefault(fn, p, it) } }
         val body = fn.body ?: return
         val owner = fn.owner
         val struct = (owner as? ClassSymbol)?.kind == ClassKind.STRUCT

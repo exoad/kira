@@ -106,6 +106,63 @@ pub BAG: Bag = Bag { n = F0 }              // @type Bag
 @_static_assert(FIXED.size() == 3, "three")
 @_static_assert(FV.size() == FN, "same")
 
+// A mut global of a run-time type starts from an empty container either way (D49).
+pub mut YS: List<Int32> = List<Int32> { }  // @type List<Int32>
+pub mut AGES: Map<Str, Int32> = Map<Str, Int32> { } // @type Map<Str, Int32>
+
+// A generic struct instance is a literal type when its arguments make its fields so: Box<Int32>
+// is `inline constexpr`, and its field is a constant operand.
+pub struct Box<T> {
+    pub v: T
+}
+
+pub BX: Box<Int32> = Box<Int32> { 1 }      // @type Box<Int32>
+pub BV: Int32 = BX.v                       // @type Int32
+pub BB: Box<Box<Int32>> = Box<Box<Int32>> { BX } // @type Box<Box<Int32>>
+pub BBV: Int32 = BB.v.v                    // @type Int32
+@_static_assert(BX.v == 1, "one")
+@_static_assert(BB.v.v == BV, "same")
+
+// A defaulted field whose default is a constant expression keeps the construction constant,
+// and a struct met twice on separate branches is a literal type both times.
+pub struct Sized {
+    pub n: Size = FIXED.size()
+    pub k: Int32 = F0
+}
+
+pub struct Pair {
+    pub a: Sized = Sized { }
+    pub b: Sized = Sized { }
+}
+
+pub SZ: Sized = Sized { }                  // @type Sized
+pub PR: Pair = Pair { }                    // @type Pair
+pub PRN: Size = PR.b.n                     // @type Size
+@_static_assert(SZ.n == 3, "sized")
+@_static_assert(PR.a.k == F0, "pair")
+
+// A @_const call that leaves a parameter to its literal default is a constant expression.
+pub @_const fx addTo: (a: Int32, b: Int32 = 2) Int32 {
+    return a + b
+}
+
+pub AK: Int32 = addTo(1)                   // @type Int32 call=FREE(addTo)
+@_static_assert(addTo(1) == 3, "defaulted")
+
+// A @_const operator overload is a constexpr call: constant on constant operands.
+pub struct V2 {
+    pub x: Int32 = 0
+}
+
+pub @_const fx @op_sub: (a: V2, b: V2) V2 {
+    return V2 { a.x - b.x }
+}
+
+pub VA: V2 = V2 { 3 }
+pub VD: V2 = VA - VA                       // @type V2
+pub VDX: Int32 = (VA - VA).x               // @type Int32
+@_static_assert((VA - VA).x == 0, "sub")
+
 pub fx hitter<T: Named>: (n: T) Fx<Tuple0, Void> {
     return fx() Void {                     // @type Fx<Tuple0, Void>
         n.hit()                            // @type Void call=METHOD(Named.hit)

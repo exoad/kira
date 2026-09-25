@@ -166,4 +166,142 @@ class TyperBodyNegativeTest {
         )
         assertEquals(listOf("types.lambda.assign-capture"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
     }
+
+    @Test
+    fun aConstructionRunsTheDefaultsItLeavesOut() {
+        // `W{}` in C++ runs the default member initializer `n = seed()`: g++ refuses
+        // `inline constexpr W K = W{};` with 'call to non-constexpr function seed()'.
+        val p = snippet(
+            "fx seed: () Int32 {\n    return 4\n}\npub struct W {\n    pub n: Int32 = seed()\n}\npub K: W = W { }\npub KN: Int32 = K.n\npub G: W = W { 5 }",
+        )
+        assertEquals(listOf("types.const.not-constant"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        assertEquals(
+            "'K' is a module constant, so its value is fixed at compile time; W { } is not " +
+                "(the default of field 'n', seed(), runs at run time). Declare it `mut` for state, or compute it where it is used.",
+            p.diagnostics.single().message,
+        )
+    }
+
+    @Test
+    fun aMutGlobalWhoseDefaultedFieldReadsAnotherModulesRunTimeGlobalIsRefused() {
+        // The D49 hazard itself: two TUs, and `inline W2 G = W2{};` in one reads DYN in the
+        // other during static initialization, in whichever order the C++ runtime picks.
+        val p = TyperTestSupport.type(
+            TyperTestSupport.module("test:lib", "pub DYN: Arr<Int32> = [1, 2, 3]"),
+            TyperTestSupport.module(
+                "test:main",
+                "use \"test:lib\"\n\npub struct W2 {\n    pub n: Size = lib.DYN.size()\n}\npub mut G: W2 = W2 { }\npub mut H: Size = lib.DYN.size()\n" +
+                    "pub struct Bag {\n    pub items: List<Int32> = []\n    pub n: Size = lib.DYN.size()\n}\npub mut GB: Bag = Bag { }\npub mut OK: Bag = Bag { n = 3 }",
+            ),
+        )
+        assertEquals(List(3) { "types.global.mut-init" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        val g = p.diagnostics.first()
+        assertEquals(
+            "A module-level mut variable starts from a constant expression (D49), so no static-initialization order " +
+                "can matter; 'G' starts from W2 { } (the default of field 'n' is lib.DYN.size() " +
+                "('DYN' is built at run time: Arr<Int32> is no literal type in C++)).",
+            g.message,
+        )
+        assertTrue(p.diagnostics[2].message.contains("'GB' starts from Bag { } (the default of field 'n' is lib.DYN.size()"), p.diagnostics[2].message)
+    }
+
+    @Test
+    fun aDefaultIsTypedBeforeTheGlobalThatRunsIt() {
+        // Declarations come in source order; the global here precedes the struct whose default
+        // it runs, and the struct comes from a later module still. A constant default keeps
+        // the construction constant either way.
+        val p = TyperTestSupport.type(
+            TyperTestSupport.module("test:main", "use \"test:lib\"\n\npub K: W = W { }\npub KN: Int32 = K.n\n@_static_assert(K.n == 7, \"seven\")"),
+            TyperTestSupport.module("test:lib", "pub SEVEN: Int32 = 7\npub struct W {\n    pub n: Int32 = SEVEN\n}"),
+        )
+        TyperTestSupport.expectNoErrors(p)
+    }
+
+    @Test
+    fun aConstCallPassesTheDefaultItLeavesOut() {
+        val p = snippet(
+            "pub DYN: Arr<Int32> = [1, 2, 3]\npub @_const fx firstOf: (xs: Arr<Int32> = DYN) Int32 {\n    return xs.get(0)\n}\n" +
+                "pub @_const fx addTo: (a: Int32, b: Int32 = 2) Int32 {\n    return a + b\n}\npub FD: Int32 = firstOf()\npub AK: Int32 = addTo(1)",
+        )
+        assertEquals(listOf("types.const.not-constant"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        assertTrue(
+            p.diagnostics.single().message.contains("firstOf() is not (the default of 'xs' is DYN ('DYN' is built at run time: Arr<Int32> is no literal type in C++))"),
+            p.diagnostics.single().message,
+        )
+    }
+
+    @Test
+    fun anOperatorOverloadIsACallAndConstantOnlyWhenConst() {
+        // g++: 'call to non-constexpr function V2 operator+(V2, V2)'; a @_const one is constexpr.
+        val p = snippet(
+            "pub struct V2 {\n    pub x: Int32 = 0\n}\npub fx @op_add: (a: V2, b: V2) V2 {\n    return V2 { a.x + b.x }\n}\n" +
+                "pub fx @op_eq: (a: V2, b: V2) Bool {\n    return a.x == b.x\n}\npub @_const fx @op_sub: (a: V2, b: V2) V2 {\n    return V2 { a.x - b.x }\n}\n" +
+                "pub A: V2 = V2 { 1 }\npub B: V2 = A + A\npub BX: Int32 = (A + A).x\npub EQ: Bool = A == A\n@_static_assert(A == A, \"eq\")\n" +
+                "pub D: V2 = A - A\npub DX: Int32 = (A - A).x\n@_static_assert((A - A).x == 0, \"sub\")",
+        )
+        assertEquals(
+            listOf("types.const.not-constant", "types.const.not-constant", "types.const.not-constant", "types.static-assert.not-constant"),
+            p.diagnostics.map { it.code },
+            TyperTestSupport.render(p),
+        )
+        assertEquals(
+            "'B' is a module constant, so its value is fixed at compile time; A + A is not " +
+                "('@op_add' runs at run time: it is not @_const). Declare it `mut` for state, or compute it where it is used.",
+            p.diagnostics.first().message,
+        )
+        assertTrue(p.diagnostics.last().message.endsWith("A == A is not ('@op_eq' runs at run time: it is not @_const)."), p.diagnostics.last().message)
+    }
+
+    @Test
+    fun indexingAStrIsNoConstant() {
+        // R15 lowers s[i] to kira::str::at(s, i), which is not constexpr (rt.hxx).
+        val p = snippet("pub SEP: Str = \",\"\npub SC: Char = SEP[0]\npub mut MC: Char = SEP[0]\n@_static_assert(SEP[0] == ',', \"sep\")")
+        assertEquals(
+            listOf("types.const.not-constant", "types.global.mut-init", "types.static-assert.not-constant"),
+            p.diagnostics.map { it.code },
+            TyperTestSupport.render(p),
+        )
+        p.diagnostics.forEach { d ->
+            assertTrue(d.message.contains("(indexing a Str runs at run time: kira::str::at is not constexpr)"), d.message)
+        }
+    }
+
+    @Test
+    fun aSelfContainingStructIsNoLiteralTypeAndDoesNotOverflow() {
+        // Through a Maybe, through two structs, and through a fixed array: each is refused as
+        // a run-time value, not reported as an internal StackOverflowError.
+        val p = snippet(
+            "pub struct Node {\n    pub v: Int32 = 0\n    pub next: Maybe<Node> = null\n}\npub N0: Node = Node { }\npub mut HEAD: Node = Node { }\npub NV: Int32 = N0.v\n" +
+                "pub struct NA {\n    pub b: Maybe<NB> = null\n}\npub struct NB {\n    pub a: Maybe<NA> = null\n}\npub NA0: NA = NA { }\npub NAB: Maybe<NB> = NA0.b\n" +
+                "pub struct Tree {\n    pub kids: Arr<Tree, 2>\n}\npub T0: Maybe<Tree> = null\npub T1: Maybe<Tree> = T0",
+        )
+        assertEquals(List(3) { "types.const.not-constant" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        assertTrue(p.diagnostics[0].message.contains("('N0' is built at run time: Node is no literal type in C++)"), p.diagnostics[0].message)
+        assertTrue(p.diagnostics[2].message.contains("('T0' is built at run time: Maybe<Tree> is no literal type in C++)"), p.diagnostics[2].message)
+    }
+
+    @Test
+    fun aGenericStructInstanceIsLiteralByItsArguments() {
+        val p = snippet(
+            "pub struct Box<T> {\n    pub v: T\n}\npub BX: Box<Int32> = Box<Int32> { 1 }\npub BV: Int32 = BX.v\n" +
+                "pub BB: Box<Box<Int32>> = Box<Box<Int32>> { BX }\npub BBV: Int32 = BB.v.v\n@_static_assert(BB.v.v == 1, \"one\")\n" +
+                "pub BL: Box<List<Int32>> = Box<List<Int32>> { [] }\npub BLN: Size = BL.v.size()",
+        )
+        assertEquals(listOf("types.const.not-constant"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        // The first leaf named is List.size's binding (not constexpr on a std::vector); BL itself is a run-time value too.
+        assertTrue(p.diagnostics.single().message.contains("BL.v.size() is not ('size' runs at run time: its C++ binding is not constexpr)"), p.diagnostics.single().message)
+        val q = snippet("pub struct Box<T> {\n    pub v: T\n}\npub BL: Box<List<Int32>> = Box<List<Int32>> { [] }\npub BLV: List<Int32> = BL.v")
+        assertEquals(listOf("types.const.not-constant"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
+        assertTrue(q.diagnostics.single().message.contains("BL.v is not ('BL' is built at run time: Box<List<Int32>> is no literal type in C++)"), q.diagnostics.single().message)
+    }
+
+    @Test
+    fun anEmptyContainerConstructionStartsAMutGlobalLikeAnArrayLiteral() {
+        val p = snippet(
+            "pub mut XS: List<Int32> = List<Int32> { }\npub mut YS: List<Int32> = []\npub mut M: Map<Str, Int32> = Map<Str, Int32> { }\n" +
+                "pub mut S: Set<Int32> = Set<Int32> { }\npub class C {\n    pub n: Int32 = 0\n}\npub mut OBJ: C = C { }",
+        )
+        assertEquals(listOf("types.global.mut-init"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        assertTrue(p.diagnostics.single().message.contains("'OBJ' starts from C { }."), p.diagnostics.single().message)
+    }
 }

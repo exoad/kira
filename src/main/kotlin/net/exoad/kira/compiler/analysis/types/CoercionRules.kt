@@ -112,19 +112,38 @@ internal class TypeFacts(private val builtins: Builtins) {
      * 12), not a Map, Set, Deque, StrBuf, class, trait or Fx: a global of one of those is
      * `inline const`, built at run time, and reading it is no constant. This is the same rule
      * the C++ emitter's CppDeclEmitter spells a global by; the two must agree.
+     *
+     * A generic struct's fields are read with the instance's type arguments (`Box<Int32>` is
+     * literal, `Box<List<Int32>>` is not; a bare `T` is not). A struct that contains itself
+     * (`Node { next: Maybe<Node> }`, `Tree { kids: Arr<Tree, 2> }`, through however many
+     * others) has no C++ spelling at all, so it is no literal type; the walk keeps the path
+     * of nominals it is inside and answers false on meeting one again, instead of recursing
+     * without end. A struct met twice on separate branches (`P { a: V2, b: V2 }`) is asked
+     * twice and answered from its fields both times.
      */
-    fun isLiteralType(t: KType): Boolean = when (t) {
+    fun isLiteralType(t: KType): Boolean = isLiteral(t, HashSet())
+
+    private fun isLiteral(t: KType, path: MutableSet<KType>): Boolean = when (t) {
         is KType.Scalar -> true
         is KType.Nominal -> when (val sym = t.sym) {
             is EnumSymbol -> true
             is ClassSymbol -> when {
                 sym.kind == ClassKind.MAGIC -> when {
-                    sym.name == Builtins.ARR && t.args.size >= 2 -> t.typeArgs().all { isLiteralType(it) }
-                    sym.name == "Maybe" || Builtins.tupleArity(sym.name) != null -> t.typeArgs().all { isLiteralType(it) }
+                    sym.name == Builtins.ARR && t.args.size >= 2 -> t.typeArgs().all { isLiteral(it, path) }
+                    sym.name == "Maybe" || Builtins.tupleArity(sym.name) != null -> t.typeArgs().all { isLiteral(it, path) }
                     sym.name == "View" || sym.name == "MutView" || sym.name == "Unsafe" -> true
                     else -> false
                 }
-                sym.kind == ClassKind.STRUCT -> sym.fields.all { isLiteralType(it.type) }
+                sym.kind == ClassKind.STRUCT -> {
+                    if (!path.add(t)) {
+                        false
+                    } else {
+                        val sub = sym.typeParams.zip(t.typeArgs()).toMap()
+                        val literal = sym.fields.all { isLiteral(it.type.substitute(sub), path) }
+                        path.remove(t)
+                        literal
+                    }
+                }
                 else -> false
             }
             else -> false
