@@ -18,12 +18,22 @@
 #if !defined(NOMINMAX)
 #define NOMINMAX 1
 #endif
+// Windows 7: PROC_THREAD_ATTRIBUTE_HANDLE_LIST and WSAPoll need Vista or later.
+#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0601
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <io.h>
 #if defined(_MSC_VER)
 #pragma comment(lib, "ws2_32.lib")
+#endif
+// mstcpip.h's name for the ioctl that stops a UDP socket reporting ICMP
+// port-unreachable as a reset; defined here so the header is not needed.
+#if !defined(SIO_UDP_CONNRESET)
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
 #endif
 #else
 #include <arpa/inet.h>
@@ -57,6 +67,14 @@ namespace kira::os
   namespace
   {
     thread_local Str lastError_;
+
+    // Every public call that can fail starts here, so after a call that did
+    // not fail lastError() is "": a quiet socket (none, "") and a failed one
+    // (none, "recvfrom: ...") stay apart.
+    void begin() noexcept
+    {
+        lastError_.clear();
+    }
 
     // errno, as text: "<what>: <strerror> (errno N)".
     void failErrno(const char* what)
@@ -127,6 +145,23 @@ namespace kira::os
         // FIONBIO is an unsigned long macro; ioctlsocket takes a long.
         return ioctlsocket(s, static_cast<long>(FIONBIO), &nonBlocking) == 0;
     }
+
+    // A socket no child inherits: spawnProcess also lists the handles a child
+    // gets, so this is the second guard, for a child started some other way.
+    void noInherit(Sock s) noexcept
+    {
+        (void)SetHandleInformation(reinterpret_cast<HANDLE>(s), HANDLE_FLAG_INHERIT, 0);
+    }
+
+    [[nodiscard]] Sock rawSocket(int type) noexcept
+    {
+        return ::socket(AF_INET, type, 0);
+    }
+
+    [[nodiscard]] Sock rawAccept(Sock listener) noexcept
+    {
+        return ::accept(listener, nullptr, nullptr);
+    }
 #else
     void ensureWinsock() noexcept
     {
@@ -161,6 +196,33 @@ namespace kira::os
         }
         const int wanted = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
         return fcntl(s, F_SETFL, wanted) == 0;
+    }
+
+    // Close-on-exec: a forked child (spawnProcess, or anyone else's fork)
+    // must not keep a socket, or it holds the port after this process
+    // exits. The flag goes on at creation where the libc allows it, so no
+    // fork between the two calls can see the descriptor without it.
+    void noInherit(Sock s) noexcept
+    {
+        (void)fcntl(s, F_SETFD, FD_CLOEXEC);
+    }
+
+    [[nodiscard]] Sock rawSocket(int type) noexcept
+    {
+#if defined(SOCK_CLOEXEC)
+        return ::socket(AF_INET, type | SOCK_CLOEXEC, 0);
+#else
+        return ::socket(AF_INET, type, 0);
+#endif
+    }
+
+    [[nodiscard]] Sock rawAccept(Sock listener) noexcept
+    {
+#if defined(SOCK_CLOEXEC) && defined(__linux__)
+        return ::accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
+#else
+        return ::accept(listener, nullptr, nullptr);
+#endif
     }
 #endif
 
@@ -225,11 +287,13 @@ namespace kira::os
     [[nodiscard]] Sock openSock(int type)
     {
         ensureWinsock();
-        const Sock s = ::socket(AF_INET, type, 0);
+        const Sock s = rawSocket(type);
         if(s == NO_SOCK)
         {
             failSock("socket");
+            return s;
         }
+        noInherit(s);
         return s;
     }
 
@@ -258,6 +322,7 @@ namespace kira::os
 
   bool UdpSocket::bind(const Str& host, std::int32_t port)
   {
+      begin();
       close();
       sockaddr_in addr;
       if(!toAddr(host, port, addr))
@@ -269,6 +334,13 @@ namespace kira::os
       {
           return false;
       }
+#if defined(_WIN32)
+      // Off, or a datagram to a closed port fails the NEXT recvfrom with
+      // WSAECONNRESET: UDP has no connection to reset (bibo's l2feed does the same).
+      BOOL off = FALSE;
+      DWORD got = 0;
+      (void)WSAIoctl(s, SIO_UDP_CONNRESET, &off, static_cast<DWORD>(sizeof off), nullptr, 0, &got, nullptr, nullptr);
+#endif
       if(::bind(s, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0)
       {
           failSock("bind");
@@ -287,6 +359,7 @@ namespace kira::os
 
   std::int32_t UdpSocket::localPort() const
   {
+      begin();
       if(handle_ < 0)
       {
           failWith("localPort", "socket is not bound");
@@ -297,6 +370,7 @@ namespace kira::os
 
   std::int64_t UdpSocket::sendTo(View<std::uint8_t> data, const Str& host, std::int32_t port) const
   {
+      begin();
       if(handle_ < 0)
       {
           failWith("sendTo", "socket is not bound");
@@ -319,15 +393,26 @@ namespace kira::os
 
   Maybe<Datagram> UdpSocket::recvFrom(MutView<std::uint8_t> into) const
   {
+      begin();
       if(handle_ < 0)
       {
           failWith("recvFrom", "socket is not bound");
           return none;
       }
       sockaddr_in from;
+      std::memset(&from, 0, sizeof from);
       SockLen fromLen = sizeof from;
-      const auto got = ::recvfrom(sockOf(handle_), reinterpret_cast<char*>(into.data()), ioLen(into.size()), 0,
-                                  reinterpret_cast<sockaddr*>(&from), &fromLen);
+      auto got = ::recvfrom(sockOf(handle_), reinterpret_cast<char*>(into.data()), ioLen(into.size()), 0,
+                            reinterpret_cast<sockaddr*>(&from), &fromLen);
+#if defined(_WIN32)
+      // POSIX truncates a long datagram to the buffer and says nothing;
+      // Winsock fills the buffer, sets `from`, and calls it WSAEMSGSIZE. The
+      // promise is the POSIX one.
+      if(got < 0 && WSAGetLastError() == WSAEMSGSIZE)
+      {
+          got = ioLen(into.size());
+      }
+#endif
       if(got < 0)
       {
           if(!wouldBlock())
@@ -361,6 +446,7 @@ namespace kira::os
 
   bool TcpListener::listen(std::int32_t port)
   {
+      begin();
       close();
       sockaddr_in addr;
       if(!toAddr("", port, addr))
@@ -403,6 +489,7 @@ namespace kira::os
 
   std::int32_t TcpListener::localPort() const
   {
+      begin();
       if(handle_ < 0)
       {
           failWith("localPort", "socket is not listening");
@@ -413,12 +500,13 @@ namespace kira::os
 
   Rc<TcpStream> TcpListener::accept() const
   {
+      begin();
       if(handle_ < 0)
       {
           failWith("accept", "socket is not listening");
           return nullptr;
       }
-      const Sock s = ::accept(sockOf(handle_), nullptr, nullptr);
+      const Sock s = rawAccept(sockOf(handle_));
       if(s == NO_SOCK)
       {
           if(!wouldBlock())
@@ -427,6 +515,7 @@ namespace kira::os
           }
           return nullptr;
       }
+      noInherit(s);
       // Linux hands out a blocking socket, Windows one that inherits the
       // listener's mode: make both blocking, as TcpStream promises.
       if(!setBlocking(s, true))
@@ -456,6 +545,7 @@ namespace kira::os
 
   bool TcpStream::connect(const Str& host, std::int32_t port)
   {
+      begin();
       close();
       sockaddr_in addr;
       if(!toAddr(host, port, addr))
@@ -479,6 +569,7 @@ namespace kira::os
 
   std::int64_t TcpStream::read(MutView<std::uint8_t> into) const
   {
+      begin();
       if(handle_ < 0)
       {
           failWith("read", "stream is closed");
@@ -495,6 +586,7 @@ namespace kira::os
 
   std::int64_t TcpStream::write(View<std::uint8_t> data) const
   {
+      begin();
       if(handle_ < 0)
       {
           failWith("write", "stream is closed");
@@ -552,6 +644,7 @@ namespace kira::os
 
   List<Ready> Poller::wait(std::int64_t timeoutMs) const
   {
+      begin();
       List<Ready> ready;
       if(watches_.empty())
       {
@@ -626,6 +719,7 @@ namespace kira::os
 #if defined(_WIN32)
   bool Serial::open(const Str& path, std::int32_t baud)
   {
+      begin();
       close();
       // COM10 and above need the device namespace; COM1..9 accept it too.
       const Str device = path.rfind("\\\\", 0) == 0 ? path : cat("\\\\.\\", path);
@@ -676,6 +770,7 @@ namespace kira::os
 
   std::int64_t Serial::read(MutView<std::uint8_t> into, std::int64_t timeoutMs) const
   {
+      begin();
       if(!open_)
       {
           failWith("read", "port is not open");
@@ -719,6 +814,7 @@ namespace kira::os
 
   std::int64_t Serial::write(View<std::uint8_t> data) const
   {
+      begin();
       if(!open_)
       {
           failWith("write", "port is not open");
@@ -763,10 +859,23 @@ namespace kira::os
   namespace
   {
     // The termios constant for a standard rate, or 0 when this libc lacks it.
+    // The slow rates matter too: a Pico's bootloader touch is 1200 baud.
     [[nodiscard]] speed_t speedOf(std::int32_t baud) noexcept
     {
         switch(baud)
         {
+            case 50: return B50;
+            case 75: return B75;
+            case 110: return B110;
+            case 134: return B134;
+            case 150: return B150;
+            case 200: return B200;
+            case 300: return B300;
+            case 600: return B600;
+            case 1200: return B1200;
+            case 1800: return B1800;
+            case 2400: return B2400;
+            case 4800: return B4800;
             case 9600: return B9600;
             case 19200: return B19200;
             case 38400: return B38400;
@@ -816,6 +925,7 @@ namespace kira::os
 
   bool Serial::open(const Str& path, std::int32_t baud)
   {
+      begin();
       close();
       const speed_t speed = speedOf(baud);
       if(speed == 0)
@@ -862,6 +972,7 @@ namespace kira::os
 
   std::int64_t Serial::read(MutView<std::uint8_t> into, std::int64_t timeoutMs) const
   {
+      begin();
       if(!open_)
       {
           failWith("read", "port is not open");
@@ -897,6 +1008,7 @@ namespace kira::os
 
   std::int64_t Serial::write(View<std::uint8_t> data) const
   {
+      begin();
       if(!open_)
       {
           failWith("write", "port is not open");
@@ -1037,6 +1149,7 @@ namespace kira::os
 
   Maybe<List<std::uint8_t>> readFile(const Str& path)
   {
+      begin();
       List<std::uint8_t> bytes;
       if(!slurp(path, bytes))
       {
@@ -1047,6 +1160,7 @@ namespace kira::os
 
   Maybe<Str> readText(const Str& path)
   {
+      begin();
       Str text;
       if(!slurp(path, text))
       {
@@ -1057,9 +1171,14 @@ namespace kira::os
 
   bool writeFileAtomic(const Str& path, View<std::uint8_t> bytes)
   {
+      begin();
       // A temporary beside the target, on the same filesystem, so the rename
-      // is one metadata operation; the pid keeps two writers apart.
-      const Str tmp = cat(path, ".", text(processId()), ".tmp");
+      // is one metadata operation. The pid keeps two processes apart and the
+      // counter two threads of this one: each writer has its own temporary,
+      // and the last rename wins whole.
+      static std::atomic<std::uint64_t> writers{0};
+      const std::uint64_t nth = writers.fetch_add(1, std::memory_order_relaxed);
+      const Str tmp = cat(path, ".", text(processId()), ".", text(nth), ".tmp");
       std::FILE* f = std::fopen(tmp.c_str(), "wb");
       if(f == nullptr)
       {
@@ -1101,10 +1220,26 @@ namespace kira::os
       if(ok)
       {
 #if defined(_WIN32)
-          if(!MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+          // Windows refuses a rename over a file that another handle is
+          // replacing or has open at that instant (ERROR_ACCESS_DENIED,
+          // ERROR_SHARING_VIOLATION), a passing state: two writers of one
+          // path, or a reader mid-read. Retry for up to about 200 ms.
+          for(int attempt = 0;; ++attempt)
           {
-              failWin("MoveFileEx");
-              ok = false;
+              if(MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+              {
+                  break;
+              }
+              const DWORD why = GetLastError();
+              const bool passing = why == ERROR_ACCESS_DENIED || why == ERROR_SHARING_VIOLATION;
+              if(!passing || attempt >= 20)
+              {
+                  SetLastError(why);
+                  failWin("MoveFileEx");
+                  ok = false;
+                  break;
+              }
+              Sleep(attempt < 10 ? 1 : 20);
           }
 #else
           if(std::rename(tmp.c_str(), path.c_str()) != 0)
@@ -1123,6 +1258,7 @@ namespace kira::os
 
   List<Str> listDir(const Str& path)
   {
+      begin();
       List<Str> names;
 #if defined(_WIN32)
       const Str pattern = cat(path, "\\*");
@@ -1171,6 +1307,7 @@ namespace kira::os
 
   bool exists(const Str& path)
   {
+      begin();
 #if defined(_WIN32)
       return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
 #else
@@ -1181,6 +1318,7 @@ namespace kira::os
 
   bool makeDirs(const Str& path)
   {
+      begin();
       if(path.empty())
       {
           failWith("makeDirs", "empty path");
@@ -1222,6 +1360,7 @@ namespace kira::os
 
   std::int64_t freeBytes(const Str& path)
   {
+      begin();
 #if defined(_WIN32)
       ULARGE_INTEGER avail;
       avail.QuadPart = 0;
@@ -1299,6 +1438,7 @@ namespace kira::os
 
   std::int64_t Process::readStdout(MutView<std::uint8_t> into) const
   {
+      begin();
       if(winOut_ == nullptr)
       {
           failWith("readStdout", "no pipe");
@@ -1327,6 +1467,7 @@ namespace kira::os
 
   std::int32_t Process::wait()
   {
+      begin();
       if(exited_)
       {
           return code_;
@@ -1350,6 +1491,7 @@ namespace kira::os
 
   bool Process::isRunning() const
   {
+      begin();
       if(exited_ || winProcess_ == nullptr)
       {
           return false;
@@ -1362,8 +1504,37 @@ namespace kira::os
       return -1;
   }
 
+  namespace
+  {
+    // An inheritable duplicate of one of this process's standard handles, or
+    // nullptr when there is none (a process without a console): only a
+    // handle in the child's list may be inherited, and it must be marked so.
+    [[nodiscard]] HANDLE inheritableCopy(HANDLE h) noexcept
+    {
+        if(h == nullptr || h == INVALID_HANDLE_VALUE)
+        {
+            return nullptr;
+        }
+        HANDLE copy = nullptr;
+        if(!DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), &copy, 0, TRUE, DUPLICATE_SAME_ACCESS))
+        {
+            return nullptr;
+        }
+        return copy;
+    }
+
+    void closeIf(HANDLE h) noexcept
+    {
+        if(h != nullptr)
+        {
+            CloseHandle(h);
+        }
+    }
+  }
+
   Rc<Process> spawnProcess(const List<Str>& argv)
   {
+      begin();
       if(argv.empty())
       {
           failWith("spawnProcess", "empty argv");
@@ -1395,19 +1566,64 @@ namespace kira::os
       List<char> buffer(line.begin(), line.end());
       buffer.push_back('\0');
 
-      STARTUPINFOA si;
+      // The child inherits exactly three handles: the pipe's write end and
+      // copies of this process's stdin and stderr. bInheritHandles=TRUE alone
+      // would hand it every inheritable handle in the process, and a child
+      // that outlives this process would then hold its files and ports.
+      HANDLE in = inheritableCopy(GetStdHandle(STD_INPUT_HANDLE));
+      HANDLE err = inheritableCopy(GetStdHandle(STD_ERROR_HANDLE));
+      HANDLE inherit[3];
+      DWORD inherited = 0;
+      inherit[inherited++] = writeEnd;
+      if(in != nullptr)
+      {
+          inherit[inherited++] = in;
+      }
+      if(err != nullptr)
+      {
+          inherit[inherited++] = err;
+      }
+      SIZE_T attrSize = 0;
+      (void)InitializeProcThreadAttributeList(nullptr, 1, 0, &attrSize);
+      List<void*> attrStore((attrSize + sizeof(void*) - 1) / sizeof(void*) + 1);
+      auto* attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrStore.data());
+      bool listed = InitializeProcThreadAttributeList(attrs, 1, 0, &attrSize) != 0;
+      if(listed && !UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit,
+                                              inherited * sizeof(HANDLE), nullptr, nullptr))
+      {
+          DeleteProcThreadAttributeList(attrs);
+          listed = false;
+      }
+      if(!listed)
+      {
+          failWin("ProcThreadAttributeList");
+          CloseHandle(writeEnd);
+          CloseHandle(readEnd);
+          closeIf(in);
+          closeIf(err);
+          return nullptr;
+      }
+
+      STARTUPINFOEXA si;
       std::memset(&si, 0, sizeof si);
-      si.cb = sizeof si;
-      si.dwFlags = STARTF_USESTDHANDLES;
-      si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-      si.hStdOutput = writeEnd;
-      si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+      si.StartupInfo.cb = sizeof si;
+      si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+      si.StartupInfo.hStdInput = in;
+      si.StartupInfo.hStdOutput = writeEnd;
+      si.StartupInfo.hStdError = err;
+      si.lpAttributeList = attrs;
       PROCESS_INFORMATION pi;
       std::memset(&pi, 0, sizeof pi);
-      const BOOL started = CreateProcessA(nullptr, buffer.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
+      const BOOL started = CreateProcessA(nullptr, buffer.data(), nullptr, nullptr, TRUE, EXTENDED_STARTUPINFO_PRESENT,
+                                          nullptr, nullptr, &si.StartupInfo, &pi);
+      const DWORD why = started ? 0 : GetLastError();
+      DeleteProcThreadAttributeList(attrs);
       CloseHandle(writeEnd);
+      closeIf(in);
+      closeIf(err);
       if(!started)
       {
+          SetLastError(why);
           failWin("CreateProcess");
           CloseHandle(readEnd);
           return nullptr;
@@ -1434,6 +1650,21 @@ namespace kira::os
         }
         return -1;
     }
+
+    // waitpid without EINTR: the status, or -1 when there is no such child.
+    [[nodiscard]] int reap(pid_t pid) noexcept
+    {
+        int status = 0;
+        for(;;)
+        {
+            const pid_t r = ::waitpid(pid, &status, 0);
+            if(r < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            return r < 0 ? -1 : status;
+        }
+    }
   }
 
   Process::~Process()
@@ -1445,15 +1676,13 @@ namespace kira::os
       if(pid_ > 0 && !exited_)
       {
           (void)::kill(static_cast<pid_t>(pid_), SIGKILL);
-          int status = 0;
-          while(::waitpid(static_cast<pid_t>(pid_), &status, 0) < 0 && errno == EINTR)
-          {
-          }
+          (void)reap(static_cast<pid_t>(pid_));
       }
   }
 
   std::int64_t Process::readStdout(MutView<std::uint8_t> into) const
   {
+      begin();
       if(out_ < 0)
       {
           failWith("readStdout", "no pipe");
@@ -1478,6 +1707,7 @@ namespace kira::os
 
   std::int32_t Process::wait()
   {
+      begin();
       if(exited_)
       {
           return code_;
@@ -1487,20 +1717,11 @@ namespace kira::os
           failWith("wait", "no process");
           return -1;
       }
-      int status = 0;
-      for(;;)
+      const int status = reap(static_cast<pid_t>(pid_));
+      if(status < 0)
       {
-          const pid_t r = ::waitpid(static_cast<pid_t>(pid_), &status, 0);
-          if(r < 0 && errno == EINTR)
-          {
-              continue;
-          }
-          if(r < 0)
-          {
-              failErrno("waitpid");
-              return -1;
-          }
-          break;
+          failErrno("waitpid");
+          return -1;
       }
       exited_ = true;
       code_ = codeOf(status);
@@ -1509,6 +1730,7 @@ namespace kira::os
 
   bool Process::isRunning() const
   {
+      begin();
       if(exited_ || pid_ <= 0)
       {
           return false;
@@ -1535,6 +1757,7 @@ namespace kira::os
 
   Rc<Process> spawnProcess(const List<Str>& argv)
   {
+      begin();
       if(argv.empty())
       {
           failWith("spawnProcess", "empty argv");
@@ -1550,6 +1773,19 @@ namespace kira::os
       // inherit this read end, or the first one's EOF never comes.
       (void)fcntl(fds[0], F_SETFD, FD_CLOEXEC);
       (void)fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+      // The status pipe: close-on-exec, so a successful exec closes it and
+      // the parent reads nothing; a failed exec writes errno into it first.
+      // That is how "none when it could not start" holds on this half too.
+      int status[2] = {-1, -1};
+      if(::pipe(status) != 0)
+      {
+          failErrno("pipe");
+          ::close(fds[0]);
+          ::close(fds[1]);
+          return nullptr;
+      }
+      (void)fcntl(status[0], F_SETFD, FD_CLOEXEC);
+      (void)fcntl(status[1], F_SETFD, FD_CLOEXEC);
 
       List<Str> copies(argv.begin(), argv.end());
       List<char*> args;
@@ -1567,18 +1803,46 @@ namespace kira::os
           failErrno("fork");
           ::close(fds[0]);
           ::close(fds[1]);
+          ::close(status[0]);
+          ::close(status[1]);
           return nullptr;
       }
       if(pid == 0)
       {
-          if(::dup2(fds[1], STDOUT_FILENO) < 0)
+          // Between fork and exec only async-signal-safe calls: a lock another
+          // thread held at the fork is held forever in this child.
+          if(::dup2(fds[1], STDOUT_FILENO) >= 0)
           {
-              ::_exit(126);
+              ::execvp(args[0], args.data());
           }
-          ::execvp(args[0], args.data());
+          const int failed = errno;
+          (void)!::write(status[1], &failed, sizeof failed);
           ::_exit(127);
       }
       ::close(fds[1]);
+      ::close(status[1]);
+      int failed = 0;
+      ssize_t told = 0;
+      for(;;)
+      {
+          told = ::read(status[0], &failed, sizeof failed);
+          if(told < 0 && errno == EINTR)
+          {
+              continue;
+          }
+          break;
+      }
+      ::close(status[0]);
+      if(told == static_cast<ssize_t>(sizeof failed))
+      {
+          // The child could not exec: it has exited 127 by now, so reap it and
+          // report why, as the Win32 half does from CreateProcess.
+          (void)reap(pid);
+          ::close(fds[0]);
+          errno = failed;
+          failErrno(cat("execvp ", argv[0]).c_str());
+          return nullptr;
+      }
       Rc<Process> p = std::make_shared<Process>();
       p->pid_ = static_cast<std::int64_t>(pid);
       p->out_ = static_cast<std::int64_t>(fds[0]);
@@ -1592,9 +1856,13 @@ namespace kira::os
   {
     constexpr int SIGNAL_SLOTS = 65;
     // The handler reads only this lock-free pointer and stores one bool:
-    // both async-signal-safe. keep_ holds the Rc so the object stays alive.
+    // both async-signal-safe. keep_ holds the Rc so the object stays alive,
+    // and a flag that onSignal replaces moves to retired_ rather than being
+    // freed: a handler on another thread may have loaded its pointer a
+    // moment before the swap and still be storing into it.
     std::atomic<sync::Atomic<bool>*> flags_[SIGNAL_SLOTS];
     Rc<sync::Atomic<bool>> keep_[SIGNAL_SLOTS];
+    List<Rc<sync::Atomic<bool>>> retired_;
 
     extern "C" void onSignalHandler(int sig)
     {
@@ -1615,13 +1883,23 @@ namespace kira::os
 
   bool onSignal(std::int32_t sig, const Rc<sync::Atomic<bool>>& flag)
   {
+      begin();
       if(sig <= 0 || sig >= SIGNAL_SLOTS || flag == nullptr)
       {
           failWith("onSignal", "no such signal, or no flag");
           return false;
       }
-      keep_[sig] = flag;
-      flags_[sig].store(flag.get(), std::memory_order_release);
+      if(keep_[sig] != flag)
+      {
+          // The new pointer is published before the old Rc moves out of the
+          // slot, and the old object is kept: see retired_.
+          flags_[sig].store(flag.get(), std::memory_order_release);
+          if(keep_[sig] != nullptr)
+          {
+              retired_.push_back(std::move(keep_[sig]));
+          }
+          keep_[sig] = flag;
+      }
 #if defined(_WIN32)
       if(std::signal(sig, onSignalHandler) == SIG_ERR)
       {
@@ -1646,6 +1924,7 @@ namespace kira::os
 
   Maybe<Str> env(const Str& name)
   {
+      begin();
       const char* value = std::getenv(name.c_str());
       if(value == nullptr)
       {

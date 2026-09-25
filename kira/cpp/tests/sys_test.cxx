@@ -20,7 +20,9 @@
 #include "kira/test.hxx"
 
 #include <algorithm>
+#include <climits>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -120,6 +122,11 @@ namespace
       const kira::Size cut = s.find_last_of("/\\");
       return cut == Str::npos ? Str(".") : s.substr(0, cut);
   }
+
+  // Whether Atomic<T> has add: through a template parameter, so a refused
+  // T is a false, not a compile error.
+  template<class T>
+  constexpr bool hasAtomicAdd = requires(kira::sync::Atomic<T>& a, T v) { a.add(v); };
 
   // ---- the suite ----
   using Suite = kira::test::Suite;
@@ -248,6 +255,42 @@ namespace
           t.check(!n->compareSwap(1, 3) && n->load() == 2, "and leaves it when it does not");
           n->storeRelease(9);
           t.check(n->loadAcquire() == 9, "storeRelease pairs with loadAcquire");
+          // add returns what the store holds, so it wraps as the store wraps:
+          // no signed overflow on the way (UBSan under musl would trap it).
+          const kira::Rc<Atomic<std::uint8_t>> small = std::make_shared<Atomic<std::uint8_t>>(static_cast<std::uint8_t>(250));
+          t.check(small->add(10) == 4 && small->load() == 4, "Atomic<UInt8>(250).add(10) wraps to 4, stored and returned");
+          const kira::Rc<Atomic<std::int32_t>> top = std::make_shared<Atomic<std::int32_t>>(INT32_MAX);
+          t.check(top->add(1) == INT32_MIN && top->load() == INT32_MIN, "Atomic<Int32>(INT32_MAX).add(1) wraps to INT32_MIN");
+          const kira::Rc<Atomic<double>> f = std::make_shared<Atomic<double>>(1.5);
+          t.check(f->add(0.25) == 1.75, "Atomic<Float64>.add adds");
+          static_assert(!hasAtomicAdd<bool> && hasAtomicAdd<std::int32_t>, "Atomic<Bool> has no add; Atomic<Int32> has");
+      }
+      {
+          // A huge timeout is waited in chunks: pop(INT64_MAX) and
+          // waitUntil(INT64_MAX) return when the value comes, not at once
+          // (MinGW's wait_for) or by trapping (UBSan on the overflow).
+          const kira::Rc<BlockingQueue<std::int32_t>> q = std::make_shared<BlockingQueue<std::int32_t>>();
+          const kira::Rc<Thread> late = kira::sync::spawn("late", [q]()
+          {
+              kira::time::sleepMs(60);
+              q->push(42);
+          });
+          const std::int64_t before = kira::time::monoNowMs();
+          const kira::Maybe<std::int32_t> v = q->pop(INT64_MAX);
+          const std::int64_t waited = kira::time::monoNowMs() - before;
+          t.check(kira::isSome(v) && kira::unwrap(v) == 42 && waited >= 50, "pop(INT64_MAX) waits for the value");
+          late->join();
+          const kira::Rc<Mutex<int>> m = std::make_shared<Mutex<int>>(0);
+          const kira::Rc<Thread> setter = kira::sync::spawn("setter", [m]()
+          {
+              kira::time::sleepMs(60);
+              m->with([](int& x) { x = 1; });
+          });
+          const std::int64_t before1 = kira::time::monoNowMs();
+          const bool held = m->waitUntil([](const int& x) { return x == 1; }, INT64_MAX);
+          const std::int64_t waited1 = kira::time::monoNowMs() - before1;
+          t.check(held && waited1 >= 50, "waitUntil(INT64_MAX) waits for the value");
+          setter->join();
       }
       {
           // 100000 pushes on one thread, 100000 pops on this one.
@@ -317,6 +360,43 @@ namespace
       t.check(kira::isSome(d) && kira::unwrap(d).port == pa, "and the sender's port");
       t.check(a->sendTo(bytesOf("x"), "not-a-host", pb) == -1, "sendTo a name is -1: hosts are numeric");
       t.check(kira::os::lastError().find("IPv4") != Str::npos, "and lastError says why");
+      t.check(!kira::isSome(b->recvFrom(into)) && kira::os::lastError().empty(),
+              "a quiet recvFrom after that error is none with lastError cleared");
+      {
+          // A datagram longer than the buffer is truncated to it, and gone:
+          // POSIX does that quietly, Winsock calls it WSAEMSGSIZE.
+          t.check(a->sendTo(bytesOf("0123456789abcdef"), "127.0.0.1", pb) == 16, "sendTo reports 16 bytes sent");
+          poller->add(b->handle(), kira::os::POLL_READ);
+          t.check(!poller->wait(2000).empty(), "the poller reports them");
+          std::uint8_t small[4] = {0, 0, 0, 0};
+          const kira::Maybe<kira::os::Datagram> cut = b->recvFrom(kira::MutView<std::uint8_t>(small, 4));
+          t.check(kira::isSome(cut) && kira::unwrap(cut).size == 4, "recvFrom into 4 bytes returns size 4: truncated, not an error");
+          t.checkStr(kira::isSome(cut) ? textOf(small, 4) : Str(), "0123", "with the first 4 bytes");
+          t.checkStr(kira::isSome(cut) ? kira::unwrap(cut).host : Str(), "127.0.0.1", "and the sender's host");
+          t.check(kira::isSome(cut) && kira::unwrap(cut).port == pa, "and the sender's port");
+          t.check(!kira::isSome(b->recvFrom(into)) && kira::os::lastError().empty(), "and the rest of it is gone");
+      }
+      {
+          // A datagram to a closed port: Windows would report the ICMP reply
+          // as WSAECONNRESET on the next recvFrom unless SIO_UDP_CONNRESET is
+          // off; the socket keeps working on both halves.
+          std::int32_t closedPort = -1;
+          {
+              const kira::Rc<UdpSocket> gone = std::make_shared<UdpSocket>();
+              if(gone->bind("127.0.0.1", 0))
+              {
+                  closedPort = gone->localPort();
+              }
+          }
+          t.check(closedPort > 0, "a port that was bound and closed is known");
+          t.check(b->sendTo(bytesOf("?"), "127.0.0.1", closedPort) == 1, "sendTo a closed port sends 1 byte");
+          (void)poller->wait(100);
+          t.check(!kira::isSome(b->recvFrom(into)) && kira::os::lastError().empty(),
+                  "the next recvFrom is none with no error, not a connection reset");
+          t.check(a->sendTo(bytesOf("still"), "127.0.0.1", pb) == 5 && !poller->wait(2000).empty(), "and the socket still receives");
+          const kira::Maybe<kira::os::Datagram> still = b->recvFrom(into);
+          t.checkStr(kira::isSome(still) ? textOf(buf, 5) : Str(), "still", "the datagram after it");
+      }
       poller->remove(b->handle());
       t.check(poller->wait(0).empty(), "a removed handle is not polled");
       a->close();
@@ -333,6 +413,7 @@ namespace
       const std::int32_t port = l->localPort();
       t.check(port > 0, "and reports the port it got");
       t.check(l->accept() == nullptr, "accept with nobody waiting returns none, not a wait");
+      t.check(kira::os::lastError().empty(), "and lastError is empty: nobody waiting is not an error");
       const kira::Rc<TcpStream> c = std::make_shared<TcpStream>();
       t.check(c->connect("127.0.0.1", port), "a client connects to it");
       const kira::Rc<Poller> lp = std::make_shared<Poller>();
@@ -388,6 +469,7 @@ namespace
       t.check(true, "openpty gives a pty pair");
       const kira::Rc<Serial> port = std::make_shared<Serial>();
       t.check(!port->open(name, 12345), "a baud rate termios lacks is refused");
+      t.check(port->open(name, 1200) && port->isOpen(), "the pty opens at 1200 baud, a Pico's bootloader touch");
       t.check(port->open(name, 115200) && port->isOpen() && port->handle() >= 0, "the pty slave opens as a raw 8N1 port");
       const std::int64_t before = kira::time::monoNowMs();
       t.check(port->read(into, 40) == 0 && kira::time::monoNowMs() - before >= 35, "a read with nothing to read times out to 0");
@@ -428,7 +510,9 @@ namespace
       const Str dir = base + "/sys_test_files";
       const Str deep = dir + "/a/b";
       const Str path = deep + "/data.bin";
+      // Every build shares this directory: start from the same empty one.
       (void)std::remove(path.c_str());
+      (void)std::remove((deep + "/shared.txt").c_str());
       t.check(kira::os::makeDirs(deep), "makeDirs creates a nested directory");
       t.check(kira::os::exists(deep), "and it exists");
       t.check(kira::os::makeDirs(deep), "makeDirs on an existing directory is true");
@@ -447,10 +531,44 @@ namespace
       t.check(!kira::os::exists(dir + "/nope"), "exists is false for a missing path");
       t.check(!kira::isSome(kira::os::readFile(dir + "/nope")), "readFile of a missing file is none");
       t.check(!kira::os::lastError().empty(), "and lastError says why");
+      t.check(kira::os::exists(path) && kira::os::lastError().empty(), "a successful exists() clears lastError");
+      (void)kira::os::readFile(dir + "/nope");
+      t.check(kira::isSome(kira::os::readText(path)) && kira::os::lastError().empty(), "and so does a successful readText");
       t.check(kira::os::listDir(dir + "/nope").empty(), "listDir of a missing directory is empty");
       t.check(!kira::os::makeDirs(path), "makeDirs over a file fails");
       t.check(kira::os::freeBytes(dir) > 0, "freeBytes of the test directory is positive");
       t.check(kira::os::freeBytes(dir + "/nope") == -1, "freeBytes of a missing path is -1");
+      {
+          // Two threads replace the same file 200 times each: every write
+          // has its own temporary, so the file is always one whole write.
+          const Str shared = deep + "/shared.txt";
+          const kira::Rc<kira::sync::Atomic<std::int32_t>> failures = std::make_shared<kira::sync::Atomic<std::int32_t>>(0);
+          const auto writer = [&shared, failures](const char* mark)
+          {
+              Str body;
+              for(int i = 0; i < 4096; ++i)
+              {
+                  body += mark;
+              }
+              for(int i = 0; i < 200; ++i)
+              {
+                  if(!kira::os::writeFileAtomic(shared, bytesOf(body.c_str())))
+                  {
+                      (void)failures->add(1);
+                  }
+              }
+          };
+          {
+              const kira::Rc<kira::sync::Thread> x = kira::sync::spawn("x", [&writer]() { writer("x"); });
+              const kira::Rc<kira::sync::Thread> y = kira::sync::spawn("y", [&writer]() { writer("y"); });
+          }
+          const kira::Maybe<Str> last = kira::os::readText(shared);
+          const bool whole = kira::isSome(last) && kira::unwrap(last).size() == 4096
+                             && (kira::unwrap(last) == Str(4096, 'x') || kira::unwrap(last) == Str(4096, 'y'));
+          t.check(failures->load() == 0 && whole, "two threads writing one path atomically leave one whole write");
+          const kira::List<Str> after = kira::os::listDir(deep);
+          t.check(after.size() == 2 && after[0] == "data.bin" && after[1] == "shared.txt", "and no temporary behind");
+      }
   }
 
   void processChecks(Suite& t, const char* self)
@@ -499,9 +617,37 @@ namespace
           t.check(code == 137 && kira::time::monoNowMs() - before < 5000, "kill ends it and wait reports 137");
       }
       {
+          // A child inherits stdin, stderr and its stdout pipe, nothing else:
+          // after the parent closes a listener and a UDP socket, a connect to
+          // the port is refused and the UDP port binds again, sleeping child
+          // or not. Were the sockets inherited, the child would hold both.
+          const kira::Rc<kira::os::TcpListener> l = std::make_shared<kira::os::TcpListener>();
+          const kira::Rc<kira::os::UdpSocket> u = std::make_shared<kira::os::UdpSocket>();
+          t.check(l->listen(0) && u->bind("127.0.0.1", 0), "a listener and a UDP socket are open before the spawn");
+          const std::int32_t tcpPort = l->localPort();
+          const std::int32_t udpPort = u->localPort();
+          const kira::Rc<Process> p = kira::os::spawnProcess(kira::List<Str>{self, "child", "sleep"});
+          t.check(p != nullptr && p->isRunning(), "a sleeping child is started");
+          l->close();
+          u->close();
+          const kira::Rc<kira::os::TcpStream> c = std::make_shared<kira::os::TcpStream>();
+          t.check(!c->connect("127.0.0.1", tcpPort), "the closed listener's port refuses a connect: the child does not hold it");
+          const kira::Rc<kira::os::UdpSocket> again = std::make_shared<kira::os::UdpSocket>();
+          t.check(again->bind("127.0.0.1", udpPort), "the closed UDP socket's port binds again: the child does not hold it");
+          if(p != nullptr)
+          {
+              p->kill();
+              (void)p->wait();
+          }
+      }
+      {
           const kira::Rc<Process> p = kira::os::spawnProcess(kira::List<Str>{"kira-no-such-program-xyz"});
-          // POSIX learns of the missing program in the child (exit 127); Win32 at CreateProcess.
-          t.check(p == nullptr || p->wait() == 127, "a program that does not exist does not start");
+          // Both halves learn of the missing program before returning: Win32
+          // from CreateProcess, POSIX from the child's exec through a
+          // close-on-exec status pipe.
+          t.check(p == nullptr, "a program that does not exist is none");
+          t.check(kira::os::lastError().find("kira-no-such-program-xyz") != Str::npos
+                  || kira::os::lastError().find("CreateProcess") != Str::npos, "and lastError names the failure");
       }
       t.check(kira::os::spawnProcess(kira::List<Str>{}) == nullptr, "an empty argv is refused");
   }
@@ -517,6 +663,15 @@ namespace
       t.check(flag->load(), "and a second raise sets it again");
       t.check(!kira::os::onSignal(0, flag), "signal 0 is refused");
       t.check(!kira::os::onSignal(kira::os::SIGNAL_TERM, nullptr), "a missing flag is refused");
+      {
+          // Re-registering with a new flag: the old one stays valid (a handler
+          // may still hold its pointer) and the new one is the one set.
+          const kira::Rc<kira::sync::Atomic<bool>> second = std::make_shared<kira::sync::Atomic<bool>>(false);
+          flag->store(false);
+          t.check(kira::os::onSignal(kira::os::SIGNAL_INT, second), "onSignal takes a second flag for the same signal");
+          (void)std::raise(SIGINT);
+          t.check(second->load() && !flag->load(), "a raise sets the new flag and not the old one");
+      }
   }
 
   void envChecks(Suite& t)

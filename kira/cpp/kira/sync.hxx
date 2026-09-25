@@ -18,6 +18,7 @@
 #include <mutex>
 #include <stop_token>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
 #if defined(__linux__)
@@ -43,7 +44,15 @@ namespace kira::sync
 #endif
     }
 
-    // A wait that never overflows: negative means no limit, zero means now.
+    // The longest single wait_for: an hour in nanoseconds is far from
+    // overflowing, and so is that added to the steady clock's now.
+    inline constexpr std::int64_t WAIT_CHUNK_MS = 60LL * 60LL * 1000LL;
+
+    // A wait that never overflows: negative means no limit, zero means now,
+    // and any other timeout, INT64_MAX included, is waited in chunks of at
+    // most an hour. wait_for converts its duration to nanoseconds and adds it
+    // to now(), so one call with a huge timeout would overflow (UBSan traps
+    // it, and MinGW's wait_for returned at once); the chunks never do.
     template<class Lock, class Pred>
     bool waitFor(std::condition_variable& cv, Lock& lock, std::int64_t timeoutMs, Pred&& pred)
     {
@@ -56,7 +65,17 @@ namespace kira::sync
         {
             return pred();
         }
-        return cv.wait_for(lock, std::chrono::milliseconds(timeoutMs), std::forward<Pred>(pred));
+        std::int64_t remaining = timeoutMs;
+        while(remaining > 0)
+        {
+            const std::int64_t chunk = remaining < WAIT_CHUNK_MS ? remaining : WAIT_CHUNK_MS;
+            if(cv.wait_for(lock, std::chrono::milliseconds(chunk), pred))
+            {
+                return true;
+            }
+            remaining -= chunk;
+        }
+        return pred();
     }
   }
 
@@ -135,7 +154,11 @@ namespace kira::sync
       T value_;
   };
 
+  // T is Bool, an integer or a float: what std::atomic holds lock-free and
+  // sync.kira promises. Any other T (a Str, a class) is refused here by name,
+  // not by a page of std::atomic errors; the Kira typer's check is W2.1/W2.5's.
   template<class T>
+    requires std::is_arithmetic_v<T>
   class Atomic final
   {
   public:
@@ -148,8 +171,23 @@ namespace kira::sync
 
       [[nodiscard]] T load() const noexcept { return value_.load(std::memory_order_seq_cst); }
       void store(T value) noexcept { value_.store(value, std::memory_order_seq_cst); }
-      // The value after the add.
-      T add(T delta) noexcept { return static_cast<T>(value_.fetch_add(delta, std::memory_order_seq_cst) + delta); }
+      // The value after the add: exactly what the store holds, so an integer
+      // wraps as std::atomic's fetch_add wraps (unsigned arithmetic here, so
+      // the sum never overflows a signed int). Not for Atomic<Bool>.
+      T add(T delta) noexcept
+        requires(!std::is_same_v<T, bool>)
+      {
+          const T before = value_.fetch_add(delta, std::memory_order_seq_cst);
+          if constexpr(std::is_integral_v<T>)
+          {
+              using U = std::make_unsigned_t<T>;
+              return static_cast<T>(static_cast<U>(static_cast<U>(before) + static_cast<U>(delta)));
+          }
+          else
+          {
+              return before + delta;
+          }
+      }
       // The value before the store.
       T swap(T value) noexcept { return value_.exchange(value, std::memory_order_seq_cst); }
       [[nodiscard]] bool compareSwap(T expected, T desired) noexcept

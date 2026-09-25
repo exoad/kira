@@ -42,15 +42,17 @@ pub @_magic class Mutex<T> {
     pub fx waitUntil: (pred: Fx<Tuple1<T>, Bool>, timeoutMs: Int64) Bool;
 }
 
-// One lock-free value. load/store/add/swap/compareSwap are sequentially
-// consistent; loadAcquire and storeRelease pair for a flag that publishes
-// data written before the store.
+// One lock-free value. T is Bool, an integer or a float, never a Str or a
+// class (the C++ runtime refuses any other T by name). load/store/add/swap/
+// compareSwap are sequentially consistent; loadAcquire and storeRelease pair
+// for a flag that publishes data written before the store.
 pub @_magic class Atomic<T> {
     require value: T
 
     pub fx load: () T;
     pub mut fx store: (value: T) Void;
-    // Adds `delta` and returns the value after the add (not the one before).
+    // Adds `delta` and returns the value after the add (not the one before):
+    // exactly what is stored, so an integer wraps. Not for Atomic<Bool>.
     pub mut fx add: (delta: T) T;
     // Stores `value` and returns the one it replaced.
     pub mut fx swap: (value: T) T;

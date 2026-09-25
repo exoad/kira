@@ -5,6 +5,11 @@
 //
 // Errors are values: none, false, or -1, with the reason in lastError()
 // (per thread). Nothing here throws.
+//
+// Linking: a program that includes this header compiles kira/os.cxx too,
+// and on Windows links Winsock: MSVC takes ws2_32.lib from a pragma in
+// os.cxx, while MinGW and zig -target x86_64-windows-gnu need -lws2_32 on
+// the command line. Linux glibc needs -pthread.
 #pragma once
 
 #include "kira/rt.hxx"
@@ -14,7 +19,9 @@
 
 namespace kira::os
 {
-  // Why the last call on this thread failed, or "" when it did not.
+  // Why the last call on this thread failed, or "" when it did not: every
+  // call that can fail clears it first. close() and the noexcept getters
+  // leave it alone, so a dropped object does not erase the reason.
   [[nodiscard]] Str lastError();
 
   // Bits for Poller::add and Ready::events.

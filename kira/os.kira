@@ -12,7 +12,10 @@ module "kira:os"
 // Hosts are numeric IPv4 ("127.0.0.1", "0.0.0.0"): the car's devices have
 // addresses, not names, and a static musl binary resolves no names anyway.
 
-// Why the last call on this thread failed, or "" when it did not.
+// Why the last call on this thread failed, or "" when it did not: every
+// call that can fail clears it first, so a quiet socket (none, "") and a
+// failed one (none, "recvfrom: ...") stay apart. close() and the handle
+// getters leave it alone, so a dropped object does not erase the reason.
 pub @_magic fx lastError: () Str;
 
 // --- networking ------------------------------------------------------------
@@ -96,7 +99,8 @@ pub @_magic class Poller {
 // A serial port as raw 8N1, no flow control: termios, or a Win32 COM port.
 pub @_magic class Serial {
     // `path` is /dev/ttyUSB0 or COM3; `baud` a standard rate the port
-    // accepts (9600 to 4000000).
+    // accepts (50 to 4000000 on termios, 1200 for a Pico's bootloader
+    // touch among them; any rate the driver takes on Windows).
     pub mut fx open: (path: Str, baud: Int32) Bool;
     // Bytes read, waiting up to timeoutMs for the first one: 0 when the wait
     // ran out, -1 on error.
@@ -147,7 +151,10 @@ pub @_magic class Process {
 }
 
 // Starts argv[0] with the rest as its arguments, searching PATH; none when
-// it could not start. The child inherits stdin and stderr.
+// it could not start (a missing program included, on both halves: see
+// lastError). The child inherits stdin and stderr and nothing else: no
+// socket, file or port of this process, so a child that outlives it holds
+// none of them.
 pub @_magic fx spawnProcess: (argv: List<Str>) Maybe<Process>;
 
 // --- signals, environment, exit --------------------------------------------
