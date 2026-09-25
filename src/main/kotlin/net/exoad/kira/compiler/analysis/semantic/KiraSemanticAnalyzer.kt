@@ -605,9 +605,18 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         return expr is NullLiteral || (expr is Identifier && expr.value == "null")
     }
 
+    /**
+     * Every integer type kira/core.kira declares takes an integer literal: the stdlib's
+     * UInt8..UInt64 and Size (D2) are as literal-initialisable as Int32. Whether the literal
+     * fits the type is the typer's check (ConstEval), not this pass's.
+     */
+    private val integerLiteralTypes = setOf(
+        "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Size",
+    )
+
     private val variableBuiltinPrimitives = mapOf(
         StringLiteral::class to { type: String -> type == "String" || type == "Str" },
-        IntegerLiteral::class to { type: String -> type == "Int32" || type == "Int64" },
+        IntegerLiteral::class to { type: String -> type in integerLiteralTypes },
         FloatLiteral::class to { type: String -> type == "Float32" || type == "Float64" },
     )
 
