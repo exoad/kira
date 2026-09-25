@@ -1,0 +1,4 @@
+ok add(2, 3) == 5
+ok add wraps at the top
+42
+2 checks, 0 failed

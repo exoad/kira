@@ -34,8 +34,94 @@ jobs:
 
       # Rebuilds every example, compiles the C, runs the binary, and diffs both
       # generated.user.c and the program's stdout against what is committed.
+      # Examples listed in examples/cpp-legs.txt also get the C++ leg.
       - name: Verify example C snapshots and output
         run: ./examples/regenerate.sh --check
 
       - name: Verify foreign-edge example
         run: ./examples/ffi-mini/run.sh
+
+  # The C++ backend's harness (src/test/kotlin/net/exoad/kira/cpp): the golden
+  # corpus and the warning contract under every toolchain the design's build
+  # matrix names. KIRA_REQUIRE_TOOLCHAINS=1 makes a missing toolchain a
+  # failure, never a skip.
+  cpp-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install g++, clang and gcc-arm-none-eabi
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ clang gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+          g++ --version | head -1
+          clang++ --version | head -1
+          arm-none-eabi-g++ --version | head -1
+
+      - name: Set up zig 0.15.2
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: C++ harness (gcc, clang, zig-aarch64, arm)
+        env:
+          KIRA_REQUIRE_TOOLCHAINS: "1"
+          KIRA_TOOLCHAINS: gcc,clang,zig-aarch64,arm
+        run: ./gradlew test --tests 'net.exoad.kira.cpp.*'
+
+  # The board floor: gcc 11.4, which Ubuntu 22.04, the Orange Pi and JetPack 6
+  # all ship. Only gcc is exercised here.
+  cpp-gcc11:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    steps:
+      - name: Install gcc 11, JDK 17 and git
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++ openjdk-17-jdk-headless git ca-certificates
+          g++ --version | head -1
+          g++ --version | head -1 | grep -q ' 11\.4\.' || { echo "expected gcc 11.4, the board floor" >&2; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: C++ harness (gcc only)
+        env:
+          KIRA_REQUIRE_TOOLCHAINS: "1"
+          KIRA_TOOLCHAINS: gcc
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./gradlew test --tests 'net.exoad.kira.cpp.*'
+
+  # cl 19.4x through vcvars64.bat, found with vswhere.
+  cpp-msvc:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: C++ harness (msvc only)
+        shell: bash
+        env:
+          KIRA_REQUIRE_TOOLCHAINS: "1"
+          KIRA_TOOLCHAINS: msvc
+        run: ./gradlew test --tests 'net.exoad.kira.cpp.*'

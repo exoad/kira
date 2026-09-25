@@ -1,0 +1,16 @@
+project:
+  name: pico
+
+srcDir: src
+
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+    headerOnly: ["selftest:blink"]
+    freestanding: ["selftest:blink"]
+
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

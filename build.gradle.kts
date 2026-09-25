@@ -24,6 +24,23 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+
+    // The C++ harness (src/test/kotlin/net/exoad/kira/cpp, see TESTING.md) is
+    // steered by these knobs. `-Dkira.*` on the gradlew command line lands on
+    // the build JVM, not the forked test JVM, so forward it; and register both
+    // the properties and the environment variables as task inputs, so a
+    // changed knob re-runs the tests instead of replaying an up-to-date result.
+    for (key in listOf("kira.cppGoldenDir", "kira.cppRuntimeDir")) {
+        val value = System.getProperty(key) ?: ""
+        if (value.isNotEmpty()) systemProperty(key, value)
+        inputs.property(key, value)
+    }
+    for (key in listOf(
+        "KIRA_TOOLCHAINS", "KIRA_REQUIRE_TOOLCHAINS", "KIRA_CPP_GOLDEN_DIR",
+        "KIRA_CXX_GCC", "KIRA_CXX_CLANG", "KIRA_ZIG", "KIRA_MSVC_VCVARS", "KIRA_ARM_GXX",
+    )) {
+        inputs.property("env.$key", System.getenv(key) ?: "")
+    }
 }
 
 // Compiler reads kira.yaml from the process working directory.

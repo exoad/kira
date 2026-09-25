@@ -1,0 +1,8 @@
+module "selftest:blink"
+
+@_const pub val PERIOD_TICKS: Int32 = 4;
+
+pub fx isOn: (tick: Int32) Bool
+{
+    return (tick / PERIOD_TICKS) % 2 == 0;
+}

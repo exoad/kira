@@ -1,0 +1,14 @@
+project:
+  name: hello
+
+srcDir: src
+
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira
