@@ -28,7 +28,11 @@ pub @_magic class MutView<T>: Iterable<T> {
     pub fx size: () Size;
     pub fx isEmpty: () Bool;
     pub fx get: (index: Size) T;
-    pub mut fx set: (index: Size, value: T) Void;
+    // Not `mut`: the view itself does not change, only the element it points
+    // at (a `T*` with `T& operator[]`, design section 6). A MutView is passed
+    // by value and never as a `mut` parameter (5.1), so a `mut fx` here would
+    // reject `buf.set(i, v)` on every MutView parameter, its main use.
+    pub fx set: (index: Size, value: T) Void;
     pub fx from: (at: Size) MutView<T>;
     pub fx slice: (at: Size, n: Size) MutView<T>;
     pub fx view: () View<T>;

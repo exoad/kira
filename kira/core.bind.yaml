@@ -21,23 +21,34 @@
 # number the class's parameters first, then its own; no stdlib entry needs
 # that.
 #
-# `pure`: the call has no side effects and reads no state another impure call
-# could change, so EffectsPass (D33) need not spill it into a temporary to
-# keep left-to-right evaluation. A pure call may still panic (a checked index,
-# unwrap on none: D10); the flag never licenses dropping or reordering it.
+# `pure`: the call has no side effects, and its result depends only on the
+# values of its receiver and arguments at the moment it runs. It may read its
+# receiver (List.size, Map.get, Str.length, Weak.upgrade all do); that read
+# is what a plain variable read is to D33, which spills call arguments only
+# when two or more operands hold impure calls. So `f(xs.size(), xs.grow())`
+# is not spilled by this flag alone, exactly as `f(n, g())` is not when g()
+# writes n; whether ExclusivityPass or a receiver-overlap rule covers that
+# pair is W2.5's, not the flag's. A pure call may still panic (a checked
+# index, unwrap on none: D10); the flag never licenses dropping or reordering
+# it.
 # `constexpr`: the target is declared constexpr, so the call is usable in a
 # constant expression whenever the receiver and arguments are literal types;
 # whether they are is ConstEligibilityPass's literal-type rule, not this flag.
 #
 # Runtime names this manifest needs beyond design section 6 (for W1.3):
+#   kira::str::equals(const Str&, const Str&) -> bool   (content equality; a
+#     free function so a `const char*` Str constant converts on either side,
+#     where `LIDAR_IP == "..."` would compare pointers and fail -Werror=address)
 #   kira::str::find(const Str&, const Str&) -> std::optional<Size>
 #   kira::str::hashCode(const Str&) -> std::int64_t   (djb2 as Str_hashCode in
 #     kira/c/c_generator.c: h = h * 33 + byte over uint64, cast to int64)
 #   template<class T> constexpr T abs(T) noexcept      (type-preserving; unsigned
-#     is the identity, INT_MIN stays INT_MIN by wrapping, D8)
+#     is the identity, INT_MIN stays INT_MIN by wrapping, D8; a floating-point
+#     T clears the sign bit, so abs(-0.0) is +0.0 as fabs and Math.abs give,
+#     which the C and JS backends print as 0, never -0)
 #   template<class T> constexpr std::int64_t hashCode(T) noexcept   (integers by
 #     value, floats by the bits of the double, bool 0/1, Char by ord)
-Str.equals:    { cpp: { expr: "({self} == {0})", pure: true } }
+Str.equals:    { cpp: { expr: "kira::str::equals({self}, {0})", pure: true } }
 Str.hashCode:  { cpp: { expr: "kira::str::hashCode({self})", pure: true } }
 Str.length:    { cpp: { expr: "kira::str::length({self})", pure: true } }
 Str.size:      { cpp: { expr: "kira::str::length({self})", pure: true } }

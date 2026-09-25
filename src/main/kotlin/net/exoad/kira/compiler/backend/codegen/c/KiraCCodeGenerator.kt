@@ -4,6 +4,7 @@ import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
+import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
@@ -95,27 +96,21 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             compilationUnit.allMagicTypes()
     }
     /**
-     * Kira names of the non-magic top-level functions this unit will emit.
-     * A call to one of them is a call to it, whatever the magic table says
-     * about the same spelling. Lazy, because method bodies are emitted before
-     * the prototype pass that fills [functionParamNames].
+     * Which function names each module's calls reach before the ambient
+     * magic names (its own members, then its `use`d modules' `pub` ones).
+     * Lazy, because method bodies are emitted before the prototype pass that
+     * fills [functionParamNames], so that table cannot serve the call side.
      */
-    private val declaredFunctionNames: Set<String> by lazy {
-        val out = linkedSetOf<String>()
-        emittableSources().forEach { source ->
-            source.ast.statements.forEach { stmt ->
-                val expr: Any? = when (stmt) {
-                    is FunctionDecl -> stmt
-                    is Statement -> stmt.expr
-                    else -> null
-                }
-                if (expr is FunctionDecl && !isMagicDecl(expr)) {
-                    out.add(functionLikeName(expr.name))
-                }
-            }
-        }
-        out
+    private val functionScopes: ModuleFunctionScopes by lazy {
+        ModuleFunctionScopes.collect(compilationUnit) { isMagicDecl(it) }
     }
+    /**
+     * The module whose code is being emitted, so a call in it resolves in
+     * that module's scope. Set at every top-level declaration and at each
+     * source of the final walk; null only outside any module's code, where
+     * a call falls back to the binding table.
+     */
+    private var callerModuleUri: String? = null
     private val opaqueTypes by lazy {
         compilationUnit.collectIntrinsicMarkedTypeNames("_opaque") +
             compilationUnit.allOpaqueTypes()
@@ -572,8 +567,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         emitSpecializedFunctionBodies()
 
         emittableSources().forEach { source ->
+            callerModuleUri = runCatching { source.getModuleUri() }.getOrNull()
             visitRootASTNodeSkippingTypes(source.ast)
         }
+        callerModuleUri = null
 
         if (requiredIncludes.isNotEmpty()) {
             val body = buffer.substring(bodyStart)
@@ -909,6 +906,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun emitSpecializedClass(mangled: String, template: ClassDecl, args: List<String>) {
+        enterModuleOf(template)
         val paramNames = template.name.children.map { baseTypeNameOf(it) }
         val subst = paramNames.zip(args).toMap()
         val prev = typeSubst
@@ -1045,6 +1043,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun emitSpecializedFunction(mangled: String, template: FunctionDecl, args: List<String>) {
+        enterModuleOf(template)
         val paramNames = template.generics.map { baseTypeNameOf(it) }
         val subst = paramNames.zip(args).toMap()
         val prev = typeSubst
@@ -1911,9 +1910,19 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         typeSubst = emptyMap()
         indentLevel = 0
         currentModuleUri = null
+        callerModuleUri = null
         emittingClassMembers = false
         currentMethodClass = null
         suppressThisRewrite = false
+    }
+
+    /**
+     * Makes [decl]'s module the scope calls resolve in while its body is
+     * emitted. A declaration no source owns at top level (none today) keeps
+     * the enclosing scope.
+     */
+    private fun enterModuleOf(decl: Decl) {
+        functionScopes.moduleOf(decl)?.let { callerModuleUri = it }
     }
 
     private fun mangleMethodName(className: String, methodName: String): String {
@@ -2616,10 +2625,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append(")")
             return
         }
-        // A function this unit declares shadows the ambient magic name of the
-        // same spelling (a user `fx ceil` is not libc's), so it is called as
-        // itself and never resolved through the binding table.
-        val declaredHere = !isExternFunction(rawName) && rawName in declaredFunctionNames
+        // A function in the caller's scope (its module's own, or a `pub` one
+        // of a module it `use`s) shadows the ambient magic name of the same
+        // spelling: a user `fx ceil` is not libc's, so it is called as itself
+        // and never resolved through the binding table. A function some other
+        // module declares is out of scope, and the magic name stands.
+        val declaredHere = !isExternFunction(rawName) && functionScopes.resolves(callerModuleUri, rawName)
         if (!declaredHere) {
             includeForIntrinsic(rawName)
         }
@@ -3075,6 +3086,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (isMagicDecl(functionDecl)) {
             return
         }
+        enterModuleOf(functionDecl)
         // Generic templates are monomorphized separately; skip the template body.
         if (isGenericFunction(functionDecl)) {
             return
@@ -3155,6 +3167,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (isMagicDecl(classDecl)) {
             return
         }
+        enterModuleOf(classDecl)
         // Generic class templates are monomorphized into specialized structs.
         if (isGenericClass(classDecl)) {
             return

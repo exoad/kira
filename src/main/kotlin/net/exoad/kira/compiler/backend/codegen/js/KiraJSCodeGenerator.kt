@@ -4,6 +4,7 @@ import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
+import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
@@ -113,6 +114,19 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val methodsByClass = mutableMapOf<String, MutableSet<String>>()
     /** Free function name -> Kira parameter names, for binding named arguments. */
     private val functionParamNames = mutableMapOf<String, List<String>>()
+    /**
+     * Which function names each module's calls reach before the ambient
+     * magic names (its own members, then its `use`d modules' `pub` ones).
+     */
+    private val functionScopes: ModuleFunctionScopes by lazy {
+        ModuleFunctionScopes.collect(compilationUnit) { isMagicDecl(it) }
+    }
+    /**
+     * The module whose code is being emitted, so a call in it resolves in
+     * that module's scope; null outside any module's code, where a call
+     * falls back to the intrinsic table.
+     */
+    private var callerModuleUri: String? = null
     /** "Class.method" -> parameter names. */
     private val methodParamNames = mutableMapOf<String, List<String>>()
     /** Method simple name -> the distinct parameter-name lists declared under it (classes and traits). */
@@ -280,8 +294,10 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         collectEnumTypes()
 
         emittableSources().forEach { source ->
+            callerModuleUri = runCatching { source.getModuleUri() }.getOrNull()
             visitRootASTNode(source.ast)
         }
+        callerModuleUri = null
 
         // The C backend gets `main` from the host C runtime; Node has no entry
         // convention, so a Kira `main` is invoked explicitly at the end.
@@ -663,6 +679,16 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         currentMethodClass = null
         suppressThisRewrite = false
         hasMain = false
+        callerModuleUri = null
+    }
+
+    /**
+     * Makes [decl]'s module the scope calls resolve in while its body is
+     * emitted. A declaration no source owns at top level keeps the
+     * enclosing scope.
+     */
+    private fun enterModuleOf(decl: Decl) {
+        functionScopes.moduleOf(decl)?.let { callerModuleUri = it }
     }
 
     override fun visitRootASTNode(node: RootASTNode) {
@@ -1023,9 +1049,11 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             buffer.append(")")
             return
         }
-        // A function this unit declares shadows the ambient magic name of the
-        // same spelling: a user `fx ceil` is called, not Math.ceil.
-        val math = if (functionParamNames.containsKey(rawName)) null else jsIntrinsic(rawName)
+        // A function in the caller's scope (its module's own, or a `pub` one
+        // of a module it `use`s) shadows the ambient magic name of the same
+        // spelling: a user `fx ceil` is called, not Math.ceil. A function some
+        // other module declares is out of scope, and Math.ceil stands.
+        val math = if (functionScopes.resolves(callerModuleUri, rawName)) null else jsIntrinsic(rawName)
         if (math != null) {
             buffer.append(math)
             buffer.append("(")
@@ -1442,6 +1470,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (isMagicDecl(functionDecl)) {
             return
         }
+        enterModuleOf(functionDecl)
         // Methods inside classes: emitted in visitClassDecl.
         if (emittingClassMembers) {
             return
@@ -1486,6 +1515,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (isMagicDecl(classDecl)) {
             return
         }
+        enterModuleOf(classDecl)
         val base = baseTypeNameOf(classDecl.name)
         if (isOpaqueTypeName(base)) {
             appendIndentedLine("// @_opaque $base: foreign edge not supported on the JS backend yet")

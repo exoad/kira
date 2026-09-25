@@ -2,6 +2,7 @@ package net.exoad.kira
 
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
+import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.compiler.CompilationUnit
@@ -68,6 +69,13 @@ class StdlibParseTest {
             val path = file.canonicalPath
             val ctx = unit.addSource(path, processed.processedContent, emptyList())
             val tokens = KiraLexer(ctx).tokenize()
+            interpolationIn(tokens)?.let { token ->
+                // Today's lexer keeps `${...}` as literal text, so a parse
+                // alone cannot see it; once W1.1's interpolation lands the
+                // same characters mean something else. RULE 1 forbids it.
+                return "${file.path}:${token.canonicalLocation.lineNumber}: string literal holds " +
+                    "an interpolation, which the stdlib may not use: ${token.content}"
+            }
             val withTokens = unit.addSource(path, ctx.content, tokens)
             KiraSourceParsers.from(withTokens).parse()
         } catch (e: DiagnosticsException) {
@@ -82,5 +90,10 @@ class StdlibParseTest {
             return "${file.path}:?: parser logged ${logged.size} diagnostic(s): ${logged.joinToString(" | ")}"
         }
         return null
+    }
+
+    /** The first string literal token that spells `${`, or null. */
+    private fun interpolationIn(tokens: List<Token>): Token? {
+        return tokens.firstOrNull { it.type == Token.Type.L_STRING && it.content.contains("\${") }
     }
 }

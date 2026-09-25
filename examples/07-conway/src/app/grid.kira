@@ -31,7 +31,7 @@ class Grid {
         return count
     }
 
-    fx step: () Void {
+    mut fx step: () Void {
         mut next: Arr<Int32> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         mut i: Int32 = 0
         while i < width * height {
