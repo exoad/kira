@@ -155,7 +155,7 @@ object TestCompileSupport {
     }
 
     /** Search PATH for [name]; on Windows also try the PATHEXT spellings. */
-    internal fun findOnPath(name: String): String? {
+    private fun findOnPath(name: String): String? {
         val path = System.getenv("PATH") ?: return null
         val extensions = if (isWindows) {
             listOf("") + (System.getenv("PATHEXT") ?: ".EXE;.BAT;.CMD")

@@ -44,4 +44,9 @@ object CIntrinsicsTable {
     fun resolveIncludes(name: String): Set<String> {
         return bindings[name]?.requiredIncludes ?: emptySet()
     }
+
+    /** Every C symbol this fallback table lowers an intrinsic to. */
+    fun symbols(): Set<String> {
+        return bindings.values.mapTo(linkedSetOf()) { it.functionName }
+    }
 }

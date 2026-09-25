@@ -1,6 +1,7 @@
 package net.exoad.kira
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
@@ -8,6 +9,7 @@ import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
+import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -35,14 +37,23 @@ import kotlin.test.assertTrue
  * table renames to `fmin`, so a call that leaks through the table is
  * visible in the C text as well as in the JS one.
  *
- * The C program for the `ceil` case is emitted correctly but is not run
- * here: the C backend emits user functions under their Kira names, so a
- * user `ceil` collides with libc's, which gcc and clang treat as a builtin
- * (undefined behaviour: gcc 13.2 printed 2 and clang printed 0e+00 from a
- * `ceil` that returns 101.5). That is the C backend's unmangled symbols, a
- * separate defect a user `fx strlen` has too. `min` has no libc symbol, so
- * those programs run under gcc; the Windows SDK's `stdlib.h` makes it a
- * macro, which cProgramsRun explains.
+ * In C the scope rule alone is not enough, because C has one global
+ * namespace: a user `fx floor` defined as `floor` is the `floor` every
+ * other module's `floor(2.7)` reaches (a private one in `app:util`
+ * captured `app:main`'s call, so C printed 0 where JS printed 2), it
+ * redefines libc's (undefined behaviour: gcc 13.2 printed 2 and clang
+ * 0e+00 from a `ceil` that returns 101.5), and the minifier renames every
+ * `floor` token with it. So a user function whose Kira name is a C symbol
+ * the magic table lowers to (`floor`, `sqrt`, `ceil`, `fmin`, ...) is
+ * emitted and called as `floor_user`, and the `ceil`, `floor` and `sqrt`
+ * cases below run in C as well. `min` is not such a symbol (the table's is
+ * `fmin`), so a user `min` keeps its name; the Windows SDK's `stdlib.h`
+ * makes it a macro, which cProgramsRun explains.
+ *
+ * The last cases pin where the scope is taken from: a class method body
+ * (emitted with the struct bodies, before the final walk), a generic
+ * specialization (emitted from the template's module, not the caller's)
+ * and a top-level constant (a statement of the source, not a function).
  */
 class UserDeclarationShadowsMagicNameTest {
     private val moduleUri = "test:shadow.magic"
@@ -175,11 +186,243 @@ class UserDeclarationShadowsMagicNameTest {
         assertEquals(expectedLines, outputLines(run.stdout), run.stderr)
     }
 
+    /**
+     * `test:shadow.libc` declares a Float64 `floor` that returns 0.0, `pub`
+     * or private, and never calls it; main may `use` it and traces
+     * `floor(2.7)`. libc's floor gives 2, the user's 0.
+     */
+    private val libcUri = "test:shadow.libc"
+    private val libcMainUri = "test:shadow.libcmain"
+
+    private fun libcNameUnit(utilIsPub: Boolean, mainUsesUtil: Boolean): CompilationUnit {
+        val visibility = if (utilIsPub) "pub " else ""
+        val use = if (mainUsesUtil) "use \"$libcUri\"\n" else ""
+        return unitOf(
+            libcUri to """
+                ${visibility}fx floor: (x: Float64) Float64 {
+                    return 0.0
+                }
+            """.trimIndent(),
+            libcMainUri to """
+                $use
+                fx main: () Void {
+                    v: Float64 = floor(2.7)
+                    trace(v)
+                }
+            """.trimIndent(),
+        )
+    }
+
+    /** The user's own `sqrt`, called from its own module: 16 becomes 116, not 4. */
+    private val ownLibcNameUri = "test:shadow.ownlibc"
+    private val ownLibcNameSource = TestCompileSupport.wrapModule(
+        ownLibcNameUri,
+        """
+        fx sqrt: (x: Float64) Float64 {
+            return x + 100.0
+        }
+
+        fx main: () Void {
+            trace(sqrt(16.0))
+        }
+        """
+    )
+
+    /**
+     * `test:shadow.scopeutil` declares a private Float64 `max` returning 0.0
+     * and a `pub` generic `pick` whose body calls it; `test:shadow.scopemain`
+     * `use`s it, and holds a class whose method calls `min`, which the util
+     * module exports as a `pub` Float64 function returning 0.0. In main
+     * itself `max` is out of scope (fmax, 2) and `min` is in scope (0).
+     */
+    private val scopeUtilUri = "test:shadow.scopeutil"
+    private val scopeMainUri = "test:shadow.scopemain"
+
+    private fun scopeUnit(withClass: Boolean = true): CompilationUnit {
+        val classDecl = if (!withClass) "" else """
+            class Alpha {
+                require pub id: Int32
+
+                fx run: () Float64 {
+                    return min(1.0, 2.0)
+                }
+            }
+        """.trimIndent()
+        val classUse = if (!withClass) "" else "a: Alpha = Alpha { 1 }\n    trace(a.run())"
+        return unitOf(
+            scopeUtilUri to """
+                fx max: (a: Float64, b: Float64) Float64 {
+                    return 0.0
+                }
+
+                pub fx min: (a: Float64, b: Float64) Float64 {
+                    return 0.0
+                }
+
+                pub fx pick<T>: (a: Float64, b: Float64) Float64 {
+                    return max(a, b)
+                }
+            """.trimIndent(),
+            scopeMainUri to """
+                use "$scopeUtilUri"
+
+                $classDecl
+
+                fx main: () Void {
+                    picked: Float64 = pick<Int32>(1.0, 2.0)
+                    trace(picked)
+                    larger: Float64 = max(1.0, 2.0)
+                    trace(larger)
+                    $classUse
+                }
+            """.trimIndent(),
+        )
+    }
+
+    /** The same two modules without the class: the C program then compiles (see cProgramsRun). */
+    private fun scopeUnitWithoutTheClass(): CompilationUnit {
+        return scopeUnit(withClass = false)
+    }
+
+    /**
+     * A top-level constant of main initialised by `min`, which
+     * `test:shadow.constutil` exports; main `use`s it. The constant is a
+     * statement of the source, not a declaration a function body sits in,
+     * so its scope comes from the source being walked.
+     */
+    private val constUtilUri = "test:shadow.constutil"
+    private val constMainUri = "test:shadow.constmain"
+
+    private fun topLevelConstantUnit(): CompilationUnit {
+        return unitOf(
+            constUtilUri to """
+                pub fx min: (a: Float64, b: Float64) Float64 {
+                    return 0.0
+                }
+            """.trimIndent(),
+            constMainUri to """
+                use "$constUtilUri"
+
+                LOWEST: Float64 = min(1.0, 2.0)
+
+                fx main: () Void {
+                    trace(LOWEST)
+                }
+            """.trimIndent(),
+        )
+    }
+
     @Test
     fun cCallsTheUsersFunctionOverTheMagicTable() {
         val generated = TestCompileSupport.transpileSnippetToC(mathNameSource, TestCompileSupport.logicalPathForModule(mathNameUri))
-        assertTrue(Regex("Float64 ceil\\(Float64 x\\)\\s*\\{").containsMatchIn(generated), generated)
-        assertTrue(generated.contains("ceil(1.5)"), generated)
+        assertTrue(Regex("Float64 ceil_user\\(Float64 x\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("ceil_user(1.5)"), generated)
+        assertFalse(Regex("\\bceil\\(").containsMatchIn(generated), generated)
+
+        val compiler = TestCompileSupport.findCCompiler()
+        assumeTrue(compiler != null, "No C compiler found on PATH")
+        val result = TestCompileSupport.compileAndRunC(generated, compiler!!)
+        assertEquals(0, result.compileResult.exitCode, result.compileResult.stderr)
+        val run = assertNotNull(result.runResult)
+        assertEquals(listOf("101.5"), outputLines(run.stdout), run.stderr)
+    }
+
+    @Test
+    fun cDefinesAUserFunctionNamedLikeALibcSymbolUnderItsOwnName() {
+        val generated = cOf(libcNameUnit(utilIsPub = false, mainUsesUtil = false))
+        assertTrue(Regex("Float64 floor_user\\(Float64 x\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertFalse(Regex("Float64 floor\\(").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("Float64 v = floor(2.7);"), generated)
+    }
+
+    @Test
+    fun cAUsedModulesPubLibcNamedFunctionIsCalledByItsCName() {
+        val generated = cOf(libcNameUnit(utilIsPub = true, mainUsesUtil = true))
+        assertTrue(generated.contains("Float64 v = floor_user(2.7);"), generated)
+        assertFalse(Regex("\\bfloor\\(").containsMatchIn(generated), generated)
+    }
+
+    @Test
+    fun cCallsTheUsersOwnLibcNamedFunction() {
+        val generated = cOf(ownLibcNameSource, ownLibcNameUri)
+        assertTrue(Regex("Float64 sqrt_user\\(Float64 x\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("sqrt_user(16.0)"), generated)
+        assertFalse(Regex("\\bsqrt\\(").containsMatchIn(generated), generated)
+    }
+
+    /**
+     * The CLI's default output is minified, and the minifier renames every
+     * token of every user symbol: when the user's `floor` was emitted as
+     * `floor`, main's libc `floor(2.7)` was renamed with it and printed 0.
+     * The user symbol is `floor_user` now, and the libc call survives.
+     */
+    @Test
+    fun cMinifiedOutputKeepsTheLibcCall() {
+        val previous = GeneratedProvider.minifyOutput
+        GeneratedProvider.minifyOutput = true
+        val file = File.createTempFile("kira-shadow-min", ".c")
+        try {
+            KiraCCodeGenerator(libcNameUnit(utilIsPub = false, mainUsesUtil = false)).generate(file.path)
+            val user = file.readText().substringAfterLast("#endif /* KIRA_RUNTIME_H */")
+            assertTrue(Regex("[=(,;]floor\\(2\\.7\\)").containsMatchIn(user), user)
+            assertFalse(Regex("Float64 floor\\(").containsMatchIn(user), user)
+            assertFalse(user.contains("floor_user"), user)
+        } finally {
+            GeneratedProvider.minifyOutput = previous
+            file.delete()
+        }
+    }
+
+    @Test
+    fun jsAnotherModulesPrivateLibcNamedFunctionIsOutOfScope() {
+        val generated = jsOf(libcNameUnit(utilIsPub = false, mainUsesUtil = false))
+        assertTrue(generated.contains("const v = Math.floor(2.7);"), generated)
+        runJS(generated, listOf("2"))
+    }
+
+    @Test
+    fun jsAUsedModulesPubLibcNamedFunctionShadowsTheMagicName() {
+        val generated = jsOf(libcNameUnit(utilIsPub = true, mainUsesUtil = true))
+        assertTrue(generated.contains("const v = floor(2.7);"), generated)
+        runJS(generated, listOf("0"))
+    }
+
+    @Test
+    fun cAClassMethodResolvesInItsModulesScope() {
+        val generated = cOf(scopeUnit())
+        assertTrue(Regex("Alpha_run\\([^)]*\\)\\s*\\{[^}]*return min\\(1\\.0, 2\\.0\\);").containsMatchIn(generated), generated)
+        assertFalse(generated.contains("fmin(1.0, 2.0)"), generated)
+    }
+
+    @Test
+    fun cAGenericSpecializationResolvesInItsTemplatesModule() {
+        val generated = cOf(scopeUnit())
+        assertTrue(Regex("pick_Int32\\([^)]*\\)\\s*\\{[^}]*return max\\(a, b\\);").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("Float64 larger = fmax(1.0, 2.0);"), generated)
+    }
+
+    @Test
+    fun jsClassMethodsAndSpecializationsResolveInTheirModulesScope() {
+        val generated = jsOf(scopeUnit())
+        assertTrue(generated.contains("return min(1.0, 2.0);"), generated)
+        assertTrue(generated.contains("return max(a, b);"), generated)
+        assertTrue(generated.contains("const larger = Math.max(1.0, 2.0);"), generated)
+        runJS(generated, listOf("0", "2", "0"))
+    }
+
+    @Test
+    fun cATopLevelConstantResolvesInItsSourcesScope() {
+        val generated = cOf(topLevelConstantUnit())
+        assertTrue(generated.contains("LOWEST = min(1.0, 2.0);"), generated)
+        assertFalse(generated.contains("fmin(1.0, 2.0)"), generated)
+    }
+
+    @Test
+    fun jsATopLevelConstantResolvesInItsSourcesScope() {
+        val generated = jsOf(topLevelConstantUnit())
+        assertTrue(generated.contains("LOWEST = min(1.0, 2.0);"), generated)
+        assertFalse(generated.contains("Math.min(1.0, 2.0)"), generated)
+        runJS(generated, listOf("0"))
     }
 
     @Test
@@ -289,45 +532,71 @@ class UserDeclarationShadowsMagicNameTest {
     }
 
     /**
-     * Compiles and runs the six C programs above and checks what each
-     * prints. They all declare a user `min`, which the Windows SDK's
-     * `stdlib.h` defines as a macro, so LLVM clang targeting MSVC cannot
-     * even declare it (the C backend's unmangled symbols again); the
-     * MSYS2 ucrt64 gcc can. The run therefore takes `$CC` when set, else
-     * the first of clang, cc and gcc whose headers leave `min` alone, and
-     * is skipped, saying so, when none does. The text assertions above
-     * never skip.
+     * Compiles and runs the C programs above and checks what each prints.
+     * Most declare a user `min` or `max`, which the Windows SDK's
+     * `stdlib.h` defines as macros, so LLVM clang targeting MSVC cannot
+     * even declare them (they are not C symbols the table lowers to, so
+     * they keep their names); the MSYS2 ucrt64 gcc can. The run therefore
+     * takes `$CC` when set, else the first of clang, cc and gcc whose
+     * headers leave `min` and `max` alone, and is skipped, saying so, when
+     * none does. The text assertions above never skip. Two programs are
+     * text-only in C: the class method, because the C backend emits method
+     * bodies before the free-function prototypes, so a method calling a
+     * free function of its own module does not compile whatever the
+     * function is named; and the top-level constant, because C does not
+     * take a call as a file-scope initializer. Both run under node.
      */
     @Test
     fun cProgramsRun() {
-        val compiler = cCompilerThatDeclaresMin
-        assumeTrue(compiler != null, "No C compiler on PATH whose headers leave a user `min` alone")
+        val compiler = cCompilerThatDeclaresMinAndMax
+        assumeTrue(compiler != null, "No C compiler on PATH whose headers leave a user `min` and `max` alone")
         val cases = listOf(
-            Triple("renamed", cOf(renamedSource, renamedUri), "7"),
-            Triple("stdlib body", cOf(stdlibBodySource, stdlibBodyUri), "1"),
-            Triple("private, not used", cOf(twoModuleUnit(utilIsPub = false, mainUsesUtil = false)), "1"),
-            Triple("private, used", cOf(twoModuleUnit(utilIsPub = false, mainUsesUtil = true)), "1"),
-            Triple("pub, used", cOf(twoModuleUnit(utilIsPub = true, mainUsesUtil = true)), "0"),
-            Triple("pub, not used", cOf(twoModuleUnit(utilIsPub = true, mainUsesUtil = false)), "1"),
+            Triple("renamed", cOf(renamedSource, renamedUri), listOf("7")),
+            Triple("stdlib body", cOf(stdlibBodySource, stdlibBodyUri), listOf("1")),
+            Triple("private, not used", cOf(twoModuleUnit(utilIsPub = false, mainUsesUtil = false)), listOf("1")),
+            Triple("private, used", cOf(twoModuleUnit(utilIsPub = false, mainUsesUtil = true)), listOf("1")),
+            Triple("pub, used", cOf(twoModuleUnit(utilIsPub = true, mainUsesUtil = true)), listOf("0")),
+            Triple("pub, not used", cOf(twoModuleUnit(utilIsPub = true, mainUsesUtil = false)), listOf("1")),
+            Triple("private floor, not used", cOf(libcNameUnit(utilIsPub = false, mainUsesUtil = false)), listOf("2")),
+            Triple("private floor, used", cOf(libcNameUnit(utilIsPub = false, mainUsesUtil = true)), listOf("2")),
+            Triple("pub floor, used", cOf(libcNameUnit(utilIsPub = true, mainUsesUtil = true)), listOf("0")),
+            Triple("pub floor, not used", cOf(libcNameUnit(utilIsPub = true, mainUsesUtil = false)), listOf("2")),
+            Triple("own sqrt", cOf(ownLibcNameSource, ownLibcNameUri), listOf("116")),
+            Triple("generic specialization", cOf(scopeUnitWithoutTheClass()), listOf("0", "2")),
         )
         cases.forEach { (name, generated, expected) ->
             val result = TestCompileSupport.compileAndRunC(generated, compiler!!)
             assertEquals(0, result.compileResult.exitCode, "$name: ${result.compileResult.stderr}")
             val run = assertNotNull(result.runResult, name)
-            assertEquals(listOf(expected), outputLines(run.stdout), "$name: ${run.stderr}")
+            assertEquals(expected, outputLines(run.stdout), "$name: ${run.stderr}")
         }
     }
 
-    private val cCompilerThatDeclaresMin: String? by lazy {
-        val candidates = listOfNotNull(TestCompileSupport.findCCompiler()) +
-            listOfNotNull(TestCompileSupport.findOnPath("cc"), TestCompileSupport.findOnPath("gcc"))
+    private val cCompilerThatDeclaresMinAndMax: String? by lazy {
+        val candidates = listOfNotNull(TestCompileSupport.findCCompiler(), onPath("cc"), onPath("gcc"))
         val probe = "#include <stdlib.h>\n#include <math.h>\n" +
             "double min(double a, double b) { return a; }\n" +
-            "int main(void) { return min(0.0, 1.0) == 0.0 ? 0 : 1; }\n"
+            "double max(double a, double b) { return b; }\n" +
+            "int main(void) { return min(0.0, 1.0) == 0.0 && max(0.0, 1.0) == 1.0 ? 0 : 1; }\n"
         candidates.distinct().firstOrNull { compiler ->
             val result = TestCompileSupport.compileAndRunC(probe, compiler)
             result.compileResult.exitCode == 0 && result.runResult?.exitCode == 0
         }
+    }
+
+    /** [name] on PATH (with the PATHEXT spellings on Windows), or null. */
+    private fun onPath(name: String): String? {
+        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+        val extensions = if (isWindows) {
+            listOf("") + (System.getenv("PATHEXT") ?: ".EXE;.BAT;.CMD").split(';').filter { it.isNotBlank() }.map { it.lowercase() }
+        } else {
+            listOf("")
+        }
+        return (System.getenv("PATH") ?: return null).split(File.pathSeparatorChar).asSequence()
+            .filter { it.isNotBlank() }
+            .flatMap { dir -> extensions.asSequence().map { File(dir, name + it) } }
+            .firstOrNull { it.isFile && (isWindows || it.canExecute()) }
+            ?.absolutePath
     }
 
     private fun cOf(source: String, uri: String): String {

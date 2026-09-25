@@ -38,6 +38,16 @@ object CMagicBindingTable {
     }
 
     /**
+     * Every C symbol the table lowers some magic name to (`floor`, `fmin`,
+     * `kira_assert`, ...): the names a user function may not define in C,
+     * because C has one global namespace and every magic call in the
+     * program reaches the symbol, not the declaration nearest its caller.
+     */
+    fun symbols(): Set<String> {
+        return bindings.values.mapTo(linkedSetOf()) { it.symbol }
+    }
+
+    /**
      * Includes a magic call site must bring into the translation unit.
      *
      * Null when [name] is unbound -- callers fall back to their previous
