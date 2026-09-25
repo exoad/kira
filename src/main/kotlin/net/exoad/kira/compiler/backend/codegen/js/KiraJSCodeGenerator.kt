@@ -1027,15 +1027,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             emitPrintCall(rawName, args)
             return
         }
-        if (rawName == "assert") {
-            buffer.append("kira_assert(")
-            args.forEachIndexed { i, arg ->
-                if (i > 0) buffer.append(", ")
-                arg.accept(this)
-            }
-            buffer.append(")")
-            return
-        }
         // Bare method call inside a class body: `method(args)` -> `this.method(args)`.
         val cls = currentMethodClass
         if (cls != null && methodsByClass[cls]?.contains(rawName) == true) {
@@ -1051,9 +1042,21 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         }
         // A function in the caller's scope (its module's own, or a `pub` one
         // of a module it `use`s) shadows the ambient magic name of the same
-        // spelling: a user `fx ceil` is called, not Math.ceil. A function some
+        // spelling: a user `fx ceil` is called, not Math.ceil, and a user
+        // `fx assert` is called, not the runtime's kira_assert (the C backend
+        // asks the same table, so both pick the same callee). A function some
         // other module declares is out of scope, and Math.ceil stands.
-        val math = if (functionScopes.resolves(callerModuleUri, rawName)) null else jsIntrinsic(rawName)
+        val declaredHere = functionScopes.resolves(callerModuleUri, rawName)
+        if (!declaredHere && rawName == "assert") {
+            buffer.append("kira_assert(")
+            args.forEachIndexed { i, arg ->
+                if (i > 0) buffer.append(", ")
+                arg.accept(this)
+            }
+            buffer.append(")")
+            return
+        }
+        val math = if (declaredHere) null else jsIntrinsic(rawName)
         if (math != null) {
             buffer.append(math)
             buffer.append("(")

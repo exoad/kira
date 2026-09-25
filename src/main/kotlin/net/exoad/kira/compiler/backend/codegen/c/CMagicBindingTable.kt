@@ -48,6 +48,17 @@ object CMagicBindingTable {
     }
 
     /**
+     * Every magic name the table binds to a C symbol (`abs`, `min`, `assert`,
+     * ...). The prelude's own headers spell some of these too (`<stdlib.h>`
+     * declares `int abs(int)`, and the Windows SDK makes `min` and `max`
+     * macros), so a user function of that name may not be defined under it
+     * either; see [KiraCCodeGenerator.userFunctionCName].
+     */
+    fun names(): Set<String> {
+        return bindings.keys.toSet()
+    }
+
+    /**
      * Includes a magic call site must bring into the translation unit.
      *
      * Null when [name] is unbound -- callers fall back to their previous

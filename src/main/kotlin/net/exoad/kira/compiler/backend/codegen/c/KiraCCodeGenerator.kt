@@ -113,12 +113,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private var callerModuleUri: String? = null
     /**
      * The C symbols the magic tables lower calls to (`floor`, `fmin`,
-     * `kira_assert`, ...). A user function may carry one of these Kira names
-     * (a private `fx floor` in `app:util`), but its C definition may not:
-     * see [userFunctionCName].
+     * `kira_assert`, ...) and the magic names they lower (`abs`, `min`,
+     * `assert`, ...). A user function may carry one of these as its Kira
+     * name (a private `fx floor` in `app:util`, an Int32 `fx abs`), but its
+     * C definition may not: see [userFunctionCName].
      */
-    private val cBindingSymbols: Set<String> by lazy {
-        CMagicBindingTable.symbols() + CIntrinsicsTable.symbols()
+    private val cReservedFunctionNames: Set<String> by lazy {
+        CMagicBindingTable.symbols() + CIntrinsicsTable.symbols() +
+            CMagicBindingTable.names() + CIntrinsicsTable.names()
     }
     private val opaqueTypes by lazy {
         compilationUnit.collectIntrinsicMarkedTypeNames("_opaque") +
@@ -1897,15 +1899,21 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
      * global namespace: defined as `floor`, the user's function would be the
      * `floor` every other module's `floor(2.7)` reaches, redefine libc's,
      * and make the minifier rename every `floor` token with it. Such a
-     * function is `floor_user` in C; every other function keeps its Kira
-     * name, as today (free function names do not go through [cName]: the
+     * function is `floor_user` in C. So is one whose Kira name is a magic
+     * name the tables lower (`abs`, `min`, `max`, `assert`): the table's
+     * symbol differs (`fabs`, `fmin`), but the prelude's `<stdlib.h>`
+     * declares `int abs(int)` itself, so an Int32 `fx abs` defined as `abs`
+     * conflicted with it or, where the types happened to agree, replaced
+     * libc's; the Windows SDK makes `min` and `max` macros, and `assert`
+     * is C's one-argument macro. Every other function keeps its Kira name,
+     * as today (free function names do not go through [cName]: the
      * operator lowering calls a user `op_add` by that spelling, so a user
      * `fx floor_user` could meet the suffix, as a user `fx Point_new` can
      * meet a constructor). Extern functions never come here: they carry
      * their own C name.
      */
     private fun userFunctionCName(kiraName: String): String {
-        return if (kiraName in cBindingSymbols) "${kiraName}_user" else kiraName
+        return if (kiraName in cReservedFunctionNames) "${kiraName}_user" else kiraName
     }
 
     private fun toScreamingSnake(name: String): String {

@@ -45,15 +45,27 @@ import kotlin.test.assertTrue
  * 0e+00 from a `ceil` that returns 101.5), and the minifier renames every
  * `floor` token with it. So a user function whose Kira name is a C symbol
  * the magic table lowers to (`floor`, `sqrt`, `ceil`, `fmin`, ...) is
- * emitted and called as `floor_user`, and the `ceil`, `floor` and `sqrt`
- * cases below run in C as well. `min` is not such a symbol (the table's is
- * `fmin`), so a user `min` keeps its name; the Windows SDK's `stdlib.h`
- * makes it a macro, which cProgramsRun explains.
+ * emitted and called as `floor_user`. So is one whose Kira name is a magic
+ * name the table lowers (`abs`, `min`, `max`, `assert`): the table's symbol
+ * differs (`fabs`, `fmin`), but the prelude's `<stdlib.h>` declares `int
+ * abs(int)` itself, so a Float64 `fx abs` defined as `abs` did not compile
+ * ("conflicting types for abs") and an Int32 one replaced libc's (gcc and
+ * clang printed 5 from an `abs` that returns x + 100; node printed 95);
+ * the Windows SDK makes `min` and `max` macros, so clang targeting MSVC
+ * could not declare a user `min` at all; and `assert` is C's one-argument
+ * macro. Renamed, every case compiles and runs on every compiler.
+ *
+ * `assert` is also the one name the JS backend used to special-case before
+ * asking the scope table, so a user `fx assert` was called in C and
+ * replaced by the runtime's kira_assert in JS. Both backends now ask the
+ * table first.
  *
  * The last cases pin where the scope is taken from: a class method body
  * (emitted with the struct bodies, before the final walk), a generic
  * specialization (emitted from the template's module, not the caller's)
- * and a top-level constant (a statement of the source, not a function).
+ * and a top-level constant (a statement of the source, not a function),
+ * including one in a source walked after another module's, whose scope
+ * would otherwise linger.
  */
 class UserDeclarationShadowsMagicNameTest {
     private val moduleUri = "test:shadow.magic"
@@ -312,6 +324,101 @@ class UserDeclarationShadowsMagicNameTest {
         )
     }
 
+    /**
+     * The same constant in a main that does not `use` the util module, whose
+     * `min` is private. The util source is walked first, so its scope is the
+     * one in force when main's walk begins: the walk must reset the scope
+     * per source, or main's constant sees util's `min` and prints 0 instead
+     * of fmin's 1.
+     */
+    private fun laterSourceConstantUnit(): CompilationUnit {
+        return unitOf(
+            constUtilUri to """
+                fx min: (a: Float64, b: Float64) Float64 {
+                    return 0.0
+                }
+            """.trimIndent(),
+            constMainUri to """
+                LOWEST: Float64 = min(1.0, 2.0)
+
+                fx main: () Void {
+                    trace(LOWEST)
+                }
+            """.trimIndent(),
+        )
+    }
+
+    /**
+     * A user Int32 `abs` returning x + 100 (libc's returns 5 from -5), a
+     * user Float64 `abs` (which could not even be declared beside libc's
+     * `int abs(int)`), and a user `assert` that traces its message instead
+     * of failing.
+     */
+    private val intAbsUri = "test:shadow.intabs"
+    private val intAbsSource = TestCompileSupport.wrapModule(
+        intAbsUri,
+        """
+        fx abs: (x: Int32) Int32 {
+            return x + 100
+        }
+
+        fx main: () Void {
+            v: Int32 = abs(-5)
+            trace(v)
+        }
+        """
+    )
+
+    private val floatAbsUri = "test:shadow.floatabs"
+    private val floatAbsSource = TestCompileSupport.wrapModule(
+        floatAbsUri,
+        """
+        fx abs: (x: Float64) Float64 {
+            return x + 100.0
+        }
+
+        fx main: () Void {
+            v: Float64 = abs(-2.5)
+            trace(v)
+        }
+        """
+    )
+
+    private val assertUri = "test:shadow.assert"
+    private val assertSource = TestCompileSupport.wrapModule(
+        assertUri,
+        """
+        fx assert: (c: Bool, m: Str) Void {
+            trace(m)
+        }
+
+        fx main: () Void {
+            assert(false, "mine")
+            trace(1)
+        }
+        """
+    )
+
+    /** `test:shadow.assertutil` declares a private `assert`; main never `use`s it, so its `assert(true, ...)` is the runtime's. */
+    private val assertUtilUri = "test:shadow.assertutil"
+    private val assertMainUri = "test:shadow.assertmain"
+
+    private fun assertOutOfScopeUnit(): CompilationUnit {
+        return unitOf(
+            assertUtilUri to """
+                fx assert: (c: Bool, m: Str) Void {
+                    trace(m)
+                }
+            """.trimIndent(),
+            assertMainUri to """
+                fx main: () Void {
+                    assert(true, "fine")
+                    trace(1)
+                }
+            """.trimIndent(),
+        )
+    }
+
     @Test
     fun cCallsTheUsersFunctionOverTheMagicTable() {
         val generated = TestCompileSupport.transpileSnippetToC(mathNameSource, TestCompileSupport.logicalPathForModule(mathNameUri))
@@ -390,14 +497,14 @@ class UserDeclarationShadowsMagicNameTest {
     @Test
     fun cAClassMethodResolvesInItsModulesScope() {
         val generated = cOf(scopeUnit())
-        assertTrue(Regex("Alpha_run\\([^)]*\\)\\s*\\{[^}]*return min\\(1\\.0, 2\\.0\\);").containsMatchIn(generated), generated)
+        assertTrue(Regex("Alpha_run\\([^)]*\\)\\s*\\{[^}]*return min_user\\(1\\.0, 2\\.0\\);").containsMatchIn(generated), generated)
         assertFalse(generated.contains("fmin(1.0, 2.0)"), generated)
     }
 
     @Test
     fun cAGenericSpecializationResolvesInItsTemplatesModule() {
         val generated = cOf(scopeUnit())
-        assertTrue(Regex("pick_Int32\\([^)]*\\)\\s*\\{[^}]*return max\\(a, b\\);").containsMatchIn(generated), generated)
+        assertTrue(Regex("pick_Int32\\([^)]*\\)\\s*\\{[^}]*return max_user\\(a, b\\);").containsMatchIn(generated), generated)
         assertTrue(generated.contains("Float64 larger = fmax(1.0, 2.0);"), generated)
     }
 
@@ -413,7 +520,7 @@ class UserDeclarationShadowsMagicNameTest {
     @Test
     fun cATopLevelConstantResolvesInItsSourcesScope() {
         val generated = cOf(topLevelConstantUnit())
-        assertTrue(generated.contains("LOWEST = min(1.0, 2.0);"), generated)
+        assertTrue(generated.contains("LOWEST = min_user(1.0, 2.0);"), generated)
         assertFalse(generated.contains("fmin(1.0, 2.0)"), generated)
     }
 
@@ -423,6 +530,71 @@ class UserDeclarationShadowsMagicNameTest {
         assertTrue(generated.contains("LOWEST = min(1.0, 2.0);"), generated)
         assertFalse(generated.contains("Math.min(1.0, 2.0)"), generated)
         runJS(generated, listOf("0"))
+    }
+
+    @Test
+    fun cATopLevelConstantOfALaterSourceDoesNotKeepTheEarlierSourcesScope() {
+        val generated = cOf(laterSourceConstantUnit())
+        assertTrue(generated.contains("LOWEST = fmin(1.0, 2.0);"), generated)
+        assertFalse(generated.contains("min_user(1.0, 2.0)"), generated)
+    }
+
+    @Test
+    fun jsATopLevelConstantOfALaterSourceDoesNotKeepTheEarlierSourcesScope() {
+        val generated = jsOf(laterSourceConstantUnit())
+        assertTrue(generated.contains("LOWEST = Math.min(1.0, 2.0);"), generated)
+        runJS(generated, listOf("1"))
+    }
+
+    @Test
+    fun cDefinesAUserAbsUnderItsOwnNameAndCallsIt() {
+        val generated = cOf(intAbsSource, intAbsUri)
+        assertTrue(Regex("Int32 abs_user\\(Int32 x\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("Int32 v = abs_user(-5);"), generated)
+        assertFalse(Regex("\\babs\\(").containsMatchIn(generated), generated)
+        val floatGenerated = cOf(floatAbsSource, floatAbsUri)
+        assertTrue(Regex("Float64 abs_user\\(Float64 x\\)\\s*\\{").containsMatchIn(floatGenerated), floatGenerated)
+        assertTrue(floatGenerated.contains("Float64 v = abs_user(-2.5);"), floatGenerated)
+    }
+
+    @Test
+    fun jsCallsTheUsersAbs() {
+        val generated = jsOf(intAbsSource, intAbsUri)
+        assertTrue(generated.contains("const v = abs(-5);"), generated)
+        assertFalse(generated.contains("Math.abs"), generated)
+        runJS(generated, listOf("95"))
+    }
+
+    @Test
+    fun cCallsTheUsersAssertOverTheRuntimes() {
+        val generated = cOf(assertSource, assertUri)
+        assertTrue(Regex("Void assert_user\\(Bool c, Str m\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("assert_user(false, \"mine\")"), generated)
+        assertFalse(generated.contains("kira_assert(false"), generated)
+    }
+
+    @Test
+    fun jsCallsTheUsersAssertOverTheRuntimes() {
+        val generated = jsOf(assertSource, assertUri)
+        assertTrue(Regex("function assert\\(c, m\\)").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("assert(false, \"mine\")"), generated)
+        assertFalse(generated.contains("kira_assert(false"), generated)
+        runJS(generated, listOf("mine", "1"))
+    }
+
+    @Test
+    fun cAnotherModulesPrivateAssertIsOutOfScope() {
+        val generated = cOf(assertOutOfScopeUnit())
+        assertTrue(generated.contains("kira_assert(true, \"fine\")"), generated)
+        assertFalse(generated.contains("assert_user(true"), generated)
+    }
+
+    @Test
+    fun jsAnotherModulesPrivateAssertIsOutOfScope() {
+        val generated = jsOf(assertOutOfScopeUnit())
+        assertTrue(generated.contains("kira_assert(true, \"fine\")"), generated)
+        assertFalse(Regex("(?<!kira_)assert\\(true, \"fine\"\\)").containsMatchIn(generated), generated)
+        runJS(generated, listOf("1"))
     }
 
     @Test
@@ -448,9 +620,10 @@ class UserDeclarationShadowsMagicNameTest {
     @Test
     fun cCallsTheUsersFunctionUnderANameTheTableRenames() {
         val generated = cOf(renamedSource, renamedUri)
-        assertTrue(Regex("Int32 min\\(Int32 a, Int32 b\\)\\s*\\{").containsMatchIn(generated), generated)
-        assertTrue(generated.contains("Int32 v = min(7, 2);"), generated)
+        assertTrue(Regex("Int32 min_user\\(Int32 a, Int32 b\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("Int32 v = min_user(7, 2);"), generated)
         assertFalse(generated.contains("fmin(7, 2)"), generated)
+        assertFalse(Regex("\\bmin\\(").containsMatchIn(generated), generated)
     }
 
     @Test
@@ -465,7 +638,7 @@ class UserDeclarationShadowsMagicNameTest {
     @Test
     fun cStdlibBodiesKeepCallingTheMagicName() {
         val generated = cOf(stdlibBodySource, stdlibBodyUri)
-        assertTrue(Regex("Int32 min\\(Int32 a, Int32 b\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertTrue(Regex("Int32 min_user\\(Int32 a, Int32 b\\)\\s*\\{").containsMatchIn(generated), generated)
         assertTrue(generated.contains("fmax(lo, fmin(value, hi))"), generated)
     }
 
@@ -506,7 +679,7 @@ class UserDeclarationShadowsMagicNameTest {
     @Test
     fun cAUsedModulesPubFunctionShadowsTheMagicName() {
         val generated = cOf(twoModuleUnit(utilIsPub = true, mainUsesUtil = true))
-        assertTrue(generated.contains("Float64 v = min(1.0, 2.0);"), generated)
+        assertTrue(generated.contains("Float64 v = min_user(1.0, 2.0);"), generated)
         assertFalse(generated.contains("fmin(1.0, 2.0)"), generated)
     }
 
@@ -532,24 +705,22 @@ class UserDeclarationShadowsMagicNameTest {
     }
 
     /**
-     * Compiles and runs the C programs above and checks what each prints.
-     * Most declare a user `min` or `max`, which the Windows SDK's
-     * `stdlib.h` defines as macros, so LLVM clang targeting MSVC cannot
-     * even declare them (they are not C symbols the table lowers to, so
-     * they keep their names); the MSYS2 ucrt64 gcc can. The run therefore
-     * takes `$CC` when set, else the first of clang, cc and gcc whose
-     * headers leave `min` and `max` alone, and is skipped, saying so, when
-     * none does. The text assertions above never skip. Two programs are
-     * text-only in C: the class method, because the C backend emits method
-     * bodies before the free-function prototypes, so a method calling a
-     * free function of its own module does not compile whatever the
-     * function is named; and the top-level constant, because C does not
-     * take a call as a file-scope initializer. Both run under node.
+     * Compiles and runs the C programs above with the first C compiler on
+     * PATH and checks what each prints. The user's `min`, `max`, `abs` and
+     * `assert` are `min_user`, `max_user`, ... in C, so the programs
+     * compile whatever the compiler's headers make of those names (the
+     * Windows SDK's `stdlib.h` makes `min` and `max` macros, and LLVM clang
+     * targeting MSVC could not declare a user `min` before the rename). Two
+     * programs are text-only in C: the class method, because the C backend
+     * emits method bodies before the free-function prototypes, so a method
+     * calling a free function of its own module does not compile whatever
+     * the function is named; and the top-level constants, because C does
+     * not take a call as a file-scope initializer. All run under node.
      */
     @Test
     fun cProgramsRun() {
-        val compiler = cCompilerThatDeclaresMinAndMax
-        assumeTrue(compiler != null, "No C compiler on PATH whose headers leave a user `min` and `max` alone")
+        val compiler = TestCompileSupport.findCCompiler()
+        assumeTrue(compiler != null, "No C compiler found on PATH")
         val cases = listOf(
             Triple("renamed", cOf(renamedSource, renamedUri), listOf("7")),
             Triple("stdlib body", cOf(stdlibBodySource, stdlibBodyUri), listOf("1")),
@@ -563,6 +734,10 @@ class UserDeclarationShadowsMagicNameTest {
             Triple("pub floor, not used", cOf(libcNameUnit(utilIsPub = true, mainUsesUtil = false)), listOf("2")),
             Triple("own sqrt", cOf(ownLibcNameSource, ownLibcNameUri), listOf("116")),
             Triple("generic specialization", cOf(scopeUnitWithoutTheClass()), listOf("0", "2")),
+            Triple("own Int32 abs", cOf(intAbsSource, intAbsUri), listOf("95")),
+            Triple("own Float64 abs", cOf(floatAbsSource, floatAbsUri), listOf("97.5")),
+            Triple("own assert", cOf(assertSource, assertUri), listOf("mine", "1")),
+            Triple("private assert, not used", cOf(assertOutOfScopeUnit()), listOf("1")),
         )
         cases.forEach { (name, generated, expected) ->
             val result = TestCompileSupport.compileAndRunC(generated, compiler!!)
@@ -570,33 +745,6 @@ class UserDeclarationShadowsMagicNameTest {
             val run = assertNotNull(result.runResult, name)
             assertEquals(expected, outputLines(run.stdout), "$name: ${run.stderr}")
         }
-    }
-
-    private val cCompilerThatDeclaresMinAndMax: String? by lazy {
-        val candidates = listOfNotNull(TestCompileSupport.findCCompiler(), onPath("cc"), onPath("gcc"))
-        val probe = "#include <stdlib.h>\n#include <math.h>\n" +
-            "double min(double a, double b) { return a; }\n" +
-            "double max(double a, double b) { return b; }\n" +
-            "int main(void) { return min(0.0, 1.0) == 0.0 && max(0.0, 1.0) == 1.0 ? 0 : 1; }\n"
-        candidates.distinct().firstOrNull { compiler ->
-            val result = TestCompileSupport.compileAndRunC(probe, compiler)
-            result.compileResult.exitCode == 0 && result.runResult?.exitCode == 0
-        }
-    }
-
-    /** [name] on PATH (with the PATHEXT spellings on Windows), or null. */
-    private fun onPath(name: String): String? {
-        val isWindows = System.getProperty("os.name").lowercase().contains("win")
-        val extensions = if (isWindows) {
-            listOf("") + (System.getenv("PATHEXT") ?: ".EXE;.BAT;.CMD").split(';').filter { it.isNotBlank() }.map { it.lowercase() }
-        } else {
-            listOf("")
-        }
-        return (System.getenv("PATH") ?: return null).split(File.pathSeparatorChar).asSequence()
-            .filter { it.isNotBlank() }
-            .flatMap { dir -> extensions.asSequence().map { File(dir, name + it) } }
-            .firstOrNull { it.isFile && (isWindows || it.canExecute()) }
-            ?.absolutePath
     }
 
     private fun cOf(source: String, uri: String): String {

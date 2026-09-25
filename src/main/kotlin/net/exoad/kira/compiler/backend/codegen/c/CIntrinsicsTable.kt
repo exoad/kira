@@ -49,4 +49,9 @@ object CIntrinsicsTable {
     fun symbols(): Set<String> {
         return bindings.values.mapTo(linkedSetOf()) { it.functionName }
     }
+
+    /** Every intrinsic name this fallback table lowers. */
+    fun names(): Set<String> {
+        return bindings.keys
+    }
 }

@@ -36,11 +36,11 @@
 #     entries -> List<Tuple2<K, V>>, clear
 #   kira::Set<T>: size, isEmpty, add -> bool, remove -> bool, contains,
 #     toArr -> List<T>, clear
+#   kira::Stack<T>: size, isEmpty, push, pop -> Maybe<T>, peek -> Maybe<T>, clear
+#   kira::Queue<T>: size, isEmpty, enqueue, dequeue -> Maybe<T>, peek -> Maybe<T>, clear
 # Still missing from that header: kira::list::contains and kira::list::clone
 # take only std::vector, so Arr.contains and Arr.clone on an Arr<T, N>
 # (std::array) need an overload before W2.3 emits them.
-#   kira::Stack<T>: size, isEmpty, push, pop -> Maybe<T>, peek -> Maybe<T>, clear
-#   kira::Queue<T>: size, isEmpty, enqueue, dequeue -> Maybe<T>, peek -> Maybe<T>, clear
 
 # --- View<T> ---------------------------------------------------------------
 View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
