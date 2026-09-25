@@ -28,6 +28,17 @@ class CppRuntimeInstallerTest {
     }
 
     @Test
+    fun aCrlfCheckoutIsInstalledAsLf() {
+        val root = PlumbingTestSupport.tempProject("installer-crlf")
+        val cppDir = PlumbingTestSupport.fakeStdlib(root)
+        Files.writeString(cppDir.resolve("kira/rt.hxx"), "#pragma once\r\n#include \"kira/core.hxx\"\r\n// fake rt\r\n")
+        val plan = CppRuntimeInstaller(cppDir, root.resolve("lib"), "dev").plan()
+        val rt = plan.files.first { it.path.fileName.toString() == "rt.hxx" }
+        assertEquals("#pragma once\n#include \"kira/core.hxx\"\n// fake rt\n", rt.text)
+        assertTrue(plan.files.first { it.path.fileName.toString() == "core.hxx" }.origin.endsWith("cpp/kira/core.hxx"))
+    }
+
+    @Test
     fun missingRuntimeIsAnError() {
         val root = PlumbingTestSupport.tempProject("installer-missing")
         val plan = CppRuntimeInstaller(root.resolve("nowhere/cpp"), root.resolve("lib"), "dev").plan()

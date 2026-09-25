@@ -8,24 +8,76 @@ import java.nio.file.Path
  * `/`, as in `srcExclude`) and module URIs (separator `.`, as in
  * `build.cpp.headerOnly`).
  *
- * `*` matches within one segment, `**` across segments, `?` one character
- * and `{a,b}` either alternative. Everything else is literal.
+ * `*` matches within one segment, `?` one character and `{a,b}` either
+ * alternative. A segment that is exactly `**` matches zero or more whole
+ * segments, so `** /build` (no space) matches `build` as well as `a/b/build`,
+ * a double star between `a/` and `/b` matches `a/b`, and `firmware:lib.**`
+ * matches `firmware:lib` and everything under it. Everything else is literal.
  */
 object SourceGlob {
     fun toRegex(pattern: String, separator: Char): Regex {
+        val sep = Regex.escape(separator.toString())
+        val segments = splitSegments(pattern, separator)
         val sb = StringBuilder()
-        var i = 0
-        var braceDepth = 0
-        while (i < pattern.length) {
-            val c = pattern[i]
-            when {
-                c == '*' && i + 1 < pattern.length && pattern[i + 1] == '*' -> {
-                    sb.append(".*")
-                    i += 2
-                    continue
+        var needSeparator = false
+        segments.forEachIndexed { index, segment ->
+            if (segment == "**") {
+                if (index == segments.lastIndex) {
+                    sb.append(if (needSeparator) "(?:$sep.*)?" else ".*")
+                } else {
+                    if (needSeparator) {
+                        sb.append(sep)
+                    }
+                    sb.append("(?:[^").append(sep).append("]*").append(sep).append(")*")
                 }
-                c == '*' -> sb.append("[^").append(Regex.escape(separator.toString())).append("]*")
-                c == '?' -> sb.append("[^").append(Regex.escape(separator.toString())).append("]")
+                needSeparator = false
+            } else {
+                if (needSeparator) {
+                    sb.append(sep)
+                }
+                sb.append(segmentRegex(segment, sep))
+                needSeparator = true
+            }
+        }
+        return Regex(sb.toString())
+    }
+
+    /** Splits on [separator] outside `{...}`, so `{a/b,c}` stays one segment. */
+    private fun splitSegments(pattern: String, separator: Char): List<String> {
+        val segments = mutableListOf<String>()
+        val current = StringBuilder()
+        var braceDepth = 0
+        pattern.forEach { c ->
+            when {
+                c == '{' -> braceDepth += 1
+                c == '}' && braceDepth > 0 -> braceDepth -= 1
+            }
+            if (c == separator && braceDepth == 0) {
+                segments += current.toString()
+                current.setLength(0)
+            } else {
+                current.append(c)
+            }
+        }
+        segments += current.toString()
+        return segments
+    }
+
+    /** One segment's glob; a `**` inside a segment (`firmware:**`, where the package colon is no separator) spans separators. */
+    private fun segmentRegex(segment: String, sep: String): String {
+        val sb = StringBuilder()
+        var braceDepth = 0
+        var i = 0
+        while (i < segment.length) {
+            val c = segment[i]
+            if (c == '*' && i + 1 < segment.length && segment[i + 1] == '*') {
+                sb.append(".*")
+                i += 2
+                continue
+            }
+            when {
+                c == '*' -> sb.append("[^").append(sep).append("]*")
+                c == '?' -> sb.append("[^").append(sep).append("]")
                 c == '{' -> {
                     braceDepth += 1
                     sb.append("(?:")
@@ -39,7 +91,7 @@ object SourceGlob {
             }
             i += 1
         }
-        return Regex(sb.toString())
+        return sb.toString()
     }
 
     /** A module URI glob against a whole URI. */

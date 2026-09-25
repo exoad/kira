@@ -14,6 +14,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class KiraCppBackendTest {
@@ -37,6 +38,22 @@ class KiraCppBackendTest {
 
         fun files(): List<String> = PlumbingTestSupport.listFiles(root).filterNot { it.startsWith("stdlib/") }
         fun rel(path: Path): String = root.relativize(path).toString().replace('\\', '/')
+
+        /** The same project seen with only some of its sources, as after a module is deleted. */
+        fun with(vararg relativeSources: String): Project {
+            val unit = PlumbingTestSupport.compilationUnit(
+                relativeSources.associate { root.resolve(it) to Files.readString(root.resolve(it)) }
+            )
+            return Project(root, unit, manifest, stdlibCpp)
+        }
+    }
+
+    private fun toCrlf(path: Path) {
+        Files.writeString(path, Files.readString(path).replace("\r\n", "\n").replace("\n", "\r\n"))
+    }
+
+    private fun manifestLine(root: Path, key: String, at: String = "kira.gen.manifest"): String {
+        return Files.readString(root.resolve(at)).lines().first { it.startsWith("$key ") }
     }
 
     private fun project(name: String, options: CppOptions = CppOptions(runtimeDir = "lib", headerOnly = listOf("demo:lib.**"))): Project {
@@ -179,6 +196,183 @@ class KiraCppBackendTest {
         assertEquals(1, result.exitCode)
         assertTrue(result.diagnostics.any { it.code == "cpp.runtime-missing" })
         assertEquals(before, p.files())
+    }
+
+    // --- line endings ---------------------------------------------------------
+
+    @Test
+    fun aCrlfCheckoutOfTheGeneratedTreeIsNotDrift() {
+        val p = project("backend-crlf-tree")
+        assertEquals(0, p.run(check = false).exitCode)
+        listOf("src/pilot/proto.kira.hxx", "src/pilot/proto.kira.cxx", "lib/kira/rt.hxx", "kira.gen.manifest")
+            .forEach { toCrlf(p.root.resolve(it)) }
+        assertTrue(Files.readString(p.root.resolve("src/pilot/proto.kira.hxx")).contains("\r\n"))
+        val check = p.run(check = true)
+        assertEquals(0, check.exitCode, p.outLines.joinToString("\n") + p.reportLines.joinToString("\n"))
+        assertEquals(emptyList(), p.outLines)
+        // and a write run leaves the CRLF files alone: they are the same file
+        val second = p.run(check = false)
+        assertEquals(emptyList(), second.changed)
+        assertTrue(Files.readString(p.root.resolve("src/pilot/proto.kira.hxx")).contains("\r\n"))
+    }
+
+    @Test
+    fun aCrlfRuntimeCheckoutInstallsAsLfWithTheSameHashes() {
+        val lf = project("backend-crlf-rt-lf")
+        val crlf = project("backend-crlf-rt-crlf")
+        listOf("kira/core.hxx", "kira/rt.hxx").forEach { toCrlf(crlf.stdlibCpp.resolve(it)) }
+        assertTrue(Files.readString(crlf.stdlibCpp.resolve("kira/rt.hxx")).contains("\r\n"))
+
+        assertEquals(0, lf.run(check = false).exitCode)
+        assertEquals(0, crlf.run(check = false).exitCode)
+        val installed = Files.readAllBytes(crlf.root.resolve("lib/kira/rt.hxx"))
+        assertFalse(installed.any { it == '\r'.code.toByte() }, "the installed runtime must be LF")
+        assertEquals(Files.readString(lf.root.resolve("lib/kira/rt.hxx")), String(installed))
+        assertEquals(manifestLine(lf.root, "stdlib"), manifestLine(crlf.root, "stdlib"))
+        assertEquals(Files.readString(lf.root.resolve("kira.gen.manifest")), Files.readString(crlf.root.resolve("kira.gen.manifest")))
+    }
+
+    // --- stale files -----------------------------------------------------------
+
+    @Test
+    fun aDeletedModulesFilesAreRemovedOnWriteAndCheckStaysHonest() {
+        val p = project("backend-stale")
+        assertEquals(0, p.run(check = false).exitCode)
+        assertTrue(Files.exists(p.root.resolve("lib/text.kira.hxx")))
+
+        // The module is gone: --check must say so, not stay green (the manifest differs too, rightly).
+        val only = p.with("src/pilot/proto.kira")
+        val check = only.run(check = true)
+        assertEquals(1, check.exitCode)
+        assertEquals(listOf("drift: kira.gen.manifest (differs)", "drift: lib/text.kira.hxx (stale)"), only.outLines)
+
+        // A write removes what it wrote (the hash still matches the manifest) and the tree is clean.
+        val write = only.run(check = false)
+        assertEquals(0, write.exitCode, only.reportLines.joinToString("\n"))
+        assertEquals(listOf(p.root.resolve("lib/text.kira.hxx")), write.removed)
+        assertFalse(Files.exists(p.root.resolve("lib/text.kira.hxx")))
+        val again = p.with("src/pilot/proto.kira")
+        assertEquals(0, again.run(check = true).exitCode, again.outLines.joinToString("\n"))
+        assertEquals(emptyList(), again.outLines)
+        assertFalse(Files.readString(p.root.resolve("kira.gen.manifest")).contains("text.kira.hxx"))
+    }
+
+    @Test
+    fun anEditedStaleFileIsNeverRemovedAndBlocksTheWrite() {
+        val p = project("backend-stale-edited")
+        assertEquals(0, p.run(check = false).exitCode)
+        val stale = p.root.resolve("lib/text.kira.hxx")
+        Files.writeString(stale, "// somebody typed here\n")
+        val before = p.files()
+
+        val only = p.with("src/pilot/proto.kira")
+        val write = only.run(check = false)
+        assertEquals(1, write.exitCode)
+        assertTrue(write.diagnostics.any { it.code == KiraCppBackend.STALE_CODE && it.isError })
+        assertTrue(only.reportLines.any { it.contains("lib/text.kira.hxx") && it.contains("edited") }, only.reportLines.toString())
+        assertEquals(before, p.files(), "nothing is written while a stale file is unexplained")
+        assertEquals("// somebody typed here\n", Files.readString(stale))
+
+        val check = p.with("src/pilot/proto.kira")
+        assertEquals(1, check.run(check = true).exitCode)
+        assertTrue("drift: lib/text.kira.hxx (stale)" in check.outLines, check.outLines.toString())
+    }
+
+    @Test
+    fun staleFilesAreFoundWithoutAManifestWhenTheirShapeOrPlaceSaysGenerated() {
+        val p = project("backend-stale-nomanifest")
+        assertEquals(0, p.run(check = false).exitCode)
+        Files.delete(p.root.resolve("kira.gen.manifest"))
+        PlumbingTestSupport.write(p.root, "lib/kira/old.hxx", "// left by an older runtime\n")
+        PlumbingTestSupport.write(p.root, "lib/hand.hxx", "// hand-written, not generated-shaped\n")
+
+        val only = p.with("src/pilot/proto.kira")
+        val check = only.run(check = true)
+        assertEquals(1, check.exitCode)
+        assertTrue("drift: lib/text.kira.hxx (stale)" in only.outLines, only.outLines.toString())
+        assertTrue("drift: lib/kira/old.hxx (stale)" in only.outLines, only.outLines.toString())
+        assertFalse(only.outLines.any { it.contains("hand.hxx") }, only.outLines.toString())
+
+        // Unrecorded, so a write cannot prove it wrote them: an error naming each, and nothing written.
+        val write = p.with("src/pilot/proto.kira")
+        assertEquals(1, write.run(check = false).exitCode)
+        assertTrue(write.reportLines.any { it.contains("lib/text.kira.hxx") && it.contains("not recorded") }, write.reportLines.toString())
+        assertTrue(Files.exists(p.root.resolve("lib/text.kira.hxx")))
+        assertFalse(Files.exists(p.root.resolve("kira.gen.manifest")))
+    }
+
+    // --- collisions -------------------------------------------------------------
+
+    @Test
+    fun aRuntimeFileAndAGeneratedStdlibHeaderAtOnePathIsAnError() {
+        val p = project("backend-dup")
+        PlumbingTestSupport.write(p.stdlibCpp, "kira/std/geometry.kira.hxx", "// shipped by hand\n")
+        val geometry = PlumbingTestSupport.write(p.root, "stdlib/geometry.kira", PlumbingTestSupport.module("kira:geometry", """
+            pub fx clamp: (v: Int32, lo: Int32, hi: Int32) Int32 {
+                return v
+            }
+        """))
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry)))
+        val before = p.files()
+        val result = KiraCppBackend.run(
+            unit, p.manifest, false, p.root,
+            emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
+            stdlibCppDir = p.stdlibCpp,
+            log = { }, report = { p.reportLines += it }, out = { },
+        )
+        assertEquals(1, result.exitCode)
+        val collision = result.diagnostics.single { it.code == KiraCppBackend.OUTPUT_COLLISION_CODE }
+        assertTrue(collision.message.contains("lib/kira/std/geometry.kira.hxx"), collision.message)
+        assertTrue(collision.message.contains("kira:geometry") && collision.message.contains("runtime file"), collision.message)
+        assertEquals(before, p.files())
+    }
+
+    // --- the stdlib hash ---------------------------------------------------------
+
+    @Test
+    fun stdlibHashNamesTheRuntimeAloneNotItsPlaceOrTheCompiler() {
+        val a = project("backend-stdlibhash-a", CppOptions(runtimeDir = "lib", headerOnly = listOf("demo:lib.**")))
+        val b = project("backend-stdlibhash-b", CppOptions(runtimeDir = "third/rt", headerOnly = listOf("demo:lib.**")))
+        assertEquals(0, a.run(check = false, version = "1111111").exitCode)
+        assertEquals(0, b.run(check = false, version = "2222222").exitCode)
+        assertEquals(manifestLine(a.root, "stdlib"), manifestLine(b.root, "stdlib"))
+        assertNotEquals(manifestLine(a.root, "compiler"), manifestLine(b.root, "compiler"))
+        val c = project("backend-stdlibhash-c")
+        Files.writeString(c.stdlibCpp.resolve("kira/rt.hxx"), "#pragma once\n// a different rt\n")
+        assertEquals(0, c.run(check = false).exitCode)
+        assertNotEquals(manifestLine(a.root, "stdlib"), manifestLine(c.root, "stdlib"))
+    }
+
+    // --- --out -------------------------------------------------------------------
+
+    @Test
+    fun outOverridePutsEveryGeneratedFileUnderTheDirectoryWhateverTheManifestSays() {
+        // bibo's shape: beside layout with runtimeDir set, where --out used to change nothing.
+        val p = project("backend-out-beside", CppOptions(layout = net.exoad.kira.compiler.backend.codegen.cpp.CppLayout.BESIDE, runtimeDir = "lib"))
+        val before = p.files()
+        val result = KiraCppBackend.run(
+            p.unit, p.manifest, false, p.root,
+            outDirOverride = "gen",
+            emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
+            stdlibCppDir = p.stdlibCpp,
+            log = { }, report = { }, out = { },
+        )
+        assertEquals(0, result.exitCode)
+        val added = p.files() - before.toSet()
+        assertTrue(added.isNotEmpty())
+        assertTrue(added.all { it.startsWith("gen/") }, "every generated file lives under gen/: $added")
+        assertTrue("gen/demo/pilot/proto.kira.hxx" in added, added.toString())
+        assertTrue("gen/kira/rt.hxx" in added, added.toString())
+        assertTrue("gen/kira.gen.manifest" in added, added.toString())
+        assertFalse(Files.exists(p.root.resolve("kira.gen.manifest")))
+        assertFalse(Files.exists(p.root.resolve("lib/kira")))
+        // and --check honours the same place
+        val check = KiraCppBackend.run(
+            p.unit, p.manifest, true, p.root, outDirOverride = "gen",
+            emitterFactory = { _, o -> FakeCppModuleEmitter(o) }, stdlibCppDir = p.stdlibCpp,
+            log = { }, report = { }, out = { p.outLines += it },
+        )
+        assertEquals(0, check.exitCode, p.outLines.toString())
     }
 
     @Test

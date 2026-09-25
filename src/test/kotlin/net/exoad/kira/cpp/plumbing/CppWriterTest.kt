@@ -155,6 +155,16 @@ class CppWriterTest {
     }
 
     @Test
+    fun lfBytesReadsCrlfAsLfAndLeavesBinaryAlone() {
+        assertEquals("a\nb\n", String(CppWriter.lfBytes("a\r\nb\r\n".toByteArray())))
+        assertEquals("a\nb\n", String(CppWriter.lfBytes("a\nb\n".toByteArray())))
+        // a lone CR is content, not a line ending
+        assertEquals("a\rb\n", String(CppWriter.lfBytes("a\rb\r\n".toByteArray())))
+        val binary = byteArrayOf(0, '\r'.code.toByte(), '\n'.code.toByte(), 7)
+        assertEquals(binary.toList(), CppWriter.lfBytes(binary).toList())
+    }
+
+    @Test
     fun outputIsDeterministic() {
         fun build(): String {
             val w = CppWriter()

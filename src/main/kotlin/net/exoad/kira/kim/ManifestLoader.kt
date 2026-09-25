@@ -62,7 +62,20 @@ object ManifestLoader {
         )
     }
 
+    /** Every key `build.cpp` accepts, camelCase and snake_case; a typo is an error, never a silent default. */
+    private val cppKeys: Set<String> = setOf(
+        "layout", "outDir", "out_dir", "runtimeDir", "runtime_dir", "lineDirectives", "line_directives",
+        "namespaces", "headerOnly", "header_only", "freestanding", "headerExt", "header_ext", "sourceExt", "source_ext",
+    )
+
     private fun parseCpp(cpp: Map<String, Any?>): CppOptions {
+        val unknown = cpp.keys.filter { it !in cppKeys }
+        if (unknown.isNotEmpty()) {
+            throw IllegalArgumentException(
+                "Unknown field${if (unknown.size == 1) "" else "s"} in build.cpp: ${unknown.joinToString { "'$it'" }} " +
+                    "(expected one of ${cppKeys.filter { '_' !in it }.joinToString(", ")})"
+            )
+        }
         val defaults = CppOptions()
         return CppOptions(
             layout = cpp.optionalString("layout")?.let { CppLayout.parse(it) } ?: defaults.layout,

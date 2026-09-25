@@ -133,6 +133,46 @@ class CppModuleLayoutTest {
         assertEquals("kira::math", layout.namespaceFor("kira:math"))
     }
 
+    @Test
+    fun nestedStdlibModulesKeepTheirPathSoTwoListsNeverMerge() {
+        val a = CppModuleRef("kira:collections.list", root.resolve("stdlib/collections/list.kira"))
+        val b = CppModuleRef("kira:text.list", root.resolve("stdlib/text/list.kira"))
+        val layout = CppModuleLayout(CppOptions(), root, listOf(a, b))
+        assertEquals("kira::collections::list", layout.namespaceFor("kira:collections.list"))
+        assertEquals("kira::text::list", layout.namespaceFor("kira:text.list"))
+        assertEquals(emptyList(), layout.checkCollisions().filter { it.isError })
+    }
+
+    @Test
+    fun aKeywordSegmentIsEscapedLikeAnyName() {
+        val new = CppModuleRef("firmware:pilot.new", root.resolve("firmware/pilot/new.kira"))
+        val layout = CppModuleLayout(CppOptions(), root, listOf(new))
+        assertEquals("new_", layout.namespaceFor("firmware:pilot.new"))
+        assertEquals(emptyList(), layout.checkCollisions().filter { it.isError })
+    }
+
+    @Test
+    fun stdAndKiraAreReservedAndAManifestKeywordIsAnError() {
+        val std = CppModuleRef("app:x.std", root.resolve("a/std.kira"))
+        val kira = CppModuleRef("app:x.kira", root.resolve("a/kira.kira"))
+        val layout = CppModuleLayout(CppOptions(), root, listOf(std, kira, proto))
+        val errors = layout.checkCollisions().filter { it.isError }
+        assertEquals(2, errors.size, errors.toString())
+        assertTrue(errors.all { it.code == "cpp.namespace-invalid" })
+        assertTrue(errors.any { it.message.contains("app:x.std") && it.message.contains("std") })
+        assertTrue(errors.any { it.message.contains("app:x.kira") && it.message.contains("runtime") })
+
+        val spelled = CppModuleLayout(
+            CppOptions(namespaces = mapOf("firmware:pilot.src.proto" to "bibo::new", "firmware:pilot.src.scan" to "std::x")),
+            root, listOf(proto, scan),
+        )
+        val spelledErrors = spelled.checkCollisions().filter { it.isError }
+        assertEquals(2, spelledErrors.size, spelledErrors.toString())
+        // a kira: module may sit under kira::
+        val stdlib = CppModuleLayout(CppOptions(namespaces = mapOf("kira:math" to "kira::maths")), root, listOf(math))
+        assertEquals(emptyList(), stdlib.checkCollisions().filter { it.isError })
+    }
+
     // --- includes ------------------------------------------------------------
 
     @Test

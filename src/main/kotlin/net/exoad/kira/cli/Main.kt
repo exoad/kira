@@ -48,9 +48,10 @@ private fun applyTargetOverride(target: String) {
 fun main(args: Array<String>) {
     // Minimal CLI: `kira --target js|c|cpp|neko|none` overrides build.target
     // from kira.yaml; `--readable` emits pretty (non-minified) C/JS output;
-    // `--out <dir>` says where the output goes; `--check` (cpp only)
-    // regenerates in memory and exits 1 naming every file on disk that
-    // differs. The compiler is otherwise cwd-driven.
+    // `--out <dir>` says where the output goes (for cpp: every generated
+    // file under <dir>); `--check` (cpp only) regenerates in memory and
+    // exits 1 naming every file on disk that differs, is missing or is
+    // stale. The compiler is otherwise cwd-driven.
     var targetOverride: String? = null
     var readableOverride = false
     var checkMode = false
@@ -82,8 +83,10 @@ fun main(args: Array<String>) {
             }
             "--help", "-h" -> {
                 println("Usage: kira [--target c|cpp|js|neko|none] [--out <dir>] [--check] [--readable]")
-                println("  --out <dir>  where generated files go (cpp: build.cpp.outDir; c/js: the directory of out.kira.*)")
-                println("  --check      cpp only: regenerate in memory, name each file on disk that differs, exit 1 on drift")
+                println("  --out <dir>  where generated files go (cpp: everything under <dir> in the tree layout, runtime and")
+                println("               kira.gen.manifest included; c/js: the directory of out.kira.*)")
+                println("  --check      cpp only: regenerate in memory, name each file on disk that differs, is missing or is")
+                println("               stale, exit 1 on drift")
                 kotlin.system.exitProcess(0)
             }
             else -> Diagnostics.panic("Unknown argument '${args[i]}' (try --help)")

@@ -62,6 +62,14 @@ class SrcExcludeTest {
         assertFalse(SourceGlob.matchesPath("build", "src/build/x.kira"))
         assertTrue(SourceGlob.matchesPath("**/build", "src/build/x.kira"))
         assertTrue(SourceGlob.matchesPath("**/build", "a/b/c/build/x.kira"))
+        // `**` matches zero segments too: the root's build directory, and a/b for a/**/b
+        assertTrue(SourceGlob.matchesPath("**/build", "build/x.kira"))
+        assertTrue(SourceGlob.matchesPath("a/**/b", "a/b/x.kira"))
+        assertTrue(SourceGlob.matchesPath("a/**/b", "a/p/q/b/x.kira"))
+        assertFalse(SourceGlob.matchesPath("a/**/b", "a/bb/x.kira"))
+        assertFalse(SourceGlob.matchesPath("**/build", "builder/x.kira"))
+        assertTrue(SourceGlob.matchesPath("src/**", "src/x.kira"))
+        assertTrue(SourceGlob.matchesPath("{build,out}/**", "out/x.kira"))
         assertTrue(SourceGlob.matchesPath("viewer/assets", "viewer/assets/car.kira"))
         assertFalse(SourceGlob.matchesPath("viewer/assets", "viewer/src/car.kira"))
         assertTrue(SourceGlob.matchesPath("*.kira", "top.kira"))
@@ -80,5 +88,20 @@ class SrcExcludeTest {
         assertTrue(SourceGlob.matchesUri("firmware:pilot.src.{scan,speed,unilidar}", "firmware:pilot.src.speed"))
         assertFalse(SourceGlob.matchesUri("firmware:pilot.src.{scan,speed,unilidar}", "firmware:pilot.src.imu"))
         assertTrue(SourceGlob.matchesUri("firmware:pilot.src.proto", "firmware:pilot.src.proto"))
+        assertTrue(SourceGlob.matchesUri("firmware:lib.**", "firmware:lib"))
+        assertFalse(SourceGlob.matchesUri("firmware:lib.**", "firmware:library"))
+        assertTrue(SourceGlob.matchesUri("firmware:lib.**.cal", "firmware:lib.cal"))
+        assertTrue(SourceGlob.matchesUri("firmware:lib.**.cal", "firmware:lib.chassis.cal"))
+    }
+
+    @Test
+    fun aRootBuildDirectoryIsExcludedByTheDoubleStarPatternAlone() {
+        val root = PlumbingTestSupport.tempProject("srcexclude-root-build")
+        PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")
+        PlumbingTestSupport.write(root, "build/kira-toolchain/kira/core.kira", "module \"kira:core\"\n")
+        val manifest = ProjectManifest(ProjectSpec("bibo"), srcDir = ".", srcExclude = listOf("**/build"))
+        val sources = DependencyResolver.resolveProjectSources(manifest, root)
+            .map { root.relativize(java.nio.file.Path.of(it)).toString().replace('\\', '/') }
+        assertEquals(listOf("src/app/main.kira"), sources)
     }
 }

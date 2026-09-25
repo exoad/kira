@@ -16,11 +16,15 @@ data class CppModuleFiles(val header: Path, val source: Path?)
  * - `beside`: `proto.kira` becomes `proto.kira.hxx` (+ `.cxx`) next to it.
  * - `tree`: `firmware:pilot.src.proto` becomes `<outDir>/firmware/pilot/src/proto.kira.hxx`.
  * - `kira:x` stdlib modules always land header-only in `<runtimeDir>/kira/std/x.kira.hxx`,
- *   in namespace `kira::x`.
+ *   in namespace `kira::x`; a nested `kira:a.b` keeps its path, `kira::a::b`,
+ *   so two stdlib modules with one last segment never merge.
  *
  * A module's namespace is the last URI segment unless `build.cpp.namespaces`
  * names it, exactly or by glob (`firmware:pilot.src.bibowire.*`); an exact key
- * wins over a glob, a longer glob over a shorter one.
+ * wins over a glob, a longer glob over a shorter one. A derived segment that
+ * is a C++ keyword is escaped the way names are (`new` gives `new_`).
+ * [checkCollisions] rejects a namespace that is not valid C++ and the reserved
+ * ones: `std`, and `kira` for anything but a stdlib module (the runtime's).
  */
 class CppModuleLayout(
     val options: CppOptions,
@@ -78,9 +82,34 @@ class CppModuleLayout(
             return globHit.value
         }
         if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
-            return "kira::" + uriSegments(uri).last()
+            return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeKeyword(it) }
         }
-        return uriSegments(uri).last()
+        return CppNames.escapeKeyword(uriSegments(uri).last())
+    }
+
+    /**
+     * Why [namespace] cannot head a module's declarations, or null: a segment
+     * that is not a C++ identifier (or is a keyword the manifest spelled out),
+     * `std`, or `kira` under a module that is not the stdlib's.
+     */
+    fun namespaceProblem(uri: String, namespace: String): String? {
+        val segments = namespace.split("::")
+        if (segments.isEmpty() || segments.any { !IDENTIFIER.matches(it) }) {
+            return "'$namespace' is not a C++ namespace path (identifiers joined by ::)"
+        }
+        segments.firstOrNull { CppNames.isKeyword(it) }?.let {
+            return "'$namespace' uses the C++ keyword '$it'"
+        }
+        segments.firstOrNull { it.startsWith("__") || (it.length > 1 && it[0] == '_' && it[1].isUpperCase()) }?.let {
+            return "'$namespace' uses '$it', a name C++ reserves for its implementation"
+        }
+        if (segments.first() == "std") {
+            return "'$namespace' would add to namespace std, which C++ forbids"
+        }
+        if (segments.first() == STDLIB_NAMESPACE && !uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
+            return "'$namespace' is the runtime's namespace; only kira: modules live in $STDLIB_NAMESPACE::"
+        }
+        return null
     }
 
     /**
@@ -122,6 +151,17 @@ class CppModuleLayout(
             )
         }
 
+        modules.distinctBy { it.uri }.forEach { ref ->
+            val ns = namespaceFor(ref.uri)
+            namespaceProblem(ref.uri, ns)?.let { problem ->
+                diagnostics += CppDiagnostic(
+                    "cpp.namespace-invalid",
+                    "module '${ref.uri}': namespace $problem",
+                    file = ref.sourcePath.toString(),
+                )
+            }
+        }
+
         options.namespaces.forEach { (pattern, ns) ->
             if (!ManifestValidator.isNamespacePath(ns)) {
                 diagnostics += CppDiagnostic(
@@ -150,6 +190,11 @@ class CppModuleLayout(
     }
 
     companion object {
+        /** The runtime's namespace; the Kira-written stdlib nests under it. */
+        const val STDLIB_NAMESPACE = "kira"
+
+        private val IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
+
         fun stemOf(fileName: String): String {
             return if (fileName.endsWith(".kira")) fileName.dropLast(".kira".length) else fileName
         }

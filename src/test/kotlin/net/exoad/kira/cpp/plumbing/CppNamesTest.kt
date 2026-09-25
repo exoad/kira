@@ -65,10 +65,10 @@ class CppNamesTest {
     fun win32AndPosixObjectLikeMacrosAreRecognised() {
         listOf(
             "ERROR", "IN", "OUT", "DELETE", "TRUE", "FALSE", "INFINITE", "IGNORE", "NEAR", "FAR", "CONST", "VOID",
-            "CALLBACK", "ABSOLUTE", "RELATIVE", "TRANSPARENT", "OPAQUE", "min", "max", "small", "NO_ERROR",
+            "CALLBACK", "ABSOLUTE", "RELATIVE", "TRANSPARENT", "OPAQUE", "small", "NO_ERROR",
             "ERROR_SUCCESS", "ERROR_FILE_NOT_FOUND", "STATUS_PENDING", "WM_PAINT", "VK_ESCAPE", "EOF", "NULL",
             "EINVAL", "SIGINT", "O_RDONLY", "AF_INET", "SOCK_STREAM", "INT_MAX", "SEEK_SET", "stdin", "errno",
-            "MAX_PATH", "INVALID_HANDLE_VALUE", "CreateFile", "interface",
+            "MAX_PATH", "INVALID_HANDLE_VALUE", "CreateFile", "interface", "IMAGE_DOS_SIGNATURE",
         ).forEach { assertTrue(CppNames.isObjectLikeMacro(it), "$it is an object-like macro") }
     }
 
@@ -76,5 +76,19 @@ class CppNamesTest {
     fun ordinaryPublicNamesAreNotMacros() {
         listOf("read", "Reply", "Kind", "KIND_OK", "MAX_SPEED", "PRIORITY", "SIGNAL", "KEY_UP", "ERROR_", "Level")
             .forEach { assertFalse(CppNames.isObjectLikeMacro(it), "$it must not be flagged") }
+    }
+
+    @Test
+    fun functionLikeMacrosAndCOnlyNamesAreNotFlagged() {
+        // D35: the header guard handles min/max; a function-like macro only fires on `name(`;
+        // kira/math.kira declares `pub fx min` and `max`, so flagging them would warn on every build.
+        listOf(
+            "min", "max", "Yield", "GetCurrentTime", "GetFreeSpace", "UNREFERENCED_PARAMETER",
+            "IsMaximized", "IsMinimized", "IsRestored", "IMAGE_FIRST_SECTION", "IMAGE_SNAP_BY_ORDINAL",
+            // C-only headers: <complex.h> and <stdnoreturn.h> define nothing of these in C++
+            "I", "complex", "imaginary", "noreturn",
+        ).forEach { assertFalse(CppNames.isObjectLikeMacro(it), "$it is not an object-like macro in C++") }
+        assertFalse("min" in CppNames.OBJECT_LIKE_MACROS)
+        assertFalse("max" in CppNames.OBJECT_LIKE_MACROS)
     }
 }

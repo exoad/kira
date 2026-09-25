@@ -8,11 +8,12 @@ import kotlin.io.path.isRegularFile
 
 /**
  * A file the backend intends to have on disk: its absolute path and exact
- * bytes. The backend writes it when the disk differs (so `--check` after a
- * write is clean and mtimes stay put), or reports the difference in check
- * mode.
+ * bytes (text is always LF). The backend writes it when the disk differs (so
+ * `--check` after a write is clean and mtimes stay put), or reports the
+ * difference in check mode. [origin] says who planned it, for the message
+ * when two plans name one path.
  */
-data class CppPlannedFile(val path: Path, val bytes: ByteArray) {
+data class CppPlannedFile(val path: Path, val bytes: ByteArray, val origin: String = "") {
     val text: String
         get() = String(bytes, StandardCharsets.UTF_8)
 
@@ -23,8 +24,8 @@ data class CppPlannedFile(val path: Path, val bytes: ByteArray) {
     override fun hashCode(): Int = 31 * path.hashCode() + bytes.contentHashCode()
 
     companion object {
-        fun ofText(path: Path, text: String): CppPlannedFile {
-            return CppPlannedFile(path.toAbsolutePath().normalize(), text.toByteArray(StandardCharsets.UTF_8))
+        fun ofText(path: Path, text: String, origin: String = ""): CppPlannedFile {
+            return CppPlannedFile(path.toAbsolutePath().normalize(), text.toByteArray(StandardCharsets.UTF_8), origin)
         }
     }
 }
@@ -38,6 +39,11 @@ data class CppInstallPlan(val files: List<CppPlannedFile>, val diagnostics: List
  * compiler's version (its git SHA, or `dev`). Nothing is written here;
  * [plan] lists the files and [KiraCppBackend] writes or checks them, so a
  * file is touched only when its content differs.
+ *
+ * A text file is installed with LF endings whatever the stdlib checkout
+ * holds: under `core.autocrlf=true` the clone `kira_gen.py` makes carries
+ * CRLF, and the installed copy, its hash in `kira.gen.manifest` and the
+ * stdlib hash must not depend on the host that ran the compiler.
  */
 class CppRuntimeInstaller(
     /** `<stdlib>/cpp`, from [net.exoad.kira.compiler.backend.codegen.StdlibLayout.cppDir]. */
@@ -66,13 +72,17 @@ class CppRuntimeInstaller(
                 .sorted()
                 .forEach { file ->
                     val relative = source.relativize(file)
-                    files += CppPlannedFile(target.resolve(relative).normalize(), Files.readAllBytes(file))
+                    files += CppPlannedFile(
+                        target.resolve(relative).normalize(),
+                        CppWriter.lfBytes(Files.readAllBytes(file)),
+                        "runtime file ${file.toString().replace('\\', '/')}",
+                    )
                 }
         }
         if (files.isEmpty()) {
             diagnostics += CppDiagnostic(MISSING_CODE, "the C++ runtime directory $source holds no files")
         }
-        files += CppPlannedFile.ofText(target.resolve(VERSION_FILE), "$version\n")
+        files += CppPlannedFile.ofText(target.resolve(VERSION_FILE), "$version\n", "the runtime's VERSION")
         return CppInstallPlan(files.sortedBy { it.path.toString() }, diagnostics)
     }
 

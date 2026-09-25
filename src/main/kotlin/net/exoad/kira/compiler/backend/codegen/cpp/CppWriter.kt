@@ -107,5 +107,29 @@ class CppWriter {
             val trimmed = lf.split('\n').joinToString("\n") { it.trimEnd() }.trimEnd('\n')
             return if (trimmed.isEmpty()) "" else trimmed + "\n"
         }
+
+        /**
+         * [bytes] with every CRLF read as LF, so a Windows checkout under
+         * `core.autocrlf=true` is the same file the repository keeps (the
+         * `bus_gen --check` precedent). A file holding a NUL byte is binary
+         * and comes back untouched.
+         */
+        fun lfBytes(bytes: ByteArray): ByteArray {
+            if (bytes.none { it == 0.toByte() } && bytes.any { it == '\r'.code.toByte() }) {
+                val out = java.io.ByteArrayOutputStream(bytes.size)
+                var i = 0
+                while (i < bytes.size) {
+                    val b = bytes[i]
+                    if (b == '\r'.code.toByte() && i + 1 < bytes.size && bytes[i + 1] == '\n'.code.toByte()) {
+                        i += 1
+                        continue
+                    }
+                    out.write(b.toInt())
+                    i += 1
+                }
+                return out.toByteArray()
+            }
+            return bytes
+        }
     }
 }

@@ -11,7 +11,11 @@ package net.exoad.kira.compiler.backend.codegen.cpp
  * - [isObjectLikeMacro] answers D35: a `pub` name that `<windows.h>` or a
  *   common POSIX header defines as an object-like macro cannot be spelled by
  *   a C++ caller that includes those headers, so the emitter warns
- *   (`cpp.macro-name`).
+ *   (`cpp.macro-name`). Function-like macros (`min`, `max`, `Yield()`,
+ *   `UNREFERENCED_PARAMETER(p)`) are not in the list: a function-like macro
+ *   only fires on `name(`, and the header guard (`kira/macro_push.hxx`)
+ *   handles `min`/`max` and private names, as D35 says. Names that only C
+ *   headers define (`complex`, `noreturn`, `I`) are not in it either.
  */
 class CppNames {
     private val used = HashSet<String>()
@@ -27,7 +31,7 @@ class CppNames {
 
     /**
      * A new synthesized name for [stem]: `fresh("t")` gives `t0_`, `t1_`,
-     * ...; `fresh("i_end")` gives `i_end` first and then `i_end1_`, ...
+     * ...; `fresh("i_end")` gives `i_end` first and then `i_end0_`, `i_end1_`, ...
      * The stem is lowercased; the result always has an underscore.
      */
     fun fresh(stem: String): String {
@@ -59,10 +63,16 @@ class CppNames {
 
         /**
          * D35: [name] is an object-like macro in `<windows.h>` (and what it
-         * pulls in) or in a common POSIX header, by exact name or by a
-         * family such as `ERROR_*` and `STATUS_*`.
+         * pulls in), in a common C or POSIX header, or a macro the compiler or
+         * every Windows build predefines (`_WIN32`, `unix`, `STRICT`), by
+         * exact name or by a family such as `ERROR_*` and `STATUS_*`. Never
+         * true for a function-like macro: `min`, `max`, `Yield`,
+         * `UNREFERENCED_PARAMETER` and `IMAGE_FIRST_SECTION` are not flagged.
          */
         fun isObjectLikeMacro(name: String): Boolean {
+            if (name in FUNCTION_LIKE_IN_FAMILIES) {
+                return false
+            }
             if (name in OBJECT_LIKE_MACROS || name in POSIX_MACROS) {
                 return true
             }
@@ -88,6 +98,12 @@ class CppNames {
             "ERROR_", "STATUS_", "WM_", "VK_", "WSAE", "FILE_ATTRIBUTE_", "FILE_SHARE_", "FILE_MAP_", "GENERIC_",
             "PAGE_", "MEM_", "HKEY_", "SUBLANG_", "IMAGE_", "EXCEPTION_", "IOCTL_", "LOGON32_", "IPPROTO_",
             "INADDR_", "EAI_", "CLOCK_", "DLL_PROCESS_", "DLL_THREAD_",
+        )
+
+        /** The few function-like macros inside a family above (`winnt.h`); a family never claims them. */
+        private val FUNCTION_LIKE_IN_FAMILIES: Set<String> = setOf(
+            "IMAGE_FIRST_SECTION", "IMAGE_ORDINAL", "IMAGE_ORDINAL32", "IMAGE_ORDINAL64",
+            "IMAGE_SNAP_BY_ORDINAL", "IMAGE_SNAP_BY_ORDINAL32", "IMAGE_SNAP_BY_ORDINAL64",
         )
 
         /** Common POSIX and Winsock object-like macros, by exact name. */
@@ -118,15 +134,21 @@ class CppNames {
             "WSA_WAIT_FAILED", "WSA_INFINITE", "WSADESCRIPTION_LEN", "WSASYS_STATUS_LEN",
         )
 
-        /** Object-like macros by exact name. */
+        /**
+         * Object-like macros by exact name. `min` and `max` are function-like
+         * (`#define min(a,b) ...`) and the header guard handles them (D35);
+         * `UNREFERENCED_PARAMETER(P)`, `Yield()`, `GetCurrentTime()`,
+         * `GetFreeSpace(w)` and windowsx.h's `IsMaximized(hwnd)` family are
+         * function-like too, so none of them is here.
+         */
         val OBJECT_LIKE_MACROS: Set<String> = setOf(
             // windows.h, windef.h, winnt.h, minwindef.h
             "ERROR", "IN", "OUT", "OPTIONAL", "DELETE", "TRUE", "FALSE", "INFINITE", "IGNORE", "NEAR", "FAR",
-            "CONST", "VOID", "CALLBACK", "ABSOLUTE", "RELATIVE", "TRANSPARENT", "OPAQUE", "min", "max", "small",
+            "CONST", "VOID", "CALLBACK", "ABSOLUTE", "RELATIVE", "TRANSPARENT", "OPAQUE", "small",
             "NO_ERROR", "WINAPI", "APIENTRY", "PASCAL", "CDECL", "STDCALL", "FASTCALL", "WINAPIV", "APIPRIVATE",
             "THIS", "PURE", "interface", "far", "near", "pascal", "cdecl", "hyper", "MAX_PATH", "INVALID_HANDLE_VALUE",
             "INVALID_FILE_SIZE", "INVALID_SET_FILE_POINTER", "INVALID_FILE_ATTRIBUTES", "NULL", "ANYSIZE_ARRAY",
-            "DUMMYUNIONNAME", "DUMMYSTRUCTNAME", "UNREFERENCED_PARAMETER", "DECLSPEC_NORETURN", "FORCEINLINE",
+            "DUMMYUNIONNAME", "DUMMYSTRUCTNAME", "DECLSPEC_NORETURN", "FORCEINLINE",
             "MAXBYTE", "MAXWORD", "MAXDWORD", "MAXCHAR", "MAXSHORT", "MAXLONG", "MAXLONGLONG", "MINCHAR", "MINSHORT",
             "MINLONG", "MINLONGLONG", "MAXUINT_PTR", "MAXINT_PTR", "MAXULONG_PTR", "MAXLONG_PTR", "MAXHALF_PTR",
             "MINHALF_PTR", "MAXUHALF_PTR", "WAIT_OBJECT_0", "WAIT_TIMEOUT", "WAIT_FAILED", "WAIT_ABANDONED",
@@ -141,14 +163,13 @@ class CppNames {
             "UNICODE", "_UNICODE",
             // the A/W function aliases: `#define CreateFile CreateFileW` is object-like
             "GetObject", "CreateFile", "DeleteFile", "MoveFile", "CopyFile", "GetMessage",
-            "SendMessage", "PostMessage", "CreateWindow", "GetUserName", "GetComputerName", "GetCurrentTime",
+            "SendMessage", "PostMessage", "CreateWindow", "GetUserName", "GetComputerName",
             "GetTempPath", "GetEnvironmentVariable", "SetEnvironmentVariable", "OutputDebugString",
-            "LoadLibrary", "GetModuleHandle", "GetCommandLine", "FindFirstFile", "FindNextFile", "Yield",
+            "LoadLibrary", "GetModuleHandle", "GetCommandLine", "FindFirstFile", "FindNextFile",
             "CreateMutex", "CreateEvent", "OpenEvent", "CreateSemaphore", "ReportEvent",
-            "GetFreeSpace", "GetClassName", "GetProp", "SetProp", "RemoveProp", "DrawText", "PlaySound",
+            "GetClassName", "GetProp", "SetProp", "RemoveProp", "DrawText", "PlaySound",
             "CreateService", "OpenService", "StartService", "DefWindowProc", "DispatchMessage", "PeekMessage",
-            "IsMaximized", "IsMinimized", "IsRestored",
-            // C and POSIX headers
+            // C and POSIX headers (C++ includes them through <cstdio>, <cerrno>, <climits>, <cmath>, ...)
             "EOF", "BUFSIZ", "FILENAME_MAX", "FOPEN_MAX", "TMP_MAX", "L_tmpnam", "stdin", "stdout", "stderr",
             "errno", "EXIT_SUCCESS", "EXIT_FAILURE", "RAND_MAX", "MB_CUR_MAX", "CHAR_BIT", "CHAR_MAX", "CHAR_MIN",
             "SCHAR_MAX", "SCHAR_MIN", "UCHAR_MAX", "SHRT_MAX", "SHRT_MIN", "USHRT_MAX", "INT_MAX", "INT_MIN",
@@ -177,9 +198,9 @@ class CppNames {
             "ENOTSUP", "ENOTTY", "ENXIO", "EOPNOTSUPP", "EOVERFLOW", "EOWNERDEAD", "EPERM", "EPIPE", "EPROTO",
             "EPROTONOSUPPORT", "EPROTOTYPE", "ERANGE", "EROFS", "ESPIPE", "ESRCH", "ESTALE", "ETIME", "ETIMEDOUT",
             "ETXTBSY", "EWOULDBLOCK", "EXDEV",
+            // predefined by the compiler, by windows.h (WIN32, WINVER, STRICT) or by every Windows build
             "unix", "linux", "i386", "__STDC__", "__cplusplus", "NDEBUG", "DEBUG", "_DEBUG",
             "WIN32", "_WIN32", "_WIN64", "WINVER", "_MSC_VER", "__GNUC__", "__clang__", "__linux__", "__APPLE__",
-            "I", "complex", "imaginary", "noreturn",
         )
     }
 }

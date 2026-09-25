@@ -32,7 +32,10 @@ object CppGenManifest {
 
     /**
      * One hash over the runtime files: each entry's path and content hash,
-     * in path order, so a renamed or edited runtime file changes it.
+     * in path order, so a renamed or edited runtime file changes it. The
+     * backend passes paths relative to `<runtimeDir>/kira` and leaves
+     * `VERSION` out, so the hash names the stdlib alone: the same runtime
+     * hashes the same under any `runtimeDir` and any compiler version.
      */
     fun stdlibHash(runtimeFiles: List<Pair<String, ByteArray>>): String {
         val text = runtimeFiles.sortedBy { it.first }
