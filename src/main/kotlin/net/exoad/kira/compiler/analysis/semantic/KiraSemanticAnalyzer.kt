@@ -14,6 +14,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.NamedArguments
 import net.exoad.kira.core.intrinsics.GlobalIntrinsic
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
@@ -73,6 +74,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     fun validateAST(): SemanticAnalyzerResults {
         try {
+            // Callable signatures first, so a named-argument call can bind
+            // against a function declared later or in another source.
+            collectCallableSignatures()
             // Pass 1: declare every module and its top-level types/functions so
             // later `use` imports can see them regardless of source file order.
             for (source in compilationUnit.allSources()) {
@@ -317,6 +321,103 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         functionCallExpr.name.accept(this)
         functionCallExpr.positionalParameters.forEach { it.value.accept(this) }
         functionCallExpr.namedParameters.forEach { it.value.accept(this) }
+        checkNamedArguments(functionCallExpr)
+    }
+
+    /** Top-level function name -> parameter names, across every source. */
+    private val functionParameterNames = mutableMapOf<String, List<String>>()
+
+    /**
+     * Method simple name -> the distinct parameter-name lists declared under
+     * it (by classes and traits). One entry means the name binds the same way
+     * everywhere, so a call can use it without knowing the receiver's type.
+     */
+    private val methodParameterNames = mutableMapOf<String, MutableSet<List<String>>>()
+
+    /**
+     * Named arguments (`sub(b = 3, a = 10)`) bind to the callee's parameter
+     * names. Expression types are not inferred here, so a method callee is
+     * resolved by its simple name when every declaration of that name agrees
+     * on parameters; anything else is a diagnostic rather than a silent
+     * reorder. Stdlib `@_magic` classes are not candidates.
+     */
+    private fun checkNamedArguments(call: FunctionCallExpr) {
+        if (call.namedParameters.isEmpty()) {
+            return
+        }
+        val location = context.astOrigins[call] ?: SourcePosition.UNKNOWN
+        val calleeName: String
+        val parameterNames: List<String>?
+        when (val callee = call.name) {
+            is Identifier -> {
+                calleeName = callee.value
+                parameterNames = functionParameterNames[calleeName]
+            }
+            is MemberAccessExpr -> {
+                calleeName = (callee.member as? Identifier)?.value ?: "(member)"
+                val candidates = methodParameterNames[calleeName].orEmpty()
+                if (candidates.size > 1) {
+                    pump(
+                        "Named arguments cannot be used with '$calleeName' here: it is declared by more than one " +
+                            "type with different parameter names, and the receiver's type is not known.",
+                        location = location,
+                        selectorLength = calleeName.length,
+                        help = "Pass the arguments positionally."
+                    )
+                    return
+                }
+                parameterNames = candidates.firstOrNull()
+            }
+            else -> {
+                calleeName = "(expression)"
+                parameterNames = null
+            }
+        }
+        val binding = NamedArguments.bind(call, calleeName, parameterNames)
+        if (binding is NamedArguments.Binding.Unbound) {
+            pump(
+                binding.message,
+                location = location,
+                selectorLength = calleeName.length,
+                help = "Named arguments bind to the callee's parameter names; positional arguments come first."
+            )
+        }
+    }
+
+    private fun collectCallableSignatures() {
+        for (source in compilationUnit.allSources()) {
+            val marks = runCatching { source.astIntrinsicMarked }.getOrNull()
+            fun isMagic(decl: ASTNode): Boolean = marks?.get(decl)?.any { it.name == "_magic" } == true
+            source.ast.statements.forEach { stmt ->
+                val decl: Any? = when (stmt) {
+                    is Decl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                when (decl) {
+                    is FunctionDecl -> {
+                        val name = (decl.name as? Identifier)?.value ?: return@forEach
+                        functionParameterNames.putIfAbsent(name, decl.def.parameters.map { it.name.value })
+                    }
+                    is ClassDecl -> {
+                        if (isMagic(decl)) return@forEach
+                        decl.members.filterIsInstance<FunctionDecl>().forEach { method ->
+                            val name = (method.name as? Identifier)?.value ?: return@forEach
+                            methodParameterNames.getOrPut(name) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
+                        }
+                    }
+                    is TraitDecl -> {
+                        if (isMagic(decl)) return@forEach
+                        decl.members.forEach { method ->
+                            val name = (method.name as? Identifier)?.value ?: return@forEach
+                            methodParameterNames.getOrPut(name) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {

@@ -16,6 +16,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.NamedArguments
 import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.source.SourceContext
@@ -254,6 +255,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val name: String,
         val params: List<String>,
         val returnType: String,
+        val paramNames: List<String> = emptyList(),
     )
 
     /** Non-generic user trait names (lower to by-value interface structs). */
@@ -264,6 +266,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private val classTraits = mutableMapOf<String, MutableList<String>>()
     /** Mangled method name -> parameter type names, for call-site trait coercion. */
     private val methodParamTypes = mutableMapOf<String, List<String>>()
+
+    /** Mangled method name -> Kira parameter names, for binding named arguments. */
+    private val methodParamNames = mutableMapOf<String, List<String>>()
+
+    /** Free function name (Kira or specialized) -> Kira parameter names. */
+    private val functionParamNames = mutableMapOf<String, List<String>>()
     /** Free/specialized function name -> parameter type names, for call-site trait coercion. */
     private val functionParamTypes = mutableMapOf<String, List<String>>()
     /** Return type of the function/method body currently being emitted. */
@@ -304,6 +312,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                         functionLikeName(member.name),
                         member.def.parameters.map { typeNameOf(it.typeSpecifier) },
                         typeNameOf(member.def.returnTypeSpecifier),
+                        member.def.parameters.map { it.name.value },
                     )
                 )
             }
@@ -918,7 +927,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 mangled,
                 methodName,
                 returnTypeName,
-                method.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) }
+                method.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) },
+                method.def.parameters.map { it.name.value },
             )
             userSymbols.add(methodName)
             method.def.parameters.forEach { userSymbols.add(it.name.value) }
@@ -1119,6 +1129,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                         val kiraName = functionLikeName(expr.name)
                         functionParamTypes[kiraName] =
                             expr.def.parameters.map { typeNameOf(it.typeSpecifier) }
+                        functionParamNames[kiraName] = expr.def.parameters.map { it.name.value }
                         out.add(functionPrototypeLine(expr))
                     }
                 }
@@ -1137,7 +1148,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                             className,
                             methodName,
                             returnTypeName,
-                            method.def.parameters.map { typeNameOf(it.typeSpecifier) }
+                            method.def.parameters.map { typeNameOf(it.typeSpecifier) },
+                            method.def.parameters.map { it.name.value },
                         )
                         val params = buildString {
                             append(className)
@@ -1165,6 +1177,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             knownValueTypes[mangled] = returnTypeName
             functionParamTypes[mangled] =
                 template.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) }
+            functionParamNames[mangled] = template.def.parameters.map { it.name.value }
             val params = if (template.def.parameters.isEmpty()) {
                 "Void"
             } else {
@@ -1193,7 +1206,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                     classMangled,
                     methodName,
                     returnTypeName,
-                    method.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) }
+                    method.def.parameters.map { resolveKiraTypeName(it.typeSpecifier) },
+                    method.def.parameters.map { it.name.value },
                 )
                 val params = buildString {
                     append(classMangled)
@@ -1873,10 +1887,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         methodName: String,
         returnType: String,
         paramTypes: List<String> = emptyList(),
+        paramNames: List<String> = emptyList(),
     ): String {
         val mangled = mangleMethodName(className, methodName)
         methodReturnTypes[mangled] = returnType
         methodParamTypes[mangled] = paramTypes
+        methodParamNames[mangled] = paramNames
         methodsBySimpleName.getOrPut(methodName) { mutableListOf() }.add(className to mangled)
         knownValueTypes[mangled] = returnType
         userSymbols.add(mangled)
@@ -2491,37 +2507,40 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // or Arr/Map runtime helpers for magic collection types.
         if (nameExpr is MemberAccessExpr) {
             val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
-            val args = buildList {
-                functionCallExpr.positionalParameters.forEach { add(it.value) }
-                functionCallExpr.namedParameters.forEach { add(it.value) }
+            val recvType = receiverTypeOf(nameExpr.origin)
+            val traitSig = if (recvType != null && recvType in traitNames) {
+                traitMethodSigs[recvType]?.firstOrNull { it.name == methodName }
+            } else {
+                null
             }
+            val mangled = resolveMethodMangled(methodName, recvType)
+            // Named arguments bind to the resolved callee's parameter names;
+            // a stdlib collection method has none, so names are refused there.
+            val args = boundArguments(
+                functionCallExpr,
+                methodName,
+                traitSig?.paramNames ?: mangled?.let { methodParamNames[it] }
+            )
             if (tryEmitCollectionMethod(methodName, nameExpr.origin, args)) {
                 return
             }
-            val recvType = receiverTypeOf(nameExpr.origin)
             // Trait dispatch: recv.vtable->method(recv.data, args)
-            if (recvType != null && recvType in traitNames &&
-                traitMethodSigs[recvType]?.any { it.name == methodName } == true
-            ) {
+            if (traitSig != null) {
                 nameExpr.origin.accept(this)
                 buffer.append(".vtable->")
                 buffer.append(methodName)
                 buffer.append("(")
                 nameExpr.origin.accept(this)
                 buffer.append(".data")
-                functionCallExpr.positionalParameters.forEach { param ->
+                args.forEach { arg ->
                     buffer.append(", ")
-                    param.value.accept(this)
-                }
-                functionCallExpr.namedParameters.forEach { param ->
-                    buffer.append(", ")
-                    param.value.accept(this)
+                    arg.accept(this)
                 }
                 buffer.append(")")
                 return
             }
-            val mangled = resolveMethodMangled(methodName, recvType) ?: methodName
-            buffer.append(mangled)
+            val target = mangled ?: methodName
+            buffer.append(target)
             buffer.append("(")
             if (recvType != null && userClassNames.contains(recvType)) {
                 // ARC class receiver is already a heap pointer.
@@ -2531,31 +2550,24 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 buffer.append("&")
                 nameExpr.origin.accept(this)
             }
-            val paramTypes = methodParamTypes[mangled]
-            functionCallExpr.positionalParameters.forEachIndexed { i, param ->
+            val paramTypes = methodParamTypes[target]
+            args.forEachIndexed { i, arg ->
                 buffer.append(", ")
-                emitCoercedTraitValue(param.value, paramTypes?.getOrNull(i) ?: "Any")
-            }
-            functionCallExpr.namedParameters.forEach { param ->
-                buffer.append(", ")
-                param.value.accept(this)
+                emitCoercedTraitValue(arg, paramTypes?.getOrNull(i) ?: "Any")
             }
             buffer.append(")")
             return
         }
 
         val rawName = functionLikeName(nameExpr)
-        val args = buildList {
-            functionCallExpr.positionalParameters.forEach { add(it.value) }
-            functionCallExpr.namedParameters.forEach { add(it.value) }
-        }
         if (isPrintLike(rawName)) {
-            emitPrintCall(rawName, args)
+            emitPrintCall(rawName, boundArguments(functionCallExpr, rawName, null))
             return
         }
         // Bare method call inside a class method: `methodName(args)` → `Class_method(this, args)`
         val currentMethodMangled = tryResolveAsCurrentMethod(rawName)
         if (currentMethodMangled != null) {
+            val args = boundArguments(functionCallExpr, rawName, methodParamNames[currentMethodMangled])
             buffer.append(currentMethodMangled)
             buffer.append("(this")
             val paramTypes = methodParamTypes[currentMethodMangled]
@@ -2575,6 +2587,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             }
             else -> mapIntrinsicName(rawName)
         }
+        val args = boundArguments(
+            functionCallExpr,
+            rawName,
+            functionParamNames[rawName] ?: functionParamNames[functionName]
+        )
         buffer.append(functionName)
         buffer.append("(")
         val paramTypes = functionParamTypes[rawName] ?: functionParamTypes[functionName]
@@ -2583,6 +2600,19 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             emitCoercedTraitValue(arg, paramTypes?.getOrNull(index) ?: "Any")
         }
         buffer.append(")")
+    }
+
+    /**
+     * The call's arguments in parameter order. An unbindable call (a name the
+     * callee does not declare, a duplicate, a callee this backend cannot
+     * resolve) is refused: the semantic analyzer reports the same case as a
+     * diagnostic, so this only fires when analysis was skipped.
+     */
+    private fun boundArguments(call: FunctionCallExpr, calleeName: String, parameterNames: List<String>?): List<Expr> {
+        return when (val binding = NamedArguments.bind(call, calleeName, parameterNames)) {
+            is NamedArguments.Binding.Ordered -> binding.arguments
+            is NamedArguments.Binding.Unbound -> throw IllegalStateException(binding.message)
+        }
     }
 
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
@@ -3121,7 +3151,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 className,
                 methodName,
                 returnTypeName,
-                method.def.parameters.map { typeNameOf(it.typeSpecifier) }
+                method.def.parameters.map { typeNameOf(it.typeSpecifier) },
+                method.def.parameters.map { it.name.value },
             )
             userSymbols.add(methodName)
             method.def.parameters.forEach { userSymbols.add(it.name.value) }

@@ -290,6 +290,82 @@ class SemanticSuiteTest {
         assertTrue(results.isHealthy)
     }
 
+    // --- named arguments -------------------------------------------------------------
+
+    @Test
+    fun namedArgumentsBindToParameterNames() {
+        assertHealthy(
+            """
+            fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+
+            class Esc {
+                require pub mut pulse: Int32
+                pub fx set: (v: Int32, scale: Int32) Void { pulse = v * scale }
+            }
+
+            fx main: () Void {
+                x: Int32 = sub(b = 3, a = 10)
+                y: Int32 = sub(10, b = 3)
+                e: Esc = Esc { 0 }
+                e.set(scale = 2, v = 1)
+            }
+            """
+        )
+    }
+
+    @Test
+    fun namedArgumentThatIsNotAParameterIsDiagnosed() {
+        val msgs = assertUnhealthy(
+            """
+            fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+
+            fx main: () Void {
+                x: Int32 = sub(a = 10, c = 3)
+            }
+            """
+        )
+        assertTrue(msgs.any { it.contains("no parameter named 'c'") }, msgs.toString())
+    }
+
+    @Test
+    fun duplicateAndMissingNamedArgumentsAreDiagnosed() {
+        val duplicate = assertUnhealthy(
+            """
+            fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+
+            fx main: () Void {
+                x: Int32 = sub(10, a = 3)
+            }
+            """
+        )
+        assertTrue(duplicate.any { it.contains("given more than once") }, duplicate.toString())
+        val missing = assertUnhealthy(
+            """
+            fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+
+            fx main: () Void {
+                x: Int32 = sub(b = 3)
+            }
+            """
+        )
+        assertTrue(missing.any { it.contains("without an argument: a") }, missing.toString())
+    }
+
+    @Test
+    fun namedArgumentsOnAnUnresolvableCalleeAreDiagnosed() {
+        // Positional calls to unknown functions still pass (pinned gap above);
+        // a call that uses names has nothing to bind them to, so it is refused
+        // instead of being reordered by guesswork.
+        val msgs = assertUnhealthy(
+            """
+            fx main: () Void {
+                x: Int32 = mystery(a = 1)
+            }
+            """
+        )
+        assertTrue(msgs.any { it.contains("'mystery' is not a known function or method") }, msgs.toString())
+    }
+
     // --- literal/type matching -----------------------------------------------------
 
     @Test

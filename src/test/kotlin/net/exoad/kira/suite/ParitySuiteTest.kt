@@ -361,6 +361,40 @@ class ParitySuiteTest {
         }
     }
 
+    // --- named arguments -------------------------------------------------------
+
+    @Test
+    fun namedArgumentsBindByNameNotByPosition() {
+        // `sub(b = 3, a = 10)` used to lower as sub(3, 10): names were ignored.
+        assertBothPrint("7\n7\n7\n2\n10\n") {
+            """
+            fx sub: (a: Int32, b: Int32) Int32 {
+                return a - b
+            }
+
+            class Esc {
+                require pub mut pulse: Int32
+                pub fx set: (v: Int32, scale: Int32) Void {
+                    pulse = v * scale
+                }
+                pub fx get: () Int32 {
+                    return pulse
+                }
+            }
+
+            fx main: () Void {
+                trace(sub(b = 3, a = 10))
+                trace(sub(10, b = 3))
+                trace(sub(a = 10, b = 3))
+                e: Esc = Esc { 0 }
+                e.set(scale = 2, v = 1)
+                trace(e.get())
+                trace(clamp(hi = 10.0, lo = 0.0, value = 15.0))
+            }
+            """
+        }
+    }
+
     // --- bare return -----------------------------------------------------------
 
     @Test

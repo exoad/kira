@@ -382,6 +382,34 @@ class CodegenSuiteTest {
     }
 
     @Test
+    fun namedArgumentsAreOrderedByTheCalleeNotByTheCall() {
+        val output = emit(
+            """
+            fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+
+            fx main: () Void {
+                trace(sub(b = 3, a = 10))
+            }
+            """
+        )
+        assertTrue(output.contains("sub(10, 3)"), output)
+        // Without the analyzer in front, a name the callee lacks is refused
+        // at emit time rather than reordered by guesswork.
+        val e = assertThrows<IllegalStateException> {
+            emit(
+                """
+                fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+
+                fx main: () Void {
+                    trace(sub(a = 10, c = 3))
+                }
+                """
+            )
+        }
+        assertTrue(e.message!!.contains("no parameter named 'c'"), e.message)
+    }
+
+    @Test
     fun forInOverAnUnknownTargetIsADiagnosticNotAStubLoop() {
         // The body used to run exactly once inside a `for(;;) { ... break; }`
         // stub whatever the target was. Now a target the backend cannot

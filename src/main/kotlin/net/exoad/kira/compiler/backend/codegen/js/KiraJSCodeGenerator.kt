@@ -17,6 +17,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.NamedArguments
 import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.source.SourceContext
@@ -110,6 +111,12 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val methodReturnTypes = mutableMapOf<String, String>()
     /** User class name -> method names (for bare `method(args)` calls in bodies). */
     private val methodsByClass = mutableMapOf<String, MutableSet<String>>()
+    /** Free function name -> Kira parameter names, for binding named arguments. */
+    private val functionParamNames = mutableMapOf<String, List<String>>()
+    /** "Class.method" -> parameter names. */
+    private val methodParamNames = mutableMapOf<String, List<String>>()
+    /** Method simple name -> the distinct parameter-name lists declared under it (classes and traits). */
+    private val methodParamNamesBySimpleName = mutableMapOf<String, MutableSet<List<String>>>()
     /** Non-magic user class names (generic templates included -- erased in JS). */
     private val userClassNames = mutableSetOf<String>()
     /** Enum type names in the current unit -- int-like, keep direct operators. */
@@ -155,6 +162,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                         if (!isMagicDecl(expr)) {
                             val name = functionLikeName(expr.name)
                             knownValueTypes[name] = typeNameOf(expr.def.returnTypeSpecifier)
+                            functionParamNames[name] = expr.def.parameters.map { it.name.value }
                             if (name == "main") hasMain = true
                         }
                     }
@@ -165,12 +173,24 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                         userClassNames.add(base)
                         expr.members.filterIsInstance<VariableDecl>().forEach { field ->
                             fieldTypes[field.name.value] = typeNameOf(field.type)
+                            recordContainerTypeArgs(field.name.value, field.type)
                         }
                         expr.members.filterIsInstance<FunctionDecl>().forEach { method ->
                             if (method.isStub()) return@forEach
                             val mname = functionLikeName(method.name)
                             methodsByClass.getOrPut(base) { mutableSetOf() }.add(mname)
                             methodReturnTypes["$base.$mname"] = typeNameOf(method.def.returnTypeSpecifier)
+                            val paramNames = method.def.parameters.map { it.name.value }
+                            methodParamNames["$base.$mname"] = paramNames
+                            methodParamNamesBySimpleName.getOrPut(mname) { linkedSetOf() }.add(paramNames)
+                        }
+                    }
+                    is TraitDecl -> {
+                        if (isMagicDecl(expr)) return@forEach
+                        expr.members.forEach { method ->
+                            val mname = functionLikeName(method.name)
+                            methodParamNamesBySimpleName.getOrPut(mname) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
                         }
                     }
                     else -> {}
@@ -829,12 +849,39 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         assignmentExpr.value.accept(this)
     }
 
+    /**
+     * The call's arguments in parameter order (see [NamedArguments]). A
+     * method callee resolves through the receiver's class when known, else
+     * by simple name when every declaration of it agrees; a call with names
+     * that cannot be bound is refused, never silently reordered.
+     */
+    private fun boundArguments(functionCallExpr: FunctionCallExpr): List<Expr> {
+        val nameExpr = functionCallExpr.name
+        val calleeName: String
+        val parameterNames: List<String>?
+        if (nameExpr is MemberAccessExpr) {
+            calleeName = (nameExpr.member as? Identifier)?.value ?: "_anon"
+            val recvType = receiverTypeOf(nameExpr.origin)
+            parameterNames = methodParamNames["$recvType.$calleeName"]
+                ?: methodParamNamesBySimpleName[calleeName]?.singleOrNull()
+        } else {
+            calleeName = functionLikeName(nameExpr)
+            val cls = currentMethodClass
+            parameterNames = if (cls != null && methodsByClass[cls]?.contains(calleeName) == true) {
+                methodParamNames["$cls.$calleeName"]
+            } else {
+                functionParamNames[calleeName]
+            }
+        }
+        return when (val binding = NamedArguments.bind(functionCallExpr, calleeName, parameterNames)) {
+            is NamedArguments.Binding.Ordered -> binding.arguments
+            is NamedArguments.Binding.Unbound -> throw IllegalStateException(binding.message)
+        }
+    }
+
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         val nameExpr = functionCallExpr.name
-        val args = buildList {
-            functionCallExpr.positionalParameters.forEach { add(it.value) }
-            functionCallExpr.namedParameters.forEach { add(it.value) }
-        }
+        val args = boundArguments(functionCallExpr)
 
         // Method call: receiver.method(args)
         if (nameExpr is MemberAccessExpr) {
