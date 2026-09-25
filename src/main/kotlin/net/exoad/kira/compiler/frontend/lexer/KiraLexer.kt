@@ -51,40 +51,69 @@ class KiraLexer(private val context: SourceContext) {
         return buffer.peek(k)
     }
 
-    private fun lexHexNumberLiteral(): Token {
-        val start = pointer
-        val startLoc = SourcePosition(lineNumber, column)
-        while (peek().isHexChar()) {
+    /**
+     * The digits of a `0x` / `0b` literal, whose prefix [start] already
+     * consumed. The token carries the value in decimal so the parser reads
+     * every integer literal the same way. The full 64-bit range is accepted:
+     * `0xFFFFFFFFFFFFFFFF` is the bit pattern of -1, as in C.
+     */
+    private fun lexRadixIntegerLiteral(radix: Int, radixName: String, start: Int, startLoc: SourcePosition): Token {
+        val digitsStart = pointer
+        while (peek().isRadixDigit(radix)) {
             advancePointer()
         }
-        var content by Delegates.notNull<String>()
-        try {
-            content = context.content.substring(start, pointer).toInt(16).toString(10) // check
-        } catch (_: Exception) {
+        val text = context.content.substring(start, pointer)
+        val digits = context.content.substring(digitsStart, pointer)
+        if (digits.isEmpty()) {
             Diagnostics.panic(
-                "KiraLexer::lexHexNumberLiteral",
-                "'$content' is not a valid hex literal.",
+                "KiraLexer::lexRadixIntegerLiteral",
+                "'$text' needs at least one $radixName digit after the prefix.",
                 location = startLoc,
-                selectorLength = content.length,
+                selectorLength = text.length,
                 context = context
             )
         }
-        return Token.Raw(Token.Type.L_INTEGER, content, start, startLoc)
+        val value = try {
+            digits.toULong(radix).toLong()
+        } catch (_: NumberFormatException) {
+            Diagnostics.panic(
+                "KiraLexer::lexRadixIntegerLiteral",
+                "'$text' does not fit in 64 bits.",
+                location = startLoc,
+                selectorLength = text.length,
+                context = context
+            )
+        }
+        return Token.Raw(Token.Type.L_INTEGER, value.toString(), start, startLoc)
+    }
+
+    private fun Char.isRadixDigit(radix: Int): Boolean {
+        return when (radix) {
+            16 -> isHexChar()
+            2 -> this == '0' || this == '1'
+            else -> isDigit()
+        }
     }
 
     /**
      * Maximal Munch approach to reading floating point and integer types by preferring
-     * reading floating point first
+     * reading floating point first. Forms: `42`, `0xFF` / `0XFF`, `0b101` / `0B101`,
+     * `1.5`, and floats with an exponent (`1e-3`, `2.5E6`). No digit separators,
+     * no suffixes -- the spec defines none.
      */
     fun lexNumberLiteral(): Token {
-        if (peek() == '0' && peek(1) == 'x') // hex parsing!
-        {
-            advancePointer()
-            advancePointer()
-            return lexHexNumberLiteral()
-        }
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
+        if (peek() == '0' && (peek(1) == 'x' || peek(1) == 'X')) {
+            advancePointer()
+            advancePointer()
+            return lexRadixIntegerLiteral(16, "hex", start, startLoc)
+        }
+        if (peek() == '0' && (peek(1) == 'b' || peek(1) == 'B')) {
+            advancePointer()
+            advancePointer()
+            return lexRadixIntegerLiteral(2, "binary", start, startLoc)
+        }
         var isFloat = false
         while (peek().isDigit()) {
             advancePointer()
@@ -94,6 +123,18 @@ class KiraLexer(private val context: SourceContext) {
             if (afterDot.isDigit()) {
                 isFloat = true
                 advancePointer()
+                while (peek().isDigit()) {
+                    advancePointer()
+                }
+            }
+        }
+        // Exponent: e/E, optional sign, at least one digit. Anything else
+        // after the `e` is not part of the number.
+        if (peek() == 'e' || peek() == 'E') {
+            val signLength = if (peek(1) == '+' || peek(1) == '-') 1 else 0
+            if (peek(1 + signLength).isDigit()) {
+                isFloat = true
+                repeat(1 + signLength) { advancePointer() }
                 while (peek().isDigit()) {
                     advancePointer()
                 }
@@ -112,7 +153,12 @@ class KiraLexer(private val context: SourceContext) {
         advancePointer() // skip opening "
         val contentStart = pointer
         while (peek() != Symbols.NULL.rep && peek() != Symbols.DOUBLE_QUOTE.rep && peek() != '\n') {
-            // escaped sequences are passed "as is" to the parser
+            // Escape sequences are passed "as is" to the parser, which decodes
+            // them. A backslash owns the character after it, so `\"` does not
+            // terminate the string.
+            if (peek() == '\\' && peek(1) != Symbols.NULL.rep && peek(1) != '\n') {
+                advancePointer()
+            }
             advancePointer()
         }
         if (peek() != Symbols.DOUBLE_QUOTE.rep) {

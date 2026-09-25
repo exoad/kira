@@ -60,6 +60,30 @@ class LexerSuiteTest {
         assertLexes("0xFF", Token.Type.L_INTEGER to "255")
         assertLexes("0x10", Token.Type.L_INTEGER to "16")
         assertLexes("0x0", Token.Type.L_INTEGER to "0")
+        // Uppercase prefix and digits are the same literal.
+        assertLexes("0XFF", Token.Type.L_INTEGER to "255")
+        assertLexes("0xabCD", Token.Type.L_INTEGER to "43981")
+    }
+
+    @Test
+    fun hexLiteralsCoverTheFull64BitRange() {
+        // Used to be parsed as a signed Int32, so anything above 0x7FFFFFFF panicked.
+        assertLexes("0x80000000", Token.Type.L_INTEGER to "2147483648")
+        assertLexes("0x7FFFFFFFFFFFFFFF", Token.Type.L_INTEGER to "9223372036854775807")
+        // The top bit set is the two's-complement bit pattern, as in C.
+        assertLexes("0xFFFFFFFFFFFFFFFF", Token.Type.L_INTEGER to "-1")
+        assertLexes("0x8000000000000000", Token.Type.L_INTEGER to "-9223372036854775808")
+        assertThrows<DiagnosticsException> { lex("0x10000000000000000") }
+        assertThrows<DiagnosticsException> { lex("0x") }
+    }
+
+    @Test
+    fun binaryLiteralsNormalizeToDecimal() {
+        assertLexes("0b1010", Token.Type.L_INTEGER to "10")
+        assertLexes("0B11", Token.Type.L_INTEGER to "3")
+        assertLexes("0b0", Token.Type.L_INTEGER to "0")
+        assertThrows<DiagnosticsException> { lex("0b") }
+        assertThrows<DiagnosticsException> { lex("0b2") }
     }
 
     @Test
@@ -70,11 +94,29 @@ class LexerSuiteTest {
     }
 
     @Test
+    fun floatLiteralsTakeAnExponent() {
+        assertLexes("1e-3", Token.Type.L_FLOAT to "1e-3")
+        assertLexes("2.5E6", Token.Type.L_FLOAT to "2.5E6")
+        assertLexes("1e+2", Token.Type.L_FLOAT to "1e+2")
+        assertLexes("7E0", Token.Type.L_FLOAT to "7E0")
+        // An `e` not followed by digits is not an exponent: the number ends before it.
+        assertLexes("1 e", Token.Type.L_INTEGER to "1", Token.Type.IDENTIFIER to "e")
+    }
+
+    @Test
     fun stringLiteralsKeepContentAndEscapes() {
         assertLexes("\"hello\"", Token.Type.L_STRING to "hello")
-        // Escapes are passed through verbatim; the lexer does not interpret them.
+        // Escapes are passed through verbatim; the parser decodes them.
         assertLexes("\"hi\\nthere\"", Token.Type.L_STRING to "hi\\nthere")
         assertLexes("\"\"", Token.Type.L_STRING to "")
+    }
+
+    @Test
+    fun escapedQuoteDoesNotEndTheString() {
+        // `\"` used to terminate the literal, leaving `"` to start another.
+        assertLexes("\"say \\\"hi\\\"\"", Token.Type.L_STRING to "say \\\"hi\\\"")
+        assertLexes("\"back\\\\\"", Token.Type.L_STRING to "back\\\\")
+        assertThrows<DiagnosticsException> { lex("\"open \\\"") }
     }
 
     @Test

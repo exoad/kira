@@ -2744,13 +2744,48 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {
+        // C has no literal for the most negative 64-bit value: the digits
+        // overflow before the unary minus applies. Spell it the way limits.h
+        // does. Every other value is a plain decimal constant, which C types
+        // as int / long / long long as needed.
+        if (integerLiteral.value == Long.MIN_VALUE) {
+            buffer.append("(-9223372036854775807LL - 1)")
+            return
+        }
         buffer.append(integerLiteral.value)
     }
 
     override fun visitStringLiteral(stringLiteral: StringLiteral) {
         buffer.append("\"")
-        buffer.append(stringLiteral.value)
+        buffer.append(escapeCString(stringLiteral.value))
         buffer.append("\"")
+    }
+
+    /**
+     * Re-escape decoded string characters for a C literal. Control
+     * characters use three-digit octal so a following digit cannot extend
+     * the escape (as it would with `\x`).
+     */
+    private fun escapeCString(value: String): String {
+        val sb = StringBuilder(value.length + 8)
+        value.forEach { c ->
+            when (c) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\t' -> sb.append("\\t")
+                '\r' -> sb.append("\\r")
+                else -> {
+                    if (c.code < 0x20 || c.code == 0x7f) {
+                        sb.append('\\')
+                        sb.append(Integer.toOctalString(c.code).padStart(3, '0'))
+                    } else {
+                        sb.append(c)
+                    }
+                }
+            }
+        }
+        return sb.toString()
     }
 
     override fun visitFloatLiteral(floatLiteral: FloatLiteral) {

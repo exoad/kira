@@ -1361,10 +1361,53 @@ class KiraParser(private val context: SourceContext) {
 
 
     fun parseStringLiteral(): StringLiteral {
-        val value = peek().content
+        val token = peek()
         val origin = here()
         expectThenAdvance(Token.Type.L_STRING)
-        return putOrigin(StringLiteral(value), origin)
+        return putOrigin(StringLiteral(decodeStringEscapes(token)), origin)
+    }
+
+    /**
+     * Turn the lexer's raw string body into the characters it denotes. The
+     * literal holds real characters from here on; each backend re-escapes
+     * them for its own language. The escapes are the spec's: `\n \t \r \\ \"`
+     * and `\$` (a literal dollar).
+     */
+    private fun decodeStringEscapes(token: Token): String {
+        val raw = token.content
+        if (!raw.contains('\\')) {
+            return raw
+        }
+        val sb = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            val c = raw[i]
+            if (c != '\\') {
+                sb.append(c)
+                i++
+                continue
+            }
+            val next = raw.getOrNull(i + 1)
+            val decoded = when (next) {
+                'n' -> '\n'
+                't' -> '\t'
+                'r' -> '\r'
+                '\\' -> '\\'
+                '"' -> '"'
+                '$' -> '$'
+                else -> Diagnostics.panic(
+                    "KiraParser::parseStringLiteral",
+                    "Unknown escape sequence '\\${next ?: ""}' in string literal. " +
+                        "Kira knows \\n, \\t, \\r, \\\\, \\\" and \\$.",
+                    location = token.canonicalLocation,
+                    selectorLength = raw.length + 2,
+                    context = context
+                )
+            }
+            sb.append(decoded)
+            i += 2
+        }
+        return sb.toString()
     }
 
     fun parseArrayLiteral(): ArrayLiteral {
