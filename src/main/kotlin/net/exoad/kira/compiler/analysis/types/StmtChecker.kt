@@ -130,11 +130,11 @@ internal class StmtChecker(private val c: PhaseC) {
         }
         val value = model.consts[init]
         if (g.isMut) {
-            if (!isConstantExpr(init)) {
+            notConstantInit(init, g.type)?.let { why ->
                 c.report(
                     "types.global.mut-init",
                     "A module-level mut variable starts from a constant expression (D49), so no static-initialization order " +
-                        "can matter; '${g.name}' starts from ${KiraUnparser.text(init)}${runtimeMagic(init)}.",
+                        "can matter; '${g.name}' starts from ${KiraUnparser.text(init)}$why.",
                     init,
                 )
             }
@@ -149,13 +149,15 @@ internal class StmtChecker(private val c: PhaseC) {
                     init,
                 )
             }
-        } else if (!isConstantExpr(init)) {
-            c.report(
-                "types.const.not-constant",
-                "'${g.name}' is a module constant, so its value is fixed at compile time; ${KiraUnparser.text(init)} is not" +
-                    "${runtimeMagic(init)}. Declare it `mut` for state, or compute it where it is used.",
-                init,
-            )
+        } else {
+            notConstantInit(init, g.type)?.let { why ->
+                c.report(
+                    "types.const.not-constant",
+                    "'${g.name}' is a module constant, so its value is fixed at compile time; ${KiraUnparser.text(init)} is not" +
+                        "$why. Declare it `mut` for state, or compute it where it is used.",
+                    init,
+                )
+            }
         }
         if (g.constValue == null && value != null && (value.type == g.type || (facts.isMaybe(g.type) && value is ConstValue.NullConst))) {
             g.constValue = value
@@ -163,56 +165,145 @@ internal class StmtChecker(private val c: PhaseC) {
     }
 
     /**
-     * An expression C++ can evaluate at compile time: it folded, or it is built from constants
-     * with operators, constructions of structs, fixed arrays and tuples, `@_const` calls and
-     * magic calls on constants whose cpp binding is `constexpr: true` ([MagicBindings]).
+     * Why [init] cannot initialize a global of type [type] (null when it can). A global of a
+     * literal type ([TypeFacts.isLiteralType]) is `inline constexpr` in C++, so its initializer
+     * is a constant expression ([notConstant]). A global of any other type (`Arr<Int32>`, a
+     * struct holding a `List`, a `StrBuf`) is built at run time, and D49 asks only that no
+     * static-initialization order can matter: its initializer is an array literal, or a
+     * construction of a struct, a fixed array, a tuple or a StrBuf, whose operands are such
+     * initializers or constant expressions. Reading another run-time global there would
+     * depend on the order the C++ runtime picks, so `DYN.clone()` and `Bag { n = BAG.n }` are
+     * refused as `DYN.size()` is.
      */
-    fun isConstantExpr(e: Expr): Boolean {
-        if (model.consts[e] != null) {
-            return true
+    private fun notConstantInit(init: Expr, type: KType): String? {
+        if (facts.isLiteralType(type)) {
+            return notConstant(init)
         }
-        return when (e) {
-            is BinaryExpr -> isConstantExpr(e.leftExpr) && isConstantExpr(e.rightExpr)
-            is UnaryExpr -> isConstantExpr(e.operand)
-            is TypeCastExpr -> isConstantExpr(e.value)
-            is Identifier -> (model.refs[e] as? GlobalSymbol)?.let { it.isConstant && !it.isMut } ?: false
-            is MemberAccessExpr -> when (val m = model.members[e]) {
-                is MemberRef.EnumEntry -> true
-                is MemberRef.Field -> isConstantExpr(e.origin)
-                is MemberRef.ModuleMember -> (m.symbol as? GlobalSymbol)?.isConstant == true
-                null -> (e.member as? FunctionCallExpr)?.let { isConstantExpr(it) } ?: false
-                else -> false
-            }
-            is FunctionCallExpr -> {
-                val rc = model.calls[e] ?: return false
-                val fn = rc.fn ?: return false
-                val ok = fn.isConst || (rc.kind == CallKind.MAGIC && c.bindings.isConstexpr(fn))
-                ok && rc.args.all { it !is ArgBinding.Given || isConstantExpr(it.expr) } && (rc.receiver?.let { isConstantExpr(it) } ?: true)
-            }
+        return when (init) {
+            is ArrayLiteral -> init.value.firstNotNullOfOrNull { el -> notConstantInit(el, model.types[el] ?: KType.Error) }
             is ObjectInitExpr -> {
-                val ri = model.inits[e] ?: return false
-                val cls = ri.cls ?: return false
-                val literal = cls.kind == ClassKind.STRUCT ||
-                    (cls.kind == ClassKind.MAGIC && (facts.isFixedArr(ri.type) || Builtins.tupleArity(cls.name) != null || cls.name == "StrBuf"))
-                literal && ri.fields.all { it !is FieldInit.Given || isConstantExpr(it.expr) }
+                val ri = model.inits[init] ?: return NO_REASON
+                val cls = ri.cls ?: return NO_REASON
+                val built = cls.kind == ClassKind.STRUCT ||
+                    (cls.kind == ClassKind.MAGIC && (facts.isFixedArr(ri.type) || Builtins.tupleArity(cls.name) != null || cls.name == Builtins.STRBUF))
+                if (!built) {
+                    return NO_REASON
+                }
+                ri.fields.firstNotNullOfOrNull { f -> (f as? FieldInit.Given)?.let { notConstantInit(it.expr, it.field.type) } }
             }
-            is ArrayLiteral -> e.value.all { isConstantExpr(it) }
-            is ArrayIndexExpr -> isConstantExpr(e.originExpr) && isConstantExpr(e.indexExpr)
-            is IfExpr -> isConstantExpr(e.condition) && listOf(e.thenBranch, e.elseBranch).all { b ->
-                b.size == 1 && b[0].javaClass == Statement::class.java && isConstantExpr(b[0].expr)
-            }
-            else -> false
+            else -> notConstant(init)
         }
     }
 
-    /** The reason a magic call is no constant, when [e] is one: its C++ binding runs at run time. */
-    private fun runtimeMagic(e: Expr): String {
-        val rc = (e as? FunctionCallExpr)?.let { model.calls[it] } ?: return ""
-        val fn = rc.fn ?: return ""
-        if (rc.kind != CallKind.MAGIC || c.bindings.isConstexpr(fn)) {
-            return ""
+    /**
+     * An expression C++ can evaluate in a constant expression on the gcc 11.4 floor: it
+     * folded, or it is built with operators, indexing and field access from literals, enum
+     * entries, module constants of literal types (a `Str` constant is its folded `const
+     * char*`), constructions of literal types (a struct of literal fields, `Arr<T, N>`, a
+     * tuple), `@_const` calls and magic calls whose cpp binding is `constexpr: true`
+     * ([MagicBindings]) - and every value on the way is of a literal type
+     * ([TypeFacts.isLiteralType]). A global of a non-literal type is `inline const`,
+     * initialized at run time, so `DYN.size()`, `LST[0]` and `BAG.n` are no constants: g++
+     * refuses the `inline constexpr` the emitter spells for their literal-typed targets ('the
+     * value of DYN is not usable in a constant expression'), and a static assert on one has
+     * no C++ spelling at all. The manifests' `constexpr` flag holds only under the same
+     * condition (`Arr.size` is constexpr on a std::array, not on the std::vector an `Arr<T>`
+     * is), which is why a constexpr call's receiver and arguments are literal-typed too.
+     */
+    fun isConstantExpr(e: Expr): Boolean = notConstant(e) == null
+
+    /**
+     * Why [e] is no constant expression, or null when it is one: the first offending leaf,
+     * as a parenthesised clause for a diagnostic (`" ('sqrt' runs at run time: ...)"`), or
+     * [NO_REASON] when the shape itself is the reason (a plain call, a local).
+     */
+    fun notConstant(e: Expr): String? {
+        val folded = model.consts[e]
+        if (folded != null && (folded is ConstValue.StrConst || folded is ConstValue.NullConst || facts.isLiteralType(folded.type))) {
+            // A folded Str is a `const char*`, null is kira::none; an ArrConst of a std::vector
+            // type (`[1, 2, 3]` as an Arr<Int32>) folded in Kira but is built at run time in C++.
+            return null
         }
-        return " ('${fn.name}' runs at run time: its C++ binding is not constexpr)"
+        return when (e) {
+            is BinaryExpr -> notConstant(e.leftExpr) ?: notConstant(e.rightExpr)
+            is UnaryExpr -> notConstant(e.operand)
+            is TypeCastExpr -> notConstant(e.value)
+            is Identifier -> constantGlobal(model.refs[e] as? GlobalSymbol)
+            is MemberAccessExpr -> when (val m = model.members[e]) {
+                is MemberRef.EnumEntry -> null
+                is MemberRef.Field -> notConstant(e.origin)
+                is MemberRef.ModuleMember -> constantGlobal(m.symbol as? GlobalSymbol)
+                null -> (e.member as? FunctionCallExpr)?.let { notConstant(it) } ?: NO_REASON
+                else -> NO_REASON
+            }
+            is FunctionCallExpr -> notConstantCall(e)
+            is ObjectInitExpr -> {
+                val ri = model.inits[e] ?: return NO_REASON
+                if (!facts.isLiteralType(ri.type)) {
+                    return runTime(KiraUnparser.text(e), ri.type)
+                }
+                ri.fields.firstNotNullOfOrNull { f -> (f as? FieldInit.Given)?.let { notConstant(it.expr) } }
+            }
+            is ArrayLiteral -> {
+                val t = model.types[e] ?: return NO_REASON
+                if (!facts.isLiteralType(t)) {
+                    return runTime(KiraUnparser.text(e), t)
+                }
+                e.value.firstNotNullOfOrNull { notConstant(it) }
+            }
+            is ArrayIndexExpr -> notConstant(e.originExpr) ?: notConstant(e.indexExpr)
+            is IfExpr -> notConstant(e.condition) ?: listOf(e.thenBranch, e.elseBranch).firstNotNullOfOrNull { b ->
+                if (b.size == 1 && b[0].javaClass == Statement::class.java) notConstant(b[0].expr) else NO_REASON
+            }
+            else -> NO_REASON
+        }
+    }
+
+    /** A module constant is a constant operand when its type is literal; a `Str` one only through its folded value. */
+    private fun constantGlobal(g: GlobalSymbol?): String? {
+        if (g == null || !g.isConstant) {
+            return NO_REASON
+        }
+        if (g.type == KType.Str) {
+            // A folded Str constant reaches the reader through model.consts; this one did not fold.
+            return NO_REASON
+        }
+        return if (facts.isLiteralType(g.type)) null else runTime("'${g.name}'", g.type)
+    }
+
+    private fun notConstantCall(e: FunctionCallExpr): String? {
+        val rc = model.calls[e] ?: return NO_REASON
+        val fn = rc.fn ?: return NO_REASON
+        if (!fn.isConst) {
+            if (rc.kind != CallKind.MAGIC) {
+                return NO_REASON
+            }
+            if (!c.bindings.isConstexpr(fn)) {
+                return " ('${fn.name}' runs at run time: its C++ binding is not constexpr)"
+            }
+        }
+        rc.receiver?.let { constantOperand(it) }?.let { return it }
+        rc.args.firstNotNullOfOrNull { a -> (a as? ArgBinding.Given)?.let { constantOperand(it.expr) } }?.let { return it }
+        val t = model.types[e] ?: return NO_REASON
+        return if (facts.isLiteralType(t)) null else runTime("what '${fn.name}' returns", t)
+    }
+
+    /** A receiver or argument of a compile-time call: a constant expression of a literal type (a folded Str is its `const char*`). */
+    private fun constantOperand(x: Expr): String? {
+        notConstant(x)?.let { return it }
+        if (model.consts[x] is ConstValue.StrConst) {
+            return null
+        }
+        val t = model.types[x] ?: return NO_REASON
+        return if (facts.isLiteralType(t)) null else runTime(KiraUnparser.text(x), t)
+    }
+
+    /** The clause for a value C++ builds at run time: its type is no literal type, so no constant expression holds it. */
+    private fun runTime(what: String, t: KType): String = " ($what is built at run time: ${t.display()} is no literal type in C++)"
+
+    private companion object {
+        /** The shape of the expression is the reason: nothing more to say. */
+        const val NO_REASON = ""
     }
 
     private fun moduleStatement(st: Statement, m: ModuleSymbol) {
@@ -250,12 +341,15 @@ internal class StmtChecker(private val c: PhaseC) {
                 "This static assertion is false" + ((message as? StringLiteral)?.let { ": ${it.value}" } ?: "."),
                 e,
             )
-        } else if (value == null && !isConstantExpr(cond)) {
-            c.report(
-                "types.static-assert.not-constant",
-                "A static assert's condition must be known at compile time: constants, literals, operators and @_const calls.",
-                cond,
-            )
+        } else if (value == null) {
+            notConstant(cond)?.let { why ->
+                c.report(
+                    "types.static-assert.not-constant",
+                    "A static assert's condition must be known at compile time: constants, literals, operators and @_const calls; " +
+                        "${KiraUnparser.text(cond)} is not$why.",
+                    cond,
+                )
+            }
         }
     }
 

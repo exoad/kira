@@ -1,8 +1,11 @@
 module "fixture:body.captures"
 
 // A lambda's capture is an immutable copy (spec): a `mut fx` on one writes it, like assigning
-// it or passing it as `mut`. A type parameter reaches only its bounds' members. A magic call
-// whose C++ binding is not constexpr is no constant.
+// it or passing it as `mut`. A type parameter reaches only its bounds' members (a cyclic
+// bound reaches none). A magic call whose C++ binding is not constexpr is no constant, and
+// neither is a read of a global whose type C++ builds at run time (an Arr<T> or List<T> is a
+// std::vector, no literal type on the gcc 11.4 floor): `inline constexpr` cannot hold the
+// result, and a static assert on one has no C++ spelling at all.
 
 pub trait Shape {
     pub fx area: () Float64;
@@ -64,6 +67,34 @@ pub fx noField<T: Shape>: (s: T) Float64 {
     return s.side                          // @error types.member.unknown
 }
 
+pub fx cyclic<T: T>: (s: T) Float64 {
+    return s.area()                        // @error types.member.unknown
+}
+
+pub fx mutual<T: U, U: T>: (s: T, u: U) Float64 {
+    return s.area() + u.area()             // @error types.member.unknown ; @error types.member.unknown
+}
+
 pub ROOT2: Float64 = sqrt(2.0)             // @error types.const.not-constant
+pub SCALED: Float64 = sqrt(2.0) * 2.0      // @error types.const.not-constant
 pub mut SEED: Float64 = sqrt(4.0)          // @error types.global.mut-init
 @_static_assert(floor(1.5) == 1.0, "no")  // @error types.static-assert.not-constant
+
+pub struct Bag {
+    pub items: List<Int32> = []
+    pub n: Int32 = 1
+}
+
+pub DYN: Arr<Int32> = [1, 2, 3]            // no error: built at run time from literals, in no order (D49)
+pub DSIZE: Size = DYN.size()               // @error types.const.not-constant
+pub DFIRST: Int32 = DYN.get(0)             // @error types.const.not-constant
+pub DV: View<Int32> = DYN.view()           // @error types.const.not-constant
+pub DCOPY: Arr<Int32> = DYN.clone()        // @error types.const.not-constant
+pub mut SEED0: Int32 = DYN.get(0) + 1      // @error types.global.mut-init
+pub LST: List<Int32> = [4, 5]
+pub L0: Int32 = LST[0]                     // @error types.const.not-constant
+pub BAG: Bag = Bag { }
+pub BN: Int32 = BAG.n                      // @error types.const.not-constant
+pub mut BAGS: Bag = Bag { n = BAG.n }      // @error types.global.mut-init
+@_static_assert(DYN.size() == 3, "x")     // @error types.static-assert.not-constant
+@_static_assert(BAG.n == 1, "x")          // @error types.static-assert.not-constant

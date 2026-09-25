@@ -69,10 +69,68 @@ internal class TypeFacts(private val builtins: Builtins) {
 
     /**
      * A value whose copies share one object: a class or trait reference, a `Ref<T>` (D46), a
-     * `Weak<T>`, an `Unsafe<T>`. Writing through one does not write a copy.
+     * `Weak<T>`, an `Unsafe<T>`. Writing through one does not write a copy. A type parameter
+     * is one when a bound of it is a class: only that class and its subclasses satisfy the
+     * bound, and every one is an `Rc`. A trait bound is not enough (a struct may implement
+     * the trait, and a struct is copied).
      */
-    fun isReference(t: KType): Boolean =
-        isClass(t) || isTrait(t) || isMagic(t, "Ref") || isMagic(t, "Weak") || isMagic(t, "Unsafe")
+    fun isReference(t: KType): Boolean = when (t) {
+        is KType.Param -> boundNominals(t).any { isClass(it) }
+        else -> isClass(t) || isTrait(t) || isMagic(t, "Ref") || isMagic(t, "Weak") || isMagic(t, "Unsafe")
+    }
+
+    /**
+     * The nominal bounds of a type parameter, in declaration order, a bound that is itself a
+     * type parameter replaced by its own bounds. A cycle (`<T: T>`, `<T: U, U: T>`, which
+     * phase B does not refuse) contributes nothing past its first visit, so the walk ends.
+     */
+    fun boundNominals(p: KType.Param): List<KType.Nominal> {
+        val out = mutableListOf<KType.Nominal>()
+        val seen = HashSet<TypeParamSymbol>()
+        fun walk(q: KType.Param) {
+            if (!seen.add(q.sym)) {
+                return
+            }
+            for (b in q.sym.bounds) {
+                when (b) {
+                    is KType.Nominal -> out.add(b)
+                    is KType.Param -> walk(b)
+                    else -> {}
+                }
+            }
+        }
+        walk(p)
+        return out
+    }
+
+    /**
+     * A literal type (C++ [basic.types]) on the gcc 11.4 floor, so a constant of it is
+     * `inline constexpr` and a value of it can take part in a constant expression: the
+     * scalars, `Bool`, `Char`, an enum, `Arr<T, N>` (std::array), a tuple or a `Maybe` of
+     * literal types, `View`, `MutView`, `Unsafe`, and a struct whose fields are all literal.
+     * Not `Str` (std::string), not `Arr<T>` or `List<T>` (std::vector: constexpr only from GCC
+     * 12), not a Map, Set, Deque, StrBuf, class, trait or Fx: a global of one of those is
+     * `inline const`, built at run time, and reading it is no constant. This is the same rule
+     * the C++ emitter's CppDeclEmitter spells a global by; the two must agree.
+     */
+    fun isLiteralType(t: KType): Boolean = when (t) {
+        is KType.Scalar -> true
+        is KType.Nominal -> when (val sym = t.sym) {
+            is EnumSymbol -> true
+            is ClassSymbol -> when {
+                sym.kind == ClassKind.MAGIC -> when {
+                    sym.name == Builtins.ARR && t.args.size >= 2 -> t.typeArgs().all { isLiteralType(it) }
+                    sym.name == "Maybe" || Builtins.tupleArity(sym.name) != null -> t.typeArgs().all { isLiteralType(it) }
+                    sym.name == "View" || sym.name == "MutView" || sym.name == "Unsafe" -> true
+                    else -> false
+                }
+                sym.kind == ClassKind.STRUCT -> sym.fields.all { isLiteralType(it.type) }
+                else -> false
+            }
+            else -> false
+        }
+        else -> false
+    }
 
     fun isInteger(t: KType): Boolean = t.prim?.isInteger == true
 

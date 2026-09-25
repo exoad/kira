@@ -48,12 +48,13 @@ internal class MemberResolver(private val c: PhaseC) {
     /**
      * The Nominals whose declarations list [t]'s members: [t] itself, a scalar's or Str's magic
      * class, or, for a type parameter, each of its bounds in declaration order (design 5.5:
-     * static dispatch through a generic bound). A type parameter without a bound has none.
+     * static dispatch through a generic bound). A type parameter without a bound has none,
+     * and a cyclic bound (`<T: T>`) reaches nothing ([TypeFacts.boundNominals] ends the walk).
      */
     private fun nominalsOf(t: KType): List<KType.Nominal> = when (t) {
         is KType.Nominal -> listOf(t)
         is KType.Scalar, KType.Str -> listOfNotNull(c.builtins.classOf(t)?.let { KType.Nominal(it, emptyList()) })
-        is KType.Param -> t.sym.bounds.flatMap { nominalsOf(it) }
+        is KType.Param -> facts.boundNominals(t)
         else -> emptyList()
     }
 
@@ -148,6 +149,10 @@ internal class MemberResolver(private val c: PhaseC) {
         return if (bounds.isEmpty()) {
             "${receiver.display()} is a type parameter without a bound, so no member is reachable on it; " +
                 "declare it with the trait that has '$name': <${receiver.display()}: Trait>."
+        } else if (facts.boundNominals(receiver).isEmpty()) {
+            "${receiver.display()} is a type parameter whose bound" +
+                (if (bounds.size == 1) " ${bounds[0].display()} is a type parameter" else "s ${bounds.joinToString(", ") { it.display() }} are type parameters") +
+                " leading back to it, so no member is reachable on it; bound it with the trait that has '$name'."
         } else {
             "${receiver.display()} is a type parameter, and only the members of its bound" +
                 (if (bounds.size == 1) " ${bounds[0].display()}" else "s ${bounds.joinToString(", ") { it.display() }}") +

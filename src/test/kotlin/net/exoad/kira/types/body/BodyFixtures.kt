@@ -129,11 +129,15 @@ object BodyFixtures {
         return failures to parsed.types.size
     }
 
-    /** Every annotated diagnostic appears on its line, and nothing else is reported in the fixture's files. */
+    /**
+     * Every annotated diagnostic appears on its line, and nothing else is reported in the
+     * fixture's files. Each clause is spent by exactly one diagnostic, so a line annotated
+     * `@error x ; @error x` expects two, and a third is unexpected.
+     */
     fun checkDiagnostics(program: TypedProgram, files: List<File>, parsed: Map<File, Parsed>): List<String> {
         val failures = mutableListOf<String>()
         val byFile = files.associateBy { it.canonicalPath }
-        val seen = HashSet<Pair<String, DiagClause>>()
+        val unspent = parsed.mapValues { (_, p) -> p.diags.toMutableList() }
         for (d in program.diagnostics) {
             val path = d.source?.file?.let { File(it).canonicalPath }
             val file = path?.let { byFile[it] }
@@ -144,18 +148,17 @@ object BodyFixtures {
                 continue
             }
             val line = d.position?.lineNumber ?: -1
-            val clause = parsed[file]!!.diags.firstOrNull { it.line == line && it.code == d.code && it.severity == d.severity }
-            if (clause == null) {
+            val clauses = unspent[file]!!
+            val at = clauses.indexOfFirst { it.line == line && it.code == d.code && it.severity == d.severity }
+            if (at < 0) {
                 failures.add("unexpected: ${d.render()}")
             } else {
-                seen.add(file.canonicalPath to clause)
+                clauses.removeAt(at)
             }
         }
-        for ((file, p) in parsed) {
-            for (clause in p.diags) {
-                if ((file.canonicalPath to clause) !in seen) {
-                    failures.add("${file.name}:${clause.line}: expected ${clause.severity.name.lowercase()} ${clause.code}, which was not reported")
-                }
+        for ((file, clauses) in unspent) {
+            for (clause in clauses) {
+                failures.add("${file.name}:${clause.line}: expected ${clause.severity.name.lowercase()} ${clause.code}, which was not reported")
             }
         }
         return failures
