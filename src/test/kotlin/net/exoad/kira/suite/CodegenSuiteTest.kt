@@ -374,8 +374,10 @@ class CodegenSuiteTest {
         )
         // Outer and inner Arr literals both appear, nested.
         assertTrue(output.contains("Arr_lit((KiraSlot[]){ Arr_lit((KiraSlot[]){ 1, 2 }, 2)"), output)
-        // Chained element access composes the get helper.
-        assertTrue(output.contains("Arr_get_i32(Arr_get_i32(grid, 1), 0)"), output)
+        // Chained element access composes the get helper. The outer read
+        // unslots to the declared element type `Arr` (which is what `cc`
+        // rejects); the inner one has no element type to go on.
+        assertTrue(output.contains("Arr_get_i32(KIRA_UNSLOT(Arr, Arr_get(grid, 1)), 0)"), output)
     }
 
     @Test
@@ -524,7 +526,9 @@ class CodegenSuiteTest {
             }
             """
         )
-        assertTrue(output.contains("Arr_get_i32"), output)
+        // The read unslots to the declared element type; it used to be
+        // Arr_get_i32 for every element type.
+        assertTrue(output.contains("KIRA_UNSLOT(Int32, Arr_get(numbers, 0))"), output)
     }
 
     @Test

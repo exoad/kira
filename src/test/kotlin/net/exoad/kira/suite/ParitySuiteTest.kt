@@ -284,6 +284,40 @@ class ParitySuiteTest {
         }
     }
 
+    // --- element reads ---------------------------------------------------------
+
+    @Test
+    fun indexReadsUseTheElementType() {
+        // `a[i]` always read as Int32, so an Arr<Str> element was a truncated pointer.
+        assertBothPrint("bob\n3\n1\n6\n") {
+            """
+            fx main: () Void {
+                names: Arr<Str> = ["ada", "bob"]
+                trace(names[1])
+                trace(names[0].length())
+                flags: Arr<Bool> = [true, false]
+                trace(flags[0])
+                nums: List<Int32> = List<Int32> { }
+                nums.add(5)
+                nums.add(6)
+                trace(nums[1])
+            }
+            """
+        }
+    }
+
+    @Test
+    fun indexReadsOfInt64Elements() {
+        assertCPrints("4294967296\n") {
+            """
+            fx main: () Void {
+                wide: Arr<Int64> = [4294967296]
+                trace(wide[0])
+            }
+            """
+        }
+    }
+
     // --- bare return -----------------------------------------------------------
 
     @Test

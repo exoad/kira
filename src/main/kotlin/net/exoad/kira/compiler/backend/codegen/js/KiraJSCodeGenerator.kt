@@ -441,8 +441,29 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 null
             }
             is ObjectInitExpr -> typeNameOf(expr.typeName)
+            // `xs[i]` has the container's declared element type.
+            is ArrayIndexExpr -> elementTypeOf(expr.originExpr)
             else -> null
         }
+    }
+
+    /** Container-typed name -> its type arguments (`List<Str>` -> [Str]). */
+    private val containerTypeArgs = mutableMapOf<String, List<String>>()
+
+    private fun recordContainerTypeArgs(name: String, type: Type) {
+        if (type.children.isEmpty()) return
+        if (!isCollectionType(baseTypeNameOf(type))) return
+        containerTypeArgs[name] = type.children.map { baseTypeNameOf(it) }
+    }
+
+    /** Declared element type of a container-typed expression, when it is a plain name. */
+    private fun elementTypeOf(expr: Expr): String? {
+        val name = when (expr) {
+            is Identifier -> expr.value
+            is MemberAccessExpr -> (expr.member as? Identifier)?.value
+            else -> null
+        } ?: return null
+        return containerTypeArgs[name]?.firstOrNull()
     }
 
     private fun binaryOpSymbol(op: BinaryOp): String {
@@ -1074,7 +1095,15 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {
-        // Arr is a native array: index directly.
+        // Arr is a native array: index directly. A List is a KiraList
+        // wrapper, so it reads through get() (range-checked, like C).
+        if (receiverTypeOf(arrayIndexExpr.originExpr) == "List") {
+            arrayIndexExpr.originExpr.accept(this)
+            buffer.append(".get(")
+            arrayIndexExpr.indexExpr.accept(this)
+            buffer.append(")")
+            return
+        }
         arrayIndexExpr.originExpr.accept(this)
         buffer.append("[")
         arrayIndexExpr.indexExpr.accept(this)
@@ -1222,6 +1251,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         indentLevel++
         functionDefExpr.parameters.forEach { param ->
             knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            recordContainerTypeArgs(param.name.value, param.typeSpecifier)
         }
         functionDefExpr.body!!.forEach { it.accept(this) }
         functionDefExpr.parameters.forEach { param ->
@@ -1283,6 +1313,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         userSymbols.add(variableDecl.name.value)
         val typeName = typeNameOf(variableDecl.type)
         val name = variableDecl.name.value
+        recordContainerTypeArgs(name, variableDecl.type)
         if (emittingClassMembers) {
             fieldTypes[name] = typeName
             return
@@ -1355,6 +1386,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         indentLevel++
         functionDecl.def.parameters.forEach { param ->
             knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            recordContainerTypeArgs(param.name.value, param.typeSpecifier)
         }
         if (functionDecl.def.body != null) {
             functionDecl.def.body!!.forEach { it.accept(this) }
@@ -1440,6 +1472,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             indentLevel++
             method.def.parameters.forEach { param ->
                 knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            recordContainerTypeArgs(param.name.value, param.typeSpecifier)
             }
             val savedClass = currentMethodClass
             currentMethodClass = className

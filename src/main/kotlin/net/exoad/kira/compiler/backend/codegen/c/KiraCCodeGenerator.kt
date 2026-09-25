@@ -1920,6 +1920,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 }
             }
             is ObjectInitExpr -> typeNameOf(expr.typeName)
+            // `xs[i]` has the container's declared element type.
+            is ArrayIndexExpr -> receiverTypeArgs(expr.originExpr).firstOrNull()
             else -> null
         }
     }
@@ -2653,12 +2655,38 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {
-        // Arr is a struct { data, length }; index through Arr_get_i32.
-        buffer.append("Arr_get_i32(")
-        arrayIndexExpr.originExpr.accept(this)
-        buffer.append(", ")
-        arrayIndexExpr.indexExpr.accept(this)
-        buffer.append(")")
+        // Containers store 64-bit slots; the read unslots to the declared
+        // element type (Arr<Str> -> Str, Arr<Pet> -> Pet*). It used to be
+        // Arr_get_i32 whatever the element type, which truncated pointers.
+        val origin = arrayIndexExpr.originExpr
+        val elem = receiverTypeArgs(origin).firstOrNull()
+        if (receiverTypeOf(origin) == "List") {
+            // List_get takes the list by pointer.
+            emitSlotOut(elem) {
+                buffer.append("List_get(&")
+                origin.accept(this)
+                buffer.append(", ")
+                arrayIndexExpr.indexExpr.accept(this)
+                buffer.append(")")
+            }
+            return
+        }
+        if (elem == null) {
+            // Element type unknown (untyped receiver): keep the Int32 read.
+            buffer.append("Arr_get_i32(")
+            origin.accept(this)
+            buffer.append(", ")
+            arrayIndexExpr.indexExpr.accept(this)
+            buffer.append(")")
+            return
+        }
+        emitSlotOut(elem) {
+            buffer.append("Arr_get(")
+            origin.accept(this)
+            buffer.append(", ")
+            arrayIndexExpr.indexExpr.accept(this)
+            buffer.append(")")
+        }
     }
 
     override fun visitThrowExpr(throwExpr: ThrowExpr) {
