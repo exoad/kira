@@ -415,6 +415,15 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                                 .add(method.def.parameters.map { it.name.value })
                         }
                     }
+                    // A struct's methods bind named arguments exactly like a class's.
+                    is StructDecl -> {
+                        if (isMagic(decl)) return@forEach
+                        decl.members.filterIsInstance<FunctionDecl>().forEach { method ->
+                            val name = (method.name as? Identifier)?.value ?: return@forEach
+                            methodParameterNames.getOrPut(name) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
+                        }
+                    }
                 }
             }
         }
@@ -438,7 +447,20 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 //            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
 //        )
         // TODO: implement proper validation logic by also double checking valid target ast nodes instead
-        intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit, context)
+        // A failed validate (an arity error such as `@_static_assert()`) is a
+        // diagnostic at the intrinsic. Measured before: the exception escaped
+        // the walk to the catch-all, which recorded it at an unknown position.
+        try {
+            intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit, context)
+        } catch (e: DiagnosticsException) {
+            diagnosticsPump.add(e)
+        } catch (e: Exception) {
+            pump(
+                e.message ?: "The intrinsic '@${intrinsicExpr.intrinsicKey.name}' rejected this use.",
+                location = context.astOrigins[intrinsicExpr] ?: intrinsicExpr.sourceLocation.toPosition(),
+                selectorLength = intrinsicExpr.intrinsicKey.name.length + 1,
+            )
+        }
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
@@ -907,6 +929,69 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
+    // --- the AST contract (design 2.4): declare the new names, walk the new children ---
+
+    override fun visitStructDecl(structDecl: StructDecl) {
+        // A struct declares a type name exactly like a class does; its
+        // members and its initially block are walked in the struct's scope.
+        runIntrinsicsIfPresent(structDecl)
+        val typeName = (structDecl.name.identifier as? Identifier)?.value ?: return
+        val symbol = SemanticSymbol(
+            typeName,
+            SemanticSymbolKind.TYPE_SPECIFIER,
+            Token.Type.K_STRUCT,
+            SourceLocation.fromPosition(
+                context.astOrigins[structDecl] ?: SourcePosition.UNKNOWN,
+                context.file
+            ),
+            relativelyVisible = structDecl.modifiers.contains(Modifier.PUBLIC)
+        )
+        expectTypeNotDeclaredInModule(typeName, context.astOrigins[structDecl])
+        compilationUnit.symbolTable.declare(typeName, symbol)
+        if (structDecl.members.isNotEmpty() || structDecl.initially != null) {
+            compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+            registerGenericTypeParameters(structDecl.name)
+            structDecl.members.forEach { it.accept(this) }
+            structDecl.initially?.forEach { it.accept(this) }
+            compilationUnit.symbolTable.exit()
+        }
+    }
+
+    override fun visitIfExpr(ifExpr: IfExpr) {
+        ifExpr.condition.accept(this)
+        ifExpr.thenBranch.forEach { it.accept(this) }
+        ifExpr.elseBranch.forEach { it.accept(this) }
+    }
+
+    override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {
+        compilationUnit.symbolTable.enter(SemanticScope.Function("(lambda)"))
+        lambdaExpr.def.parameters.forEach { it.accept(this) }
+        lambdaExpr.def.returnTypeSpecifier.accept(this)
+        lambdaExpr.def.body?.forEach { it.accept(this) }
+        compilationUnit.symbolTable.exit()
+    }
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        placeAssignmentExpr.target.accept(this)
+        placeAssignmentExpr.value.accept(this)
+    }
+
+    override fun visitThisExpr(thisExpr: ThisExpr) {
+        // nothing to declare or check here; the typer binds it to the enclosing type
+    }
+
+    override fun visitCharLiteral(charLiteral: CharLiteral) {
+        // should be true
+    }
+
+    override fun visitInterpolatedStringLiteral(interpolatedStringLiteral: InterpolatedStringLiteral) {
+        interpolatedStringLiteral.parts.forEach { part ->
+            if (part is InterpolationPart.Hole) {
+                part.expr.accept(this)
+            }
+        }
+    }
+
     private fun runIntrinsicsIfPresent(node: ASTNode) {
         try {
             if (!::context.isInitialized) return
@@ -920,9 +1005,17 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 node.attachedIntrinsics
             }
             if (intrinsicsToApply.isEmpty()) return
-            for (intrinsic in intrinsicsToApply) {
+            // The parser's own invocations, arguments included, in the same
+            // order as the marks (design 2.5): `@_const(1)` must reach
+            // ConstIntrinsic.validate with its `1`. Measured before: a fresh
+            // argument-less IntrinsicExpr was validated instead, so no marker's
+            // arity check could ever fire.
+            val stored = context.intrinsicInvocationsOf(node)
+            for ((index, intrinsic) in intrinsicsToApply.withIndex()) {
+                val written = stored.getOrNull(index)?.takeIf { it.intrinsicKey === intrinsic }
                 val srcLoc = try {
-                    SourceLocation.fromPosition(context.relativeOriginOf(node), context.file)
+                    val origin = written?.let { context.astOrigins[it] } ?: context.relativeOriginOf(node)
+                    SourceLocation.fromPosition(origin, context.file)
                 } catch (_: Exception) {
                     SourceLocation.bakedIn()
                 }
@@ -940,7 +1033,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     )
                     continue
                 }
-                val invocation = IntrinsicExpr(
+                val invocation = written ?: IntrinsicExpr(
                     intrinsic,
                     srcLoc,
                     null
@@ -950,7 +1043,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     intrinsic.validate(invocation, compilationUnit, context)
                     intrinsic.apply(invocation, node, compilationUnit, context)
                 } catch (e: Exception) {
-                    diagnosticsPump.add(Diagnostics.recordPanic("IntrinsicApplication", e.message ?: "Intrinsic error", cause = e, location = srcLoc.toPosition(), context = context))
+                    diagnosticsPump.add(
+                        Diagnostics.recordPanic(
+                            "IntrinsicApplication",
+                            e.message ?: "Intrinsic error",
+                            cause = e,
+                            location = srcLoc.toPosition(),
+                            selectorLength = intrinsic.name.length + 1,
+                            context = context
+                        )
+                    )
                 }
             }
         } catch (e: Exception) {

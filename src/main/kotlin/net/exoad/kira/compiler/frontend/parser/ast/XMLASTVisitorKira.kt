@@ -602,6 +602,73 @@ object XMLASTVisitorKira :
         }
     }
 
+    // --- the AST contract (design 2.4) ---------------------------------------
+
+    override fun visitStructDecl(structDecl: StructDecl) {
+        node(
+            "StructDecl", when (structDecl.modifiers.isNotEmpty()) {
+                true -> """modifiers="${structDecl.modifiers.joinToString(",") { it.name }}""""
+                else -> ""
+            }
+        ) {
+            structDecl.name.accept(this)
+            if (structDecl.traits.isNotEmpty()) {
+                node("Traits") {
+                    structDecl.traits.forEach { it.accept(this) }
+                }
+            }
+            node("Members") {
+                structDecl.members.forEach { it.accept(this) }
+            }
+            structDecl.initially?.let { block ->
+                node("Initially") { block.forEach { it.accept(this) } }
+            }
+        }
+    }
+
+    override fun visitIfExpr(ifExpr: IfExpr) {
+        node("IfExpr") {
+            node("Condition") { ifExpr.condition.accept(this) }
+            node("Then") { ifExpr.thenBranch.forEach { it.accept(this) } }
+            node("Else") { ifExpr.elseBranch.forEach { it.accept(this) } }
+        }
+    }
+
+    override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {
+        node("LambdaExpr") {
+            lambdaExpr.def.accept(this)
+        }
+    }
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        node(
+            "PlaceAssignmentExpr",
+            placeAssignmentExpr.operator?.let { """op="${escapeXml(it.toString())}"""" } ?: ""
+        ) {
+            node("Target") { placeAssignmentExpr.target.accept(this) }
+            node("Value") { placeAssignmentExpr.value.accept(this) }
+        }
+    }
+
+    override fun visitThisExpr(thisExpr: ThisExpr) {
+        xmlSingleLeaf("This", null)
+    }
+
+    override fun visitCharLiteral(charLiteral: CharLiteral) {
+        xmlSingleLeaf("LChar", """value="${charLiteral.value}"""")
+    }
+
+    override fun visitInterpolatedStringLiteral(interpolatedStringLiteral: InterpolatedStringLiteral) {
+        node("LInterpolatedString") {
+            interpolatedStringLiteral.parts.forEach { part ->
+                when (part) {
+                    is InterpolationPart.Text -> xmlSingleLeaf("Text", """value="${escapeXml(part.text)}"""")
+                    is InterpolationPart.Hole -> node("Hole") { part.expr.accept(this) }
+                }
+            }
+        }
+    }
+
     private fun pushIndent() {
         currentIndent.add("    ")
     }

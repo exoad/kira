@@ -24,9 +24,12 @@ import kotlin.test.assertTrue
 /**
  * Full parser coverage for the Kotlin-native frontend (KiraLexer + KiraParser):
  * every declaration, statement, and expression form the grammar accepts, plus
- * malformed-program diagnostics. Unsupported surface (nullable types, `this`,
- * lambdas, bare `return`, initially/finally blocks) is pinned as rejected so
- * the boundary is explicit.
+ * malformed-program diagnostics. Unsupported surface (nullable types, the
+ * `fx (...) R` function-type spelling) is pinned as rejected so the boundary
+ * is explicit. `this`, lambdas in expression position and initially/finally
+ * blocks were once pinned as rejected; design 2.4 (the C++ backend's AST
+ * contract) makes them syntax, so they are pinned as accepted here and
+ * covered in full by ParserGrowthTest.
  */
 class ParserSuiteTest {
 
@@ -498,23 +501,25 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun thisKeywordIsRejected() {
-        assertThrows<Throwable> {
-            parseModule(
-                """
-                pub class Node {
-                    require pub label: Str
-                    pub fx get: () Str {
-                        return this.label
-                    }
+    fun thisKeywordParsesAsAPrimary() {
+        // Was pinned as rejected; design 2.4 adds ThisExpr (see ParserGrowthTest).
+        parseModule(
+            """
+            pub class Node {
+                require pub label: Str
+                pub fx get: () Str {
+                    return this.label
                 }
-                """
-            )
-        }
+            }
+            """
+        )
     }
 
     @Test
-    fun lambdaExpressionsAreRejected() {
+    fun functionTypeSpellingIsRejected() {
+        // The lambda on the right is syntax now (design 2.4, LambdaExpr); the
+        // `fx (x: Int32) Int32` *type* on the left is not: a function type is
+        // spelled Fx<Tuple1<Int32>, Int32> (spec Function Types).
         assertThrows<Throwable> {
             parseModule(
                 """
@@ -524,6 +529,13 @@ class ParserSuiteTest {
                 """
             )
         }
+        parseModule(
+            """
+            fx main: () Void {
+                f: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 { return x }
+            }
+            """
+        )
     }
 
     @Test
@@ -585,16 +597,21 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun initiallyFinallyBlocksAreRejected() {
-        assertThrows<Throwable> {
-            parseModule(
-                """
-                pub class C {
-                    initially { x = 1 }
-                }
-                """
-            )
-        }
+    fun initiallyFinallyBlocksParse() {
+        // Was pinned as rejected; design 2.4 adds ClassDecl.initially/finally
+        // (see ParserGrowthTest).
+        val ast = parseModule(
+            """
+            pub class C {
+                mut x: Int32 = 0
+                initially { x = 1 }
+                finally { x = 0 }
+            }
+            """
+        )
+        val cls = declsOf(ast).filterIsInstance<ClassDecl>().single()
+        assertNotNull(cls.initially)
+        assertNotNull(cls.finally)
     }
 
     // --- malformed programs --------------------------------------------------

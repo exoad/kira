@@ -151,13 +151,46 @@ class KiraLexer(private val context: SourceContext) {
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
         advancePointer() // skip opening "
+        return lexStringBody(start, startLoc, first = true)
+    }
+
+    /**
+     * The brace depth inside each open `${ }` hole, innermost last. Empty
+     * outside of any interpolated string. A `{` inside a hole deepens it; the
+     * `}` that brings the depth back to 0 closes the hole and resumes the
+     * string's text in [lexStringBody].
+     */
+    private val holeDepths: ArrayDeque<Int> = ArrayDeque()
+
+    /**
+     * The text of a string from [pointer] (just past `"` or `}`) up to the
+     * closing `"` or the next `${`. A string with no hole is one L_STRING as
+     * before; with holes it lexes as HEAD expr (PART expr)* TAIL, the holes'
+     * tokens coming from ordinary [nextToken] calls in between.
+     *
+     * Escape sequences are passed "as is" to the parser, which decodes them.
+     * A backslash owns the character after it, so `\"` does not terminate the
+     * string and `\$` never opens a hole.
+     */
+    private fun lexStringBody(start: Int, startLoc: SourcePosition, first: Boolean): Token {
         val contentStart = pointer
         while (peek() != Symbols.NULL.rep && peek() != Symbols.DOUBLE_QUOTE.rep && peek() != '\n') {
-            // Escape sequences are passed "as is" to the parser, which decodes
-            // them. A backslash owns the character after it, so `\"` does not
-            // terminate the string.
             if (peek() == '\\' && peek(1) != Symbols.NULL.rep && peek(1) != '\n') {
                 advancePointer()
+                advancePointer()
+                continue
+            }
+            if (peek() == '$' && peek(1) == Symbols.OPEN_BRACE.rep) {
+                val content = context.content.substring(contentStart, pointer)
+                advancePointer() // $
+                advancePointer() // {
+                holeDepths.addLast(0)
+                return Token.Raw(
+                    if (first) Token.Type.L_STRING_HEAD else Token.Type.L_STRING_PART,
+                    content,
+                    start,
+                    startLoc
+                )
             }
             advancePointer()
         }
@@ -175,9 +208,45 @@ class KiraLexer(private val context: SourceContext) {
                 context = context
             )
         }
-        val content = String(context.content.toCharArray(), contentStart, pointer - contentStart)
+        val content = context.content.substring(contentStart, pointer)
         advancePointer()
-        return Token.Raw(Token.Type.L_STRING, content, start, startLoc)
+        return Token.Raw(
+            if (first) Token.Type.L_STRING else Token.Type.L_STRING_TAIL,
+            content,
+            start,
+            startLoc
+        )
+    }
+
+    /**
+     * `'c'` (design D3). The token carries the raw text between the quotes,
+     * one character or one escape (`\n \t \r \\ \' \0`); the parser decodes
+     * it and checks the byte range.
+     */
+    fun lexCharLiteral(): Token {
+        val start = pointer
+        val startLoc = SourcePosition(lineNumber, column)
+        advancePointer() // opening '
+        val contentStart = pointer
+        if (peek() == '\\' && peek(1) != Symbols.NULL.rep && peek(1) != '\n') {
+            advancePointer()
+            advancePointer()
+        } else if (peek() != Symbols.NULL.rep && peek() != '\n' && peek() != '\'') {
+            advancePointer()
+        }
+        if (pointer == contentStart || peek() != '\'') {
+            val shown = context.content.substring(start, pointer)
+            Diagnostics.panic(
+                "KiraLexer::lexCharLiteral",
+                "A Char literal holds exactly one character between single quotes, like 'a' or '\\n'; '$shown' does not.",
+                location = startLoc,
+                selectorLength = maxOf(1, pointer - start),
+                context = context
+            )
+        }
+        val content = context.content.substring(contentStart, pointer)
+        advancePointer() // closing '
+        return Token.Raw(Token.Type.L_CHAR, content, start, startLoc)
     }
 
     /**
@@ -217,6 +286,7 @@ class KiraLexer(private val context: SourceContext) {
         while (peek() != Symbols.NULL.rep) {
             skipWhitespace()
             if (peek() == Symbols.NULL.rep) {
+                expectNoOpenHole()
                 return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, SourcePosition(lineNumber, column))
             }
             val char = peek()
@@ -280,6 +350,9 @@ class KiraLexer(private val context: SourceContext) {
             }
             if (char == Symbols.DOUBLE_QUOTE.rep) {
                 return lexStringLiteral()
+            }
+            if (char == '\'') {
+                return lexCharLiteral()
             }
             advancePointer()
             if (char == Symbols.AT.rep) {
@@ -496,12 +569,19 @@ class KiraLexer(private val context: SourceContext) {
                         else -> Token.Symbol(Token.Type.OP_MOD, Symbols.PERIOD, start, startLoc)
                     }
 
-                Symbols.OPEN_BRACE.rep -> Token.Symbol(
-                    Token.Type.S_OPEN_BRACE,
-                    Symbols.OPEN_BRACE,
-                    start,
-                    startLoc
-                )
+                Symbols.OPEN_BRACE.rep -> {
+                    // Inside a `${ }` hole a `{` deepens the hole (a block or a
+                    // `T { }` construction), so its `}` is not the hole's end.
+                    if (holeDepths.isNotEmpty()) {
+                        holeDepths[holeDepths.lastIndex] = holeDepths.last() + 1
+                    }
+                    Token.Symbol(
+                        Token.Type.S_OPEN_BRACE,
+                        Symbols.OPEN_BRACE,
+                        start,
+                        startLoc
+                    )
+                }
 
                 Symbols.PERIOD.rep ->
                     when (localPeek(1)) {
@@ -620,12 +700,23 @@ class KiraLexer(private val context: SourceContext) {
                         )
                     }
 
-                Symbols.CLOSE_BRACE.rep -> Token.Symbol(
-                    Token.Type.S_CLOSE_BRACE,
-                    Symbols.CLOSE_BRACE,
-                    start,
-                    startLoc
-                )
+                Symbols.CLOSE_BRACE.rep -> {
+                    if (holeDepths.isNotEmpty()) {
+                        val depth = holeDepths.last()
+                        if (depth == 0) {
+                            // The matching `}` of `${`: back to the string's text.
+                            holeDepths.removeLast()
+                            return lexStringBody(pointer, SourcePosition(lineNumber, column), first = false)
+                        }
+                        holeDepths[holeDepths.lastIndex] = depth - 1
+                    }
+                    Token.Symbol(
+                        Token.Type.S_CLOSE_BRACE,
+                        Symbols.CLOSE_BRACE,
+                        start,
+                        startLoc
+                    )
+                }
 
                 Symbols.OPEN_BRACKET.rep -> Token.Symbol(
                     Token.Type.S_OPEN_BRACKET,
@@ -700,7 +791,21 @@ class KiraLexer(private val context: SourceContext) {
                 )
             }
         }
+        expectNoOpenHole()
         return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, SourcePosition(lineNumber, column))
+    }
+
+    /** The input ended inside a `${ }` hole: the string was never closed. */
+    private fun expectNoOpenHole() {
+        if (holeDepths.isEmpty()) {
+            return
+        }
+        Diagnostics.panic(
+            "KiraLexer::lexStringLiteral",
+            "Unterminated '\${' in a string literal: insert '}' to close the hole and '\"' to close the string.",
+            location = SourcePosition(lineNumber, column),
+            context = context
+        )
     }
 
     fun tokenize(): List<Token> {

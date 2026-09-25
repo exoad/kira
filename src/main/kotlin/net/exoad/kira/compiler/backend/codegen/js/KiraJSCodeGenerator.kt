@@ -2,14 +2,17 @@ package net.exoad.kira.compiler.backend.codegen.js
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -210,10 +213,131 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
      */
     fun generate(outputPath: String = DEFAULT_OUTPUT): String {
         clean()
-        val source = buildTranslationUnit()
+        val source = try {
+            buildTranslationUnitOrFail()
+        } catch (e: UnsupportedConstruct) {
+            reportUnsupported(e)
+        }
         val written = if (GeneratedProvider.minifyOutput) minifyWritten(source) else source
         File(outputPath).writeText(written)
         return written
+    }
+
+    // --- the AST contract (design 2.4): this backend fails loudly ---------------
+
+    private val TARGET_NAME = "JS"
+
+    /** [buildTranslationUnit], with every [UnsupportedConstruct] naming this target. */
+    private fun buildTranslationUnitOrFail(): String {
+        try {
+            return buildTranslationUnit()
+        } catch (e: UnsupportedConstruct) {
+            throw e.withTarget(TARGET_NAME)
+        }
+    }
+
+    /**
+     * A construct this backend cannot lower surfaces as a compiler diagnostic
+     * that names the construct and the target, and the compiler exits 1. The
+     * CLI does not catch backend exceptions, and a stack trace is not a
+     * diagnostic; tests use [emitToString], which lets the exception through.
+     */
+    private fun reportUnsupported(e: UnsupportedConstruct): Nothing {
+        val where = compilationUnit.allSources().firstNotNullOfOrNull { source ->
+            runCatching { source.astOrigins[e.node] }.getOrNull()
+                ?.let { "${source.file}:${it.lineNumber}:${it.column}" }
+        }
+        Diagnostics.Logging.warn(
+            "Kira",
+            "\n-- Diagnostic Report: ${e.message}${where?.let { " (at $it)" } ?: ""}\n" +
+                "   Compile this program with --target cpp, or rewrite the construct for the $TARGET_NAME backend."
+        )
+        kotlin.system.exitProcess(1)
+    }
+
+    /**
+     * Every function or method that declares a default parameter value, by
+     * simple name (the resolution named arguments use), with its parameter
+     * list. This backend has no default lowering, so a call that leaves such
+     * a parameter out cannot be emitted.
+     */
+    private val defaultedSignatures: Map<String, List<List<FunctionDeclParameterExpr>>> by lazy {
+        val out = mutableMapOf<String, MutableList<List<FunctionDeclParameterExpr>>>()
+        fun record(decl: FunctionDecl) {
+            if (decl.def.parameters.none { it.defaultValue != null }) return
+            out.getOrPut(functionLikeName(decl.name)) { mutableListOf() }
+                .add(decl.def.parameters)
+        }
+        compilationUnit.allSources().forEach { source ->
+            source.ast.statements.forEach { stmt ->
+                when (val expr = (stmt as? Statement)?.expr ?: stmt) {
+                    is FunctionDecl -> record(expr)
+                    is ClassDecl -> expr.members.filterIsInstance<FunctionDecl>().forEach(::record)
+                    is StructDecl -> expr.members.filterIsInstance<FunctionDecl>().forEach(::record)
+                    is TraitDecl -> expr.members.forEach(::record)
+                    else -> {}
+                }
+            }
+        }
+        out
+    }
+
+    /** The call-site forms of design 2.4 this backend refuses: `mut` arguments and omitted defaults. */
+    private fun guardNewCallForms(call: FunctionCallExpr) {
+        if (call.positionalParameters.any { it.isMut } || call.namedParameters.any { it.isMut }) {
+            throw UnsupportedConstruct(call, "a call-site 'mut' argument", TARGET_NAME)
+        }
+        val callee = when (val name = call.name) {
+            is MemberAccessExpr -> (name.member as? Identifier)?.value ?: return
+            else -> functionLikeName(name)
+        }
+        val signatures = defaultedSignatures[callee] ?: return
+        val omitted = signatures.firstNotNullOfOrNull { params -> omittedDefault(call, params) } ?: return
+        throw UnsupportedConstruct(
+            call,
+            "a call to '$callee' that omits a default-valued parameter ('$omitted')",
+            TARGET_NAME
+        )
+    }
+
+    /**
+     * The first default-valued parameter of [params] that [call] leaves
+     * without an argument, or null. Slots fill the way [NamedArguments.bind]
+     * fills them: positional arguments take the leading parameters and a
+     * named argument takes the one it names, so a skipped middle default
+     * (`g(1, c = 3)` against `(a, b = 2, c = 3)`) is found as well as a
+     * trailing one. Measured before: only the trailing positions were
+     * inspected. A slot the call cannot bind at all (an unknown name, a
+     * missing required parameter) is the analyzer's diagnostic, not this one.
+     */
+    private fun omittedDefault(call: FunctionCallExpr, params: List<FunctionDeclParameterExpr>): String? {
+        val filled = BooleanArray(params.size)
+        for (index in call.positionalParameters.indices) {
+            if (index < params.size) filled[index] = true
+        }
+        for (named in call.namedParameters) {
+            val index = params.indexOfFirst { it.name.value == named.name.value }
+            if (index >= 0) filled[index] = true
+        }
+        return params.withIndex()
+            .firstOrNull { (index, param) -> !filled[index] && param.defaultValue != null }
+            ?.value?.name?.value
+    }
+
+    /**
+     * The type forms of design 2.4 this backend cannot lower: a const type
+     * argument (`Arr<UInt8, 32>`, D6) and `mut T` inside a Tuple's arguments
+     * (`Fx<Tuple1<mut T>, Void>`, D24). Both used to lower silently to the
+     * erased base type, dropping the size and the mutability.
+     */
+    private fun guardNewTypeForms(type: Type) {
+        if (type is ConstTypeArg) {
+            throw UnsupportedConstruct(type, "a const type argument 'T<..., ${type.value.value}>'", TARGET_NAME)
+        }
+        if (type.isMutParam) {
+            throw UnsupportedConstruct(type, "'mut' in an Fx parameter type 'Tuple<mut T>'", TARGET_NAME)
+        }
+        type.children.forEach(::guardNewTypeForms)
     }
 
     /** Minify + obfuscate the user layer, keeping the prelude untouched. */
@@ -245,7 +369,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     /** Build JS text without writing a file -- used by tests. */
     fun emitToString(): String {
         clean()
-        return buildTranslationUnit()
+        return buildTranslationUnitOrFail()
     }
 
     /**
@@ -411,6 +535,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private fun isExternFunction(name: String): Boolean = externFunctions.containsKey(name)
 
     private fun baseTypeNameOf(type: Type): String {
+        // Every lowering of a type passes through here, so this is where a
+        // form this backend cannot lower is refused.
+        guardNewTypeForms(type)
         return when (val id = type.identifier) {
             is Identifier -> id.value
             else -> "_anon"
@@ -745,22 +872,28 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         val iterExpr = forIterationStatement.forIterationExpr
         if (iterExpr.target is RangeExpr) {
             val name = iterExpr.initializer.value
+            // Legacy `for mut i: a..b` is inclusive (design 2.2); the spec
+            // form `for i: T in a..b` is exclusive (D37).
             appendIndented("for (let ")
             buffer.append(name)
             buffer.append(" = ")
             iterExpr.target.begin.accept(this)
             buffer.append("; ")
             buffer.append(name)
-            buffer.append(" <= ")
+            buffer.append(if (iterExpr.isLegacy) " <= " else " < ")
             iterExpr.target.end.accept(this)
             buffer.append("; ++")
             buffer.append(name)
             buffer.appendLine(") {")
+            iterExpr.declaredType?.takeIf { !iterExpr.isLegacy }?.let { knownValueTypes[name] = typeNameOf(it) }
             indentLevel++
             forIterationStatement.body.forEach { it.accept(this) }
             indentLevel--
             appendIndentedLine("}")
             return
+        }
+        if (!iterExpr.isLegacy) {
+            throw UnsupportedConstruct(iterExpr, "'for x: T in xs' over a container (only a range is lowered here)", TARGET_NAME)
         }
 
         // Iteration over a container: an Arr is a native array; KiraList and
@@ -880,6 +1013,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
+        guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
         val args = boundArguments(functionCallExpr)
 
@@ -1032,6 +1166,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
         val rawName = intrinsicExpr.intrinsicKey.name
         val args = intrinsicExpr.parameters ?: emptyList()
+        if (rawName == "_static_assert") {
+            throw UnsupportedConstruct(intrinsicExpr, "@_static_assert", TARGET_NAME)
+        }
         if (isPrintLike(rawName)) {
             emitPrintCall(rawName, args)
             return
@@ -1198,6 +1335,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
+        if (objectInitExpr.namedArgs.isNotEmpty()) {
+            throw UnsupportedConstruct(objectInitExpr, "named construction 'T { field = value }'", TARGET_NAME)
+        }
         val baseName = baseTypeNameOf(objectInitExpr.typeName)
         if (objectInitExpr.positionalArgs.isEmpty()) {
             when (baseName) {
@@ -1466,6 +1606,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
+        if (classDecl.initially != null || classDecl.finally != null) {
+            throw UnsupportedConstruct(classDecl, "a class with an 'initially' or 'finally' block", TARGET_NAME)
+        }
         if (isMagicDecl(classDecl)) {
             return
         }
