@@ -1,0 +1,170 @@
+package net.exoad.kira.cpp.plumbing
+
+import net.exoad.kira.compiler.backend.codegen.cpp.CppLayout
+import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
+import net.exoad.kira.kim.ManifestLoader
+import net.exoad.kira.kim.ManifestValidator
+import net.exoad.kira.kim.ProjectManifest
+import net.exoad.kira.kim.TypeCheckMode
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import java.nio.file.Files
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class CppManifestParsingTest {
+    /** bibo's kira.yaml from design 8.3, key for key. */
+    private val biboYaml = """
+        project: { name: bibo }
+        srcDir: .
+        srcExclude: [build, third_party, private, out, "**/build", viewer/assets]
+        build:
+          target: cpp
+          cpp:
+            layout: beside
+            runtimeDir: firmware/lib
+            lineDirectives: true
+            namespaces:
+              "firmware:lib.text": bibo::text
+              "firmware:lib.pulses": bibo::pulses
+              "firmware:lib.chassis.chassis": bibo::drive
+              "firmware:pilot.src.scan": bibo
+              "firmware:pilot.src.bibowire.*": bibowire
+            headerOnly: ["firmware:lib.**", "firmware:pilot.src.{scan,speed,unilidar,imu,band,tag36h11_codes}"]
+            freestanding: ["firmware:lib.**", "firmware:app.**", "firmware:encoder.**"]
+        compiler: { types: strict }
+        dependencies:
+          kira_stdlib: { path: build/kira-toolchain/kira }
+    """.trimIndent()
+
+    @Test
+    fun parsesEveryNewKey() {
+        val m: ProjectManifest = ManifestLoader.parse(biboYaml)
+        assertEquals(".", m.srcDir)
+        assertEquals(listOf("build", "third_party", "private", "out", "**/build", "viewer/assets"), m.srcExclude)
+        assertEquals("cpp", m.build.target)
+        assertEquals(TypeCheckMode.STRICT, m.compiler.types)
+
+        val cpp = m.build.cpp
+        assertEquals(CppLayout.BESIDE, cpp.layout)
+        assertEquals("gen/kira", cpp.outDir)
+        assertEquals("firmware/lib", cpp.runtimeDir)
+        assertEquals("firmware/lib", cpp.effectiveRuntimeDir)
+        assertTrue(cpp.lineDirectives)
+        assertEquals(
+            linkedMapOf(
+                "firmware:lib.text" to "bibo::text",
+                "firmware:lib.pulses" to "bibo::pulses",
+                "firmware:lib.chassis.chassis" to "bibo::drive",
+                "firmware:pilot.src.scan" to "bibo",
+                "firmware:pilot.src.bibowire.*" to "bibowire",
+            ),
+            cpp.namespaces
+        )
+        assertEquals(listOf("firmware:lib.**", "firmware:pilot.src.{scan,speed,unilidar,imu,band,tag36h11_codes}"), cpp.headerOnly)
+        assertEquals(listOf("firmware:lib.**", "firmware:app.**", "firmware:encoder.**"), cpp.freestanding)
+        assertEquals(".kira.hxx", cpp.headerExt)
+        assertEquals(".kira.cxx", cpp.sourceExt)
+
+        assertTrue(cpp.isHeaderOnly("firmware:lib.chassis.cal"))
+        assertTrue(cpp.isHeaderOnly("firmware:pilot.src.tag36h11_codes"))
+        assertFalse(cpp.isHeaderOnly("firmware:pilot.src.proto"))
+        assertTrue(cpp.isFreestanding("firmware:app.command"))
+        assertFalse(cpp.isFreestanding("firmware:pilot.src.proto"))
+    }
+
+    @Test
+    fun defaultsWhenTheCppBlockIsAbsent() {
+        val m = ManifestLoader.parse("project: { name: demo }\n")
+        assertEquals(CppOptions(), m.build.cpp)
+        assertEquals(emptyList(), m.srcExclude)
+        assertEquals(TypeCheckMode.OFF, m.compiler.types)
+        assertEquals(CppLayout.BESIDE, m.build.cpp.layout)
+        assertEquals("gen/kira", m.build.cpp.outDir)
+        assertEquals(null, m.build.cpp.runtimeDir)
+        assertEquals("gen/kira", m.build.cpp.effectiveRuntimeDir)
+        assertTrue(m.build.cpp.lineDirectives)
+    }
+
+    @Test
+    fun treeLayoutOutDirAndExtensionsAndSnakeCaseSpellings() {
+        val m = ManifestLoader.parse(
+            """
+            project: { name: demo }
+            src_exclude: [out]
+            build:
+              target: c++
+              cpp:
+                layout: tree
+                out_dir: generated/cpp
+                runtime_dir: generated/rt
+                line_directives: false
+                header_only: ["demo:lib.*"]
+                header_ext: .hpp
+                source_ext: .cpp
+            compiler: { types: lenient }
+            """.trimIndent()
+        )
+        assertEquals(listOf("out"), m.srcExclude)
+        assertEquals(CppLayout.TREE, m.build.cpp.layout)
+        assertEquals("generated/cpp", m.build.cpp.outDir)
+        assertEquals("generated/rt", m.build.cpp.runtimeDir)
+        assertFalse(m.build.cpp.lineDirectives)
+        assertEquals(listOf("demo:lib.*"), m.build.cpp.headerOnly)
+        assertEquals(".hpp", m.build.cpp.headerExt)
+        assertEquals(".cpp", m.build.cpp.sourceExt)
+        assertEquals(TypeCheckMode.LENIENT, m.compiler.types)
+    }
+
+    @Test
+    fun badValuesAreRejected() {
+        assertThrows<IllegalArgumentException> {
+            ManifestLoader.parse("project: { name: d }\nbuild: { cpp: { layout: sideways } }\n")
+        }
+        assertThrows<IllegalArgumentException> {
+            ManifestLoader.parse("project: { name: d }\ncompiler: { types: loose }\n")
+        }
+        assertThrows<IllegalArgumentException> {
+            ManifestLoader.parse("project: { name: d }\nbuild: { cpp: { namespaces: { \"a:b\": 3 } } }\n")
+        }
+        assertThrows<IllegalArgumentException> {
+            ManifestLoader.parse("project: { name: d }\nbuild: { cpp: { lineDirectives: maybe } }\n")
+        }
+    }
+
+    @Test
+    fun validatorAcceptsCppAndJsTargets() {
+        val root = PlumbingTestSupport.tempProject("manifest-validate")
+        Files.createDirectories(root.resolve("src"))
+        listOf("cpp", "c++", "js", "javascript", "c").forEach { target ->
+            val m = ManifestLoader.parse("project: { name: d }\nbuild: { target: $target }\n")
+            val issues = ManifestValidator.validate(m, root)
+            assertTrue(issues.none { it.field == "build.target" }, "target $target: $issues")
+        }
+        val bad = ManifestLoader.parse("project: { name: d }\nbuild: { target: rust }\n")
+        assertTrue(ManifestValidator.validate(bad, root).any { it.field == "build.target" })
+    }
+
+    @Test
+    fun validatorChecksTheCppBlock() {
+        val root = PlumbingTestSupport.tempProject("manifest-validate-cpp")
+        Files.createDirectories(root.resolve("src"))
+        val m = ManifestLoader.parse(
+            """
+            project: { name: d }
+            build:
+              target: cpp
+              cpp:
+                headerExt: hxx
+                sourceExt: .x
+                namespaces: { "a:b": "not a namespace" }
+            """.trimIndent()
+        )
+        val fields = ManifestValidator.validate(m, root).map { it.field }
+        assertTrue("build.cpp.headerExt" in fields, fields.toString())
+        assertTrue("build.cpp.namespaces.a:b" in fields, fields.toString())
+        val same = ManifestLoader.parse("project: { name: d }\nbuild: { cpp: { headerExt: .h, sourceExt: .h } }\n")
+        assertTrue(ManifestValidator.validate(same, root).any { it.field == "build.cpp.sourceExt" })
+    }
+}
