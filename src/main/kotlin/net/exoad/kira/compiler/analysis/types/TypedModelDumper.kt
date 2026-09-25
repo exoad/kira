@@ -165,6 +165,7 @@ object TypedModelDumper {
         AstTree.walk(root) { node ->
             when (node) {
                 is Type -> names[node.identifier] = true
+                is UseStatement -> names[node.uri] = true
                 is Decl -> names[node.name] = true
                 is FunctionDeclParameterExpr -> names[node.name] = true
                 is ForIterationExpr -> names[node.initializer] = true

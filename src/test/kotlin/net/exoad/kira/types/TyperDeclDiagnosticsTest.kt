@@ -160,6 +160,34 @@ class TyperDeclDiagnosticsTest {
         assertEquals(1, count(p, "types.trait.bad-parent"), TyperTestSupport.render(p))
     }
 
+    @Test
+    fun anOverrideKeepsTheMutOfWhatItOverrides() {
+        val p = snippet(
+            """
+            pub class Stepper {
+                pub mut fx step: () Void { }
+                pub fx peek: () Int32 {
+                    return 0
+                }
+            }
+            pub class Good: Stepper {
+                pub mut fx step: () Void { }
+                pub fx peek: () Int32 {
+                    return 1
+                }
+            }
+            pub class Bad: Stepper {
+                pub fx step: () Void { }
+                pub mut fx peek: () Int32 {
+                    return 1
+                }
+            }
+            """
+        )
+        assertEquals(2, count(p, "types.override.signature"), TyperTestSupport.render(p))
+        assertTrue(p.diagnostics.filter { it.code == "types.override.signature" }.all { it.message.startsWith("Bad.") })
+    }
+
     // ---- visibility and modules ----------------------------------------------------------
 
     @Test

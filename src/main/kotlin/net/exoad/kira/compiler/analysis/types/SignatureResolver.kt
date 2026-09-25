@@ -562,6 +562,14 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 "$where.${m.name} must have the signature of ${base.qualifiedName}, $want; it is $got.",
                 m.decl,
             )
+        } else if (m.isMutMethod != base.isMutMethod) {
+            // `mut fx` decides C++ `const`: a mismatch would declare a second function, not an override.
+            program.report(
+                "types.override.signature",
+                "$where.${m.name} must be ${if (base.isMutMethod) "a `mut fx`" else "a plain `fx` (not `mut`)"}, " +
+                    "like ${base.qualifiedName}.",
+                m.decl,
+            )
         }
     }
 
