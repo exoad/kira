@@ -63,13 +63,20 @@ class CppCliTest {
 
     private fun snapshot(dir: File): List<String> = PlumbingTestSupport.listFiles(dir.toPath())
 
+    // Until the expression and statement parts (W2.3) land, every function body is
+    // `cpp.unsupported: ... is not lowered yet`, so a program with a body, and the
+    // Kira-written stdlib (kira:math's clamp) in every unit, still exits 1 and writes
+    // nothing. W2.3 flips these to assert success.
+    private val bodyUnsupported = "cpp.unsupported: the body of 'main' is not lowered yet"
+
     @Test
     fun targetCppExitsOneWithUnsupportedAndWritesNothing() {
         val dir = tempProject("unsupported")
         val before = snapshot(dir)
         val result = runCli(dir, "--target", "cpp")
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported: the C++ emitter is not built yet"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
+        assertTrue(!result.all.contains("Exception"), "a diagnostic, not a stack trace:\n${result.all}")
         assertEquals(before, snapshot(dir), "no file may be written")
     }
 
@@ -78,7 +85,7 @@ class CppCliTest {
         val dir = tempProject("alias")
         val result = runCli(dir, "--target", "c++")
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
     }
 
     @Test
@@ -87,7 +94,7 @@ class CppCliTest {
         val before = snapshot(dir)
         val result = runCli(dir)
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
         assertTrue(!result.all.contains("Manifest validation failed"), result.all)
         assertEquals(before, snapshot(dir))
     }
@@ -107,6 +114,7 @@ class CppCliTest {
         val result = runCli(dir, "--check")
         assertEquals(1, result.exitCode, result.all)
         assertTrue(result.all.contains("--check is only supported with --target cpp"), result.all)
+        assertTrue(!result.all.contains("Exception") && !result.all.contains("\tat "), "a usage error, not a stack trace:\n${result.all}")
         assertEquals(before, snapshot(dir))
     }
 
@@ -116,7 +124,7 @@ class CppCliTest {
         val before = snapshot(dir)
         val result = runCli(dir, "--target", "cpp", "--check")
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
         assertEquals(before, snapshot(dir))
     }
 

@@ -69,5 +69,12 @@ interface CppModuleEmitter {
     val diagnostics: List<CppDiagnostic>
         get() = emptyList()
 
+    /**
+     * Called once, before the first [emit], with the run's layout (project root, output
+     * paths, namespaces) and the compiler version the banner names. The default ignores it,
+     * for an emitter that needs neither.
+     */
+    fun prepare(layout: CppModuleLayout, version: String) {}
+
     fun emit(source: SourceContext): EmittedModule
 }

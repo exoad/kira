@@ -25,7 +25,8 @@ corpus="$root/src/test/resources/cpp-golden"
 out="$root/build/cpp-tests/goldens"
 mkdir -p "$out"
 
-WARN=(-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror)
+# -ffp-contract=off is D28: the goldens' fixed3 pins hold only unfused, and aarch64 g++ fuses by default.
+WARN=(-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off)
 
 passes=0
 fails=0

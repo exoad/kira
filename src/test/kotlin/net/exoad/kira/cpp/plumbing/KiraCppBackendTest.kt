@@ -170,7 +170,9 @@ class KiraCppBackendTest {
         val result = p.run(check = false, factory = CppModuleEmitterFactory::create)
         assertEquals(1, result.exitCode)
         assertTrue(result.diagnostics.any { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE && it.isError })
-        assertTrue(p.reportLines.any { it.contains("cpp.unsupported: the C++ emitter is not built yet") }, p.reportLines.toString())
+        // Bodies are W2.3's; until then the real emitter refuses every function body (and the
+        // Kira-written stdlib carries some), so the default factory still writes nothing.
+        assertTrue(p.reportLines.any { it.contains("cpp.unsupported: the body of 'command' is not lowered yet") }, p.reportLines.toString())
         assertTrue(p.reportLines.any { it.contains("no file was written") })
         assertEquals(before, p.files(), "nothing may be written when an emitter reports an error")
     }

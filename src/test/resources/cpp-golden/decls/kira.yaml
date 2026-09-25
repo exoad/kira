@@ -1,0 +1,16 @@
+project:
+  name: golden-decls
+srcDir: src
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+    namespaces:
+      "lib:shapes": golden::shapes
+    headerOnly: ["lib:shapes"]
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira
