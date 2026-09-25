@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.core.CompilerIntrinsic
 import java.util.*
 
@@ -23,6 +24,22 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     lateinit var ast: RootASTNode
     lateinit var astOrigins: IdentityHashMap<ASTNode, SourcePosition>
     lateinit var astIntrinsicMarked: IdentityHashMap<ASTNode, Array<CompilerIntrinsic>>
+
+    /**
+     * The marker intrinsics of each marked declaration as the parser saw them,
+     * arguments included: `@_extern("sym")` keeps its "sym" here, where
+     * [astIntrinsicMarked] holds only the registry entries. Same keys as
+     * [astIntrinsicMarked]; read it with [intrinsicInvocationsOf].
+     */
+    lateinit var astIntrinsicInvocations: IdentityHashMap<ASTNode, List<IntrinsicExpr>>
+
+    /** The marker invocations on [node], with their arguments; empty when it has none. */
+    fun <T : ASTNode> intrinsicInvocationsOf(node: T): List<IntrinsicExpr> {
+        if (!::astIntrinsicInvocations.isInitialized) {
+            return emptyList()
+        }
+        return astIntrinsicInvocations[node] ?: emptyList()
+    }
 
     /**
      * Returns the module declaration representing this source module

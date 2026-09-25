@@ -36,5 +36,11 @@ object Keywords {
         "variant" to Token.Type.K_VARIANT,
         "alias" to Token.Type.K_ALIAS,
         "this" to Token.Type.K_THIS,
+        // design 2.4: no existing .kira file or test used these as names (grepped)
+        "struct" to Token.Type.K_STRUCT,
+        "in" to Token.Type.K_IN,
+        "initially" to Token.Type.K_INITIALLY,
+        "finally" to Token.Type.K_FINALLY,
+        "override" to Token.Type.K_MODIFIER_OVERRIDE,
     )
 }

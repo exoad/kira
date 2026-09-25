@@ -4,11 +4,13 @@ import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
+import net.exoad.kira.core.intrinsics.ConstIntrinsic
 import net.exoad.kira.core.intrinsics.DeclIntrinsic
 import net.exoad.kira.core.intrinsics.ExternIntrinsic
 import net.exoad.kira.core.intrinsics.GlobalIntrinsic
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.core.intrinsics.OpaqueIntrinsic
+import net.exoad.kira.core.intrinsics.StaticAssertIntrinsic
 import net.exoad.kira.source.SourceContext
 
 object IntrinsicRegistry {
@@ -22,6 +24,10 @@ object IntrinsicRegistry {
             MagicIntrinsic,
             OpaqueIntrinsic,
             ExternIntrinsic,
+            // design D7: `@_const` marks a declaration, `@_static_assert` is
+            // a module-level callable; checks beyond arity are wave 2's.
+            ConstIntrinsic,
+            StaticAssertIntrinsic,
         ).forEach { put(it.name, it) }
         // Operator intrinsics (@op_add, @op_sub, ...) are known names the
         // parser accepts as identifiers; they are not markers.
@@ -73,5 +79,6 @@ object IntrinsicRegistry {
         MagicIntrinsic.name,
         OpaqueIntrinsic.name,
         ExternIntrinsic.name,
+        ConstIntrinsic.name,
     )
 }

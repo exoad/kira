@@ -537,20 +537,20 @@ class CodegenSuiteTest {
 
     @Test
     fun externLowersToLiteralCNamePlaceholder() {
-        // Known gap: @_extern currently emits the C name as a bare string
-        // statement. Pinned so the intended fopen() call is not silently lost.
+        // A marker keeps its argument on the declaration it marks (design
+        // 2.5); it used to spill into a stray `"fopen";` statement, and a
+        // bare marker with no declaration after it is now a parse error
+        // (ParserGrowthTest). Known gap, pinned: the C backend still emits
+        // the Kira name, not the "fopen" the mark carries -- W2.6 reads it.
         val output = emit(
             """
             @_opaque class FileHandle { }
 
-            fx openFile: (path: Str) FileHandle {
-                @_extern("fopen")
-                return null
-            }
+            @_extern("fopen") fx openFile: (path: Str) FileHandle;
             """
         )
         assertTrue(output.contains("FileHandle* openFile(Str path)"), output)
-        assertTrue(output.contains("\"fopen\";"), output)
+        assertFalse(output.contains("\"fopen\";"), output)
     }
 
     @Test
