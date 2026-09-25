@@ -318,6 +318,49 @@ class ParitySuiteTest {
         }
     }
 
+    // --- for over containers ---------------------------------------------------
+
+    @Test
+    fun forInIteratesArrListAndSet() {
+        // The body used to run exactly once whatever the container held.
+        assertBothPrint("6\nada\ngrace\n7\n3\n") {
+            """
+            fx main: () Void {
+                xs: Arr<Int32> = [1, 2, 3]
+                mut sum: Int32 = 0
+                for mut x: xs {
+                    sum = sum + x
+                }
+                trace(sum)
+
+                names: List<Str> = List<Str> { }
+                names.add("ada")
+                names.add("grace")
+                for mut n: names {
+                    trace(n)
+                }
+
+                seen: Set<Int32> = Set<Int32> { }
+                seen.add(3)
+                seen.add(3)
+                seen.add(4)
+                mut total: Int32 = 0
+                for mut v: seen {
+                    total = total + v
+                }
+                trace(total)
+
+                empty: List<Int32> = List<Int32> { }
+                mut ran: Int32 = 0
+                for mut e: empty {
+                    ran = ran + 1
+                }
+                trace(3 - ran)
+            }
+            """
+        }
+    }
+
     // --- bare return -----------------------------------------------------------
 
     @Test

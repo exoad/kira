@@ -2,6 +2,7 @@ package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -378,6 +379,25 @@ class CodegenSuiteTest {
         // unslots to the declared element type `Arr` (which is what `cc`
         // rejects); the inner one has no element type to go on.
         assertTrue(output.contains("Arr_get_i32(KIRA_UNSLOT(Arr, Arr_get(grid, 1)), 0)"), output)
+    }
+
+    @Test
+    fun forInOverAnUnknownTargetIsADiagnosticNotAStubLoop() {
+        // The body used to run exactly once inside a `for(;;) { ... break; }`
+        // stub whatever the target was. Now a target the backend cannot
+        // type is refused outright.
+        val e = assertThrows<IllegalStateException> {
+            emit(
+                """
+                fx main: () Void {
+                    for mut x: mystery {
+                        trace(x)
+                    }
+                }
+                """
+            )
+        }
+        assertTrue(e.message!!.contains("for-in over 'mystery'"), e.message)
     }
 
     @Test

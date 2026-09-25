@@ -1375,6 +1375,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     /** True while emitting the body of `main: () Void`, which is `Int32 main` in C. */
     private var inHostMain = false
 
+    /**
+     * Serial number for container for-in loops: each loop's view and index
+     * locals get a fresh name, so sibling loops in one C scope never clash.
+     */
+    private var forInSerial = 0
+
     private fun isStrType(kiraType: String?): Boolean {
         return kiraType == "Str" || kiraType == "String"
     }
@@ -2132,14 +2138,49 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
 
-        appendIndentedLine("/* unsupported for-target; stub loop */")
-        appendIndentedLine("for(;;)")
+        // Iteration over a container. The target is evaluated once into a
+        // view local (a shallow struct copy: the original keeps ownership),
+        // each element is unslotted into a loop variable of the declared
+        // element type, and that read is borrowed -- it is never registered
+        // as an ARC local of the body. (This path used to be a stub that ran
+        // the body exactly once.)
+        val target = iterExpr.target
+        val targetName = (target as? Identifier)?.value ?: target.toString()
+        val recvType = receiverTypeOf(target)
+        val (seqType, sizeOf, getAt) = when (recvType) {
+            "Arr" -> Triple("Arr", "Arr_size(&SEQ)", "Arr_get(SEQ, IDX)")
+            "List" -> Triple("List", "List_size(&SEQ)", "List_get(&SEQ, IDX)")
+            "Set" -> Triple("Set", "Set_size(&SEQ)", "KiraVec_get(&SEQ.items, IDX)")
+            else -> throw IllegalStateException(
+                "for-in over '$targetName': the C backend needs it to be an Arr, List or Set with a declared element type" +
+                    (recvType?.let { " (it is '$it')" } ?: " (its type is not known here)")
+            )
+        }
+        val elem = receiverTypeArgs(target).firstOrNull()
+            ?: throw IllegalStateException(
+                "for-in over '$targetName': its element type is unknown; declare it as $recvType<T>"
+            )
+        val serial = forInSerial++
+        val seq = "kira_seq$serial"
+        val idx = "kira_idx$serial"
+        val name = cName(iterExpr.initializer.value)
+        appendIndented("$seqType $seq = ")
+        target.accept(this)
+        buffer.appendLine(";")
+        appendIndentedLine("for(Int32 $idx = 0; $idx < ${sizeOf.replace("SEQ", seq)}; ++$idx)")
         appendIndentedLine("{")
         indentLevel++
+        appendIndented("")
+        buffer.append(mapTypeName(elem))
+        buffer.append(" ")
+        buffer.append(name)
+        buffer.append(" = ")
+        emitSlotOut(elem) { buffer.append(getAt.replace("SEQ", seq).replace("IDX", idx)) }
+        buffer.appendLine(";")
+        knownValueTypes[iterExpr.initializer.value] = elem
         pushArcScope()
         forIterationStatement.body.forEach { it.accept(this) }
         popArcScope(terminated = endsWithReturn(forIterationStatement.body))
-        appendIndentedLine("break;")
         indentLevel--
         appendIndentedLine("}")
     }

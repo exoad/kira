@@ -743,11 +743,28 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             return
         }
 
-        appendIndentedLine("/* unsupported for-target; stub loop */")
-        appendIndentedLine("for (;;) {")
+        // Iteration over a container: an Arr is a native array; KiraList and
+        // KiraSet keep their elements in `.values`. (This used to be a stub
+        // that ran the body exactly once.)
+        val target = iterExpr.target
+        val targetName = (target as? Identifier)?.value ?: target.toString()
+        val name = iterExpr.initializer.value
+        appendIndented("for (let $name of ")
+        when (val recvType = receiverTypeOf(target)) {
+            "Arr" -> target.accept(this)
+            "List", "Set" -> {
+                target.accept(this)
+                buffer.append(".values")
+            }
+            else -> throw IllegalStateException(
+                "for-in over '$targetName': the JS backend needs it to be an Arr, List or Set" +
+                    (recvType?.let { " (it is '$it')" } ?: " (its type is not known here)")
+            )
+        }
+        buffer.appendLine(") {")
+        elementTypeOf(target)?.let { knownValueTypes[name] = it }
         indentLevel++
         forIterationStatement.body.forEach { it.accept(this) }
-        appendIndentedLine("break;")
         indentLevel--
         appendIndentedLine("}")
     }
