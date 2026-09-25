@@ -22,7 +22,8 @@ data class CppModuleFiles(val header: Path, val source: Path?)
  * A module's namespace is the last URI segment unless `build.cpp.namespaces`
  * names it, exactly or by glob (`firmware:pilot.src.bibowire.*`); an exact key
  * wins over a glob, a longer glob over a shorter one. A derived segment that
- * is a C++ keyword is escaped the way names are (`new` gives `new_`).
+ * is a C++ keyword or an object-like macro (D35) is escaped the way names
+ * are (`new` gives `new_`, `errno` gives `errno_`).
  * [checkCollisions] rejects a namespace that is not valid C++ and the reserved
  * ones: `std`, and `kira` for anything but a stdlib module (the runtime's).
  */
@@ -82,15 +83,16 @@ class CppModuleLayout(
             return globHit.value
         }
         if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
-            return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeKeyword(it) }
+            return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeNamespaceSegment(it) }
         }
-        return CppNames.escapeKeyword(uriSegments(uri).last())
+        return CppNames.escapeNamespaceSegment(uriSegments(uri).last())
     }
 
     /**
      * Why [namespace] cannot head a module's declarations, or null: a segment
-     * that is not a C++ identifier (or is a keyword the manifest spelled out),
-     * `std`, or `kira` under a module that is not the stdlib's.
+     * that is not a C++ identifier (or is a keyword or an object-like macro
+     * the manifest spelled out), `std`, or `kira` under a module that is not
+     * the stdlib's.
      */
     fun namespaceProblem(uri: String, namespace: String): String? {
         val segments = namespace.split("::")
@@ -99,6 +101,10 @@ class CppModuleLayout(
         }
         segments.firstOrNull { CppNames.isKeyword(it) }?.let {
             return "'$namespace' uses the C++ keyword '$it'"
+        }
+        segments.firstOrNull { CppNames.isObjectLikeMacro(it) }?.let {
+            return "'$namespace' uses '$it', an object-like macro under <windows.h>, a C header or the compiler, " +
+                "so no caller could name it"
         }
         segments.firstOrNull { it.startsWith("__") || (it.length > 1 && it[0] == '_' && it[1].isUpperCase()) }?.let {
             return "'$namespace' uses '$it', a name C++ reserves for its implementation"
@@ -179,14 +185,13 @@ class CppModuleLayout(
         return diagnostics
     }
 
-    /** `outDir`, `runtimeDir` and every generated file, relative to the project root with forward slashes. */
+    /**
+     * A path for a message: relative to the project root with forward
+     * slashes, or absolute when it lies outside. Never for the manifest,
+     * which uses [relativeTo] and refuses what lies outside its base.
+     */
     fun relativeToRoot(path: Path): String {
-        val absolute = path.toAbsolutePath().normalize()
-        return if (absolute.startsWith(projectRoot)) {
-            projectRoot.relativize(absolute).toString().replace('\\', '/')
-        } else {
-            absolute.toString().replace('\\', '/')
-        }
+        return relativeTo(projectRoot, path) ?: path.toAbsolutePath().normalize().toString().replace('\\', '/')
     }
 
     companion object {
@@ -194,6 +199,16 @@ class CppModuleLayout(
         const val STDLIB_NAMESPACE = "kira"
 
         private val IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
+
+        /** [path] relative to [base] with forward slashes, or null when it is not under [base] (`base` itself is ``). */
+        fun relativeTo(base: Path, path: Path): String? {
+            val absoluteBase = base.toAbsolutePath().normalize()
+            val absolute = path.toAbsolutePath().normalize()
+            if (!absolute.startsWith(absoluteBase)) {
+                return null
+            }
+            return absoluteBase.relativize(absolute).toString().replace('\\', '/')
+        }
 
         fun stemOf(fileName: String): String {
             return if (fileName.endsWith(".kira")) fileName.dropLast(".kira".length) else fileName

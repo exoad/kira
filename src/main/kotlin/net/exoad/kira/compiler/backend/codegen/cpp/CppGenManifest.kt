@@ -11,17 +11,35 @@ import java.security.MessageDigest
  * kira.gen.manifest 1
  * compiler <version>
  * stdlib <sha256 over the runtime files>
- * <sha256>  <path relative to the project root, forward slashes>
+ * <sha256>  <path relative to the manifest's own directory, forward slashes>
  * ...
  * ```
  *
  * Entries are sorted by path, so the file is the same for the same tree.
+ * A path is always relative to the directory the manifest sits in (the
+ * project root, or `<dir>` under `--out <dir>`) and never climbs out of it:
+ * the backend removes what an earlier manifest recorded, so an entry that
+ * named a file elsewhere would let one project's write reach another's.
+ * [isRelativeInside] is the test, and the backend ignores what fails it.
  */
 object CppGenManifest {
     const val FILE_NAME = "kira.gen.manifest"
     const val FORMAT = "kira.gen.manifest 1"
 
     data class Entry(val path: String, val sha256: String)
+
+    /**
+     * True for a path the manifest may hold: relative, forward slashes, and
+     * no segment that is `..`, `.` or empty, so it names a file under the
+     * manifest's directory and nowhere else. A drive letter, a leading
+     * slash or backslash, and `../x` all fail.
+     */
+    fun isRelativeInside(path: String): Boolean {
+        if (path.isEmpty() || path.contains('\\') || path.startsWith("/") || path.contains(':')) {
+            return false
+        }
+        return path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }
+    }
 
     data class Parsed(val compiler: String, val stdlib: String, val entries: List<Entry>)
 

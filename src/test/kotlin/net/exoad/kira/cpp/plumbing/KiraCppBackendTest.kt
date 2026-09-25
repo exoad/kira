@@ -1,7 +1,9 @@
 package net.exoad.kira.cpp.plumbing
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.backend.codegen.cpp.CppBackendResult
 import net.exoad.kira.compiler.backend.codegen.cpp.CppGenManifest
+import net.exoad.kira.compiler.backend.codegen.cpp.CppLayout
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
@@ -413,5 +415,138 @@ class KiraCppBackendTest {
         val files = p.files()
         assertTrue("lib/kira/std/geometry.kira.hxx" in files, files.toString())
         assertFalse(files.any { it.startsWith("lib/kira/std/geometry.kira.c") })
+    }
+
+    // --- the generated tree shares a directory with other files -------------------
+
+    private fun runWithOut(p: Project, out: String, check: Boolean): CppBackendResult {
+        p.outLines.clear()
+        p.reportLines.clear()
+        return KiraCppBackend.run(
+            p.unit, p.manifest, check, p.root, outDirOverride = out,
+            emitterFactory = { _, o -> FakeCppModuleEmitter(o) }, stdlibCppDir = p.stdlibCpp,
+            log = { }, report = { p.reportLines += it }, out = { p.outLines += it },
+        )
+    }
+
+    @Test
+    fun outDotGeneratesIntoTheProjectRootAndLeavesTheSourcesAlone() {
+        val p = project("backend-out-dot")
+        val sources = p.files()
+        val write = runWithOut(p, ".", check = false)
+        assertEquals(0, write.exitCode, p.reportLines.joinToString("\n"))
+        val files = p.files()
+        assertTrue(sources.all { it in files }, "every source survives: $files")
+        listOf("demo/pilot/proto.kira.hxx", "demo/lib/text.kira.hxx", "kira/rt.hxx", "kira/VERSION", "kira.gen.manifest")
+            .forEach { assertTrue(it in files, "expected $it in $files") }
+        assertEquals(0, runWithOut(p, ".", check = true).exitCode, p.outLines.joinToString("\n"))
+        val again = runWithOut(p, ".", check = false)
+        assertEquals(0, again.exitCode)
+        assertEquals(emptyList(), again.changed)
+        assertEquals(emptyList(), again.removed)
+    }
+
+    @Test
+    fun aTreeLayoutRootedAtTheProjectLeavesTheSourcesAlone() {
+        val p = project("backend-tree-dot", CppOptions(layout = CppLayout.TREE, outDir = "."))
+        val sources = p.files()
+        assertEquals(0, p.run(check = false).exitCode, p.reportLines.joinToString("\n"))
+        assertTrue(sources.all { it in p.files() })
+        assertTrue("demo/pilot/proto.kira.cxx" in p.files())
+        assertEquals(0, p.run(check = true).exitCode, p.outLines.joinToString("\n"))
+    }
+
+    @Test
+    fun aSharedRuntimeDirKeepsTheUsersOwnFilesAndStillFlagsRuntimeShapedOnes() {
+        val p = project("backend-rt-shared", CppOptions(runtimeDir = "."))
+        PlumbingTestSupport.write(p.root, "kira/NOTES.md", "mine\n")
+        assertEquals(0, p.run(check = false).exitCode, p.reportLines.joinToString("\n"))
+        assertEquals("mine\n", Files.readString(p.root.resolve("kira/NOTES.md")))
+        assertEquals(0, p.run(check = true).exitCode, p.outLines.joinToString("\n"))
+
+        PlumbingTestSupport.write(p.root, "kira/old.hxx", "// an older runtime's file\n")
+        val blocked = p.run(check = false)
+        assertEquals(1, blocked.exitCode)
+        assertTrue(p.reportLines.any { it.contains("kira/old.hxx") && it.contains("not recorded") }, p.reportLines.toString())
+        assertTrue(Files.exists(p.root.resolve("kira/NOTES.md")))
+    }
+
+    @Test
+    fun aManifestEntryOutsideTheTreeIsIgnoredNeverDeleted() {
+        val p = project("backend-escape")
+        assertEquals(0, p.run(check = false).exitCode)
+        val outside = p.root.parent.resolve("backend-escape-outside.txt")
+        Files.writeString(outside, "not yours\n")
+        val inside = PlumbingTestSupport.write(p.root, "src/keep.txt", "not yours either\n")
+        try {
+            val sha = CppGenManifest.sha256("not yours\n".toByteArray())
+            val manifest = p.root.resolve("kira.gen.manifest")
+            Files.writeString(
+                manifest,
+                Files.readString(manifest) +
+                    "$sha  ../backend-escape-outside.txt\n" +
+                    "$sha  ${outside.toString().replace('\\', '/')}\n" +
+                    "$sha  /backend-escape-outside.txt\n" +
+                    "${CppGenManifest.sha256("not yours either\n".toByteArray())}  src/../src/keep.txt\n",
+            )
+            val write = p.run(check = false)
+            assertEquals(0, write.exitCode, p.reportLines.joinToString("\n"))
+            assertEquals(4, write.diagnostics.count { it.code == KiraCppBackend.MANIFEST_ENTRY_CODE && !it.isError })
+            assertEquals(emptyList(), write.removed)
+            assertTrue(Files.exists(outside), "a manifest entry never reaches outside the tree")
+            assertTrue(Files.exists(inside), "a manifest entry never climbs through ..")
+            assertFalse(Files.readString(manifest).contains(".."), "the rewritten manifest is clean")
+        } finally {
+            Files.deleteIfExists(outside)
+        }
+    }
+
+    @Test
+    fun aCopiedProjectGeneratesIntoItsOwnTreeAndNeverTouchesTheOriginals() {
+        val a = project("backend-copy/a/proj")
+        val write = runWithOut(a, "../gen", check = false)
+        assertEquals(0, write.exitCode, a.reportLines.joinToString("\n"))
+        val aGen = a.root.parent.resolve("gen")
+        val aFiles = PlumbingTestSupport.listFiles(aGen)
+        assertTrue("kira.gen.manifest" in aFiles && "demo/pilot/proto.kira.hxx" in aFiles, aFiles.toString())
+        val entries = CppGenManifest.parse(Files.readString(aGen.resolve("kira.gen.manifest")))!!.entries.map { it.path }
+        assertTrue(entries.all { CppGenManifest.isRelativeInside(it) }, "relative to the manifest, never absolute: $entries")
+        assertTrue("demo/pilot/proto.kira.hxx" in entries, entries.toString())
+        assertEquals(0, runWithOut(a, "../gen", check = true).exitCode, a.outLines.joinToString("\n"))
+
+        // Copy the whole parent (proj and gen) and regenerate the copy: the original tree is not its business.
+        val bParent = a.root.parent.parent.resolve("b")
+        bParent.toFile().deleteRecursively()
+        Files.walk(a.root.parent).use { stream ->
+            stream.forEach { source ->
+                val target = bParent.resolve(a.root.parent.relativize(source))
+                if (Files.isDirectory(source)) Files.createDirectories(target) else Files.copy(source, target)
+            }
+        }
+        val bRoot = bParent.resolve("proj")
+        val bUnit = PlumbingTestSupport.compilationUnit(
+            listOf("src/pilot/proto.kira", "lib/text.kira").associate { bRoot.resolve(it) to Files.readString(bRoot.resolve(it)) }
+        )
+        val b = Project(bRoot, bUnit, a.manifest, bRoot.resolve("stdlib/cpp"))
+        val bCheck = runWithOut(b, "../gen", check = true)
+        assertEquals(0, bCheck.exitCode, b.outLines.joinToString("\n"))
+        val bWrite = runWithOut(b, "../gen", check = false)
+        assertEquals(0, bWrite.exitCode)
+        assertEquals(emptyList(), bWrite.removed)
+        assertEquals(aFiles, PlumbingTestSupport.listFiles(aGen), "the original's gen/ is intact")
+        assertEquals(aFiles, PlumbingTestSupport.listFiles(bParent.resolve("gen")))
+    }
+
+    @Test
+    fun aRuntimeDirThatLeavesTheProjectIsAnErrorAndNothingIsWritten() {
+        val p = project("backend-rt-outside/proj", CppOptions(runtimeDir = "../lib"))
+        val before = p.files()
+        val result = p.run(check = false)
+        assertEquals(1, result.exitCode)
+        val outside = result.diagnostics.filter { it.code == KiraCppBackend.OUTSIDE_TREE_CODE }
+        assertEquals(1, outside.size, result.diagnostics.toString())
+        assertTrue(outside.single().message.contains("runtimeDir '../lib'"), outside.single().message)
+        assertEquals(before, p.files())
+        assertFalse(Files.exists(p.root.parent.resolve("lib")))
     }
 }

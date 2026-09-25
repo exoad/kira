@@ -233,4 +233,25 @@ class CppModuleLayoutTest {
         assertTrue(diagnostics.any { it.code == "cpp.namespace-unused" && it.severity == CppSeverity.WARNING })
         assertTrue(diagnostics.any { it.code == "cpp.namespace-invalid" && it.isError })
     }
+
+    @Test
+    fun aMacroSegmentIsEscapedAndAManifestMacroIsAnError() {
+        val modules = listOf("linux", "errno", "unix", "EOF", "INFINITE").map {
+            CppModuleRef("app:$it", root.resolve("app/$it.kira"))
+        }
+        val layout = CppModuleLayout(CppOptions(), root, modules)
+        assertEquals(listOf("linux_", "errno_", "unix_", "EOF_", "INFINITE_"), modules.map { layout.namespaceFor(it.uri) })
+        assertEquals(emptyList(), layout.checkCollisions().filter { it.isError })
+        assertEquals("kira::errno_", CppModuleLayout(CppOptions(), root, emptyList()).namespaceFor("kira:errno"))
+
+        val spelled = CppModuleLayout(
+            CppOptions(namespaces = mapOf("firmware:pilot.src.proto" to "errno", "firmware:pilot.src.scan" to "bibo::linux")),
+            root, listOf(proto, scan),
+        )
+        val errors = spelled.checkCollisions().filter { it.isError }
+        assertEquals(2, errors.size, errors.toString())
+        assertTrue(errors.all { it.code == "cpp.namespace-invalid" && it.message.contains("macro") }, errors.toString())
+        assertNull(spelled.namespaceProblem("firmware:pilot.src.proto", "proto"))
+        assertTrue(spelled.namespaceProblem("firmware:pilot.src.proto", "EOF")!!.contains("EOF"))
+    }
 }

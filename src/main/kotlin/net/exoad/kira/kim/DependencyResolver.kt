@@ -106,10 +106,12 @@ object SourceGlob {
      * A path glob against a `/`-separated path relative to the project root.
      * A pattern that names a directory matches everything beneath it, so
      * `build` excludes `build/x/y.kira` and `** /build` (no space) excludes
-     * every `build` directory.
+     * every `build` directory. A leading `./` or `/` means the project root,
+     * which is where every pattern is anchored anyway, so `./build` and
+     * `/build` are `build`.
      */
     fun matchesPath(pattern: String, relativePath: String): Boolean {
-        val normalizedPattern = pattern.replace('\\', '/').trimEnd('/')
+        val normalizedPattern = normalizePathPattern(pattern)
         if (normalizedPattern.isEmpty()) {
             return false
         }
@@ -121,6 +123,19 @@ object SourceGlob {
             }
         }
         return false
+    }
+
+    /** Forward slashes, no trailing slash, and no `./` or `/` anchoring the root: `.//./build/` is `build`. */
+    fun normalizePathPattern(pattern: String): String {
+        var p = pattern.replace('\\', '/').trimEnd('/')
+        while (true) {
+            p = when {
+                p.startsWith("./") -> p.substring(2)
+                p.startsWith("/") -> p.substring(1)
+                p == "." -> ""
+                else -> return p
+            }
+        }
     }
 }
 

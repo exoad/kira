@@ -62,6 +62,18 @@ class CppNames {
         fun escapeKeyword(name: String): String = if (isKeyword(name)) "${name}_" else name
 
         /**
+         * A namespace segment derived from a module URI: a keyword or an
+         * object-like macro gets the trailing underscore (`new_`, `linux_`,
+         * `errno_`). `namespace errno {` is legal to the compiler that wrote
+         * it and unnameable to every caller that includes `<cerrno>`, and
+         * `linux` is `1` under `-std=gnu++20`, so a derived namespace never
+         * spells one; a manifest override that does is an error instead.
+         */
+        fun escapeNamespaceSegment(name: String): String {
+            return if (isKeyword(name) || isObjectLikeMacro(name)) "${name}_" else name
+        }
+
+        /**
          * D35: [name] is an object-like macro in `<windows.h>` (and what it
          * pulls in), in a common C or POSIX header, or a macro the compiler or
          * every Windows build predefines (`_WIN32`, `unix`, `STRICT`), by

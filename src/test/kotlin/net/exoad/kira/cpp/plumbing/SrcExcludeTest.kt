@@ -76,6 +76,25 @@ class SrcExcludeTest {
         assertFalse(SourceGlob.matchesPath("*.kira", "src/top.kira"))
         assertTrue(SourceGlob.matchesPath("**/*.kira", "src/top.kira"))
         assertTrue(SourceGlob.matchesPath("{build,out}", "out/x.kira"))
+        // `./` and `/` anchor the root, where every pattern is anchored anyway
+        assertTrue(SourceGlob.matchesPath("./build", "build/x.kira"))
+        assertTrue(SourceGlob.matchesPath("/build", "build/x.kira"))
+        assertTrue(SourceGlob.matchesPath("./build/", "build/x.kira"))
+        assertTrue(SourceGlob.matchesPath(".\\viewer\\assets", "viewer/assets/car.kira"))
+        assertFalse(SourceGlob.matchesPath("./build", "src/build/x.kira"))
+        assertFalse(SourceGlob.matchesPath("./", "src/x.kira"))
+        assertTrue(SourceGlob.matchesPath("./{a/b,c}/**", "a/b/x.kira"))
+    }
+
+    @Test
+    fun aDotSlashExcludeIsTheSameExclude() {
+        val root = PlumbingTestSupport.tempProject("srcexclude-dotslash")
+        PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")
+        PlumbingTestSupport.write(root, "build/gen.kira", "module \"app:gen\"\n")
+        val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = ".", srcExclude = listOf("./build"))
+        val sources = DependencyResolver.resolveProjectSources(manifest, root)
+            .map { root.relativize(java.nio.file.Path.of(it)).toString().replace('\\', '/') }
+        assertEquals(listOf("src/app/main.kira"), sources)
     }
 
     @Test
