@@ -204,6 +204,9 @@ class CppPlacements {
     private val byModule = IdentityHashMap<ModuleSymbol, CppPlacement>()
 
     fun of(owner: ModuleSymbol, make: () -> CppPlacement): CppPlacement = byModule[owner] ?: make().also { byModule[owner] = it }
+
+    /** The placement of [owner] if one was built already, whichever module's emission built it. */
+    fun existing(owner: ModuleSymbol): CppPlacement? = byModule[owner]
 }
 
 /**
@@ -211,8 +214,9 @@ class CppPlacements {
  * typed program, the type speller and the parts (design 4.4).
  *
  * One instance serves one module ([symbol], parsed from [module]). Diagnostics accumulate in
- * [diagnostics]; includes a part asks for accumulate in [headerIncludes] and [sourceIncludes],
- * and the declaration emitter writes them after the runtime and module includes.
+ * [diagnostics], which also carries what the module's [placement] found; includes a part asks
+ * for accumulate in [headerIncludes] and [sourceIncludes], and the declaration emitter writes
+ * them after the runtime and module includes.
  */
 class CppEmitContextImpl(
     val program: TypedProgram,
@@ -230,9 +234,18 @@ class CppEmitContextImpl(
     override val names: CppNames = CppNames()
     val model: TypedModel get() = program.model
     val speller: CppTypeSpeller = CppTypeSpeller(this)
-    val diagnostics: MutableList<CppDiagnostic> = mutableListOf()
+    private val reported: MutableList<CppDiagnostic> = mutableListOf()
     val headerIncludes: LinkedHashSet<String> = LinkedHashSet()
     val sourceIncludes: LinkedHashSet<String> = LinkedHashSet()
+
+    /**
+     * What this module's emission reported, then what its [placement] found (a cycle, design
+     * 4.2). The placement is one per module for the whole run, and another module's
+     * [qualified] may build it before this module is emitted, so its findings are read from
+     * it here rather than written into whichever context first asked for it.
+     */
+    val diagnostics: List<CppDiagnostic>
+        get() = reported + placements.existing(symbol)?.diagnostics.orEmpty()
 
     /** Where each of this module's declarations goes (design 4.2), and the order they go in. */
     val placement: CppPlacement by lazy { placements.of(symbol) { CppPlacement(this) } }
@@ -311,8 +324,18 @@ class CppEmitContextImpl(
     }
 
     private fun report(node: ASTNode, code: String, message: String, severity: CppSeverity) {
+        report(diagnosticAt(node, code, message, severity))
+    }
+
+    /** Adds [d] to this module's [diagnostics]. */
+    fun report(d: CppDiagnostic) {
+        reported += d
+    }
+
+    /** A diagnostic placed at [node] (its file and line), not yet reported. */
+    fun diagnosticAt(node: ASTNode, code: String, message: String, severity: CppSeverity = CppSeverity.ERROR): CppDiagnostic {
         val where = program.locate(node)
-        diagnostics += CppDiagnostic(code, message, severity, where?.first?.file ?: module.file, where?.second)
+        return CppDiagnostic(code, message, severity, where?.first?.file ?: module.file, where?.second)
     }
 
     override fun lineDirective(node: ASTNode): String? {
@@ -455,10 +478,14 @@ class CppEmitContextImpl(
      * - a hex or binary literal that exceeds a signed target wraps in Kira as in C
      *   (`0xFFFFFFFFFFFFFFFF` is `-1` for `Int64`), which C++ rejects under `-Werror`
      *   (`-Woverflow`, `-Wsign-conversion`), so it is spelled `static_cast<T>(0x...u)`;
-     * - `Int64`'s minimum has no decimal literal, so it is `std::numeric_limits<...>::min()`.
+     * - `Int64`'s minimum has no decimal literal, and `Int32`'s (`-2147483648`) negates a
+     *   `long long`, so each is `std::numeric_limits<...>::min()` (R2).
      */
     fun integerText(e: IntegerLiteral, prim: Prim?): String {
         val value = e.value
+        if (prim == Prim.INT32 && value == Int.MIN_VALUE.toLong()) {
+            return "std::numeric_limits<std::int32_t>::min()"
+        }
         val raw = rawNumberText(e)
         if (raw != null) {
             val negative = raw.startsWith("-")

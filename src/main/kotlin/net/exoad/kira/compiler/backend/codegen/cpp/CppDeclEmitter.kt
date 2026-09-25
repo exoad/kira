@@ -42,6 +42,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.source.SourcePosition
+import java.math.BigInteger
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.math.abs
@@ -861,8 +862,18 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return type to false
     }
 
-    /** The integer widths R2 spells `T{lit}`: every one but Int32 (bare) and UInt32 (`u`). */
-    private fun braced(text: String, prim: Prim?, typed: Boolean): String {
+    /**
+     * The integer widths R2 spells `T{lit}`: every one but Int32 (bare) and UInt32 (`u`). The
+     * minimum of Int32 or Int64, which no literal of the type spells (`-2147483648` negates a
+     * `long long`, which std::optional's converting constructor narrows: C4244 under MSVC `/W4
+     * /WX` for `Maybe<Int32>`; Int64's has no decimal literal at all), is
+     * `std::numeric_limits<T>::min()` wherever it appears (R2). `-128` and `-32768` are `int`
+     * expressions that fit, so `std::int8_t{-128}` stays. [value] is the literal's signed value.
+     */
+    private fun braced(text: String, prim: Prim?, typed: Boolean, value: BigInteger): String {
+        if (prim != null && (prim == Prim.INT32 || prim == Prim.INT64) && value == prim.minValue) {
+            return "std::numeric_limits<${ctx.speller.scalarName(prim)}>::min()"
+        }
         val widthNeedsIt = prim != null && prim.isInteger && prim != Prim.INT32 && prim != Prim.UINT32
         if (!typed || !widthNeedsIt || text.startsWith("static_cast") || text.startsWith("std::numeric_limits")) {
             return text
@@ -874,6 +885,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val (target, typed) = literalTarget(type)
         val prim = target.prim
         val sign = if (negative) "-" else ""
+        val value = BigInteger.valueOf(e.value).let { if (negative) it.negate() else it }
         val text = when (prim) {
             Prim.FLOAT32 -> sign + floatText(e.value.toDouble()) + "f"
             Prim.FLOAT64 -> sign + floatText(e.value.toDouble())
@@ -881,7 +893,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             Prim.UINT64 -> sign + ctx.integerText(e, prim) + (if (e.value < 0) "u" else "")
             else -> sign + ctx.integerText(e, prim)
         }
-        return braced(text, prim, typed)
+        return braced(text, prim, typed, value)
     }
 
     private fun floatLiteral(e: FloatLiteral, type: KType, negative: Boolean = false): String {
@@ -902,9 +914,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                     Prim.FLOAT64 -> floatText(v.value.toDouble())
                     Prim.UINT32 -> v.value.toString() + "u"
                     Prim.UINT64 -> if (v.bits < 0) v.value.toString() + "u" else v.value.toString()
-                    else -> if (v.value == java.math.BigInteger.valueOf(Long.MIN_VALUE)) "std::numeric_limits<std::int64_t>::min()" else v.value.toString()
+                    else -> v.value.toString()
                 }
-                braced(text, prim, typed)
+                braced(text, prim, typed, v.value)
             }
             is ConstValue.FloatConst -> if ((target.prim ?: v.prim) == Prim.FLOAT32) floatText(v.value) + "f" else floatText(v.value)
             is ConstValue.BoolConst -> v.value.toString()

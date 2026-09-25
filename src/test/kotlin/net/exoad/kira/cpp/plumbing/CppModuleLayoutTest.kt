@@ -131,6 +131,14 @@ class CppModuleLayoutTest {
     fun kiraModulesMapToKiraNamespace() {
         val layout = CppModuleLayout(CppOptions(), root, listOf(math))
         assertEquals("kira::math", layout.namespaceFor("kira:math"))
+        // Design 4.3: a kira:x module goes in kira::x. Nested under kira::, a segment named like a
+        // C library global (`time`, `sync`, `exit`) meets nothing, so only a keyword or an
+        // object-like macro is escaped there, unlike a top-level `namespace time_`.
+        listOf("time", "sync", "os", "exit", "log", "clone", "sqrtf").forEach {
+            assertEquals("kira::$it", layout.namespaceFor("kira:$it"))
+        }
+        assertEquals("kira::new_", layout.namespaceFor("kira:new"))
+        assertEquals("kira::linux_", layout.namespaceFor("kira:linux"))
     }
 
     @Test

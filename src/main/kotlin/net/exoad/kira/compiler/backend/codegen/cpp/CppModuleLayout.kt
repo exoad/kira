@@ -238,7 +238,8 @@ class CppModuleLayout(
         fun namespaceOf(namespaces: Map<String, String>, uri: String): String {
             SourceGlob.lookupUri(namespaces, uri)?.let { return it }
             if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
-                return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeNamespaceSegment(it) }
+                // Design 4.3: `kira:time` is `kira::time`. Nested under kira:: a segment meets no C library global.
+                return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeNestedSegment(it) }
             }
             return CppNames.escapeNamespaceSegment(uriSegments(uri).last())
         }

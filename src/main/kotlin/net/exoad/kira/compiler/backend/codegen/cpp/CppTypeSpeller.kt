@@ -169,11 +169,11 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         KType.Void -> "void"
         KType.Never -> "void"
         KType.NullT -> {
-            ctx.diagnostics += CppDiagnostic(INTERNAL_CODE, "the type Null has no C++ spelling of its own", file = ctx.module.file)
+            ctx.report(CppDiagnostic(INTERNAL_CODE, "the type Null has no C++ spelling of its own", file = ctx.module.file))
             "/* Null */"
         }
         KType.Error -> {
-            ctx.diagnostics += CppDiagnostic(INTERNAL_CODE, "an unresolved type reached the C++ emitter", file = ctx.module.file)
+            ctx.report(CppDiagnostic(INTERNAL_CODE, "an unresolved type reached the C++ emitter", file = ctx.module.file))
             "/* error */"
         }
         is KType.Param -> ctx.names.escape(t.sym.name)
@@ -276,11 +276,11 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
                 Builtins.tupleArity(sym.name)?.let { n ->
                     return if (n == 0) "kira::Tuple0" else "kira::Tuple$n<${a.joinToString(", ")}>"
                 }
-                ctx.diagnostics += CppDiagnostic(
+                ctx.report(CppDiagnostic(
                     CppModuleEmitterFactory.UNSUPPORTED_CODE,
                     "the type ${t.display()} is not lowered yet",
                     file = ctx.module.file,
-                )
+                ))
                 "/* ${t.display()} */"
             }
         }
