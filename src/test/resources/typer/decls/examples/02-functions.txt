@@ -1,0 +1,6 @@
+module app:greetings  profile=HOSTED ns=greetings imports=[app:utils]
+  fn greeting: () Str  body
+module app:main  profile=HOSTED ns=main imports=[app:greetings]
+  fn main: () Void  body
+module app:utils  profile=HOSTED ns=utils imports=[]
+  fn normalize: (text: Str) Str  body

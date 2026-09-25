@@ -156,11 +156,15 @@ object TypedModelDumper {
         is Place.Index -> "Index(${placeText(p.container)}, ${p.kind})"
     }
 
-    /** Identifiers that name a declaration rather than use one; the expression dump skips them. */
+    /**
+     * Identifiers that are not expressions: a declaration's own name, and the name inside a
+     * Type node. The expression dump skips them.
+     */
     private fun declarationNames(root: ASTNode): IdentityHashMap<ASTNode, Boolean> {
         val names = IdentityHashMap<ASTNode, Boolean>()
         AstTree.walk(root) { node ->
             when (node) {
+                is Type -> names[node.identifier] = true
                 is Decl -> names[node.name] = true
                 is FunctionDeclParameterExpr -> names[node.name] = true
                 is ForIterationExpr -> names[node.initializer] = true

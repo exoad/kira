@@ -1,0 +1,31 @@
+module "fixture:negative"
+
+// Each declaration below must give a diagnostic; the golden records code, place and message.
+
+// An unknown type.
+pub value: Missing = 1
+
+// An alias cycle, and an alias that only reaches one.
+pub alias Ping as Pong
+pub alias Pong as Ping
+pub alias Echo as Ping
+
+// A duplicate declaration.
+pub fx twice: () Void { }
+pub fx twice: () Void { }
+
+// An enum value of the wrong type: 300 is not an Int8.
+pub enum Small: Int8 {
+    FINE = 1,
+    BIG = 300
+}
+
+// A class inheriting two classes.
+pub class First { }
+pub class Second { }
+pub class Both: First, Second { }
+
+// A superclass after a trait, and a trait extending a class.
+pub trait Marker { }
+pub class Late: Marker, First { }
+pub trait Wrong: First { }

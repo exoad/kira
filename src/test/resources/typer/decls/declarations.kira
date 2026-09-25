@@ -1,0 +1,130 @@
+module "fixture:declarations"
+
+// Phase A/B coverage in today's syntax: every declaration kind, visibility, markers, generics
+// with bounds, aliases (generic and nested), enums with implied and explicit values, constant
+// folding, trait flattening with default bodies, and overrides through a superclass and a trait.
+
+pub LIMIT: Int32 = 10
+pub MASK: UInt32 = 4294967295
+pub SHIFTED: Int64 = 1 << 40
+pub HALF: Float32 = 0.5
+pub SCALE: Float64 = HALF_D * 4.0
+HALF_D: Float64 = 0.25
+pub GREETING: Str = "hello, " + "kira"
+pub READY: Bool = LIMIT > 5 && !false
+pub WIDTH: Size = 32
+pub SMALL: Int8 = -128
+pub PRIMES: Arr<Int32> = [2, 3, 5, 7]
+pub FIXED: Arr<UInt8, LEN> = [1, 2, 3, 4]
+LEN: Size = 4
+pub DEFAULT_MODE: Mode = Mode.IDLE
+pub mut counter: Int32 = 0
+pub nowhere: Maybe<Int32> = null
+
+pub enum Mode {
+    IDLE,
+    RUN = 5,
+    STOP
+}
+
+pub enum Level: Str {
+    LOW = "low",
+    HIGH = "high"
+}
+
+pub enum Gain: Float32 {
+    UNIT = 1,
+    HALF_GAIN = 0.5
+}
+
+pub alias Id as Int64
+pub alias Pair<A, B> as Tuple2<A, B>
+pub alias Named as Pair<Str, Id>
+pub alias Callback as Fx<Tuple2<Str, Int32>, Bool>
+pub alias Matrix as Arr<Arr<Float64>>
+
+pub trait Speaker {
+    pub fx speak: () Str
+    pub fx loudness: () Int32 {
+        return 1
+    }
+}
+
+pub trait Shouter: Speaker {
+    pub fx shout: () Str
+    pub fx loudness: () Int32 {
+        return 10
+    }
+}
+
+pub trait Keyed<K> {
+    pub fx key: () K
+}
+
+pub class Animal {
+    require pub name: Str
+    pub mut age: Int32 = 0
+
+    pub fx describe: () Str {
+        return name
+    }
+
+    pub mut fx birthday: () Void {
+        age = age + 1
+    }
+}
+
+pub class Dog: Animal, Shouter, Keyed<Str> {
+    require pub breed: Str
+
+    pub fx describe: () Str {
+        return breed
+    }
+
+    pub fx speak: () Str {
+        return "woof"
+    }
+
+    pub fx shout: () Str {
+        return "WOOF"
+    }
+
+    pub fx key: () Str {
+        return name
+    }
+}
+
+pub class Box<T: Speaker> {
+    require pub value: T
+
+    pub fx get: () T {
+        return value
+    }
+}
+
+fx pick<T>: (a: T, b: T, first: Bool) T {
+    if first {
+        return a
+    }
+    return b
+}
+
+pub fx bump: (mut value: Int32, by: Int32) Void {
+    value = value + by
+}
+
+pub fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    return f(x)
+}
+
+pub fx lookup: (names: Map<Str, List<Id>>, key: Str) Maybe<List<Id>> {
+    return names.get(key)
+}
+
+pub @_magic fx intrinsicClock: () Int64;
+
+pub @_opaque class Handle
+
+fx @op_add: (a: Animal, b: Animal) Animal {
+    return a
+}

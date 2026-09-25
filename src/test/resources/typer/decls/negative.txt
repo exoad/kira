@@ -1,0 +1,25 @@
+module fixture:negative  profile=HOSTED ns=negative imports=[]
+  global value: <error>  pub const init=1
+  alias Ping = <error>  pub
+  alias Pong = <error>  pub
+  alias Echo = <error>  pub
+  fn twice: () Void  pub body
+  fn twice: () Void  pub body
+  enum Small: Int8  pub
+    entry FINE = 1:Int8  #0
+    entry BIG = ?  #1
+  class First  pub subclassed
+  class Second  pub
+  class Both : First  pub
+  trait Marker  pub
+    flat []
+  class Late : Marker  pub
+  trait Wrong  pub
+    flat []
+diag error types.type.unknown fixture/negative.kira:6:12  Unknown type 'Missing'.
+diag error types.alias.cycle fixture/negative.kira:9:5  Alias 'Ping' refers to itself (Ping -> Pong -> Ping); an alias is inlined, so it cannot be recursive.
+diag error types.decl.duplicate fixture/negative.kira:15:5  'twice' is already declared in module fixture:negative (line 14).
+diag error types.enum.value fixture/negative.kira:20:11  Small.BIG = 300 does not fit the base type Int8, which holds -128..127.
+diag error types.class.multiple-superclasses fixture/negative.kira:26:24  class Both already inherits from First; it cannot also inherit from Second (single inheritance: the other parents must be traits).
+diag error types.class.superclass-not-first fixture/negative.kira:30:25  The superclass First must come first in Late's parent list; the parents after it are traits.
+diag error types.trait.bad-parent fixture/negative.kira:31:18  trait Wrong can only extend traits; First is not a trait.

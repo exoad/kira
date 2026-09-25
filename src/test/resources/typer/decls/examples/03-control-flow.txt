@@ -1,0 +1,6 @@
+module app:checks  profile=HOSTED ns=checks imports=[]
+  fn parityLabel: (value: Int32) Str  body
+module app:main  profile=HOSTED ns=main imports=[app:ranges, app:checks]
+  fn main: () Void  body
+module app:ranges  profile=HOSTED ns=ranges imports=[]
+  fn sumTo: (limit: Int32) Int32  body

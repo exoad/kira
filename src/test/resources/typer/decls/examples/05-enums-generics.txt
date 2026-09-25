@@ -1,0 +1,11 @@
+module app:box  profile=HOSTED ns=box imports=[]
+  class Box<T>  pub
+    field value: T  pub require #0
+  fn id<T>: (value: T) T  body
+module app:main  profile=HOSTED ns=main imports=[app:status, app:box]
+  fn main: () Void  body
+module app:status  profile=HOSTED ns=status imports=[]
+  enum BuildStatus: Int32  pub
+    entry READY = 0:Int32  #0
+    entry RUNNING = 1:Int32  #1
+    entry DONE = 2:Int32  #2

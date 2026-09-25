@@ -65,6 +65,15 @@ object KiraTyper {
         if (mode == TyperMode.OFF) {
             return program
         }
+        guard(program, "declaration collection") {
+            DeclarationCollector(program, modules).collect()
+        }
+        guard(program, "module graph") {
+            program.graph.link()
+        }
+        guard(program, "signature resolution") {
+            SignatureResolver(program).resolveAll()
+        }
         guard(program, "body typing") {
             bodyTyper.type(program)
         }

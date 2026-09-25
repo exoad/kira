@@ -1,0 +1,40 @@
+module app:animals  profile=HOSTED ns=animals imports=[]
+  trait Speaker
+    fn speak: () Str  pub virtual
+    fn name: () Str  pub virtual
+    flat [Speaker.speak, Speaker.name]
+  trait Noisy : Speaker
+    fn loudness: () Int32  pub virtual
+    flat [Speaker.speak, Speaker.name, Noisy.loudness]
+  class Dog : Noisy
+    field label: Str  pub require #0
+    fn speak: () Str  pub virtual body overrides=Speaker.speak
+    fn name: () Str  pub virtual body overrides=Speaker.name
+    fn loudness: () Int32  pub virtual body overrides=Noisy.loudness
+  class Cat : Speaker
+    field label: Str  pub require #0
+    fn speak: () Str  pub virtual body overrides=Speaker.speak
+    fn name: () Str  pub virtual body overrides=Speaker.name
+  fn announce: (s: Speaker) Void  body
+  fn noiseLevel: (s: Noisy) Int32  body
+module app:main  profile=HOSTED ns=main imports=[app:animals]
+  fn makeDog: () Dog  body
+  fn makeSpeaker: () Speaker  body
+  fn main: () Void  body
+diag warning types.override.missing app/animals.kira:15:9  Dog.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
+diag warning types.override.missing app/animals.kira:19:9  Dog.name replaces Speaker.name; mark it `override` (spec: Inheritance).
+diag warning types.override.missing app/animals.kira:23:9  Dog.loudness replaces Noisy.loudness; mark it `override` (spec: Inheritance).
+diag warning types.override.missing app/animals.kira:31:9  Cat.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
+diag warning types.override.missing app/animals.kira:35:9  Cat.name replaces Speaker.name; mark it `override` (spec: Inheritance).
+diag error types.type.not-visible app/main.kira:5:16  'Dog' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:6:10  'Dog' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:6:16  'Dog' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:10:20  'Speaker' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:11:10  'Cat' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:11:16  'Cat' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:16:10  'Dog' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:17:10  'Cat' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:17:16  'Cat' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:25:8  'Speaker' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:29:11  'Speaker' is declared in app:animals but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:29:21  'Dog' is declared in app:animals but is not pub, so this module cannot use it.

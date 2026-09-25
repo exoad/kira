@@ -1,0 +1,6 @@
+module app:arrays  profile=HOSTED ns=arrays imports=[]
+  fn first: (values: Arr<Int32>) Int32  body
+module app:main  profile=HOSTED ns=main imports=[app:arrays, app:maps]
+  fn main: () Void  body
+module app:maps  profile=HOSTED ns=maps imports=[]
+  fn hasAny: (values: Map<Str, Int32>) Bool  body
