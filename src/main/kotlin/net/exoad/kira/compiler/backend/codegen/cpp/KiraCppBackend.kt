@@ -266,6 +266,7 @@ object KiraCppBackend {
         val planned = mutableListOf<CppPlannedFile>()
         if (diagnostics.none { it.isError }) {
             val emitter = emitterFactory(unit, options)
+            emitter.prepare(layout, version)
             diagnostics += emitter.diagnostics
             sources.forEach { (ref, source) ->
                 val emitted = emitter.emit(source)

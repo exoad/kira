@@ -11,6 +11,7 @@ import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.kim.DependencyResolver
@@ -132,7 +133,9 @@ fun main(args: Array<String>) {
             applyTargetOverride(targetOverride!!)
         }
         if (checkMode && GeneratedProvider.outputMode != GeneratedProvider.OutputTarget.CPP) {
-            Diagnostics.panic("--check is only supported with --target cpp")
+            // A usage error, not a compiler failure: say so and stop, without a stack trace.
+            Diagnostics.Logging.warn("Kira", "--check is only supported with --target cpp")
+            kotlin.system.exitProcess(1)
         }
 
         // Minified + obfuscated output is the default; `build.minify: false`
@@ -323,13 +326,20 @@ fun main(args: Array<String>) {
 
                 GeneratedProvider.OutputTarget.CPP -> {
                     Diagnostics.Logging.info("Kira", if (checkMode) "Checking C++" else "Emitting C++")
-                    val result = KiraCppBackend.run(
-                        unit = compilationUnit,
-                        manifest = manifest,
-                        check = checkMode,
-                        projectRoot = projectRoot,
-                        outDirOverride = outDir,
-                    )
+                    val result = try {
+                        KiraCppBackend.run(
+                            unit = compilationUnit,
+                            manifest = manifest,
+                            check = checkMode,
+                            projectRoot = projectRoot,
+                            outDirOverride = outDir,
+                        )
+                    } catch (e: UnsupportedConstruct) {
+                        // A construct no part lowers yet; the emitter reports these itself,
+                        // this is the belt to that braces (w1-1's note).
+                        Diagnostics.Logging.warn("Kira", e.withTarget("C++").message ?: e.toString())
+                        kotlin.system.exitProcess(1)
+                    }
                     if (result.exitCode != 0) {
                         backendFailures += 1
                     }

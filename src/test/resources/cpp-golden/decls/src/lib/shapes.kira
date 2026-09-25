@@ -1,0 +1,69 @@
+module "lib:shapes"
+
+// Declarations only: every row of design 5.2 that needs no function body.
+// The functions are bodiless on purpose (the driver defines them), so this
+// case proves the declaration emitter by itself: enums, structs, constants,
+// aliases, defaults, placement and includes. Header-only, in the namespace
+// golden::shapes (build.cpp.namespaces), used from another directory by
+// app:panel.
+
+pub enum Kind: Int32 {
+    KIND_DOT = 0,
+    KIND_LINE = 1,
+    KIND_BOX = 2
+}
+
+// A narrow base, and hex entries that keep their spelling.
+pub enum Mask: Int16 {
+    MASK_NONE = 0x00,
+    MASK_LOW = 0x0F,
+    MASK_HIGH = 0xF0
+}
+
+// A Str-based enum: an enum class over the entries' positions.
+pub enum Unit: Str {
+    UNIT_MM = "mm",
+    UNIT_IN = "in"
+}
+
+pub SCALE: Int32 = 100
+pub MAX_POINTS: Size = 8
+pub EPSILON: Float32 = 0.001
+pub HALF: Float64 = 0.5
+pub NAME: Str = "shapes"
+pub TAG: Char = 'S'
+pub SIGNED: Bool = true
+pub BIG: Int64 = 5000000000
+pub MASK_ALL: UInt32 = 0xFFFFFFFF
+pub ORDER: Arr<UInt8, 4> = [0x03, 0x01, 0x02, 0x00]
+pub DELTAS: Arr<Int8, 3> = [-1, 0, 1]
+
+pub alias Outline as Arr<Int32, MAX_POINTS>
+
+// Declared before Point and holding one by value: the header must define
+// Point first, whatever the source order says.
+pub struct Box {
+    require pub origin: Point
+    pub size: Int32 = SCALE
+    pub kind: Kind = Kind.KIND_BOX
+    pub unit: Unit = Unit.UNIT_MM
+    pub label: Str = ""
+    require pub outline: Outline
+
+    pub fx area: () Int32;
+}
+
+pub struct Point {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+
+    pub fx manhattan: () Int32;
+    pub mut fx shift: (dx: Int32, dy: Int32 = 0) Void;
+}
+
+pub mut created: Int32 = 0
+
+pub fx scaled: (v: Int32, by: Int32 = SCALE, unit: Unit = Unit.UNIT_MM) Int32;
+pub fx describe: (b: Box, label: Str = "box") Str;
+pub fx first: (points: Outline) Int32;
+pub fx total: (points: View<Int32>, mut sum: Int32) Bool;

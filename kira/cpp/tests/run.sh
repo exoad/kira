@@ -25,7 +25,8 @@ root=$(cd "$here/../../.." && pwd)
 out="$root/build/cpp-tests/run"
 mkdir -p "$out"
 
-WARN=(-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror)
+# -ffp-contract=off is D28: generated code is pinned unfused, and aarch64 g++ fuses by default.
+WARN=(-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off)
 PANICS=(div mod overflow shl shr index view slice list unwrap rc substring strat result assert)
 
 passes=0
