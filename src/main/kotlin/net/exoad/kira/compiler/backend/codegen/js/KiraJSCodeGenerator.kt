@@ -1471,11 +1471,22 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndented("const ")
         buffer.append(enumDecl.name.value)
         buffer.append(" = Object.freeze({ ")
+        // Explicit values are honoured; the rest count on from the previous
+        // member (same rule as the C enum), and Str / Float bases carry
+        // their literals.
+        val values = enumDecl.memberValues()
         enumDecl.members.forEachIndexed { index, member ->
             if (index > 0) buffer.append(", ")
             buffer.append(member.name.value)
             buffer.append(": ")
-            buffer.append(index)
+            when (val value = values[index]) {
+                is String -> {
+                    buffer.append("\"")
+                    buffer.append(escapeJsString(value))
+                    buffer.append("\"")
+                }
+                else -> buffer.append(value.toString())
+            }
         }
         buffer.appendLine(" });")
     }

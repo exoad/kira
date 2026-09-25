@@ -189,6 +189,66 @@ class ParitySuiteTest {
         }
     }
 
+    // --- enums -----------------------------------------------------------------
+
+    @Test
+    fun enumExplicitValuesAreHonoured() {
+        // `DRIVE = 7` used to print 1: values were dropped and members renumbered.
+        assertBothPrint("0\n7\n8\n-2\nbrake\n") {
+            """
+            pub enum Mode {
+                IDLE,
+                DRIVE = 7,
+                BRAKE,
+                REVERSE = -2
+            }
+
+            fx main: () Void {
+                trace(Mode.IDLE)
+                trace(Mode.DRIVE)
+                m: Mode = Mode.BRAKE
+                trace(m)
+                trace(Mode.REVERSE)
+                if m == Mode.BRAKE {
+                    trace("brake")
+                }
+            }
+            """
+        }
+    }
+
+    @Test
+    fun enumsWithBaseTypes() {
+        assertBothPrint("5\nhigh\n100\nyes\n") {
+            """
+            pub enum Status: Int32 {
+                PENDING = 0,
+                ACTIVE = 5
+            }
+
+            pub enum Priority: Str {
+                LOW = "low",
+                HIGH = "high"
+            }
+
+            pub enum Threshold: Float64 {
+                MIN = 0.5,
+                MAX = 100.0
+            }
+
+            fx main: () Void {
+                trace(Status.ACTIVE)
+                p: Priority = Priority.HIGH
+                trace(p)
+                trace(Threshold.MAX)
+                if p == Priority.HIGH {
+                    trace("yes")
+                }
+            }
+            """
+        }
+    }
+
     // --- bare return -----------------------------------------------------------
 
     @Test

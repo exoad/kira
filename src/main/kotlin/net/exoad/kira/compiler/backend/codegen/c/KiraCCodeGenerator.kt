@@ -1826,6 +1826,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         requiredIncludes.clear()
         knownValueTypes.clear()
         enumTypeNames.clear()
+        enumBaseTypes.clear()
         methodReturnTypes.clear()
         methodsBySimpleName.clear()
         fieldTypes.clear()
@@ -1877,6 +1878,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 knownValueTypes[expr.value] ?: fieldTypes[expr.value]
             }
             is MemberAccessExpr -> {
+                // `Mode.DRIVE` is a value of the enum type.
+                val origin = expr.origin
+                if (origin is Identifier && origin.value in enumTypeNames) {
+                    return origin.value
+                }
                 // nested.field -- look up field type if known
                 val memberName = (expr.member as? Identifier)?.value
                 memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName]
@@ -2279,6 +2285,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 }
             }
             is MemberAccessExpr -> {
+                val origin = expr.origin
+                if (origin is Identifier && origin.value in enumTypeNames) {
+                    // `Mode.DRIVE` prints as the enum's base type.
+                    return formatForTypeName(origin.value)
+                }
                 val memberName = (expr.member as? Identifier)?.value
                 formatForTypeName(memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName])
             }
@@ -2293,6 +2304,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun formatForTypeName(typeName: String?): String {
+        // An enum prints as its base type: %d for the usual Int32 enum,
+        // %s for `enum Priority: Str`.
+        enumBaseTypes[typeName]?.let { base ->
+            if (base != typeName) return formatForTypeName(base)
+        }
         return when (typeName) {
             null -> "%d"
             "Str", "String" -> "%s"
@@ -3148,8 +3164,37 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         val typeName = enumDecl.name.value
         val prefix = toScreamingSnake(typeName)
+        val baseType = enumDecl.baseTypeName()
         userSymbols.add(typeName)
         enumTypeNames.add(typeName)
+        enumBaseTypes[typeName] = baseType
+        val values = enumDecl.memberValues()
+
+        if (baseType !in enumIntegerBases) {
+            // A C enum holds ints only. A Str / Float enum is an alias of its
+            // base type with one file-scope constant per member.
+            val cBase = mapTypeName(baseType)
+            appendIndented("typedef ")
+            buffer.append(cBase)
+            buffer.append(" ")
+            buffer.append(typeName)
+            buffer.appendLine(";")
+            enumDecl.members.forEach { member ->
+                val memberName = member.name.value
+                userSymbols.add("${prefix}_$memberName")
+                appendIndented("static const ")
+                buffer.append(cBase)
+                buffer.append(" ")
+                buffer.append(prefix)
+                buffer.append("_")
+                buffer.append(memberName)
+                buffer.append(" = ")
+                member.value!!.accept(this)
+                buffer.appendLine(";")
+            }
+            buffer.appendLine()
+            return
+        }
 
         appendIndented("typedef enum ")
         buffer.append(typeName)
@@ -3163,6 +3208,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append(prefix)
             buffer.append("_")
             buffer.append(memberName)
+            // Explicit values are written out; C numbers the rest from the
+            // previous enumerator exactly as EnumDecl.memberValues does.
+            if (member.value != null) {
+                buffer.append(" = ")
+                buffer.append(values[index])
+            }
             if (index < enumDecl.members.size - 1) {
                 buffer.append(",")
             }
@@ -3174,6 +3225,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine(";")
         buffer.appendLine()
     }
+
+    private val enumIntegerBases = setOf("Int8", "Int16", "Int32", "Int64", "Int")
+
+    /** Enum type name -> its base type (`Int32` when undeclared). */
+    private val enumBaseTypes = mutableMapOf<String, String>()
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         // Traits are lowered structurally in emitTraitStructs / emitTraitTables.

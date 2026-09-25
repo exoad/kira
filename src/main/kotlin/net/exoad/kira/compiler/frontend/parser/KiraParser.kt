@@ -1083,6 +1083,47 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(AssignmentExpr(identifier, value), origin)
     }
 
+    /** The base types an enum may declare (`enum Name: Base { ... }`), per the spec. */
+    private val enumIntegerBaseTypes = setOf("Int8", "Int16", "Int32", "Int64", "Int")
+    private val enumFloatBaseTypes = setOf("Float32", "Float64", "Float")
+    private val enumBaseTypes = enumIntegerBaseTypes + enumFloatBaseTypes + "Str"
+
+    /**
+     * Every member's value must fit the enum's base type. A declared base
+     * wins; without one the first explicit value decides (a string makes it
+     * a Str enum, a float a Float64 enum, otherwise Int32) -- see
+     * [EnumDecl.baseTypeName]. Only integer enums may leave values implicit.
+     */
+    private fun validateEnumMembers(enumName: Identifier, declaredBase: String?, members: List<EnumMemberExpr>) {
+        val base = declaredBase ?: EnumDecl.inferBaseTypeName(members)
+        val isInteger = base in enumIntegerBaseTypes
+        val isFloat = base in enumFloatBaseTypes
+        members.forEach { member ->
+            val value = member.value
+            val location = context.astOrigins[member] ?: SourcePosition.UNKNOWN
+            val fits = when {
+                value == null -> isInteger
+                isInteger -> value is IntegerLiteral
+                isFloat -> value is FloatLiteral || value is IntegerLiteral
+                else -> value is StringLiteral
+            }
+            if (fits) return@forEach
+            val message = if (value == null) {
+                "Enum member '${member.name.value}' needs an explicit value: '${enumName.value}' is a $base enum, which has no implied numbering."
+            } else {
+                "Enum member '${member.name.value}' must be a $base literal, like the rest of '${enumName.value}'" +
+                    if (declaredBase == null) " -- declare a base type (`enum ${enumName.value}: Str {`) to say which kind you mean." else "."
+            }
+            Diagnostics.panic(
+                "KiraParser::parseEnumDecl",
+                message,
+                location = location,
+                selectorLength = member.name.value.length,
+                context = context
+            )
+        }
+    }
+
     fun parseEnumMemberExpr(): EnumMemberExpr {
         val origin = here()
         val name = parseIdentifier()
@@ -1090,11 +1131,21 @@ class KiraParser(private val context: SourceContext) {
         if (at(Token.Type.S_EQUAL)) {
             expectThenAdvance(Token.Type.S_EQUAL)
             val start = peek()
-            val parseValue = parsePrimaryExpr(null)
+            var parseValue = parsePrimaryOrUnaryExpr()
+            // `DOWN = -1`: fold the sign into the literal.
+            if (parseValue is UnaryExpr && (parseValue.operator == UnaryOp.NEG || parseValue.operator == UnaryOp.POS)) {
+                val negate = parseValue.operator == UnaryOp.NEG
+                val operand = parseValue.operand
+                parseValue = when (operand) {
+                    is IntegerLiteral -> putOrigin(IntegerLiteral(if (negate) -operand.value else operand.value), start.canonicalLocation)
+                    is FloatLiteral -> putOrigin(FloatLiteral(if (negate) -operand.value else operand.value), start.canonicalLocation)
+                    else -> parseValue
+                }
+            }
             if (parseValue !is SimpleLiteral && parseValue !is DataLiteral<*>) {
                 Diagnostics.panic(
                     "KiraParser::parseEnumMemberExpr",
-                    "Only simple literals are allowed as enum values. That is strings, booleans, floats, and integers.",
+                    "Only simple literals are allowed as enum values. That is strings, floats, and integers.",
                     location = start.canonicalLocation,
                     selectorLength = start.content.length,
                     context = context
@@ -1118,6 +1169,26 @@ class KiraParser(private val context: SourceContext) {
         advancePointer() // consume 'enum'
         val origin = here()
         val name = parseIdentifier() // we only allow simple names, not complex names on enums, cuz there is no point
+        // Optional base type: `enum Status: Int32 {`. Only the spec's scalar
+        // bases are allowed; a Str or Float base makes every value mandatory.
+        var baseType: Type? = null
+        var baseTypeName: String? = null
+        if (at(Token.Type.S_COLON)) {
+            advancePointer()
+            val baseToken = peek()
+            baseType = parseType()
+            baseTypeName = (baseType.identifier as? Identifier)?.value
+            if (baseTypeName !in enumBaseTypes || baseType.children.isNotEmpty()) {
+                Diagnostics.panic(
+                    "KiraParser::parseEnumDecl",
+                    "'${baseToken.content}' cannot be the base type of an enum. " +
+                        "Use one of Int8, Int16, Int32, Int64, Float32, Float64 or Str.",
+                    location = baseToken.canonicalLocation,
+                    selectorLength = baseToken.content.length,
+                    context = context
+                )
+            }
+        }
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<EnumMemberExpr>()
         while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
@@ -1127,6 +1198,7 @@ class KiraParser(private val context: SourceContext) {
             }
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        validateEnumMembers(name, baseTypeName, members)
 //        if (name !is Identifier) {
 //            Diagnostics.panic(
 //                "KiraParser::parseEnumDecl",
@@ -1135,7 +1207,7 @@ class KiraParser(private val context: SourceContext) {
 //                location = context.astOrigins[name] ?: origin,
 //            )
 //        }
-        val decl = EnumDecl(name, members.toTypedArray(), modifier?.keys?.toList() ?: emptyList())
+        val decl = EnumDecl(name, members.toTypedArray(), modifier?.keys?.toList() ?: emptyList(), baseType)
         attachIntrinsics(decl)
         return putOrigin(decl, origin)
     }

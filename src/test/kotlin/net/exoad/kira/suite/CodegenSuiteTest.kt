@@ -271,6 +271,45 @@ class CodegenSuiteTest {
         assertTrue(output.contains("Mood state = MOOD_HAPPY;"), output)
     }
 
+    @Test
+    fun enumExplicitValuesAreWrittenIntoTheCEnum() {
+        // Explicit values used to be dropped: `DRIVE = 7` lowered as 1.
+        val output = emit(
+            """
+            pub enum Mode: Int32 {
+                IDLE,
+                DRIVE = 7,
+                BRAKE,
+                REVERSE = -2
+            }
+            """
+        )
+        assertTrue(output.contains("MODE_IDLE,"), output)
+        assertTrue(output.contains("MODE_DRIVE = 7,"), output)
+        assertTrue(output.contains("MODE_BRAKE,"), output)
+        assertTrue(output.contains("MODE_REVERSE = -2"), output)
+    }
+
+    @Test
+    fun strEnumLowersToTypedefAndConstants() {
+        // A C enum holds ints, so a Str-based enum is an alias plus constants.
+        val output = emit(
+            """
+            pub enum Priority: Str {
+                LOW = "low",
+                HIGH = "high"
+            }
+
+            fx main: () Void {
+                trace(Priority.HIGH)
+            }
+            """
+        )
+        assertTrue(output.contains("typedef Str Priority;"), output)
+        assertTrue(output.contains("static const Str PRIORITY_LOW = \"low\";"), output)
+        assertTrue(output.contains("print(\"%s\\n\", PRIORITY_HIGH)"), output)
+    }
+
     // --- generics -------------------------------------------------------------
 
     @Test

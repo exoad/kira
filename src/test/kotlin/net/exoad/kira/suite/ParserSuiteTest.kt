@@ -162,6 +162,54 @@ class ParserSuiteTest {
     }
 
     @Test
+    fun parsesEnumWithBaseTypeAndValues() {
+        val ast = parseModule(
+            """
+            pub enum Status: Int32 {
+                PENDING = 0,
+                ACTIVE = 5,
+                DONE,
+                FAILED = -1
+            }
+
+            pub enum Priority: Str {
+                LOW = "low",
+                HIGH = "high"
+            }
+
+            pub enum Threshold: Float64 {
+                MIN = 0.5,
+                MAX = 100.0
+            }
+            """
+        )
+        val enums = declsOf(ast).filterIsInstance<EnumDecl>()
+        assertEquals(3, enums.size)
+        val status = enums[0]
+        assertEquals("Int32", (status.baseType?.identifier as? Identifier)?.value)
+        // Implicit members count on from the previous value, as in C.
+        assertEquals(listOf<Any>(0L, 5L, 6L, -1L), status.memberValues())
+        assertEquals(listOf<Any>("low", "high"), enums[1].memberValues())
+        assertEquals(listOf<Any>(0.5, 100.0), enums[2].memberValues())
+    }
+
+    @Test
+    fun enumBaseTypeRulesAreEnforced() {
+        // Str members need explicit values; Bool is not an allowed base; a
+        // value must match the declared base; members must agree in kind.
+        assertThrows<Throwable> { parseModule("enum P: Str { LOW }") }
+        assertThrows<Throwable> { parseModule("enum P: Bool { A = 1 }") }
+        assertThrows<Throwable> { parseModule("enum P: Int32 { A = \"a\" }") }
+        assertThrows<Throwable> { parseModule("enum P { A = \"a\", B = 1 }") }
+        assertThrows<Throwable> { parseModule("enum P { A, B = \"b\" }") }
+        // Without a declared base the first value decides the kind.
+        val inferred = declsOf(parseModule("enum Color { RED = \"red\", BLUE = \"blue\" }"))
+            .filterIsInstance<EnumDecl>().single()
+        assertEquals("Str", inferred.baseTypeName())
+        assertEquals("Int32", declsOf(parseModule("enum Plain { A, B }")).filterIsInstance<EnumDecl>().single().baseTypeName())
+    }
+
+    @Test
     fun parsesVariantWithoutModifier() {
         parseModule(
             """

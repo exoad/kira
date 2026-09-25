@@ -344,6 +344,7 @@ object XMLASTVisitorKira :
             }""""
         ) {
             enumDecl.name.accept(this)
+            enumDecl.baseType?.let { base -> node("BaseType") { base.accept(this) } }
             enumDecl.members.forEach { it.accept(this) }
         }
     }
