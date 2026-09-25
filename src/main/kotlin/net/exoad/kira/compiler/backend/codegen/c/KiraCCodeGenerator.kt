@@ -2142,11 +2142,59 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             emitOperatorCall(opName, listOf(binaryExpr.leftExpr, binaryExpr.rightExpr))
             return
         }
+        if (binaryExpr.operator == BinaryOp.USHR) {
+            emitLogicalShiftRight(binaryExpr.leftExpr, binaryExpr.rightExpr)
+            return
+        }
         buffer.append("(")
         binaryExpr.leftExpr.accept(this)
         buffer.append(" ${binaryOpSymbol(binaryExpr.operator)} ")
         binaryExpr.rightExpr.accept(this)
         buffer.append(")")
+    }
+
+    /**
+     * Best-effort static type of a scalar expression, for the places where
+     * the C we emit depends on it (logical shifts, print formats). Literals
+     * are Int32 unless they need 64 bits; compound expressions take the type
+     * of their first typed operand. Null when nothing is known.
+     */
+    private fun scalarTypeOf(expr: Expr): String? {
+        return when (expr) {
+            is IntegerLiteral -> if (expr.value in Int.MIN_VALUE..Int.MAX_VALUE) "Int32" else "Int64"
+            is FloatLiteral -> "Float64"
+            is StringLiteral -> "Str"
+            is TypeCastExpr -> typeNameOf(expr.type)
+            is UnaryExpr -> if (expr.operator == UnaryOp.NOT) "Bool" else scalarTypeOf(expr.operand)
+            is BinaryExpr -> when (expr.operator) {
+                BinaryOp.EQUALS, BinaryOp.NOT_EQUAL,
+                BinaryOp.GREATER_THAN, BinaryOp.GREATER_THAN_OR_EQUAL,
+                BinaryOp.LESS_THAN, BinaryOp.LESS_THAN_OR_EQUAL,
+                BinaryOp.AND, BinaryOp.OR -> "Bool"
+                else -> scalarTypeOf(expr.leftExpr) ?: scalarTypeOf(expr.rightExpr)
+            }
+            is ArrayIndexExpr -> receiverTypeArgs(expr.originExpr).firstOrNull()
+            else -> receiverTypeOf(expr)
+        }
+    }
+
+    /**
+     * `a >>> n`: C has no logical shift operator, so shift through the
+     * unsigned type of the operand's width and come back. Unknown widths
+     * fall back to 64 bits.
+     */
+    private fun emitLogicalShiftRight(left: Expr, right: Expr) {
+        val (unsigned, signed) = when (scalarTypeOf(left)) {
+            "Int8" -> "UInt8" to "Int8"
+            "Int16" -> "UInt16" to "Int16"
+            "Int32", "Int" -> "UInt32" to "Int32"
+            else -> "UInt64" to "Int64"
+        }
+        buffer.append("(($signed)(($unsigned)(")
+        left.accept(this)
+        buffer.append(") >> (")
+        right.accept(this)
+        buffer.append(")))")
     }
 
     override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
@@ -2197,7 +2245,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return when (expr) {
             is StringLiteral -> "%s"
             is FloatLiteral -> "%g"
-            is IntegerLiteral -> "%d"
+            is IntegerLiteral -> formatForTypeName(scalarTypeOf(expr))
+            // Operators, casts and element reads carry a type we can compute;
+            // an Int64 sum printed with %d is a miscompile, not a heuristic.
+            is BinaryExpr, is UnaryExpr, is TypeCastExpr, is ArrayIndexExpr ->
+                formatForTypeName(scalarTypeOf(expr))
             is FunctionCallExpr -> {
                 // Method call: name is MemberAccess
                 val nameExpr = expr.name
@@ -2489,6 +2541,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             storeInto(target, owned = true) {
                 emitOperatorCall(opName, listOf(target, compoundAssignmentExpr.right))
             }
+            return
+        }
+        if (compoundAssignmentExpr.operator == BinaryOp.USHR) {
+            compoundAssignmentExpr.left.accept(this)
+            buffer.append(" = ")
+            emitLogicalShiftRight(compoundAssignmentExpr.left, compoundAssignmentExpr.right)
             return
         }
         compoundAssignmentExpr.left.accept(this)

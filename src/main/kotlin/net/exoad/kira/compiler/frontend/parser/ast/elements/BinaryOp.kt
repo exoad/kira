@@ -23,10 +23,12 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int) {
     AND(arrayOf(Symbols.AMPERSAND, Symbols.AMPERSAND), 4),
     OR(arrayOf(Symbols.PIPE, Symbols.PIPE), 3),
 
-    // bitwise operators
-    SHR(arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE), 10),
-    SHL(arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE), 10),
-    USHR(arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE), 10),
+    // bitwise operators. The backends print `symbol` verbatim, so it must be
+    // the operator's own spelling: SHR is `>>`, SHL is `<<`. (They were
+    // swapped here once, which made `1 << 4` lower to `1 >> 4`.)
+    SHR(arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE), 10),
+    SHL(arrayOf(Symbols.OPEN_ANGLE, Symbols.OPEN_ANGLE), 10),
+    USHR(arrayOf(Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE, Symbols.CLOSE_ANGLE), 10),
     XOR(arrayOf(Symbols.CARET), 6),
 
     // raw
