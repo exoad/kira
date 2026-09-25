@@ -1,0 +1,28 @@
+
+strings - text, interpolation and strict parsing
+
+  ok    interpolation
+  ok    every piece kind
+  ok    and exponents
+  ok    as Str: 2.5, not 2,5
+  ok    as Str: 100
+  ok    as Str is the shortest text that reads back
+  ok    text(Bool) is true
+  ok    and false
+  ok    padStart
+  ok    padStart never cuts
+  ok    toInt64: digits and an optional sign
+  ok    toInt64: Int64 min
+  ok    toInt64: overflow is none
+  ok    toInt64 refuses a tail, a space, nothing and a decimal
+  ok    toFloat64, and a leading +
+  ok    exponent and sign
+  ok    toFloat64 refuses a comma, a tail, nothing and two signs
+  ok    Str + Str
+  ok    a literal on the left of +
+  ok    s[0] is a Char
+  ok    == compares content
+  ok    substring
+  ok    and a guard
+
+23 checks, 0 failed

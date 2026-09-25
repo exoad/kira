@@ -1,0 +1,11 @@
+
+forward - a Kira program on the extern bibo::Car
+
+  ok    openCar handed the Car the process's argc and argv
+  ok    the program drove until ok() said stop
+  ok    one scan and one drive per drivable pass
+  ok    creep, creep, stop, stop, creep: two thresholds, no chatter
+  ok    and it never steered
+  ok    a disarmed pass that cannot re-arm is skipped
+
+6 checks, 0 failed

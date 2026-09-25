@@ -1,0 +1,115 @@
+module "lang:numerics"
+
+// Kira's numbers in C++. Arithmetic on a sub-int type wraps in that type (R1);
+// a literal takes the type it meets (R2, R3); `as` from float to int saturates
+// and takes NaN to 0 (R13); / and % by a value that is not a constant are
+// checked (R11). Only the paths that do not fail can be golden.
+
+pub BIG: Int64 = 5000000000
+pub MASK: UInt32 = 0xFFFFFFFF
+pub HALF: Float32 = 0.5
+pub TICK: Size = 1000
+pub BYTE: UInt8 = 200
+
+pub fx wrapAdd: (a: UInt8, b: UInt8) UInt8 {
+    return a + b
+}
+
+// 200 + 100 is 44 in UInt8, and 44 is not above 250. C++ alone says 300 is.
+pub fx overLimit: (a: UInt8, b: UInt8) Bool {
+    return a + b > 250
+}
+
+pub fx negate: (a: Int8) Int8 {
+    return -a
+}
+
+pub fx flip: (a: UInt16) UInt16 {
+    return ~a
+}
+
+pub fx lowByte: (v: UInt32) UInt8 {
+    return (v & 0xFF) as UInt8
+}
+
+pub fx micros: (seconds: Int64) Int64 {
+    return seconds * 1000000
+}
+
+// Only literals: typed Int64, so the product is not computed in Int32.
+pub fx trillion: () Int64 {
+    return 1000000 * 1000000
+}
+
+pub fx ticksIn: (n: Size) Size {
+    return n * TICK + 1
+}
+
+// bibo's fixed3: the literals take v's type, so this is Float32 arithmetic.
+pub fx fixed3: (value: Float32) Str {
+    neg: Bool = value < 0.0
+    v: Float32 = if neg { -value } else { value }
+    scaled: Int32 = (v * 1000.0 + 0.5) as Int32
+    whole: Int32 = scaled / 1000
+    frac: Int32 = scaled % 1000
+    sign: Str = if neg { "-" } else { "" }
+    return "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
+}
+
+pub fx toInt: (v: Float64) Int32 {
+    return v as Int32
+}
+
+pub fx toByte: (v: Float32) UInt8 {
+    return v as UInt8
+}
+
+pub fx narrow: (v: Int64) Int32 {
+    return v as Int32
+}
+
+pub fx widen: (v: Int32) Float64 {
+    return v as Float64
+}
+
+pub fx half: (v: Float64) Float32 {
+    return v as Float32
+}
+
+pub fx code: (c: Char) UInt8 {
+    return c as UInt8
+}
+
+pub fx letter: (n: UInt8) Char {
+    return n as Char
+}
+
+// Char compares as unsigned on every target: `char` is signed on x86 and
+// unsigned on ARM.
+pub fx before: (a: Char, b: Char) Bool {
+    return a < b
+}
+
+pub fx ratio: (a: Int32, b: Int32) Int32 {
+    return a / b
+}
+
+pub fx rem: (a: Int32, b: Int32) Int32 {
+    return a % b
+}
+
+pub fx tenth: (a: Int32) Int32 {
+    return a / 10
+}
+
+pub fx shift: (v: UInt32, n: UInt32) UInt32 {
+    return v << n
+}
+
+pub fx eighth: (v: UInt32) UInt32 {
+    return v >> 3
+}
+
+pub fx scaled: (v: Float32) Float32 {
+    return v * 1000.0 + 0.5
+}

@@ -1,0 +1,15 @@
+project:
+  name: golden-hall
+srcDir: src
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+    headerOnly: ["pico:hall"]
+    freestanding: ["pico:hall"]
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

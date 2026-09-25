@@ -1,0 +1,181 @@
+module "pilot:proto"
+
+// The Pico's newline-terminated ASCII line protocol.
+//
+//     OK <verb> [key=value ...]
+//     ERR <reason>
+//     INFO <topic> [key=value ...]
+//
+// Fields are read BY NAME. Pure: no sockets, serial or clock.
+
+pub enum Kind: Int32 {
+    KIND_OK = 0,
+    KIND_ERR = 1,
+    KIND_INFO = 2,
+    // None of the above, and NOT an error: boot banners, a person typing.
+    KIND_OTHER = 3,
+    KIND_EMPTY = 4
+}
+
+// One line from the board, split but not interpreted.
+pub struct Reply {
+    pub kind: Kind = Kind.KIND_EMPTY
+    pub topic: Str = ""
+    pub rest: Str = ""
+    pub line: Str = ""
+}
+
+fx isSpace: (c: Char) Bool {
+    return c == ' ' || c == '\t'
+}
+
+// [begin, end) of the first word at or after `from`.
+fx wordAt: (s: Str, from: Size, mut begin: Size, mut end: Size) Void {
+    mut at: Size = from
+    while at < s.length() && isSpace(s[at]) {
+        at += 1
+    }
+    begin = at
+    while at < s.length() && !isSpace(s[at]) {
+        at += 1
+    }
+    end = at
+}
+
+fx tailFrom: (s: Str, from: Size) Str {
+    mut at: Size = from
+    while at < s.length() && isSpace(s[at]) {
+        at += 1
+    }
+    return if at < s.length() { s.substring(at, s.length()) } else { "" }
+}
+
+fx trimEnd: (s: Str) Str {
+    mut n: Size = s.length()
+    while n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isSpace(s[n - 1])) {
+        n -= 1
+    }
+    return s.substring(0, n)
+}
+
+// Classifies one line. Strips CR, so a caller may hand it either ending.
+pub fx read: (line: Str) Reply {
+    mut out: Reply = Reply { line = trimEnd(line) }
+    mut b: Size = 0
+    mut e: Size = 0
+    wordAt(out.line, 0, mut b, mut e)
+    if b >= e {
+        out.kind = Kind.KIND_EMPTY
+        return out
+    }
+    head: Str = out.line.substring(b, e)
+    if head == "ERR" {
+        out.kind = Kind.KIND_ERR
+        out.rest = tailFrom(out.line, e)
+        return out
+    }
+    if head == "OK" || head == "INFO" {
+        out.kind = if head == "OK" { Kind.KIND_OK } else { Kind.KIND_INFO }
+        mut tb: Size = 0
+        mut te: Size = 0
+        wordAt(out.line, e, mut tb, mut te)
+        if tb < te {
+            out.topic = out.line.substring(tb, te)
+            out.rest = tailFrom(out.line, te)
+        }
+        return out
+    }
+    out.kind = Kind.KIND_OTHER
+    out.rest = out.line
+    return out
+}
+
+// The value of `key` in `text`, running to the next space. MATCHES ON TOKEN
+// BOUNDARIES: "esc=" is never found inside "desc=".
+pub fx field: (text: Str, key: Str, mut out: Str) Bool {
+    if key.isEmpty() {
+        return false
+    }
+    klen: Size = key.length()
+    mut i: Size = 0
+    while i + klen <= text.length() {
+        boundary: Bool = i == 0 || isSpace(text[i - 1])
+        if boundary && text.substring(i, i + klen) == key {
+            mut to: Size = i + klen
+            while to < text.length() && !isSpace(text[to]) {
+                to += 1
+            }
+            out = text.substring(i + klen, to)
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// False when the key is absent OR the value is not wholly a number.
+pub fx fieldInt: (text: Str, key: Str, mut out: Int32) Bool {
+    mut raw: Str = ""
+    if !field(text, key, mut raw) {
+        return false
+    }
+    v: Maybe<Int64> = raw.toInt64()        // strict decimal, locale-free: "1541abc" is refused
+    if v.isNone() {
+        return false
+    }
+    out = v.unwrap() as Int32
+    return true
+}
+
+pub fx fieldFloat: (text: Str, key: Str, mut out: Float32) Bool {
+    mut raw: Str = ""
+    if !field(text, key, mut raw) {
+        return false
+    }
+    v: Maybe<Float64> = raw.toFloat64()
+    if v.isNone() {
+        return false
+    }
+    out = v.unwrap() as Float32
+    return true
+}
+
+// Three decimals from integers, NOT a %f: that honours the C locale. The
+// literals take v's type, so this is Float32 arithmetic, as the C++ was.
+fx fixed3: (value: Float32) Str {
+    neg: Bool = value < 0.0
+    v: Float32 = if neg { -value } else { value }
+    scaled: Int32 = (v * 1000.0 + 0.5) as Int32
+    whole: Int32 = scaled / 1000
+    frac: Int32 = scaled % 1000
+    sign: Str = if neg { "-" } else { "" }
+    return "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
+}
+
+// A fraction of this car's steering travel, clamped to -1..1.
+pub fx steer: (fraction: Float32) Str {
+    mut f: Float32 = fraction
+    if f < -1.0 {
+        f = -1.0
+    }
+    if f > 1.0 {
+        f = 1.0
+    }
+    return "STEER ${fixed3(f)}"
+}
+
+pub fx escUs: (us: Int32) Str {
+    return "ESC ${us}"
+}
+
+pub fx stop: () Str {
+    return "STOP"
+}
+
+// Assembled without a format string, so a '%' in args is a plain character.
+pub fx command: (verb: Str, args: Str = "") Str {
+    if verb.isEmpty() {
+        return ""
+    }
+    return if args.isEmpty() { verb } else { "${verb} ${args}" }
+}

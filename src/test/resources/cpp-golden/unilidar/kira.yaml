@@ -1,0 +1,14 @@
+project:
+  name: golden-unilidar
+srcDir: src
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+    headerOnly: ["pilot:unilidar"]
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

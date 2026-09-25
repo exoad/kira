@@ -1,0 +1,20 @@
+
+text - commands on views and a fixed buffer
+
+  ok    word splits the argument off
+  ok    a bare command is an empty view, not none
+  ok    a longer word does not match
+  ok    nor does a shorter one
+  ok    every space after the word is skipped
+  ok    a CR is not a space
+  ok    trimEnd drops CR, LF, space and tab
+  ok    toInt allows surrounding space
+  ok    and a sign
+  ok    12abc is refused, and out is untouched
+  ok    blank is refused
+  ok    two numbers are refused
+  ok    driveReply fills a StrBuf
+  ok    and clears it first
+  ok    a reply past 32 chars is truncated, and says so
+
+15 checks, 0 failed

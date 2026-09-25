@@ -1,0 +1,38 @@
+
+hall - the six-state decoder
+
+-- the sequence itself --
+  ok    every step of the sequence changes exactly one bit
+  ok    and INDEX_OF is its inverse
+  ok    0 and 7 are no state
+
+-- ticks and direction --
+  ok    starts at zero, unprimed
+  ok    the first valid state primes and counts nothing
+  ok    twelve steps forward: +12, two turns, no error
+  ok    five back: 7, and the direction is remembered
+  ok    the period is the gap between the last two steps
+  ok    an edge that changed nothing is a repeat, not an error
+
+-- what is an error --
+  ok    two steps at once is a skip, and not a tick
+  ok    and the step after it counts again from the new state
+  ok    all three low is invalid and unprimes
+  ok    after an invalid state the next valid one primes, the one after counts
+  ok    all three high is invalid too
+  ok    only the low three bits are read
+
+-- speed --
+  ok    30 ticks in a 50 ms window is 600 ticks per second
+  ok    a 1 ms period is 1000 ticks per second, signed forward
+  ok    with 30 ticks in the window, the window is trusted
+  ok    with 3, the period is
+  ok    backwards is negative both ways
+  ok    a quarter second without an edge is stopped
+  ok    and so is a decoder that has seen nothing
+  ok    a gap past 32 bits saturates the period
+
+-- compile time --
+  ok    settle is a constant expression
+
+24 checks, 0 failed

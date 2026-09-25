@@ -1,0 +1,69 @@
+module "lib:text"
+
+use "kira:bytes"
+
+// text - string handling on a caller's buffer: no allocation, no ownership, no
+// state. FREESTANDING: Str allocates, so it is refused in this module, and text
+// is View<Char> or a StrBuf. A string literal in a View<Char> context is a
+// static view.
+
+fx isBlank: (c: Char) Bool {
+    return c == ' ' || c == '\t'
+}
+
+// Matches w as a WHOLE word at the start of s, returning what follows with the
+// spaces skipped. A bare command returns an empty view, NOT none: "matched,
+// nothing after it" and "did not match" stay apart.
+pub fx word: (s: View<Char>, w: View<Char>) Maybe<View<Char>> {
+    n: Size = w.size()
+    if s.size() < n || s.slice(0, n) != w {
+        return null
+    }
+    if s.size() > n && s[n] != ' ' {
+        return null
+    }
+    mut at: Size = n
+    while at < s.size() && s[at] == ' ' {
+        at += 1
+    }
+    return s.from(at)
+}
+
+// The length without trailing CR, LF, space and tab. A terminal picks its own
+// line ending, and "PING\r" is not "PING".
+pub fx trimEnd: (s: View<Char>) Size {
+    mut n: Size = s.size()
+    while n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isBlank(s[n - 1])) {
+        n -= 1
+    }
+    return n
+}
+
+// STRICT: surrounding space is allowed and anything else is a refusal, where
+// atoi("12abc") is 12. out is untouched on failure.
+pub fx toInt: (s: View<Char>, mut out: Int32) Bool {
+    mut from: Size = 0
+    while from < s.size() && isBlank(s[from]) {
+        from += 1
+    }
+    end: Size = trimEnd(s)
+    if from >= end {
+        return false
+    }
+    v: Maybe<Int64> = parseInt64(s.slice(from, end - from))
+    if v.isNone() {
+        return false
+    }
+    out = v.unwrap() as Int32
+    return true
+}
+
+// The drive reply into a caller's buffer. Interpolation into a StrBuf appends
+// in place: no Str, so no heap.
+pub fx driveReply: (servo: Int32, esc: Int32, mut out: StrBuf<32>) Void {
+    out.set("OK drive servo=${servo} esc=${esc}")
+}
+
+pub fx isCommand: (s: View<Char>, verb: View<Char>) Bool {
+    return word(s, verb).isSome()
+}

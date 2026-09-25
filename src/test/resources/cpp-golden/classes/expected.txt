@@ -1,0 +1,20 @@
+
+classes - references, traits, inheritance, generics
+
+  ok    a getter returns the field, three times over
+  ok    and every copy it handed out was released
+  ok    a trait method with a parameter, through a trait reference
+  ok    a trait default body calls the implementor
+  ok    a C++ class implements the Kira trait
+  ok    and inherits the default body
+  ok    the base method reaches the override
+  ok    and the base's own body
+  ok    a mut method on the subclass
+  ok    the base's field is the subclass's first constructor argument
+  ok    Box<Int32>
+  ok    and Box<Str>, instantiated by C++
+  ok    Ref<Int32> is shared, mutable state
+  ok    Weak.upgrade while the pet lives
+  ok    and none once it is gone
+
+15 checks, 0 failed

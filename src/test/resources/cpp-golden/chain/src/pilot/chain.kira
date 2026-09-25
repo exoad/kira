@@ -1,0 +1,102 @@
+module "pilot:chain"
+
+// The behaviour chain: the one class hierarchy bibo has, and Maybe<Class>.
+
+pub ID_WASD: Str = "net.exoad.tt02bibo.wasd"
+pub ID_STOP: Str = "net.exoad.tt02bibo.stop"
+
+pub enum Act: Int32 {
+    ACT_NOTHING = 0,
+    ACT_CLAMP = 1,
+    ACT_PROPOSE = 2
+}
+
+pub struct Reply {
+    pub act: Act = Act.ACT_NOTHING
+    pub throttle: Float32 = 0.0
+    pub steer: Float32 = 0.0
+}
+
+pub struct Pass {
+    pub dtMs: Int32 = 0
+    pub nowMs: Int64 = 0
+    pub haveHolder: Bool = false
+}
+
+// A trait lowers to an abstract C++ class; a default body is a virtual with a
+// body, so a C++ test double overrides exactly what it needs.
+pub trait Behaviour {
+    pub fx id: () Str;
+    pub fx name: () Str;
+    pub fx mayDrive: () Bool {
+        return false
+    }
+    pub mut fx onLoad: () Void {
+    }
+    pub mut fx onUnload: () Void {
+    }
+    pub mut fx step: (p: Pass) Reply;
+}
+
+class Stop: Behaviour {
+    override pub fx id: () Str {
+        return ID_STOP
+    }
+    override pub fx name: () Str {
+        return "stop"
+    }
+    override pub mut fx step: (p: Pass) Reply {
+        return Reply { act = Act.ACT_CLAMP, throttle = 0.0 }
+    }
+}
+
+pub fx make: (wanted: Str) Maybe<Behaviour> {
+    if wanted == ID_STOP {
+        return Stop {}
+    }
+    return null
+}
+
+pub class Chain {
+    mut loaded: List<Behaviour> = List<Behaviour> {}
+
+    pub mut fx load: (b: Maybe<Behaviour>, mut why: Str) Bool {
+        if b.isNone() {
+            why = "no behaviour"
+            return false
+        }
+        it: Behaviour = b.unwrap()
+        wanted: Str = it.id()
+        if wanted.isEmpty() {
+            why = "a behaviour with no id"
+            return false
+        }
+        if has(wanted) {
+            why = "already loaded: ${wanted}"
+            return false
+        }
+        it.onLoad()
+        loaded.add(it)
+        return true
+    }
+
+    pub fx size: () Size {
+        return loaded.size()
+    }
+
+    pub fx has: (wanted: Str) Bool {
+        for b: Behaviour in loaded {
+            if b.id() == wanted {
+                return true
+            }
+        }
+        return false
+    }
+
+    pub fx at: (i: Size) Maybe<Behaviour> {
+        if i >= loaded.size() {
+            return null
+        }
+        return loaded[i]
+    }
+}

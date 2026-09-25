@@ -1,0 +1,16 @@
+project:
+  name: golden-modules
+srcDir: src
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+    namespaces:
+      "lib:units": golden::units
+    headerOnly: ["lib:units"]
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

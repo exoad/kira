@@ -1,0 +1,4 @@
+toolchains: [gcc, clang, msvc, zig-aarch64, arm]
+profile: freestanding
+defines: []
+emit: pending
