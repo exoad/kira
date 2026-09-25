@@ -1,0 +1,101 @@
+# Magic binding manifest for kira:collections (C++ backend only).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
+# (the C backend lowers containers through tryEmitCollectionMethod). Keys are
+# `Type.method`; placeholders are `{self}`, `{0}`, `{1}` and `{T0}` (design
+# section 7.4). The C++ types are those of design section 5.1: Arr<T> and
+# List<T> are kira::List<T> (std::vector), Map/Set are kira::Map/kira::Set,
+# Stack/Queue are kira::Stack/kira::Queue, Deque is std::deque, View and
+# MutView are kira::View / kira::MutView.
+#
+# `mut fx` methods carry no `pure`; the receiver they change is a mutable
+# place the typer already checked.
+
+# --- View<T> ---------------------------------------------------------------
+View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
+View.isEmpty:  { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true } }
+View.get:      { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true } }
+View.from:     { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true } }
+View.slice:    { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true } }
+
+# --- MutView<T> ------------------------------------------------------------
+MutView.size:    { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
+MutView.isEmpty: { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true } }
+MutView.get:     { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true } }
+MutView.set:     { cpp: { expr: "{self}[{0}] = {1}", constexpr: true } }
+MutView.from:    { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true } }
+MutView.slice:   { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true } }
+MutView.view:    { cpp: { expr: "kira::View<{T0}>({self})", pure: true, constexpr: true } }
+
+# --- Arr<T> (and Arr<T, N>: kira::at / kira::view overload on std::array) --
+Arr.size:      { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
+Arr.isEmpty:   { cpp: { expr: "{self}.empty()", pure: true, constexpr: true } }
+Arr.get:       { cpp: { expr: "kira::at({self}, {0})", pure: true, constexpr: true } }
+Arr.set:       { cpp: { expr: "kira::at({self}, {0}) = {1}", constexpr: true } }
+Arr.contains:  { cpp: { expr: "kira::contains({self}, {0})", pure: true } }
+Arr.clone:     { cpp: { expr: "kira::clone({self})", pure: true } }
+Arr.view:      { cpp: { expr: "kira::view({self})", pure: true, constexpr: true } }
+Arr.from:      { cpp: { expr: "kira::view({self}).from({0})", pure: true, constexpr: true } }
+Arr.slice:     { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true, constexpr: true } }
+
+# --- List<T> ---------------------------------------------------------------
+List.size:     { cpp: { expr: "{self}.size()", pure: true } }
+List.isEmpty:  { cpp: { expr: "{self}.empty()", pure: true } }
+List.add:      { cpp: { expr: "{self}.push_back({0})" } }
+List.addAll:   { cpp: { expr: "kira::addAll({self}, {0})" } }
+List.get:      { cpp: { expr: "kira::at({self}, {0})", pure: true } }
+List.set:      { cpp: { expr: "kira::at({self}, {0}) = {1}" } }
+List.removeAt: { cpp: { expr: "kira::removeAt({self}, {0})" } }
+List.clear:    { cpp: { expr: "{self}.clear()" } }
+List.contains: { cpp: { expr: "kira::contains({self}, {0})", pure: true } }
+List.toArr:    { cpp: { expr: "kira::clone({self})", pure: true } }
+List.view:     { cpp: { expr: "kira::view({self})", pure: true } }
+List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true } }
+List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true } }
+
+# --- Map<K, V>: kira::Map, insertion-ordered (D27) -------------------------
+Map.size:          { cpp: { expr: "{self}.size()", pure: true } }
+Map.isEmpty:       { cpp: { expr: "{self}.isEmpty()", pure: true } }
+Map.put:           { cpp: { expr: "{self}.put({0}, {1})" } }
+Map.get:           { cpp: { expr: "{self}.get({0})", pure: true } }
+Map.remove:        { cpp: { expr: "{self}.remove({0})" } }
+Map.containsKey:   { cpp: { expr: "{self}.containsKey({0})", pure: true } }
+Map.containsValue: { cpp: { expr: "{self}.containsValue({0})", pure: true } }
+Map.keys:          { cpp: { expr: "{self}.keys()", pure: true } }
+Map.valuesArr:     { cpp: { expr: "{self}.values()", pure: true } }
+Map.entries:       { cpp: { expr: "{self}.entries()", pure: true } }
+Map.clear:         { cpp: { expr: "{self}.clear()" } }
+
+# --- Set<T>: kira::Set, insertion-ordered (D27) ----------------------------
+Set.size:      { cpp: { expr: "{self}.size()", pure: true } }
+Set.isEmpty:   { cpp: { expr: "{self}.isEmpty()", pure: true } }
+Set.add:       { cpp: { expr: "{self}.add({0})" } }
+Set.remove:    { cpp: { expr: "{self}.remove({0})" } }
+Set.contains:  { cpp: { expr: "{self}.contains({0})", pure: true } }
+Set.toArr:     { cpp: { expr: "{self}.toList()", pure: true } }
+Set.clear:     { cpp: { expr: "{self}.clear()" } }
+
+# --- Stack<T>: kira::Stack adaptor, pop() returns Maybe --------------------
+Stack.size:    { cpp: { expr: "{self}.size()", pure: true } }
+Stack.isEmpty: { cpp: { expr: "{self}.isEmpty()", pure: true } }
+Stack.push:    { cpp: { expr: "{self}.push({0})" } }
+Stack.pop:     { cpp: { expr: "{self}.pop()" } }
+Stack.peek:    { cpp: { expr: "{self}.peek()", pure: true } }
+Stack.clear:   { cpp: { expr: "{self}.clear()" } }
+
+# --- Queue<T>: kira::Queue adaptor, dequeue() returns Maybe ----------------
+Queue.size:    { cpp: { expr: "{self}.size()", pure: true } }
+Queue.isEmpty: { cpp: { expr: "{self}.isEmpty()", pure: true } }
+Queue.enqueue: { cpp: { expr: "{self}.enqueue({0})" } }
+Queue.dequeue: { cpp: { expr: "{self}.dequeue()" } }
+Queue.peek:    { cpp: { expr: "{self}.peek()", pure: true } }
+Queue.clear:   { cpp: { expr: "{self}.clear()" } }
+
+# --- Deque<T>: std::deque; the Maybe-returning pops are kira:: helpers -----
+Deque.size:      { cpp: { expr: "{self}.size()", pure: true } }
+Deque.isEmpty:   { cpp: { expr: "{self}.empty()", pure: true } }
+Deque.pushFront: { cpp: { expr: "{self}.push_front({0})" } }
+Deque.pushBack:  { cpp: { expr: "{self}.push_back({0})" } }
+Deque.popFront:  { cpp: { expr: "kira::popFront({self})" } }
+Deque.popBack:   { cpp: { expr: "kira::popBack({self})" } }
+Deque.clear:     { cpp: { expr: "{self}.clear()" } }

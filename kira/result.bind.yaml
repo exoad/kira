@@ -1,0 +1,19 @@
+# Magic binding manifest for kira:result (C++ backend only).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips it.
+# Maybe<T> is std::optional<T> for a value and a nullable kira::Rc<C> for a
+# class (D32); the kira::isSome / unwrap / unwrapOr free functions overload on
+# both, which is why the bindings never touch the optional API directly.
+# Result<T, E> is kira::Result, Weak<C> is kira::Weak (std::weak_ptr).
+Maybe.isSome:   { cpp: { expr: "kira::isSome({self})", pure: true, constexpr: true } }
+Maybe.isNone:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true } }
+Maybe.isNull:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true } }
+Maybe.unwrap:   { cpp: { expr: "kira::unwrap({self})", pure: true, constexpr: true } }
+Maybe.unwrapOr: { cpp: { expr: "kira::unwrapOr({self}, {0})", pure: true, constexpr: true } }
+
+Result.isOk:      { cpp: { expr: "{self}.isOk()", pure: true } }
+Result.isErr:     { cpp: { expr: "{self}.isErr()", pure: true } }
+Result.unwrap:    { cpp: { expr: "{self}.unwrap()", pure: true } }
+Result.unwrapErr: { cpp: { expr: "{self}.unwrapErr()", pure: true } }
+
+Weak.upgrade:     { cpp: { expr: "{self}.lock()", pure: true } }

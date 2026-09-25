@@ -1,0 +1,15 @@
+# Magic binding manifest for kira:tuples (C++ backend only).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips it.
+# TupleN<...> is the aggregate kira::TupleN with fields first, second, ...;
+# `size()` is the arity, a constant.
+Tuple0.size: { cpp: { expr: "static_cast<std::int32_t>(0)", pure: true, constexpr: true } }
+Tuple1.size: { cpp: { expr: "static_cast<std::int32_t>(1)", pure: true, constexpr: true } }
+Tuple2.size: { cpp: { expr: "static_cast<std::int32_t>(2)", pure: true, constexpr: true } }
+Tuple3.size: { cpp: { expr: "static_cast<std::int32_t>(3)", pure: true, constexpr: true } }
+Tuple4.size: { cpp: { expr: "static_cast<std::int32_t>(4)", pure: true, constexpr: true } }
+Tuple5.size: { cpp: { expr: "static_cast<std::int32_t>(5)", pure: true, constexpr: true } }
+Tuple6.size: { cpp: { expr: "static_cast<std::int32_t>(6)", pure: true, constexpr: true } }
+Tuple7.size: { cpp: { expr: "static_cast<std::int32_t>(7)", pure: true, constexpr: true } }
+Tuple8.size: { cpp: { expr: "static_cast<std::int32_t>(8)", pure: true, constexpr: true } }
+Tuple9.size: { cpp: { expr: "static_cast<std::int32_t>(9)", pure: true, constexpr: true } }

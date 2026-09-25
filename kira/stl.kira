@@ -7,12 +7,13 @@ module "kira:stl"
 // You do not normally write `use "kira:stl"` in application code -- every
 // `kira:*` module is loaded as a dependency and its magic types are ambient.
 //
-//   kira:core         Any / Void / Never / Bool / Str / Num + fixed-width scalars
-//   kira:tuples       Tuple0..Tuple9, Pair
-//   kira:collections  Iterable, Arr, List, Map, Set, Stack, Queue, Deque
-//   kira:result       Maybe, Result, Exception
+//   kira:core         Any / Void / Never / Bool / Str / Char / Num + fixed-width scalars, Size, bitCast
+//   kira:tuples       Tuple0..Tuple9, Pair, Fx
+//   kira:collections  Iterable, View, MutView, Arr, List, Map, Set, Stack, Queue, Deque
+//   kira:result       Maybe, Result, Exception, Ref, Weak, Unsafe
 //   kira:io           print / println / eprint / assert
 //   kira:math         sqrt / pow / floor / ceil / trig / min / max
+//   kira:bytes        read*Le / write*Le over byte views, parseInt64
 
 use "kira:core"
 use "kira:tuples"
@@ -20,3 +21,4 @@ use "kira:collections"
 use "kira:result"
 use "kira:io"
 use "kira:math"
+use "kira:bytes"

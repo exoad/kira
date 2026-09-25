@@ -1,4 +1,4 @@
-# Magic binding manifest for kira:math (C backend).
+# Magic binding manifest for kira:math (C and C++ backends).
 #
 # Each @_magic declaration in kira/math.kira is typechecked from its Kira
 # signature; the C symbol it lowers to and the include it needs live here,
@@ -10,14 +10,19 @@
 # optional `includes`. The key is the canonical Kira name, lowercased with
 # leading `@` and surrounding `_` stripped (same canonicalization the codegen
 # applies to intrinsic spellings like `@_trace_`).
-sqrt: { symbol: sqrt, includes: [math.h] }
-pow: { symbol: pow, includes: [math.h] }
-floor: { symbol: floor, includes: [math.h] }
-ceil: { symbol: ceil, includes: [math.h] }
-round: { symbol: round, includes: [math.h] }
-sin: { symbol: sin, includes: [math.h] }
-cos: { symbol: cos, includes: [math.h] }
-tan: { symbol: tan, includes: [math.h] }
-abs: { symbol: fabs, includes: [math.h] }
-min: { symbol: fmin, includes: [math.h] }
-max: { symbol: fmax, includes: [math.h] }
+#
+# The `cpp` sub-map is the C++ backend's binding (design section 7.4); the C
+# loader reads only `symbol` and `includes`, so it never sees it. `min` and
+# `max` are parenthesized against the Windows `min` / `max` macros. The
+# Float32 overloads (@_infer) arrive with the typer, not here.
+sqrt: { symbol: sqrt, includes: [math.h], cpp: { expr: "std::sqrt({0})", includes: ["<cmath>"], pure: true } }
+pow: { symbol: pow, includes: [math.h], cpp: { expr: "std::pow({0}, {1})", includes: ["<cmath>"], pure: true } }
+floor: { symbol: floor, includes: [math.h], cpp: { expr: "std::floor({0})", includes: ["<cmath>"], pure: true } }
+ceil: { symbol: ceil, includes: [math.h], cpp: { expr: "std::ceil({0})", includes: ["<cmath>"], pure: true } }
+round: { symbol: round, includes: [math.h], cpp: { expr: "std::round({0})", includes: ["<cmath>"], pure: true } }
+sin: { symbol: sin, includes: [math.h], cpp: { expr: "std::sin({0})", includes: ["<cmath>"], pure: true } }
+cos: { symbol: cos, includes: [math.h], cpp: { expr: "std::cos({0})", includes: ["<cmath>"], pure: true } }
+tan: { symbol: tan, includes: [math.h], cpp: { expr: "std::tan({0})", includes: ["<cmath>"], pure: true } }
+abs: { symbol: fabs, includes: [math.h], cpp: { expr: "std::fabs({0})", includes: ["<cmath>"], pure: true } }
+min: { symbol: fmin, includes: [math.h], cpp: { expr: "(std::min)({0}, {1})", includes: ["<algorithm>"], pure: true } }
+max: { symbol: fmax, includes: [math.h], cpp: { expr: "(std::max)({0}, {1})", includes: ["<algorithm>"], pure: true } }

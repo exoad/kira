@@ -1,0 +1,40 @@
+# Magic binding manifest for kira:core (C++ backend only).
+#
+# Every entry here is a map with a `cpp` sub-map and no `symbol` key, so the
+# C loader (CMagicBindingTable) skips all of them: the C backend keeps
+# lowering Str and Num methods through its own Str_* / prelude helpers. The
+# C++ backend reads the `cpp` map -- see design section 7.4.
+#
+# Keys: methods as `Type.method`, free functions by name. Placeholders in
+# `expr`: `{self}` the receiver, `{0}`, `{1}`, ... the arguments in order, and
+# `{T0}` the first explicit type argument. `pure` marks an expression with no
+# side effects (the emitter may reorder or drop it); `constexpr` marks one
+# usable in a constant expression.
+Str.length:    { cpp: { expr: "kira::str::length({self})", pure: true } }
+Str.size:      { cpp: { expr: "kira::str::length({self})", pure: true } }
+Str.isEmpty:   { cpp: { expr: "kira::str::isEmpty({self})", pure: true } }
+Str.substring: { cpp: { expr: "kira::str::substring({self}, {0}, {1})", pure: true } }
+Str.charAt:    { cpp: { expr: "kira::text(kira::str::at({self}, {0}))", pure: true } }
+Str.at:        { cpp: { expr: "kira::str::at({self}, {0})", pure: true } }
+Str.contains:  { cpp: { expr: "kira::str::contains({self}, {0})", pure: true } }
+Str.startsWith: { cpp: { expr: "kira::str::startsWith({self}, {0})", pure: true } }
+Str.endsWith:  { cpp: { expr: "kira::str::endsWith({self}, {0})", pure: true } }
+Str.find:      { cpp: { expr: "kira::str::find({self}, {0})", pure: true } }
+Str.split:     { cpp: { expr: "kira::str::split({self}, {0})", pure: true } }
+Str.trim:      { cpp: { expr: "kira::str::trim({self})", pure: true } }
+Str.toLower:   { cpp: { expr: "kira::str::toLower({self})", pure: true } }
+Str.toUpper:   { cpp: { expr: "kira::str::toUpper({self})", pure: true } }
+Str.toInt64:   { cpp: { expr: "kira::str::toInt64({self})", pure: true } }
+Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true } }
+Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true } }
+Str.view:      { cpp: { expr: "kira::str::view({self})", pure: true } }
+
+# Num is the parent of every scalar; the receiver's own C++ type carries the
+# overload, so these are the same expression for Int8 through Float64.
+Num.abs:       { cpp: { expr: "std::abs({self})", includes: ["<cmath>", "<cstdlib>"], pure: true } }
+Num.toInt32:   { cpp: { expr: "kira::as<std::int32_t>({self})", pure: true, constexpr: true } }
+Num.toInt64:   { cpp: { expr: "kira::as<std::int64_t>({self})", pure: true, constexpr: true } }
+Num.toFloat32: { cpp: { expr: "kira::as<float>({self})", pure: true, constexpr: true } }
+Num.toFloat64: { cpp: { expr: "kira::as<double>({self})", pure: true, constexpr: true } }
+
+bitCast:       { cpp: { expr: "kira::bitCast<{T0}>({0})", pure: true, constexpr: true } }
