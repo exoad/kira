@@ -69,3 +69,33 @@ pub fx find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
 
 // Unsafe<T> is const T* unless mut.
 pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+
+// A literal under a Maybe carries the narrow type it converts to: std::optional's
+// converting constructor is a template, and int to unsigned char inside it is
+// C4244 under MSVC /W4 /WX (a plain UInt8 initializer stays bare).
+pub MU8: Maybe<UInt8> = 200
+pub MF: Maybe<Float32> = 0.5
+pub MI16: Maybe<Int16> = 5
+pub struct Narrow {
+    pub a: Maybe<UInt8> = 7
+    pub b: UInt8 = 7
+}
+pub fx narrow: (x: Maybe<Int16> = 3) Int32;
+
+// Containers of a struct declared later. A List element needs only the forward
+// declaration, and its empty default is value-initialized in place (libc++
+// rejects the prvalue form before Later is complete); a Deque element must be
+// complete on libc++ and MSVC, so Later is defined before Queued.
+pub struct Early {
+    pub xs: List<Later> = List<Later> {}
+}
+pub struct Queued {
+    pub d: Deque<Later> = Deque<Later> {}
+}
+pub struct Later {
+    pub v: Int32 = 0
+}
+
+// Int and Float are kira:core's aliases of Int32 and Float32, spelled as such.
+pub COUNT: Int = 3
+pub RATIO: Float = 0.5

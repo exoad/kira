@@ -22,8 +22,9 @@ data class CppModuleFiles(val header: Path, val source: Path?)
  * A module's namespace is the last URI segment unless `build.cpp.namespaces`
  * names it, exactly or by glob (`firmware:pilot.src.bibowire.*`); an exact key
  * wins over a glob, a longer glob over a shorter one. A derived segment that
- * is a C++ keyword or an object-like macro (D35) is escaped the way names
- * are (`new` gives `new_`, `errno` gives `errno_`).
+ * is a C++ keyword, an object-like macro (D35) or a global the C library or
+ * the program declares (`main`, `exit`, `time`) is escaped the way names are
+ * (`new` gives `new_`, `errno` gives `errno_`, `app:main` gives `main_`).
  * [checkCollisions] rejects a namespace that is not valid C++ and the reserved
  * ones: `std`, and `kira` for anything but a stdlib module (the runtime's).
  */
@@ -94,6 +95,10 @@ class CppModuleLayout(
         }
         segments.firstOrNull { it.startsWith("__") || (it.length > 1 && it[0] == '_' && it[1].isUpperCase()) }?.let {
             return "'$namespace' uses '$it', a name C++ reserves for its implementation"
+        }
+        if (CppNames.isCGlobal(segments.first())) {
+            return "'$namespace' would open namespace ${segments.first()} at global scope beside the C library's " +
+                "${segments.first()} (or the program's int main), which C++ rejects as a redeclaration"
         }
         if (segments.first() == "std") {
             return "'$namespace' would add to namespace std, which C++ forbids"

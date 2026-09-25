@@ -74,7 +74,11 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
     // ---- alias-aware text from a Type node -----------------------------------------------------
 
     private fun text(node: Type, t: KType): String {
-        ctx.model.aliasRefs[node]?.let { alias -> return aliasText(alias, node) }
+        ctx.model.aliasRefs[node]?.let { alias ->
+            if (!isCoreAlias(alias)) {
+                return aliasText(alias, node)
+            }
+        }
         if (node is ConstTypeArg) {
             return node.value.value.toString()
         }
@@ -84,6 +88,14 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
             else -> base(t)
         }
     }
+
+    /**
+     * `Int` and `Float` are aliases `kira:core` declares for `Int32` and `Float32`. They are
+     * spelled as their targets (`std::int32_t`, `float`), never as `::kira::core::Int`: core
+     * is the runtime's own module, whose traits no generated header can hold (W2.4) and
+     * whose stdlib header is hosted, which a freestanding module must not include.
+     */
+    private fun isCoreAlias(alias: AliasSymbol): Boolean = alias.module.uri == CORE_URI
 
     private fun aliasText(alias: AliasSymbol, node: Type): String {
         val name = ctx.qualified(alias)
@@ -207,6 +219,7 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
             }
             is TraitSymbol -> "kira::Rc<${ctx.qualified(sym)}$targs>"
             is EnumSymbol -> ctx.qualified(sym)
+            is AliasSymbol -> if (isCoreAlias(sym)) base(sym.target) else ctx.qualified(sym) + targs
             else -> ctx.qualified(sym as net.exoad.kira.compiler.analysis.types.Symbol) + targs
         }
     }
@@ -277,8 +290,13 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
 
     private fun wrap(text: String, t: KType, pos: Pos): String {
         // Unsafe<T> is `const T*` unless the binding is `mut` (table 5.1); [magic] spells the bare `T*`.
+        // The const qualifies the pointee: `Unsafe<Unsafe<T>>` is `const T* const*`, never `const const T**`.
         if (isUnsafe(t)) {
-            return if (pos == Pos.MUT_PARAM || pos == Pos.MUT_VALUE) text else "const $text"
+            if (pos == Pos.MUT_PARAM || pos == Pos.MUT_VALUE) {
+                return text
+            }
+            val pointee = text.removeSuffix("*")
+            return if (pointee.endsWith("*")) "$pointee const*" else "const $text"
         }
         return when (pos) {
             Pos.VALUE, Pos.MUT_VALUE, Pos.RETURN, Pos.FIELD, Pos.TEMPLATE_ARG -> text
@@ -309,6 +327,9 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
 
     companion object {
         const val INTERNAL_CODE = "cpp.internal"
+
+        /** The stdlib module whose aliases (`Int`, `Float`) are spelled as their targets. */
+        const val CORE_URI = "kira:core"
         private val BY_VALUE_MAGIC = setOf("View", "MutView", "Unsafe", "CStr")
     }
 }

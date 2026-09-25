@@ -27,5 +27,7 @@ decls - declarations by themselves
   ok    null defaults are kira::none
   ok    a null default argument, filled or given
   ok    Unsafe<T> is const T*, T* when mut
+  ok    a narrow literal as a Maybe default argument
+  ok    containers of a struct declared later
 
-26 checks, 0 failed
+28 checks, 0 failed

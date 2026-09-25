@@ -195,6 +195,18 @@ data class CppEmitParts(
 }
 
 /**
+ * One [CppPlacement] per module of the program, shared by every context of one emitter run,
+ * so that [CppEmitContextImpl.qualified] spells another module's private declaration where
+ * that module's own emission put it (`::ns::impl_::X` when its header needed X, `::ns::X`
+ * otherwise) instead of guessing from `headerOnly` alone.
+ */
+class CppPlacements {
+    private val byModule = IdentityHashMap<ModuleSymbol, CppPlacement>()
+
+    fun of(owner: ModuleSymbol, make: () -> CppPlacement): CppPlacement = byModule[owner] ?: make().also { byModule[owner] = it }
+}
+
+/**
  * What every part sees while one module is emitted: the plumbing's [CppEmitContext] plus the
  * typed program, the type speller and the parts (design 4.4).
  *
@@ -212,6 +224,8 @@ class CppEmitContextImpl(
     /** The compiler version for the banner (`dev` when nothing says). */
     val version: String = CppCompilerVersion.DEV,
     val parts: CppEmitParts = CppEmitParts.standard(),
+    /** The run's placements, one per module; a context made on its own gets a private one. */
+    private val placements: CppPlacements = CppPlacements(),
 ) : CppEmitContext {
     override val names: CppNames = CppNames()
     val model: TypedModel get() = program.model
@@ -221,7 +235,17 @@ class CppEmitContextImpl(
     val sourceIncludes: LinkedHashSet<String> = LinkedHashSet()
 
     /** Where each of this module's declarations goes (design 4.2), and the order they go in. */
-    val placement: CppPlacement by lazy { CppPlacement(this) }
+    val placement: CppPlacement by lazy { placements.of(symbol) { CppPlacement(this) } }
+
+    /** [placement] for any module of the program: this one's, or the one [owner]'s own emission uses. */
+    fun placementOf(owner: ModuleSymbol): CppPlacement {
+        if (owner === symbol) {
+            return placement
+        }
+        return placements.of(owner) {
+            CppPlacement(CppEmitContextImpl(program, options, owner.source, layout, owner, version, parts, placements))
+        }
+    }
 
     /**
      * Every other module whose names this module's text spelled through [qualified], in
@@ -323,9 +347,11 @@ class CppEmitContextImpl(
 
     /**
      * How this module names [sym] (design 4.3): bare inside its own module, `impl_::f` for a
-     * private helper of a header-only module, `::ns::Name` from another module, and a
-     * Kira-written stdlib declaration as `::kira::x::name`. A `@_magic` symbol has no name of
-     * its own here; the binding table spells its uses.
+     * private declaration its header holds (every private one of a header-only module, and
+     * what a source module's header needs, [CppPlacement.inImpl]), `::ns::Name` from another
+     * module (`::ns::impl_::Name` when that module's header put it there), and a Kira-written
+     * stdlib declaration as `::kira::x::name`. A `@_magic` symbol has no name of its own here;
+     * the binding table spells its uses.
      */
     fun qualified(sym: Symbol): String {
         val name = names.escape(sym.name)
@@ -335,27 +361,7 @@ class CppEmitContextImpl(
         }
         referencedModules.add(owner)
         val ns = layout.namespaceFor(owner.uri)
-        return if (isPrivateHelper(sym)) "::$ns::$IMPL_NAMESPACE::$name" else "::$ns::$name"
-    }
-
-    /**
-     * A non-`pub` declaration of a header-only module lives in `namespace impl_`. For this
-     * module [CppPlacement.inImpl] is the answer (it also covers a private declaration the
-     * header of a source module names); this is the rule for another module's symbol.
-     */
-    fun isPrivateHelper(sym: Symbol): Boolean {
-        if (!options.isHeaderOnly(sym.module.uri)) {
-            return false
-        }
-        return when (sym) {
-            is FnSymbol -> sym.owner == null && !sym.isPub && !isMain(sym)
-            is GlobalSymbol -> !sym.isPub
-            is EnumSymbol -> !sym.isPub
-            is AliasSymbol -> !sym.isPub
-            is ClassSymbol -> !sym.isPub
-            is TraitSymbol -> !sym.isPub
-            else -> false
-        }
+        return if (placementOf(owner).inImpl(sym)) "::$ns::$IMPL_NAMESPACE::$name" else "::$ns::$name"
     }
 
     /**

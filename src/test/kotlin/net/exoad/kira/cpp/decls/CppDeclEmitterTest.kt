@@ -302,7 +302,7 @@ class CppDeclEmitterTest {
         assertTrue(!h.contains("isSpace"), "a private function stays out of the header:\n$h")
         assertContains(
             s,
-            "#include \"main.kira.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace main\n{\n  namespace\n  {\n    [[maybe_unused]] [[nodiscard]] bool isSpace(char c);\n\n    bool isSpace(char c)\n    {\n        return {}; // body of isSpace\n    }\n  }\n\n  kira::Str command(const kira::Str& verb, const kira::Str& args, std::int32_t n)\n  {\n      return {}; // body of command\n  }\n\n  void tell([[maybe_unused]] std::int32_t unused, std::int32_t used)\n  {\n      return {}; // body of tell\n  }\n}\n#include \"kira/macro_pop.hxx\"\n",
+            "#include \"main.kira.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace main_\n{\n  namespace\n  {\n    [[maybe_unused]] [[nodiscard]] bool isSpace(char c);\n\n    bool isSpace(char c)\n    {\n        return {}; // body of isSpace\n    }\n  }\n\n  kira::Str command(const kira::Str& verb, const kira::Str& args, std::int32_t n)\n  {\n      return {}; // body of command\n  }\n\n  void tell([[maybe_unused]] std::int32_t unused, std::int32_t used)\n  {\n      return {}; // body of tell\n  }\n}\n#include \"kira/macro_pop.hxx\"\n",
         )
     }
 
