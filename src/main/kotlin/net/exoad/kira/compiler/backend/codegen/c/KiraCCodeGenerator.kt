@@ -94,6 +94,28 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         compilationUnit.collectIntrinsicMarkedTypeNames(MagicIntrinsic.name) +
             compilationUnit.allMagicTypes()
     }
+    /**
+     * Kira names of the non-magic top-level functions this unit will emit.
+     * A call to one of them is a call to it, whatever the magic table says
+     * about the same spelling. Lazy, because method bodies are emitted before
+     * the prototype pass that fills [functionParamNames].
+     */
+    private val declaredFunctionNames: Set<String> by lazy {
+        val out = linkedSetOf<String>()
+        emittableSources().forEach { source ->
+            source.ast.statements.forEach { stmt ->
+                val expr: Any? = when (stmt) {
+                    is FunctionDecl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                if (expr is FunctionDecl && !isMagicDecl(expr)) {
+                    out.add(functionLikeName(expr.name))
+                }
+            }
+        }
+        out
+    }
     private val opaqueTypes by lazy {
         compilationUnit.collectIntrinsicMarkedTypeNames("_opaque") +
             compilationUnit.allOpaqueTypes()
@@ -2594,13 +2616,20 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append(")")
             return
         }
-        includeForIntrinsic(rawName)
+        // A function this unit declares shadows the ambient magic name of the
+        // same spelling (a user `fx ceil` is not libc's), so it is called as
+        // itself and never resolved through the binding table.
+        val declaredHere = !isExternFunction(rawName) && rawName in declaredFunctionNames
+        if (!declaredHere) {
+            includeForIntrinsic(rawName)
+        }
         val functionName = when {
             isExternFunction(rawName) -> externCName(rawName)
             functionCallExpr.typeArguments.isNotEmpty() -> {
                 val typeArgNames = functionCallExpr.typeArguments.map { resolveKiraTypeName(it) }
-                specializedName(mapIntrinsicName(rawName), typeArgNames)
+                specializedName(if (declaredHere) rawName else mapIntrinsicName(rawName), typeArgNames)
             }
+            declaredHere -> rawName
             else -> mapIntrinsicName(rawName)
         }
         val args = boundArguments(

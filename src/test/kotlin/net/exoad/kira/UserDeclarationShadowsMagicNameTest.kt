@@ -16,6 +16,15 @@ import kotlin.test.assertTrue
  * and a `parseInt64` that nothing defined, the CLI exited 0, and the C
  * compiler or node failed later. Every magic name the stdlib adds widens
  * that hole, so this pins the fix in both backends.
+ *
+ * The call side has the same rule: a name the unit declares is called as
+ * itself, never lowered through the magic table (`ceil` is the user's, not
+ * `Math.ceil`). The C program for that case is emitted correctly but is not
+ * run here: the C backend emits user functions under their Kira names, so a
+ * user `ceil` collides with libc's, which gcc and clang treat as a builtin
+ * (undefined behaviour: gcc 13.2 printed 2 and clang printed 0e+00 from a
+ * `ceil` that returns 101.5). That is the C backend's unmangled symbols, a
+ * separate defect a user `fx strlen` has too.
  */
 class UserDeclarationShadowsMagicNameTest {
     private val moduleUri = "test:shadow.magic"
@@ -40,6 +49,20 @@ class UserDeclarationShadowsMagicNameTest {
     )
     private val expectedLines = listOf("4", "4", "10")
 
+    private val mathNameUri = "test:shadow.mathname"
+    private val mathNameSource = TestCompileSupport.wrapModule(
+        mathNameUri,
+        """
+        fx ceil: (x: Float64) Float64 {
+            return x + 100.0
+        }
+
+        fx main: () Void {
+            trace(ceil(1.5))
+        }
+        """
+    )
+
     @Test
     fun cEmitsTheUsersDeclarations() {
         val generated = TestCompileSupport.transpileSnippetToC(source, TestCompileSupport.logicalPathForModule(moduleUri))
@@ -62,7 +85,7 @@ class UserDeclarationShadowsMagicNameTest {
         val result = TestCompileSupport.compileAndRunC(generated, compiler!!)
         assertEquals(0, result.compileResult.exitCode, result.compileResult.stderr)
         val run = assertNotNull(result.runResult)
-        assertEquals(expectedLines, run.stdout.lines().map { it.trimEnd('\r') }.filter { it.isNotEmpty() }, run.stderr)
+        assertEquals(expectedLines, outputLines(run.stdout), run.stderr)
     }
 
     @Test
@@ -72,6 +95,30 @@ class UserDeclarationShadowsMagicNameTest {
         val generated = TestCompileSupport.transpileSnippetToJS(source, TestCompileSupport.logicalPathForModule(moduleUri))
         val run = TestCompileSupport.runJS(generated, node!!)
         assertEquals(0, run.exitCode, run.stderr)
-        assertEquals(expectedLines, run.stdout.lines().map { it.trimEnd('\r') }.filter { it.isNotEmpty() }, run.stderr)
+        assertEquals(expectedLines, outputLines(run.stdout), run.stderr)
+    }
+
+    @Test
+    fun cCallsTheUsersFunctionOverTheMagicTable() {
+        val generated = TestCompileSupport.transpileSnippetToC(mathNameSource, TestCompileSupport.logicalPathForModule(mathNameUri))
+        assertTrue(Regex("Float64 ceil\\(Float64 x\\)\\s*\\{").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("ceil(1.5)"), generated)
+    }
+
+    @Test
+    fun jsCallsTheUsersFunctionOverTheMagicTable() {
+        val generated = TestCompileSupport.transpileSnippetToJS(mathNameSource, TestCompileSupport.logicalPathForModule(mathNameUri))
+        assertTrue(Regex("function ceil\\(x\\)").containsMatchIn(generated), generated)
+        assertTrue(generated.contains("ceil(1.5)") && !generated.contains("Math.ceil"), generated)
+
+        val node = TestCompileSupport.findNode()
+        assumeTrue(node != null, "No node found on PATH")
+        val run = TestCompileSupport.runJS(generated, node!!)
+        assertEquals(0, run.exitCode, run.stderr)
+        assertEquals(listOf("101.5"), outputLines(run.stdout), run.stderr)
+    }
+
+    private fun outputLines(stdout: String): List<String> {
+        return stdout.lines().map { it.trimEnd('\r') }.filter { it.isNotEmpty() }
     }
 }

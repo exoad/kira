@@ -1023,7 +1023,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             buffer.append(")")
             return
         }
-        val math = jsIntrinsic(rawName)
+        // A function this unit declares shadows the ambient magic name of the
+        // same spelling: a user `fx ceil` is called, not Math.ceil.
+        val math = if (functionParamNames.containsKey(rawName)) null else jsIntrinsic(rawName)
         if (math != null) {
             buffer.append(math)
             buffer.append("(")
