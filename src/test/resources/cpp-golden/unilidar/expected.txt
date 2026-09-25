@@ -1,0 +1,19 @@
+
+unilidar - the L2's wire protocol
+
+  ok    standby and start are byte for byte the SDK's
+  ok    32 bytes, the size the header states
+  ok    the CRC is over the 8 data bytes alone
+  ok    and not over the header and the data
+  ok    writeU32 and readU32 are little-endian
+  ok    readHeader of one frame
+  ok    but not of a datagram holding two
+  ok    nor of a short buffer
+  ok    tailClosed
+  ok    packetAt: a whole packet, and none in three stray bytes
+  ok    eachPacket: two packets, three bytes left over
+  ok    and a capturing lambda saw each
+  ok    autoStandbyFrame takes 0 or 1 and nothing else
+  ok    a Str constant is a const char* every Str helper takes
+
+14 checks, 0 failed

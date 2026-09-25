@@ -1,0 +1,29 @@
+module "app:report"
+
+use "lib:units"
+
+// A module in another directory: it includes lib/units by relative path, and
+// every name it takes from there is fully qualified.
+
+pub struct Line {
+    pub label: Str = ""
+    pub pct: Int32 = 0
+}
+
+fx bar: (pct: Int32) Str {
+    mut out: Str = ""
+    mut i: Int32 = 0
+    while i < pct / 10 {
+        out = out + "#"
+        i += 1
+    }
+    return out
+}
+
+pub fx line: (label: Str, part: Int32, whole: Int32 = SCALE) Line {
+    return Line { label = label, pct = percent(part, whole) }
+}
+
+pub fx render: (l: Line) Str {
+    return "${l.label}: ${l.pct}% ${bar(l.pct)}"
+}

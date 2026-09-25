@@ -1,0 +1,96 @@
+module "lang:classes"
+
+// The class model: reference types held by Rc, traits with parameters and
+// default bodies, inheritance, a generic class, and the spec's Ref and Weak.
+
+pub class Pet {
+    require pub name: Str
+}
+
+// A getter that returns a field: a copy of the reference, never a second owner
+// of one count (the C backend double-frees this).
+pub class Owner {
+    require pet: Pet
+
+    pub fx getPet: () Pet {
+        return pet
+    }
+}
+
+pub trait Scaler {
+    pub fx scale: (v: Int32) Int32;
+    pub fx factor: () Int32;
+    pub fx describe: () Str {
+        return "scales by ${factor()}"
+    }
+}
+
+pub class Doubler: Scaler {
+    require k: Int32
+
+    override pub fx scale: (v: Int32) Int32 {
+        return v * k
+    }
+
+    override pub fx factor: () Int32 {
+        return k
+    }
+}
+
+pub fx apply: (s: Scaler, v: Int32) Int32 {
+    return s.scale(v)
+}
+
+pub class Animal {
+    require pub name: Str
+
+    pub fx sound: () Str {
+        return "..."
+    }
+
+    pub fx describe: () Str {
+        return "${name} says ${sound()}"
+    }
+}
+
+pub class Dog: Animal {
+    mut tricks: Int32 = 0
+
+    override pub fx sound: () Str {
+        return "woof"
+    }
+
+    pub mut fx learn: () Int32 {
+        tricks += 1
+        return tricks
+    }
+}
+
+pub class Box<T> {
+    require pub value: T
+
+    pub fx get: () T {
+        return value
+    }
+}
+
+pub fx boxed: (v: Int32) Box<Int32> {
+    return Box<Int32> { value = v }
+}
+
+pub fx makeCounter: () Ref<Int32> {
+    return Ref<Int32> { value = 0 }
+}
+
+pub fx bump: (c: Ref<Int32>) Int32 {
+    c.value = c.value + 1
+    return c.value
+}
+
+pub fx petName: (w: Weak<Pet>) Str {
+    p: Maybe<Pet> = w.upgrade()
+    if p.isNone() {
+        return "gone"
+    }
+    return p.unwrap().name
+}

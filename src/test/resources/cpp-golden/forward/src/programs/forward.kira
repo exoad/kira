@@ -1,0 +1,31 @@
+module "programs:forward"
+
+use "pilot:car"
+
+// Creep forward until something is within STOP_AT_M, and go again past GO_AT_M:
+// two thresholds, so a reading that hovers at one does not chatter.
+
+CREEP: Float32 = 0.10
+STOP_AT_M: Float32 = 0.60
+GO_AT_M: Float32 = 0.80
+
+fx main: () Int32 {
+    car: Car = openCar()
+    if !car.arm() {
+        return car.finish()
+    }
+    mut blocked: Bool = true
+    while car.ok() {
+        if !car.drivable() && !car.arm() {
+            continue
+        }
+        ahead: Float32 = car.scan().ahead()
+        if ahead < STOP_AT_M {
+            blocked = true
+        } else if ahead > GO_AT_M {
+            blocked = false
+        }
+        car.drive(if blocked { 0.0 } else { CREEP }, 0.0)
+    }
+    return car.finish()
+}

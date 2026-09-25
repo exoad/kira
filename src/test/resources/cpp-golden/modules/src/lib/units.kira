@@ -1,0 +1,24 @@
+module "lib:units"
+
+// A header-only module (build.cpp.headerOnly) in namespace golden::units
+// (build.cpp.namespaces). Its private helper lands in namespace impl_ of the
+// header, where the module's own inline functions can call it.
+
+pub SCALE: Int32 = 100
+
+fx clampPct: (v: Int32) Int32 {
+    if v < 0 {
+        return 0
+    }
+    if v > SCALE {
+        return SCALE
+    }
+    return v
+}
+
+pub fx percent: (part: Int32, whole: Int32) Int32 {
+    if whole == 0 {
+        return 0
+    }
+    return clampPct(part * SCALE / whole)
+}

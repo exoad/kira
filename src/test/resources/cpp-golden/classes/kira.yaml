@@ -1,0 +1,13 @@
+project:
+  name: golden-classes
+srcDir: src
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

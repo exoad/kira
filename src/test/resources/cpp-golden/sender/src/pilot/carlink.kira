@@ -1,0 +1,11 @@
+module "pilot:carlink"
+
+// What a write to the Pico's serial port answers, and how long one may wait.
+
+pub enum LinkResult: Int32 {
+    LINK_OK = 0,
+    LINK_WRITE_FAILED = 1,
+    LINK_CLOSED = 2
+}
+
+pub WRITE_WAIT_MS: Int32 = 30

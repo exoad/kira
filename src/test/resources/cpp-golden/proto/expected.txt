@@ -1,0 +1,61 @@
+
+proto - the car's line protocol
+
+  ok    OK is recognized
+  ok    and its topic split off
+  ok    and the fields kept
+  ok    INFO is recognized
+  ok    and its topic split off
+  ok    ERR is recognized
+  ok    and has no topic invented for it
+  ok    the reason is kept whole
+  ok    an unrecognized line is OTHER, not a fault
+  ok    and kept whole
+  ok    empty is empty
+  ok    and so is whitespace
+  ok    CRLF is stripped from the kept line
+  ok    servo=
+  ok    servo_t=
+  ok    esc=
+  ok    esc_t=
+  ok    esc= is not matched inside desc=
+        (strstr would have returned 99 here)
+  ok    and desc= still reads correctly
+  ok    a missing key is false
+  ok    an empty key is false
+  ok    a non-numeric value is refused, not defaulted to 0
+  ok    and the out parameter is left alone
+  ok    though it can still be read as text
+  ok    a trailing tail is refused
+  ok    and so is an empty value
+  ok    the drive reply is an OK
+  ok    with topic drive
+  ok    armed= reads the arm state
+  ok    esc= is not esc_t=, esc_min= or esc_max=
+  ok    steer_now= is negative and is not steer_m=
+  ok    tick= is the encoder's signed count
+  ok    tps= its signed speed
+  ok    hbad= is its own key at the end of the line
+  ok    slew= is not slew_esc=
+  ok    a key missing its = is refused, not silently empty
+  ok    and it leaves the out parameter alone
+  ok    a float field
+  ok    a negative float field
+  ok    a comma decimal is refused
+  ok    a steering command
+  ok    a negative one
+  ok    center
+  ok    beyond full lock is clamped
+  ok    and the other way
+  ok    the third decimal rounds
+  ok    Float32 arithmetic, as bibo's C++ did it
+  ok    a throttle pulse
+  ok    the stop command
+  ok    a built command
+  ok    one with no arguments
+  ok    an empty verb makes nothing
+  ok    a % in the arguments is a plain character
+  ok    no comma survives into a command
+  ok    and 2.50 still reads as 2.5
+
+55 checks, 0 failed

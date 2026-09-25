@@ -1,0 +1,14 @@
+
+modules - relative includes, namespaces, header-only
+
+  ok    units lives in golden::units, as the manifest says
+  ok    a header-only function
+  ok    which calls its private helper
+  ok    and guards a zero whole
+  ok    the helper is in impl_, reachable only by that name
+  ok    a default argument from another module: ::golden::units::SCALE
+  ok    report renders through units
+  ok    a struct's defaults
+  ok    and a designated initialiser
+
+9 checks, 0 failed

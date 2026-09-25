@@ -1,0 +1,21 @@
+
+chain - the behaviour chain and Maybe<Behaviour>
+
+  ok    a stack-constructed Chain starts empty
+  ok    make(ID_STOP) loads
+  ok    a C++ test double loads through a unique_ptr
+  ok    and its onLoad ran once
+  ok    at(0) != nullptr && at(0)->id()
+  ok    a default body, and its override
+  ok    at(2) == nullptr past the end
+  ok    the Kira spelling reads the same
+  ok    an unknown id makes none, which is refused
+  ok    a second Greedy is refused
+  ok    with its reason, and without loading it
+  ok    an empty id is refused
+  ok    size and has
+  ok    Stop clamps
+  ok    and the double proposes
+  ok    Kira code holds a Chain by Rc
+
+16 checks, 0 failed

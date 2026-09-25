@@ -1,0 +1,15 @@
+project:
+  name: golden-forward
+srcDir: src
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+    namespaces:
+      "pilot:car": bibo
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

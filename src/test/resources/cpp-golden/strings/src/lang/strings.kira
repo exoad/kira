@@ -1,0 +1,63 @@
+module "lang:strings"
+
+// Str: interpolation, `as Str`, the Str helpers and the strict parsers. Every
+// number's text is locale-free, so a process that set a comma-decimal locale
+// still prints 2.5 and parses "2.50".
+
+pub enum Mood: Int32 {
+    MOOD_CALM = 0,
+    MOOD_BUSY = 1
+}
+
+pub fx greet: (name: Str, n: Int32) Str {
+    return "hello ${name}, you are ${n}"
+}
+
+// Every piece kind an interpolation takes. A UInt8 is a number, a Char a
+// character, an integer enum its entry's name.
+pub fx describe: (b: Bool, f: Float64, g: Float32, c: Char, u: UInt8, m: Mood) Str {
+    return "b=${b} f=${f} g=${g} c=${c} u=${u} m=${m}"
+}
+
+pub fx show: (v: Float64) Str {
+    return v as Str
+}
+
+pub fx flag: (b: Bool) Str {
+    return b as Str
+}
+
+pub fx padded: (v: Int32) Str {
+    return (v as Str).padStart(5, '0')
+}
+
+pub fx parseInt: (s: Str) Maybe<Int64> {
+    return s.toInt64()
+}
+
+pub fx parseFloat: (s: Str) Maybe<Float64> {
+    return s.toFloat64()
+}
+
+pub fx joined: (a: Str, b: Str) Str {
+    return a + " " + b
+}
+
+pub fx bracketed: (s: Str) Str {
+    return "<" + s + ">"
+}
+
+pub fx initial: (s: Str) Char {
+    return s[0]
+}
+
+pub fx same: (a: Str, b: Str) Bool {
+    return a == b
+}
+
+pub fx middle: (s: Str) Str {
+    if s.length() < 2 {
+        return ""
+    }
+    return s.substring(1, s.length() - 1)
+}

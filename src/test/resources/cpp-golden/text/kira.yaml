@@ -1,0 +1,16 @@
+project:
+  name: golden-text
+srcDir: src
+build:
+  target: cpp
+  cpp:
+    layout: beside
+    lineDirectives: false
+    namespaces:
+      "lib:text": bibo::text
+    freestanding: ["lib:text"]
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

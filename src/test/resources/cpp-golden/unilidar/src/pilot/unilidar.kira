@@ -1,0 +1,159 @@
+module "pilot:unilidar"
+
+// unilidar - the Unitree L2's wire protocol, and nothing else. PURE.
+// A slice of the design-C probe: the constants, the CRC, the command frames,
+// the header and the packet walk. Header-only (build.cpp.headerOnly).
+
+pub LIDAR_IP: Str = "192.168.1.62"
+pub LIDAR_PORT: UInt16 = 6101
+pub HOST_IP: Str = "192.168.1.2"
+pub HOST_PORT: UInt16 = 6201
+
+pub MAGIC: Arr<UInt8, 4> = [0x55, 0xAA, 0x05, 0x0A]
+pub TAIL: Arr<UInt8, 2> = [0x00, 0xFF]
+
+pub HEADER_BYTES: Size = 12
+pub TAIL_BYTES: Size = 12
+
+pub TYPE_USER_CMD: UInt32 = 100
+pub TYPE_ACK: UInt32 = 101
+pub TYPE_COMMAND: UInt32 = 2000
+
+pub CMD_VERSION_GET: UInt32 = 4
+pub USER_CMD_STANDBY: UInt32 = 2
+pub USER_CMD_CONFIG_AUTO_STANDBY: UInt32 = 7
+pub STANDBY_ON: UInt32 = 1
+pub STANDBY_OFF: UInt32 = 0
+
+pub USER_CMD_BYTES: Size = 32
+// Every command either family sends is exactly one of these.
+pub alias Frame as Arr<UInt8, USER_CMD_BYTES>
+
+// The SDK's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
+pub @_const fx crc32: (buf: View<UInt8>) UInt32 {
+    mut crc: UInt32 = 0xFFFFFFFF
+    for b: UInt8 in buf {
+        crc ^= b as UInt32
+        for bit: Int32 in 0..8 {
+            crc = if (crc & 1) != 0 { (crc >> 1) ^ 0xEDB88320 } else { crc >> 1 }
+        }
+    }
+    return ~crc
+}
+
+pub @_const fx readU32: (p: View<UInt8>) UInt32 {
+    return (p[0] as UInt32) | ((p[1] as UInt32) << 8) | ((p[2] as UInt32) << 16) | ((p[3] as UInt32) << 24)
+}
+
+pub @_const fx writeU32: (p: MutView<UInt8>, v: UInt32) Void {
+    p[0] = (v & 0xFF) as UInt8
+    p[1] = ((v >> 8) & 0xFF) as UInt8
+    p[2] = ((v >> 16) & 0xFF) as UInt8
+    p[3] = ((v >> 24) & 0xFF) as UInt8
+}
+
+// A 32-byte command of either family, little-endian, byte by byte.
+pub @_const fx command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame {
+    mut p: Frame = Frame {}
+    for i: Size in 0..MAGIC.size() {
+        p[i] = MAGIC[i]
+    }
+    writeU32(p.from(4), kind)
+    writeU32(p.from(8), USER_CMD_BYTES as UInt32)
+    writeU32(p.from(12), cmdType)
+    writeU32(p.from(16), cmdValue)
+    // Over the 8 data bytes alone.
+    writeU32(p.from(20), crc32(p.slice(12, 8)))
+    p[30] = TAIL[0]
+    p[31] = TAIL[1]
+    return p
+}
+
+pub @_const fx userCmd: (cmdType: UInt32, cmdValue: UInt32) Frame {
+    return command(TYPE_USER_CMD, cmdType, cmdValue)
+}
+
+pub @_const fx standby: () Frame {
+    return userCmd(USER_CMD_STANDBY, STANDBY_ON)
+}
+
+pub @_const fx start: () Frame {
+    return userCmd(USER_CMD_STANDBY, STANDBY_OFF)
+}
+
+pub @_const fx versionRequest: () Frame {
+    return command(TYPE_COMMAND, CMD_VERSION_GET, 0)
+}
+
+pub @_const fx autoStandbyFrame: (value: UInt32) Maybe<Frame> {
+    if value > 1 {
+        return null
+    }
+    return userCmd(USER_CMD_CONFIG_AUTO_STANDBY, value)
+}
+
+pub struct Header {
+    pub type: UInt32 = 0
+    pub size: UInt32 = 0
+}
+
+// True for ONE PACKET: the magic, and a stated size equal to its own length.
+pub @_const fx readHeader: (buf: View<UInt8>, mut out: Header) Bool {
+    if buf.size() < HEADER_BYTES + TAIL_BYTES {
+        return false
+    }
+    for i: Size in 0..MAGIC.size() {
+        if buf[i] != MAGIC[i] {
+            return false
+        }
+    }
+    out.type = readU32(buf.from(4))
+    out.size = readU32(buf.from(8))
+    return (out.size as Size) == buf.size()
+}
+
+pub @_const fx tailClosed: (buf: View<UInt8>) Bool {
+    n: Size = buf.size()
+    return n >= 2 && buf[n - 2] == TAIL[0] && buf[n - 1] == TAIL[1]
+}
+
+// The bytes of the whole packet at the start of buf, 0 for none.
+pub @_const fx packetAt: (buf: View<UInt8>) Size {
+    if buf.size() < HEADER_BYTES + TAIL_BYTES {
+        return 0
+    }
+    for i: Size in 0..MAGIC.size() {
+        if buf[i] != MAGIC[i] {
+            return 0
+        }
+    }
+    size: Size = readU32(buf.from(8)) as Size
+    if size < HEADER_BYTES + TAIL_BYTES || size > buf.size() || !tailClosed(buf.slice(0, size)) {
+        return 0
+    }
+    return size
+}
+
+pub struct Walked {
+    pub packets: Size = 0
+    pub leftover: Size = 0
+}
+
+// Hands each whole packet of a datagram to each, in order, and stops cleanly
+// at the first thing that is not one. `each` does not escape, so it lowers to
+// a template parameter and a lambda costs no heap.
+pub @_const fx eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Walked {
+    mut w: Walked = Walked {}
+    mut at: Size = 0
+    while at < buf.size() {
+        n: Size = packetAt(buf.from(at))
+        if n == 0 {
+            break
+        }
+        each(buf.slice(at, n))
+        w.packets += 1
+        at += n
+    }
+    w.leftover = buf.size() - at
+    return w
+}
