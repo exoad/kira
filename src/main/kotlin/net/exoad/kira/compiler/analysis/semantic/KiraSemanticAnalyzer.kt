@@ -415,6 +415,15 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                                 .add(method.def.parameters.map { it.name.value })
                         }
                     }
+                    // A struct's methods bind named arguments exactly like a class's.
+                    is StructDecl -> {
+                        if (isMagic(decl)) return@forEach
+                        decl.members.filterIsInstance<FunctionDecl>().forEach { method ->
+                            val name = (method.name as? Identifier)?.value ?: return@forEach
+                            methodParameterNames.getOrPut(name) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
+                        }
+                    }
                 }
             }
         }
@@ -904,6 +913,69 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             compilationUnit.symbolTable.exit()
         } else {
             typeAliasDecl.target.accept(this)
+        }
+    }
+
+    // --- the AST contract (design 2.4): declare the new names, walk the new children ---
+
+    override fun visitStructDecl(structDecl: StructDecl) {
+        // A struct declares a type name exactly like a class does; its
+        // members and its initially block are walked in the struct's scope.
+        runIntrinsicsIfPresent(structDecl)
+        val typeName = (structDecl.name.identifier as? Identifier)?.value ?: return
+        val symbol = SemanticSymbol(
+            typeName,
+            SemanticSymbolKind.TYPE_SPECIFIER,
+            Token.Type.K_STRUCT,
+            SourceLocation.fromPosition(
+                context.astOrigins[structDecl] ?: SourcePosition.UNKNOWN,
+                context.file
+            ),
+            relativelyVisible = structDecl.modifiers.contains(Modifier.PUBLIC)
+        )
+        expectTypeNotDeclaredInModule(typeName, context.astOrigins[structDecl])
+        compilationUnit.symbolTable.declare(typeName, symbol)
+        if (structDecl.members.isNotEmpty() || structDecl.initially != null) {
+            compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+            registerGenericTypeParameters(structDecl.name)
+            structDecl.members.forEach { it.accept(this) }
+            structDecl.initially?.forEach { it.accept(this) }
+            compilationUnit.symbolTable.exit()
+        }
+    }
+
+    override fun visitIfExpr(ifExpr: IfExpr) {
+        ifExpr.condition.accept(this)
+        ifExpr.thenBranch.forEach { it.accept(this) }
+        ifExpr.elseBranch.forEach { it.accept(this) }
+    }
+
+    override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {
+        compilationUnit.symbolTable.enter(SemanticScope.Function("(lambda)"))
+        lambdaExpr.def.parameters.forEach { it.accept(this) }
+        lambdaExpr.def.returnTypeSpecifier.accept(this)
+        lambdaExpr.def.body?.forEach { it.accept(this) }
+        compilationUnit.symbolTable.exit()
+    }
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        placeAssignmentExpr.target.accept(this)
+        placeAssignmentExpr.value.accept(this)
+    }
+
+    override fun visitThisExpr(thisExpr: ThisExpr) {
+        // nothing to declare or check here; the typer binds it to the enclosing type
+    }
+
+    override fun visitCharLiteral(charLiteral: CharLiteral) {
+        // should be true
+    }
+
+    override fun visitInterpolatedStringLiteral(interpolatedStringLiteral: InterpolatedStringLiteral) {
+        interpolatedStringLiteral.parts.forEach { part ->
+            if (part is InterpolationPart.Hole) {
+                part.expr.accept(this)
+            }
         }
     }
 

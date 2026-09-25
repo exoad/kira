@@ -18,6 +18,14 @@ sealed class Token(
         L_STRING("String Literal"),
         L_FLOAT("Float Literal"),
         L_NULL("'null'"),
+        L_CHAR("Char Literal"),
+
+        // An interpolated string lexes as text pieces around nested expression
+        // token streams: HEAD expr (PART expr)* TAIL. A string with no `${`
+        // stays one L_STRING.
+        L_STRING_HEAD("String Literal (before the first '\${')"),
+        L_STRING_PART("String Literal (between two '\${' holes)"),
+        L_STRING_TAIL("String Literal (after the last '\${' hole)"),
         IDENTIFIER("Identifier"),
         INTRINSIC_IDENTIFIER("Intrinsic Identifier"),
         OP_RANGE("'..' (Range To)"),
@@ -77,9 +85,14 @@ sealed class Token(
         //        K_GLOBAL("'global'"),
         K_TRAIT("'trait'"),
         K_THIS("'this'"),
+        K_STRUCT("'struct'"),
+        K_IN("'in'"),
+        K_INITIALLY("'initially'"),
+        K_FINALLY("'finally'"),
         K_MODIFIER_REQUIRE("'require'"),
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
+        K_MODIFIER_OVERRIDE("'override'"),
         K_FX("'fx' (Function)"),
 
         // RAW SYMBOLS

@@ -40,6 +40,15 @@ enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<Wrappi
             WrappingContext.FUNCTION,
         )
     ),
+
+    /** `override fx ...`: a method that replaces a parent's or a trait's (spec Inheritance). */
+    OVERRIDE(
+        Token.Type.K_MODIFIER_OVERRIDE,
+        arrayOf(
+            WrappingContext.CLASS_MEMBER,
+            WrappingContext.TRAIT_MEMBER,
+        )
+    ),
     ;
 
     companion object {

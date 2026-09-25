@@ -67,4 +67,36 @@ abstract class KiraASTVisitor {
     abstract fun visitTraitDecl(traitDecl: TraitDecl)
     abstract fun visitVariantDecl(variantDecl: VariantDecl)
     abstract fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl)
+
+    // THE AST CONTRACT (design 2.4). Each new syntax form is a new node, and
+    // its visit defaults to a throw: a backend that does not lower the form
+    // fails loudly, and can never lower it as something else. The semantic
+    // analyzer and the XML dumper override every one of these.
+    open fun visitStructDecl(structDecl: StructDecl) {
+        throw UnsupportedConstruct(structDecl, "struct declaration")
+    }
+
+    open fun visitIfExpr(ifExpr: IfExpr) {
+        throw UnsupportedConstruct(ifExpr, "if-expression")
+    }
+
+    open fun visitLambdaExpr(lambdaExpr: LambdaExpr) {
+        throw UnsupportedConstruct(lambdaExpr, "lambda expression")
+    }
+
+    open fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        throw UnsupportedConstruct(placeAssignmentExpr, "assignment to a member or index place")
+    }
+
+    open fun visitThisExpr(thisExpr: ThisExpr) {
+        throw UnsupportedConstruct(thisExpr, "'this' expression")
+    }
+
+    open fun visitCharLiteral(charLiteral: CharLiteral) {
+        throw UnsupportedConstruct(charLiteral, "char literal")
+    }
+
+    open fun visitInterpolatedStringLiteral(interpolatedStringLiteral: InterpolatedStringLiteral) {
+        throw UnsupportedConstruct(interpolatedStringLiteral, "interpolated string literal")
+    }
 }
