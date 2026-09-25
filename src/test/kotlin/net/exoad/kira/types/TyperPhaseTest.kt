@@ -516,6 +516,31 @@ class TyperPhaseTest {
     }
 
     @Test
+    fun theExpressionDumpLineHasTheDesignsShape() {
+        // Plant the facts phase C records for `s.length()`, and check the line design 3.1 shows:
+        // `proto.kira:31:12  s.length()  Size  call=MAGIC(Str.length)`.
+        val p = snippet(
+            """
+            fx size: (s: Str) Size {
+                return s.length()
+            }
+            """
+        )
+        val source = p.module("test:main")!!.source
+        var call: net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr? = null
+        AstTree.walk(source.ast) { if (it is net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr) call = it }
+        val length = p.builtins.classOf(KType.Str)!!.method("length")!!
+        p.model.types[call!!] = KType.SIZE
+        p.model.calls[call!!] = net.exoad.kira.compiler.analysis.types.ResolvedCall(
+            net.exoad.kira.compiler.analysis.types.CallKind.MAGIC, length,
+            (call!!.name as net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr).origin,
+            false, emptyList(), emptyList(), emptyList(), KType.SIZE,
+        )
+        val line = TypedModelDumper.dump(p, source).lines().single { "length" in it }
+        assertEquals("main.kira:4:12  s.length()  Size  call=MAGIC(Str.length)", line)
+    }
+
+    @Test
     fun astTreeFindsChildrenOfNewNodesAndDefaultedFields() {
         val default = IntegerLiteral(7)
         val p = param("n", ty("Int32"), default)

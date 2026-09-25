@@ -71,9 +71,13 @@ class ModuleGraph(private val program: TypedProgram) {
     /** [name] as seen from [module], among the symbols [accept] takes. */
     fun lookup(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean = { true }): Lookup {
         module.members[name]?.takeIf(accept)?.let { return Lookup.Found(it, module) }
-        val exported = module.imports.mapNotNull { used ->
-            used.members[name]?.takeIf { accept(it) && isPub(it) }?.let { Lookup.Found(it, used) }
-        }.distinctBy { System.identityHashCode(it.symbol) }
+        val exported = mutableListOf<Lookup.Found>()
+        for (used in module.imports) {
+            val s = used.members[name]?.takeIf { accept(it) && isPub(it) } ?: continue
+            if (exported.none { it.symbol === s }) {
+                exported.add(Lookup.Found(s, used))
+            }
+        }
         if (exported.size > 1) {
             return Lookup.Ambiguous(exported.first(), exported.drop(1))
         }
