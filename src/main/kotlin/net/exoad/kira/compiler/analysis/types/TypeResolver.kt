@@ -314,11 +314,26 @@ class TypeResolver(private val program: TypedProgram) {
             )
             return KType.Error
         }
-        val elementNodes = if (model.aliasRefs[paramsNode] == null) paramsNode.children else emptyList()
+        val flags = mutFlags(paramsNode, IdentityHashMap())
         val params = nominal.typeArgs().mapIndexed { i, pt ->
-            FnParam(pt, elementNodes.getOrNull(i)?.isMutParam == true)
+            FnParam(pt, flags.getOrNull(i) == true)
         }
         return KType.Fn(params, ret.t)
+    }
+
+    /**
+     * The `mut` of each element of the tuple [node] spells, read from the spelling itself: a
+     * Nominal carries no by-reference flag, so when the tuple is named through an alias
+     * (`alias Args as Tuple1<mut Int32>`, then `Fx<Args, Void>`) the flags come from the alias's
+     * target, through any chain of aliases. [seen] stops a cycle, which is reported elsewhere.
+     */
+    private fun mutFlags(node: Type, seen: IdentityHashMap<AliasSymbol, Boolean>): List<Boolean> {
+        val alias = model.aliasRefs[node] ?: return node.children.map { it.isMutParam }
+        if (seen.put(alias, true) != null) {
+            return emptyList()
+        }
+        val target = alias.decl?.target ?: return emptyList()
+        return mutFlags(target, seen)
     }
 
     private fun expandAlias(alias: AliasSymbol, t: Type, scope: TypeScope): KType {

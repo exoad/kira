@@ -31,9 +31,13 @@ import java.util.IdentityHashMap
  * declaration's type, or the other operand's), else Int32 or Float64, as in phase C.
  *
  * What it reports, because nothing later would: signed overflow and division by zero while
- * folding (`types.const.overflow`, `types.const.div-by-zero`). What it leaves to phase C (W2.1):
+ * folding (`types.const.overflow`, `types.const.div-by-zero`), and an Arr literal whose
+ * element count is not the N of its `Arr<T, N>` (`types.const.arr-size`), in every place it
+ * folds: globals, field and parameter defaults, enum values. What it leaves to phase C (W2.1):
  * a literal out of range for its declared type, a non-constant initializer, a Str constant
- * that is not a literal. Those simply do not fold here ([valueOf] is null).
+ * that is not a literal, and the element count of an Arr literal inside a body (a local's
+ * initializer, an argument), which never reaches this class. Those simply do not fold here
+ * ([valueOf] is null).
  *
  * `Size` folds under the portable 32-bit range (Prim.portableBits): a Size constant that
  * needs 64 bits does not fold.
@@ -411,12 +415,28 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         return ConstValue.IntConst.of(clamped, prim)
     }
 
+    /**
+     * An Arr literal against `Arr<T>` or `Arr<T, N>`. Against `Arr<T, N>` the literal must have
+     * exactly N elements, whether or not they fold: an ArrConst's type is the declared one, so
+     * a value of another length would be a false fact, and a C++ `std::array<T, N>` initialised
+     * with more elements does not compile, with fewer it zero-fills (`types.const.arr-size`).
+     */
     private fun array(e: ArrayLiteral, expected: KType?, module: ModuleSymbol): ConstValue? {
         val arr = expected as? KType.Nominal ?: return null
         if (arr.sym.name != Builtins.ARR || (arr.sym as? ClassSymbol)?.kind != ClassKind.MAGIC) {
             return null
         }
         val element = arr.typeArgs().firstOrNull() ?: return null
+        val size = arr.constArgs().firstOrNull()
+        if (size != null && e.value.size.toLong() != size) {
+            program.report(
+                "types.const.arr-size",
+                "This literal has ${e.value.size} element${if (e.value.size == 1) "" else "s"}, " +
+                    "but ${arr.display()} holds exactly $size.",
+                e,
+            )
+            return null
+        }
         val values = e.value.map { fold(it, element, module) ?: return null }
         return ConstValue.ArrConst(values, arr)
     }

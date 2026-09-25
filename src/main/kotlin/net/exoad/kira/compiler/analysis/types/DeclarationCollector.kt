@@ -424,26 +424,39 @@ internal class DeclarationCollector(
         /**
          * The marker invocations (arguments included) the parser recorded for [node].
          *
-         * The frontend package (W1.1) adds `SourceContext.astIntrinsicInvocations` with its
-         * parser work, after the AST contract this package merged. Until that field exists
-         * this returns an empty list, and markers carry their names only; once it exists it
-         * is read here. Replace the reflection with `source.intrinsicInvocationsOf(node)`
-         * when both packages are on one branch.
+         * The frontend package (W1.1) adds `SourceContext.intrinsicInvocationsOf(node)` over
+         * a field `astIntrinsicInvocations` with its parser work, after the AST contract this
+         * package merged. Until neither exists this returns an empty list, and markers carry
+         * their names only. Once either exists it is read here, and a read that fails is not
+         * swallowed: it is an internal failure (KiraTyper.guard reports it as `types.internal`),
+         * because an `@_extern` whose arguments went quietly missing would give the FFI package
+         * nothing to bind. Replace the reflection with `source.intrinsicInvocationsOf(node)`
+         * when both packages are on one branch; TyperPhaseTest.externArgumentsAreRecorded...
+         * fails, not skips, if that read returns nothing on a branch with the dialect parser.
          */
         fun invocationsOf(source: SourceContext, node: ASTNode): List<IntrinsicExpr> {
-            val field = invocationsField ?: return emptyList()
-            val map = try {
-                field.get(source) as? Map<*, *>
-            } catch (_: Exception) {
-                null
-            } ?: return emptyList()
-            return (map[node] as? List<*>)?.filterIsInstance<IntrinsicExpr>() ?: emptyList()
+            val read = invocationsReader ?: return emptyList()
+            return read(source, node)
         }
 
-        private val invocationsField: java.lang.reflect.Field? by lazy {
-            runCatching {
+        private val invocationsReader: ((SourceContext, ASTNode) -> List<IntrinsicExpr>)? by lazy {
+            val method = runCatching {
+                SourceContext::class.java.getMethod("intrinsicInvocationsOf", ASTNode::class.java)
+            }.getOrNull()
+            if (method != null) {
+                return@lazy { source, node -> (method.invoke(source, node) as List<*>).filterIsInstance<IntrinsicExpr>() }
+            }
+            val field = runCatching {
                 SourceContext::class.java.getDeclaredField("astIntrinsicInvocations").apply { isAccessible = true }
             }.getOrNull()
+            if (field != null) {
+                return@lazy { source, node ->
+                    // null: a lateinit the parser never set (a hand-built AST), which has no arguments.
+                    val map = field.get(source) as Map<*, *>?
+                    (map?.get(node) as List<*>?)?.filterIsInstance<IntrinsicExpr>() ?: emptyList()
+                }
+            }
+            null
         }
     }
 }

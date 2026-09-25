@@ -542,24 +542,51 @@ internal class SignatureResolver(private val program: TypedProgram) {
         }
     }
 
+    /**
+     * [m] must repeat [base]'s signature under [sub] (the owner's type arguments). A generic
+     * method's own type parameters are positional: `fx map<U>: (u: U) U` overrides
+     * `fx map<V>: (v: V) V`, so the base's are mapped onto [m]'s before the comparison, and
+     * their bounds must agree too.
+     */
     private fun checkOverride(m: FnSymbol, base: FnSymbol, sub: Map<TypeParamSymbol, KType>, where: String) {
         if (m.module.isStdlib) {
             return
         }
-        val expectedParams = base.params.map { it.type.substitute(sub) }
-        val expectedRet = base.ret.substitute(sub)
+        if (m.typeParams.size != base.typeParams.size) {
+            program.report(
+                "types.override.signature",
+                "$where.${m.name} must have the type parameters of ${base.qualifiedName}, " +
+                    "${typeParamsText(base.typeParams)}; it has ${typeParamsText(m.typeParams)}.",
+                m.decl,
+            )
+            return
+        }
+        val own: Map<TypeParamSymbol, KType> = base.typeParams.zip(m.typeParams).associate { (b, o) -> b to KType.Param(o) }
+        val full = sub + own
+        val expectedParams = base.params.map { it.type.substitute(full) }
+        val expectedRet = base.ret.substitute(full)
         val paramsMatch = m.params.size == base.params.size &&
             m.params.indices.all { i -> m.params[i].type == expectedParams[i] && m.params[i].byRef == base.params[i].byRef }
-        val errors = (expectedParams + expectedRet + m.params.map { it.type } + m.ret).any { it.containsError() }
+        val bounds = base.typeParams.map { tp -> tp.bounds.map { it.substitute(full) } }
+        val errors = (expectedParams + expectedRet + m.params.map { it.type } + m.ret + bounds.flatten() + m.typeParams.flatMap { it.bounds })
+            .any { it.containsError() }
         if (errors) {
             return
         }
+        val boundsMatch = m.typeParams.indices.all { i -> m.typeParams[i].bounds.toSet() == bounds[i].toSet() }
         if (!paramsMatch || m.ret != expectedRet) {
             val want = "(${base.params.indices.joinToString(", ") { (if (base.params[it].byRef) "mut " else "") + expectedParams[it].display() }}) ${expectedRet.display()}"
             val got = "(${m.params.joinToString(", ") { (if (it.byRef) "mut " else "") + it.type.display() }}) ${m.ret.display()}"
             program.report(
                 "types.override.signature",
                 "$where.${m.name} must have the signature of ${base.qualifiedName}, $want; it is $got.",
+                m.decl,
+            )
+        } else if (!boundsMatch) {
+            program.report(
+                "types.override.signature",
+                "$where.${m.name} must bound its type parameters as ${base.qualifiedName} does, " +
+                    "${typeParamsText(m.typeParams, bounds)}; it has ${typeParamsText(m.typeParams)}.",
                 m.decl,
             )
         } else if (m.isMutMethod != base.isMutMethod) {
@@ -570,6 +597,21 @@ internal class SignatureResolver(private val program: TypedProgram) {
                     "like ${base.qualifiedName}.",
                 m.decl,
             )
+        }
+    }
+
+    /**
+     * `<T, U: Bound>` for a message, or `no type parameters`. With [bounds], each parameter is
+     * shown under those instead of its own: the base's bounds in the override's names, so the
+     * expected and the actual read side by side.
+     */
+    private fun typeParamsText(params: List<TypeParamSymbol>, bounds: List<List<KType>>? = null): String {
+        if (params.isEmpty()) {
+            return "no type parameters"
+        }
+        return params.indices.joinToString(", ", "<", ">") { i ->
+            val b = bounds?.get(i) ?: params[i].bounds
+            params[i].name + if (b.isEmpty()) "" else ": " + b.joinToString(" + ") { it.display() }
         }
     }
 

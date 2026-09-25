@@ -1,15 +1,24 @@
 package net.exoad.kira.types
 
+import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.Severity
 import net.exoad.kira.compiler.analysis.types.TyperMode
+import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
+import net.exoad.kira.types.TyperTestSupport.astModule
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
+import net.exoad.kira.types.TyperTestSupport.fn
 import net.exoad.kira.types.TyperTestSupport.module
+import net.exoad.kira.types.TyperTestSupport.param
 import net.exoad.kira.types.TyperTestSupport.snippet
+import net.exoad.kira.types.TyperTestSupport.ty
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -306,6 +315,107 @@ class TyperDeclDiagnosticsTest {
         val m = p.workspaceModules.single()
         assertEquals("StrBuf<64>", (m.members["a"] as GlobalSymbol).type.toString())
         assertEquals("CStr", (m.members["d"] as GlobalSymbol).type.toString())
+    }
+
+    @Test
+    fun anArrLiteralMustHaveExactlyTheDeclaredCount() {
+        // Sizes are spelled through Size constants: this branch's parser reads `Arr<UInt8, FOUR>`
+        // but not `Arr<UInt8, 4>` (a ConstTypeArg comes with the frontend package's parser).
+        val p = snippet(
+            """
+            pub ONE: Size = 1
+            pub TWO: Size = 2
+            pub THREE: Size = 3
+            pub FOUR: Size = 4
+            pub MAGIC: Arr<UInt8, FOUR> = [1, 2, 3]
+            pub OVER: Arr<UInt8, TWO> = [1, 2, 3]
+            pub EXACT: Arr<UInt8, THREE> = [1, 2, 3]
+            pub OPEN: Arr<UInt8> = [1, 2, 3]
+            pub NESTED: Arr<Arr<UInt8, TWO>, ONE> = [[1, 2, 3]]
+            pub class Frame {
+                pub head: Arr<UInt8, TWO> = [1]
+            }
+            """
+        )
+        val m = p.workspaceModules.single()
+        assertEquals(4, count(p, "types.const.arr-size"), TyperTestSupport.render(p))
+        assertNull((m.members["MAGIC"] as GlobalSymbol).constValue, "3 elements for Arr<UInt8, 4> is not a value")
+        assertNull((m.members["OVER"] as GlobalSymbol).constValue, "3 elements for Arr<UInt8, 2> is not a value")
+        assertNull((m.members["NESTED"] as GlobalSymbol).constValue, "the inner literal is checked too")
+        assertEquals("[1:UInt8, 2:UInt8, 3:UInt8]", (m.members["EXACT"] as GlobalSymbol).constValue.toString())
+        assertEquals("[1:UInt8, 2:UInt8, 3:UInt8]", (m.members["OPEN"] as GlobalSymbol).constValue.toString())
+        val magic = expectDiagnostic(p, "types.const.arr-size")
+        assertTrue(magic.message.contains("This literal has 3 elements, but Arr<UInt8, 4> holds exactly 4"), magic.message)
+        assertEquals(7, magic.position?.lineNumber, "located at the literal")
+        assertTrue(
+            p.diagnostics.any { it.code == "types.const.arr-size" && it.message.contains("has 1 element, but Arr<UInt8, 2>") },
+            "the field default is checked too:\n" + TyperTestSupport.render(p),
+        )
+
+        // A parameter default (syntax this branch's parser does not produce) is checked the same way.
+        val unit = CompilationUnit()
+        val send = fn(
+            "send",
+            listOf(param("tail", ty("Arr", ty("UInt8"), ConstTypeArg(IntegerLiteral(1))), ArrayLiteral(arrayOf(IntegerLiteral(1), IntegerLiteral(2))))),
+            ty("Void"),
+        )
+        astModule(unit, "test:arrdef", send)
+        val q = KiraTyper.run(unit, TyperMode.STRICT)
+        assertEquals(1, count(q, "types.const.arr-size"), TyperTestSupport.render(q))
+        assertTrue(expectDiagnostic(q, "types.const.arr-size").message.contains("has 2 elements, but Arr<UInt8, 1> holds exactly 1"))
+    }
+
+    @Test
+    fun anOverrideOfAGenericMethodMapsItsTypeParameters() {
+        val p = snippet(
+            """
+            pub trait Mapper {
+                pub fx map<U>: (u: U) U;
+                pub fx bounded<U: Mapper>: (u: U) Void;
+            }
+            pub class Base {
+                pub fx map<U>: (u: U) U {
+                    return u
+                }
+                pub fx pair<A, B>: (a: A, b: B) A {
+                    return a
+                }
+            }
+            pub class Child: Base {
+                pub fx map<V>: (v: V) V {
+                    return v
+                }
+                pub fx pair<B, A>: (a: B, b: A) B {
+                    return a
+                }
+            }
+            pub class Impl: Mapper {
+                pub fx map<T>: (t: T) T {
+                    return t
+                }
+                pub fx bounded<T: Mapper>: (t: T) Void { }
+            }
+            pub class Wrong: Base {
+                pub fx map<U>: (u: U) Int32 {
+                    return 1
+                }
+                pub fx pair<A>: (a: A, b: A) A {
+                    return a
+                }
+            }
+            pub class Loose: Mapper {
+                pub fx map<T>: (t: T) T {
+                    return t
+                }
+                pub fx bounded<T>: (t: T) Void { }
+            }
+            """
+        )
+        val errors = p.diagnostics.filter { it.code == "types.override.signature" }
+        assertEquals(3, errors.size, TyperTestSupport.render(p))
+        assertTrue(errors[0].message.startsWith("Wrong.map must have the signature of Base.map, (U) U; it is (U) Int32."), errors[0].message)
+        assertTrue(errors[1].message.startsWith("Wrong.pair must have the type parameters of Base.pair, <A, B>; it has <A>."), errors[1].message)
+        assertTrue(errors[2].message.startsWith("Loose.bounded must bound its type parameters as Mapper.bounded does, <T: Mapper>; it has <T>."), errors[2].message)
     }
 
     @Test

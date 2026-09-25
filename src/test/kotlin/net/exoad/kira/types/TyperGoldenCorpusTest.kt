@@ -1,6 +1,5 @@
 package net.exoad.kira.types
 
-import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.BodyTyper
 import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.TypedProgram
@@ -10,34 +9,40 @@ import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import java.io.File
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 /**
  * The W1 exit gate's typer half: every case of the C++ golden corpus
- * (src/test/resources/cpp-golden/<case>/src) gives no error in phases A and B, under
- * STRICT. Phase C and the rule passes are switched off here; their own packages check them.
+ * (src/test/resources/cpp-golden/<case>/src) parses and gives no error in phases A and B,
+ * under STRICT. Phase C and the rule passes are switched off here; their own packages check
+ * them.
  *
  * The corpus arrives with the runtime package (W1.3) and uses the design's dialect, which the
- * parser package (W1.1) grows. Until both are on the branch a case that is absent or does
- * not parse is skipped, and says why; a typer error always fails.
+ * parser package (W1.1) grows. Until the corpus directory exists the test is skipped, and
+ * says so. A case that does not parse is skipped only while the dialect parser is absent
+ * ([TyperTestSupport.parsingDialect]); with the parser present it fails, and a typer error
+ * always fails.
  */
 class TyperGoldenCorpusTest {
     private val corpus = File("src/test/resources/cpp-golden")
 
     @TestFactory
     fun everyGoldenCaseTypesWithoutErrorsInPhasesAAndB(): List<DynamicTest> {
+        if (!corpus.isDirectory) {
+            return listOf(DynamicTest.dynamicTest("no golden corpus in this branch") {
+                assumeTrue(false, "src/test/resources/cpp-golden does not exist here yet (W1.3)")
+            })
+        }
         val cases = corpus.listFiles { f -> f.isDirectory && File(f, "src").isDirectory }?.sortedBy { it.name }.orEmpty()
         if (cases.isEmpty()) {
-            return listOf(DynamicTest.dynamicTest("no golden corpus in this branch") {
-                assumeTrue(false, "src/test/resources/cpp-golden has no cases here yet (W1.3)")
+            return listOf(DynamicTest.dynamicTest("empty golden corpus") {
+                fail("$corpus exists but holds no <case>/src directory")
             })
         }
         return cases.map { dir ->
             DynamicTest.dynamicTest(dir.name) {
-                val program = try {
+                val program = TyperTestSupport.parsingDialect("golden case ${dir.name}") {
                     phasesAAndB { TyperTestSupport.project(dir, TyperMode.STRICT) }
-                } catch (e: DiagnosticsException) {
-                    assumeTrue(false, "${dir.name} does not parse in this branch yet: ${e.message?.lineSequence()?.firstOrNull()}")
-                    return@dynamicTest
                 }
                 assertTrue(!program.hasErrors, "${dir.name}:\n${TyperTestSupport.render(program)}")
             }

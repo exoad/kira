@@ -28,6 +28,7 @@ import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
@@ -47,7 +48,6 @@ import net.exoad.kira.types.TyperTestSupport.module
 import net.exoad.kira.types.TyperTestSupport.param
 import net.exoad.kira.types.TyperTestSupport.snippet
 import net.exoad.kira.types.TyperTestSupport.ty
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -182,10 +182,10 @@ class TyperPhaseTest {
 
     @Test
     fun aConstantNameInTypeArgumentPositionIsAConst() {
-        val p = snippet("pub LEN: Size = 32\npub alias Frame as Arr<UInt8, LEN>\nf: Frame = [1]")
+        val p = snippet("pub LEN: Size = 2\npub alias Frame as Arr<UInt8, LEN>\nf: Frame = [1, 2]")
         expectNoErrors(p)
         val frame = p.workspaceModules.single().members["f"] as GlobalSymbol
-        assertEquals("Arr<UInt8, 32>", frame.type.display())
+        assertEquals("Arr<UInt8, 2>", frame.type.display())
     }
 
     @Test
@@ -198,6 +198,32 @@ class TyperPhaseTest {
         val t = (p.member("test:fx", "callback") as GlobalSymbol).type
         assertEquals(KType.Fn(listOf(FnParam(KType.INT32, true), FnParam(KType.Str, false)), KType.Void), t)
         assertEquals("Fx<Tuple2<mut Int32, Str>, Void>", t.display())
+    }
+
+    @Test
+    fun mutTupleElementsKeepTheirByReferenceThroughAnAlias() {
+        // alias Args as Tuple1<mut Int32>; alias Args2 as Args; alias Both<T> as Tuple2<mut T, T>
+        // f: Fx<Args, Void>; g: Fx<Args2, Void>; h: Fx<Both<Str>, Void>
+        val unit = CompilationUnit()
+        val args = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Args"), ty("Tuple1", ty("Int32", mutParam = true)))
+        val args2 = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Args2"), ty("Args"))
+        val both = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Both", ty("T")), ty("Tuple2", ty("T", mutParam = true), ty("T")))
+        astModule(
+            unit, "test:alias", args, args2, both,
+            field("f", ty("Fx", ty("Args"), ty("Void")), null),
+            field("g", ty("Fx", ty("Args2"), ty("Void")), null),
+            field("h", ty("Fx", ty("Both", ty("Str")), ty("Void")), null),
+        )
+        val p = typed(unit)
+        expectNoErrors(p)
+        val byRefInt = KType.Fn(listOf(FnParam(KType.INT32, true)), KType.Void)
+        assertEquals(byRefInt, (p.member("test:alias", "f") as GlobalSymbol).type)
+        assertEquals(byRefInt, (p.member("test:alias", "g") as GlobalSymbol).type, "through two aliases")
+        assertEquals(
+            KType.Fn(listOf(FnParam(KType.Str, true), FnParam(KType.Str, false)), KType.Void),
+            (p.member("test:alias", "h") as GlobalSymbol).type,
+            "through a generic alias",
+        )
     }
 
     @Test
@@ -278,10 +304,10 @@ class TyperPhaseTest {
 
     @Test
     fun externArgumentsAreRecordedVerbatimOnceTheParserKeepsThem() {
-        // The frontend package records marker arguments in SourceContext.astIntrinsicInvocations
-        // with its parser work; this branch has only its AST contract. Runs once both are merged.
-        val hasInvocations = runCatching { SourceContext::class.java.getDeclaredField("astIntrinsicInvocations") }.isSuccess
-        assumeTrue(hasInvocations, "the parser does not record marker arguments in this branch yet")
+        // The frontend package's parser records marker arguments (SourceContext.intrinsicInvocationsOf);
+        // this branch has only its AST contract. Skipped while that parser is absent, and only then:
+        // with it present, arguments that DeclarationCollector.invocationsOf fails to read fail here.
+        TyperTestSupport.assumeDialectParser("reading @_extern arguments")
         val p = snippet(
             """
             @_extern(cpp = "bibo::Car", header = "car.hxx")

@@ -1,6 +1,7 @@
 package net.exoad.kira.types
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.TypeDiagnostic
 import net.exoad.kira.compiler.analysis.types.TypedProgram
@@ -25,6 +26,7 @@ import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.util.IdentityHashMap
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -112,6 +114,54 @@ object TyperTestSupport {
 
     fun field(name: String, type: Type, default: Expr? = null, vararg modifiers: Modifier): VariableDecl =
         VariableDecl(Identifier(name), type, default, modifiers.toList())
+
+    /**
+     * Whether this branch carries the frontend package's (W1.1) parser for the design's
+     * dialect. Two independent signals are read: `pub struct` parses, and SourceContext has
+     * `intrinsicInvocationsOf` (marker arguments are recorded). They must agree. A branch
+     * with one and not the other is a broken merge, not an absent package, so reading this
+     * fails every test that asks, with the reason.
+     *
+     * A test over dialect sources skips while this is false, and only then: once the parser
+     * is present a source that does not parse fails the test (see [parsingDialect]).
+     */
+    val hasDialectParser: Boolean by lazy {
+        val parses = try {
+            unitOf(module("probe:dialect", "pub struct Probe { pub x: Int32 = 0 }"))
+            true
+        } catch (_: DiagnosticsException) {
+            false
+        }
+        val recordsMarkerArguments = SourceContext::class.java.methods.any { it.name == "intrinsicInvocationsOf" }
+        if (parses != recordsMarkerArguments) {
+            throw AssertionError(
+                "the dialect parser is half present: `pub struct` " + (if (parses) "parses" else "does not parse") +
+                    " and SourceContext.intrinsicInvocationsOf " + (if (recordsMarkerArguments) "exists" else "is missing") +
+                    "; the frontend package (W1.1) must be merged whole",
+            )
+        }
+        parses
+    }
+
+    /** Skips the current test unless the dialect parser is present ([hasDialectParser]). */
+    fun assumeDialectParser(what: String) {
+        assumeTrue(hasDialectParser, "$what needs the frontend package's parser (W1.1), which this branch does not have")
+    }
+
+    /**
+     * Runs [block], which parses sources in the design's dialect. A parse failure skips the
+     * test only while the dialect parser is absent; with it present the failure is a failure.
+     */
+    fun <T> parsingDialect(what: String, block: () -> T): T {
+        try {
+            return block()
+        } catch (e: DiagnosticsException) {
+            if (!hasDialectParser) {
+                assumeTrue(false, "$what does not parse without the frontend package's parser (W1.1): ${e.message?.lineSequence()?.firstOrNull()}")
+            }
+            throw AssertionError("$what does not parse:\n${e.message}", e)
+        }
+    }
 
     fun codes(program: TypedProgram): List<String> = program.diagnostics.map { it.code }
 

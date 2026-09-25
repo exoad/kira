@@ -53,7 +53,8 @@ class TyperDeclTest {
 
     /**
      * Fixtures in the design's dialect (typer/decls/dialect). They need the frontend package's
-     * parser; in a branch without it a fixture that does not parse is skipped, with the reason.
+     * parser: while it is absent a fixture that does not parse is skipped, with the reason;
+     * once it is present a parse failure fails ([TyperTestSupport.parsingDialect]).
      */
     @TestFactory
     fun dialectFixtures(): List<DynamicTest> {
@@ -62,14 +63,8 @@ class TyperDeclTest {
         assertTrue(files.isNotEmpty(), "no fixtures in $dir")
         return files.map { file ->
             DynamicTest.dynamicTest("dialect/${file.name}") {
-                val program = try {
+                val program = TyperTestSupport.parsingDialect("dialect/${file.name}") {
                     TyperTestSupport.type(TyperTestSupport.Src(file.canonicalPath, file.readText()))
-                } catch (e: net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException) {
-                    org.junit.jupiter.api.Assumptions.assumeTrue(
-                        false,
-                        "${file.name} does not parse in this branch yet: ${e.message?.lineSequence()?.firstOrNull()}",
-                    )
-                    return@dynamicTest
                 }
                 assertEveryTypeResolved(program)
                 check(File(dir, file.nameWithoutExtension + ".txt"), TypedModelDumper.dumpSymbols(program))
