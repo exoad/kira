@@ -30,6 +30,9 @@ enum class Pos {
 
     /** A `mut` parameter (D4): `kira::Str&`, `std::int32_t&`. */
     MUT_PARAM,
+
+    /** A `mut` local, field or module state: as [VALUE], except that `Unsafe<T>` is `T*`, not `const T*`. */
+    MUT_VALUE,
     RETURN,
     FIELD,
     TEMPLATE_ARG,
@@ -127,10 +130,10 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         return nominal(t, args)
     }
 
-    /** `Arr<UInt8, USER_CMD_BYTES>` keeps the name; `Arr<UInt8, 4>` keeps the digits. */
+    /** `Arr<UInt8, USER_CMD_BYTES>` keeps the name; `Arr<UInt8, 4>` keeps the digits (as C++ reads them, [CppEmitContextImpl.integerText]). */
     private fun constArgText(child: Type, arg: TypeArg.Const): String {
         if (child is ConstTypeArg) {
-            return ctx.rawNumberText(child.value) ?: arg.n.toString()
+            return ctx.integerText(child.value, null)
         }
         val id = child.identifier as? Identifier
         if (id != null && id !is IntrinsicExpr) {
@@ -172,6 +175,9 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
     }
 
     private fun fnParam(p: FnParam): String = spell(p.type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM)
+
+    /** `std::int32_t`, `kira::Size`, `float`: the value column of a scalar. */
+    fun scalarName(p: Prim): String = scalar(p)
 
     private fun scalar(p: Prim): String = when (p) {
         Prim.INT8 -> "std::int8_t"
@@ -269,10 +275,21 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
 
     // ---- the position columns ------------------------------------------------------------------
 
-    private fun wrap(text: String, t: KType, pos: Pos): String = when (pos) {
-        Pos.VALUE, Pos.RETURN, Pos.FIELD, Pos.TEMPLATE_ARG -> text
-        Pos.PARAM, Pos.FN_SIG -> if (byValue(t)) text else "const $text&"
-        Pos.MUT_PARAM -> "$text&"
+    private fun wrap(text: String, t: KType, pos: Pos): String {
+        // Unsafe<T> is `const T*` unless the binding is `mut` (table 5.1); [magic] spells the bare `T*`.
+        if (isUnsafe(t)) {
+            return if (pos == Pos.MUT_PARAM || pos == Pos.MUT_VALUE) text else "const $text"
+        }
+        return when (pos) {
+            Pos.VALUE, Pos.MUT_VALUE, Pos.RETURN, Pos.FIELD, Pos.TEMPLATE_ARG -> text
+            Pos.PARAM, Pos.FN_SIG -> if (byValue(t)) text else "const $text&"
+            Pos.MUT_PARAM -> "$text&"
+        }
+    }
+
+    private fun isUnsafe(t: KType): Boolean {
+        val sym = (t as? KType.Nominal)?.sym as? ClassSymbol ?: return false
+        return sym.kind == ClassKind.MAGIC && sym.name == "Unsafe"
     }
 
     /** Types the parameter column passes by value: scalars, views, enums, raw pointers. */

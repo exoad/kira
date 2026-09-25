@@ -169,7 +169,30 @@ class CppDeclEmitterTest {
         val s = CppWriter.normalize(emitted.source ?: fail("a module with private state needs a source"))
         assertContains(h, "  inline std::int32_t servoMin = 1230;")
         assertTrue(!h.contains("calls") && !h.contains("LOCAL"), h)
-        assertContains(s, "  namespace\n  {\n    std::int32_t calls = 0;\n    constexpr float LOCAL = 0.10f;\n  }")
+        // nothing in the module names them: -Wunused-variable (gcc) and -Wunused-const-variable (clang) under -Werror
+        assertContains(s, "  namespace\n  {\n    [[maybe_unused]] std::int32_t calls = 0;\n    [[maybe_unused]] constexpr float LOCAL = 0.10f;\n  }")
+    }
+
+    @Test
+    fun aPrivateDeclarationSomethingNamesIsNotMarkedUnused() {
+        val (emitted, _) = DeclTestSupport.emitWith(
+            DeclTestSupport.module(
+                "test:main",
+                """
+                mut calls: Int32 = 0
+                LOCAL: Float32 = 0.10
+                fx helper: (v: Float32) Float32 { return v * LOCAL }
+                fx orphan: () Void { }
+                pub fx go: () Void { calls += 1 }
+                pub fx useIt: () Float32 { return helper(1.0) }
+                """,
+            ),
+            uri = "test:main",
+            parts = fakeBodies,
+        )
+        val s = CppWriter.normalize(emitted.source ?: fail("no source"))
+        assertContains(s, "    std::int32_t calls = 0;\n    constexpr float LOCAL = 0.10f;\n")
+        assertContains(s, "    [[nodiscard]] float helper(float v);\n    [[maybe_unused]] void orphan();\n")
     }
 
     @Test
@@ -279,7 +302,7 @@ class CppDeclEmitterTest {
         assertTrue(!h.contains("isSpace"), "a private function stays out of the header:\n$h")
         assertContains(
             s,
-            "#include \"main.kira.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace main\n{\n  namespace\n  {\n    [[nodiscard]] bool isSpace(char c);\n\n    bool isSpace(char c)\n    {\n        return {}; // body of isSpace\n    }\n  }\n\n  kira::Str command(const kira::Str& verb, const kira::Str& args, std::int32_t n)\n  {\n      return {}; // body of command\n  }\n\n  void tell([[maybe_unused]] std::int32_t unused, std::int32_t used)\n  {\n      return {}; // body of tell\n  }\n}\n#include \"kira/macro_pop.hxx\"\n",
+            "#include \"main.kira.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace main\n{\n  namespace\n  {\n    [[maybe_unused]] [[nodiscard]] bool isSpace(char c);\n\n    bool isSpace(char c)\n    {\n        return {}; // body of isSpace\n    }\n  }\n\n  kira::Str command(const kira::Str& verb, const kira::Str& args, std::int32_t n)\n  {\n      return {}; // body of command\n  }\n\n  void tell([[maybe_unused]] std::int32_t unused, std::int32_t used)\n  {\n      return {}; // body of tell\n  }\n}\n#include \"kira/macro_pop.hxx\"\n",
         )
     }
 
@@ -365,7 +388,7 @@ class CppDeclEmitterTest {
         assertContains(h, "namespace forward\n{\n  [[nodiscard]] std::int32_t main();\n}")
         assertContains(
             s,
-            "#include \"forward.kira.hxx\"\n#include \"kira/main.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace forward\n{\n  namespace\n  {\n    constexpr float CREEP = 0.10f;\n  }\n\n  std::int32_t main()\n  {\n      return {}; // body of main\n  }\n}\n#include \"kira/macro_pop.hxx\"\nint main(int argc, char** argv)\n{\n    return kira::rt::runMain(argc, argv, &forward::main);\n}\n",
+            "#include \"forward.kira.hxx\"\n#include \"kira/main.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace forward\n{\n  namespace\n  {\n    [[maybe_unused]] constexpr float CREEP = 0.10f;\n  }\n\n  std::int32_t main()\n  {\n      return {}; // body of main\n  }\n}\n#include \"kira/macro_pop.hxx\"\nint main(int argc, char** argv)\n{\n    return kira::rt::runMain(argc, argv, &forward::main);\n}\n",
         )
     }
 

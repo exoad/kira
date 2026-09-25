@@ -45,7 +45,7 @@ class CppTypeSpellerTest {
         pub fx views: (v: View<UInt8>, w: MutView<UInt8>) View<Char>;
         pub fx maybes: (a: Maybe<Int32>, b: Maybe<Pt>, c: Maybe<Node>, d: Maybe<Shape>, mut e: Maybe<Int32>) Maybe<Node>;
         pub fx nominals: (p: Pt, mut q: Pt, n: Node, mut o: Node, s: Shape, k: Kind, mut kk: Kind) Node;
-        pub fx handles: (h: Handle, w: Weak<Node>, r: Ref<Int32>, u: Unsafe<Int32>) Weak<Node>;
+        pub fx handles: (h: Handle, w: Weak<Node>, r: Ref<Int32>, u: Unsafe<Int32>, mut v: Unsafe<Int32>) Weak<Node>;
         pub fx externs: (s: Scan, mut t: Scan, c: Car) Car;
         pub fx fns: (f: Fx<Tuple2<Str, Int32>, Kind>, g: Fx<Tuple1<mut Int32>, Void>, h: Fx<Tuple0, Int64>) Fx<Tuple0, Void>;
         pub fx tuples: (t: Tuple2<Int32, Str>, r: Result<Int32, Str>, z: Tuple0) Tuple2<Int32, Str>;
@@ -143,7 +143,9 @@ class CppTypeSpellerTest {
         assertEquals("Handle*", param("handles", "h"))
         assertEquals("const kira::Weak<Node>&", param("handles", "w"))
         assertEquals("const kira::Rc<kira::Box<std::int32_t>>&", param("handles", "r"))
-        assertEquals("std::int32_t*", param("handles", "u"))
+        // table 5.1: Unsafe<T> is `const T*` unless the binding is `mut`
+        assertEquals("const std::int32_t*", param("handles", "u"))
+        assertEquals("std::int32_t*", param("handles", "v"))
         assertEquals("kira::Weak<Node>", ret("handles"))
     }
 
