@@ -128,6 +128,41 @@ class CppCliTest {
         assertEquals(before, snapshot(dir))
     }
 
+    /** The brief's acceptance: a declaration-only project, emitted twice, then checked, exits 0 each time. */
+    @Test
+    fun aDeclarationOnlyProjectEmitsTwiceAndChecksClean() {
+        val dir = tempProject("decl-only", target = "cpp")
+        File(dir, "src/app/main.kira").writeText(
+            """
+            module "app:main"
+
+            pub LIMIT: Int32 = 5
+            pub enum Mode: Int32 { MODE_A = 0, MODE_B = 1 }
+            pub struct Cfg {
+                pub mode: Mode = Mode.MODE_A
+                pub limit: Int32 = LIMIT
+                pub hint: Maybe<Int32> = null
+            }
+            pub fx apply: (c: Cfg, by: Int32 = LIMIT) Int32;
+            """.trimIndent()
+        )
+        val first = runCli(dir, "--target", "cpp")
+        assertEquals(0, first.exitCode, first.all)
+        assertTrue(!first.all.contains("Exception"), first.all)
+        val after = snapshot(dir)
+        assertTrue("src/app/main.kira.hxx" in after, after.toString())
+        assertTrue("kira.gen.manifest" in after, after.toString())
+        assertTrue(after.none { it.startsWith("gen/kira/kira/std/") }, "no stdlib module is reached, so none is emitted: $after")
+        val second = runCli(dir, "--target", "cpp")
+        assertEquals(0, second.exitCode, second.all)
+        assertEquals(after, snapshot(dir))
+        val check = runCli(dir, "--target", "cpp", "--check")
+        assertEquals(0, check.exitCode, check.all)
+        assertEquals(after, snapshot(dir))
+        val header = File(dir, "src/app/main.kira.hxx").readText()
+        assertTrue(header.contains("kira::Maybe<std::int32_t> hint = kira::none;"), header)
+    }
+
     @Test
     fun outDirectoryMovesTheCOutput() {
         val dir = tempProject("out-c")

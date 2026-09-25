@@ -20,5 +20,12 @@ decls - declarations by themselves
   ok    constants copied from another module
   ok    defaults from another module fill a call
   ok    inline state in a module with no source file
+  ok    state and a constant of a struct type declared later
+  ok    a parameter named like a field is renamed
+  ok    a default argument that is a private constant
+  ok    a parameter named like a module declaration is renamed
+  ok    null defaults are kira::none
+  ok    a null default argument, filled or given
+  ok    Unsafe<T> is const T*, T* when mut
 
-19 checks, 0 failed
+26 checks, 0 failed

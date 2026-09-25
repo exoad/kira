@@ -316,7 +316,10 @@ class KiraCppBackendTest {
                 return v
             }
         """))
-        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry)))
+        val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.module("demo:geo.user", """
+            use "kira:geometry"
+        """))
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)))
         val before = p.files()
         val result = KiraCppBackend.run(
             unit, p.manifest, false, p.root,
@@ -406,7 +409,10 @@ class KiraCppBackendTest {
                 return v
             }
         """))
-        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry)))
+        val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.module("demo:geo.user", """
+            use "kira:geometry"
+        """))
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)))
         val result = KiraCppBackend.run(
             unit, p.manifest, false, p.root,
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
@@ -417,6 +423,30 @@ class KiraCppBackendTest {
         val files = p.files()
         assertTrue("lib/kira/std/geometry.kira.hxx" in files, files.toString())
         assertFalse(files.any { it.startsWith("lib/kira/std/geometry.kira.c") })
+    }
+
+    @Test
+    fun aStdlibModuleNothingReachesIsNotEmitted() {
+        val p = project("backend-std-unreached")
+        val geometry = PlumbingTestSupport.write(p.root, "stdlib/geometry.kira", PlumbingTestSupport.module("kira:geometry", """
+            pub fx clamp: (v: Int32, lo: Int32, hi: Int32) Int32 {
+                return v
+            }
+        """))
+        val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.module("demo:geo.user", """
+            pub LIMIT: Int32 = 3
+        """))
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)))
+        val fake = FakeCppModuleEmitter(CppOptions(runtimeDir = "lib"))
+        val result = KiraCppBackend.run(
+            unit, p.manifest, false, p.root,
+            emitterFactory = { _, _ -> fake },
+            stdlibCppDir = p.stdlibCpp,
+            log = { }, report = { p.reportLines += it }, out = { },
+        )
+        assertEquals(0, result.exitCode, p.reportLines.joinToString("\n"))
+        assertEquals(listOf("demo:geo.user"), fake.emittedUris, "no workspace module uses kira:geometry, so it is not emitted")
+        assertFalse(p.files().any { it.startsWith("lib/kira/std/") }, p.files().toString())
     }
 
     // --- the generated tree shares a directory with other files -------------------

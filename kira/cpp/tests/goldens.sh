@@ -160,7 +160,7 @@ build_arm() {
         obj="$out/$name/arm-$(basename "$s").o"
         rm -f "$obj"
         if ! "$arm" -std=c++20 -mcpu=cortex-m33 -mthumb -Os -fno-exceptions -fno-rtti -DKIRA_PROFILE_FREESTANDING=1 \
-            -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror "${defs[@]}" \
+            -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off "${defs[@]}" \
             -I "$inc" -I "$(p "$dir/driver")" -c "$s" -o "$(p "$obj")" > "$out/$name/arm.log" 2>&1 || [ ! -f "$obj" ]; then
             grep -v '^[[:space:]]*|' "$out/$name/arm.log" | head -30
             fail "$name/arm: $(basename "$s") does not compile freestanding"

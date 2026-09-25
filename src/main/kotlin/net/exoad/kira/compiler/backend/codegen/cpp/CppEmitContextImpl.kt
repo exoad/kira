@@ -10,6 +10,8 @@ import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ModuleGraph
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
+import net.exoad.kira.compiler.analysis.types.ParamSymbol
+import net.exoad.kira.compiler.analysis.types.Prim
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeParamSymbol
@@ -21,10 +23,12 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourcePosition
 import java.nio.file.Path
+import java.util.IdentityHashMap
 
 // ---- The parts (design 4.4) ----------------------------------------------------------------
 //
@@ -216,6 +220,17 @@ class CppEmitContextImpl(
     val headerIncludes: LinkedHashSet<String> = LinkedHashSet()
     val sourceIncludes: LinkedHashSet<String> = LinkedHashSet()
 
+    /** Where each of this module's declarations goes (design 4.2), and the order they go in. */
+    val placement: CppPlacement by lazy { CppPlacement(this) }
+
+    /**
+     * Every other module whose names this module's text spelled through [qualified], in
+     * first-use order: the header must include theirs, `use`d or not (`kira:core` for `Int`).
+     */
+    val referencedModules: LinkedHashSet<ModuleSymbol> = LinkedHashSet()
+
+    private val paramNames = IdentityHashMap<ParamSymbol, String>()
+
     /** The module's `.kira` file. */
     val sourcePath: Path = Path.of(module.file)
 
@@ -316,13 +331,18 @@ class CppEmitContextImpl(
         val name = names.escape(sym.name)
         val owner: ModuleSymbol = sym.module
         if (owner === symbol) {
-            return if (isPrivateHelper(sym)) "$IMPL_NAMESPACE::$name" else name
+            return if (placement.inImpl(sym)) "$IMPL_NAMESPACE::$name" else name
         }
+        referencedModules.add(owner)
         val ns = layout.namespaceFor(owner.uri)
         return if (isPrivateHelper(sym)) "::$ns::$IMPL_NAMESPACE::$name" else "::$ns::$name"
     }
 
-    /** A non-`pub` free function, constant or state of a header-only module lives in `namespace impl_`. */
+    /**
+     * A non-`pub` declaration of a header-only module lives in `namespace impl_`. For this
+     * module [CppPlacement.inImpl] is the answer (it also covers a private declaration the
+     * header of a source module names); this is the rule for another module's symbol.
+     */
     fun isPrivateHelper(sym: Symbol): Boolean {
         if (!options.isHeaderOnly(sym.module.uri)) {
             return false
@@ -336,6 +356,30 @@ class CppEmitContextImpl(
             is TraitSymbol -> !sym.isPub
             else -> false
         }
+    }
+
+    /**
+     * The C++ name of the parameter [p]: its Kira name, unless that would shadow (under
+     * `-Wshadow -Werror`) a field or method of the owning struct or a declaration of this
+     * module, in which case a synthesized `name_p` (lowercase with an underscore, which no
+     * Kira name can be). Stable per parameter, so the prototype, the definition and the
+     * statement part (W2.3) spell it alike.
+     */
+    fun paramName(p: ParamSymbol): String = paramNames.getOrPut(p) {
+        if (shadows(p)) names.fresh(p.name.lowercase() + "_p") else names.escape(p.name)
+    }
+
+    private fun shadows(p: ParamSymbol): Boolean {
+        when (val owner = p.fn?.owner) {
+            is ClassSymbol -> if (owner.fields.any { it.name == p.name } || owner.methods.any { it.name == p.name }) {
+                return true
+            }
+            is TraitSymbol -> if (owner.methods.any { it.name == p.name }) {
+                return true
+            }
+            else -> {}
+        }
+        return symbol.members.containsKey(p.name)
     }
 
     /** `E::ENTRY`, qualified as [qualified] qualifies the enum. */
@@ -394,6 +438,48 @@ class CppEmitContextImpl(
             return null
         }
         return sign + match.value
+    }
+
+    /**
+     * The C++ spelling of the integer literal [e] as a value of [prim] (null for an untyped
+     * position such as an array size), keeping the source's radix and digits wherever C++
+     * reads them as Kira does, and never where it would not:
+     * - Kira reads every decimal literal as decimal (`010` is ten), so leading zeros go,
+     *   which C++ would read as octal (`010` is eight, `09` an error);
+     * - a hex or binary literal that exceeds a signed target wraps in Kira as in C
+     *   (`0xFFFFFFFFFFFFFFFF` is `-1` for `Int64`), which C++ rejects under `-Werror`
+     *   (`-Woverflow`, `-Wsign-conversion`), so it is spelled `static_cast<T>(0x...u)`;
+     * - `Int64`'s minimum has no decimal literal, so it is `std::numeric_limits<...>::min()`.
+     */
+    fun integerText(e: IntegerLiteral, prim: Prim?): String {
+        val value = e.value
+        val raw = rawNumberText(e)
+        if (raw != null) {
+            val negative = raw.startsWith("-")
+            val digits = raw.trimStart('-', '+')
+            val radix = digits.length > 1 && digits[0] == '0' && digits[1].lowercaseChar() in "xb"
+            if (!radix) {
+                val stripped = digits.trimStart('0').ifEmpty { "0" }
+                if (!(negative && value == Long.MIN_VALUE)) {
+                    return (if (negative) "-" else "") + stripped
+                }
+            } else if (prim == null || !prim.signed || !prim.isInteger) {
+                return raw
+            } else {
+                val max = prim.maxValue
+                val exceeds = value < 0 || (max != null && java.math.BigInteger.valueOf(value) > max)
+                if (!exceeds) {
+                    return raw
+                }
+                if (!negative) {
+                    return "static_cast<${speller.scalarName(prim)}>(${digits}u)"
+                }
+            }
+        }
+        if (value == Long.MIN_VALUE) {
+            return "std::numeric_limits<std::int64_t>::min()"
+        }
+        return value.toString()
     }
 
     companion object {

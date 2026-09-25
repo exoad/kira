@@ -29,12 +29,11 @@ import kotlin.test.fail
  * `expected/` byte for byte, with a unified diff on a mismatch. An expected file the
  * emitter does not produce, or a produced file `expected/` lacks, fails the case.
  *
- * What runs is the CLI's path for the case's own modules: the manifest, the semantic pass,
- * the typer (STRICT) and the module emitter over the real layout. The Kira-written stdlib
- * modules every unit carries (`kira:math` and friends) are emitted only when the case's
- * `expected/` claims their header (`gen/kira/kira/std/<x>.kira.hxx` under the beside
- * layout), since their bodies belong to the expression and statement parts; the CLI-level
- * truth (`kira --target cpp` on a whole project) is CppCliTest's.
+ * What runs is the CLI's path: the manifest, the semantic pass, the typer (STRICT) and the
+ * module emitter over the real layout, through [KiraCppBackend.emitModules], so exactly the
+ * Kira-written stdlib modules the case reaches (`kira/std/<x>.kira.hxx` under the runtime
+ * directory) are emitted and diffed, and a case that reaches one must claim its header in
+ * `expected/`. The CLI-level truth (`kira --target cpp` on a whole project) is CppCliTest's.
  *
  * `KIRA_UPDATE_GOLDENS=1` writes `expected/` from the emitter instead of diffing, for the
  * package that flips a case to `required`.
@@ -107,15 +106,13 @@ class CppGoldenEmitTest {
             .map { runCatching { it.getModuleUri() }.getOrNull().orEmpty() to it }
             .filter { it.first.isNotEmpty() && !it.first.startsWith("(unknown)") }
             .sortedBy { it.first }
-        for ((uri, source) in sources) {
+            .map { (uri, source) -> CppModuleRef(uri, Path.of(source.file)) to source }
+        // The CLI's path: the case's modules, then the stdlib modules they reach, and no other.
+        for ((ref, source, emitted) in KiraCppBackend.emitModules(emitter, sources)) {
+            val uri = ref.uri
             val files = layout.filesFor(uri, Path.of(source.file))
             val expectedHeader = expectedRoot.resolve(caseRoot.relativize(files.header))
             val expectedSource = files.source?.let { expectedRoot.resolve(caseRoot.relativize(it)) }
-            if (uri.startsWith("kira:") && (update || !Files.exists(expectedHeader))) {
-                // A stdlib header is diffed only when expected/ claims it, and never written by update mode.
-                continue
-            }
-            val emitted = emitter.emit(source)
             val errors = emitted.diagnostics.filter { it.isError }
             if (errors.isNotEmpty()) {
                 problems += "module $uri: ${errors.size} error(s):\n" + errors.joinToString("\n") { "  " + it.render() }

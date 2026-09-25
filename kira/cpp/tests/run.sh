@@ -238,7 +238,7 @@ if have "$arm"; then
     obj="$out/rt_arm.o"
     rm -f "$obj"
     if "$arm" -std=c++20 -mcpu=cortex-m33 -mthumb -Os -fno-exceptions -fno-rtti -DKIRA_PROFILE_FREESTANDING=1 \
-        -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror \
+        -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off \
         -I "$inc" -c "$src" -o "$(p "$obj")" > "$out/arm.log" 2>&1 && [ -f "$obj" ]; then
         ok "arm: the freestanding probe compiles for cortex-m33 ($("$arm" -dumpversion))"
         check_symbols arm "$armnm" "$obj"

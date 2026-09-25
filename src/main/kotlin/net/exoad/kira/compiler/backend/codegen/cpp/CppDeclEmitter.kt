@@ -1,7 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
-import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
@@ -52,7 +51,8 @@ import kotlin.math.floor
  * One module as C++ text (design 4.2 and table 5.2): the header, and the source unless the
  * module is header-only. Enums, aliases, constants, module state, structs and free functions
  * are lowered here; classes and traits, function bodies, expressions and extern declarations
- * are delegated to the parts of [CppEmitContextImpl].
+ * are delegated to the parts of [CppEmitContextImpl]. What goes where, and in what order, is
+ * [CppPlacement]'s.
  *
  * Layout conventions the goldens fix: one blank line between blocks, consecutive one-line
  * declarations without one, prototypes and forward declarations never separated, a blank
@@ -62,24 +62,15 @@ import kotlin.math.floor
 class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: CppUsage) {
     private val model = ctx.model
     private val m: ModuleSymbol = ctx.symbol
-    private val placement = CppPlacement(ctx)
+    private val placement = ctx.placement
     private val parts = ctx.parts
 
     // ---- the module's declarations, sorted into kinds ---------------------------------------
 
-    private val declarations: List<Symbol> = m.declarations.filter { sym ->
-        when {
-            ctx.isMagic(sym) -> false
-            sym is FnSymbol && sym.isOperator -> true
-            sym is FnSymbol && sym.name == "<anonymous>" -> false
-            else -> m.members[sym.name] === sym   // a duplicate name is a typer error; the first keeps the name
-        }
-    }
+    private val declarations: List<Symbol> = placement.declarations
     private val externs: List<Symbol> = declarations.filter { foreignOf(it) is Foreign.Extern }
-    private val values: List<Symbol> = declarations.filter { it !in externs && (it is GlobalSymbol || it is EnumSymbol || it is AliasSymbol) }
     private val structs: List<ClassSymbol> = declarations.filterIsInstance<ClassSymbol>().filter { it !in externs && it.isStruct }
     private val classes: List<ClassSymbol> = declarations.filterIsInstance<ClassSymbol>().filter { it !in externs && it.kind == ClassKind.CLASS }
-    private val opaques: List<ClassSymbol> = declarations.filterIsInstance<ClassSymbol>().filter { it !in externs && it.kind == ClassKind.OPAQUE }
     private val traits: List<TraitSymbol> = declarations.filterIsInstance<TraitSymbol>().filter { it !in externs }
     private val functions: List<FnSymbol> = declarations.filterIsInstance<FnSymbol>().filter { it !in externs && it.owner == null && !it.isOperator }
     private val operators: List<FnSymbol> = declarations.filterIsInstance<FnSymbol>().filter { it.isOperator }
@@ -110,13 +101,15 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val headerBody = headerBody()
         val sourceBody = if (ctx.isHeaderOnly) "" else sourceBody()
 
-        val header = assembleHeader(externChecks.toString(), headerBody)
+        // The bodies are rendered, so every module this one names is known (ctx.referencedModules).
+        val includes = moduleIncludes()
+        val header = assembleHeader(externChecks.toString(), headerBody, includes.values)
         val source = when {
             ctx.isHeaderOnly -> null
             sourceBody.isEmpty() && main == null -> null
             else -> assembleSource(sourceBody)
         }
-        return EmittedModule(header, source, ctx.diagnostics.toList())
+        return EmittedModule(header, source, ctx.diagnostics.toList(), includes.keys.toList())
     }
 
     private fun banner(): String =
@@ -128,34 +121,49 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return if (freestanding) "kira/core.hxx" else "kira/rt.hxx"
     }
 
-    /** The `use`d modules' headers: relative paths for workspace modules, `kira/std/x.kira.hxx` for Kira-written stdlib ones. */
-    private fun moduleIncludes(): List<String> {
-        val out = LinkedHashSet<String>()
-        m.uses.forEach { use ->
-            val target = ctx.program.module(use.uri.value) ?: return@forEach
-            if (target === m) {
-                return@forEach
-            }
-            if (target.isStdlib) {
-                if (target.declarations.any { !ctx.isMagic(it) }) {
-                    val segments = CppModuleLayout.uriSegments(target.uri)
-                    out.add("kira/std/" + segments.joinToString("/") + ctx.options.headerExt)
-                }
-            } else {
-                val theirs = ctx.layout.filesFor(target.uri, Path.of(target.source.file)).header
-                out.add(ctx.layout.includePath(ctx.files.header, theirs))
-            }
+    /** The include of [target]'s header, or null when there is none (this module; a stdlib module that is all `@_magic`). */
+    private fun includeFor(target: ModuleSymbol): String? {
+        if (target === m) {
+            return null
         }
-        return out.toList()
+        if (target.isStdlib) {
+            if (target.declarations.none { !ctx.isMagic(it) }) {
+                return null
+            }
+            val segments = CppModuleLayout.uriSegments(target.uri)
+            return "kira/std/" + segments.joinToString("/") + ctx.options.headerExt
+        }
+        val theirs = ctx.layout.filesFor(target.uri, Path.of(target.source.file)).header
+        return ctx.layout.includePath(ctx.files.header, theirs)
     }
 
-    private fun assembleHeader(externChecks: String, body: String): String {
+    /**
+     * The other modules' headers this header includes, URI to path: the `use`d modules in
+     * `use` order, then any module the text named without a `use` (`kira:core` for the
+     * `Int` alias), by URI. Relative paths for workspace modules, `kira/std/x.kira.hxx` for
+     * Kira-written stdlib ones.
+     */
+    private fun moduleIncludes(): LinkedHashMap<String, String> {
+        val out = LinkedHashMap<String, String>()
+        m.uses.forEach { use ->
+            val target = ctx.program.module(use.uri.value) ?: return@forEach
+            includeFor(target)?.let { out[target.uri] = it }
+        }
+        ctx.referencedModules.sortedBy { it.uri }.forEach { target ->
+            if (target.uri !in out) {
+                includeFor(target)?.let { out[target.uri] = it }
+            }
+        }
+        return out
+    }
+
+    private fun assembleHeader(externChecks: String, body: String, moduleHeaders: Collection<String>): String {
         val sb = StringBuilder()
         sb.append(banner()).append('\n')
         sb.append("#pragma once\n")
         val includes = LinkedHashSet<String>()
         includes.add(runtimeInclude())
-        includes.addAll(moduleIncludes())
+        includes.addAll(moduleHeaders)
         externs.forEach { includes.addAll(parts.externs.includes(ctx, it)) }
         includes.addAll(ctx.headerIncludes)
         includes.forEach { sb.append("#include \"").append(it).append("\"\n") }
@@ -203,39 +211,22 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val w = CppWriter()
         val sections = mutableListOf<String>()
 
-        // 5. forward declarations of every exported struct, class and trait
-        sections += render { forwardDeclarations(this, exported = true) }
-
-        // 6. enums, aliases and constants
-        sections += render { valuesSection(this, Home.HEADER) }
-
-        // 7. structs, by-value containment first
-        val exportedStructs = placement.sortStructs(structs.filter { placement.type(it).decl == Home.HEADER })
-        sections += render { blocks(this, exportedStructs.map { render { struct(this, it) } }) }
-        val privateStructs = placement.sortStructs(structs.filter { placement.type(it).decl == Home.HEADER_IMPL })
-        val privateTypes = privateStructs.map { render { struct(this, it) } } +
-            orderedTraits().filter { placement.type(it).decl == Home.HEADER_IMPL }.map { render { parts.classes.define(ctx, it, this) } } +
-            orderedClasses().filter { placement.type(it).decl == Home.HEADER_IMPL }.map { render { parts.classes.define(ctx, it, this) } }
-        if (privateTypes.isNotEmpty()) {
-            sections += render {
-                namespace(CppEmitContextImpl.IMPL_NAMESPACE) {
-                    forwardDeclarations(this, exported = false)
-                    blank()
-                    blocks(this, privateTypes)
-                }
+        // 5. forward declarations of every exported struct, class and trait, then the private
+        //    ones the header refers to before it defines them, in impl_
+        sections += render {
+            forwardDeclarations(this, exported = true)
+            val privateForward = privateTypesNeedingForward(Home.HEADER_IMPL)
+            if (privateForward.isNotEmpty()) {
+                blank()
+                namespace(CppEmitContextImpl.IMPL_NAMESPACE) { privateForward.forEach { forwardDeclaration(this, it) } }
             }
         }
 
-        // 8. traits (parents first), then classes
-        sections += render {
-            blocks(
-                this,
-                orderedTraits().filter { placement.type(it).decl == Home.HEADER }.map { render { parts.classes.define(ctx, it, this) } } +
-                    orderedClasses().filter { placement.type(it).decl == Home.HEADER }.map { render { parts.classes.define(ctx, it, this) } },
-            )
-        }
+        // 6 to 8. enums, aliases, constants and state; structs; traits, then classes: one
+        //    dependency-ordered sequence, private ones in impl_ runs (CppPlacement.ordered)
+        sections += render { orderedDeclarations(this, setOf(Home.HEADER, Home.HEADER_IMPL)) }
 
-        // 9. free-function prototypes: private helpers of a header-only module first, in impl_
+        // 9. free-function prototypes: private helpers the header needs first, in impl_
         val implPrototypes = functions.filter { placement.function(it).decl == Home.HEADER_IMPL }
         val headerPrototypes = functions.filter { placement.function(it).decl == Home.HEADER }
         sections += render {
@@ -276,23 +267,13 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     private fun sourceBody(): String {
         val w = CppWriter()
-        val privateValues = render { valuesSection(this, Home.SOURCE) }
-        val privateStructs = placement.sortStructs(structs.filter { placement.type(it).decl == Home.SOURCE })
-        val privateTypes = render {
-            forwardDeclarations(this, exported = false)
-            blank()
-            blocks(
-                this,
-                privateStructs.map { render { struct(this, it) } } +
-                    orderedTraits().filter { placement.type(it).decl == Home.SOURCE }.map { render { parts.classes.define(ctx, it, this) } } +
-                    orderedClasses().filter { placement.type(it).decl == Home.SOURCE }.map { render { parts.classes.define(ctx, it, this) } },
-            )
-        }
+        val forward = render { privateTypesNeedingForward(Home.SOURCE).forEach { forwardDeclaration(this, it) } }
+        val privateDeclarations = render { orderedDeclarations(this, setOf(Home.SOURCE)) }
         val privatePrototypes = render {
             functions.filter { placement.function(it).decl == Home.SOURCE }.forEach { fn -> prototype(fn).forEach { line(it) } }
         }
         val privateDefinitions = render { blocks(this, definitionsIn(Home.SOURCE, exported = false)) }
-        val anonymous = listOf(privateValues, privateTypes, privatePrototypes, privateDefinitions).filter { it.isNotEmpty() }
+        val anonymous = listOf(forward, privateDeclarations, privatePrototypes, privateDefinitions).filter { it.isNotEmpty() }
         if (anonymous.isNotEmpty()) {
             w.namespace(null) {
                 anonymous.forEachIndexed { i, s ->
@@ -333,81 +314,93 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
     }
 
+    private fun forwardDeclaration(w: CppWriter, sym: Symbol) {
+        when (sym) {
+            is ClassSymbol -> {
+                parts.generics.templateHead(ctx, sym.typeParams)?.let { w.line(it) }
+                val keyword = if (sym.isStruct) "struct" else "class"
+                w.line("$keyword ${ctx.names.escape(sym.name)};")
+            }
+            is TraitSymbol -> {
+                parts.generics.templateHead(ctx, sym.typeParams)?.let { w.line(it) }
+                w.line("class ${ctx.names.escape(sym.name)};")
+            }
+            else -> {}
+        }
+    }
+
+    /** Design 4.2 item 5: every exported struct, class and trait, in source order. */
     private fun forwardDeclarations(w: CppWriter, exported: Boolean) {
-        val wanted = { sym: Symbol -> placement.isExported(sym) == exported }
         declarations.forEach { sym ->
-            if (sym in externs || !wanted(sym)) {
+            if (sym in externs || placement.isExported(sym) != exported || (sym is ClassSymbol && ctx.isMagic(sym))) {
                 return@forEach
             }
-            when (sym) {
-                is ClassSymbol -> {
-                    if (ctx.isMagic(sym)) {
-                        return@forEach
-                    }
-                    parts.generics.templateHead(ctx, sym.typeParams)?.let { w.line(it) }
-                    val keyword = if (sym.isStruct) "struct" else "class"
-                    w.line("$keyword ${ctx.names.escape(sym.name)};")
-                }
-                is TraitSymbol -> {
-                    parts.generics.templateHead(ctx, sym.typeParams)?.let { w.line(it) }
-                    w.line("class ${ctx.names.escape(sym.name)};")
-                }
-                else -> {}
-            }
+            forwardDeclaration(w, sym)
         }
     }
 
     /**
-     * Section 6 for [home]: enums (each followed by its `nameOf` and `enum_values` where
-     * used), aliases, constants and state in source order. Private ones of a header-only
-     * module go in `namespace impl_` blocks, opened and closed as the source order requires.
+     * The private types of [home] that need a forward declaration: an opaque class (its
+     * `class H;` is all there is), and a struct, class or trait that some declaration placed
+     * before it names ([CppPlacement.needsForwardDeclaration]); the goldens' convention gives
+     * a private class none otherwise.
      */
-    private fun valuesSection(w: CppWriter, home: Home) {
-        val items = mutableListOf<Pair<Boolean, String>>()   // (in impl_, text)
-        values.forEach { sym ->
-            val p = placement.value(sym)
-            val here = when (home) {
-                Home.HEADER -> p.decl == Home.HEADER || p.decl == Home.HEADER_IMPL
-                else -> p.decl == home
+    private fun privateTypesNeedingForward(home: Home): List<Symbol> = declarations.filter { sym ->
+        sym !in externs && !placement.isExported(sym) && (sym is ClassSymbol || sym is TraitSymbol) &&
+            !(sym is ClassSymbol && ctx.isMagic(sym)) &&
+            placement.type(sym).decl == home &&
+            ((sym is ClassSymbol && sym.kind == ClassKind.OPAQUE) || placement.needsForwardDeclaration(sym))
+    }
+
+    /**
+     * Sections 6 to 8 for the declarations whose home is in [homes], in [CppPlacement.ordered]:
+     * each enum (followed by its `nameOf` and `enum_values` where used), alias, constant,
+     * state, struct, trait and class; consecutive `impl_` declarations in one
+     * `namespace impl_` block.
+     */
+    private fun orderedDeclarations(w: CppWriter, homes: Set<Home>) {
+        val chunks = mutableListOf<String>()
+        var implRun = mutableListOf<String>()
+        fun flush() {
+            if (implRun.isNotEmpty()) {
+                val run = implRun
+                chunks += render { namespace(CppEmitContextImpl.IMPL_NAMESPACE) { blocks(this, run) } }
+                implRun = mutableListOf()
             }
-            if (!here) {
+        }
+        placement.ordered.forEach { sym ->
+            val p = if (sym is ClassSymbol || sym is TraitSymbol) placement.type(sym) else placement.value(sym)
+            if (p.decl !in homes) {
                 return@forEach
             }
-            val inImpl = p.decl == Home.HEADER_IMPL
-            when (sym) {
-                is EnumSymbol -> {
-                    items += inImpl to render { enum(this, sym) }
-                    if (usage.needsNameOf(sym)) {
-                        items += inImpl to render { nameOf(this, sym) }
-                    }
-                    if (usage.needsEnumValues(sym)) {
-                        items += inImpl to render { enumValues(this, sym) }
-                    }
-                }
-                is AliasSymbol -> items += inImpl to render { alias(this, sym) }
-                is GlobalSymbol -> items += inImpl to render { global(this, sym, p.decl) }
-                else -> {}
-            }
-        }
-        var i = 0
-        var first = true
-        while (i < items.size) {
-            val inImpl = items[i].first
-            val run = mutableListOf<String>()
-            while (i < items.size && items[i].first == inImpl) {
-                run += items[i].second
-                i += 1
-            }
-            if (!first) {
-                w.blank()
-            }
-            first = false
-            if (inImpl) {
-                w.namespace(CppEmitContextImpl.IMPL_NAMESPACE) { blocks(this, run) }
+            val texts = declarationTexts(sym, p.decl)
+            if (p.decl == Home.HEADER_IMPL) {
+                implRun.addAll(texts)
             } else {
-                blocks(w, run)
+                flush()
+                chunks.addAll(texts)
             }
         }
+        flush()
+        blocks(w, chunks)
+    }
+
+    private fun declarationTexts(sym: Symbol, home: Home): List<String> = when (sym) {
+        is EnumSymbol -> {
+            val out = mutableListOf(render { enum(this, sym) })
+            if (usage.needsNameOf(sym)) {
+                out += render { nameOf(this, sym) }
+            }
+            if (usage.needsEnumValues(sym)) {
+                out += render { enumValues(this, sym) }
+            }
+            out
+        }
+        is AliasSymbol -> listOf(render { alias(this, sym) })
+        is GlobalSymbol -> listOf(render { global(this, sym, home) })
+        is ClassSymbol -> if (sym.isStruct) listOf(render { struct(this, sym) }) else listOf(render { parts.classes.define(ctx, sym, this) })
+        is TraitSymbol -> listOf(render { parts.classes.define(ctx, sym, this) })
+        else -> emptyList()
     }
 
     /** Every definition whose home is [home], in source order: free functions, struct methods, class members. */
@@ -421,7 +414,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             if (exported != null && placement.isExported(fn) != exported) {
                 return@forEach
             }
-            out += positionOf(fn.decl) to render { definition(this, fn, qualifier = "", p) }
+            out += positionOf(fn.decl) to render { definition(this, fn, p) }
         }
         structs.forEach { s ->
             s.methods.forEach { fn ->
@@ -432,7 +425,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 if (exported != null && placement.isExported(s) != exported) {
                     return@forEach
                 }
-                out += positionOf(fn.decl) to render { definition(this, fn, qualifier = "${ctx.names.escape(s.name)}::", p, owner = s) }
+                out += positionOf(fn.decl) to render { definition(this, fn, p, owner = s) }
             }
         }
         (orderedTraits() + orderedClasses()).forEach { t ->
@@ -458,22 +451,11 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return ctx.program.locate(node)?.second ?: SourcePosition.UNKNOWN
     }
 
-    /** Traits with their parents (of this module) first, source order otherwise. */
-    private fun orderedTraits(): List<TraitSymbol> = orderByParents(traits) { t -> t.parents.mapNotNull { it.sym as? TraitSymbol } }
+    /** The module's traits in the order the header defines them. */
+    private fun orderedTraits(): List<TraitSymbol> = placement.ordered.filterIsInstance<TraitSymbol>().filter { it in traits }
 
-    /** Classes with their superclass (of this module) first, source order otherwise. */
-    private fun orderedClasses(): List<ClassSymbol> = orderByParents(classes) { c -> listOfNotNull(c.superclass?.sym as? ClassSymbol) }
-
-    private fun <T : Symbol> orderByParents(items: List<T>, parentsOf: (T) -> List<T>): List<T> {
-        val out = mutableListOf<T>()
-        val remaining = items.toMutableList()
-        while (remaining.isNotEmpty()) {
-            val next = remaining.firstOrNull { item -> parentsOf(item).all { it !in remaining } } ?: remaining.first()
-            remaining.remove(next)
-            out.add(next)
-        }
-        return out
-    }
+    /** The module's classes in the order the header defines them. */
+    private fun orderedClasses(): List<ClassSymbol> = placement.ordered.filterIsInstance<ClassSymbol>().filter { it in classes }
 
     private fun moduleStatements(w: CppWriter) {
         m.statements.forEach { stmt -> staticAssert(w, stmt) }
@@ -513,7 +495,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             e.entries.forEach { entry ->
                 val value = when {
                     e.base == KType.Str -> entry.index.toString()
-                    else -> entry.decl?.value?.let { lit -> (lit as? IntegerLiteral)?.let { ctx.rawNumberText(it) } }
+                    else -> entry.decl?.value?.let { lit -> (lit as? IntegerLiteral)?.let { ctx.integerText(it, e.base.prim) } }
                         ?: (entry.value as? ConstValue.IntConst)?.value?.toString()
                         ?: entry.index.toString()
                 }
@@ -564,9 +546,12 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         val type = g.type
         val inHeader = home != Home.SOURCE
+        // In the .cxx's anonymous namespace an unreferenced variable is `-Wunused-variable`
+        // (gcc, mut) or `-Wunused-const-variable` (clang, both) under -Werror.
+        val unused = if (!inHeader && !placement.isReferenced(g)) "[[maybe_unused]] " else ""
         if (g.isMut) {
-            val spelled = if (decl != null) ctx.spell(decl.type, Pos.FIELD) else ctx.spell(type, Pos.FIELD)
-            w.line("${if (inHeader) "inline " else ""}$spelled $name = ${initText(init, type)};")
+            val spelled = if (decl != null) ctx.spell(decl.type, Pos.MUT_VALUE) else ctx.spell(type, Pos.MUT_VALUE)
+            w.line("$unused${if (inHeader) "inline " else ""}$spelled $name = ${initText(init, type)};")
             return
         }
         val isStr = type == KType.Str
@@ -576,7 +561,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             else -> ctx.spell(type, Pos.FIELD)
         }
         val constness = if (isStr || isLiteralType(type)) "constexpr" else "const"
-        w.line("${if (inHeader) "inline " else ""}$constness $spelled $name = ${initText(init, type)};")
+        w.line("$unused${if (inHeader) "inline " else ""}$constness $spelled $name = ${initText(init, type)};")
     }
 
     /** Whether a constant of [t] can be `constexpr` on the gcc 11.4 floor (no constexpr std::string or std::vector). */
@@ -589,7 +574,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 sym.kind == ClassKind.MAGIC -> when {
                     sym.name == Builtins.ARR && t.args.size >= 2 -> t.typeArgs().all { isLiteralType(it) }
                     sym.name == "Maybe" || Builtins.tupleArity(sym.name) != null -> t.typeArgs().all { isLiteralType(it) }
-                    sym.name == "View" || sym.name == "MutView" -> true
+                    sym.name == "View" || sym.name == "MutView" || sym.name == "Unsafe" -> true
                     else -> false
                 }
                 sym.isStruct -> sym.fields.all { isLiteralType(it.type) }
@@ -607,11 +592,21 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         if (decl?.initially != null) {
             ctx.unsupported(decl, "the initially block of struct '${s.name}' (a struct is an aggregate, D30)")
         }
+        val equality = usage.needsEquality(s)
+        if (equality) {
+            CppUsage.fieldWithoutEquality(s)?.let { f ->
+                ctx.diag(
+                    f.decl ?: s.decl ?: return@let,
+                    STRUCT_EQUALITY_CODE,
+                    "struct ${s.name} is compared with == but its field '${f.name}' has no == in C++ (an Fx, a Weak, a Stack, a Queue or a Result); " +
+                        "compare the other fields yourself, or drop the field",
+                )
+            }
+        }
         parts.generics.templateHead(ctx, s.typeParams)?.let { w.line(it) }
         w.block("struct ${ctx.names.escape(s.name)}", ";") {
             s.fields.forEach { f -> line(field(f)) }
             val methods = s.methods.filter { !ctx.isMagic(it) }
-            val equality = usage.needsEquality(s)
             if (methods.isNotEmpty() || equality) {
                 blank()
             }
@@ -624,7 +619,8 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     private fun field(f: FieldSymbol): String {
         val decl = f.decl as? VariableDecl
-        val type = if (decl != null && model.typeOf(decl.type) != null) ctx.spell(decl.type, Pos.FIELD) else ctx.spell(f.type, Pos.FIELD)
+        val pos = if (f.isMut) Pos.MUT_VALUE else Pos.FIELD
+        val type = if (decl != null && model.typeOf(decl.type) != null) ctx.spell(decl.type, pos) else ctx.spell(f.type, pos)
         val name = ctx.names.escape(f.name)
         val default = f.default ?: return "$type $name{};"
         return "$type $name = ${initText(default, f.type)};"
@@ -655,8 +651,8 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
     }
 
     private fun paramText(p: ParamSymbol, withDefault: Boolean, markUnused: Boolean, fn: FnSymbol): String {
-        val name = ctx.names.escape(p.name)
-        val unused = if (markUnused && !isUsed(fn, p)) "[[maybe_unused]] " else ""
+        val name = ctx.paramName(p)
+        val unused = if (markUnused && !placement.bodyNames(fn, p)) "[[maybe_unused]] " else ""
         if (placement.isNonEscapingFx(p)) {
             return "$unused${ctx.speller.templateParamName(p)}&& $name"
         }
@@ -667,23 +663,13 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return "$unused$type $name$default"
     }
 
-    /** Whether [fn]'s body names [p]. Syntactic: an identifier of that name anywhere in the body. */
-    private fun isUsed(fn: FnSymbol, p: ParamSymbol): Boolean {
-        val body = fn.body ?: return true
-        var used = false
-        body.forEach { stmt ->
-            AstTree.walk(stmt) { node ->
-                if (!used && node is Identifier && node !is IntrinsicExpr && node.value == p.name) {
-                    used = true
-                }
-            }
-        }
-        return used
-    }
-
-    /** The prototype lines: a template head, then `[[nodiscard]] constexpr|inline RET name(params = defaults) const;`. */
+    /**
+     * The prototype lines: a template head, then `[[nodiscard]] constexpr|inline RET name(params = defaults) const;`.
+     * A private function of the `.cxx` that nothing in the module calls is `[[maybe_unused]]` (`-Wunused-function`).
+     */
     private fun prototype(fn: FnSymbol, owner: ClassSymbol? = null): List<String> {
         val p = if (owner != null) placement.method(owner, fn) else placement.function(fn)
+        val unused = if (owner == null && p.decl == Home.SOURCE && !placement.isReferenced(fn)) "[[maybe_unused]] " else ""
         val nodiscard = if (fn.ret == KType.Void || fn.ret == KType.Never) "" else "[[nodiscard]] "
         val specifier = when {
             fn.isConst -> "constexpr "
@@ -692,22 +678,40 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         val params = fn.params.joinToString(", ") { paramText(it, withDefault = true, markUnused = false, fn) }
         val constSuffix = if (owner != null && !fn.isMutMethod) " const" else ""
-        return templateHead(fn) + "$nodiscard$specifier${returnText(fn)} ${ctx.names.escape(fn.name)}($params)$constSuffix;"
+        return templateHead(fn) + "$unused$nodiscard$specifier${returnText(fn)} ${ctx.names.escape(fn.name)}($params)$constSuffix;"
     }
 
-    /** The definition: the template head, `constexpr|inline RET Owner::name(params) const`, then the body. */
-    private fun definition(w: CppWriter, fn: FnSymbol, qualifier: String, p: Placement, owner: ClassSymbol? = null) {
+    /**
+     * The definition: a `#line` for the function when the options ask for one, the owner's
+     * template head (a generic struct's method), the function's own, then
+     * `constexpr|inline RET Owner<T>::name(params) const` and the body.
+     */
+    private fun definition(w: CppWriter, fn: FnSymbol, p: Placement, owner: ClassSymbol? = null) {
         val specifier = when {
             fn.isConst -> "constexpr "
-            p.inlineDefinition && !placement.isTemplate(fn) -> "inline "
+            p.inlineDefinition && !placement.isTemplate(fn, owner) -> "inline "
             else -> ""
         }
         val params = fn.params.joinToString(", ") { paramText(it, withDefault = false, markUnused = true, fn) }
         val constSuffix = if (owner != null && !fn.isMutMethod) " const" else ""
+        fn.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
+        if (owner != null) {
+            parts.generics.templateHead(ctx, owner.typeParams)?.let { w.line(it) }
+        }
         templateHead(fn).forEach { w.line(it) }
+        val qualifier = owner?.let { ownerQualifier(it) } ?: ""
         w.block("$specifier${returnText(fn)} $qualifier${ctx.names.escape(fn.name)}($params)$constSuffix") {
             ctx.body(fn, fn.body ?: emptyList(), this)
         }
+    }
+
+    /** `Pair<T>::` for an out-of-line member of a generic struct, `Point::` otherwise. */
+    private fun ownerQualifier(s: ClassSymbol): String {
+        val name = ctx.names.escape(s.name)
+        if (s.typeParams.isEmpty()) {
+            return "$name::"
+        }
+        return "$name<${s.typeParams.joinToString(", ") { ctx.names.escape(it.name) }}>::"
     }
 
     // ---- initializers and literals ---------------------------------------------------------------
@@ -734,7 +738,16 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 if (e.value == "true" || e.value == "false") {
                     return e.value
                 }
-                constantNamed(e)?.let { return ctx.qualified(it) }
+                constantNamed(e)?.let { g ->
+                    // `null` is a `@_magic @_global` of kira:core (design 5.7): kira::none, never `::kira::core::null`.
+                    if (ctx.isMagic(g)) {
+                        if (g.name == "null") {
+                            return "kira::none"
+                        }
+                    } else {
+                        return ctx.qualified(g)
+                    }
+                }
             }
             is MemberAccessExpr -> {
                 (model.const(e) as? ConstValue.EnumConst)?.let { return ctx.entry(it.entry) }
@@ -747,6 +760,12 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 }
             }
             is ObjectInitExpr -> if (e.positionalArgs.isEmpty() && e.namedArgs.isEmpty()) {
+                val t = model.typeOf(e.typeName) ?: type
+                val sym = (t as? KType.Nominal)?.sym as? ClassSymbol
+                if (sym != null && sym.kind == ClassKind.CLASS) {
+                    // R9: a class is constructed through make_shared; `kira::Rc<C>{}` would be a null pointer.
+                    return "std::make_shared<${ctx.speller.bareClass(t)}>()"
+                }
                 val spelled = if (model.typeOf(e.typeName) != null) ctx.spell(e.typeName, Pos.VALUE) else ctx.spell(type, Pos.VALUE)
                 return "$spelled{}"
             }
@@ -763,13 +782,13 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
     }
 
     private fun intLiteral(e: IntegerLiteral, type: KType): String {
-        val raw = ctx.rawNumberText(e) ?: e.value.toString()
-        return when (type.prim) {
+        val prim = type.prim
+        return when (prim) {
             Prim.FLOAT32 -> floatText(e.value.toDouble()) + "f"
             Prim.FLOAT64 -> floatText(e.value.toDouble())
-            Prim.UINT32 -> raw + "u"
-            Prim.UINT64 -> if (e.value < 0) raw + "u" else raw
-            else -> raw
+            Prim.UINT32 -> ctx.integerText(e, prim) + "u"
+            Prim.UINT64 -> ctx.integerText(e, prim) + (if (e.value < 0) "u" else "")
+            else -> ctx.integerText(e, prim)
         }
     }
 
@@ -787,7 +806,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 Prim.FLOAT64 -> floatText(v.value.toDouble())
                 Prim.UINT32 -> v.value.toString() + "u"
                 Prim.UINT64 -> if (v.bits < 0) v.value.toString() + "u" else v.value.toString()
-                else -> v.value.toString()
+                else -> if (v.value == java.math.BigInteger.valueOf(Long.MIN_VALUE)) "std::numeric_limits<std::int64_t>::min()" else v.value.toString()
             }
         }
         is ConstValue.FloatConst -> if ((type.prim ?: v.prim) == Prim.FLOAT32) floatText(v.value) + "f" else floatText(v.value)
@@ -804,6 +823,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         const val MACRO_POP = "kira/macro_pop.hxx"
         const val STATIC_ASSERT = "_static_assert"
         const val MACRO_NAME_CODE = "cpp.macro-name"
+        const val STRUCT_EQUALITY_CODE = "cpp.struct-equality"
 
         /** A double as a C++ literal: `1.0`, `0.5`, `1.0e-4`. */
         fun floatText(v: Double): String {

@@ -51,6 +51,12 @@ data class EmittedModule(
     val header: String,
     val source: String?,
     val diagnostics: List<CppDiagnostic> = emptyList(),
+    /**
+     * The URIs of the modules whose generated headers [header] includes: the `use`d ones and
+     * any other whose names it spells (`kira:core` for the `Int` alias). The backend emits a
+     * Kira-written stdlib module only when a workspace module reaches it this way.
+     */
+    val uses: List<String> = emptyList(),
 ) {
     val hasErrors: Boolean
         get() = diagnostics.any { it.isError }
