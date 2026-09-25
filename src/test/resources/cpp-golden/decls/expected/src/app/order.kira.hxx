@@ -7,6 +7,10 @@ namespace order
   struct Pt;
   struct S;
   struct Cfg;
+  struct Narrow;
+  struct Early;
+  struct Queued;
+  struct Later;
 
   inline constexpr kira::Size N = 4;
   using Frame = std::array<std::uint8_t, N>;
@@ -38,6 +42,11 @@ namespace order
   }
 
   inline kira::Maybe<std::int32_t> last = kira::none;
+  inline constexpr kira::Maybe<std::uint8_t> MU8 = std::uint8_t{200};
+  inline constexpr kira::Maybe<float> MF = 0.5f;
+  inline constexpr kira::Maybe<std::int16_t> MI16 = std::int16_t{5};
+  inline constexpr std::int32_t COUNT = 3;
+  inline constexpr float RATIO = 0.5f;
 
   struct Pt
   {
@@ -70,9 +79,31 @@ namespace order
       kira::Maybe<std::int32_t> limit = kira::none;
   };
 
+  struct Narrow
+  {
+      kira::Maybe<std::uint8_t> a = std::uint8_t{7};
+      std::uint8_t b = 7;
+  };
+
+  struct Early
+  {
+      kira::List<Later> xs{};
+  };
+
+  struct Later
+  {
+      std::int32_t v = 0;
+  };
+
+  struct Queued
+  {
+      kira::Deque<Later> d{};
+  };
+
   [[nodiscard]] std::int32_t f(std::int32_t x = impl_::LIMIT);
   [[nodiscard]] std::int32_t scaleBy(std::int32_t limit_p);
   [[nodiscard]] kira::Maybe<std::int32_t> find(const kira::Str& key, const kira::Maybe<std::int32_t>& hint = kira::none);
   [[nodiscard]] std::int32_t peek(const std::int32_t* p, std::int32_t* q);
+  [[nodiscard]] std::int32_t narrow(const kira::Maybe<std::int16_t>& x = std::int16_t{3});
 }
 #include "kira/macro_pop.hxx"

@@ -21,6 +21,9 @@ static_assert(std::is_same_v<order::Frame, std::array<std::uint8_t, 4>>, "an ali
 static_assert(order::ORIGIN.x == 0, "a constexpr constant of a struct type declared later");
 static_assert(order::S{}.n == 5 && order::S{}.i.v == 1 && order::S{}.m == order::impl_::Mode::MODE_A, "private names a public struct uses");
 static_assert(std::is_same_v<decltype(order::Cfg{}.limit), kira::Maybe<std::int32_t>>, "a Maybe field");
+static_assert(order::MU8.has_value() && *order::MU8 == 200 && *order::MI16 == 5 && *order::Narrow{}.a == 7 && order::Narrow{}.b == 7, "literals under a Maybe carry the narrow type");
+static_assert(std::is_same_v<decltype(order::MF), const kira::Maybe<float>> && *order::MF == 0.5f, "a float literal under a Maybe<Float32> is a float");
+static_assert(std::is_same_v<decltype(order::COUNT), const std::int32_t> && std::is_same_v<decltype(order::RATIO), const float>, "Int and Float are Int32 and Float32");
 
 namespace order
 {
@@ -48,6 +51,11 @@ namespace order
   {
       *q = *p + 1;
       return *p;
+  }
+
+  std::int32_t narrow(const kira::Maybe<std::int16_t>& x)
+  {
+      return kira::isSome(x) ? kira::unwrap(x) : -1;
   }
 }
 
@@ -165,6 +173,10 @@ int main()
         std::int32_t in = 41;
         std::int32_t out = 0;
         check(order::peek(&in, &out) == 41 && out == 42, "Unsafe<T> is const T*, T* when mut");
+        check(order::narrow() == 3 && order::narrow(std::int16_t{9}) == 9, "a narrow literal as a Maybe default argument");
+        const order::Early early{};
+        const order::Queued queued{};
+        check(early.xs.empty() && queued.d.empty(), "containers of a struct declared later");
     }
     std::printf("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

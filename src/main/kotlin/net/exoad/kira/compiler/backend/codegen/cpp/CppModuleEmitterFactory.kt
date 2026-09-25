@@ -63,10 +63,13 @@ class TypedCppModuleEmitter(
     private var layout: CppModuleLayout = CppModuleLayout(options, Paths.get("."))
     private var version: String = CppCompilerVersion.DEV
     private val usage: CppUsage by lazy { CppUsage.scan(program) }
+    private var placements = CppPlacements()
 
     override fun prepare(layout: CppModuleLayout, version: String) {
         this.layout = layout
         this.version = version
+        // A placement reads the layout (header-only, freestanding), so a new layout starts a new set.
+        placements = CppPlacements()
     }
 
     override fun emit(source: SourceContext): EmittedModule {
@@ -75,7 +78,7 @@ class TypedCppModuleEmitter(
                 "", null,
                 listOf(CppDiagnostic(CppModuleEmitterFactory.INTERNAL_CODE, "the typer collected no module for ${source.file}", file = source.file)),
             )
-        val ctx = CppEmitContextImpl(program, options, source, layout, module, version, parts)
+        val ctx = CppEmitContextImpl(program, options, source, layout, module, version, parts, placements)
         return try {
             CppDeclEmitter(ctx, usage).emit()
         } catch (e: UnsupportedConstruct) {

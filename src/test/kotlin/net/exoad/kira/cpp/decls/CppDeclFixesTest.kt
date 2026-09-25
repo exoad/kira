@@ -1,6 +1,7 @@
 package net.exoad.kira.cpp.decls
 
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.TypeArg
@@ -218,9 +219,12 @@ class CppDeclFixesTest {
             uri = "lib:units",
             options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:units")),
         )
+        // Inner is held by value, so it comes first; a List element needs only the forward
+        // declaration, and the empty List default is value-initialized in place (`xs{}`), the
+        // one form libc++ accepts before Later is complete.
         assertContains(
             h,
-            "  struct S;\n\n  namespace impl_\n  {\n    struct Later;\n  }\n\n  namespace impl_\n  {\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      impl_::Inner i = impl_::Inner{};\n      kira::List<impl_::Later> xs = kira::List<impl_::Later>{};\n  };\n\n  namespace impl_\n  {\n    struct Later\n    {\n        std::int32_t v = 2;\n    };\n  }",
+            "  struct S;\n\n  namespace impl_\n  {\n    struct Later;\n  }\n\n  namespace impl_\n  {\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      impl_::Inner i = impl_::Inner{};\n      kira::List<impl_::Later> xs{};\n  };\n\n  namespace impl_\n  {\n    struct Later\n    {\n        std::int32_t v = 2;\n    };\n  }",
         )
     }
 
@@ -261,8 +265,9 @@ class CppDeclFixesTest {
 
     @Test
     fun aComparedStructWithAFieldThatHasNoEqualityIsAnError() {
+        // A required field: `= null` on an Fx is what the semantic pass rejects (types are non-nullable).
         val (emitted, _) = emit(
-            "pub struct Cb { pub f: Fx<Tuple0, Void> = null }",
+            "pub struct Cb { pub f: Fx<Tuple0, Void> }",
             usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Cb"] as ClassSymbol)) },
         )
         val error = emitted.diagnostics.singleOrNull { it.code == CppDeclEmitter.STRUCT_EQUALITY_CODE } ?: fail(emitted.diagnostics.joinToString("\n") { it.render() })
@@ -364,16 +369,204 @@ class CppDeclFixesTest {
         assertContains(s, "  #line 3 \"src/test/main.kira\"\n  void f()")
     }
 
-    // ---- the Int alias lives in kira:core, so its header is included and reached ----------------
+    // ---- the Int and Float aliases of kira:core are spelled as their targets -------------------
 
     @Test
-    fun aNameFromAnUnusedStdlibModuleIncludesItsHeaderAndReachesIt() {
-        val (emitted, _) = emit("pub X: Int = 3\npub Y: Int32 = 4")
+    fun theCoreAliasesAreSpelledAsTheirTargetsAndReachNoStdlibHeader() {
+        // kira:core's header would hold its traits (unsupported until W2.4) and is hosted, which a
+        // freestanding module could not include; `Int` is `std::int32_t` wherever it is written.
+        val (emitted, _) = emit("pub X: Int = 3\npub F: Float = 0.5\npub alias Idx as Int\npub struct S { pub n: Int = 1 }\npub fx f: (n: Int, xs: List<Int>) Int;")
         val h = CppWriter.normalize(emitted.header)
-        assertContains(h, "#include \"kira/rt.hxx\"\n#include \"kira/std/core.kira.hxx\"\n#include \"kira/macro_push.hxx\"\n", "  inline constexpr ::kira::core::Int X = 3;")
-        assertEquals(listOf("kira:core"), emitted.uses)
-        val plain = emit("pub Y: Int32 = 4").first
-        assertEquals(emptyList(), plain.uses)
-        assertTrue(!plain.header.contains("kira/std/"), plain.header)
+        assertContains(
+            h,
+            "#include \"kira/rt.hxx\"\n#include \"kira/macro_push.hxx\"\n",
+            "  inline constexpr std::int32_t X = 3;",
+            "  inline constexpr float F = 0.5f;",
+            "  using Idx = std::int32_t;",
+            "      std::int32_t n = 1;",
+            "  [[nodiscard]] std::int32_t f(std::int32_t n, const kira::List<std::int32_t>& xs);",
+        )
+        assertEquals(emptyList(), emitted.uses)
+        assertTrue(!h.contains("kira/std/") && !h.contains("kira::core"), h)
+        val freestanding = emit("pub X: Int = 3", uri = "pico:hall", options = CppOptions(lineDirectives = false, freestanding = listOf("pico:hall"))).first
+        assertContains(CppWriter.normalize(freestanding.header), "#include \"kira/core.hxx\"\n#include \"kira/macro_push.hxx\"\n", "  inline constexpr std::int32_t X = 3;")
+        assertEquals(emptyList(), freestanding.uses)
+    }
+
+    // ---- fix round 2 -----------------------------------------------------------------------------
+
+    @Test
+    fun aLiteralUnderAMaybeCarriesTheNarrowTypeItConvertsTo() {
+        // MSVC /W4 /WX: C4244 inside <optional> for `kira::Maybe<std::uint8_t> m = 200;` (int to
+        // unsigned char), `Maybe<float> = 0.5` (double to float) and `Maybe<std::int16_t> = 5`.
+        val h = header(
+            """
+            pub MU8: Maybe<UInt8> = 200
+            pub MI8: Maybe<Int8> = -7
+            pub MI16: Maybe<Int16> = 5
+            pub MU16: Maybe<UInt16> = 0x10
+            pub MI32: Maybe<Int32> = 42
+            pub MU32: Maybe<UInt32> = 5
+            pub MI64: Maybe<Int64> = 5
+            pub MSZ: Maybe<Size> = 3
+            pub MF: Maybe<Float32> = 0.5
+            pub MFI: Maybe<Float32> = 1
+            pub MD: Maybe<Float64> = 0.5
+            pub MFN: Maybe<Float32> = -0.25
+            pub struct M { pub a: Maybe<UInt8> = 7 pub b: Maybe<Float32> = 2.5 pub c: UInt8 = 7 }
+            pub fx g: (x: Maybe<Int16> = 3, y: Int16 = 3) Void;
+            """
+        )
+        assertContains(
+            h,
+            "inline constexpr kira::Maybe<std::uint8_t> MU8 = std::uint8_t{200};",
+            "inline constexpr kira::Maybe<std::int8_t> MI8 = std::int8_t{-7};",
+            "inline constexpr kira::Maybe<std::int16_t> MI16 = std::int16_t{5};",
+            "inline constexpr kira::Maybe<std::uint16_t> MU16 = std::uint16_t{0x10};",
+            "inline constexpr kira::Maybe<std::int32_t> MI32 = 42;",
+            "inline constexpr kira::Maybe<std::uint32_t> MU32 = 5u;",
+            "inline constexpr kira::Maybe<std::int64_t> MI64 = std::int64_t{5};",
+            "inline constexpr kira::Maybe<kira::Size> MSZ = kira::Size{3};",
+            "inline constexpr kira::Maybe<float> MF = 0.5f;",
+            "inline constexpr kira::Maybe<float> MFI = 1.0f;",
+            "inline constexpr kira::Maybe<double> MD = 0.5;",
+            "inline constexpr kira::Maybe<float> MFN = -0.25f;",
+            "      kira::Maybe<std::uint8_t> a = std::uint8_t{7};\n      kira::Maybe<float> b = 2.5f;\n      std::uint8_t c = 7;",
+            "void g(const kira::Maybe<std::int16_t>& x = std::int16_t{3}, std::int16_t y = 3);",
+        )
+    }
+
+    @Test
+    fun aContainerOfALaterStructIsOrderedOrValueInitializedAsTheCompilersNeed() {
+        val h = header(
+            """
+            pub struct Early { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> = null }
+            pub struct Queued { pub d: Deque<Later> = Deque<Later> {} }
+            pub struct Viewed { pub v: View<Later> }
+            pub struct Later { pub v: Int32 = 0 }
+            pub class Node { pub v: Int32 = 0 }
+            """,
+            usageOf = { CppUsage.NONE },
+        )
+        // A List or Map value needs only the forward declaration, and its empty default is `xs{}`
+        // (the prvalue form makes libc++ instantiate the temporary's destructor); a Deque, Stack,
+        // Queue or View element must be complete on libc++ and MSVC, so Later moves up.
+        assertContains(
+            h,
+            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w = kira::none;\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };\n\n  struct Viewed\n  {\n      kira::View<Later> v{};\n  };",
+        )
+    }
+
+    @Test
+    fun structsHoldingEachOtherInListsAreFineAndInDequesAreACycle() {
+        val h = header("pub struct A { pub bs: List<B> = List<B> {} }\npub struct B { pub items: List<A> = List<A> {} }")
+        assertContains(h, "  struct A\n  {\n      kira::List<B> bs{};\n  };\n\n  struct B\n  {\n      kira::List<A> items{};\n  };")
+        val (emitted, _) = emit("pub struct A { pub bs: Deque<B> = Deque<B> {} }\npub struct B { pub items: Deque<A> = Deque<A> {} }")
+        val cycle = emitted.diagnostics.filter { it.code == CppPlacement.DECL_CYCLE_CODE }
+        assertEquals(2, cycle.size, emitted.diagnostics.joinToString("\n") { it.render() })
+        assertTrue(cycle.all { it.message.contains("container") && it.message.contains("class") }, cycle.joinToString { it.message })
+        val self = header("pub struct S { pub kids: List<S> = List<S> {} pub v: Int32 = 0 }")
+        assertContains(self, "  struct S\n  {\n      kira::List<S> kids{};\n      std::int32_t v = 0;\n  };")
+    }
+
+    @Test
+    fun aModuleNamedMainGetsAnEscapedNamespaceSoIntMainCanSitBesideIt() {
+        val (emitted, _) = emit("pub LIMIT: Int32 = 3\nfx main: () Int32 { return 0 }", uri = "app:main")
+        val h = CppWriter.normalize(emitted.header)
+        val s = CppWriter.normalize(emitted.source ?: fail("no source"))
+        assertContains(h, "namespace main_\n{\n  inline constexpr std::int32_t LIMIT = 3;\n\n  [[nodiscard]] std::int32_t main();\n}")
+        assertContains(s, "namespace main_\n{\n  std::int32_t main()\n", "int main(int argc, char** argv)\n{\n    return kira::rt::runMain(argc, argv, &main_::main);\n}")
+        assertTrue(!s.contains("namespace main\n"), s)
+        // the same for a module named after a C library global: <cstdlib> declares ::exit
+        val exit = emit("pub LIMIT: Int32 = 3", uri = "app:exit").first
+        assertContains(CppWriter.normalize(exit.header), "namespace exit_\n{")
+        val time = emit("pub LIMIT: Int32 = 3", uri = "app:time").first
+        assertContains(CppWriter.normalize(time.header), "namespace time_\n{")
+    }
+
+    @Test
+    fun anotherModulesPrivateDeclarationIsQualifiedWhereItsOwnHeaderPutIt() {
+        val lib = DeclTestSupport.module(
+            "lib:a",
+            """
+            LIMIT: Int32 = 5
+            HIDDEN: Int32 = 6
+            pub fx f: (x: Int32 = LIMIT) Int32 { return x + HIDDEN }
+            """,
+        )
+        val app = DeclTestSupport.module("app:b", "use \"lib:a\"\npub Y: Int32 = 1")
+        val (_, ctx) = DeclTestSupport.emitWith(lib, app, uri = "app:b", parts = fakeBodies)
+        val a = ctx.program.module("lib:a") ?: fail("no lib:a")
+        // LIMIT is a default of an exported prototype, so lib:a's header holds it in impl_; HIDDEN is only the body's, so the .cxx holds it.
+        assertEquals("::a::impl_::LIMIT", ctx.qualified(a.members["LIMIT"]!!))
+        assertEquals("::a::HIDDEN", ctx.qualified(a.members["HIDDEN"]!!))
+        assertEquals("::a::f", ctx.qualified(a.members["f"]!!))
+        // a header-only module keeps every private declaration in impl_
+        val (_, ctx2) = DeclTestSupport.emitWith(lib, app, uri = "app:b", parts = fakeBodies, options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:a")))
+        val a2 = ctx2.program.module("lib:a") ?: fail("no lib:a")
+        assertEquals("::a::impl_::HIDDEN", ctx2.qualified(a2.members["HIDDEN"]!!))
+    }
+
+    @Test
+    fun aFunctionAValueOrADefaultNamesIsHoistedBeforeIt() {
+        val (emitted, _) = emit(
+            """
+            pub DATA: Arr<UInt8, 2> = [1, 2]
+            pub X: UInt32 = crc8(DATA)
+            pub @_const fx crc8: (buf: View<UInt8>) UInt32 { return 7 }
+            pub struct S { pub n: Int32 = limit() }
+            pub fx limit: () Int32 { return 1 }
+            pub fx other: () Int32 { return 2 }
+            """
+        )
+        val h = CppWriter.normalize(emitted.header)
+        val s = CppWriter.normalize(emitted.source ?: fail("no source"))
+        // crc8 is evaluated by X: its prototype and constexpr body precede X; limit is only named by
+        // a default member initializer: its prototype precedes S and its body stays in the .cxx.
+        // Hoisted prototypes come first, then hoisted bodies, then the values in their own order.
+        assertContains(
+            h,
+            "  [[nodiscard]] constexpr std::uint32_t crc8(kira::View<std::uint8_t> buf);\n  [[nodiscard]] std::int32_t limit();\n\n  constexpr std::uint32_t crc8([[maybe_unused]] kira::View<std::uint8_t> buf)\n  {\n      return {}; // body of crc8\n  }\n\n  inline constexpr std::array<std::uint8_t, 2> DATA = {1, 2};\n  inline constexpr std::uint32_t X = <FunctionCallExpr>;\n\n  struct S\n  {\n      std::int32_t n = <FunctionCallExpr>;\n  };\n\n  [[nodiscard]] std::int32_t other();\n}",
+        )
+        assertEquals(1, Regex("crc8\\(kira::View<std::uint8_t> buf\\);").findAll(h).count(), "one prototype:\n$h")
+        assertEquals(1, Regex("std::int32_t limit\\(\\);").findAll(h).count(), "one prototype:\n$h")
+        assertContains(s, "  std::int32_t limit()\n  {\n      return {}; // body of limit\n  }")
+        assertTrue(!s.contains("crc8"), "a constexpr body lives in the header only:\n$s")
+    }
+
+    @Test
+    fun aFloatEnumNumbersItsEntriesAndValueOfGivesTheValueWhereUsed() {
+        val src = """pub enum Ratio: Float32 { HALF = 0.5, FULL = 1.0 }
+            pub enum Wide: Float64 { W_A = 2.5 }"""
+        val h = header(src)
+        assertContains(h, "  enum class Ratio : std::int32_t\n  {\n      HALF = 0,\n      FULL = 1,\n  };", "  enum class Wide : std::int32_t\n  {\n      W_A = 0,\n  };")
+        assertTrue(!h.contains("valueOf"), "valueOf is emitted only where used:\n$h")
+        val used = header(src, usageOf = { ctx -> CppUsage.of(valueOf = setOf(ctx.symbol.members["Ratio"] as EnumSymbol, ctx.symbol.members["Wide"] as EnumSymbol)) })
+        assertContains(
+            used,
+            "  [[nodiscard]] constexpr float valueOf(Ratio v)\n  {\n      switch(v)\n      {\n          case Ratio::HALF:\n              return 0.5f;\n          case Ratio::FULL:\n              return 1.0f;\n      }\n      return 0.0f;\n  }",
+            "  [[nodiscard]] constexpr double valueOf(Wide v)\n  {\n      switch(v)\n      {\n          case Wide::W_A:\n              return 2.5;\n      }\n      return 0.0;\n  }",
+        )
+    }
+
+    @Test
+    fun comparingAGenericStructInstanceMarksItsArgument() {
+        val (_, ctx) = emit(
+            """
+            pub struct Pt { pub x: Int32 = 0 }
+            pub struct Pair<T> { pub a: T pub b: T }
+            pub fx same: (a: Pair<Pt>, b: Pair<Pt>) Bool { return a == b }
+            """
+        )
+        val pt = ctx.symbol.members["Pt"] as ClassSymbol
+        val pair = ctx.symbol.members["Pair"] as ClassSymbol
+        net.exoad.kira.compiler.analysis.types.AstTree.walk(ctx.module.ast) { node ->
+            if (node is BinaryExpr) {
+                ctx.model.types[node.leftExpr] = KType.Nominal(pair, listOf(TypeArg.Ty(KType.Nominal(pt))))
+                ctx.model.types[node.rightExpr] = KType.Nominal(pair, listOf(TypeArg.Ty(KType.Nominal(pt))))
+            }
+        }
+        val usage = CppUsage.scan(ctx.program)
+        assertTrue(usage.needsEquality(pair) && usage.needsEquality(pt), "Pair<Pt> == Pair<Pt> compares Pair and Pt")
     }
 }

@@ -18,6 +18,7 @@ import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.analysis.types.TypedProgram
+import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
@@ -206,7 +207,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         when (sym) {
             is ClassSymbol -> {
                 val held = LinkedHashSet<ClassSymbol>()
-                sym.fields.forEach { f -> byValue(f.type, held) }
+                sym.fields.forEach { f -> needsComplete(f.type, held) }
                 completes.addAll(held)
                 (sym.superclass?.sym as? Symbol)?.let { completes.add(it) }
                 sym.traits.forEach { (it.sym as? Symbol)?.let { s -> completes.add(s) } }
@@ -340,49 +341,158 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     // ---- order -------------------------------------------------------------------------------------
 
+    /** What one position of [orderedItems] holds. */
+    enum class ItemKind {
+        /** A value, enum, alias, struct, trait or class: its definition. */
+        DECL,
+
+        /** The prototype of a free function hoisted before a declaration that names it. */
+        PROTO,
+
+        /** The definition of a hoisted function, when it lives in the same file as its prototype. */
+        DEF,
+    }
+
+    /** One position of [orderedItems]. */
+    data class OrderedItem(val sym: Symbol, val kind: ItemKind)
+
     /**
      * Sections 6 to 8 of design 4.2 as one sequence: every value, struct, trait and class of
      * the module, each after what it [completes], and otherwise in section order (values,
      * structs, traits, classes) then source order.
+     *
+     * A free function that a value's initializer or a type's declaration text names (a
+     * constant `X: UInt32 = crc32(DATA)`, a field default `n: Int32 = limit()`) is hoisted into
+     * the sequence rather than left to sections 9 and 10, which come after every value: its
+     * prototype before the first declaration that names it, and, when its definition lives in
+     * the same file as the prototype (`@_const`, a template, a header-only module, a private
+     * function of the `.cxx`), its definition before a value that evaluates it, so a constexpr
+     * initializer finds the body it needs. What those functions name in turn is hoisted with
+     * them.
      */
-    val ordered: List<Symbol> by lazy { order() }
+    val orderedItems: List<OrderedItem> by lazy { order() }
 
-    private fun rank(sym: Symbol): Int = when (sym) {
-        is GlobalSymbol, is EnumSymbol, is AliasSymbol -> 0
-        is ClassSymbol -> if (sym.isStruct) 1 else 3
-        is TraitSymbol -> 2
-        else -> 4
+    /** [orderedItems] without the hoisted functions: the values and types, in the order the header defines them. */
+    val ordered: List<Symbol> by lazy { orderedItems.filter { it.kind == ItemKind.DECL }.map { it.sym } }
+
+    private val hoistedKinds = IdentityHashMap<FnSymbol, Set<ItemKind>>()
+
+    /** Whether [fn]'s prototype ([ItemKind.PROTO]) or definition ([ItemKind.DEF]) is written in the ordered sequence rather than in its own section. */
+    fun isHoisted(fn: FnSymbol, kind: ItemKind): Boolean {
+        orderedItems
+        return hoistedKinds[fn]?.contains(kind) == true
     }
 
-    private fun order(): List<Symbol> {
-        val items = declarations.filter { sym ->
+    private fun rank(item: OrderedItem): Int = when (item.kind) {
+        ItemKind.PROTO -> -2
+        ItemKind.DEF -> -1
+        ItemKind.DECL -> when (val sym = item.sym) {
+            is GlobalSymbol, is EnumSymbol, is AliasSymbol -> 0
+            is ClassSymbol -> if (sym.isStruct) 1 else 3
+            is TraitSymbol -> 2
+            else -> 4
+        }
+    }
+
+    /** A free function of this module that the ordered sequence may hold: not extern, not an operator, not a method. */
+    private fun isHoistable(sym: Symbol): Boolean =
+        sym is FnSymbol && sym in declared && sym.owner == null && !sym.isOperator && foreignOf(sym) !is Foreign.Extern
+
+    private fun order(): List<OrderedItem> {
+        val base = declarations.filter { sym ->
             when (sym) {
                 is GlobalSymbol, is EnumSymbol, is AliasSymbol, is TraitSymbol -> foreignOf(sym) !is Foreign.Extern
                 is ClassSymbol -> foreignOf(sym) !is Foreign.Extern && sym.kind != ClassKind.OPAQUE
                 else -> false
             }
         }
-        val index = IdentityHashMap<Symbol, Int>()
-        items.forEachIndexed { i, s -> index[s] = i }
-        val deps = IdentityHashMap<Symbol, List<Symbol>>()
-        items.forEach { s ->
-            deps[s] = completes(s).filter { index.containsKey(it) }
-            if (s is ClassSymbol) {
-                val held = LinkedHashSet<ClassSymbol>()
-                s.fields.forEach { f -> byValue(f.type, held) }
-                if (held.any { it === s }) {
-                    reportStructCycle(s, listOf(s))
-                }
+
+        // The hoisted functions: what a base declaration names, then what those name in turn.
+        val hoisted = LinkedHashSet<FnSymbol>()
+        val queue = ArrayDeque<FnSymbol>()
+        fun hoist(s: Symbol) {
+            if (s is FnSymbol && isHoistable(s) && hoisted.add(s)) {
+                queue.addLast(s)
             }
         }
-        val remaining = items.sortedWith(compareBy({ rank(it) }, { index[it]!! })).toMutableList()
-        val placed = newSymbolSet()
-        val out = mutableListOf<Symbol>()
+        base.forEach { s -> mentions(s).forEach(::hoist) }
+        while (queue.isNotEmpty()) {
+            val f = queue.removeFirst()
+            mentions(f).forEach(::hoist)
+            bodyMentions(f).forEach(::hoist)
+        }
+        fun hasDef(f: FnSymbol): Boolean = f.body != null && function(f).def == function(f).decl
+
+        val items = mutableListOf<OrderedItem>()
+        val itemOf = IdentityHashMap<Symbol, MutableMap<ItemKind, OrderedItem>>()
+        fun add(sym: Symbol, kind: ItemKind) {
+            val item = OrderedItem(sym, kind)
+            items += item
+            itemOf.getOrPut(sym) { java.util.EnumMap(ItemKind::class.java) }[kind] = item
+        }
+        hoistedKinds.clear()
+        hoisted.forEach { f ->
+            add(f, ItemKind.PROTO)
+            if (hasDef(f)) {
+                add(f, ItemKind.DEF)
+            }
+            hoistedKinds[f] = if (hasDef(f)) setOf(ItemKind.PROTO, ItemKind.DEF) else setOf(ItemKind.PROTO)
+        }
+        base.forEach { add(it, ItemKind.DECL) }
+        fun item(sym: Symbol, kind: ItemKind): OrderedItem? = itemOf[sym]?.get(kind)
+        fun defOrProto(f: FnSymbol): OrderedItem? = item(f, ItemKind.DEF) ?: item(f, ItemKind.PROTO)
+
+        // Evaluating a call to [f] in an initializer reaches f's body and every hoisted body it calls.
+        fun evaluates(f: FnSymbol): List<OrderedItem> {
+            val reached = LinkedHashSet<FnSymbol>()
+            val todo = ArrayDeque(listOf(f))
+            while (todo.isNotEmpty()) {
+                val g = todo.removeFirst()
+                if (reached.add(g)) {
+                    bodyMentions(g).forEach { c -> if (c is FnSymbol && c in hoisted) todo.addLast(c) }
+                }
+            }
+            return reached.mapNotNull(::defOrProto)
+        }
+
+        val index = IdentityHashMap<Symbol, Int>()
+        base.forEachIndexed { i, s -> index[s] = i }
+        hoisted.forEachIndexed { i, f -> index[f] = i }
+        val deps = HashMap<OrderedItem, List<OrderedItem>>()
+        items.forEach { item ->
+            val s = item.sym
+            deps[item] = when (item.kind) {
+                ItemKind.DECL -> completes(s).flatMap { c ->
+                    when {
+                        c is FnSymbol && c in hoisted ->
+                            // A value evaluates the call; a type's default only names the function.
+                            if (s is GlobalSymbol) evaluates(c) else listOfNotNull(item(c, ItemKind.PROTO))
+                        else -> listOfNotNull(item(c, ItemKind.DECL))
+                    }
+                }
+                ItemKind.PROTO -> mentions(s).mapNotNull { c ->
+                    when {
+                        c is FnSymbol && c in hoisted -> item(c, ItemKind.PROTO)
+                        c is ClassSymbol || c is TraitSymbol -> null   // a signature needs only the forward declaration
+                        else -> item(c, ItemKind.DECL)
+                    }
+                }
+                ItemKind.DEF -> listOfNotNull(item(s, ItemKind.PROTO)) + (mentions(s) + bodyMentions(s)).mapNotNull { c ->
+                    if (c is FnSymbol && c in hoisted) item(c, ItemKind.PROTO) else item(c, ItemKind.DECL)
+                }
+            }
+            if (item.kind == ItemKind.DECL && s is ClassSymbol && heldByValue(s).any { it === s }) {
+                reportStructCycle(s, listOf(s))
+            }
+        }
+        val remaining = items.sortedWith(compareBy({ rank(it) }, { index[it.sym]!! }, { it.kind.ordinal })).toMutableList()
+        val placed = HashSet<OrderedItem>()
+        val out = mutableListOf<OrderedItem>()
         while (remaining.isNotEmpty()) {
-            val next = remaining.firstOrNull { s -> deps[s]!!.all { it in placed } }
+            val next = remaining.firstOrNull { item -> deps[item]!!.all { it in placed } }
             if (next == null) {
-                // Every remaining declaration waits on another remaining one: a cycle.
-                remaining.forEach { s -> reportCycle(s, cycleThrough(s, deps, remaining)) }
+                // Every remaining item waits on another remaining one: a cycle.
+                remaining.forEach { item -> reportCycle(item.sym, cycleThrough(item, deps, remaining)) }
                 out.addAll(remaining)
                 break
             }
@@ -393,14 +503,16 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         return out
     }
 
-    private fun cycleThrough(start: Symbol, deps: Map<Symbol, List<Symbol>>, pool: List<Symbol>): List<Symbol> {
-        val path = mutableListOf(start)
-        val seen = newSymbolSet()
+    private fun cycleThrough(start: OrderedItem, deps: Map<OrderedItem, List<OrderedItem>>, pool: List<OrderedItem>): List<Symbol> {
+        val path = mutableListOf(start.sym)
+        val seen = HashSet<OrderedItem>()
         var cur = start
         while (seen.add(cur)) {
             cur = deps[cur]!!.firstOrNull { it in pool } ?: break
-            path.add(cur)
-            if (cur === start) {
+            if (cur.sym !== path.last()) {
+                path.add(cur.sym)
+            }
+            if (cur.sym === start.sym) {
                 break
             }
         }
@@ -408,10 +520,18 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     }
 
     private fun reportCycle(s: Symbol, path: List<Symbol>) {
-        val structsOnly = path.all { it is ClassSymbol && it.isStruct } && path.size > 1 &&
-            path.zipWithNext().all { (a, b) -> b in heldByValue(a as ClassSymbol) }
+        val structsOnly = path.all { it is ClassSymbol && it.isStruct } && path.size > 1
         if (structsOnly && s is ClassSymbol) {
-            reportStructCycle(s, path)
+            if (path.zipWithNext().all { (a, b) -> b in heldByValue(a as ClassSymbol) }) {
+                reportStructCycle(s, path)
+                return
+            }
+            ctx.diag(
+                s.decl ?: return,
+                DECL_CYCLE_CODE,
+                "struct ${s.name} holds a container of a struct that holds one of it (${path.joinToString(" -> ") { it.name }}); " +
+                    "C++ (libc++, MSVC) must see the element complete before the holding struct, so hold one side through a class",
+            )
             return
         }
         val decl = s.decl ?: return
@@ -445,6 +565,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         is AliasSymbol -> "alias"
         is ClassSymbol -> if (sym.isStruct) "struct" else "class"
         is TraitSymbol -> "trait"
+        is FnSymbol -> "function"
         else -> "declaration"
     }
 
@@ -463,34 +584,71 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
      * Exported types are always forward-declared (design 4.2 item 5).
      */
     fun needsForwardDeclaration(sym: Symbol): Boolean {
-        for (other in ordered) {
-            if (other === sym) {
+        for (item in orderedItems) {
+            if (item.sym === sym && item.kind == ItemKind.DECL) {
                 return false
             }
-            if (sym in mentions(other)) {
+            if (sym in mentions(item.sym)) {
                 return true
             }
         }
         return false
     }
 
-    /** Collects into [into] every struct [t] embeds by value. */
+    /**
+     * Collects into [into] every struct [t] embeds by value: itself (and its type arguments),
+     * or through `Arr<T, N>`, `Maybe`, `Result` or a tuple, which C++ lays out inside the
+     * holder. A struct holding itself this way is [STRUCT_CYCLE_CODE].
+     */
     private fun byValue(t: KType, into: MutableSet<ClassSymbol>) {
         val n = t as? KType.Nominal ?: return
         val sym = n.sym
         if (sym is ClassSymbol && sym.isStruct) {
             into.add(sym)
+            n.typeArgs().forEach { byValue(it, into) }
             return
         }
         if (sym is ClassSymbol && sym.kind == ClassKind.MAGIC) {
             val embeds = when {
                 sym.name == Builtins.ARR -> n.args.size >= 2
-                sym.name == "Maybe" -> true
+                sym.name == "Maybe" || sym.name == "Result" -> true
                 Builtins.tupleArity(sym.name) != null -> true
                 else -> false
             }
             if (embeds) {
                 n.typeArgs().forEach { byValue(it, into) }
+            }
+        }
+    }
+
+    /**
+     * Collects into [into] every struct a field of type [t] needs complete where the holding
+     * struct is defined: what [byValue] embeds, and the element of a container whose C++
+     * form takes no incomplete type. Measured on the goldens' four compilers with `Later`
+     * defined after the holder: libc++ (zig c++, x86 and aarch64) and MSVC reject
+     * `kira::Deque<Later>`, `Stack` and `Queue` in every form, libc++ rejects
+     * `kira::View<Later>`, and gcc accepts them all; `kira::List<Later> xs{};`,
+     * `kira::Map<K, Later>`, `kira::Fn<void(Later)>`, `kira::Weak`, `kira::Ref` and a raw
+     * pointer compile everywhere (the emitter writes an empty container default as `xs{}`,
+     * since libc++ rejects the prvalue form `= kira::List<Later>{}`). A `Set` element and a
+     * `Map` key are hashed, so they are required complete. A struct's own recursion through a
+     * container (`List<S>` inside `S`) is fine everywhere: a default member initializer is a
+     * complete-class context.
+     */
+    private fun needsComplete(t: KType, into: MutableSet<ClassSymbol>) {
+        val n = t as? KType.Nominal ?: return
+        val sym = n.sym
+        if (sym is ClassSymbol && sym.isStruct) {
+            into.add(sym)
+            n.typeArgs().forEach { needsComplete(it, into) }
+            return
+        }
+        if (sym is ClassSymbol && sym.kind == ClassKind.MAGIC) {
+            val args = n.typeArgs()
+            when (sym.name) {
+                "Weak", "Unsafe", "Ref", "List" -> {}
+                "Map" -> args.firstOrNull()?.let { needsComplete(it, into) }
+                else -> args.forEach { needsComplete(it, into) }
             }
         }
     }
@@ -565,12 +723,16 @@ class CppUsage private constructor(
     private val nameOf: Set<EnumSymbol>,
     private val enumValues: Set<EnumSymbol>,
     private val compared: Set<ClassSymbol>,
+    private val valueOf: Set<EnumSymbol>,
 ) {
     /** `x as Str` or `"${x}"` on the enum somewhere in the program (`kira::text` calls ADL `nameOf`). */
     fun needsNameOf(e: EnumSymbol): Boolean = e in nameOf
 
     /** `enumOf<E>(raw)` somewhere in the program (`kira::EnumTraits` reads ADL `enum_values`). */
     fun needsEnumValues(e: EnumSymbol): Boolean = e in enumValues
+
+    /** `x as Float32` (or `Float64`) on a float-based enum somewhere in the program: its entries are numbered, `valueOf` gives the value. */
+    fun needsValueOf(e: EnumSymbol): Boolean = e in valueOf
 
     /**
      * `a == b` or `a != b` somewhere in the program on the struct, or on a `Maybe`, `List`,
@@ -581,17 +743,22 @@ class CppUsage private constructor(
     fun needsEquality(s: ClassSymbol): Boolean = s in compared
 
     companion object {
-        val NONE: CppUsage = CppUsage(emptySet(), emptySet(), emptySet())
+        val NONE: CppUsage = CppUsage(emptySet(), emptySet(), emptySet(), emptySet())
 
         /** A usage set stated outright, for tests and for callers that know better; [compared] is closed over fields as [scan] closes it. */
-        fun of(nameOf: Set<EnumSymbol> = emptySet(), enumValues: Set<EnumSymbol> = emptySet(), compared: Set<ClassSymbol> = emptySet()): CppUsage =
-            CppUsage(nameOf, enumValues, closeOverFields(compared))
+        fun of(
+            nameOf: Set<EnumSymbol> = emptySet(),
+            enumValues: Set<EnumSymbol> = emptySet(),
+            compared: Set<ClassSymbol> = emptySet(),
+            valueOf: Set<EnumSymbol> = emptySet(),
+        ): CppUsage = CppUsage(nameOf, enumValues, closeOverFields(compared), valueOf)
 
         fun scan(program: TypedProgram): CppUsage {
             val model = program.model
             val nameOf = LinkedHashSet<EnumSymbol>()
             val enumValues = LinkedHashSet<EnumSymbol>()
             val compared = LinkedHashSet<ClassSymbol>()
+            val valueOf = LinkedHashSet<EnumSymbol>()
             fun enumOf(e: Expr): EnumSymbol? = (model.typeOrNull(e) as? KType.Nominal)?.sym as? EnumSymbol
             for (m in program.modules) {
                 val ast = runCatching { m.source.ast }.getOrNull() ?: continue
@@ -601,6 +768,10 @@ class CppUsage private constructor(
                             val toStr = model.conversion(node) == ConversionKind.TO_STR || model.typeOf(node.type) == KType.Str
                             if (toStr) {
                                 enumOf(node.value)?.let { nameOf.add(it) }
+                            }
+                            val toFloat = (model.typeOf(node.type) as? KType.Scalar)?.prim?.isFloat == true
+                            if (toFloat) {
+                                enumOf(node.value)?.let { e -> if (e.base.prim?.isFloat == true) valueOf.add(e) }
                             }
                         }
                         is InterpolatedStringLiteral -> node.parts.forEach { part ->
@@ -624,7 +795,7 @@ class CppUsage private constructor(
                     }
                 }
             }
-            return CppUsage(nameOf, enumValues, closeOverFields(compared))
+            return CppUsage(nameOf, enumValues, closeOverFields(compared), valueOf)
         }
 
         /** [compared] plus every struct a compared struct's fields hold, at any depth. */
@@ -642,12 +813,16 @@ class CppUsage private constructor(
             return out
         }
 
-        /** Every struct in [t]: itself, or the elements of a container, `Maybe` or tuple of structs (what a defaulted `==` compares). */
+        /**
+         * Every struct in [t]: itself and its type arguments (`Pair<Pt>` compares `Pt`), or the
+         * elements of a container, `Maybe` or tuple of structs (what a defaulted `==` compares).
+         */
         fun structsIn(t: KType, into: MutableSet<ClassSymbol>) {
             val n = t as? KType.Nominal ?: return
             val sym = n.sym
             if (sym is ClassSymbol && sym.isStruct) {
                 into.add(sym)
+                n.typeArgs().forEach { structsIn(it, into) }
                 return
             }
             if (sym is ClassSymbol && sym.kind == ClassKind.MAGIC) {

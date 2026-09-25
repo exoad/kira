@@ -227,8 +227,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         sections += render { orderedDeclarations(this, setOf(Home.HEADER, Home.HEADER_IMPL)) }
 
         // 9. free-function prototypes: private helpers the header needs first, in impl_
-        val implPrototypes = functions.filter { placement.function(it).decl == Home.HEADER_IMPL }
-        val headerPrototypes = functions.filter { placement.function(it).decl == Home.HEADER }
+        //    (a prototype some value or type named is already in 6 to 8, CppPlacement.orderedItems)
+        val implPrototypes = functions.filter { placement.function(it).decl == Home.HEADER_IMPL && !placement.isHoisted(it, CppPlacement.ItemKind.PROTO) }
+        val headerPrototypes = functions.filter { placement.function(it).decl == Home.HEADER && !placement.isHoisted(it, CppPlacement.ItemKind.PROTO) }
         sections += render {
             if (implPrototypes.isNotEmpty()) {
                 namespace(CppEmitContextImpl.IMPL_NAMESPACE) {
@@ -270,7 +271,8 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val forward = render { privateTypesNeedingForward(Home.SOURCE).forEach { forwardDeclaration(this, it) } }
         val privateDeclarations = render { orderedDeclarations(this, setOf(Home.SOURCE)) }
         val privatePrototypes = render {
-            functions.filter { placement.function(it).decl == Home.SOURCE }.forEach { fn -> prototype(fn).forEach { line(it) } }
+            functions.filter { placement.function(it).decl == Home.SOURCE && !placement.isHoisted(it, CppPlacement.ItemKind.PROTO) }
+                .forEach { fn -> prototype(fn).forEach { line(it) } }
         }
         val privateDefinitions = render { blocks(this, definitionsIn(Home.SOURCE, exported = false)) }
         val anonymous = listOf(forward, privateDeclarations, privatePrototypes, privateDefinitions).filter { it.isNotEmpty() }
@@ -353,10 +355,11 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
     }
 
     /**
-     * Sections 6 to 8 for the declarations whose home is in [homes], in [CppPlacement.ordered]:
-     * each enum (followed by its `nameOf` and `enum_values` where used), alias, constant,
-     * state, struct, trait and class; consecutive `impl_` declarations in one
-     * `namespace impl_` block.
+     * Sections 6 to 8 for the declarations whose home is in [homes], in
+     * [CppPlacement.orderedItems]: each enum (followed by its `nameOf`, `enum_values` and
+     * `valueOf` where used), alias, constant, state, struct, trait and class, and the
+     * prototype or definition of a function one of them names; consecutive `impl_` items in
+     * one `namespace impl_` block.
      */
     private fun orderedDeclarations(w: CppWriter, homes: Set<Home>) {
         val chunks = mutableListOf<String>()
@@ -368,13 +371,25 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 implRun = mutableListOf()
             }
         }
-        placement.ordered.forEach { sym ->
-            val p = if (sym is ClassSymbol || sym is TraitSymbol) placement.type(sym) else placement.value(sym)
-            if (p.decl !in homes) {
+        placement.orderedItems.forEach { item ->
+            val sym = item.sym
+            val home = when (item.kind) {
+                CppPlacement.ItemKind.DECL -> (if (sym is ClassSymbol || sym is TraitSymbol) placement.type(sym) else placement.value(sym)).decl
+                CppPlacement.ItemKind.PROTO -> placement.function(sym as FnSymbol).decl
+                CppPlacement.ItemKind.DEF -> placement.function(sym as FnSymbol).def
+            }
+            if (home !in homes) {
                 return@forEach
             }
-            val texts = declarationTexts(sym, p.decl)
-            if (p.decl == Home.HEADER_IMPL) {
+            val texts = when (item.kind) {
+                CppPlacement.ItemKind.DECL -> declarationTexts(sym, home)
+                CppPlacement.ItemKind.PROTO -> listOf(prototype(sym as FnSymbol).joinToString("\n"))
+                CppPlacement.ItemKind.DEF -> {
+                    val fn = sym as FnSymbol
+                    if (fn.body == null) emptyList() else listOf(render { definition(this, fn, placement.function(fn)) })
+                }
+            }
+            if (home == Home.HEADER_IMPL) {
                 implRun.addAll(texts)
             } else {
                 flush()
@@ -394,6 +409,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             if (usage.needsEnumValues(sym)) {
                 out += render { enumValues(this, sym) }
             }
+            if (usage.needsValueOf(sym) && isNumbered(sym) && sym.base != KType.Str) {
+                out += render { valueOf(this, sym) }
+            }
             out
         }
         is AliasSymbol -> listOf(render { alias(this, sym) })
@@ -408,7 +426,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val out = mutableListOf<Pair<SourcePosition, String>>()
         functions.forEach { fn ->
             val p = placement.function(fn)
-            if (p.def != home || fn.body == null) {
+            if (p.def != home || fn.body == null || placement.isHoisted(fn, CppPlacement.ItemKind.DEF)) {
                 return@forEach
             }
             if (exported != null && placement.isExported(fn) != exported) {
@@ -476,9 +494,17 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     // ---- enums ---------------------------------------------------------------------------------
 
+    /**
+     * A Str or float based enum (the parser allows Int8..Int64, Float32, Float64 and Str) has
+     * no C++ underlying type of its own: its entries are numbered in declaration order, as
+     * the C backend does, and `nameOf` or `valueOf` gives the entry's value where the program
+     * asks for it.
+     */
+    private fun isNumbered(e: EnumSymbol): Boolean = e.base == KType.Str || e.base.prim?.isFloat == true
+
     private fun enumBase(e: EnumSymbol): String? {
         val base = e.base
-        if (base == KType.Str) {
+        if (isNumbered(e)) {
             return "std::int32_t"
         }
         val prim = base.prim
@@ -494,13 +520,30 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         w.block("enum class ${ctx.names.escape(e.name)} : $base", ";") {
             e.entries.forEach { entry ->
                 val value = when {
-                    e.base == KType.Str -> entry.index.toString()
+                    isNumbered(e) -> entry.index.toString()
                     else -> entry.decl?.value?.let { lit -> (lit as? IntegerLiteral)?.let { ctx.integerText(it, e.base.prim) } }
                         ?: (entry.value as? ConstValue.IntConst)?.value?.toString()
                         ?: entry.index.toString()
                 }
                 line("${ctx.names.escape(entry.name)} = $value,")
             }
+        }
+    }
+
+    /** `valueOf(E)`: the entry's value for a float-based enum (what `x as Float32` gives). */
+    private fun valueOf(w: CppWriter, e: EnumSymbol) {
+        val name = ctx.names.escape(e.name)
+        val base = ctx.spell(e.base, Pos.VALUE)
+        val zero = if (e.base.prim == Prim.FLOAT32) "0.0f" else "0.0"
+        w.block("[[nodiscard]] constexpr $base valueOf($name v)") {
+            block(CppWriter.switchHead("v")) {
+                e.entries.forEach { entry ->
+                    val value = entry.value?.let { constText(it, e.base) } ?: entry.decl?.value?.let { initText(it, e.base) } ?: zero
+                    line("case $name::${ctx.names.escape(entry.name)}:")
+                    line("    return $value;")
+                }
+            }
+            line("return $zero;")
         }
     }
 
@@ -623,7 +666,22 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val type = if (decl != null && model.typeOf(decl.type) != null) ctx.spell(decl.type, pos) else ctx.spell(f.type, pos)
         val name = ctx.names.escape(f.name)
         val default = f.default ?: return "$type $name{};"
+        if (isEmptyMagicConstruction(default)) {
+            // `xs: List<Later> = List<Later> {}` is `kira::List<Later> xs{};`, value-initialized in
+            // place: the prvalue form `= kira::List<Later>{}` makes libc++ instantiate the
+            // temporary's destructor, which needs `Later` complete (measured; gcc and MSVC accept it).
+            return "$type $name{};"
+        }
         return "$type $name = ${initText(default, f.type)};"
+    }
+
+    /** `List<T> {}`, `Map<K, V> {}`: an empty construction of a runtime container (a struct or class keeps `= T{}` / `make_shared`). */
+    private fun isEmptyMagicConstruction(e: Expr): Boolean {
+        if (e !is ObjectInitExpr || e.positionalArgs.isNotEmpty() || e.namedArgs.isNotEmpty()) {
+            return false
+        }
+        val sym = (model.typeOf(e.typeName) as? KType.Nominal)?.sym as? ClassSymbol ?: return false
+        return sym.kind == ClassKind.MAGIC
     }
 
     // ---- functions -------------------------------------------------------------------------------
@@ -731,8 +789,12 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 val element = (type as? KType.Nominal)?.typeArgs()?.firstOrNull() ?: KType.Error
                 return e.value.joinToString(", ", "{", "}") { initText(it, element) }
             }
-            is UnaryExpr -> if (e.operator == UnaryOp.NEG && (e.operand is IntegerLiteral || e.operand is FloatLiteral)) {
-                return "-" + initText(e.operand, type)
+            is UnaryExpr -> if (e.operator == UnaryOp.NEG) {
+                when (val operand = e.operand) {
+                    is IntegerLiteral -> return intLiteral(operand, type, negative = true)
+                    is FloatLiteral -> return floatLiteral(operand, type, negative = true)
+                    else -> {}
+                }
             }
             is Identifier -> if (e !is IntrinsicExpr) {
                 if (e.value == "true" || e.value == "false") {
@@ -781,41 +843,77 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return found?.symbol as? GlobalSymbol
     }
 
-    private fun intLiteral(e: IntegerLiteral, type: KType): String {
-        val prim = type.prim
-        return when (prim) {
-            Prim.FLOAT32 -> floatText(e.value.toDouble()) + "f"
-            Prim.FLOAT64 -> floatText(e.value.toDouble())
-            Prim.UINT32 -> ctx.integerText(e, prim) + "u"
-            Prim.UINT64 -> ctx.integerText(e, prim) + (if (e.value < 0) "u" else "")
-            else -> ctx.integerText(e, prim)
+    /**
+     * The type a literal in an initializer of [type] takes, and whether it must carry that
+     * type. Under `Maybe<T>` the literal reaches `T` through `std::optional`'s converting
+     * constructor, a template in which int-to-narrow is C4244 under MSVC `/W4 /WX`
+     * (measured: `kira::Maybe<std::uint8_t> m = 200;` fails there, and so do `Int16` and a
+     * double literal for `float`), so the literal is spelled `std::uint8_t{200}` (R2's
+     * `T{lit}` form) and `0.5f`. In a plain initializer of `T` itself the bare literal is
+     * exact and stays bare, as does `Maybe<Int32> = 42` (design 5.7).
+     */
+    private fun literalTarget(type: KType): Pair<KType, Boolean> {
+        val n = type as? KType.Nominal
+        val sym = n?.sym as? ClassSymbol
+        if (n != null && sym != null && sym.kind == ClassKind.MAGIC && sym.name == "Maybe") {
+            return (n.typeArgs().firstOrNull() ?: KType.Error) to true
         }
+        return type to false
     }
 
-    private fun floatLiteral(e: FloatLiteral, type: KType): String {
+    /** The integer widths R2 spells `T{lit}`: every one but Int32 (bare) and UInt32 (`u`). */
+    private fun braced(text: String, prim: Prim?, typed: Boolean): String {
+        val widthNeedsIt = prim != null && prim.isInteger && prim != Prim.INT32 && prim != Prim.UINT32
+        if (!typed || !widthNeedsIt || text.startsWith("static_cast") || text.startsWith("std::numeric_limits")) {
+            return text
+        }
+        return "${ctx.speller.scalarName(prim!!)}{$text}"
+    }
+
+    private fun intLiteral(e: IntegerLiteral, type: KType, negative: Boolean = false): String {
+        val (target, typed) = literalTarget(type)
+        val prim = target.prim
+        val sign = if (negative) "-" else ""
+        val text = when (prim) {
+            Prim.FLOAT32 -> sign + floatText(e.value.toDouble()) + "f"
+            Prim.FLOAT64 -> sign + floatText(e.value.toDouble())
+            Prim.UINT32 -> sign + ctx.integerText(e, prim) + "u"
+            Prim.UINT64 -> sign + ctx.integerText(e, prim) + (if (e.value < 0) "u" else "")
+            else -> sign + ctx.integerText(e, prim)
+        }
+        return braced(text, prim, typed)
+    }
+
+    private fun floatLiteral(e: FloatLiteral, type: KType, negative: Boolean = false): String {
+        val (target, _) = literalTarget(type)
         val raw = ctx.rawNumberText(e) ?: floatText(e.value)
-        return if (type.prim == Prim.FLOAT32) raw + "f" else raw
+        val sign = if (negative) "-" else ""
+        return if (target.prim == Prim.FLOAT32) "$sign${raw}f" else sign + raw
     }
 
-    /** A folded value as C++ text, typed by [type] (`0u`, `1.0f`, `"x"`, `Kind::KIND_OK`, `{1, 2}`). */
-    fun constText(v: ConstValue, type: KType): String = when (v) {
-        is ConstValue.IntConst -> {
-            val prim = type.prim ?: v.prim
-            when (prim) {
-                Prim.FLOAT32 -> floatText(v.value.toDouble()) + "f"
-                Prim.FLOAT64 -> floatText(v.value.toDouble())
-                Prim.UINT32 -> v.value.toString() + "u"
-                Prim.UINT64 -> if (v.bits < 0) v.value.toString() + "u" else v.value.toString()
-                else -> if (v.value == java.math.BigInteger.valueOf(Long.MIN_VALUE)) "std::numeric_limits<std::int64_t>::min()" else v.value.toString()
+    /** A folded value as C++ text, typed by [type] (`0u`, `1.0f`, `"x"`, `Kind::KIND_OK`, `{1, 2}`, `std::uint8_t{7}` under a `Maybe`). */
+    fun constText(v: ConstValue, type: KType): String {
+        val (target, typed) = literalTarget(type)
+        return when (v) {
+            is ConstValue.IntConst -> {
+                val prim = target.prim ?: v.prim
+                val text = when (prim) {
+                    Prim.FLOAT32 -> floatText(v.value.toDouble()) + "f"
+                    Prim.FLOAT64 -> floatText(v.value.toDouble())
+                    Prim.UINT32 -> v.value.toString() + "u"
+                    Prim.UINT64 -> if (v.bits < 0) v.value.toString() + "u" else v.value.toString()
+                    else -> if (v.value == java.math.BigInteger.valueOf(Long.MIN_VALUE)) "std::numeric_limits<std::int64_t>::min()" else v.value.toString()
+                }
+                braced(text, prim, typed)
             }
+            is ConstValue.FloatConst -> if ((target.prim ?: v.prim) == Prim.FLOAT32) floatText(v.value) + "f" else floatText(v.value)
+            is ConstValue.BoolConst -> v.value.toString()
+            is ConstValue.CharConst -> cppChar(v.value)
+            is ConstValue.StrConst -> cppString(v.value)
+            is ConstValue.EnumConst -> ctx.entry(v.entry)
+            is ConstValue.ArrConst -> v.elements.joinToString(", ", "{", "}") { constText(it, v.element) }
+            ConstValue.NullConst -> "kira::none"
         }
-        is ConstValue.FloatConst -> if ((type.prim ?: v.prim) == Prim.FLOAT32) floatText(v.value) + "f" else floatText(v.value)
-        is ConstValue.BoolConst -> v.value.toString()
-        is ConstValue.CharConst -> cppChar(v.value)
-        is ConstValue.StrConst -> cppString(v.value)
-        is ConstValue.EnumConst -> ctx.entry(v.entry)
-        is ConstValue.ArrConst -> v.elements.joinToString(", ", "{", "}") { constText(it, v.element) }
-        ConstValue.NullConst -> "kira::none"
     }
 
     companion object {
