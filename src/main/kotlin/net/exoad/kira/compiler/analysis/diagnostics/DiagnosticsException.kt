@@ -26,11 +26,13 @@ data class DiagnosticsException(
             printWriter.flush()
             exceptionTrace = writer.toString()
         }
+        // SourcePosition.UNKNOWN (line -1) has no source line to point at.
+        val known = location?.takeIf { it.lineNumber >= 1 }
         return """
-===================[ Kira Panicked! ]===================    
+===================[ Kira Panicked! ]===================
 Kira panicked at $tag: ${
             when {
-                location != null -> context.formCanonicalLocatorString(location, message, selectorLength)
+                known != null -> context.formCanonicalLocatorString(known, message, selectorLength)
                 else -> message
             }
         }""" + when {

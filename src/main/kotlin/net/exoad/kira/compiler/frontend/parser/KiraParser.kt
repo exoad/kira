@@ -1050,6 +1050,7 @@ class KiraParser(private val context: SourceContext) {
     fun parseFunctionDeclParameters(): List<FunctionDeclParameterExpr> {
         // could this be also adapted for future implementations of function notations ??
         val parameters = mutableListOf<FunctionDeclParameterExpr>()
+        var firstDefaulted: Identifier? = null
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         while (!at(Token.Type.S_CLOSE_PARENTHESIS) && !at(Token.Type.S_EOF)) {
             if (parameters.isNotEmpty()) {
@@ -1067,6 +1068,23 @@ class KiraParser(private val context: SourceContext) {
             if (at(Token.Type.S_EQUAL)) {
                 advancePointer()
                 defaultValue = withNoObjectInit(false) { parseExpr() }
+                if (firstDefaulted == null) {
+                    firstDefaulted = name
+                }
+            } else if (firstDefaulted != null) {
+                // Spec Default Parameters: "Default parameters must appear
+                // after required parameters"; `(port: Int32 = 8080, host: Str)`
+                // is its own Error example. A caller could never skip the
+                // default without naming everything after it.
+                Diagnostics.panic(
+                    "KiraParser::parseFunctionDeclParameters",
+                    "A required parameter cannot follow a parameter with a default value: " +
+                        "'${name.value}' comes after '${firstDefaulted.value} = ...'. " +
+                        "Give '${name.value}' a default, or declare it before the defaulted parameters.",
+                    location = origin,
+                    selectorLength = name.value.length,
+                    context = context
+                )
             }
             parameters.add(putOrigin(FunctionDeclParameterExpr(name, type, modifiers.keys.toList(), defaultValue), origin))
         }
@@ -1102,7 +1120,7 @@ class KiraParser(private val context: SourceContext) {
         if (at(Token.Type.S_OPEN_ANGLE)) {
             expectThenAdvance(Token.Type.S_OPEN_ANGLE)
             while (!at(Token.Type.S_CLOSE_ANGLE) && !at(Token.Type.S_EOF)) {
-                val param = parseTypeParameter()
+                val param = parseTypeParameter(declaring = true)
                 generics.add(param)
                 if (!at(Token.Type.S_CLOSE_ANGLE)) expectThenAdvance(Token.Type.S_COMMA)
             }
@@ -1449,7 +1467,7 @@ class KiraParser(private val context: SourceContext) {
         expectModifiers(modifiers, WrappingContext.TYPE_ALIAS)
         val origin = here()
         expectThenAdvance(Token.Type.K_ALIAS)
-        val aliasType = parseType()
+        val aliasType = parseType(declaresGenerics = true)
         expectConventionalTypeName(aliasType, origin, "Type alias")
         expectThenAdvance(Token.Type.K_AS)
         val targetType = parseType()
@@ -1580,7 +1598,7 @@ class KiraParser(private val context: SourceContext) {
         expectModifiers(modifier, WrappingContext.CLASS)
         advancePointer() //consume the class keyword
         val origin = here()
-        val className = parseType()
+        val className = parseType(declaresGenerics = true)
         expectConventionalTypeName(className, origin, "Class")
         val parenTypes = parseParentList()
         if (!at(Token.Type.S_OPEN_BRACE)) {
@@ -1619,7 +1637,7 @@ class KiraParser(private val context: SourceContext) {
         expectModifiers(modifier, WrappingContext.CLASS)
         expectThenAdvance(Token.Type.K_STRUCT)
         val origin = here()
-        val structName = parseType()
+        val structName = parseType(declaresGenerics = true)
         expectConventionalTypeName(structName, origin, "Struct")
         val traits = parseParentList()
         val structIntrinsics = structIntrinsicsEarly ?: pendingIntrinsicExprs
@@ -1639,7 +1657,7 @@ class KiraParser(private val context: SourceContext) {
         expectModifiers(modifier, WrappingContext.VARIANT)
         advancePointer() // consume 'variant'
         val origin = here()
-        val variantName = parseType()
+        val variantName = parseType(declaresGenerics = true)
         expectConventionalTypeName(variantName, origin, "Variant")
         val parenTypes = parseParentList()
         if (!at(Token.Type.S_OPEN_BRACE)) {
@@ -1686,7 +1704,7 @@ class KiraParser(private val context: SourceContext) {
         val baseLocation = here()
         var seenAnonymous = false
         expectThenAdvance(Token.Type.K_TRAIT)
-        val name = parseType()
+        val name = parseType(declaresGenerics = true)
         expectConventionalTypeName(name, baseLocation, "Trait")
         val parenTypes = parseParentList()
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
@@ -1943,21 +1961,26 @@ class KiraParser(private val context: SourceContext) {
     }
 
     /**
-     * One entry of a `<...>` list, either a declared type parameter (`T`,
-     * `T: Bound`) or a type argument. [enclosing] is the name of the type
-     * whose argument list this is (null for a function's own generics).
+     * One entry of a `<...>` list: a type argument (`Arr<UInt8, N>`), or with
+     * [declaring] a type parameter that a declaration introduces (`class
+     * Box<T>`, `fx f<T: Bound>`). [enclosing] is the name of the type whose
+     * argument list this is (null for a function's own generics).
+     *
+     * A declared parameter is a PascalCase name, as it always was: the const
+     * argument, the `mut` argument and the UPPER_SNAKE constant name are
+     * argument-list forms. Measured before: `class Box<T_X>` parsed.
      */
-    private fun parseTypeParameter(enclosing: String? = null): Type {
+    private fun parseTypeParameter(enclosing: String? = null, declaring: Boolean = false): Type {
         val baseLocation = here()
         // An integer literal in a type-argument list is a const argument
         // (design D6): `Arr<UInt8, 32>`. A constant name stays a Type.
-        if (at(Token.Type.L_INTEGER)) {
+        if (!declaring && at(Token.Type.L_INTEGER)) {
             return putOrigin(ConstTypeArg(parseIntegerLiteral()), baseLocation)
         }
         // `mut T` inside Tuple*<...> marks an Fx parameter passed for
         // mutation (design D24); anywhere else it means nothing.
         var isMutParam = false
-        if (at(Token.Type.K_MODIFIER_MUTABLE)) {
+        if (!declaring && at(Token.Type.K_MODIFIER_MUTABLE)) {
             if (enclosing == null || !enclosing.startsWith("Tuple")) {
                 Diagnostics.panic(
                     "KiraParser::parseTypeParameter",
@@ -1982,16 +2005,16 @@ class KiraParser(private val context: SourceContext) {
         val baseIdentifier = parseIdentifier()
         // In a named type's argument list a constant name (`Arr<UInt8,
         // USER_CMD_BYTES>`, design D6) is an UPPER_SNAKE value, not a type
-        // parameter; it stays a Type and the typer resolves it. A function's
-        // own generics (enclosing == null) keep the PascalCase rule.
-        if (enclosing == null || !upperSnakeCase.matches(baseIdentifier.value)) {
+        // parameter; it stays a Type and the typer resolves it. A declared
+        // parameter (a declaration's generics) keeps the PascalCase rule.
+        if (declaring || enclosing == null || !upperSnakeCase.matches(baseIdentifier.value)) {
             expectConventionalName(baseIdentifier.value, baseLocation, "Type parameter", "PascalCase")
         }
         val children = mutableListOf<Type>()
         if (at(Token.Type.S_OPEN_ANGLE)) {
             expectThenAdvance(Token.Type.S_OPEN_ANGLE)
             while (!at(Token.Type.S_CLOSE_ANGLE) && !at(Token.Type.S_EOF)) {
-                val param = parseTypeParameter(baseIdentifier.value)
+                val param = parseTypeParameter(baseIdentifier.value, declaring)
                 children.add(param)
                 if (!at(Token.Type.S_CLOSE_ANGLE)) {
                     expectThenAdvance(Token.Type.S_COMMA)
@@ -2006,7 +2029,12 @@ class KiraParser(private val context: SourceContext) {
     }
 
 
-    fun parseType(): Type {
+    /**
+     * A type reference, or with [declaresGenerics] the name of a class, struct,
+     * trait, variant or alias declaration, whose `<...>` entries are the type
+     * parameters it introduces rather than arguments.
+     */
+    fun parseType(declaresGenerics: Boolean = false): Type {
         val baseLocation = here()
         val baseIdentifier = parseIdentifier()
         if (!at(Token.Type.S_OPEN_ANGLE)) {
@@ -2015,7 +2043,7 @@ class KiraParser(private val context: SourceContext) {
         expectThenAdvance(Token.Type.S_OPEN_ANGLE)
         val children = mutableListOf<Type>()
         while (!at(Token.Type.S_CLOSE_ANGLE) && !at(Token.Type.S_EOF)) {
-            val param = parseTypeParameter(baseIdentifier.value)
+            val param = parseTypeParameter(baseIdentifier.value, declaring = declaresGenerics)
             children.add(param)
             if (!at(Token.Type.S_CLOSE_ANGLE)) {
                 expectThenAdvance(Token.Type.S_COMMA)

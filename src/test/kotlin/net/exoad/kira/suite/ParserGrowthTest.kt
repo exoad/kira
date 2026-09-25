@@ -1,6 +1,8 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
+import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
+import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
@@ -42,6 +44,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStatement
 import net.exoad.kira.source.SourceContext
+import net.exoad.kira.source.SourcePosition
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.io.File
@@ -95,6 +98,26 @@ class ParserGrowthTest {
         logicalPath = TestCompileSupport.logicalPathForModule("test:growth.js"),
         runSemantic = false,
     )
+
+    /** The analyzer's diagnostics for [body], every one at a real position. */
+    private fun analyze(body: String): List<DiagnosticsException> {
+        val result = TestCompileSupport.compileSnippet(
+            "module \"test:growth\"\n" + body.trimIndent(),
+            "tests/growth.kira",
+            runSemantic = true,
+        )
+        val diagnostics = assertNotNull(result.semanticResults).diagnostics
+        for (diagnostic in diagnostics) {
+            val location = diagnostic.location
+            assertTrue(
+                location == null || location.lineNumber >= 1,
+                "a diagnostic at an unknown position cannot be rendered: ${diagnostic.message}"
+            )
+            // Rendering is what the CLI does with it; it must not throw.
+            Diagnostics.recordDiagnostics(diagnostic)
+        }
+        return diagnostics
+    }
 
     // --- struct -------------------------------------------------------------
 
@@ -274,6 +297,20 @@ class ParserGrowthTest {
         assertNull(params[0].defaultValue)
         assertEquals("", assertIs<StringLiteral>(params[1].defaultValue).value)
         assertIs<BinaryExpr>(params[2].defaultValue)
+    }
+
+    @Test
+    fun aRequiredParameterAfterADefaultIsRejected() {
+        // Spec Default Parameters: `fx invalid: (port: Int32 = 8080, host: Str)` is an Error.
+        for (signature in listOf("(port: Int32 = 8080, host: Str)", "(a: Int32, b: Int32 = 2, c: Int32)")) {
+            val e = assertThrows<DiagnosticsException>(signature) { parse("fx f: $signature Void { }") }
+            assertTrue(e.message.contains("required parameter cannot follow"), e.message)
+            assertTrue(assertNotNull(e.location).lineNumber >= 1)
+        }
+        // A lambda's parameter list follows the same rule.
+        assertThrows<DiagnosticsException> { parse("fx f: () Void { g: Fx<Tuple2<Int32, Int32>, Void> = fx (a: Int32 = 1, b: Int32) Void { } }") }
+        // Defaults after every required parameter stay fine.
+        parse("fx f: (host: Str, port: Int32 = 8080, ssl: Bool = true) Void { }")
     }
 
     // --- named construction -----------------------------------------------------
@@ -459,6 +496,30 @@ class ParserGrowthTest {
         assertThrows<Throwable> { parse("fx f: (xs: Arr<mut Str>) Void { }") }
     }
 
+    @Test
+    fun declaredGenericsKeepThePascalCaseRule() {
+        // The UPPER_SNAKE constant, the integer and `mut` are argument-list
+        // forms (`Arr<UInt8, N>`, `Arr<UInt8, 32>`, `Tuple1<mut T>`); a
+        // declaration's own generics are PascalCase names, as before this
+        // package. Measured before: `class Box<T_X> { }` parsed.
+        for (decl in listOf(
+            "class Box<T_X> { }",
+            "struct Pair<T_X> { }",
+            "trait Show<T_X> { }",
+            "variant Opt<T_X> { }",
+            "alias Names<T_X> as Arr<T_X>",
+            "fx f<T_X>: () Void { }",
+        )) {
+            val e = assertThrows<DiagnosticsException>(decl) { parse(decl) }
+            assertTrue(e.message.contains("Type parameter 'T_X' does not conform to PascalCase"), e.message)
+        }
+        assertThrows<DiagnosticsException> { parse("class Box<4> { }") }
+        assertThrows<DiagnosticsException> { parse("class Box<mut T> { }") }
+        parse("class Box<T> { }\nfx id<T>: (x: T) T { return x }")
+        // ...and the argument-list forms still parse where they belong.
+        parse("fx f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<Tuple1<mut Str>, Void>) Void { }")
+    }
+
     // --- intrinsic markers and calls ---------------------------------------------
 
     @Test
@@ -523,6 +584,57 @@ class ParserGrowthTest {
         // Measured before: `@_trace_(LIMIT == 10)` failed with "Expected ','".
         val trace = assertIs<IntrinsicExpr>(body(p.decls[1] as FunctionDecl).single().expr)
         assertIs<BinaryExpr>(assertNotNull(trace.parameters).single())
+    }
+
+    @Test
+    fun staticAssertArityIsADiagnosticAtTheCall() {
+        // Measured before: StaticAssertIntrinsic.validate threw out of the
+        // walk, the catch-all recorded it at SourcePosition.UNKNOWN and the
+        // CLI died rendering it (IndexOutOfBoundsException: Index -2).
+        for (program in listOf(
+            "@_static_assert(1 == 1, \"a\", \"b\")\nfx f: () Void { }",
+            "@_static_assert()\nfx f: () Void { }",
+            "fx f: () Void { @_static_assert(1 == 1, \"a\", \"b\") }",
+        )) {
+            val arity = analyze(program).filter { it.message.contains("@_static_assert") }
+            assertEquals(1, arity.size, "one arity diagnostic for:\n$program")
+            assertTrue(arity.single().message.contains("condition and an optional message"), arity.single().message)
+        }
+        assertTrue(analyze("@_static_assert(1 == 1, \"ok\")\nfx f: () Void { }").none { it.message.contains("@_static_assert") })
+    }
+
+    @Test
+    fun markerArgumentsReachTheMarkersArityCheck() {
+        // Measured before: the analyzer validated a fresh argument-less
+        // IntrinsicExpr, so `@_const(1)`, `@_opaque(1)` and a three-argument
+        // `@_extern` all passed.
+        val rejected = mapOf(
+            "@_const(1) fx k: () Int32 { return 1 }" to "@_const takes no arguments",
+            "@_const(x = 1) fx k: () Int32 { return 1 }" to "@_const takes no arguments",
+            "@_extern(\"a\", \"b\", \"c\") fx f: () Void;" to "@_extern accepts at most one",
+            "@_opaque(1) class X { }" to "@_opaque does not take parameters",
+        )
+        for ((program, expected) in rejected) {
+            val about = analyze(program).filter { it.message.contains(expected) }
+            assertEquals(1, about.size, "one arity diagnostic for: $program")
+            // The diagnostic points at the marker's own line.
+            assertEquals(2, assertNotNull(about.single().location).lineNumber, program)
+        }
+        for (program in listOf(
+            "@_const fx k: () Int32 { return 1 }",
+            "@_extern(\"a\") fx f: () Void;",
+            "@_opaque class X { }",
+        )) {
+            assertTrue(analyze(program).none { it.message.contains("@_") }, program)
+        }
+    }
+
+    @Test
+    fun aDiagnosticWithoutAPositionRendersItsMessage() {
+        val p = parse("fx f: () Void { }")
+        val diagnostic = Diagnostics.recordPanic("Test", "no position", location = SourcePosition.UNKNOWN, context = p.context)
+        assertTrue(Diagnostics.recordDiagnostics(diagnostic).contains("no position"))
+        assertTrue(diagnostic.formattedPanicMessage().contains("no position"))
     }
 
     // --- condition heads (rule D36) ------------------------------------------------
@@ -694,9 +806,14 @@ class ParserGrowthTest {
         "'initially' or 'finally'" to "class P { mut x: Int32 = 0\n initially { x = 1 } }",
         "named construction" to "class P { mut x: Int32 = 0 }\nfx f: () Void { p: P = P { x = 1 } }",
         "call-site 'mut'" to "fx g: (mut x: Int32) Void { x = 1 }\nfx f: () Void { mut y: Int32 = 0\n g(mut y) }",
-        "omits a default-valued parameter" to "fx g: (a: Int32, b: Int32 = 2) Int32 { return a + b }\nfx f: () Int32 { return g(1) }",
+        "omits a default-valued parameter ('b')" to "fx g: (a: Int32, b: Int32 = 2) Int32 { return a + b }\nfx f: () Int32 { return g(1) }",
+        // Measured before: only the trailing positions were inspected, and this
+        // one ended in an IllegalStateException from the argument binder.
+        "omits a default-valued parameter ('b')" to "fx g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { return a + b + c }\nfx f: () Int32 { return g(1, c = 3) }",
         "over a container" to "fx f: (xs: Arr<Int32>) Void { for x: Int32 in xs { trace(x) } }",
         "@_static_assert" to "fx f: () Void { @_static_assert(1 == 1, \"ok\") }",
+        "const type argument" to "fx f: () Void { xs: Arr<Int32, 4> = [1, 2, 3, 4] }",
+        "'mut' in an Fx parameter type" to "fx g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }",
     )
 
     @Test
@@ -731,19 +848,29 @@ class ParserGrowthTest {
                 mut n: Int32 = 0
                 for i: Int32 in 0..3 { n += i }
                 for mut j: 0..3 { n += j }
+                n = g(n, b = 5)
                 return g(n, 1)
             }
             """.trimIndent()
         )
         assertTrue(c.contains("i < 3"), c)
         assertTrue(c.contains("j <= 3"), c)
+        assertTrue(c.contains("g(n, 5)"), c)
         assertTrue(c.contains("g(n, 1)"), c)
     }
 
-    @Test
-    fun unsupportedConstructIsADiagnosticNotAStackTraceAtTheCli() {
+    // --- the real CLI --------------------------------------------------------------
+
+    private class CliRun(val exitCode: Int, val output: String)
+
+    /**
+     * Compiles a one-file project holding [program] (the body after its
+     * module line) with the real CLI, semantic analysis included, the way a
+     * user runs it: `kira --target [target]` against the repo's stdlib.
+     */
+    private fun runCli(name: String, target: String, program: String): CliRun {
         val repoRoot = File(System.getProperty("user.dir"))
-        val dir = File(repoRoot, "build/tmp/parser-growth/cli-unsupported").apply { deleteRecursively(); mkdirs() }
+        val dir = File(repoRoot, "build/tmp/parser-growth/cli/$name-$target").apply { deleteRecursively(); mkdirs() }
         File(dir, "kira.yaml").writeText(
             listOf(
                 "project:",
@@ -760,32 +887,90 @@ class ParserGrowthTest {
                 "",
             ).joinToString("\n")
         )
-        File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
-            listOf(
-                "module \"app:main\"",
-                "",
-                "fx main: () Int32 {",
-                "    x: Int32 = 1",
-                "    return if x > 0 { 1 } else { 2 }",
-                "}",
-                "",
-            ).joinToString("\n")
-        )
+        File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
+            .writeText("module \"app:main\"\n\n" + program.trimIndent() + "\n")
         val java = System.getProperty("java.home") + "/bin/java"
-        val process = ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), "net.exoad.kira.cli.MainKt")
-            .directory(dir)
-            .start()
+        val process = ProcessBuilder(
+            java, "-cp", System.getProperty("java.class.path"), "net.exoad.kira.cli.MainKt", "--target", target
+        ).directory(dir).start()
         val stderrHolder = StringBuilder()
         val reader = Thread { stderrHolder.append(process.errorStream.bufferedReader().readText()) }
         reader.start()
         val stdout = process.inputStream.bufferedReader().readText()
         reader.join()
-        val code = process.waitFor()
-        val all = stdout + stderrHolder
-        assertEquals(1, code, all)
-        assertTrue(all.contains("if-expression"), all)
-        assertTrue(all.contains("C backend"), all)
-        assertFalse(all.contains("Exception in thread"), all)
-        assertFalse(all.contains("\tat net.exoad"), all)
+        return CliRun(process.waitFor(), stdout + stderrHolder)
+    }
+
+    /**
+     * (a fragment of the diagnostic) to (a whole program). Each program
+     * passes the analyzer, so the backend is what refuses it: a lambda and a
+     * char literal are passed as arguments because the stdlib declares no
+     * `Fx` or `Char` type yet, and a variable of either type stops earlier
+     * with "type not found".
+     */
+    private val cliConstructs = listOf(
+        "struct declaration" to "struct S { x: Int32 = 1 }\nfx main: () Int32 { return 0 }",
+        "if-expression" to "fx main: () Int32 { x: Int32 = 1\n return if x > 0 { 1 } else { 2 } }",
+        "lambda expression" to "fx main: () Int32 { trace(fx (x: Int32) Int32 { return x })\n return 0 }",
+        "member or index place" to "class P { mut x: Int32 = 0 }\nfx main: () Int32 { p: P = P { 0 }\n p.x = 1\n return p.x }",
+        "'this' expression" to "class P {\n mut x: Int32 = 0\n pub fx get: () Int32 { return this.x }\n}\nfx main: () Int32 { p: P = P { 0 }\n return p.get() }",
+        "char literal" to "fx main: () Int32 { trace('a')\n return 0 }",
+        "interpolated string literal" to "fx main: () Int32 { n: Int32 = 3\n s: Str = \"n=\${n}\"\n trace(s)\n return 0 }",
+        "'initially' or 'finally'" to "class P {\n mut x: Int32 = 0\n initially { x = 1 }\n}\nfx main: () Int32 { p: P = P { 0 }\n return p.x }",
+        "named construction" to "class P { mut x: Int32 = 0 }\nfx main: () Int32 { p: P = P { x = 1 }\n return p.x }",
+        "call-site 'mut'" to "fx g: (mut x: Int32) Void { x = 1 }\nfx main: () Int32 { mut y: Int32 = 0\n g(mut y)\n return y }",
+        "omits a default-valued parameter ('b')" to "fx g: (a: Int32, b: Int32 = 2) Int32 { return a + b }\nfx main: () Int32 { return g(1) }",
+        "omits a default-valued parameter ('b')" to "fx g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { return a + b + c }\nfx main: () Int32 { return g(1, c = 3) }",
+        "over a container" to "fx main: () Int32 { xs: Arr<Int32> = [1, 2]\n for x: Int32 in xs { trace(x) }\n return 0 }",
+        "@_static_assert" to "@_static_assert(1 == 1, \"ok\")\nfx main: () Int32 { return 0 }",
+        "@_static_assert" to "fx main: () Int32 { @_static_assert(1 == 1, \"ok\")\n return 0 }",
+        "const type argument" to "fx main: () Int32 { xs: Arr<Int32, 4> = [1, 2, 3, 4]\n return 0 }",
+        "'mut' in an Fx parameter type" to "fx g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }\nfx main: () Int32 { return 0 }",
+    )
+
+    private fun assertRefusedByTheBackend(target: String, backend: String) {
+        for ((index, entry) in cliConstructs.withIndex()) {
+            val (construct, program) = entry
+            val run = runCli("construct-$index", target, program)
+            val all = run.output
+            assertEquals(1, run.exitCode, "exit 1 for:\n$program\n$all")
+            assertTrue(all.contains("-- Diagnostic Report: "), "a diagnostic for:\n$program\n$all")
+            assertTrue(all.contains(construct), "'$construct' named for:\n$program\n$all")
+            assertTrue(all.contains("$backend backend"), "the $backend target named for:\n$program\n$all")
+            assertFalse(all.contains("Exception in thread"), "no stack trace for:\n$program\n$all")
+            assertFalse(all.contains("\tat net.exoad"), "no stack trace for:\n$program\n$all")
+        }
+    }
+
+    @Test
+    fun eachNewConstructIsADiagnosticNotAStackTraceAtTheCliOnTheCTarget() {
+        assertRefusedByTheBackend("c", "C")
+    }
+
+    @Test
+    fun eachNewConstructIsADiagnosticNotAStackTraceAtTheCliOnTheJSTarget() {
+        assertRefusedByTheBackend("js", "JS")
+    }
+
+    @Test
+    fun anArityErrorIsADiagnosticNotAStackTraceAtTheCli() {
+        // Measured before: exit 1 with 'Exception in thread "main"
+        // java.lang.IndexOutOfBoundsException: Index -2 out of bounds'.
+        val cases = listOf(
+            "sa-top" to ("@_static_assert(1 == 1, \"a\", \"b\")\nfx f: () Void { }" to "@_static_assert takes a condition"),
+            "sa-fn" to ("fx f: () Void { @_static_assert() }" to "@_static_assert takes a condition"),
+            "const" to ("@_const(1) fx k: () Int32 { return 1 }" to "@_const takes no arguments"),
+            "extern" to ("@_extern(\"a\", \"b\", \"c\") fx f: () Void;" to "@_extern accepts at most one"),
+            "opaque" to ("@_opaque(1) class X { }" to "@_opaque does not take parameters"),
+        )
+        for ((name, case) in cases) {
+            val (program, expected) = case
+            val run = runCli("arity-$name", "none", program)
+            val all = run.output
+            assertEquals(1, run.exitCode, "exit 1 for:\n$program\n$all")
+            assertTrue(all.contains(expected), "'$expected' for:\n$program\n$all")
+            assertFalse(all.contains("Exception in thread"), "no stack trace for:\n$program\n$all")
+            assertFalse(all.contains("\tat net.exoad"), "no stack trace for:\n$program\n$all")
+        }
     }
 }

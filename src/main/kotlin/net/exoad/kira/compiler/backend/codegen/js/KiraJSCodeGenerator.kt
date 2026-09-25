@@ -12,6 +12,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -256,16 +257,16 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     /**
      * Every function or method that declares a default parameter value, by
-     * simple name (the resolution named arguments use), with a flag per
-     * parameter. This backend has no default lowering, so a call that leaves
-     * such a parameter out cannot be emitted.
+     * simple name (the resolution named arguments use), with its parameter
+     * list. This backend has no default lowering, so a call that leaves such
+     * a parameter out cannot be emitted.
      */
-    private val defaultedSignatures: Map<String, List<List<Boolean>>> by lazy {
-        val out = mutableMapOf<String, MutableList<List<Boolean>>>()
+    private val defaultedSignatures: Map<String, List<List<FunctionDeclParameterExpr>>> by lazy {
+        val out = mutableMapOf<String, MutableList<List<FunctionDeclParameterExpr>>>()
         fun record(decl: FunctionDecl) {
             if (decl.def.parameters.none { it.defaultValue != null }) return
             out.getOrPut(functionLikeName(decl.name)) { mutableListOf() }
-                .add(decl.def.parameters.map { it.defaultValue != null })
+                .add(decl.def.parameters)
         }
         compilationUnit.allSources().forEach { source ->
             source.ast.statements.forEach { stmt ->
@@ -291,10 +292,52 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             else -> functionLikeName(name)
         }
         val signatures = defaultedSignatures[callee] ?: return
-        val given = call.positionalParameters.size + call.namedParameters.size
-        if (signatures.any { params -> given < params.size && params.drop(given).any { it } }) {
-            throw UnsupportedConstruct(call, "a call to '$callee' that omits a default-valued parameter", TARGET_NAME)
+        val omitted = signatures.firstNotNullOfOrNull { params -> omittedDefault(call, params) } ?: return
+        throw UnsupportedConstruct(
+            call,
+            "a call to '$callee' that omits a default-valued parameter ('$omitted')",
+            TARGET_NAME
+        )
+    }
+
+    /**
+     * The first default-valued parameter of [params] that [call] leaves
+     * without an argument, or null. Slots fill the way [NamedArguments.bind]
+     * fills them: positional arguments take the leading parameters and a
+     * named argument takes the one it names, so a skipped middle default
+     * (`g(1, c = 3)` against `(a, b = 2, c = 3)`) is found as well as a
+     * trailing one. Measured before: only the trailing positions were
+     * inspected. A slot the call cannot bind at all (an unknown name, a
+     * missing required parameter) is the analyzer's diagnostic, not this one.
+     */
+    private fun omittedDefault(call: FunctionCallExpr, params: List<FunctionDeclParameterExpr>): String? {
+        val filled = BooleanArray(params.size)
+        for (index in call.positionalParameters.indices) {
+            if (index < params.size) filled[index] = true
         }
+        for (named in call.namedParameters) {
+            val index = params.indexOfFirst { it.name.value == named.name.value }
+            if (index >= 0) filled[index] = true
+        }
+        return params.withIndex()
+            .firstOrNull { (index, param) -> !filled[index] && param.defaultValue != null }
+            ?.value?.name?.value
+    }
+
+    /**
+     * The type forms of design 2.4 this backend cannot lower: a const type
+     * argument (`Arr<UInt8, 32>`, D6) and `mut T` inside a Tuple's arguments
+     * (`Fx<Tuple1<mut T>, Void>`, D24). Both used to lower silently to the
+     * erased base type, dropping the size and the mutability.
+     */
+    private fun guardNewTypeForms(type: Type) {
+        if (type is ConstTypeArg) {
+            throw UnsupportedConstruct(type, "a const type argument 'T<..., ${type.value.value}>'", TARGET_NAME)
+        }
+        if (type.isMutParam) {
+            throw UnsupportedConstruct(type, "'mut' in an Fx parameter type 'Tuple<mut T>'", TARGET_NAME)
+        }
+        type.children.forEach(::guardNewTypeForms)
     }
 
     /** Minify + obfuscate the user layer, keeping the prelude untouched. */
@@ -492,6 +535,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private fun isExternFunction(name: String): Boolean = externFunctions.containsKey(name)
 
     private fun baseTypeNameOf(type: Type): String {
+        // Every lowering of a type passes through here, so this is where a
+        // form this backend cannot lower is refused.
+        guardNewTypeForms(type)
         return when (val id = type.identifier) {
             is Identifier -> id.value
             else -> "_anon"

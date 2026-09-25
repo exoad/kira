@@ -447,7 +447,20 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 //            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
 //        )
         // TODO: implement proper validation logic by also double checking valid target ast nodes instead
-        intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit, context)
+        // A failed validate (an arity error such as `@_static_assert()`) is a
+        // diagnostic at the intrinsic. Measured before: the exception escaped
+        // the walk to the catch-all, which recorded it at an unknown position.
+        try {
+            intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit, context)
+        } catch (e: DiagnosticsException) {
+            diagnosticsPump.add(e)
+        } catch (e: Exception) {
+            pump(
+                e.message ?: "The intrinsic '@${intrinsicExpr.intrinsicKey.name}' rejected this use.",
+                location = context.astOrigins[intrinsicExpr] ?: intrinsicExpr.sourceLocation.toPosition(),
+                selectorLength = intrinsicExpr.intrinsicKey.name.length + 1,
+            )
+        }
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
@@ -992,9 +1005,17 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 node.attachedIntrinsics
             }
             if (intrinsicsToApply.isEmpty()) return
-            for (intrinsic in intrinsicsToApply) {
+            // The parser's own invocations, arguments included, in the same
+            // order as the marks (design 2.5): `@_const(1)` must reach
+            // ConstIntrinsic.validate with its `1`. Measured before: a fresh
+            // argument-less IntrinsicExpr was validated instead, so no marker's
+            // arity check could ever fire.
+            val stored = context.intrinsicInvocationsOf(node)
+            for ((index, intrinsic) in intrinsicsToApply.withIndex()) {
+                val written = stored.getOrNull(index)?.takeIf { it.intrinsicKey === intrinsic }
                 val srcLoc = try {
-                    SourceLocation.fromPosition(context.relativeOriginOf(node), context.file)
+                    val origin = written?.let { context.astOrigins[it] } ?: context.relativeOriginOf(node)
+                    SourceLocation.fromPosition(origin, context.file)
                 } catch (_: Exception) {
                     SourceLocation.bakedIn()
                 }
@@ -1012,7 +1033,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     )
                     continue
                 }
-                val invocation = IntrinsicExpr(
+                val invocation = written ?: IntrinsicExpr(
                     intrinsic,
                     srcLoc,
                     null
@@ -1022,7 +1043,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     intrinsic.validate(invocation, compilationUnit, context)
                     intrinsic.apply(invocation, node, compilationUnit, context)
                 } catch (e: Exception) {
-                    diagnosticsPump.add(Diagnostics.recordPanic("IntrinsicApplication", e.message ?: "Intrinsic error", cause = e, location = srcLoc.toPosition(), context = context))
+                    diagnosticsPump.add(
+                        Diagnostics.recordPanic(
+                            "IntrinsicApplication",
+                            e.message ?: "Intrinsic error",
+                            cause = e,
+                            location = srcLoc.toPosition(),
+                            selectorLength = intrinsic.name.length + 1,
+                            context = context
+                        )
+                    )
                 }
             }
         } catch (e: Exception) {
