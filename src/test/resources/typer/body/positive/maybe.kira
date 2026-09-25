@@ -1,0 +1,49 @@
+module "fixture:body.maybe"
+
+// Maybe (design 3.3, 5.7, D40): null and a T box into a Maybe at every use site, and a Maybe
+// offers its API only.
+
+pub struct Frame {
+    pub n: Int32 = 0
+}
+
+pub class Pet {
+    require pub name: Str
+}
+
+pub fx find: (i: Int32) Maybe<Int32> {
+    if i < 0 {
+        return null                        // @type Null coerce=NoneOf(Int32)
+    }
+    return i                               // @type Int32 coerce=WrapSome(Int32)
+}
+
+pub fx frame: (ok: Bool) Maybe<Frame> {
+    f: Frame = Frame { }
+    return if ok { f } else { null }       // @type Frame coerce=WrapSome(Frame) @ f
+}
+
+pub fx frameNone: (ok: Bool) Maybe<Frame> {
+    return if ok { Frame { } } else { null } // @type Null coerce=NoneOf(Frame) @ null
+}
+
+pub fx takes: (m: Maybe<Int32>) Int32 {
+    return m.unwrapOr(-1)                  // @type Int32 call=MAGIC(Maybe.unwrapOr)
+}
+
+pub fx maybes: (m: Maybe<Int32>, w: Weak<Pet>) Void {
+    a: Bool = m.isSome()                   // @type Bool call=MAGIC(Maybe.isSome)
+    b: Bool = m.isNone()                   // @type Bool call=MAGIC(Maybe.isNone)
+    c: Bool = m.isNull()                   // @type Bool call=MAGIC(Maybe.isNull)
+    d: Int32 = m.unwrap()                  // @type Int32 call=MAGIC(Maybe.unwrap)
+    e: Int32 = m.unwrapOr(0)               // @type Int32 const=0:Int32 @ 0
+    f: Int32 = m.value                     // @type Int32 member=Field(Maybe.value: Int32)
+    p: Maybe<Pet> = w.upgrade()            // @type Maybe<Pet> call=MAGIC(Weak.upgrade)
+    name: Str = p.unwrap().name            // @type Str member=Field(Pet.name: Str)
+    mp: Maybe<Pet> = Pet { "Mochi" }       // @type Pet coerce=WrapSome(Pet)
+    passed: Int32 = takes(5)               // @type Int32 coerce=WrapSome(Int32) @ 5
+    none: Int32 = takes(null)              // @type Null coerce=NoneOf(Int32) @ null
+    mut later: Maybe<Str> = null
+    later = "set"                          // @type Str coerce=WrapSome(Str) @ "set"
+    kept: Maybe<Int32> = m                 // @type Maybe<Int32> place=Param(m)
+}

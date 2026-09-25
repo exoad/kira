@@ -1,0 +1,7 @@
+module "fixture:body.amb.right"
+
+pub SCALE: Int32 = 1000
+
+pub fx percent: (part: Int32) Int32 {
+    return part * SCALE / 10
+}

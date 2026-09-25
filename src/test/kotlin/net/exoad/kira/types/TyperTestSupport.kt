@@ -163,6 +163,23 @@ object TyperTestSupport {
         }
     }
 
+    /**
+     * Runs [block] with phase C and the rule passes switched off: for a test of what phases A
+     * and B alone record (phase C reports on the same sources, and has its own tests).
+     */
+    fun <T> phasesAAndB(block: () -> T): T {
+        val body = KiraTyper.bodyTyper
+        val rules = KiraTyper.rulePasses.toList()
+        KiraTyper.bodyTyper = net.exoad.kira.compiler.analysis.types.BodyTyper.NONE
+        KiraTyper.rulePasses.clear()
+        try {
+            return block()
+        } finally {
+            KiraTyper.bodyTyper = body
+            KiraTyper.rulePasses.addAll(rules)
+        }
+    }
+
     fun codes(program: TypedProgram): List<String> = program.diagnostics.map { it.code }
 
     /** Fails unless some diagnostic has [code]; returns it. */

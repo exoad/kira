@@ -13,7 +13,11 @@ enum class CallKind {
     /** A method dispatched through a vtable (overridden somewhere in the program). */
     VIRTUAL,
 
-    /** A trait method on a trait-typed receiver. */
+    /**
+     * A trait method on a trait-typed receiver, or on a receiver whose type parameter is bounded
+     * by the trait (`s.area()` on `s: T`, `<T: Shape>`: static dispatch through the bound,
+     * design 5.5, spelled `kira::deref(s).area()`; the receiver's type in `types` is the Param).
+     */
     TRAIT,
 
     /** A `@_magic` function or method; the binding table (`*.bind.yaml`) spells it. */
@@ -38,7 +42,9 @@ enum class CallKind {
 /**
  * A call, fully resolved (TypedModel.calls, keyed by the FunctionCallExpr, and opCalls).
  *
- * @property fn the callee, or null for [CallKind.FN_VALUE] and [CallKind.PRINT].
+ * @property fn the callee; null for [CallKind.FN_VALUE], and for the [CallKind.PRINT] of `trace`
+ *   (which no module declares). kira:io's `print`, `println` and `eprint` are [CallKind.PRINT]
+ *   with their FnSymbol, which is how the emitter tells the three apart.
  * @property receiver the receiver expression of a method call (`xs` in `xs.add(v)`), else null.
  * @property implicitThis a method of the enclosing class called without a receiver.
  * @property typeArgs the explicit (or `@_infer`red) type arguments, in the callee's type-parameter order.

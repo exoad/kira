@@ -426,16 +426,19 @@ class TyperPhaseTest {
 
     @Test
     fun builtinNamesResolveWhetherOrNotTheStdlibDeclaresThem() {
-        val absent = snippet("v: View<UInt8> = 1\nr: Ref<Int32> = 1\nw: Weak<Str> = 1\nu: Unsafe<Int32> = 1\nm: MutView<Char> = 1")
+        // Phases A and B alone: these initializers only carry the types; phase C would refuse them.
+        val absent = TyperTestSupport.phasesAAndB { snippet("v: View<UInt8> = 1\nr: Ref<Int32> = 1\nw: Weak<Str> = 1\nu: Unsafe<Int32> = 1\nm: MutView<Char> = 1") }
         expectNoErrors(absent)
         val view = (absent.member("test:main", "v") as GlobalSymbol).type as KType.Nominal
         assertEquals("View<UInt8>", view.display())
         assertEquals(ClassKind.MAGIC, (view.sym as ClassSymbol).kind)
 
-        val declared = TyperTestSupport.type(
-            module("kira:aaa", "pub @_magic class View<T> {\n    pub fx size: () Size;\n}"),
-            module("test:main", "v: View<UInt8> = 1"),
-        )
+        val declared = TyperTestSupport.phasesAAndB {
+            TyperTestSupport.type(
+                module("kira:aaa", "pub @_magic class View<T> {\n    pub fx size: () Size;\n}"),
+                module("test:main", "v: View<UInt8> = 1"),
+            )
+        }
         expectNoErrors(declared)
         val sym = ((declared.member("test:main", "v") as GlobalSymbol).type as KType.Nominal).sym as ClassSymbol
         assertEquals("kira:aaa", sym.module.uri, "the first stdlib module (by URI) that declares it is the builtin; kira:aaa sorts first")
@@ -445,7 +448,8 @@ class TyperPhaseTest {
 
     @Test
     fun aUserTypeShadowsABuiltinName() {
-        val p = snippet("pub class View { }\nv: View = View { }")
+        // Phases A and B alone: a class constant is not a compile-time value, which phase C reports.
+        val p = TyperTestSupport.phasesAAndB { snippet("pub class View { }\nv: View = View { }") }
         expectNoErrors(p)
         val t = (p.member("test:main", "v") as GlobalSymbol).type as KType.Nominal
         assertEquals(ClassKind.CLASS, (t.sym as ClassSymbol).kind)
@@ -531,7 +535,8 @@ class TyperPhaseTest {
 
     @Test
     fun theExpressionDumpShowsFoldedConstants() {
-        val p = snippet("pub LIMIT: Int32 = 2 + 3\npub NAME: Str = \"a\" + \"b\"")
+        // Phases A and B alone: the type column stays `?` until phase C types the initializers.
+        val p = TyperTestSupport.phasesAAndB { snippet("pub LIMIT: Int32 = 2 + 3\npub NAME: Str = \"a\" + \"b\"") }
         val source = p.module("test:main")!!.source
         val dump = TypedModelDumper.dump(p, source)
         val lines = dump.lines()

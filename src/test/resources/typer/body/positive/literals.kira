@@ -1,0 +1,49 @@
+module "fixture:body.literals"
+
+// Design 3.3: a literal takes the type its context expects, range-checked; with no context an
+// integer is an Int32 and a float a Float64. R2 and R3.
+
+pub fx literals: () Void {
+    a: Int32 = 7                           // @type Int32 const=7:Int32
+    b: UInt8 = 255                         // @type UInt8 const=255:UInt8
+    c: UInt32 = 0xFFFFFFFF                 // @type UInt32 const=4294967295:UInt32
+    d: Int64 = 5000000000                  // @type Int64 const=5000000000:Int64
+    e: Int8 = -128                         // @type Int8 const=-128:Int8
+    f: Size = 32                           // @type Size const=32:Size
+    g: UInt16 = 65535                      // @type UInt16 const=65535:UInt16
+    h: Int16 = -32768                      // @type Int16 const=-32768:Int16
+    i: UInt64 = 1                          // @type UInt64 const=1:UInt64
+    j: Float32 = 0.5                       // @type Float32 const=0.5:Float32
+    k: Float64 = 0.1                       // @type Float64 const=0.1:Float64
+    l: Float64 = 2                         // @type Float64 const=2.0:Float64
+    m: Float32 = -1.5                      // @type Float32 const=-1.5:Float32
+    n: Char = 'x'                          // @type Char const='x'
+    o: Char = '\n'                         // @type Char const='\n'
+    p: Str = "text"                        // @type Str const="text"
+    q: Bool = true                         // @type Bool const=true sym=kira:core.true
+    r: Bool = false                        // @type Bool const=false
+    s: Maybe<Int32> = 42                   // @type Int32 coerce=WrapSome(Int32) const=42:Int32
+    t: Maybe<Float32> = 1.5                // @type Float32 coerce=WrapSome(Float32)
+    u: Maybe<Str> = null                   // @type Null coerce=NoneOf(Str)
+    v: Int32 = 0x10                        // @type Int32 const=16:Int32
+    w: Float32 = 3                         // @type Float32 const=3.0:Float32
+    x: Int8 = 127                          // @type Int8 const=127:Int8
+    y: UInt32 = 0                          // @type UInt32 const=0:UInt32
+    z: Size = 4294967295                   // @type Size const=4294967295:Size
+    trace(3)                               // @type Int32 const=3:Int32 @ 3
+    trace(2.5)                             // @type Float64 const=2.5:Float64 @ 2.5
+    trace('c')                             // @type Char @ 'c'
+    trace("s")                             // @type Str @ "s"
+}
+
+pub fx returned: () UInt8 {
+    return 200                             // @type UInt8 const=200:UInt8
+}
+
+pub fx maybeReturned: () Maybe<Int64> {
+    return 1                               // @type Int64 coerce=WrapSome(Int64)
+}
+
+pub fx floatReturned: () Float32 {
+    return 1.25                            // @type Float32 const=1.25:Float32
+}

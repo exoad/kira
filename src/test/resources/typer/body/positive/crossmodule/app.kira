@@ -1,0 +1,17 @@
+module "fixture:body.xapp"
+
+use "fixture:body.xlib"
+
+// Names from a used module: its pub functions, constants, enums and classes, and the module's
+// own name as a qualifier.
+
+pub fx run: () Int32 {
+    a: Int32 = percent(5)                  // @type Int32 call=FREE(percent)
+    b: Int32 = xlib.percent(5, 10)         // @type Int32 call=FREE(percent)
+    c: Int32 = SCALE                       // @type Int32 const=100:Int32 sym=fixture:body.xlib.SCALE
+    d: Int32 = xlib.SCALE                  // @type Int32 member=Module(fixture:body.xlib.SCALE) const=100:Int32
+    u: Unit = Unit.UNIT_CM                 // @type Unit member=Enum(Unit.UNIT_CM)
+    m: Meter = Meter { 30 }                // @type Meter
+    h: Int32 = m.half()                    // @type Int32 call=METHOD(Meter.half)
+    return a + b + c + d + h               // @type Int32
+}
