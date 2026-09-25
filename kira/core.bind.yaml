@@ -35,10 +35,10 @@
 # constant expression whenever the receiver and arguments are literal types;
 # whether they are is ConstEligibilityPass's literal-type rule, not this flag.
 #
-# Runtime names this manifest uses beyond design section 6. W1.3's
-# kira/cpp/kira/rt.hxx defines the kira::str ones; kira::abs and the scalar
-# kira::hashCode below are not in that header yet and must be added before
-# W2.3 emits Num.abs or Num.hashCode:
+# Runtime names this manifest uses beyond design section 6. kira/cpp/kira/rt.hxx
+# defines the kira::str ones, and kira/cpp/kira/core.hxx defines kira::abs and
+# the scalar kira::hashCode (both profiles; kira/cpp/tests/rt_test.cxx checks
+# each rule below):
 #   kira::str::equals(const Str&, const Str&) -> bool   (content equality; a
 #     free function so a `const char*` Str constant converts on either side,
 #     where `LIDAR_IP == "..."` would compare pointers and fail -Werror=address)

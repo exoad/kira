@@ -190,6 +190,63 @@ namespace kira
       return static_cast<unsigned char>(c);
   }
 
+  // ---- Num.abs and the scalar hashCode (kira/core.bind.yaml) -----------------
+  // abs returns its argument's type: std::abs is ambiguous for uint32_t,
+  // uint64_t and size_t, and returns int for the 8- and 16-bit types. Unsigned
+  // is the identity. The signed lowest stays itself, by unsigned negation,
+  // because integers wrap (D8). A float clears its sign bit, so abs(-0.0) is
+  // +0.0, as fabs and Math.abs give, and a NaN stays a NaN.
+  template<class T>
+  [[nodiscard]] constexpr T abs(T v) noexcept
+  {
+      static_assert(std::is_arithmetic_v<T> && !std::is_same_v<T, bool> && !std::is_same_v<T, Char>,
+                    "kira::abs takes a number");
+      if constexpr(std::is_same_v<T, float>)
+      {
+          return bitCast<float>(bitCast<std::uint32_t>(v) & 0x7FFFFFFFu);
+      }
+      else if constexpr(std::is_same_v<T, double>)
+      {
+          return bitCast<double>(bitCast<std::uint64_t>(v) & 0x7FFFFFFFFFFFFFFFu);
+      }
+      else if constexpr(std::is_unsigned_v<T>)
+      {
+          return v;
+      }
+      else
+      {
+          static_assert(std::is_integral_v<T>, "kira::abs takes Float32, Float64 or an integer");
+          using U = std::make_unsigned_t<T>;
+          return v < T{0} ? static_cast<T>(static_cast<U>(U{0} - static_cast<U>(v))) : v;
+      }
+  }
+
+  // Num.hashCode, and Bool's and Char's: an integer by its value (widened to
+  // Int64, a UInt64 above INT64_MAX wrapping), a float by the bits of its
+  // double, a Bool as 0 or 1, a Char by its code unit. Str has its own,
+  // kira::str::hashCode.
+  template<class T>
+  [[nodiscard]] constexpr std::int64_t hashCode(T v) noexcept
+  {
+      static_assert(std::is_arithmetic_v<T>, "kira::hashCode takes a scalar");
+      if constexpr(std::is_same_v<T, bool>)
+      {
+          return v ? std::int64_t{1} : std::int64_t{0};
+      }
+      else if constexpr(std::is_same_v<T, Char>)
+      {
+          return static_cast<std::int64_t>(ord(v));
+      }
+      else if constexpr(std::is_floating_point_v<T>)
+      {
+          return bitCast<std::int64_t>(static_cast<double>(v));
+      }
+      else
+      {
+          return static_cast<std::int64_t>(v);
+      }
+  }
+
   // A non-escaping Fx parameter is a template parameter F constrained by this.
   template<class F, class R, class... A>
   concept Callable = std::invocable<F&, A...>

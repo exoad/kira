@@ -188,6 +188,21 @@ namespace
   static_assert(kira::shr(-8, 1) == -4);
   static_assert(kira::shl(std::int64_t{1}, kira::Size{40}) == std::int64_t{1099511627776});
   static_assert(kira::ord('\xFF') == 255);
+  static_assert(kira::abs(std::int32_t{-5}) == 5 && kira::abs(std::int32_t{5}) == 5);
+  static_assert(kira::abs(std::numeric_limits<std::int32_t>::lowest()) == std::numeric_limits<std::int32_t>::lowest());
+  static_assert(kira::abs(std::int8_t{-128}) == std::int8_t{-128} && kira::abs(std::int16_t{-300}) == std::int16_t{300});
+  static_assert(std::is_same_v<decltype(kira::abs(std::int8_t{-1})), std::int8_t>);
+  static_assert(std::is_same_v<decltype(kira::abs(std::uint16_t{1})), std::uint16_t>);
+  static_assert(kira::abs(std::uint32_t{0xFFFFFFFFu}) == 0xFFFFFFFFu && kira::abs(kira::Size{7}) == kira::Size{7});
+  static_assert(kira::abs(std::uint64_t{18446744073709551615u}) == std::uint64_t{18446744073709551615u});
+  static_assert(kira::abs(-2.5f) == 2.5f && kira::abs(-2.5) == 2.5);
+  static_assert(kira::bitCast<std::uint64_t>(kira::abs(-0.0)) == 0u, "abs(-0.0) is +0.0");
+  static_assert(kira::bitCast<std::uint32_t>(kira::abs(-0.0f)) == 0u, "abs(-0.0f) is +0.0f");
+  static_assert(kira::hashCode(std::int32_t{-7}) == -7 && kira::hashCode(std::uint8_t{200}) == 200);
+  static_assert(kira::hashCode(std::uint64_t{18446744073709551615u}) == -1, "a UInt64 above INT64_MAX wraps");
+  static_assert(kira::hashCode(true) == 1 && kira::hashCode(false) == 0);
+  static_assert(kira::hashCode('\xFF') == 255, "a Char hashes by its unsigned code unit");
+  static_assert(kira::hashCode(1.0) == std::int64_t{0x3FF0000000000000} && kira::hashCode(1.0f) == kira::hashCode(1.0));
   static_assert(crc32(CHECK_TEXT) == 0xCBF43926u, "the CRC-32 check value, through View and constexpr");
   static_assert(kira::view(CHECK_TEXT).from(7).size() == 2 && kira::view(CHECK_TEXT).slice(2, 3)[0] == '3');
   static_assert(kira::lit("abc").size() == 3 && kira::lit("abc") == kira::lit("abc") && kira::lit("abc") != kira::lit("abd"));
@@ -277,6 +292,13 @@ namespace
       check(kira::mod(opaque(std::numeric_limits<std::int32_t>::lowest()), opaque(std::int32_t{-1})) == 0, "lowest % -1 is 0");
       check(kira::shl(opaque(std::uint16_t{0x8001}), 1) == 0x0002, "shl wraps a UInt16");
       check(kira::shr(opaque(std::int32_t{-16}), std::uint8_t{2}) == -4, "shr keeps the sign");
+      check(kira::abs(opaque(std::int64_t{-9})) == 9 && kira::abs(opaque(std::numeric_limits<std::int64_t>::lowest())) == std::numeric_limits<std::int64_t>::lowest(),
+            "abs: Int64, and the lowest wraps to itself");
+      check(kira::abs(opaque(-0.0)) == 0.0 && !(kira::bitCast<std::uint64_t>(kira::abs(opaque(-0.0))) >> 63),
+            "abs: -0.0 is +0.0");
+      const double dnan = opaque(std::numeric_limits<double>::quiet_NaN());
+      check(!(kira::abs(-dnan) == kira::abs(-dnan)), "abs: a NaN stays a NaN");
+      check(kira::hashCode(opaque(std::int16_t{-2})) == -2 && kira::hashCode(opaque('A')) == 65, "hashCode: Int16 by value, Char by code unit");
 
       std::array<std::uint8_t, 6> bytes{1, 2, 3, 4, 5, 6};
       const kira::View<std::uint8_t> all = bytes;
