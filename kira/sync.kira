@@ -1,0 +1,78 @@
+module "kira:sync"
+
+// Threads and the things they share, hosted only (D24; the runtime is
+// kira/cpp/kira/sync.hxx). Every type here is a class: one object, shared
+// between threads by reference, never copied. Data races on anything else
+// are unchecked (D24), so shared state goes in a Mutex or an Atomic.
+
+// A running thread. The object joins the thread when it is dropped, so a
+// Thread that goes out of scope waits for its body to finish; a body that
+// loops must watch a flag (an Atomic<Bool>, or stopRequested() through a
+// handle it was given) or the drop never returns.
+pub @_magic class Thread {
+    // Set by requestStop(), read by whoever has the handle.
+    pub fx stopRequested: () Bool;
+    pub fx requestStop: () Void;
+    // Waits for the body to finish; a second join is a no-op.
+    pub fx join: () Void;
+}
+
+// Starts a thread running `body`. On Linux the thread is named `name`,
+// truncated to 15 bytes (the kernel's limit); elsewhere the name is kept for
+// nothing. The body captures what it shares by reference (a Mutex, an
+// Atomic, a BlockingQueue) and copies everything else, as every closure does.
+pub @_magic fx spawn: (name: Str, body: Fx<Tuple0, Void>) Thread;
+
+// A mutex that owns its data: the only way to the value is `lock`, so a
+// read or write outside the lock cannot be written.
+//
+// D24 names the method `with`, and the C++ runtime (kira::sync::Mutex::with)
+// does. `with` is a keyword to the parser at the W1 gate, so here the method
+// is `lock`; when the parser takes `with` as a member name, this line and
+// the `Mutex.lock` key in sync.bind.yaml are the whole rename.
+pub @_magic class Mutex<T> {
+    require value: T
+
+    // Runs `body` with the lock held and the value by reference; on return
+    // every waiter in waitUntil is woken to re-check its predicate.
+    pub fx lock: (body: Fx<Tuple1<mut T>, Void>) Void;
+    // Waits until `pred(value)` holds, re-checking whenever a `lock` returns.
+    // True when it held, false when timeoutMs elapsed first; a negative
+    // timeout waits without limit, zero checks once.
+    pub fx waitUntil: (pred: Fx<Tuple1<T>, Bool>, timeoutMs: Int64) Bool;
+}
+
+// One lock-free value. T is Bool, an integer or a float, never a Str or a
+// class (the C++ runtime refuses any other T by name). load/store/add/swap/
+// compareSwap are sequentially consistent; loadAcquire and storeRelease pair
+// for a flag that publishes data written before the store.
+pub @_magic class Atomic<T> {
+    require value: T
+
+    pub fx load: () T;
+    pub mut fx store: (value: T) Void;
+    // Adds `delta` and returns the value after the add (not the one before):
+    // exactly what is stored, so an integer wraps. Not for Atomic<Bool>.
+    pub mut fx add: (delta: T) T;
+    // Stores `value` and returns the one it replaced.
+    pub mut fx swap: (value: T) T;
+    // Stores `desired` only when the current value equals `expected`; true
+    // when it did.
+    pub mut fx compareSwap: (expected: T, desired: T) Bool;
+    pub fx loadAcquire: () T;
+    pub mut fx storeRelease: (value: T) Void;
+}
+
+// An unbounded queue for handing values between threads.
+pub @_magic class BlockingQueue<T> {
+    // After close() a push is dropped.
+    pub mut fx push: (value: T) Void;
+    // The next value, waiting up to timeoutMs for one (negative: without
+    // limit, zero: none if the queue is empty now). None on timeout, and none
+    // once the queue is closed and drained: that is how a consumer ends.
+    pub mut fx pop: (timeoutMs: Int64) Maybe<T>;
+    // Wakes every waiting pop; values already queued are still delivered.
+    pub mut fx close: () Void;
+    pub fx isClosed: () Bool;
+    pub fx size: () Size;
+}

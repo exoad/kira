@@ -1,0 +1,14 @@
+# Magic binding manifest for kira:time (C++ backend only).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips
+# it: the C backend has no clock (the module is hosted C++ only). The
+# placeholders and flags are those of core.bind.yaml. None of these calls is
+# pure: a clock read changes between two calls, and sleepMs blocks.
+#
+# Runtime: kira/cpp/kira/time.hxx defines kira::time::{monoNowNs, monoNowMs,
+# wallNowNs, sleepMs}, all inline, on std::chrono's steady and system clocks.
+
+monoNowNs: { cpp: { expr: "kira::time::monoNowNs()", includes: ["kira/time.hxx"] } }
+monoNowMs: { cpp: { expr: "kira::time::monoNowMs()", includes: ["kira/time.hxx"] } }
+wallNowNs: { cpp: { expr: "kira::time::wallNowNs()", includes: ["kira/time.hxx"] } }
+sleepMs:   { cpp: { expr: "kira::time::sleepMs({0})", includes: ["kira/time.hxx"] } }
