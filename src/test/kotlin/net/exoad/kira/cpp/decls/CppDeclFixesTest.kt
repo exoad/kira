@@ -535,6 +535,94 @@ class CppDeclFixesTest {
     }
 
     @Test
+    fun aHoistedPrototypeFollowsTheStructItsDefaultArgumentConstructsOrReturns() {
+        // g++ and clang reject `std::int32_t limit(const Pt& p = Pt{});` before `struct Pt`
+        // ('invalid use of incomplete type'): a default argument is checked where it is
+        // declared, so what it constructs, or a call in it returns by value, must be complete.
+        val h = header(
+            """
+            pub struct S { pub n: Int32 = limit() }
+            pub fx limit: (p: Pt = Pt {}) Int32 { return 1 }
+            pub struct Pt { pub x: Int32 = 0 }
+            """
+        )
+        assertContains(h, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  [[nodiscard]] std::int32_t limit(const Pt& p = Pt{});\n\n  struct S\n  {\n      std::int32_t n = <FunctionCallExpr>;\n  };")
+        val const = header(
+            """
+            pub X: Int32 = pick()
+            pub @_const fx pick: (p: Pt = Pt {}) Int32 { return 1 }
+            pub struct Pt { pub x: Int32 = 0 }
+            """
+        )
+        assertContains(const, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  [[nodiscard]] constexpr std::int32_t pick(const Pt& p = Pt{});\n\n  constexpr std::int32_t pick([[maybe_unused]] const Pt& p)\n  {\n      return {}; // body of pick\n  }\n\n  inline constexpr std::int32_t X = <FunctionCallExpr>;")
+        val call = header(
+            """
+            pub struct S { pub n: Int32 = limit() }
+            pub fx limit: (p: Pt = origin()) Int32 { return 1 }
+            pub fx origin: () Pt { return Pt {} }
+            pub struct Pt { pub x: Int32 = 0 }
+            """
+        )
+        // origin's prototype may return the still-incomplete Pt; limit's default may not call it until Pt is defined
+        assertContains(call, "  [[nodiscard]] Pt origin();\n\n  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  [[nodiscard]] std::int32_t limit(const Pt& p = <FunctionCallExpr>);\n\n  struct S\n")
+        // a parameter of a later struct's type alone needs only the forward declaration
+        val plain = header(
+            """
+            pub struct S { pub n: Int32 = limit() }
+            pub fx limit: (p: Pt) Int32 { return 1 }
+            pub struct Pt { pub x: Int32 = 0 }
+            """
+        )
+        assertContains(plain, "  [[nodiscard]] std::int32_t limit(const Pt& p);\n\n  struct S\n  {\n      std::int32_t n = <FunctionCallExpr>;\n  };\n\n  struct Pt\n")
+    }
+
+    @Test
+    fun aCyclicModuleEmittedAfterAModuleThatNamesItStillReportsItsCycle() {
+        // The backend emits modules in URI order, so app:a comes first and spells ::z::A, which
+        // builds lib:z's placement before lib:z's own emission; the cycle it finds must reach
+        // lib:z's diagnostics all the same, or `kira --target cpp` writes a header C++ rejects
+        // and exits 0.
+        val z = DeclTestSupport.module("lib:z", "pub struct A { pub bs: Deque<B> = Deque<B> {} }\npub struct B { pub items: Deque<A> = Deque<A> {} }")
+        val a = DeclTestSupport.module("app:a", "use \"lib:z\"\n\npub struct H { pub a: A = A {} }")
+        val emitted = DeclTestSupport.emit(a, z, parts = fakeBodies)
+        assertTrue(!emitted.module("app:a").hasErrors, emitted.render(emitted.diagnostics("app:a")))
+        val cycle = emitted.diagnostics("lib:z").filter { it.code == CppPlacement.DECL_CYCLE_CODE }
+        assertEquals(2, cycle.size, emitted.render(emitted.diagnostics("lib:z")))
+        assertTrue(emitted.module("lib:z").hasErrors)
+        // the same for a by-value cycle
+        val zv = DeclTestSupport.module("lib:z", "pub struct A { pub b: Maybe<B> = null }\npub struct B { pub a: Maybe<A> = null }")
+        val byValue = DeclTestSupport.emit(a, zv, parts = fakeBodies)
+        assertEquals(2, byValue.diagnostics("lib:z").count { it.code == CppPlacement.STRUCT_CYCLE_CODE }, byValue.render(byValue.diagnostics("lib:z")))
+        // and the errors are lib:z's, at lib:z's declarations, reported once
+        assertTrue(byValue.diagnostics("lib:z").all { it.file?.replace('\\', '/')?.endsWith("src/lib/z.kira") == true }, byValue.render(byValue.diagnostics("lib:z")))
+        assertEquals(0, byValue.diagnostics("app:a").count { it.code == CppPlacement.STRUCT_CYCLE_CODE })
+    }
+
+    @Test
+    fun anInt32MinimumIsSpelledThroughNumericLimits() {
+        // MSVC /W4 /WX: `kira::Maybe<std::int32_t> A = -2147483648;` is C4244 inside <optional>,
+        // since 2147483648 is already `long long` and std::optional's converting constructor
+        // narrows it; R2 spells INT_MIN-style literals through std::numeric_limits.
+        val h = header(
+            """
+            pub A: Maybe<Int32> = -2147483648
+            pub B: Int32 = -2147483648
+            pub C: Maybe<Int32> = -2147483647
+            pub struct W { pub a: Maybe<Int32> = -2147483648 }
+            pub fx g: (x: Maybe<Int32> = -2147483648) Void;
+            """
+        )
+        assertContains(
+            h,
+            "inline constexpr kira::Maybe<std::int32_t> A = std::numeric_limits<std::int32_t>::min();",
+            "inline constexpr std::int32_t B = std::numeric_limits<std::int32_t>::min();",
+            "inline constexpr kira::Maybe<std::int32_t> C = -2147483647;",
+            "      kira::Maybe<std::int32_t> a = std::numeric_limits<std::int32_t>::min();",
+            "void g(const kira::Maybe<std::int32_t>& x = std::numeric_limits<std::int32_t>::min());",
+        )
+    }
+
+    @Test
     fun aFloatEnumNumbersItsEntriesAndValueOfGivesTheValueWhereUsed() {
         val src = """pub enum Ratio: Float32 { HALF = 0.5, FULL = 1.0 }
             pub enum Wide: Float64 { W_A = 2.5 }"""

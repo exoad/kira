@@ -62,11 +62,11 @@ class CppNames {
         fun escapeKeyword(name: String): String = if (isKeyword(name)) "${name}_" else name
 
         /**
-         * A namespace segment derived from a module URI: a keyword, an
-         * object-like macro or a name the C library declares at global scope
-         * gets the trailing underscore (`new_`, `linux_`, `errno_`, `main_`,
-         * `exit_`). `namespace errno {` is legal to the compiler that wrote
-         * it and unnameable to every caller that includes `<cerrno>`,
+         * A top-level namespace segment derived from a module URI: a keyword,
+         * an object-like macro or a name the C library declares at global
+         * scope gets the trailing underscore (`new_`, `linux_`, `errno_`,
+         * `main_`, `exit_`). `namespace errno {` is legal to the compiler that
+         * wrote it and unnameable to every caller that includes `<cerrno>`,
          * `linux` is `1` under `-std=gnu++20`, and `namespace main {` or
          * `namespace exit {` is "redeclared as different kind of entity" the
          * moment `<cstdlib>` (which `kira/core.hxx` includes) or the program's
@@ -78,12 +78,23 @@ class CppNames {
         }
 
         /**
-         * [name] is declared at global scope by the C library headers the
-         * runtime includes (`<cstdlib>`, `<cstdio>`, `<cstring>`, `<cmath>`,
-         * `<ctime>`, `<cstdint>`, `<csignal>`, `<cctype>`, ... and the POSIX
-         * names glibc adds to them under `_GNU_SOURCE`, which g++ defines), or
-         * is `main`. A namespace of that name at global scope is an error on
-         * gcc, clang and MSVC alike: a name is one kind of entity per scope.
+         * A segment nested under another namespace (`kira::time` for
+         * `kira:time`, design 4.3): a keyword or an object-like macro is
+         * escaped as at top level, but a C library global is not, since
+         * `::time` and `kira::time` are different scopes and never meet.
+         */
+        fun escapeNestedSegment(name: String): String {
+            return if (isKeyword(name) || isObjectLikeMacro(name)) "${name}_" else name
+        }
+
+        /**
+         * [name] is declared at global scope by C17's headers or by what the
+         * runtime's includes reach on gcc, clang or MSVC (glibc's POSIX and GNU
+         * names under `_GNU_SOURCE`, `<pthread.h>` and `<sched.h>` through
+         * `<thread>`, the `f`/`l`/`f128` forms of every math function, the
+         * enumerators of `<signal.h>`), or is `main`. A namespace of that name
+         * at global scope is an error on gcc, clang and MSVC alike: a name is
+         * one kind of entity per scope. The list is [C_GLOBAL_NAMES].
          */
         fun isCGlobal(name: String): Boolean = name in C_GLOBAL_NAMES
 
@@ -120,92 +131,28 @@ class CppNames {
         )
 
         /**
-         * The program's entry point and the C library's global-scope functions and types:
-         * C17's, and the POSIX and glibc names its headers add on Linux under `_GNU_SOURCE`
-         * (`<stdlib.h>` pulls in `<sys/types.h>`, `<alloca.h>` and `<sys/select.h>`).
+         * The program's entry point and every global name of C17's headers and of what the
+         * runtime's includes reach, read from the classpath resource
+         * `net/exoad/kira/cpp/c-global-names.txt`. That file is measured, not written:
+         * `kira/cpp/tools/c_global_names.py` compiles a namespace and a variable of every
+         * identifier the headers mention on zig's x86_64 and aarch64 glibc and musl, MinGW g++
+         * and MSVC, and keeps the names they reject (2,000 and more, so no hand list holds
+         * them). A missing resource is a packaging fault and fails loudly rather than
+         * escaping nothing.
          */
-        val C_GLOBAL_NAMES: Set<String> = setOf(
-            "main",
-            // <stdlib.h>
-            "abort", "abs", "aligned_alloc", "at_quick_exit", "atexit", "atof", "atoi", "atol", "atoll", "bsearch",
-            "calloc", "div", "exit", "free", "getenv", "labs", "ldiv", "llabs", "lldiv", "malloc", "mblen", "mbstowcs",
-            "mbtowc", "qsort", "quick_exit", "rand", "realloc", "srand", "strtod", "strtof", "strtol", "strtold",
-            "strtoll", "strtoul", "strtoull", "system", "wcstombs", "wctomb", "_Exit", "div_t", "ldiv_t", "lldiv_t",
-            "random", "srandom", "initstate", "setstate", "rand_r", "drand48", "erand48", "lrand48", "nrand48",
-            "mrand48", "jrand48", "srand48", "seed48", "lcong48", "posix_memalign", "valloc", "setenv", "unsetenv",
-            "putenv", "clearenv", "mkstemp", "mkstemps", "mkdtemp", "mktemp", "realpath", "getsubopt", "getloadavg",
-            "ecvt", "fcvt", "gcvt", "a64l", "l64a", "strtoq", "strtouq", "ptsname", "grantpt", "unlockpt",
-            "posix_openpt", "rpmatch", "on_exit", "secure_getenv", "canonicalize_file_name", "alloca",
-            // <stdio.h>
-            "clearerr", "fclose", "feof", "ferror", "fflush", "fgetc", "fgetpos", "fgets", "fopen", "fprintf",
-            "fputc", "fputs", "fread", "freopen", "fscanf", "fseek", "fsetpos", "ftell", "fwrite", "getc", "getchar",
-            "perror", "printf", "putc", "putchar", "puts", "remove", "rename", "rewind", "scanf", "setbuf", "setvbuf",
-            "snprintf", "sprintf", "sscanf", "tmpfile", "tmpnam", "ungetc", "vfprintf", "vfscanf", "vprintf",
-            "vscanf", "vsnprintf", "vsprintf", "vsscanf", "FILE", "fpos_t", "fileno", "fdopen", "popen", "pclose",
-            "getline", "getdelim", "dprintf", "vdprintf", "fmemopen", "open_memstream", "flockfile", "ftrylockfile",
-            "funlockfile", "getc_unlocked", "putc_unlocked", "getchar_unlocked", "putchar_unlocked", "tempnam",
-            "ctermid", "cuserid", "renameat", "fseeko", "ftello", "asprintf", "vasprintf", "getw", "putw",
-            "setbuffer", "setlinebuf", "fcloseall", "fopencookie", "cookie_io_functions_t",
-            // <string.h>
-            "memchr", "memcmp", "memcpy", "memmove", "memset", "strcat", "strchr", "strcmp", "strcoll", "strcpy",
-            "strcspn", "strerror", "strlen", "strncat", "strncmp", "strncpy", "strpbrk", "strrchr", "strspn",
-            "strstr", "strtok", "strxfrm", "strdup", "strndup", "strtok_r", "strerror_r", "strsep", "strcasecmp",
-            "strncasecmp", "memccpy", "mempcpy", "memmem", "memrchr", "strchrnul", "stpcpy", "stpncpy", "strnlen",
-            "strsignal", "strverscmp", "strfry", "memfrob", "basename", "explicit_bzero", "bcopy", "bzero", "bcmp",
-            "index", "rindex", "ffs", "ffsl", "ffsll",
-            // <math.h>
-            "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "cbrt", "ceil", "copysign", "cos", "cosh",
-            "erf", "erfc", "exp", "exp2", "expm1", "fabs", "fdim", "floor", "fma", "fmax", "fmin", "fmod", "fpclassify",
-            "frexp", "hypot", "ilogb", "isfinite", "isgreater", "isgreaterequal", "isinf", "isless", "islessequal",
-            "islessgreater", "isnan", "isnormal", "isunordered", "ldexp", "lgamma", "llrint", "llround", "log",
-            "log10", "log1p", "log2", "logb", "lrint", "lround", "modf", "nan", "nanf", "nanl", "nearbyint",
-            "nextafter", "nexttoward", "pow", "remainder", "remquo", "rint", "round", "scalbln", "scalbn",
-            "signbit", "sin", "sinh", "sqrt", "tan", "tanh", "tgamma", "trunc", "float_t", "double_t",
-            "j0", "j1", "jn", "y0", "y1", "yn", "gamma", "lgamma_r", "drem", "significand", "scalb", "finite",
-            "isinff", "isnanf", "sincos", "exp10", "pow10",
-            // <time.h>
-            "asctime", "clock", "ctime", "difftime", "gmtime", "localtime", "mktime", "strftime", "time",
-            "timespec_get", "clock_t", "time_t", "tm", "timespec", "itimerspec", "nanosleep", "clock_gettime",
-            "clock_settime", "clock_getres", "clock_nanosleep", "clock_getcpuclockid", "timer_create",
-            "timer_delete", "timer_settime", "timer_gettime", "timer_getoverrun", "timegm", "timelocal",
-            "strptime", "tzset", "tzname", "timezone", "daylight", "getdate", "dysize", "asctime_r", "ctime_r",
-            "gmtime_r", "localtime_r", "clockid_t", "timer_t", "sigevent",
-            // <stdint.h>, <stddef.h>, <inttypes.h>
-            "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
-            "int_least8_t", "int_least16_t", "int_least32_t", "int_least64_t", "uint_least8_t", "uint_least16_t",
-            "uint_least32_t", "uint_least64_t", "int_fast8_t", "int_fast16_t", "int_fast32_t", "int_fast64_t",
-            "uint_fast8_t", "uint_fast16_t", "uint_fast32_t", "uint_fast64_t", "intptr_t", "uintptr_t",
-            "intmax_t", "uintmax_t", "size_t", "ptrdiff_t", "max_align_t", "imaxabs", "imaxdiv", "imaxdiv_t",
-            "strtoimax", "strtoumax", "wcstoimax", "wcstoumax",
-            // <signal.h>, <setjmp.h>, <stdarg.h>, <errno.h>, <locale.h>, <assert.h>, <fenv.h>
-            "signal", "raise", "sig_atomic_t", "sigset_t", "sigaction", "siginfo_t", "kill", "sigemptyset",
-            "sigfillset", "sigaddset", "sigdelset", "sigismember", "sigprocmask", "sigpending", "sigsuspend",
-            "sigwait", "sigqueue", "psignal", "psiginfo", "longjmp", "setjmp", "jmp_buf", "sigjmp_buf",
-            "siglongjmp", "sigsetjmp", "va_list", "setlocale", "localeconv", "lconv", "locale_t", "newlocale",
-            "uselocale", "freelocale", "duplocale", "feclearexcept", "fegetenv", "fegetexceptflag", "fegetround",
-            "feholdexcept", "feraiseexcept", "fesetenv", "fesetexceptflag", "fesetround", "fetestexcept",
-            "feupdateenv", "fenv_t", "fexcept_t",
-            // <ctype.h>, <wchar.h>, <wctype.h>, <uchar.h>
-            "isalnum", "isalpha", "isblank", "iscntrl", "isdigit", "isgraph", "islower", "isprint", "ispunct",
-            "isspace", "isupper", "isxdigit", "tolower", "toupper", "isascii", "toascii", "wint_t", "mbstate_t",
-            "btowc", "wctob", "mbrlen", "mbrtowc", "wcrtomb", "mbsrtowcs", "wcsrtombs", "mbsinit", "wcslen",
-            "wcscpy", "wcsncpy", "wcscat", "wcsncat", "wcscmp", "wcsncmp", "wcscoll", "wcsxfrm", "wcschr",
-            "wcsrchr", "wcsstr", "wcstok", "wcspbrk", "wcsspn", "wcscspn", "wmemchr", "wmemcmp", "wmemcpy",
-            "wmemmove", "wmemset", "wcstod", "wcstof", "wcstold", "wcstol", "wcstoll", "wcstoul", "wcstoull",
-            "fgetwc", "fgetws", "fputwc", "fputws", "fwide", "fwprintf", "fwscanf", "getwc", "getwchar", "putwc",
-            "putwchar", "swprintf", "swscanf", "ungetwc", "vfwprintf", "vfwscanf", "vswprintf", "vswscanf",
-            "vwprintf", "vwscanf", "wprintf", "wscanf", "wcsftime", "wctype_t", "wctrans_t", "iswalnum",
-            "iswalpha", "iswblank", "iswcntrl", "iswdigit", "iswgraph", "iswlower", "iswprint", "iswpunct",
-            "iswspace", "iswupper", "iswxdigit", "iswctype", "towlower", "towupper", "towctrans", "wctrans",
-            "wctype", "mbrtoc16", "c16rtomb", "mbrtoc32", "c32rtomb", "mbrtoc8", "c8rtomb",
-            // <sys/types.h> and <sys/select.h>, which glibc's <stdlib.h> includes
-            "ssize_t", "off_t", "pid_t", "uid_t", "gid_t", "mode_t", "dev_t", "ino_t", "nlink_t", "blkcnt_t",
-            "blksize_t", "fsblkcnt_t", "fsfilcnt_t", "id_t", "key_t", "suseconds_t", "useconds_t", "loff_t",
-            "caddr_t", "daddr_t", "register_t", "u_char", "u_short", "u_int", "u_long", "quad_t", "u_quad_t",
-            "fsid_t", "ulong", "ushort", "uint", "fd_set", "fd_mask", "select", "pselect", "timeval",
-            "pthread_t", "pthread_attr_t", "pthread_mutex_t", "pthread_cond_t", "pthread_key_t", "pthread_once_t",
-            "pthread_rwlock_t", "pthread_spinlock_t", "pthread_barrier_t",
-        )
+        val C_GLOBAL_NAMES: Set<String> by lazy { readCGlobalNames() }
+
+        const val C_GLOBAL_NAMES_RESOURCE = "/net/exoad/kira/cpp/c-global-names.txt"
+
+        private fun readCGlobalNames(): Set<String> {
+            val stream = CppNames::class.java.getResourceAsStream(C_GLOBAL_NAMES_RESOURCE)
+                ?: throw IllegalStateException("the classpath resource $C_GLOBAL_NAMES_RESOURCE is missing; regenerate it with kira/cpp/tools/c_global_names.py")
+            val names = stream.bufferedReader(Charsets.UTF_8).useLines { lines ->
+                lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.toHashSet()
+            }
+            check("main" in names && "exit" in names && "sqrtf" in names) { "$C_GLOBAL_NAMES_RESOURCE holds ${names.size} names and lacks main, exit or sqrtf: not the measured list" }
+            return names
+        }
 
         /** Families `<windows.h>` and friends define wholesale; a name `PREFIX...` is taken. */
         val MACRO_FAMILIES: List<String> = listOf(

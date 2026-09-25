@@ -84,6 +84,18 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     private val model = ctx.model
     private val headerOnly: Boolean get() = ctx.isHeaderOnly
 
+    /**
+     * The Kira errors the order found ([STRUCT_CYCLE_CODE], [DECL_CYCLE_CODE]). They are the
+     * placement's, not [ctx]'s: one placement serves the whole run, and the context that first
+     * built it may be another module's (its `qualified` asks where this module put a name), so
+     * [CppEmitContextImpl.diagnostics] of the owning module reads them from here.
+     */
+    val diagnostics: MutableList<CppDiagnostic> = mutableListOf()
+
+    private fun error(node: ASTNode, code: String, message: String) {
+        diagnostics += ctx.diagnosticAt(node, code, message)
+    }
+
     // ---- the module's declarations ---------------------------------------------------------------
 
     /** The module's own top-level declarations in source order: no `@_magic`, no anonymous function, one per name. */
@@ -162,9 +174,11 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     /**
      * What one declaration's text names among this module's declarations: [mentions] is
-     * every one, [completes] those C++ must have defined (not just declared) before it.
+     * every one, [completes] those C++ must have defined (not just declared) before it, and
+     * [constructed] the structs and classes a default in it makes a value of (`Pt {}`, or a
+     * call returning a struct), which C++ checks where the default is declared.
      */
-    private class Refs(val mentions: Set<Symbol>, val completes: Set<Symbol>)
+    private class Refs(val mentions: Set<Symbol>, val completes: Set<Symbol>, val constructed: Set<Symbol>)
 
     private val signatureRefs = IdentityHashMap<Symbol, Refs>()
     private val bodyRefs = IdentityHashMap<Symbol, Set<Symbol>>()
@@ -174,6 +188,9 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     /** This module's declarations that must be defined before [sym]'s. */
     fun completes(sym: Symbol): Set<Symbol> = refsOf(sym).completes
+
+    /** This module's types that a default in the declaration text of [sym] constructs, or that a call in one returns by value. */
+    fun constructed(sym: Symbol): Set<Symbol> = refsOf(sym).constructed
 
     /** This module's declarations that the bodies of [sym] (a function, or a type's methods and blocks) name. */
     fun bodyMentions(sym: Symbol): Set<Symbol> = bodyRefs.getOrPut(sym) {
@@ -193,10 +210,18 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     private fun refsOf(sym: Symbol): Refs = signatureRefs.getOrPut(sym) {
         val mentions = newSymbolSet()
         val completes = newSymbolSet()
+        val constructed = newSymbolSet()
         val isType = sym is ClassSymbol || sym is TraitSymbol
         val decl = sym.decl
         if (decl != null) {
-            visitRefs(decl, bodies = false, constructs = { s -> if (s !== sym) completes.add(s) }) { s ->
+            val constructs = { s: Symbol ->
+                if (s !== sym) {
+                    mentions.add(s)
+                    completes.add(s)
+                    constructed.add(s)
+                }
+            }
+            visitRefs(decl, bodies = false, constructs = constructs) { s ->
                 mentions.add(s)
                 // A type needs its values, enums and aliases defined; another type only declared (by-value containment is added below).
                 if (!isType || s !is ClassSymbol && s !is TraitSymbol) {
@@ -217,7 +242,12 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         }
         mentions.remove(sym)
         completes.remove(sym)
-        Refs(mentions.filter { it in declared }.toCollection(newSymbolSet()), completes.filter { it in declared }.toCollection(newSymbolSet()))
+        constructed.remove(sym)
+        Refs(
+            mentions.filter { it in declared }.toCollection(newSymbolSet()),
+            completes.filter { it in declared }.toCollection(newSymbolSet()),
+            constructed.filter { it in declared }.toCollection(newSymbolSet()),
+        )
     }
 
     /**
@@ -225,8 +255,8 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
      * (through aliases, and the constant in `Arr<T, N>`), identifiers, enum owners in
      * `Kind.KIND_OK`. A member name after `.` and a named argument's name are not
      * references. Function bodies and `initially`/`finally` blocks are walked only with
-     * [bodies]. [constructs] gets the struct or class an `S { }` constructs, which must be
-     * complete there.
+     * [bodies]. [constructs] gets the struct or class an `S { }` constructs, and the struct a
+     * call returns by value (`origin()`), which must be complete there.
      */
     private fun visitRefs(root: ASTNode, bodies: Boolean, constructs: (Symbol) -> Unit = {}, visit: (Symbol) -> Unit) {
         walk(root, bodies) { node ->
@@ -245,6 +275,17 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
                     val t = model.typeOf(node.typeName) as? KType.Nominal
                     val sym = t?.sym as? ClassSymbol
                     if (sym != null && sym.kind != ClassKind.MAGIC && sym in declared) {
+                        constructs(sym)
+                    }
+                }
+                is FunctionCallExpr -> {
+                    // A class comes back as an Rc, which needs no definition; a struct comes back by
+                    // value. A default argument's call is not typed (the typer types bodies), so the
+                    // callee's declared return type stands in for the call's.
+                    val callee = (node.name as? Identifier)?.takeIf { it !is IntrinsicExpr }?.let { model.symbolOf(it) ?: m.members[it.value] } as? FnSymbol
+                    val t = (model.typeOrNull(node) ?: model.call(node)?.returnType ?: callee?.ret) as? KType.Nominal
+                    val sym = t?.sym as? ClassSymbol
+                    if (sym != null && sym.isStruct && sym in declared) {
                         constructs(sym)
                     }
                 }
@@ -473,7 +514,10 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
                 ItemKind.PROTO -> mentions(s).mapNotNull { c ->
                     when {
                         c is FnSymbol && c in hoisted -> item(c, ItemKind.PROTO)
-                        c is ClassSymbol || c is TraitSymbol -> null   // a signature needs only the forward declaration
+                        // A signature needs only the forward declaration; a default argument that
+                        // constructs the type (`p: Pt = Pt {}`), or calls something returning it by
+                        // value, is checked where it is declared and needs the definition.
+                        c is ClassSymbol || c is TraitSymbol -> if (c in constructed(s)) item(c, ItemKind.DECL) else null
                         else -> item(c, ItemKind.DECL)
                     }
                 }
@@ -526,7 +570,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
                 reportStructCycle(s, path)
                 return
             }
-            ctx.diag(
+            error(
                 s.decl ?: return,
                 DECL_CYCLE_CODE,
                 "struct ${s.name} holds a container of a struct that holds one of it (${path.joinToString(" -> ") { it.name }}); " +
@@ -535,7 +579,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
             return
         }
         val decl = s.decl ?: return
-        ctx.diag(
+        error(
             decl,
             DECL_CYCLE_CODE,
             "${kindOf(s)} ${s.name} cannot be declared before what it names (${path.joinToString(" -> ") { it.name }}); " +
@@ -551,7 +595,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     private fun reportStructCycle(s: ClassSymbol, cycle: List<Symbol>) {
         val decl = s.decl ?: return
-        ctx.diag(
+        error(
             decl,
             STRUCT_CYCLE_CODE,
             "struct ${s.name} holds itself by value (${cycle.joinToString(" -> ") { it.name }}), which C++ cannot lay out; " +
