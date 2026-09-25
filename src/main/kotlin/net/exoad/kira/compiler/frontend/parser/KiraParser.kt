@@ -415,7 +415,15 @@ class KiraParser(private val context: SourceContext) {
     {
         val origin = here()
         expectThenAdvance(Token.Type.K_RETURN)
-        val expr = parseExpr()
+        // A bare `return` (Void functions) carries NoExpr. Newlines are not
+        // tokens, so "bare" means the next token closes the statement: `}`,
+        // `;` or end of input. `return` followed by an expression on the next
+        // line still returns that expression.
+        val expr = if (at(Token.Type.S_CLOSE_BRACE) || at(Token.Type.S_SEMICOLON) || at(Token.Type.S_EOF)) {
+            NoExpr
+        } else {
+            parseExpr()
+        }
         expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
         return putOrigin(ReturnStatement(expr), origin)
     }

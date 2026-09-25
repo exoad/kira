@@ -1372,6 +1372,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     /** Element type of the Arr literal currently being emitted, when known. */
     private var pendingArrayElementType: String? = null
 
+    /** True while emitting the body of `main: () Void`, which is `Int32 main` in C. */
+    private var inHostMain = false
+
     private fun isStrType(kiraType: String?): Boolean {
         return kiraType == "Str" || kiraType == "String"
     }
@@ -2063,6 +2066,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         emitArcReleasesBeforeReturn(moved)
         appendIndented("return")
+        if (returnStatement.expr is NoExpr && inHostMain) {
+            // Kira's `main: () Void` is the host's `Int32 main`, so a bare
+            // return there must still produce the exit status.
+            buffer.append(" 0")
+        }
         if (returnStatement.expr !is NoExpr) {
             buffer.append(" ")
             val rt = currentReturnType
@@ -2856,7 +2864,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         pushArcScope()
         val savedReturnType = currentReturnType
         currentReturnType = returnTypeName
+        val savedHostMain = inHostMain
+        inHostMain = functionName == "main" && returnsVoid
         functionDecl.def.body!!.forEach { it.accept(this) }
+        inHostMain = savedHostMain
         currentReturnType = savedReturnType
         // Fall-through path: an explicit `return` already emitted its own
         // releases, so this only covers reaching the closing brace.

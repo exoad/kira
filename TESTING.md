@@ -80,9 +80,10 @@ carries a comment naming the gap. Current set:
 - **`@_extern` emits the C name as a literal string** (`CodegenSuiteTest`,
   `externLowersToLiteralCNamePlaceholder`): the intended call is not yet
   generated.
-- **Bare `return`, nullable `?`, `this`, lambdas, `initially`/`finally`
-  blocks are rejected** (`ParserSuiteTest` boundary tests): surface the
-  Kotlin-native parser does not implement yet.
+- **Nullable `?`, `this`, lambdas, `initially`/`finally` blocks are
+  rejected** (`ParserSuiteTest` boundary tests): surface the Kotlin-native
+  parser does not implement yet. (Bare `return` was on this list; it parses
+  now -- `ParserSuiteTest.parsesBareReturn`.)
 - **Generic call return types are not threaded into print format**
   (`CodegenSuiteTest`,
   `genericCallReturnTypeNotThreadedIntoPrintFormat`): monomorphization emits

@@ -10,6 +10,9 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
+import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -476,10 +479,29 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun bareReturnIsRejected() {
-        assertThrows<Throwable> {
-            parseModule("fx main: () Void { return }")
+    fun parsesBareReturn() {
+        val ast = parseModule(
+            """
+            fx stop: (n: Int32) Void {
+                if n < 0 {
+                    return
+                }
+                trace(n)
+                return;
+            }
+            """
+        )
+        val fn = declsOf(ast).filterIsInstance<FunctionDecl>().single()
+        val returns = mutableListOf<ReturnStatement>()
+        fun walk(statements: List<Statement>?) {
+            statements?.forEach { stmt ->
+                if (stmt is ReturnStatement) returns.add(stmt)
+                if (stmt is IfSelectionStatement) walk(stmt.thenStatements)
+            }
         }
+        walk(fn.def.body)
+        assertEquals(2, returns.size, ast.toString())
+        assertTrue(returns.all { it.expr is NoExpr }, returns.toString())
     }
 
     @Test
