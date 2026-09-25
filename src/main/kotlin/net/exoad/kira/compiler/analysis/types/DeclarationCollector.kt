@@ -422,41 +422,12 @@ internal class DeclarationCollector(
         const val CONST = "_const"
 
         /**
-         * The marker invocations (arguments included) the parser recorded for [node].
-         *
-         * The frontend package (W1.1) adds `SourceContext.intrinsicInvocationsOf(node)` over
-         * a field `astIntrinsicInvocations` with its parser work, after the AST contract this
-         * package merged. Until neither exists this returns an empty list, and markers carry
-         * their names only. Once either exists it is read here, and a read that fails is not
-         * swallowed: it is an internal failure (KiraTyper.guard reports it as `types.internal`),
-         * because an `@_extern` whose arguments went quietly missing would give the FFI package
-         * nothing to bind. Replace the reflection with `source.intrinsicInvocationsOf(node)`
-         * when both packages are on one branch; TyperPhaseTest.externArgumentsAreRecorded...
-         * fails, not skips, if that read returns nothing on a branch with the dialect parser.
+         * The marker invocations (arguments included) the parser recorded for [node]: an
+         * `@_extern("sym", header = "x.h")` keeps its "sym" and its `header` here. A hand-built
+         * AST that the parser never saw has none. TyperPhaseTest.externArgumentsAreRecorded...
+         * fails if this returns nothing for a parsed marker with arguments.
          */
-        fun invocationsOf(source: SourceContext, node: ASTNode): List<IntrinsicExpr> {
-            val read = invocationsReader ?: return emptyList()
-            return read(source, node)
-        }
-
-        private val invocationsReader: ((SourceContext, ASTNode) -> List<IntrinsicExpr>)? by lazy {
-            val method = runCatching {
-                SourceContext::class.java.getMethod("intrinsicInvocationsOf", ASTNode::class.java)
-            }.getOrNull()
-            if (method != null) {
-                return@lazy { source, node -> (method.invoke(source, node) as List<*>).filterIsInstance<IntrinsicExpr>() }
-            }
-            val field = runCatching {
-                SourceContext::class.java.getDeclaredField("astIntrinsicInvocations").apply { isAccessible = true }
-            }.getOrNull()
-            if (field != null) {
-                return@lazy { source, node ->
-                    // null: a lateinit the parser never set (a hand-built AST), which has no arguments.
-                    val map = field.get(source) as Map<*, *>?
-                    (map?.get(node) as List<*>?)?.filterIsInstance<IntrinsicExpr>() ?: emptyList()
-                }
-            }
-            null
-        }
+        fun invocationsOf(source: SourceContext, node: ASTNode): List<IntrinsicExpr> =
+            source.intrinsicInvocationsOf(node)
     }
 }

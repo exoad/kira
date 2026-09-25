@@ -304,9 +304,9 @@ class TyperPhaseTest {
 
     @Test
     fun externArgumentsAreRecordedVerbatimOnceTheParserKeepsThem() {
-        // The frontend package's parser records marker arguments (SourceContext.intrinsicInvocationsOf);
-        // this branch has only its AST contract. Skipped while that parser is absent, and only then:
-        // with it present, arguments that DeclarationCollector.invocationsOf fails to read fail here.
+        // The frontend package's parser records marker arguments (SourceContext.intrinsicInvocationsOf),
+        // and DeclarationCollector.invocationsOf reads them directly. The parser is on cpp-backend, so
+        // this never skips there (a half-present parser fails in TyperTestSupport.hasDialectParser).
         TyperTestSupport.assumeDialectParser("reading @_extern arguments")
         val p = snippet(
             """
