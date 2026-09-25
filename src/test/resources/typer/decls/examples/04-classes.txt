@@ -1,0 +1,14 @@
+module app:main  profile=HOSTED ns=main imports=[app:model]
+  fn main: () Void  body
+module app:model  profile=HOSTED ns=model imports=[]
+  class Point  pub
+    field x: Int32  pub require #0
+    field y: Int32  pub require #1
+  class Rectangle  pub
+    field topLeft: Point  pub require #0
+    field bottomRight: Point  pub require #1
+    fn perimeter: () Int32  pub body
+  class Pet  pub
+    field name: Str  pub require #0
+    field sound: Str  pub require #1
+    fn speak: () Str  pub body

@@ -1,0 +1,68 @@
+module fixture:declarations  profile=HOSTED ns=declarations imports=[]
+  global LIMIT: Int32  pub const value=10:Int32
+  global MASK: UInt32  pub const value=4294967295:UInt32
+  global SHIFTED: Int64  pub const value=1099511627776:Int64
+  global HALF: Float32  pub const value=0.5:Float32
+  global SCALE: Float64  pub const value=1.0:Float64
+  global HALF_D: Float64  const value=0.25:Float64
+  global GREETING: Str  pub const value="hello, kira"
+  global READY: Bool  pub const value=true
+  global WIDTH: Size  pub const value=32:Size
+  global SMALL: Int8  pub const value=-128:Int8
+  global PRIMES: Arr<Int32>  pub const value=[2:Int32, 3:Int32, 5:Int32, 7:Int32]
+  global FIXED: Arr<UInt8, 4>  pub const value=[1:UInt8, 2:UInt8, 3:UInt8, 4:UInt8]
+  global LEN: Size  const value=4:Size
+  global DEFAULT_MODE: Mode  pub const value=Mode.IDLE
+  global counter: Int32  pub mut init=0
+  global nowhere: Maybe<Int32>  pub const value=null
+  enum Mode: Int32  pub
+    entry IDLE = 0:Int32  #0
+    entry RUN = 5:Int32  #1
+    entry STOP = 6:Int32  #2
+  enum Level: Str  pub
+    entry LOW = "low"  #0
+    entry HIGH = "high"  #1
+  enum Gain: Float32  pub
+    entry UNIT = 1.0:Float32  #0
+    entry HALF_GAIN = 0.5:Float32  #1
+  alias Id = Int64  pub
+  alias Pair<A, B> = Tuple2<A, B>  pub
+  alias Named = Tuple2<Str, Int64>  pub
+  alias Callback = Fx<Tuple2<Str, Int32>, Bool>  pub
+  alias Matrix = Arr<Arr<Float64>>  pub
+  trait Speaker  pub
+    fn speak: () Str  pub virtual
+    fn loudness: () Int32  pub virtual body
+    flat [Speaker.speak, Speaker.loudness]
+  trait Shouter : Speaker  pub
+    fn shout: () Str  pub virtual
+    fn loudness: () Int32  pub virtual body overrides=Speaker.loudness
+    flat [Speaker.speak, Shouter.loudness, Shouter.shout]
+  trait Keyed<K>  pub
+    fn key: () K  pub virtual
+    flat [Keyed.key]
+  class Animal  pub subclassed
+    field name: Str  pub require #0
+    field age: Int32  pub mut default=0 #1
+    fn describe: () Str  pub virtual body
+    fn birthday: () Void  pub mut body
+  class Dog : Animal, Shouter, Keyed<Str>  pub
+    field breed: Str  pub require #0
+    fn describe: () Str  pub virtual body overrides=Animal.describe
+    fn speak: () Str  pub virtual body overrides=Speaker.speak
+    fn shout: () Str  pub virtual body overrides=Shouter.shout
+    fn key: () Str  pub virtual body overrides=Keyed.key
+  class Box<T: Speaker>  pub
+    field value: T  pub require #0
+    fn get: () T  pub body
+  fn pick<T>: (a: T, b: T, first: Bool) T  body
+  fn bump: (mut value: Int32, by: Int32) Void  pub body
+  fn apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32  pub body
+  fn lookup: (names: Map<Str, List<Int64>>, key: Str) Maybe<List<Int64>>  pub body
+  fn intrinsicClock: () Int64  pub magic=intrinsicClock
+  opaque Handle  pub @_opaque
+  op op_add: (a: Animal, b: Animal) Animal  body
+diag warning types.override.missing fixture/declarations.kira:80:9  Dog.describe replaces Animal.describe; mark it `override` (spec: Inheritance).
+diag warning types.override.missing fixture/declarations.kira:84:9  Dog.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
+diag warning types.override.missing fixture/declarations.kira:88:9  Dog.shout replaces Shouter.shout; mark it `override` (spec: Inheritance).
+diag warning types.override.missing fixture/declarations.kira:92:9  Dog.key replaces Keyed.key; mark it `override` (spec: Inheritance).

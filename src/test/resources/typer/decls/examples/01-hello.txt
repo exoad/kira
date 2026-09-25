@@ -1,0 +1,2 @@
+module app:main  profile=HOSTED ns=main imports=[]
+  fn main: () Void  body

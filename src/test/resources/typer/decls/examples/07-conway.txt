@@ -1,0 +1,12 @@
+module app:grid  profile=HOSTED ns=grid imports=[]
+  class Grid
+    field width: Int32  pub require #0
+    field height: Int32  pub require #1
+    field cells: Arr<Int32>  pub require #2
+    fn countNeighbors: (row: Int32, col: Int32) Int32  body
+    fn step: () Void  body
+    fn printGrid: () Void  body
+module app:main  profile=HOSTED ns=main imports=[app:grid]
+  fn main: () Void  body
+diag error types.type.not-visible app/main.kira:6:8  'Grid' is declared in app:grid but is not pub, so this module cannot use it.
+diag error types.type.not-visible app/main.kira:6:15  'Grid' is declared in app:grid but is not pub, so this module cannot use it.

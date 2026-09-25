@@ -1,0 +1,87 @@
+module "fixture:design"
+
+// The design's dialect (section 2): struct, override, initially and finally, parameter
+// defaults, const type arguments, `mut` parameters and `Fx` elements, char literals.
+// It parses once the frontend package's parser is on the branch; until then TyperDeclTest
+// skips it and says why.
+
+pub LIMIT: Size = 32
+pub alias Frame as Arr<UInt8, 32>
+pub alias Sized as Arr<UInt8, LIMIT>
+pub SPACE: Char = ' '
+
+pub enum Kind: Int32 {
+    KIND_OK = 0,
+    KIND_ERR = 1
+}
+
+pub struct Reply {
+    pub kind: Kind = Kind.KIND_OK
+    pub line: Str = ""
+    require pub code: Int32
+
+    pub fx isOk: () Bool {
+        return kind == Kind.KIND_OK
+    }
+
+    pub mut fx reset: () Void {
+        kind = Kind.KIND_OK
+    }
+}
+
+pub trait Measured {
+    pub fx width: () Int32;
+}
+
+pub struct Band: Measured {
+    pub lo: Int32 = 0
+    pub hi: Int32 = 10
+
+    override pub fx width: () Int32 {
+        return hi - lo
+    }
+}
+
+pub trait Behaviour {
+    pub fx id: () Str;
+    pub fx mayDrive: () Bool {
+        return false
+    }
+    pub mut fx step: (r: Reply) Reply;
+}
+
+pub class Stop: Behaviour {
+    require pub reason: Str
+
+    initially {
+        trace(reason)
+    }
+
+    finally {
+        trace("gone")
+    }
+
+    override pub fx id: () Str {
+        return "stop"
+    }
+
+    override pub mut fx step: (r: Reply) Reply {
+        return r
+    }
+}
+
+pub fx command: (verb: Str, args: Str = "", retries: Int32 = 3) Str {
+    return verb
+}
+
+pub fx apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
+    f(mut x)
+}
+
+pub fx isSpace: (c: Char) Bool {
+    return c == SPACE
+}
+
+pub fx frame: () Frame {
+    return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
