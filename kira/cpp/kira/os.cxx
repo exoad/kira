@@ -66,42 +66,96 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <utility>
 
 namespace kira::os
 {
   namespace
   {
+#if defined(_WIN32) && defined(__GNUC__) && !defined(__clang__)
+    // MinGW GCC keeps a thread_local in emutls and runs its destructor through
+    // mingw-w64's __cxa_thread_atexit, and two threads that touched such an
+    // object and exit at once corrupt the heap (STATUS_HEAP_CORRUPTION: MSYS2
+    // UCRT64 g++ 13.2.0 died 5 runs of 5 on 1000 pairs of threads, each with
+    // a lastError; zig's clang and MSVC never did). So on MinGW GCC the
+    // thread's lastError lives in a fiber-local slot, and the slot's callback
+    // frees it when the thread exits. A trivially destructible thread_local
+    // is safe there.
+    void WINAPI freeLastError(void* held) noexcept
+    {
+        delete static_cast<Str*>(held);
+    }
+
+    // The calling thread's lastError: null until the thread first keeps one,
+    // unless `make`. Without a slot (FlsAlloc or FlsSetValue failed) the string
+    // is kept through a thread_local pointer and never freed.
+    Str* lastErrorOf(bool make)
+    {
+        static const DWORD slot = FlsAlloc(freeLastError);
+        thread_local Str* unfreed = nullptr;
+        Str* held = unfreed;
+        if(held == nullptr && slot != FLS_OUT_OF_INDEXES)
+        {
+            held = static_cast<Str*>(FlsGetValue(slot));
+        }
+        if(held == nullptr && make)
+        {
+            held = new Str();
+            if(slot == FLS_OUT_OF_INDEXES || !FlsSetValue(slot, held))
+            {
+                unfreed = held;
+            }
+        }
+        return held;
+    }
+#else
     thread_local Str lastError_;
+
+    Str* lastErrorOf(bool)
+    {
+        return &lastError_;
+    }
+#endif
+
+    // The message is built before the store, so GetLastError and errno are
+    // read before anything here can change them.
+    void keepError(Str message)
+    {
+        *lastErrorOf(true) = std::move(message);
+    }
 
     // Every public call that can fail starts here, so after a call that did
     // not fail lastError() is "": a quiet socket (none, "") and a failed one
     // (none, "recvfrom: ...") stay apart.
     void begin() noexcept
     {
-        lastError_.clear();
+        if(Str* held = lastErrorOf(false))
+        {
+            held->clear();
+        }
     }
 
     // errno, as text: "<what>: <strerror> (errno N)".
     void failErrno(const char* what)
     {
         const int e = errno;
-        lastError_ = cat(what, ": ", std::strerror(e), " (errno ", text(e), ")");
+        keepError(cat(what, ": ", std::strerror(e), " (errno ", text(e), ")"));
     }
 
     void failWith(const char* what, const char* why)
     {
-        lastError_ = cat(what, ": ", why);
+        keepError(cat(what, ": ", why));
     }
 
 #if defined(_WIN32)
     void failWsa(const char* what)
     {
-        lastError_ = cat(what, ": Winsock error ", text(WSAGetLastError()));
+        keepError(cat(what, ": Winsock error ", text(WSAGetLastError())));
     }
 
     void failWin(const char* what)
     {
-        lastError_ = cat(what, ": Win32 error ", text(static_cast<std::uint32_t>(GetLastError())));
+        keepError(cat(what, ": Win32 error ", text(static_cast<std::uint32_t>(GetLastError()))));
     }
 
     // WSAStartup once, WSACleanup at exit.
@@ -336,7 +390,8 @@ namespace kira::os
 
   Str lastError()
   {
-      return lastError_;
+      const Str* held = lastErrorOf(false);
+      return held != nullptr ? *held : Str();
   }
 
   // ---- UdpSocket -------------------------------------------------------------------

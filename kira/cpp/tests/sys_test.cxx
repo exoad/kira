@@ -522,9 +522,13 @@ namespace
       const Str dir = base + "/sys_test_files";
       const Str deep = dir + "/a/b";
       const Str path = deep + "/data.bin";
-      // Every build shares this directory: start from the same empty one.
-      (void)std::remove(path.c_str());
-      (void)std::remove((deep + "/shared.txt").c_str());
+      // Every build shares this directory: start from the same empty one. A
+      // run that died mid-write leaves its temporary, and the next run's "no
+      // temporary" checks must not count it.
+      for(const Str& name : kira::os::listDir(deep))
+      {
+          (void)std::remove((deep + "/" + name).c_str());
+      }
       t.check(kira::os::makeDirs(deep), "makeDirs creates a nested directory");
       t.check(kira::os::exists(deep), "and it exists");
       t.check(kira::os::makeDirs(deep), "makeDirs on an existing directory is true");
@@ -735,6 +739,26 @@ namespace
       Str got;
       fresh->with([&got](Str& v) { got = v; });
       t.checkStr(got, "", "lastError is per thread: a new thread starts with none");
+      {
+          // Threads that exit at once, each holding a lastError: MinGW GCC's
+          // thread_local destructors corrupted the heap on exactly this, so a
+          // regression ends the run here with no summary line.
+          const kira::Rc<kira::sync::Atomic<std::int32_t>> kept = std::make_shared<kira::sync::Atomic<std::int32_t>>(0);
+          const auto failing = [kept]()
+          {
+              (void)kira::os::readFile("kira-sys-test-no-such-file");
+              if(!kira::os::lastError().empty())
+              {
+                  (void)kept->add(1);
+              }
+          };
+          for(int i = 0; i < 1000; ++i)
+          {
+              const kira::Rc<kira::sync::Thread> a = kira::sync::spawn("a", failing);
+              const kira::Rc<kira::sync::Thread> b = kira::sync::spawn("b", failing);
+          }
+          t.check(kept->load() == 2000, "2000 threads, two alive at a time, each exit holding a lastError");
+      }
   }
 
   int suite(int argc, char** argv)
