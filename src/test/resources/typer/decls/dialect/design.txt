@@ -1,0 +1,34 @@
+module fixture:design  profile=HOSTED ns=design imports=[]
+  global LIMIT: Size  pub const value=32:Size
+  alias Frame = Arr<UInt8, 32>  pub
+  alias Sized = Arr<UInt8, 32>  pub
+  global SPACE: Char  pub const value=' '
+  enum Kind: Int32  pub
+    entry KIND_OK = 0:Int32  #0
+    entry KIND_ERR = 1:Int32  #1
+  struct Reply  pub
+    field kind: Kind  pub default=Kind.KIND_OK #0
+    field line: Str  pub default="" #1
+    field code: Int32  pub require #2
+    fn isOk: () Bool  pub body
+    fn reset: () Void  pub mut body
+  trait Measured  pub
+    fn width: () Int32  pub virtual
+    flat [Measured.width]
+  struct Band : Measured  pub
+    field lo: Int32  pub default=0 #0
+    field hi: Int32  pub default=10 #1
+    fn width: () Int32  pub override body overrides=Measured.width
+  trait Behaviour  pub
+    fn id: () Str  pub virtual
+    fn mayDrive: () Bool  pub virtual body
+    fn step: (r: Reply) Reply  pub mut virtual
+    flat [Behaviour.id, Behaviour.mayDrive, Behaviour.step]
+  class Stop : Behaviour  pub initially finally
+    field reason: Str  pub require #0
+    fn id: () Str  pub override virtual body overrides=Behaviour.id
+    fn step: (r: Reply) Reply  pub mut override virtual body overrides=Behaviour.step
+  fn command: (verb: Str, args: Str = "", retries: Int32 = 3) Str  pub body
+  fn apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void  pub body
+  fn isSpace: (c: Char) Bool  pub body
+  fn frame: () Arr<UInt8, 32>  pub body
