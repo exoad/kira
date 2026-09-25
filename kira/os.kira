@@ -120,8 +120,9 @@ pub @_magic fx readText: (path: Str) Maybe<Str>;
 // it over `path`: a reader sees the old file or the new one, never a torn
 // one.
 pub @_magic fx writeFileAtomic: (path: Str, bytes: View<UInt8>) Bool;
-// The entries of a directory, without . and .., sorted by name. Empty for
-// a directory that cannot be read (see lastError).
+// The entries of a directory, without . and .., sorted by name. Empty, with
+// lastError set, for a directory that cannot be opened or whose listing
+// fails part-way: never a partial list passed off as the whole.
 pub @_magic fx listDir: (path: Str) List<Str>;
 pub @_magic fx exists: (path: Str) Bool;
 // Creates every missing directory on the path; true when it exists after.
@@ -152,9 +153,12 @@ pub @_magic class Process {
 
 // Starts argv[0] with the rest as its arguments, searching PATH; none when
 // it could not start (a missing program included, on both halves: see
-// lastError). The child inherits stdin and stderr and nothing else: no
-// socket, file or port of this process, so a child that outlives it holds
-// none of them.
+// lastError). The child gets stdin, stderr and its stdout pipe and nothing
+// else. On Windows those three are the child's whole handle list; on POSIX
+// every other descriptor is closed in the child before it starts, whoever
+// opened it (kira:os, C++ code, an FFI call, with close-on-exec or
+// without). A child that outlives this process holds none of its sockets,
+// files or ports.
 pub @_magic fx spawnProcess: (argv: List<Str>) Maybe<Process>;
 
 // --- signals, environment, exit --------------------------------------------
@@ -165,9 +169,14 @@ pub SIGNAL_TERM: Int32 = 15
 
 // Installs a handler for `sig` that only sets `flag` to true, so it is
 // async-signal-safe and a loop can poll the flag. On POSIX the handler
-// does not restart interrupted calls, so a blocked read or wait returns
-// (an error, with lastError naming the interruption) and the loop sees the
-// flag. False when the signal cannot be caught.
+// does not restart interrupted calls: a blocked Poller.wait, TcpStream.read,
+// Serial.read or Process.readStdout returns (-1 or an empty list, with
+// lastError naming the interruption) and the loop sees the flag.
+// Process.wait, Mutex.waitUntil and BlockingQueue.pop do not return early:
+// they resume until the child ends, the predicate holds or the timeout
+// runs out, so a loop that must see the flag polls with a timeout. Safe to
+// call from several threads at once. False when the signal cannot be
+// caught.
 pub @_magic fx onSignal: (sig: Int32, flag: Atomic<Bool>) Bool;
 
 pub @_magic fx env: (name: Str) Maybe<Str>;

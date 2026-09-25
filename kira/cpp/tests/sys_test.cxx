@@ -27,11 +27,14 @@
 #include <cstring>
 #include <memory>
 
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 #if defined(__linux__)
 #include <poll.h>
 #include <pthread.h>
 #include <pty.h>
-#include <unistd.h>
 #endif
 
 namespace
@@ -101,6 +104,15 @@ namespace
           kira::time::sleepMs(10000);
           return 0;
       }
+#if !defined(_WIN32)
+      if(argc >= 4 && std::strcmp(argv[2], "fd") == 0)
+      {
+          // Whether descriptor N reached this child: "open" or "closed".
+          const int fd = std::atoi(argv[3]);
+          std::printf("%s\n", fcntl(fd, F_GETFD) >= 0 ? "open" : "closed");
+          return 0;
+      }
+#endif
       std::printf("child says hi\n");
       return 0;
   }
@@ -640,6 +652,41 @@ namespace
               (void)p->wait();
           }
       }
+#if !defined(_WIN32)
+      {
+          // Close-on-exec covers only what kira:os opened. A file that C++
+          // code or an FFI call opened without O_CLOEXEC (the rplidar SDK's
+          // port, a V4L2 device, a plain open() here) has no such flag, so
+          // the child must close it itself before the exec. The child
+          // reports whether the parent's descriptor number is open in it,
+          // and the parent keeps its own copy: the close happens in the
+          // child alone.
+          const int plain = ::open(self, O_RDONLY);
+          t.check(plain >= 0, "the parent opens a file without close-on-exec");
+          const kira::Rc<Process> p = kira::os::spawnProcess(kira::List<Str>{self, "child", "fd", kira::text(plain)});
+          Str out;
+          if(p != nullptr)
+          {
+              // The spawn's own read end is close-on-exec from creation
+              // (pipe2), so a sibling child cannot hold this pipe open.
+              const int flags = fcntl(static_cast<int>(p->stdoutHandle()), F_GETFD);
+              t.check(flags >= 0 && (flags & FD_CLOEXEC) != 0, "the stdout pipe's read end is close-on-exec");
+              for(;;)
+              {
+                  const std::int64_t n = p->readStdout(into);
+                  if(n <= 0)
+                  {
+                      break;
+                  }
+                  out += textOf(buf, n);
+              }
+              (void)p->wait();
+          }
+          t.checkStr(out, "closed\n", "a descriptor the parent opened without close-on-exec is closed in the child");
+          t.check(fcntl(plain, F_GETFD) >= 0, "and still open in the parent");
+          ::close(plain);
+      }
+#endif
       {
           const kira::Rc<Process> p = kira::os::spawnProcess(kira::List<Str>{"kira-no-such-program-xyz"});
           // Both halves learn of the missing program before returning: Win32

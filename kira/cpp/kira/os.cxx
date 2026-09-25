@@ -42,6 +42,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -49,6 +50,9 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
 #endif
 
 #include "kira/os.hxx"
@@ -61,6 +65,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 
 namespace kira::os
 {
@@ -148,18 +153,39 @@ namespace kira::os
 
     // A socket no child inherits: spawnProcess also lists the handles a child
     // gets, so this is the second guard, for a child started some other way.
+    // The flag goes on at creation (WSA_FLAG_NO_HANDLE_INHERIT, below), so a
+    // CreateProcess(bInheritHandles=TRUE) elsewhere in the process between
+    // the two calls cannot see the socket without it; this call is the
+    // fallback for a Winsock too old for the flag.
     void noInherit(Sock s) noexcept
     {
         (void)SetHandleInformation(reinterpret_cast<HANDLE>(s), HANDLE_FLAG_INHERIT, 0);
     }
 
+#if !defined(WSA_FLAG_NO_HANDLE_INHERIT)
+#define WSA_FLAG_NO_HANDLE_INHERIT 0x80
+#endif
+
     [[nodiscard]] Sock rawSocket(int type) noexcept
     {
+        // socket() is WSASocketW with WSA_FLAG_OVERLAPPED; NO_HANDLE_INHERIT
+        // makes the handle non-inheritable from the start. A Winsock before
+        // Windows 7 SP1 refuses the flag (WSAEINVAL): then socket(), and
+        // noInherit's SetHandleInformation afterwards.
+        const Sock s = WSASocketW(AF_INET, type, 0, nullptr, 0, WSA_FLAG_OVERLAPPED | WSA_FLAG_NO_HANDLE_INHERIT);
+        if(s != INVALID_SOCKET || WSAGetLastError() != WSAEINVAL)
+        {
+            return s;
+        }
         return ::socket(AF_INET, type, 0);
     }
 
     [[nodiscard]] Sock rawAccept(Sock listener) noexcept
     {
+        // Measured (Windows 11, MinGW and clang): an accept from a listener
+        // made with NO_HANDLE_INHERIT is non-inheritable itself; from a plain
+        // listener it is inheritable. The caller's noInherit covers the
+        // fallback listener.
         return ::accept(listener, nullptr, nullptr);
     }
 #else
@@ -1062,11 +1088,25 @@ namespace kira::os
 
   namespace
   {
+    // fopen in binary, with the file marked not-inherited at creation: "e"
+    // (O_CLOEXEC; glibc, musl, the BSDs) or "N" (_O_NOINHERIT; UCRT and
+    // msvcrt). A child forked or created on another thread while this call
+    // holds the file then never sees it. `mode` is "r" or "w".
+    [[nodiscard]] std::FILE* openBinary(const Str& path, const char* mode)
+    {
+#if defined(_WIN32)
+        const Str full = cat(mode, "bN");
+#else
+        const Str full = cat(mode, "be");
+#endif
+        return std::fopen(path.c_str(), full.c_str());
+    }
+
     // Reads the whole file through stdio, in binary, into `out` by chunks.
     template<class Container>
     [[nodiscard]] bool slurp(const Str& path, Container& out)
     {
-        std::FILE* f = std::fopen(path.c_str(), "rb");
+        std::FILE* f = openBinary(path, "r");
         if(f == nullptr)
         {
             failErrno("open");
@@ -1179,7 +1219,7 @@ namespace kira::os
       static std::atomic<std::uint64_t> writers{0};
       const std::uint64_t nth = writers.fetch_add(1, std::memory_order_relaxed);
       const Str tmp = cat(path, ".", text(processId()), ".", text(nth), ".tmp");
-      std::FILE* f = std::fopen(tmp.c_str(), "wb");
+      std::FILE* f = openBinary(tmp, "w");
       if(f == nullptr)
       {
           failErrno("open temporary");
@@ -1277,6 +1317,13 @@ namespace kira::os
               names.push_back(name);
           }
       } while(FindNextFileA(h, &found));
+      if(GetLastError() != ERROR_NO_MORE_FILES)
+      {
+          // The same rule as readdir below: a listing that failed part-way
+          // is reported, not returned as if whole.
+          failWin("FindNextFile");
+          names.clear();
+      }
       FindClose(h);
 #else
       DIR* d = ::opendir(path.c_str());
@@ -1287,10 +1334,18 @@ namespace kira::os
       }
       for(;;)
       {
+          // readdir returns null at the end and on an error alike; only
+          // errno tells them apart. A read that fails part-way reports the
+          // failure and returns nothing, never a partial list as if whole.
           errno = 0;
           const dirent* e = ::readdir(d);
           if(e == nullptr)
           {
+              if(errno != 0)
+              {
+                  failErrno("readdir");
+                  names.clear();
+              }
               break;
           }
           const Str name = e->d_name;
@@ -1665,6 +1720,67 @@ namespace kira::os
             return r < 0 ? -1 : status;
         }
     }
+
+    // A pipe whose two ends are close-on-exec from the moment they exist:
+    // pipe2(O_CLOEXEC) where the libc has it. pipe() and then fcntl leaves
+    // a window in which a fork on another thread hands its child both ends
+    // past its exec; a long-lived sibling then holds this pipe open and the
+    // reader never sees EOF. The same rule as the sockets' SOCK_CLOEXEC.
+    [[nodiscard]] bool pipeCloexec(int fds[2]) noexcept
+    {
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+        return ::pipe2(fds, O_CLOEXEC) == 0;
+#else
+        if(::pipe(fds) != 0)
+        {
+            return false;
+        }
+        (void)fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+        (void)fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+        return true;
+#endif
+    }
+
+    // The number of descriptors this process may hold: the bound for the
+    // child's close loop below. Taken before the fork; getrlimit and sysconf
+    // are not on the async-signal-safe list.
+    [[nodiscard]] long descriptorLimit() noexcept
+    {
+        struct rlimit rl;
+        if(::getrlimit(RLIMIT_NOFILE, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY && rl.rlim_cur <= static_cast<rlim_t>(LONG_MAX))
+        {
+            return static_cast<long>(rl.rlim_cur);
+        }
+        const long open = ::sysconf(_SC_OPEN_MAX);
+        return open > 0 ? open : 65536;
+    }
+
+    // In the child, between fork and exec: closes every descriptor from 3
+    // up except `keep` (the status pipe's write end, close-on-exec itself).
+    // Only async-signal-safe calls. close_range(2) does it in one call on
+    // Linux 5.9 and later; an older kernel (ENOSYS) gets a close() per
+    // descriptor up to the limit, and close on a descriptor that is not
+    // open is a harmless EBADF.
+    void closeFrom3Except(int keep, long limit) noexcept
+    {
+#if defined(__linux__) && defined(SYS_close_range)
+        const unsigned int last = ~0u;
+        const unsigned int k = static_cast<unsigned int>(keep);
+        const long a = k > 3u ? ::syscall(SYS_close_range, 3u, k - 1u, 0u) : 0;
+        const long b = ::syscall(SYS_close_range, k + 1u, last, 0u);
+        if(a == 0 && b == 0)
+        {
+            return;
+        }
+#endif
+        for(long fd = 3; fd < limit; ++fd)
+        {
+            if(fd != keep)
+            {
+                (void)::close(static_cast<int>(fd));
+            }
+        }
+    }
   }
 
   Process::~Process()
@@ -1763,29 +1879,27 @@ namespace kira::os
           failWith("spawnProcess", "empty argv");
           return nullptr;
       }
+      // Only the child's stdout gets the write end (dup2 clears the flag on
+      // the copy); a later child must not inherit this read end, or the
+      // first one's EOF never comes.
       int fds[2] = {-1, -1};
-      if(::pipe(fds) != 0)
+      if(!pipeCloexec(fds))
       {
           failErrno("pipe");
           return nullptr;
       }
-      // Only the child's stdout gets the write end; a later child must not
-      // inherit this read end, or the first one's EOF never comes.
-      (void)fcntl(fds[0], F_SETFD, FD_CLOEXEC);
-      (void)fcntl(fds[1], F_SETFD, FD_CLOEXEC);
       // The status pipe: close-on-exec, so a successful exec closes it and
       // the parent reads nothing; a failed exec writes errno into it first.
       // That is how "none when it could not start" holds on this half too.
       int status[2] = {-1, -1};
-      if(::pipe(status) != 0)
+      if(!pipeCloexec(status))
       {
           failErrno("pipe");
           ::close(fds[0]);
           ::close(fds[1]);
           return nullptr;
       }
-      (void)fcntl(status[0], F_SETFD, FD_CLOEXEC);
-      (void)fcntl(status[1], F_SETFD, FD_CLOEXEC);
+      const long limit = descriptorLimit();
 
       List<Str> copies(argv.begin(), argv.end());
       List<char*> args;
@@ -1811,12 +1925,41 @@ namespace kira::os
       {
           // Between fork and exec only async-signal-safe calls: a lock another
           // thread held at the fork is held forever in this child.
-          if(::dup2(fds[1], STDOUT_FILENO) >= 0)
+          //
+          // The child gets stdin, stderr and its stdout pipe and nothing
+          // else. Close-on-exec covers what kira:os opened, and nothing
+          // else: a file or device that C++ code or an FFI call opened
+          // without O_CLOEXEC would reach the child and outlive this
+          // process with it. So every descriptor from 3 up is closed here,
+          // before the exec, except the status pipe's write end, which the
+          // exec itself closes. That end may sit below 3 in a process that
+          // closed a standard stream; it is moved up first so the loop
+          // spares it and the dup2 below cannot land on it.
+          int tell = status[1];
+          if(tell < 3)
           {
+              tell = fcntl(tell, F_DUPFD_CLOEXEC, 3);
+          }
+          bool ready = tell >= 3;
+          if(ready)
+          {
+              if(fds[1] == STDOUT_FILENO)
+              {
+                  // Already in place: only its close-on-exec flag must go.
+                  ready = fcntl(STDOUT_FILENO, F_SETFD, 0) == 0;
+              }
+              else
+              {
+                  ready = ::dup2(fds[1], STDOUT_FILENO) >= 0;
+              }
+          }
+          if(ready)
+          {
+              closeFrom3Except(tell, limit);
               ::execvp(args[0], args.data());
           }
           const int failed = errno;
-          (void)!::write(status[1], &failed, sizeof failed);
+          (void)!::write(tell, &failed, sizeof failed);
           ::_exit(127);
       }
       ::close(fds[1]);
@@ -1861,6 +2004,10 @@ namespace kira::os
     // freed: a handler on another thread may have loaded its pointer a
     // moment before the swap and still be storing into it.
     std::atomic<sync::Atomic<bool>*> flags_[SIGNAL_SLOTS];
+    // keep_ and retired_ change only under installLock_: two threads
+    // installing handlers at once (a setup that runs in parallel) would
+    // otherwise race on the Rc and the List. The handler never takes it.
+    std::mutex installLock_;
     Rc<sync::Atomic<bool>> keep_[SIGNAL_SLOTS];
     List<Rc<sync::Atomic<bool>>> retired_;
 
@@ -1889,6 +2036,9 @@ namespace kira::os
           failWith("onSignal", "no such signal, or no flag");
           return false;
       }
+      // The lock covers the sigaction too, so two installs for one signal
+      // publish the flag and the handler in the same order.
+      const std::lock_guard<std::mutex> held(installLock_);
       if(keep_[sig] != flag)
       {
           // The new pointer is published before the old Rc moves out of the
