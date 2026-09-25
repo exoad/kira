@@ -100,6 +100,11 @@ class Builtins(declared: Collection<ClassSymbol>) {
             put("Weak", listOf("T"))
             put("Ref", listOf("T"))
             put("Unsafe", listOf("T"))
+            // Named by the design outside its 3.1 list, and declared by no package yet:
+            // `StrBuf<N>`, the freestanding text buffer (design 6 and 10), takes one constant
+            // argument the way Arr's size does; `CStr` is the FFI `const char*` (design 7.2).
+            put("StrBuf", emptyList())
+            put("CStr", emptyList())
         }
 
         /** The names of the nominal builtins, in design order. */
@@ -110,6 +115,9 @@ class Builtins(declared: Collection<ClassSymbol>) {
 
         /** `Fx<TupleN<...>, R>` resolves to a [KType.Fn]. */
         const val FX = "Fx"
+
+        /** `StrBuf<N>`: exactly one constant argument, its capacity. */
+        const val STRBUF = "StrBuf"
 
         fun prim(name: String): Prim? = Prim.byKiraName(name)
 

@@ -189,9 +189,18 @@ internal class DeclarationCollector(
             )
         }
         val markers = markersOf(source, decl)
-        val ownerIsMagic = (owner as? ClassSymbol)?.kind == ClassKind.MAGIC
-        val foreign = foreignOf(markers, name)
-            ?: if (ownerIsMagic) Foreign.Magic("${owner.name}.$name") else null
+        // A member of a magic class is magic (`Str.length`); a member of an extern class or
+        // struct is extern under its own name (`Car.arm` is the C++ member `arm`).
+        val ownerForeign = when (owner) {
+            is ClassSymbol -> if (owner.kind == ClassKind.MAGIC) Foreign.Magic("") else owner.foreign
+            is TraitSymbol -> owner.foreign
+            else -> null
+        }
+        val foreign = foreignOf(markers, name) ?: when (ownerForeign) {
+            is Foreign.Magic -> Foreign.Magic("${owner!!.name}.$name")
+            is Foreign.Extern -> Foreign.Extern(emptyMap())
+            null -> null
+        }
         val fn = FnSymbol(
             name, module, decl, typeParams, params,
             owner = owner,

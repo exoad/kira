@@ -245,6 +245,27 @@ class TyperPhaseTest {
     }
 
     @Test
+    fun membersOfMagicAndExternClassesInheritTheirForeignness() {
+        val p = snippet(
+            """
+            pub @_extern class Car {
+                pub mut fx arm: () Bool;
+            }
+            pub class Plain {
+                pub fx run: () Void { }
+            }
+            """
+        )
+        expectNoErrors(p)
+        val car = p.member("test:main", "Car") as ClassSymbol
+        assertTrue(car.foreign is Foreign.Extern)
+        assertEquals(Foreign.Extern(emptyMap()), car.method("arm")!!.foreign)
+        assertNull((p.member("test:main", "Plain") as ClassSymbol).method("run")!!.foreign)
+        val str = p.builtins.classOf(KType.Str)!!
+        assertEquals(Foreign.Magic("Str.length"), str.method("length")!!.foreign)
+    }
+
+    @Test
     fun constMarkerSetsIsConst() {
         val unit = CompilationUnit()
         val crc = fn("crc", listOf(param("x", ty("UInt32"))), ty("UInt32"), listOf(ReturnStatement(Identifier("x"))))
@@ -386,12 +407,12 @@ class TyperPhaseTest {
         assertEquals(ClassKind.MAGIC, (view.sym as ClassSymbol).kind)
 
         val declared = TyperTestSupport.type(
-            module("kira:extra", "pub @_magic class View<T> {\n    pub fx size: () Size;\n}"),
+            module("kira:aaa", "pub @_magic class View<T> {\n    pub fx size: () Size;\n}"),
             module("test:main", "v: View<UInt8> = 1"),
         )
         expectNoErrors(declared)
         val sym = ((declared.member("test:main", "v") as GlobalSymbol).type as KType.Nominal).sym as ClassSymbol
-        assertEquals("kira:extra", sym.module.uri, "the stdlib's declaration is the builtin")
+        assertEquals("kira:aaa", sym.module.uri, "the first stdlib module (by URI) that declares it is the builtin; kira:aaa sorts first")
         assertFalse(declared.builtins.isSynthesized(sym))
         assertEquals(KType.SIZE, sym.method("size")!!.ret)
     }

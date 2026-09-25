@@ -230,6 +230,7 @@ class TypeResolver(private val program: TypedProgram) {
         return when (name) {
             Builtins.ARR -> arr(cls, t, scope)
             Builtins.FX -> fx(t, scope)
+            Builtins.STRBUF -> strBuf(cls, t, scope)
             else -> {
                 val tuple = Builtins.tupleArity(name)
                 nominal(cls, tuple ?: cls.typeParams.size, t, scope)
@@ -262,6 +263,25 @@ class TypeResolver(private val program: TypedProgram) {
                 program.report("types.type.const-arg", "An Arr cannot have a negative size (${size.n}).", t)
                 return KType.Error
             }
+        }
+        return KType.Nominal(cls, args)
+    }
+
+    /** `StrBuf<N>`: one constant, the capacity. */
+    private fun strBuf(cls: ClassSymbol, t: Type, scope: TypeScope): KType {
+        val args = t.children.map { resolveArg(it, scope) }
+        val size = args.singleOrNull()
+        if (size !is TypeArg.Const) {
+            program.report(
+                "types.type.const-arg",
+                "StrBuf takes one argument, its capacity: an integer literal or constant, like StrBuf<64>.",
+                t,
+            )
+            return KType.Error
+        }
+        if (size.n <= 0) {
+            program.report("types.type.const-arg", "A StrBuf needs a positive capacity, not ${size.n}.", t)
+            return KType.Error
         }
         return KType.Nominal(cls, args)
     }

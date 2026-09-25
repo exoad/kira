@@ -96,7 +96,8 @@ sealed interface Foreign {
     /**
      * `@_extern`: its parameters verbatim, for W2.6 to interpret. Named parameters keep their
      * names (`c`, `cpp`, `header`); the first positional one is `symbol`, later ones
-     * `symbol#1`, `symbol#2`, ...
+     * `symbol#1`, `symbol#2`, ... A member of an extern class or struct that carries no
+     * marker of its own is `Extern(emptyMap())`: the foreign member of the same name.
      */
     data class Extern(val params: Map<String, String>) : Foreign
 }

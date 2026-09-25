@@ -265,6 +265,22 @@ class TyperDeclDiagnosticsTest {
     }
 
     @Test
+    fun aConstantThatDependsOnItself() {
+        val p = snippet("A: Int32 = B + 1\nB: Int32 = A + 1")
+        expectDiagnostic(p, "types.const.cycle")
+        assertNull((p.workspaceModules.single().members["A"] as GlobalSymbol).constValue)
+    }
+
+    @Test
+    fun strBufTakesOnePositiveConstant() {
+        val p = snippet("CAP: Size = 64\nZERO: Size = 0\na: StrBuf<CAP> = 1\nb: StrBuf<Int32> = 1\nc: StrBuf<ZERO> = 1\nd: CStr = 1")
+        assertEquals(2, count(p, "types.type.const-arg"), TyperTestSupport.render(p))
+        val m = p.workspaceModules.single()
+        assertEquals("StrBuf<64>", (m.members["a"] as GlobalSymbol).type.toString())
+        assertEquals("CStr", (m.members["d"] as GlobalSymbol).type.toString())
+    }
+
+    @Test
     fun aLiteralOutOfRangeDoesNotFoldAndIsLeftToPhaseC() {
         val p = snippet("X: UInt8 = 256")
         val x = p.workspaceModules.single().members["X"] as GlobalSymbol
