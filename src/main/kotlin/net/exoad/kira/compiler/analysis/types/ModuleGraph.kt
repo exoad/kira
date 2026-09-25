@@ -46,8 +46,9 @@ class ModuleGraph(private val program: TypedProgram) {
                 }
             }
             m.profile = if (options.freestanding.any { ModuleGlob.matches(it, m.uri) }) Profile.FREESTANDING else Profile.HOSTED
-            m.isHeaderOnly = options.headerOnly.any { ModuleGlob.matches(it, m.uri) }
-            m.cppNamespace = ModuleGlob.lookup(options.namespaces, m.uri) ?: ModuleSymbol.defaultNamespace(m.uri)
+            // As CppOptions.isHeaderOnly: a kira:* stdlib module is always header-only.
+            m.isHeaderOnly = m.isStdlib || options.headerOnly.any { ModuleGlob.matches(it, m.uri) }
+            m.cppNamespace = ModuleSymbol.namespaceOf(options.namespaces, m.uri)
         }
     }
 

@@ -72,21 +72,7 @@ class CppModuleLayout(
         return CppModuleFiles(header, source)
     }
 
-    fun namespaceFor(uri: String): String {
-        options.namespaces[uri]?.let { return it }
-        val globHit = options.namespaces.entries
-            .filter { (pattern, _) -> isGlob(pattern) && SourceGlob.matchesUri(pattern, uri) }
-            .sortedWith(compareByDescending<Map.Entry<String, String>> { literalLength(it.key) }
-                .thenByDescending { it.key.length })
-            .firstOrNull()
-        if (globHit != null) {
-            return globHit.value
-        }
-        if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
-            return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeNamespaceSegment(it) }
-        }
-        return CppNames.escapeNamespaceSegment(uriSegments(uri).last())
-    }
+    fun namespaceFor(uri: String): String = namespaceOf(options.namespaces, uri)
 
     /**
      * Why [namespace] cannot head a module's declarations, or null: a segment
@@ -239,12 +225,17 @@ class CppModuleLayout(
 
         fun uriSegments(uri: String): List<String> = splitUri(uri).second
 
-        private fun isGlob(pattern: String): Boolean {
-            return pattern.any { it == '*' || it == '?' || it == '{' }
-        }
-
-        private fun literalLength(pattern: String): Int {
-            return pattern.count { it != '*' && it != '?' && it != '{' && it != '}' && it != ',' }
+        /**
+         * The namespace of module [uri] under the manifest's [namespaces] overrides (see the
+         * class comment). The typer's ModuleSymbol.cppNamespace is this same function, so the
+         * namespace the typer records and the one the emitter writes cannot disagree.
+         */
+        fun namespaceOf(namespaces: Map<String, String>, uri: String): String {
+            SourceGlob.lookupUri(namespaces, uri)?.let { return it }
+            if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
+                return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeNamespaceSegment(it) }
+            }
+            return CppNames.escapeNamespaceSegment(uriSegments(uri).last())
         }
     }
 }

@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.kim.SourceGlob
 
 /**
  * - [OFF]: the typer does not run (C and JS until the W2 gate): an empty program.
@@ -10,14 +11,16 @@ import net.exoad.kira.compiler.CompilationUnit
 enum class TyperMode { OFF, LENIENT, STRICT }
 
 /**
- * Per-project inputs. The globs match module URIs (`firmware:lib.**`): `*` matches within one
- * dotted segment, `**` matches any run of segments, `?` one character, `{a,b}` either
- * alternative. A trailing `.**` also matches the prefix module itself.
+ * Per-project inputs. The globs match module URIs (`firmware:lib.**`) by the manifest's own
+ * rules ([net.exoad.kira.kim.SourceGlob]): `*` matches within one dotted segment, a `**`
+ * segment matches zero or more segments, `?` one character, `{a,b}` either alternative. A
+ * trailing `.**` therefore also matches the prefix module itself.
  *
  * @property freestanding `build.cpp.freestanding`: modules typed against the Pico subset.
  * @property headerOnly `build.cpp.headerOnly`: modules that emit an inline-only header.
- * @property namespaces `build.cpp.namespaces`: URI (or glob) to C++ namespace. An exact URI
- *   wins over a glob; among globs the first listed wins.
+ * @property namespaces `build.cpp.namespaces`: URI (or glob) to C++ namespace, resolved as
+ *   CppModuleLayout.namespaceOf resolves it: an exact URI first, then the glob with the most
+ *   literal text, then the longer glob.
  */
 data class TyperOptions(
     val freestanding: List<String> = emptyList(),
@@ -104,52 +107,14 @@ object KiraTyper {
     }
 }
 
-/** Glob matching over module URIs, for [TyperOptions]. */
+/**
+ * Glob matching over module URIs, for [TyperOptions]. It is the manifest's matcher
+ * ([SourceGlob], which CppOptions and CppModuleLayout use), so a module the typer marks
+ * header-only or freestanding is the one the C++ backend lays out that way.
+ */
 object ModuleGlob {
-    fun matches(glob: String, uri: String): Boolean {
-        if (glob == uri) {
-            return true
-        }
-        if (glob.endsWith(".**") && uri == glob.removeSuffix(".**")) {
-            return true
-        }
-        return toRegex(glob).matches(uri)
-    }
+    fun matches(glob: String, uri: String): Boolean = SourceGlob.matchesUri(glob, uri)
 
-    /** The first value of [map] whose key matches [uri]: an exact key first, then globs in order. */
-    fun <V> lookup(map: Map<String, V>, uri: String): V? {
-        map[uri]?.let { return it }
-        return map.entries.firstOrNull { (glob, _) -> matches(glob, uri) }?.value
-    }
-
-    private val cache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
-
-    private fun toRegex(glob: String): Regex = cache.getOrPut(glob) {
-        val sb = StringBuilder()
-        var i = 0
-        var inAlternation = false
-        while (i < glob.length) {
-            val c = glob[i]
-            when {
-                c == '*' && i + 1 < glob.length && glob[i + 1] == '*' -> {
-                    sb.append(".*")
-                    i++
-                }
-                c == '*' -> sb.append("[^.:]*")
-                c == '?' -> sb.append("[^.:]")
-                c == '{' -> {
-                    sb.append("(?:")
-                    inAlternation = true
-                }
-                c == '}' && inAlternation -> {
-                    sb.append(")")
-                    inAlternation = false
-                }
-                c == ',' && inAlternation -> sb.append("|")
-                else -> sb.append(Regex.escape(c.toString()))
-            }
-            i++
-        }
-        Regex(sb.toString())
-    }
+    /** The value of the key in [map] that names [uri]: an exact key, then the most specific glob ([SourceGlob.lookupUri]). */
+    fun <V> lookup(map: Map<String, V>, uri: String): V? = SourceGlob.lookupUri(map, uri)
 }

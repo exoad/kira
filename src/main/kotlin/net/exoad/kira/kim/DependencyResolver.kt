@@ -94,6 +94,30 @@ object SourceGlob {
         return sb.toString()
     }
 
+    /**
+     * The value of the key in [map] that names [uri]: an exact key first, then the
+     * matching glob with the most literal text, then the longer glob. Key order
+     * never matters. `build.cpp.namespaces` resolves through this, in the layout
+     * and in the typer alike.
+     */
+    fun <V> lookupUri(map: Map<String, V>, uri: String): V? {
+        map[uri]?.let { return it }
+        return map.entries
+            .filter { (pattern, _) -> isGlob(pattern) && matchesUri(pattern, uri) }
+            .sortedWith(compareByDescending<Map.Entry<String, V>> { literalLength(it.key) }
+                .thenByDescending { it.key.length })
+            .firstOrNull()
+            ?.value
+    }
+
+    fun isGlob(pattern: String): Boolean {
+        return pattern.any { it == '*' || it == '?' || it == '{' }
+    }
+
+    private fun literalLength(pattern: String): Int {
+        return pattern.count { it != '*' && it != '?' && it != '{' && it != '}' && it != ',' }
+    }
+
     /** A module URI glob against a whole URI. */
     fun matchesUri(pattern: String, uri: String): Boolean {
         if (pattern == uri) {

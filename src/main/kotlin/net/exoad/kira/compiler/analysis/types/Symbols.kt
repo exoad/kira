@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.analysis.types
 
+import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleLayout
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
@@ -117,7 +118,7 @@ class ModuleSymbol(
     override val module: ModuleSymbol get() = this
     override val qualifiedName: String get() = uri
 
-    /** A `build.cpp.headerOnly` module: an inline-only header and no source file. */
+    /** A `build.cpp.headerOnly` module, or any `kira:*` one: an inline-only header and no source file. */
     var isHeaderOnly: Boolean = false
 
     /** Every declaration in source order, duplicates and operator overloads included. */
@@ -142,10 +143,20 @@ class ModuleSymbol(
     val pathSegments: List<String> get() = uri.substringAfter(':').split('.')
 
     companion object {
-        /** D14: the last URI segment; a `kira:x` stdlib module goes in `kira::x`. */
-        fun defaultNamespace(uri: String): String {
-            val last = uri.substringAfter(':').substringAfterLast('.')
-            return if (uri.startsWith("kira:")) "kira::$last" else last
+        /** D14 with no manifest overrides: [namespaceOf] with an empty map. */
+        fun defaultNamespace(uri: String): String = namespaceOf(emptyMap(), uri)
+
+        /**
+         * D14, exactly as the C++ layout writes it (CppModuleLayout.namespaceOf): an override
+         * from [namespaces] (exact URI, then the most specific glob), else the last URI segment
+         * escaped like any C++ name (`new` gives `new_`), and a `kira:a.b` stdlib module goes in
+         * `kira::a::b`. A URI the layout cannot split (no package or no path) keeps its text
+         * after the last '.' here; the layout refuses that module itself.
+         */
+        fun namespaceOf(namespaces: Map<String, String>, uri: String): String = try {
+            CppModuleLayout.namespaceOf(namespaces, uri)
+        } catch (_: IllegalArgumentException) {
+            uri.substringAfter(':').substringAfterLast('.')
         }
     }
 }
