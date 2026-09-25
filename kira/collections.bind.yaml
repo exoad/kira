@@ -2,14 +2,40 @@
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
 # (the C backend lowers containers through tryEmitCollectionMethod). Keys are
-# `Type.method`; placeholders are `{self}`, `{0}`, `{1}` and `{T0}` (design
-# section 7.4). The C++ types are those of design section 5.1: Arr<T> and
-# List<T> are kira::List<T> (std::vector), Map/Set are kira::Map/kira::Set,
-# Stack/Queue are kira::Stack/kira::Queue, Deque is std::deque, View and
-# MutView are kira::View / kira::MutView.
+# `Type.method`; the placeholders and the `pure` / `constexpr` flags are
+# defined in core.bind.yaml (`{T0}` in a method is the class's first type
+# parameter, read from the receiver's type). The C++ types are those of
+# design section 5.1: Arr<T> and List<T> are kira::List<T> (std::vector),
+# Arr<T, N> is std::array, Map/Set are kira::Map/kira::Set, Stack/Queue are
+# kira::Stack/kira::Queue, Deque is std::deque, View and MutView are
+# kira::View / kira::MutView.
 #
 # `mut fx` methods carry no `pure`; the receiver they change is a mutable
 # place the typer already checked.
+#
+# `constexpr` on the View, MutView and Arr entries describes the targets on
+# the receivers that are literal types: kira::View, kira::MutView, and
+# std::array for Arr<T, N> (kira::at and kira::view on std::array are
+# constexpr in design section 6). Arr<T> is the same std::vector as List<T>,
+# which libstdc++ made constexpr only in GCC 12, above the gcc 11.4 floor; a
+# @_const body holding one fails ConstEligibilityPass's literal-type rule
+# before any flag is read, exactly as a List<T> does, which is why the List.*
+# entries carry no flag at all.
+#
+# Runtime names this manifest needs beyond design section 6 (for W1.3):
+#   kira::view(const std::vector<T>&) -> View<T>      (the std::array one exists)
+#   kira::contains(const C&, const T&) -> bool         (vector and array)
+#   kira::clone(const C&) -> List<T>                   (vector and array)
+#   kira::addAll(List<T>&, const List<T>&) -> void
+#   kira::removeAt(List<T>&, Size) -> T                (checked, D10)
+#   kira::popFront(std::deque<T>&), kira::popBack(std::deque<T>&) -> Maybe<T>
+#   kira::Map<K, V>: size, isEmpty, put, get -> Maybe<V>, remove -> Maybe<V>,
+#     containsKey, containsValue, keys -> List<K>, values -> List<V>,
+#     entries -> List<Tuple2<K, V>>, clear
+#   kira::Set<T>: size, isEmpty, add -> bool, remove -> bool, contains,
+#     toList -> List<T>, clear
+#   kira::Stack<T>: size, isEmpty, push, pop -> Maybe<T>, peek -> Maybe<T>, clear
+#   kira::Queue<T>: size, isEmpty, enqueue, dequeue -> Maybe<T>, peek -> Maybe<T>, clear
 
 # --- View<T> ---------------------------------------------------------------
 View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }

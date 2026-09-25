@@ -5,11 +5,40 @@
 # lowering Str and Num methods through its own Str_* / prelude helpers. The
 # C++ backend reads the `cpp` map -- see design section 7.4.
 #
-# Keys: methods as `Type.method`, free functions by name. Placeholders in
-# `expr`: `{self}` the receiver, `{0}`, `{1}`, ... the arguments in order, and
-# `{T0}` the first explicit type argument. `pure` marks an expression with no
-# side effects (the emitter may reorder or drop it); `constexpr` marks one
-# usable in a constant expression.
+# Keys: methods as `Type.method`, free functions by name. A method a magic
+# class takes from a trait without a body (Str.equals from Equatable<Str>) is
+# keyed on the class, because the call is magic there. A scalar reaches Num's
+# entries through its parent: Int32.abs is Num.abs, and the emitter walks the
+# parent chain when the receiver's own class has no entry.
+#
+# Placeholders in `expr`: `{self}` the receiver; `{0}`, `{1}`, ... the
+# arguments in order; `{T0}`, `{T1}`, ... the type arguments of the bound
+# declaration as the typer instantiated them at the call. For a generic free
+# function they are its own type parameters (`bitCast<Float32>(u)` gives
+# `{T0}` = float); for a method of a generic class they are the class's type
+# parameters, read from the receiver's type (`mv.view()` on a MutView<UInt8>
+# gives `{T0}` = std::uint8_t). A generic method of a generic class would
+# number the class's parameters first, then its own; no stdlib entry needs
+# that.
+#
+# `pure`: the call has no side effects and reads no state another impure call
+# could change, so EffectsPass (D33) need not spill it into a temporary to
+# keep left-to-right evaluation. A pure call may still panic (a checked index,
+# unwrap on none: D10); the flag never licenses dropping or reordering it.
+# `constexpr`: the target is declared constexpr, so the call is usable in a
+# constant expression whenever the receiver and arguments are literal types;
+# whether they are is ConstEligibilityPass's literal-type rule, not this flag.
+#
+# Runtime names this manifest needs beyond design section 6 (for W1.3):
+#   kira::str::find(const Str&, const Str&) -> std::optional<Size>
+#   kira::str::hashCode(const Str&) -> std::int64_t   (djb2 as Str_hashCode in
+#     kira/c/c_generator.c: h = h * 33 + byte over uint64, cast to int64)
+#   template<class T> constexpr T abs(T) noexcept      (type-preserving; unsigned
+#     is the identity, INT_MIN stays INT_MIN by wrapping, D8)
+#   template<class T> constexpr std::int64_t hashCode(T) noexcept   (integers by
+#     value, floats by the bits of the double, bool 0/1, Char by ord)
+Str.equals:    { cpp: { expr: "({self} == {0})", pure: true } }
+Str.hashCode:  { cpp: { expr: "kira::str::hashCode({self})", pure: true } }
 Str.length:    { cpp: { expr: "kira::str::length({self})", pure: true } }
 Str.size:      { cpp: { expr: "kira::str::length({self})", pure: true } }
 Str.isEmpty:   { cpp: { expr: "kira::str::isEmpty({self})", pure: true } }
@@ -29,9 +58,14 @@ Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true } }
 Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true } }
 Str.view:      { cpp: { expr: "kira::str::view({self})", pure: true } }
 
-# Num is the parent of every scalar; the receiver's own C++ type carries the
-# overload, so these are the same expression for Int8 through Float64.
-Num.abs:       { cpp: { expr: "std::abs({self})", includes: ["<cmath>", "<cstdlib>"], pure: true } }
+# Num is the parent of every scalar, so these entries serve Int8..Int64,
+# UInt8..UInt64, Size, Float32 and Float64; the receiver's own C++ type picks
+# the instantiation. `abs` is kira::abs, a template that returns its argument
+# type: std::abs is ambiguous for uint32_t, uint64_t and size_t, and returns
+# int for the 8- and 16-bit types (a narrowing under brace-init).
+Num.equals:    { cpp: { expr: "({self} == {0})", pure: true, constexpr: true } }
+Num.hashCode:  { cpp: { expr: "kira::hashCode({self})", pure: true, constexpr: true } }
+Num.abs:       { cpp: { expr: "kira::abs({self})", pure: true, constexpr: true } }
 Num.toInt32:   { cpp: { expr: "kira::as<std::int32_t>({self})", pure: true, constexpr: true } }
 Num.toInt64:   { cpp: { expr: "kira::as<std::int64_t>({self})", pure: true, constexpr: true } }
 Num.toFloat32: { cpp: { expr: "kira::as<float>({self})", pure: true, constexpr: true } }

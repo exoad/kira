@@ -2,7 +2,10 @@
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
 # (kira:bytes has no C lowering). The targets live in kira/core.hxx, so they
-# are constexpr and available in the freestanding profile.
+# are constexpr and available in the freestanding profile. The read*Le are
+# `pure` because they only read their view, yet each panics on a short view
+# (D10): the flag means "no spill needed", never "may be dropped" (see
+# core.bind.yaml).
 readU16Le: { cpp: { expr: "kira::readU16Le({0}, {1})", pure: true, constexpr: true } }
 readU32Le: { cpp: { expr: "kira::readU32Le({0}, {1})", pure: true, constexpr: true } }
 readU64Le: { cpp: { expr: "kira::readU64Le({0}, {1})", pure: true, constexpr: true } }

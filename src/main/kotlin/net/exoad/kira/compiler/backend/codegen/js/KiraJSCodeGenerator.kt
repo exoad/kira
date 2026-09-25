@@ -379,6 +379,12 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (declHasIntrinsic(decl, "_magic")) {
             return true
         }
+        // The name fallback below covers a stdlib declaration whose mark was
+        // missed. It must never apply to user code: a module's own `Ref` or
+        // `parseInt64` shadows the ambient `kira:*` name and must be emitted.
+        if (!isStdlibDecl(decl)) {
+            return false
+        }
         val name = when (decl) {
             is ClassDecl -> baseTypeNameOf(decl.name)
             is EnumDecl -> decl.name.value
@@ -393,6 +399,15 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             else -> null
         }
         return name != null && discoveredMagicTypes.contains(name)
+    }
+
+    /** True when [decl] is a top-level declaration of a `kira:*` stdlib source. */
+    private fun isStdlibDecl(decl: Decl): Boolean {
+        return compilationUnit.allSources().any { source ->
+            shouldSkipSource(source) && runCatching { source.ast.statements }.getOrNull()?.any { stmt ->
+                stmt === decl || (stmt is Statement && stmt.expr === decl)
+            } == true
+        }
     }
 
     private fun declHasIntrinsic(decl: Decl, intrinsicName: String): Boolean {

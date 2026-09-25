@@ -5,6 +5,12 @@
 # class (D32); the kira::isSome / unwrap / unwrapOr free functions overload on
 # both, which is why the bindings never touch the optional API directly.
 # Result<T, E> is kira::Result, Weak<C> is kira::Weak (std::weak_ptr).
+#
+# `constexpr` on the Maybe entries describes the std::optional overloads,
+# the receiver that is a literal type. The kira::Rc overloads for Maybe<C>
+# are not constexpr (design section 6), and a @_const body holding a class
+# reference fails ConstEligibilityPass's literal-type rule before any flag is
+# read. The flags' meaning is defined in core.bind.yaml.
 Maybe.isSome:   { cpp: { expr: "kira::isSome({self})", pure: true, constexpr: true } }
 Maybe.isNone:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true } }
 Maybe.isNull:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true } }

@@ -1801,6 +1801,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return true
         }
         // Also treat known magic type names as skippable even if marker missed
+        // -- but only for a declaration the stdlib itself made. A user module
+        // may declare its own `Ref` or `parseInt64` (module members shadow the
+        // ambient `kira:*` names), and that declaration must be emitted, not
+        // mistaken for the stdlib's signature of the same name.
+        if (!isStdlibDecl(decl)) {
+            return false
+        }
         val name = when (decl) {
             is ClassDecl -> baseTypeNameOf(decl.name)
             is EnumDecl -> decl.name.value
@@ -1815,6 +1822,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             else -> null
         }
         return name != null && discoveredMagicTypes.contains(name)
+    }
+
+    /** True when [decl] is a top-level declaration of a `kira:*` stdlib source. */
+    private fun isStdlibDecl(decl: Decl): Boolean {
+        return compilationUnit.allSources().any { source ->
+            shouldSkipSource(source) && runCatching { source.ast.statements }.getOrNull()?.any { stmt ->
+                stmt === decl || (stmt is Statement && stmt.expr === decl)
+            } == true
+        }
     }
 
     private fun declHasIntrinsic(decl: Decl, intrinsicName: String): Boolean {

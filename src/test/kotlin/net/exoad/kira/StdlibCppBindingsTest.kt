@@ -3,7 +3,10 @@ package net.exoad.kira
 import net.exoad.kira.compiler.backend.codegen.c.CMagicBindingTable
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import org.junit.jupiter.api.Test
 import org.yaml.snakeyaml.Yaml
 import java.io.File
@@ -64,6 +67,19 @@ class StdlibCppBindingsTest {
             missing,
             "@_magic callables without a cpp binding in kira/*.bind.yaml"
         )
+    }
+
+    /**
+     * A magic class's callable surface is not only its own body. `Str` and
+     * `Num` take `equals` from `Equatable<T>` and `hashCode` from `Hashable`
+     * without a body anywhere, so those calls are magic too, and the C
+     * backend already lowers `Str.equals` / `Str.hashCode` that way.
+     */
+    @Test
+    fun traitMethodsOfMagicClassesAreMagicCallables() {
+        val declared = magicCallableNames()
+        val inherited = listOf("Str.equals", "Str.hashCode", "Num.equals", "Num.hashCode")
+        assertEquals(emptyList(), inherited.filterNot { it in declared }, "trait methods missing from the magic surface")
     }
 
     @Test
@@ -189,12 +205,20 @@ class StdlibCppBindingsTest {
     }
 
     /**
-     * `Type.method` for every method of a `@_magic` class and the bare name
-     * of every `@_magic` free function, across every stdlib module. The
-     * print family is not bindable and is left out.
+     * `Type.method` for every method of a `@_magic` class -- declared in its
+     * body or taken from a trait it lists as a parent, transitively through
+     * the trait's own parents -- and the bare name of every `@_magic` free
+     * function, across every stdlib module. The print family is not bindable
+     * and is left out.
+     *
+     * A parent that is a class (`Int32: Num`) adds nothing here: the entries
+     * are keyed on the declaring class, and the emitter walks the parent
+     * chain (`Int32.abs` resolves to `Num.abs`).
      */
     private fun magicCallableNames(): Set<String> {
-        val out = linkedSetOf<String>()
+        val traits = linkedMapOf<String, TraitDecl>()
+        val magicClasses = mutableListOf<ClassDecl>()
+        val magicFunctions = mutableListOf<FunctionDecl>()
         File("kira").walkTopDown()
             .filter { it.isFile && it.extension == "kira" }
             .sortedBy { it.path }
@@ -202,27 +226,49 @@ class StdlibCppBindingsTest {
                 val result = TestCompileSupport.compileFile(file.path, runSemantic = false)
                 val source = result.compilationUnit.getSource(file.canonicalPath)
                     ?: fail("stdlib source ${file.path} was not registered")
+                source.ast.statements.forEach { stmt ->
+                    val node = if (stmt is Statement) stmt.expr else stmt
+                    if (node is TraitDecl) {
+                        val name = baseNameOf(node.name) ?: return@forEach
+                        assertTrue(name !in traits, "trait '$name' is declared twice in the stdlib")
+                        traits[name] = node
+                    }
+                }
                 val marks = runCatching { source.astIntrinsicMarked }.getOrNull() ?: return@forEach
                 marks.forEach { (node, intrinsics) ->
                     if (intrinsics.none { it.name == "_magic" }) return@forEach
                     when (node) {
-                        is ClassDecl -> {
-                            val className = (node.name.identifier as? Identifier)?.value ?: return@forEach
-                            node.members.filterIsInstance<FunctionDecl>().forEach { method ->
-                                val methodName = (method.name as? Identifier)?.value ?: return@forEach
-                                out.add("$className.$methodName")
-                            }
-                        }
-
-                        is FunctionDecl -> {
-                            val name = (node.name as? Identifier)?.value ?: return@forEach
-                            if (name !in printFamily) out.add(name)
-                        }
-
+                        is ClassDecl -> magicClasses.add(node)
+                        is FunctionDecl -> magicFunctions.add(node)
                         else -> {}
                     }
                 }
             }
+
+        fun traitMethodNames(parent: Type, seen: MutableSet<String>): List<String> {
+            val name = baseNameOf(parent) ?: return emptyList()
+            val trait = traits[name] ?: return emptyList() // a class parent, e.g. Num
+            if (!seen.add(name)) return emptyList()
+            val own = trait.members.mapNotNull { (it.name as? Identifier)?.value }
+            return own + trait.parents.flatMap { traitMethodNames(it, seen) }
+        }
+
+        val out = linkedSetOf<String>()
+        magicClasses.forEach { node ->
+            val className = baseNameOf(node.name) ?: return@forEach
+            val own = node.members.filterIsInstance<FunctionDecl>()
+                .mapNotNull { (it.name as? Identifier)?.value }
+            own.forEach { out.add("$className.$it") }
+            node.parents.flatMap { traitMethodNames(it, mutableSetOf()) }
+                .filterNot { it in own }
+                .forEach { out.add("$className.$it") }
+        }
+        magicFunctions.forEach { node ->
+            val name = (node.name as? Identifier)?.value ?: return@forEach
+            if (name !in printFamily) out.add(name)
+        }
         return out
     }
+
+    private fun baseNameOf(type: Type): String? = (type.identifier as? Identifier)?.value
 }
