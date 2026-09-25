@@ -1,0 +1,1664 @@
+// kira/os.cxx - the bodies of kira/os.hxx: a Win32 half (Winsock 2, COM
+// ports, CreateProcess) and a POSIX half (BSD sockets, termios, fork/execvp).
+// Under KIRA_PROFILE_FREESTANDING this file is empty: the Pico has no OS.
+//
+// Every failure sets the thread's lastError and returns a value (none, false
+// or -1); nothing throws. Hosts are numeric IPv4 only, so a static musl
+// binary needs no resolver.
+#if !defined(KIRA_PROFILE_FREESTANDING)
+
+#if defined(_MSC_VER)
+#define _CRT_SECURE_NO_WARNINGS 1
+#endif
+
+#if defined(_WIN32)
+#if !defined(WIN32_LEAN_AND_MEAN)
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+#if !defined(NOMINMAX)
+#define NOMINMAX 1
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <io.h>
+#if defined(_MSC_VER)
+#pragma comment(lib, "ws2_32.lib")
+#endif
+#else
+#include <arpa/inet.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <termios.h>
+#include <unistd.h>
+#endif
+
+#include "kira/os.hxx"
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <climits>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+namespace kira::os
+{
+  namespace
+  {
+    thread_local Str lastError_;
+
+    // errno, as text: "<what>: <strerror> (errno N)".
+    void failErrno(const char* what)
+    {
+        const int e = errno;
+        lastError_ = cat(what, ": ", std::strerror(e), " (errno ", text(e), ")");
+    }
+
+    void failWith(const char* what, const char* why)
+    {
+        lastError_ = cat(what, ": ", why);
+    }
+
+#if defined(_WIN32)
+    void failWsa(const char* what)
+    {
+        lastError_ = cat(what, ": Winsock error ", text(WSAGetLastError()));
+    }
+
+    void failWin(const char* what)
+    {
+        lastError_ = cat(what, ": Win32 error ", text(static_cast<std::uint32_t>(GetLastError())));
+    }
+
+    // WSAStartup once, WSACleanup at exit.
+    struct Winsock
+    {
+        Winsock()
+        {
+            WSADATA data;
+            (void)WSAStartup(MAKEWORD(2, 2), &data);
+        }
+        ~Winsock()
+        {
+            (void)WSACleanup();
+        }
+    };
+
+    void ensureWinsock()
+    {
+        static Winsock once;
+        (void)once;
+    }
+
+    using Sock = SOCKET;
+    using SockLen = int;
+    using IoLen = int;
+    constexpr Sock NO_SOCK = INVALID_SOCKET;
+
+    void failSock(const char* what)
+    {
+        failWsa(what);
+    }
+
+    bool wouldBlock() noexcept
+    {
+        return WSAGetLastError() == WSAEWOULDBLOCK;
+    }
+
+    void closeSock(Sock s) noexcept
+    {
+        (void)closesocket(s);
+    }
+
+    bool setBlocking(Sock s, bool blocking)
+    {
+        u_long nonBlocking = blocking ? 0 : 1;
+        // FIONBIO is an unsigned long macro; ioctlsocket takes a long.
+        return ioctlsocket(s, static_cast<long>(FIONBIO), &nonBlocking) == 0;
+    }
+#else
+    void ensureWinsock() noexcept
+    {
+    }
+
+    using Sock = int;
+    using SockLen = socklen_t;
+    using IoLen = std::size_t;
+    constexpr Sock NO_SOCK = -1;
+
+    void failSock(const char* what)
+    {
+        failErrno(what);
+    }
+
+    bool wouldBlock() noexcept
+    {
+        return errno == EAGAIN || errno == EWOULDBLOCK;
+    }
+
+    void closeSock(Sock s) noexcept
+    {
+        (void)::close(s);
+    }
+
+    bool setBlocking(Sock s, bool blocking)
+    {
+        const int flags = fcntl(s, F_GETFL, 0);
+        if(flags < 0)
+        {
+            return false;
+        }
+        const int wanted = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+        return fcntl(s, F_SETFL, wanted) == 0;
+    }
+#endif
+
+    [[nodiscard]] Sock sockOf(std::int64_t handle) noexcept
+    {
+        return static_cast<Sock>(handle);
+    }
+
+    // A count the socket calls accept: int on Windows, size_t on POSIX.
+    [[nodiscard]] IoLen ioLen(Size n) noexcept
+    {
+        constexpr Size most = static_cast<Size>(INT_MAX);
+        return static_cast<IoLen>(n < most ? n : most);
+    }
+
+    // "127.0.0.1" -> a sockaddr_in; "" is every interface.
+    [[nodiscard]] bool toAddr(const Str& host, std::int32_t port, sockaddr_in& out)
+    {
+        std::memset(&out, 0, sizeof out);
+        out.sin_family = AF_INET;
+        if(port < 0 || port > 65535)
+        {
+            failWith("address", "port out of range");
+            return false;
+        }
+        out.sin_port = htons(static_cast<std::uint16_t>(port));
+        if(host.empty())
+        {
+            out.sin_addr.s_addr = htonl(INADDR_ANY);
+            return true;
+        }
+        if(inet_pton(AF_INET, host.c_str(), &out.sin_addr) != 1)
+        {
+            failWith("address", "not a numeric IPv4 host");
+            return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] Str hostOf(const sockaddr_in& addr)
+    {
+        char buf[INET_ADDRSTRLEN] = {0};
+        if(inet_ntop(AF_INET, const_cast<in_addr*>(&addr.sin_addr), buf, sizeof buf) == nullptr)
+        {
+            return "";
+        }
+        return buf;
+    }
+
+    [[nodiscard]] std::int32_t portOfSock(Sock s)
+    {
+        sockaddr_in addr;
+        SockLen len = sizeof addr;
+        if(getsockname(s, reinterpret_cast<sockaddr*>(&addr), &len) != 0)
+        {
+            failSock("getsockname");
+            return -1;
+        }
+        return static_cast<std::int32_t>(ntohs(addr.sin_port));
+    }
+
+    [[nodiscard]] Sock openSock(int type)
+    {
+        ensureWinsock();
+        const Sock s = ::socket(AF_INET, type, 0);
+        if(s == NO_SOCK)
+        {
+            failSock("socket");
+        }
+        return s;
+    }
+
+    // A poll timeout: negative is forever, and nothing exceeds INT_MAX.
+    [[nodiscard]] int pollTimeout(std::int64_t timeoutMs) noexcept
+    {
+        if(timeoutMs < 0)
+        {
+            return -1;
+        }
+        return timeoutMs > INT_MAX ? INT_MAX : static_cast<int>(timeoutMs);
+    }
+  }
+
+  Str lastError()
+  {
+      return lastError_;
+  }
+
+  // ---- UdpSocket -------------------------------------------------------------------
+
+  UdpSocket::~UdpSocket()
+  {
+      close();
+  }
+
+  bool UdpSocket::bind(const Str& host, std::int32_t port)
+  {
+      close();
+      sockaddr_in addr;
+      if(!toAddr(host, port, addr))
+      {
+          return false;
+      }
+      const Sock s = openSock(SOCK_DGRAM);
+      if(s == NO_SOCK)
+      {
+          return false;
+      }
+      if(::bind(s, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0)
+      {
+          failSock("bind");
+          closeSock(s);
+          return false;
+      }
+      if(!setBlocking(s, false))
+      {
+          failSock("non-blocking");
+          closeSock(s);
+          return false;
+      }
+      handle_ = static_cast<std::int64_t>(s);
+      return true;
+  }
+
+  std::int32_t UdpSocket::localPort() const
+  {
+      if(handle_ < 0)
+      {
+          failWith("localPort", "socket is not bound");
+          return -1;
+      }
+      return portOfSock(sockOf(handle_));
+  }
+
+  std::int64_t UdpSocket::sendTo(View<std::uint8_t> data, const Str& host, std::int32_t port) const
+  {
+      if(handle_ < 0)
+      {
+          failWith("sendTo", "socket is not bound");
+          return -1;
+      }
+      sockaddr_in addr;
+      if(!toAddr(host, port, addr))
+      {
+          return -1;
+      }
+      const auto sent = ::sendto(sockOf(handle_), reinterpret_cast<const char*>(data.data()), ioLen(data.size()), 0,
+                                 reinterpret_cast<const sockaddr*>(&addr), sizeof addr);
+      if(sent < 0)
+      {
+          failSock("sendto");
+          return -1;
+      }
+      return static_cast<std::int64_t>(sent);
+  }
+
+  Maybe<Datagram> UdpSocket::recvFrom(MutView<std::uint8_t> into) const
+  {
+      if(handle_ < 0)
+      {
+          failWith("recvFrom", "socket is not bound");
+          return none;
+      }
+      sockaddr_in from;
+      SockLen fromLen = sizeof from;
+      const auto got = ::recvfrom(sockOf(handle_), reinterpret_cast<char*>(into.data()), ioLen(into.size()), 0,
+                                  reinterpret_cast<sockaddr*>(&from), &fromLen);
+      if(got < 0)
+      {
+          if(!wouldBlock())
+          {
+              failSock("recvfrom");
+          }
+          return none;
+      }
+      Datagram d;
+      d.size = static_cast<Size>(got);
+      d.host = hostOf(from);
+      d.port = static_cast<std::int32_t>(ntohs(from.sin_port));
+      return d;
+  }
+
+  void UdpSocket::close()
+  {
+      if(handle_ >= 0)
+      {
+          closeSock(sockOf(handle_));
+          handle_ = -1;
+      }
+  }
+
+  // ---- TcpListener -----------------------------------------------------------------
+
+  TcpListener::~TcpListener()
+  {
+      close();
+  }
+
+  bool TcpListener::listen(std::int32_t port)
+  {
+      close();
+      sockaddr_in addr;
+      if(!toAddr("", port, addr))
+      {
+          return false;
+      }
+      const Sock s = openSock(SOCK_STREAM);
+      if(s == NO_SOCK)
+      {
+          return false;
+      }
+#if !defined(_WIN32)
+      // A restarted server binds its port while the old connections linger
+      // in TIME_WAIT. On Windows the same option lets a second socket steal
+      // the port, so it stays off there.
+      const int one = 1;
+      (void)setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+#endif
+      if(::bind(s, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0)
+      {
+          failSock("bind");
+          closeSock(s);
+          return false;
+      }
+      if(::listen(s, 16) != 0)
+      {
+          failSock("listen");
+          closeSock(s);
+          return false;
+      }
+      if(!setBlocking(s, false))
+      {
+          failSock("non-blocking");
+          closeSock(s);
+          return false;
+      }
+      handle_ = static_cast<std::int64_t>(s);
+      return true;
+  }
+
+  std::int32_t TcpListener::localPort() const
+  {
+      if(handle_ < 0)
+      {
+          failWith("localPort", "socket is not listening");
+          return -1;
+      }
+      return portOfSock(sockOf(handle_));
+  }
+
+  Rc<TcpStream> TcpListener::accept() const
+  {
+      if(handle_ < 0)
+      {
+          failWith("accept", "socket is not listening");
+          return nullptr;
+      }
+      const Sock s = ::accept(sockOf(handle_), nullptr, nullptr);
+      if(s == NO_SOCK)
+      {
+          if(!wouldBlock())
+          {
+              failSock("accept");
+          }
+          return nullptr;
+      }
+      // Linux hands out a blocking socket, Windows one that inherits the
+      // listener's mode: make both blocking, as TcpStream promises.
+      if(!setBlocking(s, true))
+      {
+          failSock("blocking");
+          closeSock(s);
+          return nullptr;
+      }
+      return std::make_shared<TcpStream>(static_cast<std::int64_t>(s));
+  }
+
+  void TcpListener::close()
+  {
+      if(handle_ >= 0)
+      {
+          closeSock(sockOf(handle_));
+          handle_ = -1;
+      }
+  }
+
+  // ---- TcpStream -------------------------------------------------------------------
+
+  TcpStream::~TcpStream()
+  {
+      close();
+  }
+
+  bool TcpStream::connect(const Str& host, std::int32_t port)
+  {
+      close();
+      sockaddr_in addr;
+      if(!toAddr(host, port, addr))
+      {
+          return false;
+      }
+      const Sock s = openSock(SOCK_STREAM);
+      if(s == NO_SOCK)
+      {
+          return false;
+      }
+      if(::connect(s, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0)
+      {
+          failSock("connect");
+          closeSock(s);
+          return false;
+      }
+      handle_ = static_cast<std::int64_t>(s);
+      return true;
+  }
+
+  std::int64_t TcpStream::read(MutView<std::uint8_t> into) const
+  {
+      if(handle_ < 0)
+      {
+          failWith("read", "stream is closed");
+          return -1;
+      }
+      const auto got = ::recv(sockOf(handle_), reinterpret_cast<char*>(into.data()), ioLen(into.size()), 0);
+      if(got < 0)
+      {
+          failSock("recv");
+          return -1;
+      }
+      return static_cast<std::int64_t>(got);
+  }
+
+  std::int64_t TcpStream::write(View<std::uint8_t> data) const
+  {
+      if(handle_ < 0)
+      {
+          failWith("write", "stream is closed");
+          return -1;
+      }
+#if defined(MSG_NOSIGNAL)
+      constexpr int flags = MSG_NOSIGNAL; // a closed peer is an error here, never a SIGPIPE
+#else
+      constexpr int flags = 0;
+#endif
+      Size done = 0;
+      while(done < data.size())
+      {
+          const auto sent = ::send(sockOf(handle_), reinterpret_cast<const char*>(data.data() + done),
+                                   ioLen(data.size() - done), flags);
+          if(sent < 0)
+          {
+              failSock("send");
+              return -1;
+          }
+          done += static_cast<Size>(sent);
+      }
+      return static_cast<std::int64_t>(done);
+  }
+
+  void TcpStream::close()
+  {
+      if(handle_ >= 0)
+      {
+          closeSock(sockOf(handle_));
+          handle_ = -1;
+      }
+  }
+
+  // ---- Poller ----------------------------------------------------------------------
+
+  void Poller::add(std::int64_t handle, std::int32_t events)
+  {
+      for(Watch& w : watches_)
+      {
+          if(w.handle == handle)
+          {
+              w.events = events;
+              return;
+          }
+      }
+      watches_.push_back(Watch{handle, events});
+  }
+
+  void Poller::remove(std::int64_t handle)
+  {
+      watches_.erase(std::remove_if(watches_.begin(), watches_.end(), [handle](const Watch& w) { return w.handle == handle; }),
+                     watches_.end());
+  }
+
+  List<Ready> Poller::wait(std::int64_t timeoutMs) const
+  {
+      List<Ready> ready;
+      if(watches_.empty())
+      {
+          return ready;
+      }
+#if defined(_WIN32)
+      using PollFd = WSAPOLLFD;
+#else
+      using PollFd = pollfd;
+#endif
+      List<PollFd> fds;
+      fds.reserve(watches_.size());
+      for(const Watch& w : watches_)
+      {
+          PollFd p;
+          std::memset(&p, 0, sizeof p);
+          p.fd = sockOf(w.handle);
+          short events = 0;
+          if((w.events & POLL_READ) != 0)
+          {
+              events = static_cast<short>(events | POLLIN);
+          }
+          if((w.events & POLL_WRITE) != 0)
+          {
+              events = static_cast<short>(events | POLLOUT);
+          }
+          p.events = events;
+          fds.push_back(p);
+      }
+#if defined(_WIN32)
+      const int n = WSAPoll(fds.data(), static_cast<ULONG>(fds.size()), pollTimeout(timeoutMs));
+#else
+      const int n = ::poll(fds.data(), static_cast<nfds_t>(fds.size()), pollTimeout(timeoutMs));
+#endif
+      if(n < 0)
+      {
+          failSock("poll");
+          return ready;
+      }
+      for(Size i = 0; i < fds.size(); ++i)
+      {
+          const short re = fds[i].revents;
+          if(re == 0)
+          {
+              continue;
+          }
+          std::int32_t events = 0;
+          if((re & (POLLIN | POLLHUP)) != 0)
+          {
+              events |= POLL_READ;
+          }
+          if((re & POLLOUT) != 0)
+          {
+              events |= POLL_WRITE;
+          }
+          if((re & (POLLERR | POLLHUP | POLLNVAL)) != 0)
+          {
+              events |= POLL_ERROR;
+          }
+          ready.push_back(Ready{watches_[i].handle, events});
+      }
+      return ready;
+  }
+
+  // ---- Serial ----------------------------------------------------------------------
+
+  Serial::~Serial()
+  {
+      close();
+  }
+
+#if defined(_WIN32)
+  bool Serial::open(const Str& path, std::int32_t baud)
+  {
+      close();
+      // COM10 and above need the device namespace; COM1..9 accept it too.
+      const Str device = path.rfind("\\\\", 0) == 0 ? path : cat("\\\\.\\", path);
+      HANDLE h = CreateFileA(device.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+      if(h == INVALID_HANDLE_VALUE)
+      {
+          failWin("CreateFile");
+          return false;
+      }
+      DCB dcb;
+      std::memset(&dcb, 0, sizeof dcb);
+      dcb.DCBlength = sizeof dcb;
+      if(!GetCommState(h, &dcb))
+      {
+          failWin("GetCommState");
+          CloseHandle(h);
+          return false;
+      }
+      dcb.BaudRate = static_cast<DWORD>(baud);
+      dcb.ByteSize = 8;
+      dcb.Parity = NOPARITY;
+      dcb.StopBits = ONESTOPBIT;
+      dcb.fBinary = TRUE;
+      dcb.fParity = FALSE;
+      dcb.fOutxCtsFlow = FALSE;
+      dcb.fOutxDsrFlow = FALSE;
+      dcb.fDtrControl = DTR_CONTROL_ENABLE; // a USB CDC board sends nothing until DTR is up
+      dcb.fDsrSensitivity = FALSE;
+      dcb.fTXContinueOnXoff = TRUE;
+      dcb.fOutX = FALSE;
+      dcb.fInX = FALSE;
+      dcb.fErrorChar = FALSE;
+      dcb.fNull = FALSE;
+      dcb.fRtsControl = RTS_CONTROL_ENABLE;
+      dcb.fAbortOnError = FALSE;
+      if(!SetCommState(h, &dcb))
+      {
+          failWin("SetCommState");
+          CloseHandle(h);
+          return false;
+      }
+      (void)PurgeComm(h, PURGE_RXCLEAR | PURGE_TXCLEAR);
+      win_ = h;
+      winTimeoutMs_ = -2;
+      open_ = true;
+      return true;
+  }
+
+  std::int64_t Serial::read(MutView<std::uint8_t> into, std::int64_t timeoutMs) const
+  {
+      if(!open_)
+      {
+          failWith("read", "port is not open");
+          return -1;
+      }
+      HANDLE h = static_cast<HANDLE>(win_);
+      if(timeoutMs != winTimeoutMs_)
+      {
+          // Return as soon as any byte is in, else after the timeout; the
+          // documented MAXDWORD/MAXDWORD/constant combination.
+          COMMTIMEOUTS t;
+          std::memset(&t, 0, sizeof t);
+          t.ReadIntervalTimeout = MAXDWORD;
+          if(timeoutMs == 0)
+          {
+              t.ReadTotalTimeoutMultiplier = 0;
+              t.ReadTotalTimeoutConstant = 0;
+          }
+          else
+          {
+              t.ReadTotalTimeoutMultiplier = MAXDWORD;
+              constexpr std::int64_t most = 0x7FFFFFFE;
+              t.ReadTotalTimeoutConstant = static_cast<DWORD>(timeoutMs < 0 || timeoutMs > most ? most : timeoutMs);
+          }
+          if(!SetCommTimeouts(h, &t))
+          {
+              failWin("SetCommTimeouts");
+              return -1;
+          }
+          winTimeoutMs_ = timeoutMs;
+      }
+      DWORD got = 0;
+      const DWORD want = static_cast<DWORD>(ioLen(into.size()));
+      if(!ReadFile(h, into.data(), want, &got, nullptr))
+      {
+          failWin("ReadFile");
+          return -1;
+      }
+      return static_cast<std::int64_t>(got);
+  }
+
+  std::int64_t Serial::write(View<std::uint8_t> data) const
+  {
+      if(!open_)
+      {
+          failWith("write", "port is not open");
+          return -1;
+      }
+      HANDLE h = static_cast<HANDLE>(win_);
+      Size done = 0;
+      while(done < data.size())
+      {
+          DWORD wrote = 0;
+          const DWORD want = static_cast<DWORD>(ioLen(data.size() - done));
+          if(!WriteFile(h, data.data() + done, want, &wrote, nullptr))
+          {
+              failWin("WriteFile");
+              return -1;
+          }
+          if(wrote == 0)
+          {
+              failWith("WriteFile", "wrote nothing");
+              return -1;
+          }
+          done += static_cast<Size>(wrote);
+      }
+      return static_cast<std::int64_t>(done);
+  }
+
+  std::int64_t Serial::handle() const noexcept
+  {
+      return -1;
+  }
+
+  void Serial::close()
+  {
+      if(open_)
+      {
+          CloseHandle(static_cast<HANDLE>(win_));
+          win_ = nullptr;
+          open_ = false;
+      }
+  }
+#else
+  namespace
+  {
+    // The termios constant for a standard rate, or 0 when this libc lacks it.
+    [[nodiscard]] speed_t speedOf(std::int32_t baud) noexcept
+    {
+        switch(baud)
+        {
+            case 9600: return B9600;
+            case 19200: return B19200;
+            case 38400: return B38400;
+            case 57600: return B57600;
+            case 115200: return B115200;
+            case 230400: return B230400;
+#if defined(B460800)
+            case 460800: return B460800;
+#endif
+#if defined(B500000)
+            case 500000: return B500000;
+#endif
+#if defined(B576000)
+            case 576000: return B576000;
+#endif
+#if defined(B921600)
+            case 921600: return B921600;
+#endif
+#if defined(B1000000)
+            case 1000000: return B1000000;
+#endif
+#if defined(B1152000)
+            case 1152000: return B1152000;
+#endif
+#if defined(B1500000)
+            case 1500000: return B1500000;
+#endif
+#if defined(B2000000)
+            case 2000000: return B2000000;
+#endif
+#if defined(B2500000)
+            case 2500000: return B2500000;
+#endif
+#if defined(B3000000)
+            case 3000000: return B3000000;
+#endif
+#if defined(B3500000)
+            case 3500000: return B3500000;
+#endif
+#if defined(B4000000)
+            case 4000000: return B4000000;
+#endif
+            default: return 0;
+        }
+    }
+  }
+
+  bool Serial::open(const Str& path, std::int32_t baud)
+  {
+      close();
+      const speed_t speed = speedOf(baud);
+      if(speed == 0)
+      {
+          failWith("open", "not a standard baud rate");
+          return false;
+      }
+      const int fd = ::open(path.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
+      if(fd < 0)
+      {
+          failErrno("open");
+          return false;
+      }
+      termios tio;
+      std::memset(&tio, 0, sizeof tio);
+      if(tcgetattr(fd, &tio) != 0)
+      {
+          failErrno("tcgetattr");
+          ::close(fd);
+          return false;
+      }
+      cfmakeraw(&tio);
+      tio.c_cflag |= static_cast<tcflag_t>(CLOCAL | CREAD);
+      tio.c_cflag &= static_cast<tcflag_t>(~static_cast<tcflag_t>(CRTSCTS));
+      tio.c_cc[VMIN] = 0;
+      tio.c_cc[VTIME] = 0;
+      if(cfsetispeed(&tio, speed) != 0 || cfsetospeed(&tio, speed) != 0)
+      {
+          failErrno("cfsetspeed");
+          ::close(fd);
+          return false;
+      }
+      if(tcsetattr(fd, TCSANOW, &tio) != 0)
+      {
+          failErrno("tcsetattr");
+          ::close(fd);
+          return false;
+      }
+      (void)tcflush(fd, TCIOFLUSH);
+      fd_ = fd;
+      open_ = true;
+      return true;
+  }
+
+  std::int64_t Serial::read(MutView<std::uint8_t> into, std::int64_t timeoutMs) const
+  {
+      if(!open_)
+      {
+          failWith("read", "port is not open");
+          return -1;
+      }
+      const int fd = static_cast<int>(fd_);
+      pollfd p;
+      std::memset(&p, 0, sizeof p);
+      p.fd = fd;
+      p.events = POLLIN;
+      const int n = ::poll(&p, 1, pollTimeout(timeoutMs));
+      if(n < 0)
+      {
+          failErrno("poll");
+          return -1;
+      }
+      if(n == 0)
+      {
+          return 0;
+      }
+      const ssize_t got = ::read(fd, into.data(), into.size());
+      if(got < 0)
+      {
+          if(errno == EAGAIN || errno == EWOULDBLOCK)
+          {
+              return 0;
+          }
+          failErrno("read");
+          return -1;
+      }
+      return static_cast<std::int64_t>(got);
+  }
+
+  std::int64_t Serial::write(View<std::uint8_t> data) const
+  {
+      if(!open_)
+      {
+          failWith("write", "port is not open");
+          return -1;
+      }
+      const int fd = static_cast<int>(fd_);
+      Size done = 0;
+      while(done < data.size())
+      {
+          const ssize_t wrote = ::write(fd, data.data() + done, data.size() - done);
+          if(wrote < 0)
+          {
+              if(errno == EAGAIN || errno == EWOULDBLOCK)
+              {
+                  pollfd p;
+                  std::memset(&p, 0, sizeof p);
+                  p.fd = fd;
+                  p.events = POLLOUT;
+                  if(::poll(&p, 1, 1000) <= 0)
+                  {
+                      failWith("write", "the port took nothing for a second");
+                      return -1;
+                  }
+                  continue;
+              }
+              failErrno("write");
+              return -1;
+          }
+          done += static_cast<Size>(wrote);
+      }
+      return static_cast<std::int64_t>(done);
+  }
+
+  std::int64_t Serial::handle() const noexcept
+  {
+      return open_ ? fd_ : -1;
+  }
+
+  void Serial::close()
+  {
+      if(open_)
+      {
+          ::close(static_cast<int>(fd_));
+          fd_ = -1;
+          open_ = false;
+      }
+  }
+#endif
+
+  // ---- files -----------------------------------------------------------------------
+
+  namespace
+  {
+    // Reads the whole file through stdio, in binary, into `out` by chunks.
+    template<class Container>
+    [[nodiscard]] bool slurp(const Str& path, Container& out)
+    {
+        std::FILE* f = std::fopen(path.c_str(), "rb");
+        if(f == nullptr)
+        {
+            failErrno("open");
+            return false;
+        }
+        char chunk[65536];
+        for(;;)
+        {
+            const Size got = std::fread(chunk, 1, sizeof chunk, f);
+            if(got > 0)
+            {
+                out.insert(out.end(), chunk, chunk + got);
+            }
+            if(got < sizeof chunk)
+            {
+                break;
+            }
+        }
+        const bool failed = std::ferror(f) != 0;
+        if(failed)
+        {
+            failErrno("read");
+        }
+        std::fclose(f);
+        return !failed;
+    }
+
+    [[nodiscard]] bool isDirectory(const Str& path)
+    {
+#if defined(_WIN32)
+        const DWORD attrs = GetFileAttributesA(path.c_str());
+        return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+#else
+        struct stat st;
+        return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+    }
+
+    [[nodiscard]] bool makeOneDir(const Str& path)
+    {
+#if defined(_WIN32)
+        if(CreateDirectoryA(path.c_str(), nullptr))
+        {
+            return true;
+        }
+        if(GetLastError() == ERROR_ALREADY_EXISTS)
+        {
+            return true;
+        }
+        failWin("CreateDirectory");
+        return false;
+#else
+        if(::mkdir(path.c_str(), 0755) == 0 || errno == EEXIST)
+        {
+            return true;
+        }
+        failErrno("mkdir");
+        return false;
+#endif
+    }
+
+    [[nodiscard]] bool isSeparator(char c) noexcept
+    {
+#if defined(_WIN32)
+        return c == '/' || c == '\\';
+#else
+        return c == '/';
+#endif
+    }
+
+    [[nodiscard]] std::int64_t processId() noexcept
+    {
+#if defined(_WIN32)
+        return static_cast<std::int64_t>(GetCurrentProcessId());
+#else
+        return static_cast<std::int64_t>(::getpid());
+#endif
+    }
+  }
+
+  Maybe<List<std::uint8_t>> readFile(const Str& path)
+  {
+      List<std::uint8_t> bytes;
+      if(!slurp(path, bytes))
+      {
+          return none;
+      }
+      return bytes;
+  }
+
+  Maybe<Str> readText(const Str& path)
+  {
+      Str text;
+      if(!slurp(path, text))
+      {
+          return none;
+      }
+      return text;
+  }
+
+  bool writeFileAtomic(const Str& path, View<std::uint8_t> bytes)
+  {
+      // A temporary beside the target, on the same filesystem, so the rename
+      // is one metadata operation; the pid keeps two writers apart.
+      const Str tmp = cat(path, ".", text(processId()), ".tmp");
+      std::FILE* f = std::fopen(tmp.c_str(), "wb");
+      if(f == nullptr)
+      {
+          failErrno("open temporary");
+          return false;
+      }
+      bool ok = bytes.size() == 0 || std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+      if(!ok)
+      {
+          failErrno("write");
+      }
+      if(ok && std::fflush(f) != 0)
+      {
+          failErrno("flush");
+          ok = false;
+      }
+      if(ok)
+      {
+#if defined(_WIN32)
+          HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(f)));
+          if(h == INVALID_HANDLE_VALUE || !FlushFileBuffers(h))
+          {
+              failWin("FlushFileBuffers");
+              ok = false;
+          }
+#else
+          if(::fsync(fileno(f)) != 0)
+          {
+              failErrno("fsync");
+              ok = false;
+          }
+#endif
+      }
+      if(std::fclose(f) != 0 && ok)
+      {
+          failErrno("close");
+          ok = false;
+      }
+      if(ok)
+      {
+#if defined(_WIN32)
+          if(!MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+          {
+              failWin("MoveFileEx");
+              ok = false;
+          }
+#else
+          if(std::rename(tmp.c_str(), path.c_str()) != 0)
+          {
+              failErrno("rename");
+              ok = false;
+          }
+#endif
+      }
+      if(!ok)
+      {
+          (void)std::remove(tmp.c_str());
+      }
+      return ok;
+  }
+
+  List<Str> listDir(const Str& path)
+  {
+      List<Str> names;
+#if defined(_WIN32)
+      const Str pattern = cat(path, "\\*");
+      WIN32_FIND_DATAA found;
+      HANDLE h = FindFirstFileA(pattern.c_str(), &found);
+      if(h == INVALID_HANDLE_VALUE)
+      {
+          failWin("FindFirstFile");
+          return names;
+      }
+      do
+      {
+          const Str name = found.cFileName;
+          if(name != "." && name != "..")
+          {
+              names.push_back(name);
+          }
+      } while(FindNextFileA(h, &found));
+      FindClose(h);
+#else
+      DIR* d = ::opendir(path.c_str());
+      if(d == nullptr)
+      {
+          failErrno("opendir");
+          return names;
+      }
+      for(;;)
+      {
+          errno = 0;
+          const dirent* e = ::readdir(d);
+          if(e == nullptr)
+          {
+              break;
+          }
+          const Str name = e->d_name;
+          if(name != "." && name != "..")
+          {
+              names.push_back(name);
+          }
+      }
+      ::closedir(d);
+#endif
+      std::sort(names.begin(), names.end());
+      return names;
+  }
+
+  bool exists(const Str& path)
+  {
+#if defined(_WIN32)
+      return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+#else
+      struct stat st;
+      return ::stat(path.c_str(), &st) == 0;
+#endif
+  }
+
+  bool makeDirs(const Str& path)
+  {
+      if(path.empty())
+      {
+          failWith("makeDirs", "empty path");
+          return false;
+      }
+      for(Size i = 1; i < path.size(); ++i)
+      {
+          if(!isSeparator(path[i]) || isSeparator(path[i - 1]))
+          {
+              continue;
+          }
+          const Str prefix = path.substr(0, i);
+#if defined(_WIN32)
+          if(prefix.size() == 2 && prefix[1] == ':')
+          {
+              continue; // a drive, not a directory to make
+          }
+#endif
+          if(isDirectory(prefix))
+          {
+              continue;
+          }
+          if(!makeOneDir(prefix))
+          {
+              return false;
+          }
+      }
+      if(!isDirectory(path) && !makeOneDir(path))
+      {
+          return false;
+      }
+      if(!isDirectory(path))
+      {
+          failWith("makeDirs", "the path exists and is not a directory");
+          return false;
+      }
+      return true;
+  }
+
+  std::int64_t freeBytes(const Str& path)
+  {
+#if defined(_WIN32)
+      ULARGE_INTEGER avail;
+      avail.QuadPart = 0;
+      if(!GetDiskFreeSpaceExA(path.c_str(), &avail, nullptr, nullptr))
+      {
+          failWin("GetDiskFreeSpaceEx");
+          return -1;
+      }
+      return static_cast<std::int64_t>(avail.QuadPart);
+#else
+      struct statvfs st;
+      if(::statvfs(path.c_str(), &st) != 0)
+      {
+          failErrno("statvfs");
+          return -1;
+      }
+      return static_cast<std::int64_t>(st.f_bavail) * static_cast<std::int64_t>(st.f_frsize);
+#endif
+  }
+
+  // ---- Process ---------------------------------------------------------------------
+
+#if defined(_WIN32)
+  namespace
+  {
+    // One argument as CreateProcess's command line rules read it back.
+    [[nodiscard]] Str quoteArg(const Str& a)
+    {
+        if(!a.empty() && a.find_first_of(" \t\n\v\"") == Str::npos)
+        {
+            return a;
+        }
+        Str out = "\"";
+        Size backslashes = 0;
+        for(const char c : a)
+        {
+            if(c == '\\')
+            {
+                ++backslashes;
+                continue;
+            }
+            if(c == '"')
+            {
+                out.append(backslashes * 2 + 1, '\\');
+                out += '"';
+                backslashes = 0;
+                continue;
+            }
+            out.append(backslashes, '\\');
+            backslashes = 0;
+            out += c;
+        }
+        out.append(backslashes * 2, '\\');
+        out += '"';
+        return out;
+    }
+  }
+
+  Process::~Process()
+  {
+      if(winProcess_ != nullptr)
+      {
+          if(!exited_ && WaitForSingleObject(static_cast<HANDLE>(winProcess_), 0) == WAIT_TIMEOUT)
+          {
+              (void)TerminateProcess(static_cast<HANDLE>(winProcess_), 137);
+              (void)WaitForSingleObject(static_cast<HANDLE>(winProcess_), INFINITE);
+          }
+          CloseHandle(static_cast<HANDLE>(winProcess_));
+      }
+      if(winOut_ != nullptr)
+      {
+          CloseHandle(static_cast<HANDLE>(winOut_));
+      }
+  }
+
+  std::int64_t Process::readStdout(MutView<std::uint8_t> into) const
+  {
+      if(winOut_ == nullptr)
+      {
+          failWith("readStdout", "no pipe");
+          return -1;
+      }
+      DWORD got = 0;
+      if(!ReadFile(static_cast<HANDLE>(winOut_), into.data(), static_cast<DWORD>(ioLen(into.size())), &got, nullptr))
+      {
+          if(GetLastError() == ERROR_BROKEN_PIPE)
+          {
+              return 0;
+          }
+          failWin("ReadFile");
+          return -1;
+      }
+      return static_cast<std::int64_t>(got);
+  }
+
+  void Process::kill() const
+  {
+      if(winProcess_ != nullptr && !exited_)
+      {
+          (void)TerminateProcess(static_cast<HANDLE>(winProcess_), 137);
+      }
+  }
+
+  std::int32_t Process::wait()
+  {
+      if(exited_)
+      {
+          return code_;
+      }
+      if(winProcess_ == nullptr)
+      {
+          failWith("wait", "no process");
+          return -1;
+      }
+      (void)WaitForSingleObject(static_cast<HANDLE>(winProcess_), INFINITE);
+      DWORD code = 0;
+      if(!GetExitCodeProcess(static_cast<HANDLE>(winProcess_), &code))
+      {
+          failWin("GetExitCodeProcess");
+          return -1;
+      }
+      exited_ = true;
+      code_ = static_cast<std::int32_t>(code);
+      return code_;
+  }
+
+  bool Process::isRunning() const
+  {
+      if(exited_ || winProcess_ == nullptr)
+      {
+          return false;
+      }
+      return WaitForSingleObject(static_cast<HANDLE>(winProcess_), 0) == WAIT_TIMEOUT;
+  }
+
+  std::int64_t Process::stdoutHandle() const noexcept
+  {
+      return -1;
+  }
+
+  Rc<Process> spawnProcess(const List<Str>& argv)
+  {
+      if(argv.empty())
+      {
+          failWith("spawnProcess", "empty argv");
+          return nullptr;
+      }
+      SECURITY_ATTRIBUTES sa;
+      std::memset(&sa, 0, sizeof sa);
+      sa.nLength = sizeof sa;
+      sa.bInheritHandle = TRUE;
+      HANDLE readEnd = nullptr;
+      HANDLE writeEnd = nullptr;
+      if(!CreatePipe(&readEnd, &writeEnd, &sa, 0))
+      {
+          failWin("CreatePipe");
+          return nullptr;
+      }
+      // The child must not inherit the read end, or its EOF never comes.
+      (void)SetHandleInformation(readEnd, HANDLE_FLAG_INHERIT, 0);
+
+      Str line;
+      for(Size i = 0; i < argv.size(); ++i)
+      {
+          if(i > 0)
+          {
+              line += ' ';
+          }
+          line += quoteArg(argv[i]);
+      }
+      List<char> buffer(line.begin(), line.end());
+      buffer.push_back('\0');
+
+      STARTUPINFOA si;
+      std::memset(&si, 0, sizeof si);
+      si.cb = sizeof si;
+      si.dwFlags = STARTF_USESTDHANDLES;
+      si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+      si.hStdOutput = writeEnd;
+      si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+      PROCESS_INFORMATION pi;
+      std::memset(&pi, 0, sizeof pi);
+      const BOOL started = CreateProcessA(nullptr, buffer.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
+      CloseHandle(writeEnd);
+      if(!started)
+      {
+          failWin("CreateProcess");
+          CloseHandle(readEnd);
+          return nullptr;
+      }
+      CloseHandle(pi.hThread);
+      Rc<Process> p = std::make_shared<Process>();
+      p->winProcess_ = pi.hProcess;
+      p->winOut_ = readEnd;
+      return p;
+  }
+#else
+  namespace
+  {
+    // waitpid's status as the exit code kira:os reports.
+    [[nodiscard]] std::int32_t codeOf(int status) noexcept
+    {
+        if(WIFEXITED(status))
+        {
+            return static_cast<std::int32_t>(WEXITSTATUS(status));
+        }
+        if(WIFSIGNALED(status))
+        {
+            return 128 + static_cast<std::int32_t>(WTERMSIG(status));
+        }
+        return -1;
+    }
+  }
+
+  Process::~Process()
+  {
+      if(out_ >= 0)
+      {
+          ::close(static_cast<int>(out_));
+      }
+      if(pid_ > 0 && !exited_)
+      {
+          (void)::kill(static_cast<pid_t>(pid_), SIGKILL);
+          int status = 0;
+          while(::waitpid(static_cast<pid_t>(pid_), &status, 0) < 0 && errno == EINTR)
+          {
+          }
+      }
+  }
+
+  std::int64_t Process::readStdout(MutView<std::uint8_t> into) const
+  {
+      if(out_ < 0)
+      {
+          failWith("readStdout", "no pipe");
+          return -1;
+      }
+      const ssize_t got = ::read(static_cast<int>(out_), into.data(), into.size());
+      if(got < 0)
+      {
+          failErrno("read");
+          return -1;
+      }
+      return static_cast<std::int64_t>(got);
+  }
+
+  void Process::kill() const
+  {
+      if(pid_ > 0 && !exited_)
+      {
+          (void)::kill(static_cast<pid_t>(pid_), SIGKILL);
+      }
+  }
+
+  std::int32_t Process::wait()
+  {
+      if(exited_)
+      {
+          return code_;
+      }
+      if(pid_ <= 0)
+      {
+          failWith("wait", "no process");
+          return -1;
+      }
+      int status = 0;
+      for(;;)
+      {
+          const pid_t r = ::waitpid(static_cast<pid_t>(pid_), &status, 0);
+          if(r < 0 && errno == EINTR)
+          {
+              continue;
+          }
+          if(r < 0)
+          {
+              failErrno("waitpid");
+              return -1;
+          }
+          break;
+      }
+      exited_ = true;
+      code_ = codeOf(status);
+      return code_;
+  }
+
+  bool Process::isRunning() const
+  {
+      if(exited_ || pid_ <= 0)
+      {
+          return false;
+      }
+      int status = 0;
+      const pid_t r = ::waitpid(static_cast<pid_t>(pid_), &status, WNOHANG);
+      if(r == 0)
+      {
+          return true;
+      }
+      if(r > 0)
+      {
+          // Reaped here; wait() would report -1 after this, so keep the code.
+          const_cast<Process*>(this)->exited_ = true;
+          const_cast<Process*>(this)->code_ = codeOf(status);
+      }
+      return false;
+  }
+
+  std::int64_t Process::stdoutHandle() const noexcept
+  {
+      return out_;
+  }
+
+  Rc<Process> spawnProcess(const List<Str>& argv)
+  {
+      if(argv.empty())
+      {
+          failWith("spawnProcess", "empty argv");
+          return nullptr;
+      }
+      int fds[2] = {-1, -1};
+      if(::pipe(fds) != 0)
+      {
+          failErrno("pipe");
+          return nullptr;
+      }
+      // Only the child's stdout gets the write end; a later child must not
+      // inherit this read end, or the first one's EOF never comes.
+      (void)fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+      (void)fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+
+      List<Str> copies(argv.begin(), argv.end());
+      List<char*> args;
+      args.reserve(copies.size() + 1);
+      for(Str& s : copies)
+      {
+          args.push_back(s.data());
+      }
+      args.push_back(nullptr);
+
+      std::fflush(nullptr); // a buffered line must not be written twice
+      const pid_t pid = ::fork();
+      if(pid < 0)
+      {
+          failErrno("fork");
+          ::close(fds[0]);
+          ::close(fds[1]);
+          return nullptr;
+      }
+      if(pid == 0)
+      {
+          if(::dup2(fds[1], STDOUT_FILENO) < 0)
+          {
+              ::_exit(126);
+          }
+          ::execvp(args[0], args.data());
+          ::_exit(127);
+      }
+      ::close(fds[1]);
+      Rc<Process> p = std::make_shared<Process>();
+      p->pid_ = static_cast<std::int64_t>(pid);
+      p->out_ = static_cast<std::int64_t>(fds[0]);
+      return p;
+  }
+#endif
+
+  // ---- signals, environment, exit --------------------------------------------------
+
+  namespace
+  {
+    constexpr int SIGNAL_SLOTS = 65;
+    // The handler reads only this lock-free pointer and stores one bool:
+    // both async-signal-safe. keep_ holds the Rc so the object stays alive.
+    std::atomic<sync::Atomic<bool>*> flags_[SIGNAL_SLOTS];
+    Rc<sync::Atomic<bool>> keep_[SIGNAL_SLOTS];
+
+    extern "C" void onSignalHandler(int sig)
+    {
+        if(sig >= 0 && sig < SIGNAL_SLOTS)
+        {
+            sync::Atomic<bool>* flag = flags_[sig].load(std::memory_order_acquire);
+            if(flag != nullptr)
+            {
+                flag->store(true);
+            }
+        }
+#if defined(_WIN32)
+        // The C runtime resets a handler to SIG_DFL on delivery.
+        (void)std::signal(sig, onSignalHandler);
+#endif
+    }
+  }
+
+  bool onSignal(std::int32_t sig, const Rc<sync::Atomic<bool>>& flag)
+  {
+      if(sig <= 0 || sig >= SIGNAL_SLOTS || flag == nullptr)
+      {
+          failWith("onSignal", "no such signal, or no flag");
+          return false;
+      }
+      keep_[sig] = flag;
+      flags_[sig].store(flag.get(), std::memory_order_release);
+#if defined(_WIN32)
+      if(std::signal(sig, onSignalHandler) == SIG_ERR)
+      {
+          failErrno("signal");
+          return false;
+      }
+      return true;
+#else
+      struct sigaction action;
+      std::memset(&action, 0, sizeof action);
+      action.sa_handler = onSignalHandler;
+      sigemptyset(&action.sa_mask);
+      action.sa_flags = 0; // no SA_RESTART: a blocked read returns, and the loop sees the flag
+      if(::sigaction(sig, &action, nullptr) != 0)
+      {
+          failErrno("sigaction");
+          return false;
+      }
+      return true;
+#endif
+  }
+
+  Maybe<Str> env(const Str& name)
+  {
+      const char* value = std::getenv(name.c_str());
+      if(value == nullptr)
+      {
+          return none;
+      }
+      return Str(value);
+  }
+
+  void exit(std::int32_t code)
+  {
+      std::fflush(nullptr);
+      std::_Exit(code);
+  }
+}
+
+#endif // !KIRA_PROFILE_FREESTANDING
