@@ -193,12 +193,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (kind in disposableContainers) {
             appendIndented(kind)
             buffer.append("_dispose(&")
-            buffer.append(name)
+            buffer.append(cName(name))
             buffer.appendLine(");")
             return
         }
         appendIndented("kira_rc_release(")
-        buffer.append(name)
+        buffer.append(cName(name))
         buffer.appendLine(");")
     }
 
@@ -897,11 +897,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             emittingClassMembers = true
             fields.forEach { field ->
                 fieldTypes[field.name.value] = resolveKiraTypeName(field.type)
-                userSymbols.add(field.name.value)
+                userSymbols.add(cName(field.name.value))
                 appendIndented("")
                 buffer.append(mapTypeName(resolveKiraTypeName(field.type)))
                 buffer.append(" ")
-                buffer.append(field.name.value)
+                buffer.append(cName(field.name.value))
                 buffer.appendLine(";")
             }
             emittingClassMembers = false
@@ -962,7 +962,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             userSymbols.add("${mangled}_finalize")
             emitClassFinalizer(
                 mangled,
-                fields.filter { userClassNames.contains(resolveKiraTypeName(it.type)) }.map { it.name.value }
+                fields.filter { userClassNames.contains(resolveKiraTypeName(it.type)) }.map { cName(it.name.value) }
             )
             appendIndented("simple ")
             buffer.append(mapTypeName(mangled))
@@ -973,13 +973,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 if (i > 0) buffer.append(", ")
                 buffer.append(mapTypeName(resolveKiraTypeName(field.type)))
                 buffer.append(" ")
-                buffer.append(field.name.value)
+                buffer.append(cName(field.name.value))
             }
             buffer.appendLine(")")
             appendIndentedLine("{")
             indentLevel++
             val ownedM = fields.filter { userClassNames.contains(resolveKiraTypeName(it.type)) }
-                .map { it.name.value }
+                .map { cName(it.name.value) }
             appendIndented("")
             buffer.append(mapTypeName(mangled))
             buffer.append(" self = (")
@@ -991,9 +991,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.appendLine(");")
             fields.forEach { field ->
                 appendIndented("self->")
-                buffer.append(field.name.value)
+                buffer.append(cName(field.name.value))
                 buffer.append(" = ")
-                buffer.append(field.name.value)
+                buffer.append(cName(field.name.value))
                 buffer.appendLine(";")
             }
             appendIndentedLine("return self;")
@@ -1808,6 +1808,22 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return false
     }
 
+    /**
+     * The C spelling of a user identifier. Every generated C name joins its
+     * parts with `_` followed by a letter (`Esc_step`, `MODE_DRIVE`,
+     * `Box_Int32`, `Sensor_vtable_Lidar`), so a user constant such as
+     * `MODE_DRIVE` or `KIRA_SLOT` could collide with one, or with the
+     * prelude. User underscores therefore become `_0`: `MAX_SIZE` is
+     * `MAX_0SIZE` in C. A generated separator is never followed by a digit,
+     * so the two name spaces cannot meet, and the mapping is one-to-one.
+     * Names without an underscore (the vast majority) are unchanged.
+     * The maps keyed by name (`knownValueTypes`, `fieldTypes`, ...) keep the
+     * Kira spelling; only emission goes through here.
+     */
+    private fun cName(name: String): String {
+        return if (name.indexOf('_') < 0) name else name.replace("_", "_0")
+    }
+
     private fun toScreamingSnake(name: String): String {
         if (name.isEmpty()) return name
         val sb = StringBuilder()
@@ -2092,7 +2108,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
         val iterExpr = forIterationStatement.forIterationExpr
         if (iterExpr.target is RangeExpr) {
-            val name = iterExpr.initializer.value
+            val name = cName(iterExpr.initializer.value)
             appendIndented("for(Int32 ")
             buffer.append(name)
             buffer.append(" = ")
@@ -2587,7 +2603,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             ) {
                 buffer.append(toScreamingSnake(origin.value))
                 buffer.append("_")
-                buffer.append(member.value)
+                buffer.append(cName(member.value))
                 return
             }
         }
@@ -2614,10 +2630,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             !knownValueTypes.containsKey(name)
         ) {
             buffer.append("this->")
-            buffer.append(name)
+            buffer.append(cName(name))
             return
         }
-        buffer.append(name)
+        buffer.append(cName(name))
     }
 
     override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
@@ -2845,7 +2861,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (isMagicDecl(variableDecl)) {
             return
         }
-        userSymbols.add(variableDecl.name.value)
+        userSymbols.add(cName(variableDecl.name.value))
         val typeName = typeNameOf(variableDecl.type)
         recordContainerTypeArgs(variableDecl.name.value, typeName, variableDecl.type)
         if (emittingClassMembers) {
@@ -2855,7 +2871,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             variableDecl.type.accept(this)
             buffer.append(" ")
             // Field names must not go through this-> rewriting
-            buffer.append(variableDecl.name.value)
+            buffer.append(cName(variableDecl.name.value))
             buffer.appendLine(";")
             return
         }
@@ -3082,7 +3098,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             userSymbols.add("${className}_finalize")
             emitClassFinalizer(
                 className,
-                fields.filter { userClassNames.contains(typeNameOf(it.type)) }.map { it.name.value }
+                fields.filter { userClassNames.contains(typeNameOf(it.type)) }.map { cName(it.name.value) }
             )
             appendIndented("simple ")
             buffer.append(mapTypeName(className))
@@ -3093,13 +3109,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 if (i > 0) buffer.append(", ")
                 buffer.append(mapTypeName(typeNameOf(field.type)))
                 buffer.append(" ")
-                buffer.append(field.name.value)
+                buffer.append(cName(field.name.value))
             }
             buffer.appendLine(")")
             appendIndentedLine("{")
             indentLevel++
             val owned = fields.filter { userClassNames.contains(typeNameOf(it.type)) }
-                .map { it.name.value }
+                .map { cName(it.name.value) }
             appendIndented("")
             buffer.append(mapTypeName(className))
             buffer.append(" self = (")
@@ -3111,9 +3127,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.appendLine(");")
             fields.forEach { field ->
                 appendIndented("self->")
-                buffer.append(field.name.value)
+                buffer.append(cName(field.name.value))
                 buffer.append(" = ")
-                buffer.append(field.name.value)
+                buffer.append(cName(field.name.value))
                 buffer.appendLine(";")
             }
             appendIndentedLine("return self;")
@@ -3180,7 +3196,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append(typeName)
             buffer.appendLine(";")
             enumDecl.members.forEach { member ->
-                val memberName = member.name.value
+                val memberName = cName(member.name.value)
                 userSymbols.add("${prefix}_$memberName")
                 appendIndented("static const ")
                 buffer.append(cBase)
@@ -3202,7 +3218,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         appendIndentedLine("{")
         indentLevel++
         enumDecl.members.forEachIndexed { index, member ->
-            val memberName = member.name.value
+            val memberName = cName(member.name.value)
             userSymbols.add("${prefix}_$memberName")
             appendIndented("")
             buffer.append(prefix)

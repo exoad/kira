@@ -84,6 +84,26 @@ still guards drift.
 
 ---
 
+## Identifiers: user underscores are `_0` in C
+
+The spec reserves underscores for UPPER_SNAKE_CASE constants (globals,
+fields, enum members) and `@intrinsics`; the lexer and parser enforce that,
+so `my_var` and `class A_T` are diagnostics. Every C name the backend
+*generates* joins its parts with `_` followed by a letter: `Esc_step`,
+`MODE_DRIVE` (from `enum Mode { DRIVE }`), `Box_Int32`, `Sensor_vtable_Lidar`,
+`Esc_new`, and the prelude's `KIRA_SLOT`, `Arr_get`. A user constant named
+`MODE_DRIVE` or `KIRA_SLOT` would land on one of those.
+
+So a user identifier's `_` is emitted as `_0`: `MAX_SIZE` is `MAX_0SIZE` in
+C, `Gear.HIGH_RANGE` is `GEAR_HIGH_0RANGE`. A generated separator is never
+followed by a digit, which keeps the two name spaces disjoint, and the map is
+one-to-one (drop the `0` after each `_` to read the Kira name back). Names
+without an underscore -- almost all of them -- are unchanged, and the JS
+backend needs no mangling at all. `@_extern` symbols are the foreign C name
+and are never rewritten.
+
+---
+
 ## Why C17 source (not a custom bytecode IR)
 
 - **Opts and tools for free** -- `cc -O2`, LTO, asan/ubsan, gdb/lldb.

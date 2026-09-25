@@ -186,9 +186,27 @@ class LexerSuiteTest {
     }
 
     @Test
+    fun upperSnakeCaseIdentifiersLex() {
+        // The spec's constant shape is the one ordinary identifier that may
+        // carry underscores. Any `_` used to panic the lexer.
+        assertLexes("MAX_SIZE", Token.Type.IDENTIFIER to "MAX_SIZE")
+        assertLexes("A_1", Token.Type.IDENTIFIER to "A_1")
+        assertLexes("FOO_", Token.Type.IDENTIFIER to "FOO_")
+        assertLexes(
+            "MODE_DRIVE = 7",
+            Token.Type.IDENTIFIER to "MODE_DRIVE",
+            Token.Type.S_EQUAL to "=",
+            Token.Type.L_INTEGER to "7",
+        )
+    }
+
+    @Test
     fun underscoresInsideIdentifiersThrow() {
-        val e = assertThrows<DiagnosticsException> { lex("my_var") }
-        assertTrue(e.message!!.contains("Underscores are not allowed"), e.message)
+        // camelCase / PascalCase names never contain underscores.
+        for (bad in listOf("my_var", "Foo_Bar", "MAX_size", "a_B")) {
+            val e = assertThrows<DiagnosticsException>(bad) { lex(bad) }
+            assertTrue(e.message!!.contains("Underscores are not allowed"), e.message)
+        }
     }
 
     @Test

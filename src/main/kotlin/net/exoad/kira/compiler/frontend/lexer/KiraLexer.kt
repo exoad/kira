@@ -180,37 +180,35 @@ class KiraLexer(private val context: SourceContext) {
         return Token.Raw(Token.Type.L_STRING, content, start, startLoc)
     }
 
+    /**
+     * The spec's constant shape, `^[A-Z][A-Z0-9_]*$`: the only ordinary
+     * identifiers that may contain an underscore. Everything else is
+     * camelCase / PascalCase, and intrinsics (`@snake_case`) are lexed
+     * separately.
+     */
+    private val upperSnakeCase = Regex("[A-Z][A-Z0-9_]*")
+
     fun lexIdentifier(): Token {
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
-        while (peek() != Symbols.NULL.rep) {
-            val c = peek()
-            if (c.isLetterOrDigit()) {
-                advancePointer()
-                continue
-            }
-            if (c == Symbols.UNDERSCORE.rep) {
-                if (isInIntrinsic) {
-                    advancePointer()
-                    continue
-                } else {
-                    Diagnostics.panic(
-                        "KiraLexer::lexIdentifier",
-                        "Underscores are not allowed in identifiers. Only intrinsics may contain underscores; use camelCase or PascalCase for identifiers.",
-                        location = startLoc,
-                        selectorLength = pointer - start,
-                        context = context
-                    )
-                }
-            }
-            break
+        while (peek() != Symbols.NULL.rep && (peek().isLetterOrDigit() || peek() == Symbols.UNDERSCORE.rep)) {
+            advancePointer()
         }
-        return Token.Raw(Token.Type.IDENTIFIER, context.content.substring(start, pointer), start, startLoc)
+        val text = context.content.substring(start, pointer)
+        if (text.contains(Symbols.UNDERSCORE.rep) && !upperSnakeCase.matches(text)) {
+            Diagnostics.panic(
+                "KiraLexer::lexIdentifier",
+                "Underscores are not allowed in '$text'. Only UPPER_SNAKE_CASE constants (MAX_SIZE) and " +
+                    "@intrinsics may contain underscores; use camelCase or PascalCase for other identifiers.",
+                location = startLoc,
+                selectorLength = text.length,
+                context = context
+            )
+        }
+        return Token.Raw(Token.Type.IDENTIFIER, text, start, startLoc)
     }
 
     private val pendingClosingAngleBrackets: ArrayDeque<Token> = ArrayDeque()
-
-    private var isInIntrinsic = false
 
     fun nextToken(): Token {
         if (pendingClosingAngleBrackets.isNotEmpty()) {
@@ -240,7 +238,7 @@ class KiraLexer(private val context: SourceContext) {
             }
 
             val startLoc = SourcePosition(lineNumber, column)
-            if (char.isLetter() || (isInIntrinsic && char == Symbols.UNDERSCORE.rep)) {  // identifiers and keywords usually have the same stuffs
+            if (char.isLetter()) {  // identifiers and keywords usually have the same stuffs
                 val identifier = lexIdentifier()
                 val keywordTokenType = Keywords.reserved[identifier.content]
                 if (keywordTokenType != null) {

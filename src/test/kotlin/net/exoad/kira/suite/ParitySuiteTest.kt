@@ -189,6 +189,41 @@ class ParitySuiteTest {
         }
     }
 
+    // --- identifiers -----------------------------------------------------------
+
+    @Test
+    fun upperSnakeCaseNamesDoNotCollideWithGeneratedOnes() {
+        // Any `_` used to panic the lexer. Constants, fields and enum members
+        // may carry them now, and the C backend keeps them clear of the names
+        // it generates (MODE_DRIVE is what `enum Mode { DRIVE }` becomes).
+        assertBothPrint("99\n0\n5\n4\n") {
+            """
+            pub enum Mode {
+                DRIVE
+            }
+
+            pub enum Gear {
+                LOW_RANGE,
+                HIGH_RANGE = 4
+            }
+
+            MODE_DRIVE: Int32 = 99
+
+            class Limits {
+                require pub MAX_X: Int32
+            }
+
+            fx main: () Void {
+                trace(MODE_DRIVE)
+                trace(Mode.DRIVE)
+                l: Limits = Limits { 5 }
+                trace(l.MAX_X)
+                trace(Gear.HIGH_RANGE)
+            }
+            """
+        }
+    }
+
     // --- enums -----------------------------------------------------------------
 
     @Test

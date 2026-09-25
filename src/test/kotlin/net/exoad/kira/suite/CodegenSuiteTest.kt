@@ -272,6 +272,30 @@ class CodegenSuiteTest {
     }
 
     @Test
+    fun userUnderscoresAreMangledAwayFromGeneratedNames() {
+        // `enum Mode { DRIVE }` generates MODE_DRIVE; the user's constant of
+        // the same name must not land on it. User `_` becomes `_0` in C.
+        val output = emit(
+            """
+            pub enum Mode {
+                DRIVE
+            }
+
+            MODE_DRIVE: Int32 = 99
+
+            fx main: () Void {
+                trace(MODE_DRIVE)
+                trace(Mode.DRIVE)
+            }
+            """
+        )
+        assertTrue(output.contains("Int32 MODE_0DRIVE = 99;"), output)
+        assertTrue(output.contains("MODE_DRIVE\n"), output)
+        assertTrue(output.contains("print(\"%d\\n\", MODE_0DRIVE)"), output)
+        assertTrue(output.contains("print(\"%d\\n\", MODE_DRIVE)"), output)
+    }
+
+    @Test
     fun enumExplicitValuesAreWrittenIntoTheCEnum() {
         // Explicit values used to be dropped: `DRIVE = 7` lowered as 1.
         val output = emit(

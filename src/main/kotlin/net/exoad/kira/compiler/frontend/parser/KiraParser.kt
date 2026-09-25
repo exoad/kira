@@ -11,6 +11,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.IntrinsicRegistry
 import net.exoad.kira.core.Keywords
+import net.exoad.kira.core.Symbols
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.utils.EnglishUtils
@@ -885,6 +886,7 @@ class KiraParser(private val context: SourceContext) {
             val modifiers = parseModifiers()
             val origin = here()
             val name = parseIdentifier()
+            expectConventionalName(name.value, origin, "Parameter", "camelCase")
             expectThenAdvance(Token.Type.S_COLON)
             val type = parseType()
             parameters.add(putOrigin(FunctionDeclParameterExpr(name, type, modifiers.keys.toList()), origin))
@@ -903,7 +905,9 @@ class KiraParser(private val context: SourceContext) {
         if (at(Token.Type.INTRINSIC_IDENTIFIER)) {
             functionName = parseIntrinsicExpr(isFunctionContext = true)
         } else if (at(Token.Type.IDENTIFIER)) {
+            val nameLocation = here()
             functionName = parseIdentifier()
+            expectConventionalName((functionName as Identifier).value, nameLocation, "Function", "camelCase")
         }
         // optional generics: fx name<T, U: Bound>: (...) Ret
         val generics = mutableListOf<Type>()
@@ -1083,6 +1087,31 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(AssignmentExpr(identifier, value), origin)
     }
 
+    /**
+     * The spec's naming conventions, the part the lexer cannot check: an
+     * underscore is only ever part of an UPPER_SNAKE_CASE constant (a
+     * variable, field or enum member), never of a type, function, parameter
+     * or type-parameter name. The lexer already rejected every other shape.
+     */
+    private fun expectConventionalName(name: String, location: SourcePosition, what: String, convention: String) {
+        if (!name.contains(Symbols.UNDERSCORE.rep)) {
+            return
+        }
+        Diagnostics.panic(
+            "KiraParser::expectConventionalName",
+            "$what '$name' does not conform to $convention naming convention: " +
+                "underscores are reserved for UPPER_SNAKE_CASE constants and @intrinsics.",
+            location = location,
+            selectorLength = name.length,
+            context = context
+        )
+    }
+
+    private fun expectConventionalTypeName(type: Type, location: SourcePosition, what: String) {
+        val name = (type.identifier as? Identifier)?.value ?: return
+        expectConventionalName(name, location, what, "PascalCase")
+    }
+
     /** The base types an enum may declare (`enum Name: Base { ... }`), per the spec. */
     private val enumIntegerBaseTypes = setOf("Int8", "Int16", "Int32", "Int64", "Int")
     private val enumFloatBaseTypes = setOf("Float32", "Float64", "Float")
@@ -1169,6 +1198,7 @@ class KiraParser(private val context: SourceContext) {
         advancePointer() // consume 'enum'
         val origin = here()
         val name = parseIdentifier() // we only allow simple names, not complex names on enums, cuz there is no point
+        expectConventionalName(name.value, origin, "Enum", "PascalCase")
         // Optional base type: `enum Status: Int32 {`. Only the spec's scalar
         // bases are allowed; a Str or Float base makes every value mandatory.
         var baseType: Type? = null
@@ -1217,6 +1247,7 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         expectThenAdvance(Token.Type.K_ALIAS)
         val aliasType = parseType()
+        expectConventionalTypeName(aliasType, origin, "Type alias")
         expectThenAdvance(Token.Type.K_AS)
         val targetType = parseType()
         val decl = TypeAliasDecl(
@@ -1237,6 +1268,7 @@ class KiraParser(private val context: SourceContext) {
         advancePointer() //consume the class keyword
         val origin = here()
         val className = parseType()
+        expectConventionalTypeName(className, origin, "Class")
         val parenTypes = mutableListOf<Type>()
         if (at(Token.Type.S_COLON)) // inheritance here baby ;D
         {
@@ -1303,6 +1335,7 @@ class KiraParser(private val context: SourceContext) {
         advancePointer() // consume 'variant'
         val origin = here()
         val variantName = parseType()
+        expectConventionalTypeName(variantName, origin, "Variant")
         val parenTypes = mutableListOf<Type>()
         if (at(Token.Type.S_COLON)) {
             advancePointer()
@@ -1363,6 +1396,7 @@ class KiraParser(private val context: SourceContext) {
         var seenAnonymous = false
         expectThenAdvance(Token.Type.K_TRAIT)
         val name = parseType()
+        expectConventionalTypeName(name, baseLocation, "Trait")
         val parenTypes = mutableListOf<Type>()
         if (at(Token.Type.S_COLON)) {
             advancePointer()
@@ -1552,6 +1586,7 @@ class KiraParser(private val context: SourceContext) {
 
         val baseLocation = here()
         val baseIdentifier = parseIdentifier()
+        expectConventionalName(baseIdentifier.value, baseLocation, "Type parameter", "PascalCase")
         val children = mutableListOf<Type>()
         if (at(Token.Type.S_OPEN_ANGLE)) {
             expectThenAdvance(Token.Type.S_OPEN_ANGLE)

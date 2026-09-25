@@ -527,6 +527,38 @@ class ParserSuiteTest {
     }
 
     @Test
+    fun namingConventionsReserveUnderscoresForConstants() {
+        // Accepted: UPPER_SNAKE_CASE globals, fields and enum members.
+        val ast = parseModule(
+            """
+            MAX_SIZE: Int32 = 10
+
+            class Limits {
+                require pub MAX_X: Int32
+            }
+
+            enum Gear {
+                LOW_RANGE,
+                HIGH_RANGE = 4
+            }
+            """
+        )
+        assertEquals(3, declsOf(ast).size, ast.toString())
+        // Rejected: types, functions, parameters and type parameters.
+        for (bad in listOf(
+            "class A_T {}",
+            "trait T_A {}",
+            "enum E_N { A }",
+            "alias A_B as Int32",
+            "fx MY_FN: () Void {}",
+            "fx f: (X_Y: Int32) Void {}",
+            "fx id<T_X>: (v: T_X) T_X { return v }",
+        )) {
+            assertThrows<Throwable>(bad) { parseModule(bad) }
+        }
+    }
+
+    @Test
     fun parsesBareReturn() {
         val ast = parseModule(
             """
