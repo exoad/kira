@@ -50,7 +50,14 @@ if [[ -f "$CPP_LEGS_FILE" ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"
     line="${line//[[:space:]]/}"
-    [[ -n "$line" ]] && CPP_LEGS+=("$line")
+    [[ -n "$line" ]] || continue
+    for seen in ${CPP_LEGS[@]+"${CPP_LEGS[@]}"}; do
+      if [[ "$seen" == "$line" ]]; then
+        echo "examples/cpp-legs.txt lists '$line' twice" >&2
+        exit 1
+      fi
+    done
+    CPP_LEGS+=("$line")
   done < "$CPP_LEGS_FILE"
 fi
 has_cpp_leg() { # has_cpp_leg <example-name>
@@ -190,18 +197,26 @@ for dir in "${DIRS[@]}"; do
   fi
 
   # --- C++ backend: emit, compile, run (examples/cpp-legs.txt only) ------
+  # The leg has run once it reaches here, whatever its outcome: the count at
+  # the end distinguishes a listed name that never matched an example from a
+  # leg that ran and failed.
   cpp_failed=0
   cpp_ran=0
   if has_cpp_leg "$name"; then
     cpp_ran=1
+    cpp_legs_run=$((cpp_legs_run + 1))
     if ! (
       cd "$dir"
       rm -rf "$WORK/cpp" "$WORK/app-cpp" "$WORK/app-cpp.exe"
       "$KIRA_BIN" --target cpp --out "$WORK/cpp" >/dev/null 2>&1 || { echo "  kira (cpp) failed" >&2; exit 1; }
 
+      # W1.6 defines `--out <dir>`; with the `tree` layout the generated
+      # .kira.cxx files land under it. W2.8 enables the examples and settles
+      # their kira.yaml layout, so this find is where a `beside` layout would
+      # need a different root.
       mapfile -t cpp_sources < <(find "$WORK/cpp" -name '*.cxx' | sort)
       if [[ ${#cpp_sources[@]} -eq 0 ]]; then
-        echo "  kira (cpp) emitted no .cxx under $WORK/cpp" >&2; exit 1
+        echo "  kira (cpp) emitted no .cxx under $WORK/cpp (is the example's kira.yaml layout tree?)" >&2; exit 1
       fi
       "$CXX_BIN" -std=c++20 -O2 -I "$CPP_RUNTIME_INC" -I "$WORK/cpp" -o "$WORK/app-cpp" "${cpp_sources[@]}" 2>"$WORK/cxx.err" || {
         echo "  c++ failed:" >&2; cat "$WORK/cxx.err" >&2; exit 1;
@@ -212,14 +227,17 @@ for dir in "${DIRS[@]}"; do
     fi
   fi
 
-  if [[ $c_failed -eq 1 || $js_failed -eq 1 || $cpp_failed -eq 1 ]]; then
+  if [[ $c_failed -eq 1 || $js_failed -eq 1 ]]; then
     failures=$((failures + 1))
     continue
   fi
 
-  # The C++ leg must print exactly what expected.txt, C and JS print.
-  if [[ $cpp_ran -eq 1 ]]; then
-    cpp_legs_run=$((cpp_legs_run + 1))
+  # The C++ leg must print exactly what expected.txt, C and JS print. A failed
+  # leg counts once and falls through: the C and JS snapshots below still
+  # refresh (or are checked), so a broken C++ leg never freezes them.
+  if [[ $cpp_failed -eq 1 ]]; then
+    failures=$((failures + 1))
+  elif [[ $cpp_ran -eq 1 ]]; then
     cpp_ok=1
     if ! diff -q "$dir/expected.txt" "$WORK/actual-cpp.txt" >/dev/null; then
       echo "  MISMATCH: C++ stdout differs from expected.txt" >&2
@@ -293,10 +311,14 @@ if [[ ${#SELECTED[@]} -eq 0 ]]; then
     emit "$JS_PRELUDE_REF" "$js_prelude_seen" "examples/prelude.reference.js" || failures=$((failures + 1))
   fi
   # Every name in cpp-legs.txt must have run: a misspelt entry would otherwise
-  # verify nothing and say nothing.
+  # verify nothing and say nothing. (Duplicates were rejected when the list
+  # was read, and a leg that ran and failed is already counted above.)
   echo "=== C++ leg ==="
   echo "  ran $cpp_legs_run of ${#CPP_LEGS[@]} example(s) listed in examples/cpp-legs.txt"
   if [[ $cpp_legs_run -ne ${#CPP_LEGS[@]} ]]; then
+    for legname in ${CPP_LEGS[@]+"${CPP_LEGS[@]}"}; do
+      [[ -f "$ROOT/examples/$legname/kira.yaml" ]] || echo "  '$legname' in examples/cpp-legs.txt is not an example directory" >&2
+    done
     echo "  a listed example did not run; check the names in examples/cpp-legs.txt" >&2
     failures=$((failures + 1))
   fi

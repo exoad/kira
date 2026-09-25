@@ -3,13 +3,25 @@ package net.exoad.kira.cpp.support
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-/** Which runtime profile a translation unit is built for (design 8.2, 10). */
+/**
+ * Which runtime profile a translation unit is built for (design 8.2, 10).
+ *
+ * The profile follows the toolchain, never the case: `KIRA_PROFILE_FREESTANDING=1`
+ * is set for the Pico image only, and host suites compile the same headers
+ * hosted (design 8.2). So [ARM][CppToolchain.ARM] is always [FREESTANDING]
+ * and every other toolchain is always [HOSTED]; a freestanding case is a
+ * valid hosted case (design 10), which is what the host toolchains prove.
+ */
 enum class CppProfile(val id: String) {
     HOSTED("hosted"),
     FREESTANDING("freestanding");
 
     companion object {
         fun byId(id: String): CppProfile? = entries.firstOrNull { it.id == id }
+
+        /** The one profile a toolchain builds (design 8.1). */
+        fun forToolchain(toolchain: CppToolchain): CppProfile =
+            if (toolchain == CppToolchain.ARM) FREESTANDING else HOSTED
     }
 }
 
@@ -21,6 +33,11 @@ enum class CppProfile(val id: String) {
  * - g++, clang and zig `-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror`;
  * - arm-none-eabi `-std=c++20 -mcpu=cortex-m33 -mthumb -Os -fno-exceptions -fno-rtti -Wall -Wextra -Wconversion -Werror -DKIRA_PROFILE_FREESTANDING=1`;
  * - every gcc/clang family build adds `-ffp-contract=off` (D28), so one expected.txt serves x64 and aarch64.
+ *
+ * `KIRA_PROFILE_FREESTANDING=1` appears in the arm line and nowhere else:
+ * the profile is a property of the toolchain (design 8.2), and [compile]
+ * refuses a [CppProfile] that does not match its toolchain rather than
+ * quietly building something the design never runs.
  *
  * Every candidate output (the exe, `.exe`, `.o`, `.obj`, and the batch file
  * MSVC runs through) is deleted before a compile starts: a stale binary once
@@ -64,19 +81,30 @@ object CppCompileSupport {
         val clean: Boolean get() = forbidden.isEmpty()
     }
 
-    /** Symbols a freestanding object must not reference or define (design 10, W1.3): heap, exceptions, RTTI. */
+    /**
+     * Symbols a freestanding object must not reference or define (design 10,
+     * W1.3): heap, exceptions, RTTI.
+     *
+     * The Itanium ABI mangles `operator new` as `_Znw<size>`, `new[]` as
+     * `_Zna<size>`, `delete` as `_Zdl...` and `delete[]` as `_Zda...`, where
+     * `<size>` is the target's `size_t`: `j` on 32-bit arm-none-eabi, `m` on
+     * x64 and aarch64. The patterns match the operator, not one size letter,
+     * so the aligned and nothrow overloads (`_ZnwjSt11align_val_t`,
+     * `_ZnajRKSt9nothrow_t`) and sized deletes (`_ZdlPvj`) are covered too.
+     * No ordinary name can mangle to `_Zn`/`_Zd` followed by a lowercase
+     * pair: an identifier always carries its length first.
+     */
     val forbiddenSymbolPatterns: List<Regex> = listOf(
         Regex("^_?malloc$"),
         Regex("^_?calloc$"),
         Regex("^_?realloc$"),
         Regex("^_?free$"),
-        Regex("_Znw"),    // operator new
-        Regex("_Znam"),   // operator new[]
-        Regex("_Zdl"),    // operator delete
-        Regex("__cxa"),   // C++ ABI runtime (throw, guard, ...)
-        Regex("_Unwind"), // unwinder
-        Regex("_ZTI"),    // typeinfo
-        Regex("_ZTS"),    // typeinfo name
+        Regex("^_Zn[wa]"),   // operator new, operator new[]
+        Regex("^_Zd[la]"),   // operator delete, operator delete[]
+        Regex("__cxa"),      // C++ ABI runtime (throw, guard, ...)
+        Regex("_Unwind"),    // unwinder
+        Regex("^_ZTI"),      // typeinfo
+        Regex("^_ZTS"),      // typeinfo name
         Regex("typeinfo"),
     )
 
@@ -86,6 +114,10 @@ object CppCompileSupport {
      * Compile [sources] (and link them, unless the toolchain is compile-only)
      * into [outDir], which is wiped first. The exe is named [exeName] plus
      * the host's suffix.
+     *
+     * [profile] must be [CppProfile.forToolchain] of the toolchain: it is the
+     * caller stating which profile it expects, and a mismatch is a bug in the
+     * caller (design 8.2), reported as an [IllegalArgumentException].
      */
     fun compile(
         sources: List<File>,
@@ -98,18 +130,21 @@ object CppCompileSupport {
     ): CompileResult {
         require(sources.isNotEmpty()) { "compile: no sources" }
         for (s in sources) require(s.isFile) { "compile: missing source $s" }
+        val expected = CppProfile.forToolchain(toolchain.toolchain)
+        require(profile == expected) {
+            "compile: toolchain '${toolchain.toolchain.id}' builds the ${expected.id} profile only, not ${profile.id} " +
+                "(design 8.2: KIRA_PROFILE_FREESTANDING=1 is set for the Pico image only; host suites compile the same headers hosted)"
+        }
+        for (d in defines) require(!d.startsWith("KIRA_PROFILE_")) {
+            "compile: '$d' is not a case define; the profile follows the toolchain (design 8.2)"
+        }
         clearOutputs(outDir)
         outDir.mkdirs()
 
-        val allDefines = buildList {
-            if (profile == CppProfile.FREESTANDING) add("KIRA_PROFILE_FREESTANDING=1")
-            addAll(defines)
-        }
-
         return when (toolchain.toolchain) {
-            CppToolchain.MSVC -> compileMsvc(sources, includeDirs, allDefines, toolchain, outDir, exeName)
-            CppToolchain.ZIG_AARCH64, CppToolchain.ARM -> compileObjectsOnly(sources, includeDirs, allDefines, toolchain, outDir)
-            CppToolchain.GCC, CppToolchain.CLANG -> compileGnuLink(sources, includeDirs, allDefines, toolchain, outDir, exeName)
+            CppToolchain.MSVC -> compileMsvc(sources, includeDirs, defines, toolchain, outDir, exeName)
+            CppToolchain.ZIG_AARCH64, CppToolchain.ARM -> compileObjectsOnly(sources, includeDirs, defines, toolchain, outDir)
+            CppToolchain.GCC, CppToolchain.CLANG -> compileGnuLink(sources, includeDirs, defines, toolchain, outDir, exeName)
         }
     }
 
@@ -129,22 +164,8 @@ object CppCompileSupport {
             env[key] = extraPathDirs.joinToString(File.pathSeparator) { it.absolutePath } +
                 File.pathSeparator + (env[key] ?: "")
         }
-        val process = builder.start()
-        val stderr = StringBuilder()
-        val stderrThread = Thread { stderr.append(process.errorStream.bufferedReader().readText()) }
-        stderrThread.start()
-        val stdoutHolder = StringBuilder()
-        val stdoutThread = Thread { stdoutHolder.append(process.inputStream.bufferedReader().readText()) }
-        stdoutThread.start()
-        val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            process.waitFor(10, TimeUnit.SECONDS)
-        }
-        stdoutThread.join(5_000)
-        stderrThread.join(5_000)
-        val code = if (finished) process.exitValue() else -1
-        return RunResult(code, stdoutHolder.toString().replace("\r", ""), stderr.toString(), timedOut = !finished)
+        val r = await(builder.start(), timeoutSeconds)
+        return r.copy(stdout = r.stdout.replace("\r", ""))
     }
 
     /**
@@ -155,16 +176,14 @@ object CppCompileSupport {
         require(obj.isFile) { "nmCheck: $obj does not exist" }
         val nm = nmTool ?: nmBeside(toolchain)
             ?: throw IllegalStateException("nmCheck: no nm beside ${toolchain.command.first()}")
-        val process = ProcessBuilder(listOf(nm.absolutePath, obj.absolutePath)).redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText()
-        if (!process.waitFor(60, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
+        val r = await(ProcessBuilder(listOf(nm.absolutePath, obj.absolutePath)).redirectErrorStream(true).start(), 60)
+        if (r.timedOut) {
             throw IllegalStateException("nmCheck: $nm timed out")
         }
-        if (process.exitValue() != 0) {
-            throw IllegalStateException("nmCheck: $nm exited ${process.exitValue()}: ${output.trim()}")
+        if (r.exitCode != 0) {
+            throw IllegalStateException("nmCheck: $nm exited ${r.exitCode}: ${r.stdout.trim()}")
         }
-        val symbols = output.lines()
+        val symbols = r.stdout.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .map { line -> line.split(Regex("\\s+")).last() }
@@ -202,6 +221,10 @@ object CppCompileSupport {
         CppToolchain.MSVC -> msvcWarningContract
     }
 
+    /** `<index>_<basename>.<ext>`: two sources may share a basename (`a/util.kira.cxx`, `b/util.kira.cxx`). */
+    fun objectName(index: Int, source: File, extension: String): String =
+        "${index}_${source.nameWithoutExtension}.$extension"
+
     // ---- per-family compiles ---------------------------------------------
 
     private fun compileGnuLink(
@@ -234,7 +257,7 @@ object CppCompileSupport {
         val stderr = StringBuilder()
         var exit = 0
         for ((index, source) in sources.withIndex()) {
-            val obj = File(outDir, "${index}_${source.nameWithoutExtension}.o")
+            val obj = File(outDir, objectName(index, source, "o"))
             val command = toolchain.command + flags +
                 includeDirs.flatMap { listOf("-I", it.absolutePath) } +
                 defines.map { "-D$it" } +
@@ -257,34 +280,52 @@ object CppCompileSupport {
         return CompileResult(toolchain.toolchain, exit == 0, null, objects, commands, exit, stdout.toString(), stderr.toString())
     }
 
+    /**
+     * One `cl /c` per source into an indexed object name, then one link
+     * step. A single `cl <all sources>` writes every object as
+     * `<basename>.obj` into the working directory, so two sources sharing a
+     * basename (`a/util.kira.cxx`, `b/util.kira.cxx`) collide: LNK4042
+     * "object specified more than once" and an unresolved symbol.
+     */
     private fun compileMsvc(
         sources: List<File>, includeDirs: List<File>, defines: List<String>,
         toolchain: LocatedToolchain.Found, outDir: File, exeName: String,
     ): CompileResult {
         val vcvars = toolchain.command.last()
         val exe = File(outDir, "$exeName.exe")
-        val clArgs = msvcWarningContract +
+        val common = msvcWarningContract +
             includeDirs.map { "/I" + quoteBat(it.absolutePath) } +
-            defines.map { "/D" + quoteBat(it) } +
-            listOf("/Fe" + quoteBat(exe.absolutePath)) +
-            sources.map { quoteBat(it.absolutePath) }
+            defines.map { "/D" + quoteBat(it) }
+        val objectFiles = sources.mapIndexed { index, source -> File(outDir, objectName(index, source, "obj")) }
+        val compileLines = sources.mapIndexed { index, source ->
+            listOf("cl") + common + listOf("/c", "/Fo" + quoteBat(objectFiles[index].absolutePath), quoteBat(source.absolutePath))
+        }
+        val linkLine = listOf("cl", "/nologo", "/Fe" + quoteBat(exe.absolutePath)) + objectFiles.map { quoteBat(it.absolutePath) }
+        val shown = compileLines + listOf(linkLine)
+
         // A batch file: `cmd /c call "<path with spaces>" && cl ...` loses
         // its quoting on the way through ProcessBuilder, a file does not.
+        // %ERRORLEVEL% is read on its own line, after cl has run: cmd expands
+        // it when it parses a line, so `cl ... || exit /b %ERRORLEVEL%` would
+        // report the level from before cl.
         val bat = File(outDir, "compile.bat")
-        bat.writeText(
-            "@echo off\r\n" +
-                "cd /d \"${outDir.absolutePath}\"\r\n" +
-                "call \"$vcvars\" >nul 2>&1 || exit /b 97\r\n" +
-                "cl " + clArgs.joinToString(" ") + "\r\n" +
-                "exit /b %ERRORLEVEL%\r\n"
-        )
+        bat.writeText(buildString {
+            append("@echo off\r\n")
+            append("cd /d \"${outDir.absolutePath}\"\r\n")
+            append("call \"$vcvars\" >nul 2>&1 || exit /b 97\r\n")
+            for (line in shown) {
+                append(line.joinToString(" ")).append("\r\n")
+                append("set CL_EXIT=%ERRORLEVEL%\r\n")
+                append("if not \"%CL_EXIT%\"==\"0\" exit /b %CL_EXIT%\r\n")
+            }
+            append("exit /b 0\r\n")
+        })
         val command = listOf("cmd", "/c", bat.absolutePath)
         val r = execute(command, outDir)
-        val objects = outDir.listFiles { f -> f.name.endsWith(".obj") }?.toList() ?: emptyList()
+        val objects = objectFiles.filter { it.isFile }
         val ok = r.exitCode == 0 && exe.isFile
-        val shown = listOf("cl") + clArgs
         return CompileResult(
-            toolchain.toolchain, ok, if (ok) exe else null, objects, listOf(shown),
+            toolchain.toolchain, ok, if (ok) exe else null, objects, shown,
             r.exitCode, r.stdout,
             when {
                 r.exitCode == 97 -> r.stderr + "\ncall $vcvars failed"
@@ -310,14 +351,27 @@ object CppCompileSupport {
     }
 
     private fun execute(command: List<String>, workingDir: File): RunResult {
-        val process = ProcessBuilder(command).directory(workingDir).start()
+        val r = await(ProcessBuilder(command).directory(workingDir).start(), COMPILE_TIMEOUT_SECONDS)
+        return if (r.timedOut) r.copy(stderr = r.stderr + "\n(compile timed out after ${COMPILE_TIMEOUT_SECONDS}s)") else r
+    }
+
+    /**
+     * Drain both streams on their own threads and wait at most
+     * [timeoutSeconds]; a process that hangs is killed and reported as
+     * [RunResult.timedOut] with exit -1. Reading a stream on the calling
+     * thread would block for as long as the process keeps it open, and the
+     * timeout would never fire.
+     */
+    internal fun await(process: Process, timeoutSeconds: Long): RunResult {
         val stderr = StringBuilder()
         val stderrThread = Thread { stderr.append(process.errorStream.bufferedReader().readText()) }
+        stderrThread.isDaemon = true
         stderrThread.start()
         val stdout = StringBuilder()
         val stdoutThread = Thread { stdout.append(process.inputStream.bufferedReader().readText()) }
+        stdoutThread.isDaemon = true
         stdoutThread.start()
-        val finished = process.waitFor(COMPILE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
         if (!finished) {
             process.destroyForcibly()
             process.waitFor(10, TimeUnit.SECONDS)
@@ -327,7 +381,7 @@ object CppCompileSupport {
         return RunResult(
             if (finished) process.exitValue() else -1,
             stdout.toString(),
-            stderr.toString() + if (finished) "" else "\n(compile timed out after ${COMPILE_TIMEOUT_SECONDS}s)",
+            stderr.toString(),
             timedOut = !finished,
         )
     }

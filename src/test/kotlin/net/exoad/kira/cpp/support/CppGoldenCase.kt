@@ -19,6 +19,12 @@ import java.io.File
  * harness self-test) and directories starting with `_`, which are not cases.
  * Any other directory without a `case.yaml` is an error: a half-written case
  * must not vanish silently.
+ *
+ * `profile` says which subset the case's modules are written in (design 10).
+ * It does not choose flags: every host toolchain compiles the case hosted and
+ * `arm` compiles it freestanding (design 8.2), so a hosted case may not list
+ * `arm`, and a freestanding case is proven hosted by the host toolchains and
+ * freestanding by `arm`.
  */
 data class CppGoldenCase(
     val name: String,
@@ -41,20 +47,15 @@ data class CppGoldenCase(
     }
 
     /**
-     * Include roots: the case's `expected/` and `driver/`, every directory
-     * under `expected/` that holds a header (so a driver may say either
-     * `#include "src/x.kira.hxx"` or `#include "x.kira.hxx"`), then the
-     * runtime.
+     * Include roots: the case's `expected/`, its `driver/`, and the runtime.
+     * Nothing else: includes between generated modules are relative paths
+     * and "no include path is added anywhere" (design 4.3), so a golden
+     * whose cross-module include is spelled wrongly must fail here, not pass
+     * because the harness found the header for it. A driver therefore
+     * writes `#include "src/x.kira.hxx"`, the path under `expected/`.
      */
-    fun includeDirs(runtimeDir: File): List<File> {
-        val headerDirs = expectedDir.walkTopDown()
-            .filter { it.isFile && (it.name.endsWith(".hxx") || it.name.endsWith(".h") || it.name.endsWith(".hpp")) }
-            .map { it.parentFile }
-            .distinct()
-            .sortedBy { it.path }
-            .toList()
-        return (listOf(expectedDir, driverDir) + headerDirs + listOf(runtimeDir)).distinctBy { it.absoluteFile.normalize() }
-    }
+    fun includeDirs(runtimeDir: File): List<File> =
+        listOf(expectedDir, driverDir, runtimeDir).distinctBy { it.absoluteFile.normalize() }
 
     /** expected.txt with the host's `\r` removed, matching what [CppCompileSupport.run] returns. */
     fun expectedStdout(): String = expectedText.readText().replace("\r", "")
@@ -80,11 +81,18 @@ data class CppGoldenCase(
             val profileId = map["profile"]?.toString() ?: "hosted"
             val profile = CppProfile.byId(profileId)
                 ?: throw IllegalArgumentException("${dir.name}/case.yaml: profile must be hosted or freestanding, got '$profileId'")
+            require(profile == CppProfile.FREESTANDING || CppToolchain.ARM !in toolchains) {
+                "${dir.name}/case.yaml: 'arm' builds the freestanding profile only (design 8.1), but the case says profile: hosted; " +
+                    "mark it freestanding or drop arm"
+            }
 
             val defines = when (val d = map["defines"]) {
                 null -> emptyList()
                 is List<*> -> d.map { it.toString() }
                 else -> throw IllegalArgumentException("${dir.name}/case.yaml: 'defines' must be a list")
+            }
+            for (d in defines) require(!d.startsWith("KIRA_PROFILE_")) {
+                "${dir.name}/case.yaml: '$d' is not a case define; the profile follows the toolchain (design 8.2)"
             }
 
             val emit = map["emit"]?.toString() ?: "pending"

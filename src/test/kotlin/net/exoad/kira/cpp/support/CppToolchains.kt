@@ -2,7 +2,6 @@ package net.exoad.kira.cpp.support
 
 import org.junit.jupiter.api.Assumptions
 import java.io.File
-import java.util.concurrent.TimeUnit
 import kotlin.test.fail
 
 /**
@@ -196,8 +195,8 @@ object CppToolchains {
         if (!override.isNullOrEmpty()) {
             val cmd = resolveOverride(override)
                 ?: return LocatedToolchain.Missing(toolchain, "${toolchain.envOverride}=$override is neither a file nor on PATH")
-            val versionArgs = if (cmd.size >= 2 && cmd[1] == "c++") listOf("--version") else listOf("--version")
-            return probe(toolchain, cmd, versionArgs, toolchain.envOverride)
+            // `clang++ --version` and `zig c++ --version` both answer.
+            return probe(toolchain, cmd, listOf("--version"), toolchain.envOverride)
         }
         if (isWindows) {
             // LLVM clang 18 cannot parse the MSVC 14.44 STL; zig ships clang 20
@@ -341,22 +340,25 @@ object CppToolchains {
 
     data class QuickResult(val exitCode: Int, val stdout: String, val stderr: String)
 
-    /** Run a short probe (30 s cap); null when the process cannot be launched. */
+    private const val PROBE_TIMEOUT_SECONDS = 30L
+
+    /**
+     * Run a short probe; null when the process cannot be launched. Both
+     * streams are drained on their own threads ([CppCompileSupport.await]),
+     * so a tool that hangs is killed after [PROBE_TIMEOUT_SECONDS] and
+     * reported with exit -1 instead of blocking the test JVM.
+     */
     private fun runQuick(command: List<String>): QuickResult? {
         val process = try {
             ProcessBuilder(command).start()
         } catch (e: Exception) {
             return null
         }
-        val stderr = StringBuilder()
-        val stderrThread = Thread { stderr.append(process.errorStream.bufferedReader().readText()) }
-        stderrThread.start()
-        val stdout = process.inputStream.bufferedReader().readText()
-        stderrThread.join()
-        if (!process.waitFor(30, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            return QuickResult(-1, stdout, stderr.toString() + "\n(timed out)")
+        val r = CppCompileSupport.await(process, PROBE_TIMEOUT_SECONDS)
+        return if (r.timedOut) {
+            QuickResult(-1, r.stdout, r.stderr + "\n(timed out after ${PROBE_TIMEOUT_SECONDS}s)")
+        } else {
+            QuickResult(r.exitCode, r.stdout, r.stderr)
         }
-        return QuickResult(process.exitValue(), stdout, stderr.toString())
     }
 }

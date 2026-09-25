@@ -9,7 +9,8 @@ namespace blink
 
   [[nodiscard]] constexpr ::kira::Bool isOn(::kira::Int32 tick)
   {
-    return (tick / PERIOD_TICKS) % 2 == 0;
+    // Int32 is `long` on arm-none-eabi and `int` on x64, so a literal is spelled as its type.
+    return ::kira::mod(::kira::div(tick, PERIOD_TICKS), ::kira::Int32{2}) == ::kira::Int32{0};
   }
 }
 #include "kira/macro_pop.hxx"

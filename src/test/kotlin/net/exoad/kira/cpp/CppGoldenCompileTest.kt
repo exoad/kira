@@ -2,6 +2,7 @@ package net.exoad.kira.cpp
 
 import net.exoad.kira.cpp.support.CppCompileSupport
 import net.exoad.kira.cpp.support.CppGoldenCase
+import net.exoad.kira.cpp.support.CppProfile
 import net.exoad.kira.cpp.support.CppToolchain
 import net.exoad.kira.cpp.support.CppToolchains
 import org.junit.jupiter.api.Assumptions
@@ -28,8 +29,13 @@ import kotlin.test.fail
  * absent from the checkout is a failure under `KIRA_REQUIRE_TOOLCHAINS=1`
  * and a visible skip otherwise.
  *
- * Runtime include dir: `-Dkira.cppRuntimeDir`, else `<root>/include` when
- * the root brings one, else `kira/cpp`.
+ * Runtime include dir: a root that brings its own `include/` always uses it
+ * (the self-test's stand-in has an API of its own that the real runtime does
+ * not share); otherwise `-Dkira.cppRuntimeDir`, else `kira/cpp`. So the
+ * property redirects the corpus and leaves the self-test alone.
+ *
+ * Profile: the toolchain's (design 8.2), never the case's. `arm` compiles
+ * freestanding, everything else hosted; see [CppProfile.forToolchain].
  */
 class CppGoldenCompileTest {
     companion object {
@@ -47,9 +53,9 @@ class CppGoldenCompileTest {
         }
 
         fun runtimeDirFor(root: File): File {
-            System.getProperty("kira.cppRuntimeDir")?.trim()?.takeIf { it.isNotEmpty() }?.let { return File(it) }
             val own = File(root, "include")
             if (own.isDirectory) return own
+            System.getProperty("kira.cppRuntimeDir")?.trim()?.takeIf { it.isNotEmpty() }?.let { return File(it) }
             return File("kira/cpp")
         }
 
@@ -109,7 +115,7 @@ class CppGoldenCompileTest {
             includeDirs = case.includeDirs(runtimeDir),
             defines = case.defines,
             toolchain = located,
-            profile = case.profile,
+            profile = CppProfile.forToolchain(toolchain),
             outDir = outDir,
         )
         assertTrue(result.success, "${case.name}: compile failed under ${toolchain.id}\n${result.describe()}")

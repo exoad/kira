@@ -41,6 +41,19 @@ tasks.test {
     )) {
         inputs.property("env.$key", System.getenv(key) ?: "")
     }
+    // The files the harness compiles that live outside src/test: the runtime
+    // (kira/cpp), any golden root and runtime dir named by the knobs above.
+    // Without these, editing kira/cpp/kira/*.hxx and running `./gradlew test`
+    // replays the previous result as UP-TO-DATE without compiling anything.
+    // A missing directory is an empty tree, not an error.
+    val cppGoldenRoots = (System.getProperty("kira.cppGoldenDir") ?: System.getenv("KIRA_CPP_GOLDEN_DIR") ?: "")
+        .split(File.pathSeparator).map { it.trim() }.filter { it.isNotEmpty() }
+    val cppRuntimeDir = listOfNotNull(System.getProperty("kira.cppRuntimeDir")?.trim()?.takeIf { it.isNotEmpty() })
+    for ((index, dir) in (listOf("kira/cpp") + cppRuntimeDir + cppGoldenRoots).withIndex()) {
+        inputs.files(fileTree(dir))
+            .withPropertyName("cppHarnessTree$index")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
 }
 
 // Compiler reads kira.yaml from the process working directory.

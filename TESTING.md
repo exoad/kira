@@ -119,8 +119,9 @@ emitted text. The harness lives in `src/test/kotlin/net/exoad/kira/cpp/`:
 | `support/CppToolchains` | Finds each toolchain (below) without `which`, probes it once, and applies `KIRA_TOOLCHAINS` / `KIRA_REQUIRE_TOOLCHAINS` |
 | `support/CppCompileSupport` | `compile` with the design's warning contract, `run` with a timeout, `nmCheck` for freestanding objects; wipes every candidate output (exe, `.o`, `.obj`) before a compile so a stale binary can never pass |
 | `support/CppGoldenCase` | Loads one golden case directory (format below) and validates it |
+| `support/CppHarnessSelfTest` | Pins the harness's own contracts: the profile follows the toolchain, the include roots are exactly `expected/`, `driver/` and the runtime, and `nmCheck` really rejects `new[]`/`delete[]`, `new`/`delete` and `malloc` in an arm object (fixtures under `cpp-harness-selftest/_nm-check/`) |
 | `CppGoldenCompileTest` | For every golden case and every toolchain its `case.yaml` names: compile `expected/**` plus the driver against the runtime, run it where the toolchain links, diff stdout with `expected.txt`; `arm` objects are also nm-checked for heap, exception and RTTI symbols |
-| `CppWarningContractTest` | Compiles a fixture with one known warning (an unused parameter) under every toolchain and asserts the compile **fails**, next to a clean control that must compile. This is the proof that `-Werror` and `/WX` are really on |
+| `CppWarningContractTest` | One fixture per contracted flag under `cpp-harness-selftest/_warning-contract/` (unused parameter, unused variable, float conversion, sign conversion, shadowing, non-virtual destructor), each asserted to **fail** under every toolchain whose flag line carries that flag and to name the expected diagnostic, next to a C++20 control (`clean.cxx`, a `concept`) that must compile. This is the proof that the whole 8.2 flag line, `-std=c++20`, `-Werror` and `/WX` are really on |
 
 Run it alone with:
 
@@ -138,11 +139,23 @@ Run it alone with:
 | `msvc` | `cl` after `vcvars64.bat`, found through `vswhere.exe`; Windows only | `/std:c++20 /W4 /WX /EHsc /permissive-` | `KIRA_MSVC_VCVARS` (the .bat) |
 | `arm` | `arm-none-eabi-g++` on PATH, else `C:/msys64/{mingw64,ucrt64}/bin`; compile only, nm-checked | `-std=c++20 -mcpu=cortex-m33 -mthumb -Os -fno-exceptions -fno-rtti -Wall -Wextra -Wconversion -Werror -ffp-contract=off -DKIRA_PROFILE_FREESTANDING=1` | `KIRA_ARM_GXX` |
 
-A freestanding case (`profile: freestanding`) adds `-DKIRA_PROFILE_FREESTANDING=1`
-under every toolchain; `arm` always has it. MSVC runs through a generated
-`compile.bat` (`call vcvars64.bat && cl ...`) because a quoted path with
-spaces does not survive `cmd /c` on a single command line; its diagnostics
-arrive on stdout, and the harness reads both streams.
+The profile follows the toolchain, never the case (design 8.2:
+`KIRA_PROFILE_FREESTANDING=1` is set for the Pico image only, and host suites
+compile the same headers hosted). `arm` always builds freestanding; `gcc`,
+`clang`, `zig-aarch64` and `msvc` always build hosted, a `profile:
+freestanding` case included. That is what makes a freestanding module's
+checked ops link on the host: the hosted runtime defines `kira::panic`, the
+freestanding one only declares it. `CppCompileSupport.compile` refuses a
+profile that does not match its toolchain, and a case may not put a
+`KIRA_PROFILE_*` define in `defines:`.
+
+MSVC compiles each source with its own `cl /c /Fo<n>_<name>.obj` and links
+the objects in a second step, so two generated sources sharing a basename
+(`a/util.kira.cxx`, `b/util.kira.cxx`) do not collide in one directory. It
+runs through a generated `compile.bat` (`call vcvars64.bat`, then each `cl`)
+because a quoted path with spaces does not survive `cmd /c` on a single
+command line; its diagnostics arrive on stdout, and the harness reads both
+streams.
 
 Environment:
 
@@ -159,15 +172,20 @@ Environment:
   root(s), path-separator joined. By default both
   `src/test/resources/cpp-golden` (the corpus) and
   `src/test/resources/cpp-harness-selftest` (the harness's own two cases and
-  the warning fixture, with a stand-in runtime under `include/`) run. Every
+  the warning fixtures, with a stand-in runtime under `include/`) run. Every
   root must yield at least one case; a default root that is absent from the
   checkout fails under `KIRA_REQUIRE_TOOLCHAINS=1` and skips visibly otherwise.
-- `-Dkira.cppRuntimeDir=<dir>` chooses the runtime include dir; by default a
-  root's own `include/` when it has one, else `kira/cpp`.
+- `-Dkira.cppRuntimeDir=<dir>` chooses the runtime include dir for every root
+  that does not bring its own `include/`; the default is `kira/cpp`. A root
+  with an `include/` (the self-test) always uses it: its stand-in has an API
+  of its own, so pointing it at the real runtime could only fail.
 
 `build.gradle.kts` forwards the `kira.*` properties to the test JVM and
-registers the variables above as task inputs, so changing one re-runs the
-tests instead of replaying an up-to-date result.
+registers the variables above, `kira/cpp`, every configured golden root and
+the configured runtime dir as inputs of `test`, so changing any of them
+re-runs the tests instead of replaying an up-to-date result. The compilers
+themselves are not inputs: after installing or upgrading a toolchain, run
+`./gradlew cleanTest test`.
 
 ### The golden format (design 5.10)
 
@@ -187,11 +205,16 @@ src/test/resources/cpp-golden/<case>/
 `CppGoldenCompileTest` runs every case from wave 1 on; `emit: required` is
 read by W2.2's `CppGoldenEmitTest`, which runs the compiler on `src/` and
 diffs against `expected/`. The compile step's include roots are the case's
-`expected/` and `driver/`, every directory under `expected/` that holds a
-header, then the runtime, so a driver may write `#include "src/x.kira.hxx"`
-or `#include "x.kira.hxx"`. A directory in a golden root without a
-`case.yaml` is an error (a half-written case must not vanish); only
-`include/` and names starting with `_` are exempt. Scratch output lands in
+`expected/`, its `driver/` and the runtime, nothing else: includes between
+generated modules are relative paths and no include path is added anywhere
+(design 4.3), so a golden whose cross-module include is spelled wrongly
+fails here instead of passing because the harness found the header for it.
+A driver therefore writes `#include "src/x.kira.hxx"`, the path under
+`expected/`. `profile:` says which subset the modules are written in; it
+chooses no flags (see Toolchains above), and a `hosted` case may not list
+`arm`. A directory in a golden root without a `case.yaml` is an error (a
+half-written case must not vanish); only `include/` and names starting with
+`_` are exempt. Scratch output lands in
 `build/tmp/cpp-harness/<root>/<case>/<toolchain>/`.
 
 ### The examples' C++ leg
@@ -200,7 +223,9 @@ or `#include "x.kira.hxx"`. A directory in a golden root without a
 `examples/cpp-legs.txt`: `kira --target cpp --out <tmp>`, then
 `$CXX -std=c++20 -O2 -I kira/cpp`, then the binary's stdout is diffed
 against `expected.txt` and against the C and JS legs. `--check` covers it
-too, and a listed name that never ran fails the script.
+too. A listed name that matches no example fails the script, and so does a
+name listed twice; a C++ leg that fails counts as one failure and does not
+stop that example's C and JS snapshots from refreshing.
 
 ## CI
 
