@@ -1,0 +1,58 @@
+module "fixture:body.views"
+
+// Views, fixed arrays and StrBuf (D5, D6, design section 10): an Arr or List place, a MutView or
+// a string literal becomes a View implicitly (ToView); an Arr that is a mutable place lends a
+// MutView; a constant names an Arr's size.
+
+pub N: Size = 4
+pub alias Frame as Arr<UInt8, 8>
+
+pub fx sum: (buf: View<UInt8>) UInt32 {
+    mut s: UInt32 = 0
+    for b: UInt8 in buf {
+        s += b as UInt32
+    }
+    return s
+}
+
+pub fx fill: (p: MutView<UInt8>, v: UInt8) Void {
+    p[0] = v                               // @type UInt8 place=Index(Param(p), MUT_VIEW) @ p[0]
+    p.set(1, v)                            // @type Void call=MAGIC(MutView.set)
+}
+
+pub fx words: (text: View<Char>) Size {
+    return text.size()                     // @type Size call=MAGIC(View.size)
+}
+
+pub fx views: (text: View<Char>) Void {
+    mut f: Frame = Frame { }               // @type Arr<UInt8, 8>
+    f[1] = 3                               // @type UInt8 place=Index(Local(f), ARR) @ f[1]
+    fill(f.from(2), 9)                     // @type MutView<UInt8> call=MAGIC(Arr.from) @ f.from(2)
+    t: UInt32 = sum(f.slice(0, 4))         // @type MutView<UInt8> coerce=ToView(MutView<UInt8>) @ f.slice(0, 4)
+    fixed: Arr<UInt8, 4> = [1, 2, 3, 4]    // @type Arr<UInt8, 4>
+    t2: UInt32 = sum(fixed)                // @type Arr<UInt8, 4> coerce=ToView(Arr<UInt8, 4>) @ fixed
+    xs: List<UInt8> = List<UInt8> { }
+    t3: UInt32 = sum(xs)                   // @type List<UInt8> coerce=ToView(List<UInt8>) @ xs
+    t4: UInt32 = sum(fixed.view())         // @type View<UInt8> call=MAGIC(Arr.view) @ fixed.view()
+    t5: UInt32 = sum(fixed.from(1))        // @type View<UInt8> call=MAGIC(Arr.from) @ fixed.from(1)
+    n: Size = words(text)                  // @type Size call=FREE(words)
+    lit: Size = words("literal")           // @type Str coerce=ToView(Str) @ "literal"
+    first: Char = text[0]                  // @type Char place=Index(Param(text), VIEW)
+    same: Bool = text.slice(0, 1) == text.slice(1, 1) // @type Bool
+    sized: Arr<Int32, N> = [1, 2, 3, 4]    // @type Arr<Int32, 4>
+    size: Size = sized.size()              // @type Size call=MAGIC(Arr.size)
+    dyn: Arr<Int32> = [5, 6]               // @type Arr<Int32>
+    mut buf: Arr<UInt8, 2> = Arr<UInt8, 2> { } // @type Arr<UInt8, 2>
+    fill(buf.view(), 1)                    // @type MutView<UInt8> call=MAGIC(Arr.view) @ buf.view()
+}
+
+pub fx texts: (mut out: StrBuf<16>, x: Int32) Void {
+    out.set("x=${x}")                      // @type View<Char> @ "x=${x}"
+    out.add("!")                           // @type Str coerce=ToView(Str) @ "!"
+    out.addChar('.')                       // @type Void call=MAGIC(StrBuf.addChar)
+    out.addInt(x as Int64)                 // @type Void call=MAGIC(StrBuf.addInt)
+    out.addFixed(1.5, 2)                   // @type Void call=MAGIC(StrBuf.addFixed)
+    n: Size = out.size()                   // @type Size call=MAGIC(StrBuf.size)
+    v: View<Char> = out.view()             // @type View<Char> call=MAGIC(StrBuf.view)
+    out.clear()                            // @type Void call=MAGIC(StrBuf.clear)
+}

@@ -1,0 +1,53 @@
+module "fixture:body.lambdas"
+
+// Lambdas (design 3.3, 5.6, D24): checked against the expected Fx, mut parameters included;
+// captures by value (TyperBodyModelTest checks the capture lists).
+
+pub fx scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+    return fx(x: Int32) Int32 {            // @type Fx<Tuple1<Int32>, Int32>
+        return x * k                       // @type Int32 place=Param(k) @ k
+    }
+}
+
+pub fx run: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
+    f(mut x)                               // @type Void call=FN_VALUE
+}
+
+pub fx mutLambda: () Void {
+    mut n: Int32 = 0
+    run(fx(mut v: Int32) Void {            // @type Fx<Tuple1<mut Int32>, Void> @ fx(mut v: Int32) Void { ... }
+        v += 1                             // @type Int32 place=Param(v) @ v
+    }, mut n)
+}
+
+pub fx shared: () Fx<Tuple0, Int32> {
+    counter: Ref<Int32> = Ref<Int32> { value = 0 } // @type Ref<Int32>
+    return fx() Int32 {                    // @type Fx<Tuple0, Int32>
+        counter.value = counter.value + 1  // @type Void
+        return counter.value               // @type Int32 member=Field(Ref.value: Int32)
+    }
+}
+
+pub fx store: () Int32 {
+    add: Fx<Tuple2<Int32, Int32>, Int32> = fx(a: Int32, b: Int32) Int32 { return a + b } // @type Fx<Tuple2<Int32, Int32>, Int32>
+    three: Int32 = add(1, 2)               // @type Int32 call=FN_VALUE
+    return three
+}
+
+pub fx nested: (base: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
+    return fx(a: Int32) Fx<Tuple1<Int32>, Int32> {
+        return fx(b: Int32) Int32 {
+            return base + a + b            // @type Int32
+        }
+    }
+}
+
+pub struct Gain {
+    pub k: Int32 = 3
+
+    pub fx scaler: () Fx<Tuple1<Int32>, Int32> {
+        return fx(x: Int32) Int32 {
+            return x * k                   // @type Int32 place=Field(This(Gain).k) @ k
+        }
+    }
+}

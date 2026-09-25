@@ -1,0 +1,55 @@
+module "fixture:body.brief"
+
+// The negative cases the package brief names, each with its exact code. The if-expression
+// without else cannot be written (the parser refuses it); TyperBodyNegativeTest builds it.
+
+fx compute: () Int32 {
+    return 1
+}
+
+fx makeName: () Str {
+    return "n"
+}
+
+fx id<T>: (value: T) T {
+    return value
+}
+
+fx setTo: (mut out: Int32, v: Int32) Void {
+    out = v
+}
+
+fx pair: (a: Int32, b: Int32) Int32 {
+    return a + b
+}
+
+pub NAME: Str = makeName()                 // @error types.const.str-literal
+pub mut state: Int32 = compute()           // @error types.global.mut-init
+pub SMALL: UInt8 = 256                     // @error types.literal.range
+
+pub fx negatives: (s: Str, i: Int32, f: Float32, m: Maybe<Str>) Void {
+    x: Float32 = i + f                     // @error types.op.mismatch
+    y: UInt8 = 256                         // @error types.literal.range
+    b: Bool = i < s.length()               // @error types.op.mismatch
+    setTo(mut i + 1, 2)                    // @error types.call.mut-not-place
+    mut t: Int32 = 0
+    setTo(t, 2)                            // @error types.call.mut-missing
+    n: Int32 = null                        // @error types.null.not-maybe
+    l: Size = m.length()                   // @error types.maybe.member
+    v: Int32 = id(3)                       // @error types.call.type-args
+    p: Int32 = pair(a = 1, c = 2)          // @error types.call.unknown-named
+}
+
+pub fx fieldThroughMaybe: (m: Maybe<Str>) Bool {
+    return m.isEmpty                       // @error types.maybe.member
+}
+
+pub fx captures: () Void {
+    mut k: Int32 = 0
+    f: Fx<Tuple0, Void> = fx() Void {
+        k = 1                              // @error types.lambda.assign-capture
+    }
+    g: Fx<Tuple0, Void> = fx() Void {
+        k += 1                             // @error types.lambda.assign-capture
+    }
+}
