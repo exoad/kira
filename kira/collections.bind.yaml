@@ -22,18 +22,23 @@
 # before any flag is read, exactly as a List<T> does, which is why the List.*
 # entries carry no flag at all.
 #
-# Runtime names this manifest needs beyond design section 6 (for W1.3):
+# Runtime names this manifest uses beyond design section 6. They are spelled
+# as W1.3's kira/cpp/kira/rt.hxx defines them (the design names none of
+# them), and each binding expression here compiles against that header:
 #   kira::view(const std::vector<T>&) -> View<T>      (the std::array one exists)
-#   kira::contains(const C&, const T&) -> bool         (vector and array)
-#   kira::clone(const C&) -> List<T>                   (vector and array)
-#   kira::addAll(List<T>&, const List<T>&) -> void
-#   kira::removeAt(List<T>&, Size) -> T                (checked, D10)
+#   kira::list::contains(const List<T>&, const T&) -> bool
+#   kira::list::clone(const List<T>&) -> List<T>
+#   kira::list::addAll(List<T>&, const List<T>&) -> void
+#   kira::list::removeAt(List<T>&, Size) -> T          (checked, D10)
 #   kira::popFront(std::deque<T>&), kira::popBack(std::deque<T>&) -> Maybe<T>
 #   kira::Map<K, V>: size, isEmpty, put, get -> Maybe<V>, remove -> Maybe<V>,
-#     containsKey, containsValue, keys -> List<K>, values -> List<V>,
+#     containsKey, containsValue, keys -> List<K>, valuesArr -> List<V>,
 #     entries -> List<Tuple2<K, V>>, clear
 #   kira::Set<T>: size, isEmpty, add -> bool, remove -> bool, contains,
-#     toList -> List<T>, clear
+#     toArr -> List<T>, clear
+# Still missing from that header: kira::list::contains and kira::list::clone
+# take only std::vector, so Arr.contains and Arr.clone on an Arr<T, N>
+# (std::array) need an overload before W2.3 emits them.
 #   kira::Stack<T>: size, isEmpty, push, pop -> Maybe<T>, peek -> Maybe<T>, clear
 #   kira::Queue<T>: size, isEmpty, enqueue, dequeue -> Maybe<T>, peek -> Maybe<T>, clear
 
@@ -58,8 +63,8 @@ Arr.size:      { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
 Arr.isEmpty:   { cpp: { expr: "{self}.empty()", pure: true, constexpr: true } }
 Arr.get:       { cpp: { expr: "kira::at({self}, {0})", pure: true, constexpr: true } }
 Arr.set:       { cpp: { expr: "kira::at({self}, {0}) = {1}", constexpr: true } }
-Arr.contains:  { cpp: { expr: "kira::contains({self}, {0})", pure: true } }
-Arr.clone:     { cpp: { expr: "kira::clone({self})", pure: true } }
+Arr.contains:  { cpp: { expr: "kira::list::contains({self}, {0})", pure: true } }
+Arr.clone:     { cpp: { expr: "kira::list::clone({self})", pure: true } }
 Arr.view:      { cpp: { expr: "kira::view({self})", pure: true, constexpr: true } }
 Arr.from:      { cpp: { expr: "kira::view({self}).from({0})", pure: true, constexpr: true } }
 Arr.slice:     { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true, constexpr: true } }
@@ -68,13 +73,13 @@ Arr.slice:     { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true, 
 List.size:     { cpp: { expr: "{self}.size()", pure: true } }
 List.isEmpty:  { cpp: { expr: "{self}.empty()", pure: true } }
 List.add:      { cpp: { expr: "{self}.push_back({0})" } }
-List.addAll:   { cpp: { expr: "kira::addAll({self}, {0})" } }
+List.addAll:   { cpp: { expr: "kira::list::addAll({self}, {0})" } }
 List.get:      { cpp: { expr: "kira::at({self}, {0})", pure: true } }
 List.set:      { cpp: { expr: "kira::at({self}, {0}) = {1}" } }
-List.removeAt: { cpp: { expr: "kira::removeAt({self}, {0})" } }
+List.removeAt: { cpp: { expr: "kira::list::removeAt({self}, {0})" } }
 List.clear:    { cpp: { expr: "{self}.clear()" } }
-List.contains: { cpp: { expr: "kira::contains({self}, {0})", pure: true } }
-List.toArr:    { cpp: { expr: "kira::clone({self})", pure: true } }
+List.contains: { cpp: { expr: "kira::list::contains({self}, {0})", pure: true } }
+List.toArr:    { cpp: { expr: "kira::list::clone({self})", pure: true } }
 List.view:     { cpp: { expr: "kira::view({self})", pure: true } }
 List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true } }
 List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true } }
@@ -88,7 +93,7 @@ Map.remove:        { cpp: { expr: "{self}.remove({0})" } }
 Map.containsKey:   { cpp: { expr: "{self}.containsKey({0})", pure: true } }
 Map.containsValue: { cpp: { expr: "{self}.containsValue({0})", pure: true } }
 Map.keys:          { cpp: { expr: "{self}.keys()", pure: true } }
-Map.valuesArr:     { cpp: { expr: "{self}.values()", pure: true } }
+Map.valuesArr:     { cpp: { expr: "{self}.valuesArr()", pure: true } }
 Map.entries:       { cpp: { expr: "{self}.entries()", pure: true } }
 Map.clear:         { cpp: { expr: "{self}.clear()" } }
 
@@ -98,7 +103,7 @@ Set.isEmpty:   { cpp: { expr: "{self}.isEmpty()", pure: true } }
 Set.add:       { cpp: { expr: "{self}.add({0})" } }
 Set.remove:    { cpp: { expr: "{self}.remove({0})" } }
 Set.contains:  { cpp: { expr: "{self}.contains({0})", pure: true } }
-Set.toArr:     { cpp: { expr: "{self}.toList()", pure: true } }
+Set.toArr:     { cpp: { expr: "{self}.toArr()", pure: true } }
 Set.clear:     { cpp: { expr: "{self}.clear()" } }
 
 # --- Stack<T>: kira::Stack adaptor, pop() returns Maybe --------------------

@@ -6,7 +6,7 @@
 # assert is a plain symbol binding -- and it must keep pointing at the prelude
 # helper, not C's one-argument assert macro, because Kira's form takes a
 # message argument too. The C++ target is likewise a runtime function, since
-# `assert` is a macro in <cassert> and cannot be a name in namespace kira.
-# kira::check(bool, const Str&) is not in design section 6; W1.3 adds it to
-# rt.hxx (it panics with the message when the condition is false).
-assert: { symbol: kira_assert, cpp: { expr: "kira::check({0}, {1})" } }
+# `assert` is a macro in <cassert> and cannot be a name in namespace kira,
+# so W1.3's rt.hxx names it kira::assert_(bool, const Str&) (it panics with
+# the message when the condition is false); design section 6 names neither.
+assert: { symbol: kira_assert, cpp: { expr: "kira::assert_({0}, {1})" } }
