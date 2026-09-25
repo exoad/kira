@@ -87,6 +87,26 @@ class SrcExcludeTest {
     }
 
     @Test
+    fun anExcludeAScanAlreadyStandsInsideDoesNotPruneBelowIt() {
+        // Scanning build/gen (two segments): `build` covers it, so it hides nothing inside...
+        assertFalse(SourceGlob.matchesPath("build", "build/gen/app", belowSegments = 2))
+        assertFalse(SourceGlob.matchesPath("**/build", "build/gen/app", belowSegments = 2))
+        // ...but a build directory further down is still excluded.
+        assertTrue(SourceGlob.matchesPath("**/build", "build/gen/app/build", belowSegments = 2))
+        assertTrue(SourceGlob.matchesPath("build/gen/app", "build/gen/app/x", belowSegments = 2))
+        // Scanning the root (zero segments) is the plain rule.
+        assertTrue(SourceGlob.matchesPath("build", "build/gen/app", belowSegments = 0))
+
+        val root = PlumbingTestSupport.tempProject("srcexclude-below")
+        val excludes = listOf("build", "**/build")
+        val inside = root.resolve("build/gen/app").toString()
+        assertTrue(DependencyResolver.isExcluded(inside, root, excludes))
+        assertFalse(DependencyResolver.isExcluded(inside, root, excludes, below = root.resolve("build/gen")))
+        assertTrue(DependencyResolver.isExcluded(root.resolve("build/gen/app/build").toString(), root, excludes, below = root.resolve("build/gen")))
+        assertTrue(DependencyResolver.isExcluded(inside, root, excludes, below = root))
+    }
+
+    @Test
     fun aDotSlashExcludeIsTheSameExclude() {
         val root = PlumbingTestSupport.tempProject("srcexclude-dotslash")
         PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")

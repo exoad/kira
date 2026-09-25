@@ -109,15 +109,21 @@ object SourceGlob {
      * every `build` directory. A leading `./` or `/` means the project root,
      * which is where every pattern is anchored anyway, so `./build` and
      * `/build` are `build`.
+     *
+     * With [belowSegments], only a prefix longer than that many segments
+     * counts: a scan that already stands inside `build/gen` (two segments)
+     * asks whether an exclude names something *below* it, so `build` no
+     * longer hides `build/gen/app`, while `** /build` still hides
+     * `build/gen/app/build`.
      */
-    fun matchesPath(pattern: String, relativePath: String): Boolean {
+    fun matchesPath(pattern: String, relativePath: String, belowSegments: Int = 0): Boolean {
         val normalizedPattern = normalizePathPattern(pattern)
         if (normalizedPattern.isEmpty()) {
             return false
         }
         val regex = toRegex(normalizedPattern, '/')
         val segments = relativePath.replace('\\', '/').split('/').filter { it.isNotEmpty() }
-        for (end in 1..segments.size) {
+        for (end in (belowSegments + 1).coerceAtLeast(1)..segments.size) {
             if (regex.matches(segments.subList(0, end).joinToString("/"))) {
                 return true
             }
@@ -160,8 +166,14 @@ object DependencyResolver {
         return emptyList()
     }
 
-    /** True when [file] sits under a path that one of [excludes] names, relative to [projectRoot]. */
-    fun isExcluded(file: String, projectRoot: Path, excludes: List<String>): Boolean {
+    /**
+     * True when [file] sits under a path that one of [excludes] names,
+     * relative to [projectRoot]. [below] is a directory the caller is
+     * already scanning: an exclude that covers it (or one of its parents)
+     * does not count, only one matched underneath it (see
+     * [SourceGlob.matchesPath]).
+     */
+    fun isExcluded(file: String, projectRoot: Path, excludes: List<String>, below: Path? = null): Boolean {
         if (excludes.isEmpty()) {
             return false
         }
@@ -171,7 +183,12 @@ object DependencyResolver {
             return false
         }
         val relative = root.relativize(absolute).toString().replace('\\', '/')
-        return excludes.any { SourceGlob.matchesPath(it, relative) }
+        val scanned = below?.toAbsolutePath()?.normalize()
+        val belowSegments = when {
+            scanned == null || scanned == root || !scanned.startsWith(root) -> 0
+            else -> root.relativize(scanned).nameCount
+        }
+        return excludes.any { SourceGlob.matchesPath(it, relative, belowSegments) }
     }
 
     fun resolveDependencySources(manifest: ProjectManifest?, projectRoot: Path): List<String> {

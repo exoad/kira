@@ -220,6 +220,21 @@ class CppModuleLayoutTest {
     }
 
     @Test
+    fun anOutputPlannedAtAModulesOwnSourceCollides() {
+        // headerExt '.kira' beside the source: proto.kira.hxx would be proto.kira, the module itself.
+        val layout = CppModuleLayout(CppOptions(headerExt = ".kira"), root, listOf(proto, text))
+        val errors = layout.checkCollisions().filter { it.isError }
+        assertEquals(2, errors.count { it.code == "cpp.output-collision" }, errors.toString())
+        assertTrue(errors.any { it.message.contains("firmware/pilot/src/proto.kira") && it.message.contains("headerExt '.kira'") }, errors.toString())
+        // And as the source extension.
+        val sourced = CppModuleLayout(CppOptions(sourceExt = ".kira"), root, listOf(proto))
+        assertTrue(sourced.checkCollisions().any { it.code == "cpp.output-collision" && it.message.contains("sourceExt '.kira'") })
+        // The tree layout writes elsewhere, so the same extension collides with nothing there.
+        val tree = CppModuleLayout(CppOptions(layout = CppLayout.TREE, headerExt = ".kira"), root, listOf(proto))
+        assertEquals(emptyList(), tree.checkCollisions().filter { it.code == "cpp.output-collision" })
+    }
+
+    @Test
     fun cleanLayoutHasNoCollisions() {
         val layout = CppModuleLayout(CppOptions(), root, listOf(proto, scan, text, cal, wireA, math))
         assertEquals(emptyList(), layout.checkCollisions().filter { it.isError })

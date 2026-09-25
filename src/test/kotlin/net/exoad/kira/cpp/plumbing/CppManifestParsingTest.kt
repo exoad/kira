@@ -206,4 +206,20 @@ class CppManifestParsingTest {
         val same = ManifestLoader.parse("project: { name: d }\nbuild: { cpp: { headerExt: .h, sourceExt: .h } }\n")
         assertTrue(ManifestValidator.validate(same, root).any { it.field == "build.cpp.sourceExt" })
     }
+
+    @Test
+    fun validatorRefusesAnExtensionThatNamesAKiraSource() {
+        val root = PlumbingTestSupport.tempProject("manifest-validate-kira-ext")
+        Files.createDirectories(root.resolve("src"))
+        listOf(".kira" to "headerExt", ".kira" to "sourceExt", ".gen.kira" to "headerExt", "." to "headerExt").forEach { (ext, key) ->
+            val m = ManifestLoader.parse("project: { name: d }\nbuild: { cpp: { $key: \"$ext\" } }\n")
+            val issue = ManifestValidator.validate(m, root).firstOrNull { it.field == "build.cpp.$key" }
+            assertTrue(issue != null, "$key '$ext' must be refused")
+            if (ext != ".") {
+                assertTrue(issue.message.contains(".kira"), issue.message)
+            }
+        }
+        val fine = ManifestLoader.parse("project: { name: d }\nbuild: { cpp: { headerExt: .kira.hpp, sourceExt: .kira.cpp } }\n")
+        assertTrue(ManifestValidator.validate(fine, root).none { it.field.startsWith("build.cpp.") })
+    }
 }

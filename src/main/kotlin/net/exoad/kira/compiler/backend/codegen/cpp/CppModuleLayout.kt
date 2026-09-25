@@ -157,6 +157,19 @@ class CppModuleLayout(
             )
         }
 
+        // An output that lands on a source (headerExt '.kira', say) would replace the module it came from.
+        val sourcesByPath = modules.associateBy { it.sourcePath.toAbsolutePath().normalize().toString().lowercase() }
+        byOutput.forEach { (path, refs) ->
+            val source = sourcesByPath[path] ?: return@forEach
+            val ext = if (path.endsWith(options.headerExt.lowercase())) "headerExt '${options.headerExt}'" else "sourceExt '${options.sourceExt}'"
+            diagnostics += CppDiagnostic(
+                "cpp.output-collision",
+                "module '${refs.first().uri}' would write ${relativeToRoot(source.sourcePath)}, the Kira source of " +
+                    "module '${source.uri}' (build.cpp.$ext); no generated file may replace a source",
+                file = source.sourcePath.toString(),
+            )
+        }
+
         modules.distinctBy { it.uri }.forEach { ref ->
             val ns = namespaceFor(ref.uri)
             namespaceProblem(ref.uri, ns)?.let { problem ->

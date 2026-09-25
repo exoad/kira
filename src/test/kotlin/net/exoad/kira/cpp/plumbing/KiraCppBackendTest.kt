@@ -549,4 +549,93 @@ class KiraCppBackendTest {
         assertEquals(before, p.files())
         assertFalse(Files.exists(p.root.parent.resolve("lib")))
     }
+
+    // --- files that are not the backend's -----------------------------------------
+
+    @Test
+    fun aHandWrittenFileAtAPlannedPathIsNeverOverwritten() {
+        // Custom extensions are not distinctive, so a hand-written proto.cxx beside proto.kira looks like any C++ file.
+        val p = project("backend-hand-written", CppOptions(runtimeDir = "lib", headerExt = ".hxx", sourceExt = ".cxx"))
+        val hand = PlumbingTestSupport.write(p.root, "src/pilot/proto.cxx", "// hand-written, mine\n")
+        val before = p.files()
+
+        val blocked = p.run(check = false)
+        assertEquals(1, blocked.exitCode)
+        val collisions = blocked.diagnostics.filter { it.code == KiraCppBackend.OUTPUT_COLLISION_CODE && it.isError }
+        assertEquals(1, collisions.size, blocked.diagnostics.toString())
+        assertTrue(collisions.single().message.contains("src/pilot/proto.cxx") && collisions.single().message.contains("hand-written"), collisions.single().message)
+        assertEquals("// hand-written, mine\n", Files.readString(hand))
+        assertEquals(before, p.files(), "nothing is written while a planned path holds a file that is not ours")
+        // --check says the same, instead of calling the file drift.
+        assertEquals(1, p.run(check = true).exitCode)
+        assertTrue(p.reportLines.any { it.contains("src/pilot/proto.cxx") && it.contains(KiraCppBackend.OUTPUT_COLLISION_CODE) }, p.reportLines.toString())
+        assertEquals(emptyList(), p.outLines)
+
+        // Moved out of the way, the run writes; recorded now, the file is the backend's and a later run regenerates it.
+        Files.delete(hand)
+        assertEquals(0, p.run(check = false).exitCode, p.reportLines.joinToString("\n"))
+        assertTrue(Files.readString(hand).startsWith("// fake source for demo:pilot.proto"))
+        Files.writeString(hand, "// edited after generation\n")
+        val regenerated = p.run(check = false)
+        assertEquals(0, regenerated.exitCode, p.reportLines.joinToString("\n"))
+        assertTrue(hand in regenerated.changed)
+        assertTrue(Files.readString(hand).startsWith("// fake source for demo:pilot.proto"))
+    }
+
+    @Test
+    fun anIdenticalFileAtAPlannedPathIsNotACollision() {
+        val p = project("backend-identical", CppOptions(runtimeDir = "lib", headerExt = ".hxx", sourceExt = ".cxx"))
+        assertEquals(0, p.run(check = false).exitCode)
+        // The manifest is gone (a fresh clone of a tree someone committed without it), the files match what is planned.
+        Files.delete(p.root.resolve("kira.gen.manifest"))
+        val again = p.run(check = false)
+        assertEquals(0, again.exitCode, p.reportLines.joinToString("\n"))
+        assertEquals(listOf(p.root.resolve("kira.gen.manifest")), again.changed)
+    }
+
+    @Test
+    fun aHeaderExtensionOfKiraWouldReplaceTheSourcesAndIsRefusedBeforeAnythingIsEmitted() {
+        val p = project("backend-kira-ext", CppOptions(runtimeDir = "lib", headerExt = ".kira"))
+        val before = p.files()
+        val source = Files.readString(p.root.resolve("src/pilot/proto.kira"))
+        var emitted = 0
+        val result = p.run(check = false, factory = { _, o -> emitted += 1; FakeCppModuleEmitter(o) })
+        assertEquals(1, result.exitCode)
+        assertTrue(result.diagnostics.any { it.code == KiraCppBackend.OUTPUT_COLLISION_CODE && it.message.contains("src/pilot/proto.kira") }, result.diagnostics.toString())
+        assertEquals(0, emitted, "no emitter runs when the layout collides with the sources")
+        assertEquals(before, p.files())
+        assertEquals(source, Files.readString(p.root.resolve("src/pilot/proto.kira")))
+        // The same through the source extension.
+        val viaSource = project("backend-kira-ext-source", CppOptions(runtimeDir = "lib", sourceExt = ".kira"))
+        assertEquals(1, viaSource.run(check = false).exitCode)
+        assertEquals(before, viaSource.files())
+    }
+
+    @Test
+    fun anExcludedOutDirIsStillScannedForStaleFiles() {
+        val root = PlumbingTestSupport.tempProject("backend-excluded-outdir")
+        val stdlibCpp = PlumbingTestSupport.fakeStdlib(root)
+        val main = PlumbingTestSupport.write(root, "src/app/main.kira", PlumbingTestSupport.module("app:main"))
+        val manifest = ProjectManifest(
+            ProjectSpec("demo"), srcDir = "src", srcExclude = listOf("build", "**/build"),
+            build = BuildOptions(target = "cpp", cpp = CppOptions(layout = CppLayout.TREE, outDir = "build/gen")),
+        )
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(main to Files.readString(main)))
+        val p = Project(root, unit, manifest, stdlibCpp)
+        assertEquals(0, p.run(check = false).exitCode, p.reportLines.joinToString("\n"))
+        assertTrue("build/gen/app/main.kira.hxx" in p.files(), p.files().toString())
+
+        // An unrecorded leftover under the excluded outDir: the exclude covers build/gen itself, so it hides nothing inside.
+        PlumbingTestSupport.write(root, "build/gen/app/old.kira.hxx", "// unrecorded stale\n")
+        // A build directory below outDir is still pruned, as is anything under build/ outside the tree.
+        PlumbingTestSupport.write(root, "build/gen/app/build/deep.kira.hxx", "// under a nested build dir\n")
+        PlumbingTestSupport.write(root, "build/kira-toolchain/src/test/resources/x.kira.hxx", "// the toolchain's own\n")
+        p.outLines.clear()
+        val check = p.run(check = true)
+        assertEquals(1, check.exitCode)
+        assertEquals(listOf("drift: build/gen/app/old.kira.hxx (stale)"), p.outLines)
+        val write = p.run(check = false)
+        assertEquals(1, write.exitCode)
+        assertTrue(p.reportLines.any { it.contains("build/gen/app/old.kira.hxx") && it.contains("not recorded") }, p.reportLines.toString())
+    }
 }

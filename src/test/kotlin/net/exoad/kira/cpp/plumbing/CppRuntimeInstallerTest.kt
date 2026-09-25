@@ -80,15 +80,51 @@ class CppRuntimeInstallerTest {
         assertEquals(shaB, CppCompilerVersion.fromCheckout(worktree.resolve("build/classes/kotlin/main")))
         // A ref nothing resolves is not a version.
         PlumbingTestSupport.write(detached, ".git/HEAD", "ref: refs/heads/nowhere\n")
-        assertEquals(null, CppCompilerVersion.fromCheckout(detached))
+        assertEquals(null, CppCompilerVersion.fromCheckout(detached.resolve("build/install/kira/lib")))
     }
 
     @Test
-    fun theTestsOwnCheckoutGivesARealShaNotDev() {
+    fun anInstallCopiedIntoAnotherRepositoryNeverTakesThatRepositorysHead() {
+        val root = PlumbingTestSupport.tempProject("version-host")
+        // A project that keeps a copy of the installed compiler under tools/kira: its .git is the nearest.
+        val host = root.resolve("host")
+        PlumbingTestSupport.write(host, ".git/HEAD", "$shaA\n")
+        val jar = host.resolve("tools/kira/lib/kira.jar")
+        PlumbingTestSupport.write(host, "tools/kira/lib/kira.jar", "")
+        assertEquals(null, CppCompilerVersion.fromCheckout(jar), "the host's HEAD is not the compiler's version")
+        assertTrue(!CppCompilerVersion.isKiraCheckout(host, jar))
+        // Not even at a path that merely resembles the install layout.
+        PlumbingTestSupport.write(host, "build/install/kira/lib2/kira.jar", "")
+        assertEquals(null, CppCompilerVersion.fromCheckout(host.resolve("build/install/kira/lib2/kira.jar")))
+        // The Kira checkout itself is known by its settings.gradle.kts, wherever the code sits in it.
+        PlumbingTestSupport.write(host, "settings.gradle.kts", "plugins { }\nrootProject.name = \"kira\"\n")
+        assertEquals(shaA, CppCompilerVersion.fromCheckout(jar))
+        // A settings file naming another project does not make it Kira's.
+        PlumbingTestSupport.write(host, "settings.gradle.kts", "rootProject.name = \"bibo\"\n")
+        assertEquals(null, CppCompilerVersion.fromCheckout(jar))
+        // The design's flow: build/kira-toolchain is a Kira clone inside the project, and its install is accepted.
+        val toolchain = host.resolve("build/kira-toolchain")
+        PlumbingTestSupport.write(toolchain, ".git/HEAD", "$shaB\n")
+        assertEquals(shaB, CppCompilerVersion.fromCheckout(toolchain.resolve("build/install/kira/lib/kira.jar")))
+        assertEquals(shaB, CppCompilerVersion.fromCheckout(toolchain.resolve("build/classes/kotlin/main")))
+    }
+
+    @Test
+    fun theTestsOwnCheckoutGivesItsShaAndASourceTreeWithoutGitGivesDev() {
         if (System.getenv("KIRA_VERSION") != null || System.getProperty("kira.version") != null) {
             return
         }
+        // The Kira checkout this test runs in, found the way a person would: the nearest .git above the working directory.
+        var dir: java.nio.file.Path? = java.nio.file.Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
+        while (dir != null && !Files.exists(dir.resolve(".git"))) {
+            dir = dir.parent
+        }
         val version = CppCompilerVersion.current()
-        assertTrue(version.length == 40 && version.all { it in '0'..'9' || it in 'a'..'f' }, "expected the checkout's SHA, got '$version'")
+        if (dir == null) {
+            // A git archive, a "Download ZIP" or a release tarball: nothing says which commit this is.
+            assertEquals(CppCompilerVersion.DEV, version)
+        } else {
+            assertTrue(version.length == 40 && version.all { it in '0'..'9' || it in 'a'..'f' }, "expected the checkout's SHA, got '$version'")
+        }
     }
 }

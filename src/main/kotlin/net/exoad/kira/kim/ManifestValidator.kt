@@ -8,6 +8,9 @@ data class ValidationIssue(val field: String, val message: String)
 object ManifestValidator {
     private val supportedTargets = setOf("c", "native", "cpp", "c++", "js", "javascript", "neko", "none")
 
+    /** The extension the source scan reads as a module; no generated file may end with it. */
+    const val KIRA_SOURCE_EXT = ".kira"
+
     fun validate(manifest: ProjectManifest, projectRoot: Path): List<ValidationIssue> {
         val issues = mutableListOf<ValidationIssue>()
 
@@ -38,11 +41,16 @@ object ManifestValidator {
         if (cpp.runtimeDir != null && cpp.runtimeDir.isBlank()) {
             issues += ValidationIssue("build.cpp.runtimeDir", "build.cpp.runtimeDir cannot be blank")
         }
-        if (!cpp.headerExt.startsWith(".")) {
-            issues += ValidationIssue("build.cpp.headerExt", "build.cpp.headerExt must start with '.': ${cpp.headerExt}")
-        }
-        if (!cpp.sourceExt.startsWith(".")) {
-            issues += ValidationIssue("build.cpp.sourceExt", "build.cpp.sourceExt must start with '.': ${cpp.sourceExt}")
+        listOf("headerExt" to cpp.headerExt, "sourceExt" to cpp.sourceExt).forEach { (key, ext) ->
+            if (!ext.startsWith(".") || ext.length < 2) {
+                issues += ValidationIssue("build.cpp.$key", "build.cpp.$key must start with '.': $ext")
+            } else if (ext.endsWith(KIRA_SOURCE_EXT)) {
+                issues += ValidationIssue(
+                    "build.cpp.$key",
+                    "build.cpp.$key '$ext' ends with '$KIRA_SOURCE_EXT', so every generated file would be a Kira source: " +
+                        "written over the module it came from, or read as a module on the next run"
+                )
+            }
         }
         if (cpp.headerExt == cpp.sourceExt) {
             issues += ValidationIssue("build.cpp.sourceExt", "build.cpp.headerExt and sourceExt must differ")

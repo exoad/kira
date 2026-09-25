@@ -20,15 +20,24 @@ import java.nio.file.attribute.BasicFileAttributes
  *
  * Lookup order: the `kira.version` system property, the `KIRA_VERSION`
  * environment variable, a `net/exoad/kira/VERSION` classpath resource
- * (which a release build can add), the git checkout the running compiler
+ * (which a release build can add), the Kira checkout the running compiler
  * sits in (an `installDist` under `build/install/`, as `kira_gen.py` builds
  * at the SHA `tools/kira.lock` pins, or the classes directory of a test
  * run), then `dev`. The checkout's HEAD is read from `.git` without running
  * git, worktrees and packed refs included; it names the commit the tree was
  * at, not whether the tree was clean.
+ *
+ * Only Kira's own checkout counts. The nearest `.git` above an install
+ * copied into some other repository (`tools/kira/` in a project, say) is
+ * that project's, and its HEAD would change the version on every commit
+ * there; so the checkout is accepted when the compiler sits at its
+ * `build/install/kira/lib` or `build/classes`, or its `settings.gradle.kts`
+ * names the `kira` project, and anything else is `dev`.
  */
 object CppCompilerVersion {
     const val DEV = "dev"
+
+    private val KIRA_SETTINGS = Regex("""rootProject\.name\s*=\s*"kira"""")
 
     fun current(): String {
         System.getProperty("kira.version")?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -55,25 +64,45 @@ object CppCompilerVersion {
     }
 
     /**
-     * The commit the git checkout holding [start] is at: the nearest `.git`
+     * The commit the Kira checkout holding [start] is at: the nearest `.git`
      * above it (a directory, or a worktree's `gitdir:` file), its `HEAD`,
      * and the ref that names, looked up loose in the git dir, then in the
      * common dir a worktree points at, then in `packed-refs`. Null when
-     * there is no checkout or the ref cannot be read.
+     * there is no checkout, the checkout is not Kira's ([isKiraCheckout]),
+     * or the ref cannot be read.
      */
     fun fromCheckout(start: Path?): String? {
-        var dir = start?.toAbsolutePath()?.normalize()
-        if (dir != null && !Files.isDirectory(dir)) {
-            dir = dir.parent
-        }
+        val origin = start?.toAbsolutePath()?.normalize() ?: return null
+        var dir: Path? = if (Files.isDirectory(origin)) origin else origin.parent
         while (dir != null) {
             val dotGit = dir.resolve(".git")
             if (Files.exists(dotGit)) {
+                if (!isKiraCheckout(dir, origin)) {
+                    return null
+                }
                 return runCatching { headOf(dotGit) }.getOrNull()
             }
             dir = dir.parent
         }
         return null
+    }
+
+    /**
+     * Whether [checkout] is the Kira repository that built the code at
+     * [code]: the code lies in its `build/install/kira/lib` (an
+     * `installDist`) or `build/classes` (a test run), or its
+     * `settings.gradle.kts` names the `kira` project.
+     */
+    fun isKiraCheckout(checkout: Path, code: Path): Boolean {
+        val root = checkout.toAbsolutePath().normalize()
+        val absolute = code.toAbsolutePath().normalize()
+        if (absolute.startsWith(root)) {
+            val relative = root.relativize(absolute).toString().replace('\\', '/') + "/"
+            if (relative.startsWith("build/install/kira/lib/") || relative.startsWith("build/classes/")) {
+                return true
+            }
+        }
+        return readText(root.resolve("settings.gradle.kts"))?.let { KIRA_SETTINGS.containsMatchIn(it) } == true
     }
 
     private fun headOf(dotGit: Path): String? {
@@ -163,7 +192,18 @@ data class CppBackendResult(
  * alone, so `--out .` and a shared `runtimeDir` work. A write run removes a
  * stale file only when its content is still exactly what the previous
  * manifest recorded; an edited or unrecorded one is an error that names
- * it, and nothing is written until it is gone.
+ * it, and nothing is written until it is gone. `srcExclude` prunes these
+ * scans below the directory scanned, never the directory itself: `build`
+ * over `outDir: build/gen` hides nothing inside `build/gen`.
+ *
+ * **Files that are not the backend's.** A write replaces a file at a
+ * planned path only when the file is the backend's: the previous manifest
+ * recorded it, or it is generated-shaped as above. A hand-written
+ * `proto.hxx` beside `proto.kira` under `headerExt: .hxx`, or any file at a
+ * planned path with a custom extension that no manifest records, is an
+ * error naming it, and nothing is written. An output planned at a Kira
+ * source's own path (`headerExt: .kira`) is an error before anything is
+ * emitted.
  *
  * `--out <dir>` puts every generated file under `<dir>`: the tree layout
  * rooted there, the runtime in `<dir>/kira/` and the manifest at
@@ -267,9 +307,23 @@ object KiraCppBackend {
         diagnostics += checkPlannedCollisions(planned, layout)
 
         // 4. Stale generated files: recorded, or generated-shaped where the backend writes, and not planned.
-        val found = findStale(base, manifestPath, planned, layout, manifest, stdlibCppDir, install.files, show)
+        val shapes = GeneratedShapes(layout, manifest, install.files, show)
+        val found = findStale(base, manifestPath, planned, layout, manifest, stdlibCppDir, shapes, show)
         diagnostics += found.diagnostics
         val stale = found.stale
+
+        // 4b. A planned path holding a file that is not the backend's is never overwritten.
+        planned.filter { file ->
+            file.path != manifestPath && Files.isRegularFile(file.path) && file.path !in found.recorded &&
+                shapes.of(file.path) == null && !matchesDisk(file)
+        }.forEach { file ->
+            diagnostics += CppDiagnostic(
+                OUTPUT_COLLISION_CODE,
+                "${show(file.path)} exists and is not a file this backend wrote: ${CppGenManifest.FILE_NAME} does not " +
+                    "record it and its name is not generated-shaped, so ${file.origin.ifEmpty { "the run" }} would replace " +
+                    "a hand-written file; move it, or delete it if it is stale",
+            )
+        }
         val removable = mutableListOf<Path>()
         if (!check) {
             stale.forEach { candidate ->
@@ -425,14 +479,62 @@ object KiraCppBackend {
     /** A stale candidate: the sha256 the previous manifest recorded (null when it never did) and why it looks generated. */
     private class StaleFile(val path: Path, val recorded: String?, val shape: String)
 
-    private class StaleScan(val stale: List<StaleFile>, val diagnostics: List<CppDiagnostic>)
+    /** What a scan found: the stale candidates, the previous manifest's entries under the base, and warnings. */
+    private class StaleScan(val stale: List<StaleFile>, val recorded: Map<Path, String>, val diagnostics: List<CppDiagnostic>)
+
+    /**
+     * The shapes the class comment lists, by place: why a path looks like
+     * the backend's output, or null. Used to find stale files the manifest
+     * never recorded, and to refuse to overwrite a file that is not ours.
+     */
+    private class GeneratedShapes(
+        layout: CppModuleLayout,
+        manifest: ProjectManifest?,
+        runtimeFiles: List<CppPlannedFile>,
+        private val show: (Path) -> String,
+    ) {
+        private val options = layout.options
+        val runtimeKiraDir: Path = layout.runtimeKiraDir
+        val outDir: Path = layout.outDir
+        val workspace: Path = layout.projectRoot.resolve(manifest?.srcDir ?: "src").normalize()
+        private val distinctiveExts = listOf(options.headerExt, options.sourceExt).filter { it.contains(".kira.") }
+        private val generatedExts = listOf(options.headerExt, options.sourceExt)
+        private val runtimeExts = runtimeFiles.map { it.path.fileName.toString() }
+            .filter { it != CppRuntimeInstaller.VERSION_FILE && it.contains('.') }
+            .map { it.substring(it.lastIndexOf('.')) }
+            .toSet()
+        private val runtimeNames = runtimeFiles.map { it.path.fileName.toString() }.filter { !it.contains('.') }.toSet() +
+            CppRuntimeInstaller.VERSION_FILE
+
+        fun of(path: Path): String? {
+            val absolute = path.toAbsolutePath().normalize()
+            val name = absolute.fileName?.toString() ?: return null
+            if (absolute.startsWith(runtimeKiraDir)) {
+                val where = "under the runtime's directory ${show(runtimeKiraDir)}"
+                return when {
+                    name in runtimeNames -> "a runtime file $where"
+                    runtimeExts.any { name.endsWith(it) } -> "a $where file"
+                    generatedExts.any { name.endsWith(it) } -> "a generated header $where"
+                    else -> null
+                }
+            }
+            val ext = distinctiveExts.firstOrNull { name.endsWith(it) } ?: return null
+            return when {
+                options.layout == CppLayout.TREE && absolute.startsWith(outDir) ->
+                    "a $ext file under the generated tree ${show(outDir).ifEmpty { "." }}"
+                options.layout == CppLayout.BESIDE && absolute.startsWith(workspace) -> "a $ext file in the workspace"
+                else -> null
+            }
+        }
+    }
 
     /**
      * Stale generated files under [base]: what the previous manifest listed
      * (entries that would leave the base are ignored with a warning), plus
      * generated-shaped files where the backend writes, minus everything
-     * planned now. The stdlib's own directory, `.git` and `srcExclude` are
-     * never scanned.
+     * planned now. The stdlib's own directory and `.git` are never scanned,
+     * and `srcExclude` prunes below each scanned directory (never the
+     * directory itself, which the manifest chose as a place to write).
      */
     private fun findStale(
         base: Path,
@@ -441,7 +543,7 @@ object KiraCppBackend {
         layout: CppModuleLayout,
         manifest: ProjectManifest?,
         stdlibCppDir: Path?,
-        runtimeFiles: List<CppPlannedFile>,
+        shapes: GeneratedShapes,
         show: (Path) -> String,
     ): StaleScan {
         val root = layout.projectRoot
@@ -468,16 +570,8 @@ object KiraCppBackend {
         recorded.keys.forEach { candidates[it] = "recorded" }
         val excludes = manifest?.srcExclude.orEmpty()
         val stdlibRoot = stdlibCppDir?.toAbsolutePath()?.normalize()?.parent
-        val distinctiveExts = listOf(options.headerExt, options.sourceExt).filter { it.contains(".kira.") }
-        val generatedExts = listOf(options.headerExt, options.sourceExt)
-        val runtimeExts = runtimeFiles.map { it.path.fileName.toString() }
-            .filter { it != CppRuntimeInstaller.VERSION_FILE && it.contains('.') }
-            .map { it.substring(it.lastIndexOf('.')) }
-            .toSet()
-        val runtimeNames = runtimeFiles.map { it.path.fileName.toString() }.filter { !it.contains('.') }.toSet() +
-            CppRuntimeInstaller.VERSION_FILE
 
-        fun scan(dir: Path, shapeOf: (String) -> String?) {
+        fun scan(dir: Path) {
             if (!Files.isDirectory(dir)) {
                 return
             }
@@ -486,14 +580,14 @@ object KiraCppBackend {
                     val absolute = sub.toAbsolutePath().normalize()
                     val skip = absolute.fileName?.toString() == ".git" ||
                         (stdlibRoot != null && absolute.startsWith(stdlibRoot)) ||
-                        (absolute != dir && DependencyResolver.isExcluded(absolute.toString(), root, excludes))
+                        DependencyResolver.isExcluded(absolute.toString(), root, excludes, below = dir)
                     return if (skip) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
                 }
 
                 override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                     if (attrs.isRegularFile) {
                         val absolute = file.toAbsolutePath().normalize()
-                        val shape = shapeOf(absolute.fileName.toString())
+                        val shape = shapes.of(absolute)
                         if (shape != null && absolute !in candidates) {
                             candidates[absolute] = shape
                         }
@@ -503,26 +597,8 @@ object KiraCppBackend {
             })
         }
 
-        val runtimeWhere = "under the runtime's directory ${show(layout.runtimeKiraDir)}"
-        scan(layout.runtimeKiraDir) { name ->
-            when {
-                name in runtimeNames -> "a runtime file $runtimeWhere"
-                runtimeExts.any { name.endsWith(it) } -> "a $runtimeWhere file"
-                generatedExts.any { name.endsWith(it) } -> "a generated header $runtimeWhere"
-                else -> null
-            }
-        }
-        if (options.layout == CppLayout.TREE) {
-            val treeWhere = "under the generated tree ${show(layout.outDir).ifEmpty { "." }}"
-            scan(layout.outDir) { name ->
-                distinctiveExts.firstOrNull { name.endsWith(it) }?.let { "a $it file $treeWhere" }
-            }
-        } else {
-            val workspace = root.resolve(manifest?.srcDir ?: "src").normalize()
-            scan(workspace) { name ->
-                distinctiveExts.firstOrNull { name.endsWith(it) }?.let { "a $it file in the workspace" }
-            }
-        }
+        scan(shapes.runtimeKiraDir)
+        scan(if (options.layout == CppLayout.TREE) shapes.outDir else shapes.workspace)
 
         val stale = candidates
             .filter { (path, _) ->
@@ -531,7 +607,7 @@ object KiraCppBackend {
             }
             .toSortedMap()
             .map { (path, shape) -> StaleFile(path, recorded[path], shape) }
-        return StaleScan(stale, diagnostics)
+        return StaleScan(stale, recorded, diagnostics)
     }
 
     /** After a removal, drops directories left empty, up to but never including [base]. */
