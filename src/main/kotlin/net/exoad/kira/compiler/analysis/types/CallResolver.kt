@@ -31,7 +31,13 @@ import java.util.IdentityHashMap
  * given arguments' indices in the order they were written (D33).
  *
  * **mut (D4).** A `mut` parameter takes a call-site `mut` and a mutable place of exactly its
- * type; a `mut` at the call on a parameter that is not `mut` is an error.
+ * type; a `mut` at the call on a parameter that is not `mut` is an error. A `mut fx` called
+ * inside a lambda on a capture (a copied local, parameter or struct receiver) is an error too:
+ * the capture is immutable (spec), and a copy would be written silently.
+ *
+ * **Receivers of a type parameter** reach the members of the parameter's bounds (design 5.5):
+ * `s.area()` on `s: T` with `<T: Shape>` is a [CallKind.TRAIT] call through the bound, and
+ * `x.abs()` on `<T: Num>` a [CallKind.MAGIC] one whose result is `T`.
  *
  * **Generics** take explicit type arguments; only a `@_magic @_infer` stdlib function infers them
  * (D20), from the arguments that are not bare literals, then from the expected type, then from the
@@ -213,7 +219,7 @@ internal class CallResolver(private val c: PhaseC) {
                 return fnValue(e, field.second as KType.Fn, origin, false, ctx, scope)
             }
             argsOnly(e, ctx, scope)
-            c.report("types.member.unknown", "${recv.display()} has no method '$name'.", member)
+            c.report("types.member.unknown", c.members.noMember(recv, "method", name), member)
             return KType.Error
         }
         return method(e, origin, recv, hit, member, hint, implicitThis = false, ctx = ctx, scope = scope)
@@ -250,12 +256,19 @@ internal class CallResolver(private val c: PhaseC) {
         return free(e, fn, null, hint, ctx, scope)
     }
 
-    /** How a method call reaches [fn] on a receiver of type [recv]. */
-    fun kindFor(recv: KType, fn: FnSymbol): CallKind = when {
+    /**
+     * How a method call reaches [fn] on a receiver of type [recv]. On a type parameter [hit]
+     * says which bound reaches the method (design 5.5, static dispatch through the bound): a
+     * magic bound such as `Num` makes it [CallKind.MAGIC] (the `Num.equals` binding, even for
+     * the `equals` that `Equatable` declares, as on a scalar receiver), a trait bound
+     * [CallKind.TRAIT], a class bound the class's own kind.
+     */
+    fun kindFor(recv: KType, fn: FnSymbol, hit: MemberResolver.MethodHit? = null): CallKind = when {
         fn.foreign is Foreign.Extern -> CallKind.EXTERN
         recv is KType.Scalar || recv == KType.Str || facts.magicName(recv) != null -> CallKind.MAGIC
         fn.foreign is Foreign.Magic -> CallKind.MAGIC
-        facts.isTrait(recv) -> CallKind.TRAIT
+        recv is KType.Param && hit != null && facts.magicName(hit.through) != null -> CallKind.MAGIC
+        facts.isTrait(recv) || (recv is KType.Param && hit?.via?.sym is TraitSymbol) -> CallKind.TRAIT
         fn.isVirtual -> CallKind.VIRTUAL
         else -> CallKind.METHOD
     }
@@ -296,11 +309,38 @@ internal class CallResolver(private val c: PhaseC) {
             // is wrapped when the binding is member-style.
             model.coercions[receiver] = Coercion.StrConstReceiver
         }
+        if (fn.isMutMethod) {
+            mutReceiver(receiver, recv, fn, nameNode, implicitThis, ctx)
+        }
         model.calls[e] = ResolvedCall(
-            kindFor(recv, fn), fn, receiver, implicitThis, fn.typeParams.map { own[it] ?: KType.Error },
+            kindFor(recv, fn, hit), fn, receiver, implicitThis, fn.typeParams.map { own[it] ?: KType.Error },
             bound.args, bound.order, ret, hit.substitution + own,
         )
         return ret
+    }
+
+    /**
+     * A `mut fx` writes its receiver (D44), so inside a lambda the receiver must not be a
+     * capture: a capture is an immutable copy (spec), the same rule as assigning one or
+     * passing it as `mut`. A receiver reached through a reference (a class, a trait value, a
+     * `Ref<T>`) is shared, not copied, so writing through it is allowed; so is a struct's own
+     * receiver outside a lambda, whose mutability the rule passes check (W2.5).
+     */
+    private fun mutReceiver(receiver: Expr?, recv: KType, fn: FnSymbol, nameNode: Identifier, implicitThis: Boolean, ctx: BodyContext) {
+        if (ctx.lambda == null || facts.isReference(recv)) {
+            return
+        }
+        val place = if (implicitThis) ctx.owner?.let { Place.This(it) } else receiver?.let { model.places[it] }
+        if (place == null || !c.writesCapture(place, ctx)) {
+            return
+        }
+        val what = if (implicitThis) "the receiver of ${ctx.owner!!.name}.${fn.name}" else "'${KiraUnparser.text(receiver!!)}'"
+        c.report(
+            "types.lambda.assign-capture",
+            "$what is captured by this lambda, and a capture is an immutable copy (spec): '${fn.name}' is a `mut fx`, " +
+                "which writes its receiver. Share mutable state through a Ref<T> instead.",
+            receiver ?: nameNode,
+        )
     }
 
     /** A reference to a module constant of type Str whose value folded to a literal (design 5.2: a `const char*`). */

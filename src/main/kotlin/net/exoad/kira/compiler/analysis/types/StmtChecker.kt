@@ -134,7 +134,7 @@ internal class StmtChecker(private val c: PhaseC) {
                 c.report(
                     "types.global.mut-init",
                     "A module-level mut variable starts from a constant expression (D49), so no static-initialization order " +
-                        "can matter; '${g.name}' starts from ${KiraUnparser.text(init)}.",
+                        "can matter; '${g.name}' starts from ${KiraUnparser.text(init)}${runtimeMagic(init)}.",
                     init,
                 )
             }
@@ -152,8 +152,8 @@ internal class StmtChecker(private val c: PhaseC) {
         } else if (!isConstantExpr(init)) {
             c.report(
                 "types.const.not-constant",
-                "'${g.name}' is a module constant, so its value is fixed at compile time; ${KiraUnparser.text(init)} is not. " +
-                    "Declare it `mut` for state, or compute it where it is used.",
+                "'${g.name}' is a module constant, so its value is fixed at compile time; ${KiraUnparser.text(init)} is not" +
+                    "${runtimeMagic(init)}. Declare it `mut` for state, or compute it where it is used.",
                 init,
             )
         }
@@ -165,7 +165,7 @@ internal class StmtChecker(private val c: PhaseC) {
     /**
      * An expression C++ can evaluate at compile time: it folded, or it is built from constants
      * with operators, constructions of structs, fixed arrays and tuples, `@_const` calls and
-     * magic calls on constants (whose `constexpr` binding the C++ compiler checks).
+     * magic calls on constants whose cpp binding is `constexpr: true` ([MagicBindings]).
      */
     fun isConstantExpr(e: Expr): Boolean {
         if (model.consts[e] != null) {
@@ -186,7 +186,7 @@ internal class StmtChecker(private val c: PhaseC) {
             is FunctionCallExpr -> {
                 val rc = model.calls[e] ?: return false
                 val fn = rc.fn ?: return false
-                val ok = fn.isConst || rc.kind == CallKind.MAGIC
+                val ok = fn.isConst || (rc.kind == CallKind.MAGIC && c.bindings.isConstexpr(fn))
                 ok && rc.args.all { it !is ArgBinding.Given || isConstantExpr(it.expr) } && (rc.receiver?.let { isConstantExpr(it) } ?: true)
             }
             is ObjectInitExpr -> {
@@ -203,6 +203,16 @@ internal class StmtChecker(private val c: PhaseC) {
             }
             else -> false
         }
+    }
+
+    /** The reason a magic call is no constant, when [e] is one: its C++ binding runs at run time. */
+    private fun runtimeMagic(e: Expr): String {
+        val rc = (e as? FunctionCallExpr)?.let { model.calls[it] } ?: return ""
+        val fn = rc.fn ?: return ""
+        if (rc.kind != CallKind.MAGIC || c.bindings.isConstexpr(fn)) {
+            return ""
+        }
+        return " ('${fn.name}' runs at run time: its C++ binding is not constexpr)"
     }
 
     private fun moduleStatement(st: Statement, m: ModuleSymbol) {

@@ -14,6 +14,9 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
  * parent traits. A scalar's members come from its magic class and, through it, from `Num`;
  * inside Num's signatures `Num` itself means the receiver's own type (`x.abs()` on an Int8 is
  * an Int8). `Str`, the containers, `Maybe`, `View` and the rest come from their magic classes.
+ * A type parameter's members are those of its bounds, in declaration order (`s.area()` on an
+ * `s: T` with `<T: Shape>`; design 5.5's static dispatch through a generic bound), and `Num`
+ * in a `T: Num` method's signature is `T` again (`x.abs()` on a `T: Num` is a `T`).
  *
  * Member access on a `Maybe` is limited to its API (design 3.3, D40): `isSome`, `isNone`,
  * `isNull`, `unwrap`, `unwrapOr` and the `value` field. Anything else must unwrap first.
@@ -31,23 +34,38 @@ internal class MemberResolver(private val c: PhaseC) {
         val via: KType.Nominal,
         /** Maps `Num` to the receiver scalar in a Num method's signature, else identity. */
         val selfFix: (KType) -> KType,
+        /**
+         * The type whose ancestry [via] was found in: the receiver's own nominal, or, on a type
+         * parameter, the bound that reaches [fn] (`Num` for `a.equals(b)` on a `T: Num`, though
+         * `equals` is declared by `Equatable`).
+         */
+        val through: KType.Nominal = via,
     ) {
         fun paramType(i: Int): KType = selfFix(fn.params[i].type.substitute(substitution))
         val returnType: KType get() = selfFix(fn.ret.substitute(substitution))
     }
 
-    /** The receiver type as a Nominal whose declaration lists its members. */
-    private fun asNominal(t: KType): KType.Nominal? = when (t) {
-        is KType.Nominal -> t
-        is KType.Scalar, KType.Str -> c.builtins.classOf(t)?.let { KType.Nominal(it, emptyList()) }
-        else -> null
+    /**
+     * The Nominals whose declarations list [t]'s members: [t] itself, a scalar's or Str's magic
+     * class, or, for a type parameter, each of its bounds in declaration order (design 5.5:
+     * static dispatch through a generic bound). A type parameter without a bound has none.
+     */
+    private fun nominalsOf(t: KType): List<KType.Nominal> = when (t) {
+        is KType.Nominal -> listOf(t)
+        is KType.Scalar, KType.Str -> listOfNotNull(c.builtins.classOf(t)?.let { KType.Nominal(it, emptyList()) })
+        is KType.Param -> t.sym.bounds.flatMap { nominalsOf(it) }
+        else -> emptyList()
     }
 
     private fun numClass(): ClassSymbol? = c.program.graph.lookup(c.coreModule() ?: return null, "Num") { it is ClassSymbol }
         .let { (it as? ModuleGraph.Lookup.Found)?.symbol as? ClassSymbol }
 
+    /**
+     * Inside Num's signatures `Num` means the receiver: an Int8 for `x.abs()` on an Int8, and
+     * `T` for `x.abs()` on a `T: Num` (the bound's method, with the parameter's own type back).
+     */
     private fun selfFixFor(receiver: KType): (KType) -> KType {
-        if (receiver !is KType.Scalar) {
+        if (receiver !is KType.Scalar && receiver !is KType.Param) {
             return { it }
         }
         val num = numClass() ?: return { it }
@@ -90,30 +108,51 @@ internal class MemberResolver(private val c: PhaseC) {
 
     /** The field [name] of [receiver] (inherited ones included) and its type there. */
     fun field(receiver: KType, name: String): Pair<FieldSymbol, KType>? {
-        val n = asNominal(receiver) ?: return null
-        for (a in ancestry(n)) {
-            val cls = a.sym as? ClassSymbol ?: continue
-            val f = cls.field(name) ?: continue
-            return f to f.type.substitute(substitutionOf(a))
+        for (n in nominalsOf(receiver)) {
+            for (a in ancestry(n)) {
+                val cls = a.sym as? ClassSymbol ?: continue
+                val f = cls.field(name) ?: continue
+                return f to f.type.substitute(substitutionOf(a))
+            }
         }
         return null
     }
 
-    /** The method [name] of [receiver], nearest declaration first. */
+    /** The method [name] of [receiver], nearest declaration first (a type parameter's bounds in order). */
     fun method(receiver: KType, name: String): MethodHit? {
-        val n = asNominal(receiver) ?: return null
-        for (a in ancestry(n)) {
-            val fn = when (val s = a.sym) {
-                is ClassSymbol -> s.methods.firstOrNull { it.name == name && !it.isOperator }
-                is TraitSymbol -> s.methods.firstOrNull { it.name == name && !it.isOperator }
-                else -> null
-            } ?: continue
-            // Every ancestor's parameters, so a method written in a parent sees its own arguments.
-            val sub = LinkedHashMap<TypeParamSymbol, KType>()
-            ancestry(n).forEach { sub.putAll(substitutionOf(it)) }
-            return MethodHit(fn, sub, a, selfFixFor(receiver))
+        for (n in nominalsOf(receiver)) {
+            for (a in ancestry(n)) {
+                val fn = when (val s = a.sym) {
+                    is ClassSymbol -> s.methods.firstOrNull { it.name == name && !it.isOperator }
+                    is TraitSymbol -> s.methods.firstOrNull { it.name == name && !it.isOperator }
+                    else -> null
+                } ?: continue
+                // Every ancestor's parameters, so a method written in a parent sees its own arguments.
+                val sub = LinkedHashMap<TypeParamSymbol, KType>()
+                ancestry(n).forEach { sub.putAll(substitutionOf(it)) }
+                return MethodHit(fn, sub, a, selfFixFor(receiver), through = n)
+            }
         }
         return null
+    }
+
+    /**
+     * Why [receiver] has no member [name], for a diagnostic: a type parameter reaches only the
+     * members of its bounds, so it says which bounds there are (or that there is none).
+     */
+    fun noMember(receiver: KType, what: String, name: String): String {
+        if (receiver !is KType.Param) {
+            return "${receiver.display()} has no $what '$name'."
+        }
+        val bounds = receiver.sym.bounds
+        return if (bounds.isEmpty()) {
+            "${receiver.display()} is a type parameter without a bound, so no member is reachable on it; " +
+                "declare it with the trait that has '$name': <${receiver.display()}: Trait>."
+        } else {
+            "${receiver.display()} is a type parameter, and only the members of its bound" +
+                (if (bounds.size == 1) " ${bounds[0].display()}" else "s ${bounds.joinToString(", ") { it.display() }}") +
+                " are reachable on it; none has a $what '$name'."
+        }
     }
 
     /** The Maybe API: the only members reachable on a `Maybe<T>` without unwrapping (D40). */
@@ -227,7 +266,7 @@ internal class MemberResolver(private val c: PhaseC) {
             )
             return KType.Error
         }
-        c.report("types.member.unknown", "${receiver.display()} has no field or method '$name'.", member)
+        c.report("types.member.unknown", noMember(receiver, "field or method", name), member)
         return KType.Error
     }
 }

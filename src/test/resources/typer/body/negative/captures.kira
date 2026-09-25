@@ -1,0 +1,69 @@
+module "fixture:body.captures"
+
+// A lambda's capture is an immutable copy (spec): a `mut fx` on one writes it, like assigning
+// it or passing it as `mut`. A type parameter reaches only its bounds' members. A magic call
+// whose C++ binding is not constexpr is no constant.
+
+pub trait Shape {
+    pub fx area: () Float64;
+}
+
+pub struct Pt {
+    pub x: Int32 = 0
+
+    pub mut fx shift: (d: Int32) Void {
+        x += d
+    }
+
+    pub fx shifter: () Fx<Tuple0, Void> {
+        return fx() Void {
+            shift(1)                       // @error types.lambda.assign-capture
+        }
+    }
+
+    pub fx shifterThis: () Fx<Tuple0, Void> {
+        return fx() Void {
+            this.shift(1)                  // @error types.lambda.assign-capture
+        }
+    }
+}
+
+pub struct Frame {
+    pub origin: Pt = Pt { }
+}
+
+pub fx captures: (mut q: Pt, mut fr: Frame) Int32 {
+    mut xs: List<Int32> = List<Int32> { }
+    mut p: Pt = Pt { }
+    mut buf: StrBuf<64> = StrBuf<64> { }
+    mut ages: Map<Str, Int32> = Map<Str, Int32> { }
+    mut ptsInside: Arr<Pt> = [Pt { }]
+    g: Fx<Tuple0, Void> = fx() Void {
+        xs.add(1)                          // @error types.lambda.assign-capture
+        p.shift(2)                         // @error types.lambda.assign-capture
+        q.shift(3)                         // @error types.lambda.assign-capture
+        buf.clear()                        // @error types.lambda.assign-capture
+        ages.put("a", 1)                   // @error types.lambda.assign-capture
+        fr.origin.shift(4)                 // @error types.lambda.assign-capture
+        ptsInside[0].shift(5)              // @error types.lambda.assign-capture
+        n: Size = xs.size()                // no error: a read
+    }
+    g()
+    return p.x
+}
+
+pub fx unbounded<T>: (s: T) Float64 {
+    return s.area()                        // @error types.member.unknown
+}
+
+pub fx wrongBound<T: Shape>: (s: T) Float64 {
+    return s.perimeter()                   // @error types.member.unknown
+}
+
+pub fx noField<T: Shape>: (s: T) Float64 {
+    return s.side                          // @error types.member.unknown
+}
+
+pub ROOT2: Float64 = sqrt(2.0)             // @error types.const.not-constant
+pub mut SEED: Float64 = sqrt(4.0)          // @error types.global.mut-init
+@_static_assert(floor(1.5) == 1.0, "no")  // @error types.static-assert.not-constant

@@ -57,6 +57,7 @@ internal class PhaseC(val program: TypedProgram) {
     val lambdas = LambdaTyper(this)
     val exprs = ExprTyper(this)
     val stmts = StmtChecker(this)
+    val bindings = MagicBindings()
 
     /** The lambda whose body declares each local or parameter (absent: declared outside every lambda). */
     val declaredIn: IdentityHashMap<Symbol, LambdaFrame> = IdentityHashMap()
@@ -414,8 +415,13 @@ internal class ExprTyper(private val c: PhaseC) {
         return KType.Str
     }
 
+    /**
+     * `[a, b]` takes its type from the context (design 3.3): an `Arr<T>` or `Arr<T, N>` (whose
+     * count must match), or a `List<T>` (the spec's `xs: List<Int32> = [1, 2, 3]`), and its
+     * elements check against `T`. Without one it is an `Arr` of its first element's type.
+     */
     private fun array(e: ArrayLiteral, hint: KType?, ctx: BodyContext, scope: Scope): KType {
-        val arr = hint?.takeIf { facts.isArr(it) } as? KType.Nominal
+        val arr = hint?.takeIf { facts.isArr(it) || facts.isList(it) } as? KType.Nominal
         if (arr != null) {
             val element = facts.elementOf(arr) ?: KType.Error
             val size = arr.constArgs().firstOrNull()
