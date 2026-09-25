@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -35,8 +34,9 @@ class StdlibLoweringTest {
     private fun runAndCapture(generated: String): String? {
         val cc = compiler ?: return null
         val result = TestCompileSupport.compileAndRunC(generated, cc)
-        assumeTrue(
-            result.compileResult.exitCode == 0,
+        assertEquals(
+            0,
+            result.compileResult.exitCode,
             "cc failed:\n${result.compileResult.stderr}\n$generated"
         )
         return result.runResult?.stdout

@@ -130,8 +130,9 @@ class BackendCompilationPipelineTest {
         )
 
         val runResult = TestCompileSupport.compileAndRunC(generated, compiler!!)
-        assumeTrue(
-            runResult.compileResult.exitCode == 0,
+        assertEquals(
+            0,
+            runResult.compileResult.exitCode,
             "Compile step failed. stdout:\n${runResult.compileResult.stdout}\nstderr:\n${runResult.compileResult.stderr}"
         )
 
@@ -189,8 +190,9 @@ class BackendCompilationPipelineTest {
         assertTrue(generated.contains("Map_isEmpty"), generated)
 
         val runResult = TestCompileSupport.compileAndRunC(generated, compiler!!)
-        assumeTrue(
-            runResult.compileResult.exitCode == 0,
+        assertEquals(
+            0,
+            runResult.compileResult.exitCode,
             "Compile step failed. stdout:\n${runResult.compileResult.stdout}\nstderr:\n${runResult.compileResult.stderr}\nC:\n$generated"
         )
         val exec = runResult.runResult
@@ -247,8 +249,9 @@ class BackendCompilationPipelineTest {
         assertTrue(!generated.contains("id < Int32"), generated)
 
         val runResult = TestCompileSupport.compileAndRunC(generated, compiler!!)
-        assumeTrue(
-            runResult.compileResult.exitCode == 0,
+        assertEquals(
+            0,
+            runResult.compileResult.exitCode,
             "Compile step failed. stdout:\n${runResult.compileResult.stdout}\nstderr:\n${runResult.compileResult.stderr}\nC:\n$generated"
         )
         val exec = runResult.runResult
@@ -293,8 +296,9 @@ class BackendCompilationPipelineTest {
         assertTrue(generated.contains("this->sound") || generated.contains("this->sound;"), generated)
 
         val runResult = TestCompileSupport.compileAndRunC(generated, compiler!!)
-        assumeTrue(
-            runResult.compileResult.exitCode == 0,
+        assertEquals(
+            0,
+            runResult.compileResult.exitCode,
             "Compile step failed. stdout:\n${runResult.compileResult.stdout}\nstderr:\n${runResult.compileResult.stderr}\nC:\n$generated"
         )
         val exec = runResult.runResult

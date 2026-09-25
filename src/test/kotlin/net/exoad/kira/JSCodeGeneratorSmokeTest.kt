@@ -1,6 +1,5 @@
 package net.exoad.kira
 
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -37,7 +36,7 @@ class JSCodeGeneratorSmokeTest {
     private fun runAndCapture(generated: String): String? {
         val n = node ?: return null
         val result = TestCompileSupport.runJS(generated, n)
-        assumeTrue(result.exitCode == 0, "node failed:\n${result.stderr}\n$generated")
+        assertEquals(0, result.exitCode, "node failed:\n${result.stderr}\n$generated")
         return result.stdout
     }
 

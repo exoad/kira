@@ -1,7 +1,6 @@
 package net.exoad.kira
 
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -92,7 +91,7 @@ class StdlibLayoutAndBodiesTest {
             """
         )
         val result = TestCompileSupport.compileAndRunC(generated, cc)
-        assumeTrue(result.compileResult.exitCode == 0, "cc failed:\n${result.compileResult.stderr}\n$generated")
+        assertEquals(0, result.compileResult.exitCode, "cc failed:\n${result.compileResult.stderr}\n$generated")
         assertEquals("5\n0\n10\n5\n", result.runResult?.stdout)
     }
 
@@ -111,7 +110,7 @@ class StdlibLayoutAndBodiesTest {
         )
         assertTrue(generated.contains("function clamp("), generated)
         val result = TestCompileSupport.runJS(generated, nodePath)
-        assumeTrue(result.exitCode == 0, "node failed: ${result.stderr}\n$generated")
+        assertEquals(0, result.exitCode, "node failed: ${result.stderr}\n$generated")
         assertEquals("5\n0\n10\n5\n", result.stdout)
     }
 
@@ -134,7 +133,7 @@ class StdlibLayoutAndBodiesTest {
             """
         )
         val result = TestCompileSupport.compileAndRunC(generated, cc)
-        assumeTrue(result.compileResult.exitCode == 0, "cc failed:\n${result.compileResult.stderr}\n$generated")
+        assertEquals(0, result.compileResult.exitCode, "cc failed:\n${result.compileResult.stderr}\n$generated")
         assertEquals("-1\n0\n1\n0\n1\n0.4\n45\n1\n0\n", result.runResult?.stdout)
     }
 
@@ -158,7 +157,7 @@ class StdlibLayoutAndBodiesTest {
         )
         assertTrue(generated.contains("function sign("), generated)
         val result = TestCompileSupport.runJS(generated, nodePath)
-        assumeTrue(result.exitCode == 0, "node failed: ${result.stderr}\n$generated")
+        assertEquals(0, result.exitCode, "node failed: ${result.stderr}\n$generated")
         assertEquals("-1\n0\n1\n0\n1\n0.4\n45\n1\n0\n", result.stdout)
     }
 }

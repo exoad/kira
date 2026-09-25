@@ -42,9 +42,17 @@ frontend and backend for the suite.
 ./gradlew test --tests "net.exoad.kira.suite.RuntimeSuiteTest"  # one class
 ```
 
-Runtime and CLI tests need a C17 compiler (`clang`, `cc`, or `gcc`) on PATH.
-Without one they **skip** (JUnit assumption) rather than fail, so the rest of
-the suite still runs on toolchain-less machines.
+Runtime and CLI tests need a C17 compiler (`clang`, `cc`, or `gcc`) on PATH,
+and the JS tests need `node`. `$CC` / `$NODE` override the PATH search. On
+Windows the harness resolves the real `.exe` (not the MSYS `/c/...` path
+`which` prints), runs `bin/kira.bat` for the installed CLI, and strips the
+`\r` a Windows C runtime adds to every line before comparing stdout.
+
+Without a toolchain those tests **skip** (JUnit assumption) so the rest of
+the suite still runs on toolchain-less machines. That is the *only* thing
+that may skip: once a compiler is found, emitted C that fails to compile
+**fails** the test. It used to be an assumption too, which let every
+non-compiling lowering hide behind a green run.
 
 CLI tests write scratch projects under `build/tmp/cli-suite/`; runtime tests
 write scratch C under `build/tmp/c-run/` and `build/tmp/c-syntax/`. All of

@@ -57,12 +57,10 @@ class ForeignEdgePipelineTest {
         val project = java.io.File("examples/ffi-mini")
         assumeTrue(project.isDirectory, "examples/ffi-mini missing")
 
-        val kiraBin = java.io.File("build/install/kira/bin/kira")
-        assumeTrue(kiraBin.canExecute() || java.io.File("build/install/kira/bin/kira").exists(),
-            "run installDist first")
-
-        // Prefer installed CLI; fall back to gradle run is too heavy -- require installDist
-        assumeTrue(kiraBin.exists(), "build/install/kira/bin/kira not found")
+        // Prefer the installed CLI (kira on POSIX, kira.bat on Windows); a
+        // gradle run is too heavy here, so require installDist.
+        val kiraBin = TestCompileSupport.installedKiraLauncher()
+        assumeTrue(kiraBin.exists(), "${kiraBin.path} not found -- run installDist first")
 
         val emit = ProcessBuilder(kiraBin.absolutePath)
             .directory(project)

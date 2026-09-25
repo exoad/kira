@@ -20,7 +20,20 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KIRA_BIN="${KIRA:-$ROOT/build/install/kira/bin/kira}"
-CC_BIN="${CC:-cc}"
+# $CC wins; otherwise the first of cc / gcc / clang on PATH (a MinGW or MSYS
+# PATH has gcc but not always cc).
+if [[ -n "${CC:-}" ]]; then
+  CC_BIN="$CC"
+else
+  CC_BIN=""
+  for candidate in cc gcc clang; do
+    if command -v "$candidate" >/dev/null 2>&1; then CC_BIN="$candidate"; break; fi
+  done
+  if [[ -z "$CC_BIN" ]]; then
+    echo "no C compiler found (set CC=/path/to/cc)" >&2
+    exit 1
+  fi
+fi
 NODE_BIN="${NODE:-node}"
 C_PRELUDE_REF="$ROOT/examples/prelude.reference.c"
 JS_PRELUDE_REF="$ROOT/examples/prelude.reference.js"
@@ -109,8 +122,10 @@ for dir in "${DIRS[@]}"; do
     "$CC_BIN" -std=c17 -O2 -o app out.kira.c 2>"$WORK/cc.err" || {
       echo "  cc failed:" >&2; cat "$WORK/cc.err" >&2; exit 1;
     }
-    ./app > "$WORK/actual-c.txt"
-    rm -f out.kira.c app
+    # A Windows C runtime writes "\r\n" for every "\n" (node writes "\n");
+    # expected.txt records the program's text, not the host's line ending.
+    ./app | tr -d '\r' > "$WORK/actual-c.txt"
+    rm -f out.kira.c app app.exe
   ); then
     c_failed=1
   fi
@@ -124,7 +139,7 @@ for dir in "${DIRS[@]}"; do
     js_user_of out.kira.js > "$WORK/user.js"
     js_prelude_of out.kira.js > "$WORK/prelude.js"
 
-    "$NODE_BIN" out.kira.js > "$WORK/actual-js.txt" 2>"$WORK/node.err" || {
+    "$NODE_BIN" out.kira.js 2>"$WORK/node.err" | tr -d '\r' > "$WORK/actual-js.txt" || {
       echo "  node failed:" >&2; cat "$WORK/node.err" >&2; exit 1;
     }
     rm -f out.kira.js

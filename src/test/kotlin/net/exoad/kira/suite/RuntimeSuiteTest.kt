@@ -1,10 +1,10 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -36,8 +36,12 @@ class RuntimeSuiteTest {
             runSemantic = false,
         )
         val result = TestCompileSupport.compileAndRunC(generated, cc)
-        assumeTrue(
-            result.compileResult.exitCode == 0,
+        // A compile failure is a compiler bug, not a missing toolchain: it
+        // must FAIL, never skip. (It used to be an assumption, which hid
+        // every non-compiling lowering behind a green run.)
+        assertEquals(
+            0,
+            result.compileResult.exitCode,
             "cc failed. stderr:\n${result.compileResult.stderr}\nC:\n$generated"
         )
         val exec = assertNotNull(result.runResult, "binary did not run")
@@ -321,8 +325,9 @@ class RuntimeSuiteTest {
             runSemantic = false,
         )
         val result = TestCompileSupport.compileAndRunC(generated, cc)
-        org.junit.jupiter.api.Assumptions.assumeTrue(
-            result.compileResult.exitCode != 0,
+        assertNotEquals(
+            0,
+            result.compileResult.exitCode,
             "nested Arr now compiles -- the pinned gap is fixed, update this test"
         )
         // The emitted shape is still worth pinning even though cc rejects it.

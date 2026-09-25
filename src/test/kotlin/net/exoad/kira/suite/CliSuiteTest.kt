@@ -1,5 +1,6 @@
 package net.exoad.kira.suite
 
+import net.exoad.kira.TestCompileSupport
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Files
@@ -238,15 +239,5 @@ class CliSuiteTest {
 
     // --- helpers ---------------------------------------------------------------
 
-    private fun findCCompiler(): String? {
-        for (candidate in listOf("clang", "cc", "gcc")) {
-            val proc = ProcessBuilder("which", candidate).start()
-            val out = proc.inputStream.bufferedReader().readText().trim()
-            proc.waitFor()
-            if (proc.exitValue() == 0 && out.isNotBlank()) {
-                return out
-            }
-        }
-        return null
-    }
+    private fun findCCompiler(): String? = TestCompileSupport.findCCompiler()
 }
