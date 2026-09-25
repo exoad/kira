@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
 import net.exoad.kira.compiler.analysis.semantic.SemanticScope
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
 import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
@@ -26,28 +27,41 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.time.measureTimedValue
 
-private fun applyTargetOverride(target: String) {
-    GeneratedProvider.outputMode = when (target) {
+private const val TARGET_CHOICES = "c, cpp, js, neko, none"
+
+private fun targetFromName(target: String): GeneratedProvider.OutputTarget? {
+    return when (target.lowercase()) {
         "c", "native" -> GeneratedProvider.OutputTarget.C
+        "cpp", "c++" -> GeneratedProvider.OutputTarget.CPP
         "js", "javascript" -> GeneratedProvider.OutputTarget.JS
         "neko" -> GeneratedProvider.OutputTarget.NEKO
         "none" -> GeneratedProvider.OutputTarget.NONE
-        else -> Diagnostics.panic("Unknown target '$target' (expected c, js, neko, none)")
+        else -> null
     }
 }
 
+private fun applyTargetOverride(target: String) {
+    GeneratedProvider.outputMode = targetFromName(target)
+        ?: Diagnostics.panic("Unknown target '$target' (expected $TARGET_CHOICES)")
+}
+
 fun main(args: Array<String>) {
-    // Minimal CLI: `kira --target js|c|neko|none` overrides build.target from
-    // kira.yaml; `--readable` emits pretty (non-minified) output. Nothing else
-    // is read today; the compiler is cwd-driven.
+    // Minimal CLI: `kira --target js|c|cpp|neko|none` overrides build.target
+    // from kira.yaml; `--readable` emits pretty (non-minified) C/JS output;
+    // `--out <dir>` says where the output goes (for cpp: every generated
+    // file under <dir>); `--check` (cpp only) regenerates in memory and
+    // exits 1 naming every file on disk that differs, is missing or is
+    // stale. The compiler is otherwise cwd-driven.
     var targetOverride: String? = null
     var readableOverride = false
+    var checkMode = false
+    var outDir: String? = null
     var i = 0
     while (i < args.size) {
         when (args[i]) {
             "--target", "-t" -> {
                 if (i + 1 >= args.size) {
-                    Diagnostics.panic("--target requires a value (c, js, neko, none)")
+                    Diagnostics.panic("--target requires a value ($TARGET_CHOICES)")
                 }
                 targetOverride = args[i + 1].lowercase()
                 i += 2
@@ -56,8 +70,23 @@ fun main(args: Array<String>) {
                 readableOverride = true
                 i += 1
             }
+            "--check" -> {
+                checkMode = true
+                i += 1
+            }
+            "--out", "-o" -> {
+                if (i + 1 >= args.size) {
+                    Diagnostics.panic("--out requires a directory")
+                }
+                outDir = args[i + 1]
+                i += 2
+            }
             "--help", "-h" -> {
-                println("Usage: kira [--target c|js|neko|none] [--readable]")
+                println("Usage: kira [--target c|cpp|js|neko|none] [--out <dir>] [--check] [--readable]")
+                println("  --out <dir>  where generated files go (cpp: everything under <dir> in the tree layout, runtime and")
+                println("               kira.gen.manifest included; c/js: the directory of out.kira.*)")
+                println("  --check      cpp only: regenerate in memory, name each file on disk that differs, is missing or is")
+                println("               stale, exit 1 on drift")
                 kotlin.system.exitProcess(0)
             }
             else -> Diagnostics.panic("Unknown argument '${args[i]}' (try --help)")
@@ -90,12 +119,7 @@ fun main(args: Array<String>) {
 
                 Diagnostics.Logging.info("Kira", "Loaded project config from $yamlManifestPath")
 
-                when (manifest.build.target.lowercase()) {
-                    "c", "native" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.C
-                    "js", "javascript" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.JS
-                    "neko" -> GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NEKO
-                    "none" -> {}
-                }
+                targetFromName(manifest.build.target)?.let { GeneratedProvider.outputMode = it }
                 // A --target flag beats the manifest.
                 if (targetOverride != null) {
                     applyTargetOverride(targetOverride!!)
@@ -106,6 +130,9 @@ fun main(args: Array<String>) {
         } else if (targetOverride != null) {
             // No manifest: the flag is the only target source.
             applyTargetOverride(targetOverride!!)
+        }
+        if (checkMode && GeneratedProvider.outputMode != GeneratedProvider.OutputTarget.CPP) {
+            Diagnostics.panic("--check is only supported with --target cpp")
         }
 
         // Minified + obfuscated output is the default; `build.minify: false`
@@ -265,10 +292,11 @@ fun main(args: Array<String>) {
         }
 
         // Backend emit only after a clean semantic pass.
+        var backendFailures = 0
         if (diagnosticCount == 0) {
             when (GeneratedProvider.outputMode) {
                 GeneratedProvider.OutputTarget.C -> {
-                    val out = KiraCCodeGenerator.DEFAULT_OUTPUT
+                    val out = outputPathIn(outDir, KiraCCodeGenerator.DEFAULT_OUTPUT)
                     Diagnostics.Logging.info("Kira", "Emitting C -> $out")
                     KiraCCodeGenerator(compilationUnit).generate(out)
                     val cSources = manifest?.build?.cSources.orEmpty()
@@ -284,13 +312,27 @@ fun main(args: Array<String>) {
                 }
 
                 GeneratedProvider.OutputTarget.JS -> {
-                    val out = KiraJSCodeGenerator.DEFAULT_OUTPUT
+                    val out = outputPathIn(outDir, KiraJSCodeGenerator.DEFAULT_OUTPUT)
                     Diagnostics.Logging.info("Kira", "Emitting JS -> $out")
                     KiraJSCodeGenerator(compilationUnit).generate(out)
                     Diagnostics.Logging.info(
                         "Kira",
                         "Done. Run with: node $out"
                     )
+                }
+
+                GeneratedProvider.OutputTarget.CPP -> {
+                    Diagnostics.Logging.info("Kira", if (checkMode) "Checking C++" else "Emitting C++")
+                    val result = KiraCppBackend.run(
+                        unit = compilationUnit,
+                        manifest = manifest,
+                        check = checkMode,
+                        projectRoot = projectRoot,
+                        outDirOverride = outDir,
+                    )
+                    if (result.exitCode != 0) {
+                        backendFailures += 1
+                    }
                 }
 
                 else -> {}
@@ -304,12 +346,22 @@ fun main(args: Array<String>) {
             )
         }
 
-        diagnosticCount
+        diagnosticCount + backendFailures
     }
     Diagnostics.Logging.info("Kira", "Everything took ${result.duration}")
     if (result.value > 0) {
         kotlin.system.exitProcess(1)
     }
+}
+
+/** `<dir>/<fileName>` when `--out` was given, else the bare file name in the working directory. */
+private fun outputPathIn(dir: String?, fileName: String): String {
+    if (dir.isNullOrBlank()) {
+        return fileName
+    }
+    val directory = File(dir)
+    directory.mkdirs()
+    return File(directory, fileName).path
 }
 
 

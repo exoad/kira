@@ -1,5 +1,7 @@
 package net.exoad.kira.kim
 
+import net.exoad.kira.compiler.backend.codegen.cpp.CppLayout
+import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -20,6 +22,9 @@ object ManifestLoader {
         val projectName = project.requiredString("name", "project.name")
 
         val srcDir = root.optionalString("srcDir") ?: "src"
+        val srcExclude = root.optionalStringList("srcExclude")
+            ?: root.optionalStringList("src_exclude")
+            ?: emptyList()
 
         val buildMap = root.optionalMap("build")
         val target = buildMap?.optionalString("target") ?: "c"
@@ -30,9 +35,11 @@ object ManifestLoader {
             ?: buildMap?.optionalStringList("link_flags")
             ?: emptyList()
         val minify = buildMap?.optionalBoolean("minify") ?: true
+        val cpp = buildMap?.optionalMap("cpp")?.let { parseCpp(it) } ?: CppOptions()
 
         val compilerMap = root.optionalMap("compiler")
         val emitIr = compilerMap?.optionalString("emitIr") ?: compilerMap?.optionalString("emit_ir")
+        val types = compilerMap?.optionalString("types")?.let { TypeCheckMode.parse(it) } ?: TypeCheckMode.OFF
 
         val dependencies = root.optionalMap("dependencies")?.entries?.associate { (name, rawSpec) ->
             val spec = rawSpec.toStringKeyMap("dependencies.$name")
@@ -42,9 +49,48 @@ object ManifestLoader {
         return ProjectManifest(
             project = ProjectSpec(name = projectName),
             srcDir = srcDir,
-            build = BuildOptions(target = target, cSources = cSources, linkFlags = linkFlags, minify = minify),
-            compiler = CompilerOptions(emitIr = emitIr),
+            srcExclude = srcExclude,
+            build = BuildOptions(
+                target = target,
+                cSources = cSources,
+                linkFlags = linkFlags,
+                minify = minify,
+                cpp = cpp,
+            ),
+            compiler = CompilerOptions(emitIr = emitIr, types = types),
             dependencies = dependencies
+        )
+    }
+
+    /** Every key `build.cpp` accepts, camelCase and snake_case; a typo is an error, never a silent default. */
+    private val cppKeys: Set<String> = setOf(
+        "layout", "outDir", "out_dir", "runtimeDir", "runtime_dir", "lineDirectives", "line_directives",
+        "namespaces", "headerOnly", "header_only", "freestanding", "headerExt", "header_ext", "sourceExt", "source_ext",
+    )
+
+    private fun parseCpp(cpp: Map<String, Any?>): CppOptions {
+        val unknown = cpp.keys.filter { it !in cppKeys }
+        if (unknown.isNotEmpty()) {
+            throw IllegalArgumentException(
+                "Unknown field${if (unknown.size == 1) "" else "s"} in build.cpp: ${unknown.joinToString { "'$it'" }} " +
+                    "(expected one of ${cppKeys.filter { '_' !in it }.joinToString(", ")})"
+            )
+        }
+        val defaults = CppOptions()
+        return CppOptions(
+            layout = cpp.optionalString("layout")?.let { CppLayout.parse(it) } ?: defaults.layout,
+            outDir = cpp.optionalString("outDir") ?: cpp.optionalString("out_dir") ?: defaults.outDir,
+            runtimeDir = cpp.optionalString("runtimeDir") ?: cpp.optionalString("runtime_dir"),
+            lineDirectives = cpp.optionalBoolean("lineDirectives")
+                ?: cpp.optionalBoolean("line_directives")
+                ?: defaults.lineDirectives,
+            namespaces = cpp.optionalStringMap("namespaces") ?: emptyMap(),
+            headerOnly = cpp.optionalStringList("headerOnly")
+                ?: cpp.optionalStringList("header_only")
+                ?: emptyList(),
+            freestanding = cpp.optionalStringList("freestanding") ?: emptyList(),
+            headerExt = cpp.optionalString("headerExt") ?: cpp.optionalString("header_ext") ?: defaults.headerExt,
+            sourceExt = cpp.optionalString("sourceExt") ?: cpp.optionalString("source_ext") ?: defaults.sourceExt,
         )
     }
 
@@ -77,6 +123,19 @@ object ManifestLoader {
     private fun Map<String, Any?>.optionalMap(key: String): Map<String, Any?>? {
         val value = this[key] ?: return null
         return value.toStringKeyMap(key)
+    }
+
+    /** A YAML object whose values are all strings, in the manifest's order. */
+    private fun Map<String, Any?>.optionalStringMap(key: String): Map<String, String>? {
+        val value = optionalMap(key) ?: return null
+        val result = LinkedHashMap<String, String>()
+        value.forEach { (k, v) ->
+            if (v !is String) {
+                throw IllegalArgumentException("Field '$key.$k' must be a string")
+            }
+            result[k.trim()] = v.trim()
+        }
+        return result
     }
 
     private fun Map<String, Any?>.optionalBoolean(key: String): Boolean? {

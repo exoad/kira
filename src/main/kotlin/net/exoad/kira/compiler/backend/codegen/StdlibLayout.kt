@@ -42,4 +42,11 @@ object StdlibLayout {
 
     fun cFile(fileName: String): Path? = runtimeFile("c", fileName)
     fun jsFile(fileName: String): Path? = runtimeFile("js", fileName)
+
+    /**
+     * `<stdlib>/cpp`: the C++ runtime (the `kira/` headers) and its tests. Returned
+     * whether or not it exists, so the installer can say precisely what is
+     * missing; null only when no stdlib root resolves at all.
+     */
+    fun cppDir(): Path? = stdlibRoot()?.resolve("cpp")?.normalize()
 }

@@ -6,7 +6,10 @@ import kotlin.io.path.exists
 data class ValidationIssue(val field: String, val message: String)
 
 object ManifestValidator {
-    private val supportedTargets = setOf("c", "native", "neko", "none")
+    private val supportedTargets = setOf("c", "native", "cpp", "c++", "js", "javascript", "neko", "none")
+
+    /** The extension the source scan reads as a module; no generated file may end with it. */
+    const val KIRA_SOURCE_EXT = ".kira"
 
     fun validate(manifest: ProjectManifest, projectRoot: Path): List<ValidationIssue> {
         val issues = mutableListOf<ValidationIssue>()
@@ -31,6 +34,36 @@ object ManifestValidator {
             )
         }
 
+        val cpp = manifest.build.cpp
+        if (cpp.outDir.isBlank()) {
+            issues += ValidationIssue("build.cpp.outDir", "build.cpp.outDir cannot be blank")
+        }
+        if (cpp.runtimeDir != null && cpp.runtimeDir.isBlank()) {
+            issues += ValidationIssue("build.cpp.runtimeDir", "build.cpp.runtimeDir cannot be blank")
+        }
+        listOf("headerExt" to cpp.headerExt, "sourceExt" to cpp.sourceExt).forEach { (key, ext) ->
+            if (!ext.startsWith(".") || ext.length < 2) {
+                issues += ValidationIssue("build.cpp.$key", "build.cpp.$key must start with '.': $ext")
+            } else if (ext.endsWith(KIRA_SOURCE_EXT)) {
+                issues += ValidationIssue(
+                    "build.cpp.$key",
+                    "build.cpp.$key '$ext' ends with '$KIRA_SOURCE_EXT', so every generated file would be a Kira source: " +
+                        "written over the module it came from, or read as a module on the next run"
+                )
+            }
+        }
+        if (cpp.headerExt == cpp.sourceExt) {
+            issues += ValidationIssue("build.cpp.sourceExt", "build.cpp.headerExt and sourceExt must differ")
+        }
+        cpp.namespaces.forEach { (uri, ns) ->
+            if (!isNamespacePath(ns)) {
+                issues += ValidationIssue(
+                    "build.cpp.namespaces.$uri",
+                    "'$ns' is not a C++ namespace path (expected identifiers joined by ::)"
+                )
+            }
+        }
+
         manifest.dependencies.forEach { (name, spec) ->
             val path = spec.path
             if (path.isNullOrBlank()) {
@@ -44,5 +77,14 @@ object ManifestValidator {
         }
 
         return issues
+    }
+
+    private val namespaceSegment = Regex("[A-Za-z_][A-Za-z0-9_]*")
+
+    fun isNamespacePath(ns: String): Boolean {
+        if (ns.isBlank()) {
+            return false
+        }
+        return ns.split("::").all { namespaceSegment.matches(it) }
     }
 }
