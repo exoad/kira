@@ -1668,4 +1668,274 @@ class EscapePassTest {
         )
         expectExactly(p, "rules.escape.view-store")
     }
+
+    // ---- convergence round 4: `this` escaping a superclass or a trait default body, and provenance surviving an upcast ------
+
+    @Test
+    fun aSuperclassMethodThatPublishesThisMakesEveryLocalOfASubclassNotFresh() {
+        // PB1: `ClassSymbol.thisEscapes` was only ever read off the constructed class itself, never a
+        // superclass's -- `Base.register` stashing `this` in a global left `c: CB` fresh, so its later
+        // field write escaped unseen.
+        val p = snippet(
+            """
+            pub class Base {
+                pub fx register: () Void {
+                    GB1 = this
+                }
+                pub fx run: () Size {
+                    return 0 as Size
+                }
+            }
+            pub mut GB1: Maybe<Base> = null
+            pub class CB1: Base {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                override pub fx run: () Size {
+                    return f.unwrap()()
+                }
+            }
+            pub fx pb1: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB1 = CB1 {}
+                c.register()
+                c.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aSuperclassInitiallyThatPublishesThisMakesEveryLocalOfASubclassNotFresh() {
+        // PB2: same as PB1, published unconditionally from `Base`'s own `initially` rather than a method
+        // the subclass body has to call.
+        val p = snippet(
+            """
+            pub class Base {
+                initially {
+                    GB2 = this
+                }
+                pub fx run: () Size {
+                    return 0 as Size
+                }
+            }
+            pub mut GB2: Maybe<Base> = null
+            pub class CB2: Base {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                override pub fx run: () Size {
+                    return f.unwrap()()
+                }
+            }
+            pub fx pb2: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB2 = CB2 {}
+                c.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aTraitDefaultBodyThatPublishesThisMakesEveryLocalOfAnImplementorNotFresh() {
+        // PB3: same gap, but `this` is published by a trait's default body -- `TraitSymbol.thisEscapes`
+        // did not exist at all, so no implementing class was ever marked, whether or not it called the
+        // inherited method.
+        val p = snippet(
+            """
+            pub trait Reg {
+                pub fx register: () Void {
+                    GT3 = this
+                }
+                pub fx run: () Size;
+            }
+            pub mut GT3: Maybe<Reg> = null
+            pub class CB3: Reg {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                override pub fx run: () Size {
+                    return f.unwrap()()
+                }
+            }
+            pub fx pb3: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB3 = CB3 {}
+                c.register()
+                c.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClosureGivenAtConstructionOfASelfPublishingClassEscapesWithoutAnyLaterFieldWrite() {
+        // PB6: the closure goes into `f` at construction, not by a later `c.f = ...` -- the only place
+        // that write's presence, so the object is never checked. `this` escapes through a method the
+        // caller calls afterward.
+        val p = snippet(
+            """
+            pub class CB6 {
+                pub mut f: Maybe<Fx<Tuple0, Char>> = null
+                pub fx register: () Void {
+                    GC6 = this
+                }
+            }
+            pub mut GC6: Maybe<CB6> = null
+            pub fx pb6: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB6 = CB6 { f = fx() Char { return v.get(0 as Size) } }
+                c.register()
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClosureGivenAtConstructionOfAClassWithASelfPublishingInitiallyEscapesWithoutAnyLaterFieldWrite() {
+        // PB7: same as PB6, but `this` escapes unconditionally from `initially`, the instant the object
+        // is built -- construction alone is enough, no further call in this body at all.
+        val p = snippet(
+            """
+            pub class CB7 {
+                pub mut f: Maybe<Fx<Tuple0, Char>> = null
+                initially {
+                    GC7 = this
+                }
+            }
+            pub mut GC7: Maybe<CB7> = null
+            pub fx pb7: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB7 = CB7 { f = fx() Char { return v.get(0 as Size) } }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClassUpcastToATraitTypedLocalThenReturnedStillCarriesItsFieldsProvenance() {
+        // PA1: `RuleSupport.mayBorrow` walked only the declared type's own fields, and a trait gave up
+        // (`else -> null`) rather than admit the concrete object might be any implementor -- upcasting a
+        // class holding a view-capturing closure to a trait-typed local made the pass stop tracking it.
+        val p = snippet(
+            """
+            pub trait Runner {
+                pub fx run: () Size;
+            }
+            pub class CBA1: Runner {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                override pub fx run: () Size {
+                    return f.unwrap()()
+                }
+            }
+            pub fx pa1: (a: Str) Runner {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CBA1 = CBA1 { f = fx() Size { return v.size() } }
+                h: Runner = c
+                return h
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return")
+    }
+
+    @Test
+    fun aClassUpcastThroughATraitTypedParameterStoredInAGlobalEscapesAtTheCall() {
+        // PA2: the same opacity, reached through a free function's trait-typed parameter that stores it
+        // globally, rather than a local upcast in the same body.
+        val p = snippet(
+            """
+            pub trait Runner {
+                pub fx run: () Size;
+            }
+            pub class CBA2: Runner {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                override pub fx run: () Size {
+                    return f.unwrap()()
+                }
+            }
+            pub mut GR2: Maybe<Runner> = null
+            pub fx stash2: (x: Runner) Void {
+                GR2 = x
+            }
+            pub fx pa2: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CBA2 = CBA2 { f = fx() Size { return v.size() } }
+                stash2(c)
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClassUpcastIntoAListOfATraitTypeEscapesOnReturn() {
+        // PA3: the same opacity, reached through a container element type (`List<Runner>`) rather than a
+        // bare local or parameter.
+        val p = snippet(
+            """
+            pub trait Runner {
+                pub fx run: () Size;
+            }
+            pub class CBA3: Runner {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                override pub fx run: () Size {
+                    return f.unwrap()()
+                }
+            }
+            pub fx pa3: (a: Str) List<Runner> {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CBA3 = CBA3 { f = fx() Size { return v.size() } }
+                mut xs: List<Runner> = List<Runner> {}
+                xs.add(c)
+                return xs
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return")
+    }
+
+    @Test
+    fun aClassUpcastToABaseClassLocalThenReturnedEscapesTooEvenWithNoFxFieldOnTheBase() {
+        // PA4: same as PA1, but the open type is a subclassed base class rather than a trait -- `Base`
+        // itself declares no `Fx` field, so the declared type's own fields say nothing about what the
+        // concrete `CBA4` object holds.
+        val p = snippet(
+            """
+            pub class Base4 {
+                pub fx run: () Size {
+                    return 0 as Size
+                }
+            }
+            pub class CBA4: Base4 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                override pub fx run: () Size {
+                    return f.unwrap()()
+                }
+            }
+            pub fx pa4: (a: Str) Base4 {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CBA4 = CBA4 { f = fx() Size { return v.size() } }
+                h: Base4 = c
+                return h
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return")
+    }
 }

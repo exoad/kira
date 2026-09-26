@@ -27,7 +27,7 @@ import net.exoad.kira.source.SourceContext
  * - phase B: every `type`/`ret`/`target`/`base`, parents, [FnSymbol.isVirtual],
  *   [FnSymbol.overrides], [ClassSymbol.isSubclassed], [TraitSymbol.flatMethods],
  *   [GlobalSymbol.constValue], [EnumEntrySymbol.value];
- * - the rule passes (W2.5): [ClassSymbol.thisEscapes].
+ * - the rule passes (W2.5): [ClassSymbol.thisEscapes], [TraitSymbol.thisEscapes].
  */
 sealed class Symbol {
     abstract val name: String
@@ -206,6 +206,8 @@ class TraitSymbol(
     /** The trait's own methods, in source order. */
     val methods: MutableList<FnSymbol> = mutableListOf(),
     var foreign: Foreign? = null,
+    /** Filled by EscapePass: a default body of this trait uses `this` as a value (D5, round 4). */
+    var thisEscapes: Boolean = false,
 ) : Symbol(), TypeSymbol {
     override var isPub: Boolean = false
     val markers: MutableList<Marker> = mutableListOf()

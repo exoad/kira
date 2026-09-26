@@ -24,9 +24,45 @@ it: every hole read a freed `Str`). `classHandleOutward` now only exempts a plac
 `Place.Local` itself, never one reached by walking a place's root through a field or an index;
 `freshClassLocals` now also requires the constructed type to be `ClassKind.CLASS` with
 `ClassSymbol.thisEscapes` false (computed to a fixpoint before this pass's own fixpoint runs),
-and counts a `mut`-argument binding of the local as a reassignment. Nine regression tests added
+and counts a `mut`-argument binding of the local as a reassignment. Eight regression tests added
 to `EscapePassTest` (round 3 section) reproduce the reported F1/F2/F3/F4/F6/F7/F8/F9 shapes and
-fail without the fix. See the round's commit, not this file.
+fail without the fix. See the round's commit, not this file. (The round-3 commit message and this
+file both said "Nine" here; corrected in round 4 — `EscapePassTest` shows 8 new `@Test` methods
+for F1/F2/F3/F4/F6/F7/F8/F9, and the round's own count elsewhere in this file, 151 + 8 = 159, was
+already right.)
+Fixed in convergence round 4: three more silent-miscompile gaps, all use-after-free under policy
+1, all found by hand-lowering to C++ and running. (1) `freshClassLocals` read only the
+constructed class's *own* `ClassSymbol.thisEscapes`, so a subclass local stayed "fresh" when an
+*inherited* method, an ancestor's `initially`, or a trait's default body published `this` —
+`ClassSymbol.thisEscapes` is set on whichever symbol's own body does the publishing (`Flows`'
+`b.owner`), never on a subclass that merely inherits it. (2) `thisEscapes` was the *only* place
+that flag was read, so a closure handed to a field at construction (`CB { f = fx() ... }`) was
+never checked at all when the class publishes `this` — `freshClassLocals`/`classHandleOutward`
+only ever see a *later* write through an already-existing local (`c.f = ...`), and construction
+takes no such place. (3) `RuleSupport.mayBorrow` walked only the declared type's own fields and
+gave up on a trait (`else -> null`), so upcasting a class holding a view-capturing closure to a
+trait-typed or subclassed-base-typed local, parameter, or container element stopped provenance
+tracking outright, even though the concrete object might be any implementor or subclass.
+Fixes: `TraitSymbol.thisEscapes` (new field, `Symbols.kt`) records a trait default body
+publishing `this`, alongside `ClassSymbol.thisEscapes`; `RuleSupport.classPublishesThis(cls)`
+(new) is the union of `cls.thisEscapes`, every superclass's, and every trait's (transitively,
+through trait parents) that `cls` or an ancestor implements — `freshClassLocals` now reads this
+instead of `cls.thisEscapes` directly. `EscapePass.Flows` gained `markThisEscapes(owner)`,
+replacing the old class-only `classOwner()`, so both a direct `this`-as-value use and an
+escaping lambda's `Capture.This` mark whichever symbol (class or trait) actually owns the body.
+A new `Provenance.constructionEscapes`, run over every `ObjectInitExpr`, refuses a borrowing
+field value given at construction when the constructed class's `classPublishesThis` is true,
+independent of anything the caller's body does with the resulting local afterward. `RuleSupport.
+inside` gained a `throughOpenTypes` parameter, set only by `mayBorrow`'s own call (not by
+`viewInside`/`mutViewInside`/`holdsClosure`, so the declared-class-field view-holding checks are
+unchanged): a trait-typed or subclassed-class-typed type is now treated as "may hold what
+`wanted` looks for" outright, rather than answered from a declaration that cannot see what a
+concrete implementor or subclass actually adds. Nine new regression tests added to
+`EscapePassTest` (round 4 section) reproduce PA1/PA2/PA3/PA4 (upcast opacity) and PB1/PB2/PB3/
+PB6/PB7 (ancestor/trait `this`-escape, including the construction-time case); each one fails
+without its fix (verified against the pre-fix tree) and passes with it. `./gradlew test` remains
+at the same three pre-existing failures outside this package's OWNS (now 1053 total = 1044 + 9).
+See the round's commit, not this file.
 
 ## Issue 8 partly covered: three ways a plain `fx` can still write its own state
 

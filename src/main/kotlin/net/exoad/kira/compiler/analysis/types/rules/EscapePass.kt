@@ -15,6 +15,7 @@ import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.Symbol
+import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.substitute
@@ -329,8 +330,8 @@ internal class EscapePass : RulePass {
                         // The closure outlives this call: what it captured is kept.
                         escapingLambdas[v] = true
                     }
-                    if (escapesBy(flow, viewParam = false) && captures.any { it is Capture.This && (it.owner as? ClassSymbol)?.kind == ClassKind.CLASS }) {
-                        classOwner()?.thisEscapes = true
+                    if (escapesBy(flow, viewParam = false)) {
+                        captures.forEach { c -> if (c is Capture.This) markThisEscapes(c.owner) }
                     }
                 }
                 is FunctionCallExpr -> {
@@ -383,10 +384,23 @@ internal class EscapePass : RulePass {
         /** `this` used as a value: returned, stored, put in a container or passed on (a callee of any kind may keep it). */
         @Suppress("UNUSED_PARAMETER")
         private fun thisEscapes(flow: Flow) {
-            classOwner()?.thisEscapes = true
+            markThisEscapes(b.owner)
         }
 
-        private fun classOwner(): ClassSymbol? = (b.owner as? ClassSymbol)?.takeIf { it.kind == ClassKind.CLASS }
+        /**
+         * Records that a `this` of [owner] escapes: [ClassSymbol.thisEscapes] for a real class,
+         * [TraitSymbol.thisEscapes] for a trait's own default body (round 4, PB3) -- a struct's
+         * `this` is a value, never a shared handle, so it is not tracked here. [RuleSupport.
+         * classPublishesThis] reads both, unioned over a class's own ancestry, since neither flag
+         * alone says whether a *subclass* or *implementor* object may already be published.
+         */
+        private fun markThisEscapes(owner: TypeSymbol?) {
+            when {
+                owner is ClassSymbol && owner.kind == ClassKind.CLASS -> owner.thisEscapes = true
+                owner is TraitSymbol -> owner.thisEscapes = true
+                else -> {}
+            }
+        }
 
         private fun <K : Symbol> mark(map: IdentityHashMap<K, Boolean>, sym: K) {
             if (map[sym] == false) {
@@ -509,9 +523,11 @@ internal class EscapePass : RulePass {
          * Locals of this body that are a fresh, unaliased handle to a class object: declared
          * with a direct construction (`X { ... }`) of a real user class (`ClassKind.CLASS`, not
          * a struct or a magic container such as `List`); that class never publishes `this`
-         * anywhere in its own bodies (`ClassSymbol.thisEscapes` false, computed to a fixpoint
-         * before this runs — no `initially` and no method stashes it, so no *other* handle to
-         * this exact object can already exist); and the local is never reassigned as a whole
+         * anywhere in its own bodies, a superclass's, or a trait's default body it implements
+         * ([RuleSupport.classPublishesThis], the union over that ancestry of [ClassSymbol.
+         * thisEscapes] and [TraitSymbol.thisEscapes], each computed to a fixpoint before this
+         * runs — no `initially`, own method, inherited method or trait default stashes it, so no
+         * *other* handle to this exact object can already exist); and the local is never reassigned as a whole
          * afterward, including by binding it as a `mut` argument (call-site `mut`, D4): the
          * callee may rebind what the argument denotes (`rebind(mut c)` doing `c =
          * GC.unwrap()`), invisible to this walk except at the call site. Everything else that
@@ -538,7 +554,7 @@ internal class EscapePass : RulePass {
                         val value = n.value
                         if (local != null && value is ObjectInitExpr) {
                             val cls = model.inits[value]?.cls
-                            if (cls != null && cls.kind == ClassKind.CLASS && !cls.thisEscapes) {
+                            if (cls != null && cls.kind == ClassKind.CLASS && !r.classPublishesThis(cls)) {
                                 fresh.add(local)
                             }
                         }
@@ -692,6 +708,7 @@ internal class EscapePass : RulePass {
                     }
                     is AssignmentExpr -> store(model.places[n.target], n.target, n.value, fnName)
                     is PlaceAssignmentExpr -> if (n.operator == null) store(model.places[n.target], n.target, n.value, fnName)
+                    is ObjectInitExpr -> constructionEscapes(n, fnName)
                     is FunctionCallExpr -> {
                         val rc = model.calls[n] ?: return@walk
                         // rc.fn is null for CallKind.FN_VALUE (`k(v)` through an Fx value): name the call by its callee expression instead.
@@ -742,6 +759,36 @@ internal class EscapePass : RulePass {
                         }
                     }
                     else -> {}
+                }
+            }
+        }
+
+        /**
+         * A field given at construction (`X { f = ... }`, a positional argument) that borrows a
+         * view or a closure, where the class being constructed -- or a superclass, or a trait it
+         * implements -- publishes `this` somewhere in its own bodies ([RuleSupport.
+         * classPublishesThis]): the object may already be reachable the instant construction
+         * finishes, whatever this call does with the resulting handle afterward (round 4, PB6/
+         * PB7). [freshClassLocals] and [classHandleOutward] only ever see a *later* write through
+         * the local (`c.f = ...` after `c` already exists); a value handed in at construction
+         * itself takes no such place and so is invisible to that path.
+         */
+        private fun constructionEscapes(e: ObjectInitExpr, fnName: String) {
+            val cls = model.inits[e]?.cls ?: return
+            if (cls.kind != ClassKind.CLASS || !r.classPublishesThis(cls)) {
+                return
+            }
+            val values = e.positionalArgs + e.namedArgs.map { it.value }
+            for (a in values) {
+                for (v in AstScan.values(a)) {
+                    val (_, how) = dangling(v, borrowed(v, HashSet())) ?: continue
+                    r.report(
+                        "rules.escape.view-store",
+                        "${KiraUnparser.text(v)} $how, and this ${cls.name} publishes `this` (D5): the object may already be " +
+                            "reachable beyond $fnName the instant it is built. Store a copy (an Arr<T, N> or a List<T>), or " +
+                            "a view of what outlives it.",
+                        v,
+                    )
                 }
             }
         }

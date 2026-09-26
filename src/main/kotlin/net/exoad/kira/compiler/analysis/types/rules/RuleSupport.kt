@@ -311,6 +311,39 @@ internal class Rules(val program: TypedProgram) {
     fun isClass(t: KType?): Boolean = t != null && facts.isClass(t)
 
     /**
+     * Whether `this` may already be published for an object of [cls]: [ClassSymbol.thisEscapes]
+     * only ever gets set on the `ClassSymbol` whose own body does the publishing
+     * ([EscapePass]'s `Flows.classOwner`), so a subclass never sees an ancestor's `initially` or
+     * a plain method it inherits without overriding, and a class implementing a trait never sees
+     * that trait's own default body do it ([TraitSymbol.thisEscapes]) -- round 4's PB1/PB2/PB3.
+     * This is the union a fresh-local exemption or a construction-time check must test instead
+     * of [cls]'s own flag: [cls] itself, every superclass up the chain, and every trait (and its
+     * own parents, transitively) any of those implements.
+     */
+    fun classPublishesThis(cls: ClassSymbol): Boolean {
+        var c: ClassSymbol? = cls
+        val seenTraits = HashSet<TraitSymbol>()
+        val seenClasses = HashSet<ClassSymbol>()
+        while (c != null && seenClasses.add(c)) {
+            if (c.thisEscapes) {
+                return true
+            }
+            if (c.traits.any { traitPublishesThis(it.sym as? TraitSymbol, seenTraits) }) {
+                return true
+            }
+            c = c.superclass?.sym as? ClassSymbol
+        }
+        return false
+    }
+
+    private fun traitPublishesThis(t: TraitSymbol?, seen: MutableSet<TraitSymbol>): Boolean {
+        if (t == null || !seen.add(t)) {
+            return false
+        }
+        return t.thisEscapes || t.parents.any { traitPublishesThis(it.sym as? TraitSymbol, seen) }
+    }
+
+    /**
      * The first view type a value of [t] carries, or null: [t] itself when it is a `View` or
      * `MutView`, else one held by a field of a struct, an element of a container (`Arr`,
      * `List`, `Set`, `Deque`, `Stack`, `Queue`, a `Map`'s key or value), a tuple, a `Maybe`, a
@@ -339,9 +372,14 @@ internal class Rules(val program: TypedProgram) {
      * provenance: it is or holds a view, is or holds a closure (which holds what it captured),
      * or its type is, or holds, a type parameter (`T` in `idG<T>: (x: T) T`), which a call may
      * instantiate with a view or a closure: the generic body is analysed once, for every
-     * instantiation, and a `T` value borrows whatever the caller's argument does.
+     * instantiation, and a `T` value borrows whatever the caller's argument does. A trait, or a
+     * subclassed (non-`final`) class, is walked as [throughOpenTypes]: the declared type's own
+     * fields are not the whole story once the concrete object may be an implementor or subclass
+     * this pass never looked at, so it is assumed to hold a closure rather than cleared by a
+     * declaration that says nothing about what it was upcast from (round 4, PA1..PA4).
      */
-    fun mayBorrow(t: KType?): Boolean = holdsView(t) || inside(t, HashSet(), throughClasses = true) { it is KType.Fn || it is KType.Param } != null
+    fun mayBorrow(t: KType?): Boolean =
+        holdsView(t) || inside(t, HashSet(), throughClasses = true, throughOpenTypes = true) { it is KType.Fn || it is KType.Param } != null
 
     /**
      * A literal `Str` constant (design 5.1: `inline constexpr const char*`), which C++ converts
@@ -351,7 +389,13 @@ internal class Rules(val program: TypedProgram) {
      */
     fun isLiteralStrConstant(sym: Symbol?): Boolean = sym is GlobalSymbol && sym.isConstant && sym.type == KType.Str
 
-    private fun inside(t: KType?, path: MutableSet<KType>, throughClasses: Boolean = false, wanted: (KType) -> Boolean): KType? {
+    private fun inside(
+        t: KType?,
+        path: MutableSet<KType>,
+        throughClasses: Boolean = false,
+        throughOpenTypes: Boolean = false,
+        wanted: (KType) -> Boolean,
+    ): KType? {
         if (t == null) {
             return null
         }
@@ -362,9 +406,18 @@ internal class Rules(val program: TypedProgram) {
             return null
         }
         val nominal = t as? KType.Nominal ?: return null
+        if (throughOpenTypes) {
+            val open = nominal.sym as? TraitSymbol != null ||
+                (nominal.sym as? ClassSymbol)?.let { it.kind == ClassKind.CLASS && it.isSubclassed } == true
+            if (open) {
+                // The concrete object may be an implementor or subclass with a field the declared
+                // type does not have (D29): assumed to hold what [wanted] looks for, not cleared.
+                return t
+            }
+        }
         val sym = nominal.sym as? ClassSymbol ?: return null
         return when (sym.kind) {
-            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, throughClasses, wanted) }
+            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, throughClasses, throughOpenTypes, wanted) }
             ClassKind.STRUCT, ClassKind.CLASS -> {
                 if (sym.kind == ClassKind.CLASS && !throughClasses) {
                     return null
@@ -373,7 +426,7 @@ internal class Rules(val program: TypedProgram) {
                     return null
                 }
                 val sub = sym.typeParams.zip(nominal.typeArgs()).toMap()
-                val found = sym.fields.firstNotNullOfOrNull { inside(it.type.substitute(sub), path, throughClasses, wanted) }
+                val found = sym.fields.firstNotNullOfOrNull { inside(it.type.substitute(sub), path, throughClasses, throughOpenTypes, wanted) }
                 path.remove(t)
                 found
             }
