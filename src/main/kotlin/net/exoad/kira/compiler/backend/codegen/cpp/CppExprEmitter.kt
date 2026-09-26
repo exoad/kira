@@ -476,8 +476,22 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         } else {
             ctx.qualified(sym)
         }
-        is FnSymbol -> if (sym.foreign is Foreign.Extern) externName(sym) else ctx.qualified(sym)
+        is FnSymbol -> if (sym.foreign is Foreign.Extern) externName(sym) else functionValue(sym, at)
         else -> null
+    }
+
+    /**
+     * A named function used as a value (`g: Fx<...> = applyTo`). A function with a template
+     * parameter is no value C++ can hold; [CppEscapes.fxEscapes] makes every `Fx` parameter of
+     * a function used as a value a `kira::Fn`, so this refuses only what another fact made a
+     * template, by name, rather than write a conversion no compiler accepts.
+     */
+    private fun functionValue(fn: FnSymbol, at: Expr): String {
+        val placement = ctx.placementOf(fn.module)
+        fn.params.firstOrNull { placement.isNonEscapingFx(it) }?.let { p ->
+            ctx.unsupported(at, "the function '${fn.name}' as a value: its Fx parameter '${p.name}' is a template parameter, which no kira::Fn holds (pass a lambda that calls ${fn.name})")
+        }
+        return ctx.qualified(fn)
     }
 
     /**
@@ -682,11 +696,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * holds by reference is a snapshot [CppHoister.Operand.Place] (D33 reads it before a
      * sibling's effect, so the hoister copies it first), unless the use is [lent] from (a view
      * the callee takes into it can outlive the call: [CppHoister.lentArgument],
-     * [CppHoister.lentReceiver], [CppHoister.lends] for a field or target), where its path is
-     * applied in place; anything else is a [CppHoister.Operand.Value] that [emit] spells.
+     * [CppHoister.lentReceiver], [CppHoister.lends] for a field or target), where it is never
+     * copied and its path is applied after every sibling; anything else is a
+     * [CppHoister.Operand.Value] that [emit] spells.
      */
     fun operandOf(e: Expr, lent: Boolean = false, emit: () -> CppEx): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e, emit, snapshot = !lent) else CppHoister.Operand.Value(e, emit = emit)
+        if (isPlaceExpr(e) && heldByReference(typeOf(e))) {
+            placeOperand(e, emit, if (lent) CppHoister.PlaceMode.LENT else CppHoister.PlaceMode.SNAPSHOT)
+        } else {
+            CppHoister.Operand.Value(e, emit = emit)
+        }
 
     /**
      * [e] as a step of a place's path (the container of an element, the struct a field is of):
@@ -701,11 +720,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * on a Str) over its container and index as parts, a field of a value place is `.f` over
      * the place, a field through a handle is `->f` over the handle as a value; a variable, `this`
      * and a field of `this` have no parts and [leaf] spells them. The path is applied at the end,
-     * over the parts as they were ordered (R19, D33). A [snapshot] place is a read the hoister
-     * may copy; a place that is written (a `mut` argument, an assignment's target, the receiver
-     * a `mut fx` writes) or lent from is not.
+     * over the parts as they were ordered (R19, D33). [mode] says how the hoister orders it: a
+     * place that is written (a `mut` argument, an assignment's target, the receiver a `mut fx`
+     * writes) is a path, a read the hoister may copy a snapshot, a read a call may lend from lent.
      */
-    fun placeOperand(target: Expr, leaf: () -> CppEx = { coerced(target) }, snapshot: Boolean = false): CppHoister.Operand = when {
+    fun placeOperand(target: Expr, leaf: () -> CppEx = { coerced(target) }, mode: CppHoister.PlaceMode = CppHoister.PlaceMode.PATH): CppHoister.Operand = when {
         target is ArrayIndexExpr -> {
             val origin = target.originExpr
             val ct = typeOf(origin)
@@ -713,7 +732,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val index = CppHoister.Operand.Value(target.indexExpr) { coerced(target.indexExpr, CppLitRole.PLAIN) }
             val map = CppBindingTable.magicName(ct) == "Map"
             val at = if (ct == KType.Str) "kira::str::at" else "kira::at"
-            CppHoister.Operand.Place(target, listOf(container, index), snapshot) { (c, i) ->
+            CppHoister.Operand.Place(target, listOf(container, index), mode) { (c, i) ->
                 if (map) {
                     CppEx("${wrap(c, CppPrec.POSTFIX)}[${wrap(i, CppPrec.NONE)}]", CppPrec.POSTFIX)
                 } else {
@@ -725,9 +744,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val f = (model.member(target) as MemberRef.Field).field
             val origin = target.origin
             val through = pathOperand(origin)
-            CppHoister.Operand.Place(target, listOf(through), snapshot) { (o) -> fieldWith(origin, o, f) }
+            CppHoister.Operand.Place(target, listOf(through), mode) { (o) -> fieldWith(origin, o, f) }
         }
-        else -> CppHoister.Operand.Place(target, emptyList(), snapshot) { leaf() }
+        else -> CppHoister.Operand.Place(target, emptyList(), mode) { leaf() }
     }
 
     /**
@@ -780,20 +799,22 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val targetOp = placeOperand(target)
         val valueOp = CppHoister.Operand.Value(value) { rhs() }
-        val located = hoister.rankOf(targetOp)
-        val read = hoister.rank(target)
-        val given = hoister.rank(value)
+        // A value that writes the target's variable (`x += inc(mut x)`) makes reading it a read of shared state.
+        val written = hoister.writtenBy(listOf(targetOp, valueOp))
+        val located = hoister.rankOf(targetOp, written)
+        val read = hoister.rank(target, written)
+        val given = hoister.rank(value, written)
         // A rewrite names the target twice; a call in its path must run once.
         val force = rewritten && located == CppHoister.IMPURE
         // D33: the target is located and read before the value runs, and the value before the write.
         val ordered = (read == CppHoister.IMPURE || given == CppHoister.IMPURE) && read != CppHoister.PURE && given != CppHoister.PURE
-        if (!force && !ordered && !hoister.needsSpill(listOf(targetOp, valueOp))) {
+        if (!force && !ordered && !hoister.needsSpill(listOf(targetOp, valueOp), written)) {
             return text(hoister.text(targetOp), rhs())
         }
         return state.block {
             val lines = mutableListOf<String>()
             val spelled = ctx.spell(t, Pos.VALUE, target)
-            val l = hoister.ordered(targetOp, lines)
+            val l = hoister.ordered(targetOp, lines, written)
             // The value's effect may change what the target holds: Kira read it first.
             val old = if (read != CppHoister.PURE && given == CppHoister.IMPURE) {
                 val name = state.fresh("t")
@@ -802,7 +823,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             } else {
                 l
             }
-            val r = hoister.ordered(valueOp, lines)
+            val r = hoister.ordered(valueOp, lines, written)
             lines += if (old === l) "${text(l, r).text};" else "${l.text} = ${applyOp(op, t, old, r, value).text};"
             hoister.iife(KType.Void, lines)
         }
@@ -845,8 +866,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             // overload takes the left operand as its receiver, a free one as its first argument.
             val sym = CPP_OPS[op] ?: return unsupported(e, "the operator overload ${op.name}")
             val member = rc.receiver != null
-            val left = if (member) hoister.lentReceiver(rc, typeOf(e.leftExpr)) else hoister.lentArgument(rc, 0, typeOf(e.leftExpr))
-            val right = hoister.lentArgument(rc, if (member) 0 else 1, typeOf(e.rightExpr))
+            val left = if (member) hoister.lentReceiver(rc, typeOf(e.leftExpr)) else hoister.lentArgument(rc, 0, e.leftExpr)
+            val right = hoister.lentArgument(rc, if (member) 0 else 1, e.rightExpr)
             return hoister.lower(
                 listOf(operand(e.leftExpr, lent = left), operand(e.rightExpr, lent = right)), typeOf(e),
             ) { (l, r) -> CppEx("${wrap(l, precOf(op))} $sym ${wrap(r, precOf(op) + 1)}", precOf(op), sym) }
@@ -1290,7 +1311,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * R19), any other an [operandOf], lent where the call [i] of [rc] may lend from it.
      */
     private fun argumentOperand(a: ArgBinding.Given, rc: ResolvedCall, i: Int): CppHoister.Operand =
-        if (a.byRef) placeOperand(a.expr) else operandOf(a.expr, lent = hoister.lentArgument(rc, i, typeOf(a.expr))) { coerced(a.expr) }
+        if (a.byRef) placeOperand(a.expr) else operandOf(a.expr, lent = hoister.lentArgument(rc, i, a.expr)) { coerced(a.expr) }
 
     /** The text of a struct's `this` as a receiver the hoister may copy: [accessWith] knows this instance as the uncopied one. */
     private val thisLeaf = CppEx("*this", CppPrec.UNARY)
@@ -1300,9 +1321,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * arguments; an IIFE that spills the arguments would otherwise run it after them), or null
      * for a class's `this`, whose identity is fixed. A place C++ holds by reference (a struct,
      * a `Str`, a container, a type parameter: [heldByReference]; a struct's own `this` too) is
-     * a place operand: the one a `mut fx` writes or a lending method reads stays where it
-     * lives (the write lands there, the view points there), one the call may lend from
-     * ([CppHoister.lentReceiver]) likewise, any other is a snapshot the hoister copies before
+     * a place operand: the one a `mut fx` writes stays where it lives (the write lands there),
+     * one the call may lend from (a lending binding, a `MutView` taken of it, or
+     * [CppHoister.lentReceiver]) is never copied and is read after every sibling (the view is
+     * made of it as their effects left it), any other is a snapshot the hoister copies before
      * a sibling's effect (D33), so `gm.get(k())` and `gl.get(k())` read the same way, whichever
      * binding spells them, and `this.plus(bump())` reads the same as `ga.plus(bumpA())`. A
      * handle (a class, a trait, a `Ref`), a view, a scalar, and any receiver that is no place
@@ -1317,13 +1339,21 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             if (rc == null || rc.kind == CallKind.EXTERN || !heldByReference(t)) {
                 return null
             }
-            return CppHoister.Operand.Place(receiver, emptyList(), snapshot = !writes && !hoister.lentReceiver(rc, t)) { thisLeaf }
+            return CppHoister.Operand.Place(receiver, emptyList(), receiverMode(rc, fn, lending, t)) { thisLeaf }
         }
         val isPlace = isPlaceExpr(receiver)
         if (isPlace && heldByReference(typeOf(receiver))) {
-            return placeOperand(receiver, emit, snapshot = !writes && (rc == null || !hoister.lentReceiver(rc, typeOf(receiver))))
+            return placeOperand(receiver, emit, receiverMode(rc, fn, lending, typeOf(receiver)))
         }
         return CppHoister.Operand.Value(receiver, mutable = writes || (memberStyle && !isPlace)) { emit() }
+    }
+
+    /** How a receiver place of type [t] is ordered ([receiverOperand]): lent, written, or a snapshot. */
+    private fun receiverMode(rc: ResolvedCall?, fn: FnSymbol?, lending: Boolean, t: KType): CppHoister.PlaceMode = when {
+        lending -> CppHoister.PlaceMode.LENT
+        fn?.isMutMethod == true || rc == null -> CppHoister.PlaceMode.PATH
+        hoister.lentReceiver(rc, t) -> CppHoister.PlaceMode.LENT
+        else -> CppHoister.PlaceMode.SNAPSHOT
     }
 
     /**
@@ -1341,8 +1371,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (!heldByReference(t)) {
             return null
         }
-        val snapshot = !fn.isMutMethod && !hoister.lentReceiver(rc, t)
-        return CppHoister.Operand.Place(null, emptyList(), snapshot, type = t, rank = CppHoister.READS) { thisLeaf }
+        return CppHoister.Operand.Place(null, emptyList(), receiverMode(rc, fn, false, t), type = t, rank = CppHoister.READS) { thisLeaf }
     }
 
     private fun argList(slots: List<Slot>, texts: List<CppEx>): String = slots.joinToString(", ") { s ->

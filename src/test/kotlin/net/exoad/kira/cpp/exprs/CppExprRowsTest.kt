@@ -1349,8 +1349,9 @@ class CppExprRowsTest {
             }
             """,
             listOf(
-                "const Win w = mkWin(gl, nextSize());",
-                "const Win w = Win{.v = gl, .k = nextSize()};",
+                // A lent operand is never copied; the view is made after the sibling's effect.
+                "const kira::Size t0_ = nextSize();\n          return mkWin(gl, t0_);",
+                "const kira::Size t0_ = nextSize();\n          return Win{.v = gl, .k = t0_};",
                 "const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);",
                 "return kira::list::contains(a, 2) && !kira::list::contains(a, 4);",
                 "const kira::List<std::int32_t> c = kira::list::clone(a);",

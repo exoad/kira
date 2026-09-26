@@ -420,6 +420,119 @@ class CppHoisterTest {
         fx handOn: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
             eachOf(xs, each)
         }
+
+        fx inc: (mut v: Int32) Int32 {
+            v += 10
+            return 1
+        }
+
+        fx countOf: (v: View<Int32>, k: Size) Size {
+            return v.size()
+        }
+
+        pub struct Holder<T> {
+            pub v: T
+            pub k: Size = 0
+        }
+
+        fx keep<T>: (mut into: Holder<T>, value: T, k: Size) Void {
+            into.v = value
+            into.k = k
+        }
+
+        fx stashLocal: (mut w: Sink, xs: List<Int32>, k: Size) Void {
+            t: View<Int32> = xs.from(0)
+            w.v = t
+        }
+
+        fx firstRow: (mut w: Sink, grid: List<List<Int32>>, k: Size) Void {
+            for r: List<Int32> in grid {
+                w.v = r.from(0)
+            }
+        }
+
+        fx countViews: (xs: List<Int32>, k: Size) Size {
+            mut vs: List<View<Int32>> = List<View<Int32>> { }
+            vs.add(xs.from(0))
+            return vs.size()
+        }
+
+        fx closeOver: (v: View<Int32>, k: Size) Fx<Tuple1<Size>, Int32> {
+            return fx (i: Size) Int32 {
+                return v.get(i)
+            }
+        }
+
+        fx zero: (m: MutView<Int32>) Int32 {
+            m[0] = 9
+            return 0
+        }
+
+        fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
+            return f(n)
+        }
+
+        fx twice: (n: Int32) Int32 {
+            return n * 2
+        }
+
+        mut gg: List<List<Int32>> = List<List<Int32>> { }
+
+        pub fx mutArgumentSibling: () Int32 {
+            mut x: Int32 = 5
+            return sub(x, inc(mut x))
+        }
+
+        pub fx mutArgumentCompound: () Int32 {
+            mut z: Int32 = 5
+            z += inc(mut z)
+            return z
+        }
+
+        pub fx mutViewSibling: () Int32 {
+            mut p: Arr<Int32, 4> = [1, 2, 3, 4]
+            return sub(p[0], zero(p.from(0)))
+        }
+
+        pub fx heldMutViewSibling: () Int32 {
+            mut q: Arr<Int32, 4> = [1, 2, 3, 4]
+            mv: MutView<Int32> = q.from(0)
+            return sub(q[0], zero(mv))
+        }
+
+        pub fx viewKeptNowhere: () Size {
+            return countOf(gl, nextSize())
+        }
+
+        pub fx genericKeepsAView: (mut h: Holder<View<Int32>>) Void {
+            keep<View<Int32>>(mut h, gl, nextSize())
+        }
+
+        pub fx genericKeepsAList: (mut h: Holder<List<Int32>>) Void {
+            keep<List<Int32>>(mut h, gl, nextSize())
+        }
+
+        pub fx keptThroughALocal: (mut w: Sink) Void {
+            stashLocal(mut w, gl, nextSize())
+        }
+
+        pub fx keptThroughALoopVariable: (mut w: Sink) Void {
+            firstRow(mut w, gg, nextSize())
+        }
+
+        pub fx keptInALocalContainer: () Size {
+            return countViews(gl, nextSize())
+        }
+
+        pub fx keptByAClosure: () Int32 {
+            f: Fx<Tuple1<Size>, Int32> = closeOver(gl, nextSize())
+            return f(0)
+        }
+
+        pub fx functionAsValue: () Int32 {
+            g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
+            return g(twice, 5)
+        }
         """,
     )
 
@@ -541,30 +654,32 @@ class CppHoisterTest {
 
     @Test
     fun aContainerACallLendsAViewFromIsNeverCopied() {
-        // A List parameter is a place C++ holds by const&: it stays where it is, and the view
-        // tail() returns points at the caller's list, not at a temporary of the lambda.
+        // A List parameter is a place C++ holds by const&: it is never copied, and the view
+        // tail() returns points at the caller's list, not at a temporary of the lambda. It is
+        // read after the sibling's effect, so the view is made of it as the effect left it.
         val param = body("lentFromParameter")
-        assertTrue(param.contains("return total(tail(xs, nextSize()));"), param)
-        assertFalse(param.contains("[&]"), param)
-        // A mut global Arr lends a MutView (the typer's MutView lending), of the global itself.
+        assertTrue(param.contains("const kira::Size t0_ = nextSize();\n          return tail(xs, t0_);"), param)
+        assertFalse(param.contains("= xs;"), param)
+        // A mut global Arr lends a MutView (the typer's MutView lending), of the global itself,
+        // made after the index: `kira::mutView(garr)` in the call's object expression would run
+        // before its argument.
         val global = body("lentFromGlobal")
-        assertTrue(global.contains("return total(kira::mutView(garr).from(nextSize()));"), global)
+        assertTrue(global.contains("const kira::Size t0_ = nextSize();\n          return kira::mutView(garr).from(t0_);"), global)
     }
 
     @Test
-    fun aStructResultThatHoldsAViewLendsTooSoItsOperandsStayWhereTheyLive() {
+    fun aStructResultThatHoldsAViewLendsTooSoItsOperandsAreNeverCopied() {
         // Win holds a View: a copy of gl in the lambda would be what w.v points into after
         // the lambda's end (gcc printed garbage, MSVC's ASan a heap-use-after-free), so the
-        // call, the construction and a result nesting Win read gl in place.
+        // call, the construction and a result nesting Win read gl where it lives, after the
+        // sibling (mkWin's View parameter was built from gl unsequenced against nextSize()).
         val call = body("structResultLends")
-        assertTrue(call.contains("return mkWin(gl, nextSize());"), call)
-        assertFalse(call.contains("[&]"), call)
+        assertTrue(call.contains("const kira::Size t0_ = nextSize();\n          return mkWin(gl, t0_);"), call)
         val construction = body("constructionLends")
-        assertTrue(construction.contains("return Win{.v = gl, .k = nextSize()};"), construction)
-        assertFalse(construction.contains("[&]"), construction)
+        assertTrue(construction.contains("const kira::Size t0_ = nextSize();\n          return Win{.v = gl, .k = t0_};"), construction)
         val nested = body("nestedStructResultLends")
-        assertTrue(nested.contains("return wrapOf(gl, nextSize());"), nested)
-        assertFalse(nested.contains("[&]"), nested)
+        assertTrue(nested.contains("const kira::Size t0_ = nextSize();\n          return wrapOf(gl, t0_);"), nested)
+        listOf(call, construction, nested).forEach { assertFalse(it.contains("= gl;"), it) }
     }
 
     @Test
@@ -590,20 +705,23 @@ class CppHoisterTest {
         // attach stores its View parameter in the receiver, fillFrom a view of its List
         // parameter in a mut argument, stashTail one in a global: a copy of gl would be what
         // the view points into after the lambda's end (gcc printed garbage, MSVC's ASan a
-        // heap-use-after-free), so gl stays where it lives, though the results are Void.
+        // heap-use-after-free), so gl stays where it lives, though the results are Void, and
+        // is read after the sibling: attach's View was built from gl unsequenced against
+        // nextSize() (gcc and clang disagreed where nextSize() grew gl).
         val attach = body("attachBeside")
-        assertTrue(attach.contains("w.attach(gl, nextSize());"), attach)
+        assertTrue(attach.contains("const kira::Size t0_ = nextSize();\n          w.attach(gl, t0_);"), attach)
         val fill = body("fillBeside")
-        assertTrue(fill.contains("fillFrom(w, gl, nextSize());"), fill)
+        assertTrue(fill.contains("const kira::Size t0_ = nextSize();\n          fillFrom(w, gl, t0_);"), fill)
         val stash = body("stashBeside")
-        assertTrue(stash.contains("stashTail(gl, next());"), stash)
+        assertTrue(stash.contains("const std::int32_t t0_ = next();\n          stashTail(gl, t0_);"), stash)
         // Through a callee that hands the parameter on to one that lends: the same.
         val via = body("viaStashBeside")
-        assertTrue(via.contains("return viaStash(gl, next());"), via)
-        assertFalse(via.contains("[&]"), via)
-        // An assignment whose target holds a view points into its value.
+        assertTrue(via.contains("const std::int32_t t0_ = next();\n          return viaStash(gl, t0_);"), via)
+        // An assignment whose target holds a view points into its value, made after the
+        // target is located (Kira's order; C++ runs the right side of `=` first).
         val assign = body("assignView")
-        assertTrue(assign.contains("kira::at(sinks, nextSize()).v = gl;"), assign)
+        assertTrue(assign.contains("const kira::Size t0_ = nextSize();\n          kira::at(sinks, t0_).v = gl;"), assign)
+        listOf(attach, fill, stash, via, assign).forEach { assertFalse(it.contains("const kira::List<std::int32_t> t"), it) }
     }
 
     @Test
@@ -619,10 +737,11 @@ class CppHoisterTest {
 
     @Test
     fun aStructReceiverIsCopiedUnlessTheMethodCanLendFromIt() {
-        // Bag holds a List: head lends a view of it (read in place), firstPlus only reads an element (copied first).
+        // Bag holds a List: head lends a view of it (never copied, read after the sibling),
+        // firstPlus only reads an element (copied first).
         val lends = body("bagLends")
-        assertTrue(lends.contains("return total(gbag.head(nextSize()));"), lends)
-        assertFalse(lends.contains("[&]"), lends)
+        assertTrue(lends.contains("const kira::Size t0_ = nextSize();\n          return gbag.head(t0_);"), lends)
+        assertFalse(lends.contains("const Bag"), lends)
         val reads = body("bagReads")
         assertTrue(reads.contains("const Bag t0_ = gbag;\n          const std::int32_t t1_ = next();\n          return t0_.firstPlus(t1_);"), reads)
     }
@@ -688,5 +807,64 @@ class CppHoisterTest {
         assertTrue(b.contains("const std::int32_t t0_ = [&]() -> std::int32_t"), b)
         assertTrue(b.contains("const std::int32_t t1_ = next();\n              const std::int32_t t2_ = next();\n              return sub(t1_, t2_);"), b)
         assertTrue(b.contains("return sub(t0_, t1_);"), b)
+    }
+
+    @Test
+    fun aLocalASiblingWritesIsReadBeforeTheWrite() {
+        // inc(mut x) writes x while it runs: D33 reads x first (C++ left `sub(x, inc(x))`
+        // unsequenced; gcc printed 14 and clang 4).
+        val arg = body("mutArgumentSibling")
+        assertTrue(arg.contains("const std::int32_t t0_ = x;\n          const std::int32_t t1_ = inc(x);\n          return sub(t0_, t1_);"), arg)
+        // A compound assignment reads its target before a value that writes it: z is 5 + 1.
+        val compound = body("mutArgumentCompound")
+        assertTrue(compound.contains("const std::int32_t t0_ = z;\n          const std::int32_t t1_ = inc(z);\n          z = t0_ + t1_;"), compound)
+        // A MutView handed to a callee writes what it is lent from.
+        val view = body("mutViewSibling")
+        assertTrue(view.contains("const std::int32_t t0_ = kira::at(p, 0);\n          const std::int32_t t1_ = zero(kira::mutView(p).from(0));\n          return sub(t0_, t1_);"), view)
+        // A MutView held in a variable writes what it was lent from, untraced: every buffer
+        // the siblings read counts as written.
+        val held = body("heldMutViewSibling")
+        assertTrue(held.contains("const std::int32_t t0_ = kira::at(q, 0);\n          const std::int32_t t1_ = zero(mv);\n          return sub(t0_, t1_);"), held)
+        // A local no sibling writes stays where it is.
+        assertTrue(body("localBeside").contains("return sub(x, next());"), body("localBeside"))
+    }
+
+    @Test
+    fun aListConvertedToAViewTheCalleeKeepsNowhereIsCopiedFirst() {
+        // countOf only reads v.size(): the view points into the copy for the length of the call (D33).
+        val b = body("viewKeptNowhere")
+        assertTrue(b.contains("const kira::List<std::int32_t> t0_ = gl;\n          const kira::Size t1_ = nextSize();\n          return countOf(t0_, t1_);"), b)
+        // So does a List whose views stay in the callee's own local container.
+        val local = body("keptInALocalContainer")
+        assertTrue(local.contains("const kira::List<std::int32_t> t0_ = gl;\n          const kira::Size t1_ = nextSize();\n          return countViews(t0_, t1_);"), local)
+    }
+
+    @Test
+    fun aGenericParameterInstantiatedWithAViewIsTheViewItKeeps() {
+        // keep<T> stores its T: instantiated with View<Int32>, that is a view of gl, which a
+        // copy would leave dangling; instantiated with List<Int32>, it is a copy of its own.
+        val view = body("genericKeepsAView")
+        assertTrue(view.contains("const kira::Size t0_ = nextSize();\n          keep<kira::View<std::int32_t>>(h, gl, t0_);"), view)
+        assertFalse(view.contains("= gl;"), view)
+        val list = body("genericKeepsAList")
+        assertTrue(list.contains("const kira::List<std::int32_t> t0_ = gl;\n          const kira::Size t1_ = nextSize();\n          keep<kira::List<std::int32_t>>(h, t0_, t1_);"), list)
+    }
+
+    @Test
+    fun aViewKeptThroughALocalALoopVariableOrAClosureIsNeverCopied() {
+        val local = body("keptThroughALocal")
+        assertTrue(local.contains("const kira::Size t0_ = nextSize();\n          stashLocal(w, gl, t0_);"), local)
+        val loop = body("keptThroughALoopVariable")
+        assertTrue(loop.contains("const kira::Size t0_ = nextSize();\n          firstRow(w, gg, t0_);"), loop)
+        val closure = body("keptByAClosure")
+        assertTrue(closure.contains("const kira::Size t0_ = nextSize();\n          return closeOver(gl, t0_);"), closure)
+        listOf(local, loop, closure).forEach { assertFalse(it.contains(" = gl;") || it.contains(" = gg;"), it) }
+    }
+
+    @Test
+    fun aFunctionUsedAsAValueTakesItsFxParameterAsAKiraFn() {
+        // A template is no value a kira::Fn holds: applyTo, only calling f, would otherwise be one.
+        assertTrue(text.contains("std::int32_t applyTo(const kira::Fn<std::int32_t(std::int32_t)>& f, std::int32_t n);"), text)
+        assertTrue(body("functionAsValue").contains("= applyTo;"), body("functionAsValue"))
     }
 }

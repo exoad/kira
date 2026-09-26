@@ -227,6 +227,86 @@ fx main: () Void {
     trace(a.viaThis())
     mut b: Acc = Acc { }
     trace(b.viaImplicit())
+    // A mut argument writes its variable while the call runs, so a read of that variable
+    // beside the call is made first: x is 5 there (gcc printed 14, clang 4), and xs has
+    // 2 elements, read as a List and through a View: 5 - 1, 2, 2.
+    mut x: Int32 = 5
+    trace(sub(x, inc(mut x)))
+    mut xs: List<Int32> = List<Int32> { values = [1, 2] }
+    trace(lenOf(xs, pushTo(mut xs)))
+    mut ys: List<Int32> = List<Int32> { values = [1, 2] }
+    trace(countOf(ys, pushTo(mut ys)))
+    // A compound assignment reads its target before a value that writes it: 5 + 1.
+    mut z: Int32 = 5
+    z += inc(mut z)
+    trace(z)
+    // A List converted to a View for a parameter that keeps no view is read before the
+    // effect like any container, though growL() moves gl's storage: 3.
+    gl = List<Int32> { values = [1, 2, 3] }
+    trace(countOf(gl, growL()))
+    // A generic callee that stores its T, instantiated with a view, points at gl and never
+    // at a copy that dies with the lambda: 11, then 1.
+    gl = List<Int32> { values = [11, 22, 33] }
+    idx = 0
+    mut h: Holder<View<Int32>> = Holder<View<Int32>> { v = other, k = 0 }
+    keep<View<Int32>>(mut h, gl, nextSize())
+    trace(h.v.get(0))
+    trace(h.k)
+    // A view the callee keeps is made after its siblings' effects (the open D33 question in
+    // docs/cpp-known-issues/w2-3-emit-exprs.md): made before growL() moved gl, it would
+    // point at freed storage. 11, then 67.
+    keep<View<Int32>>(mut h, gl, growL())
+    trace(h.v.get(0))
+    trace(h.v.size())
+    // A function used as a value takes its Fx parameter as a kira::Fn, never a template: 10.
+    g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
+    trace(g(twice, 5))
+}
+
+fx inc: (mut v: Int32) Int32 {
+    v += 10
+    return 1
+}
+
+fx pushTo: (mut into: List<Int32>) Size {
+    into.add(7)
+    return 0
+}
+
+fx lenOf: (items: List<Int32>, k: Size) Size {
+    return items.size()
+}
+
+fx countOf: (v: View<Int32>, k: Size) Size {
+    return v.size()
+}
+
+// Appends past any capacity gl had: its storage moves.
+fx growL: () Size {
+    mut i: Int32 = 0
+    while i < 64 {
+        gl.add(i)
+        i += 1
+    }
+    return 0
+}
+
+pub struct Holder<T> {
+    pub v: T
+    pub k: Size = 0
+}
+
+fx keep<T>: (mut into: Holder<T>, value: T, k: Size) Void {
+    into.v = value
+    into.k = k
+}
+
+fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
+    return f(n)
+}
+
+fx twice: (n: Int32) Int32 {
+    return n * 2
 }
 
 pub struct Win {

@@ -11,6 +11,7 @@ import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -20,10 +21,10 @@ import net.exoad.kira.compiler.analysis.types.TypedModel
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
@@ -31,9 +32,12 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import java.util.Collections
 import java.util.IdentityHashMap
@@ -77,24 +81,37 @@ import java.util.IdentityHashMap
  *   dangle. A variable's own identity never changes, so a plain place has no parts and stays
  *   where it is. Every `mut` argument, assignment target and receiver a method writes is a place.
  * - A value C++ passes by `const&` (a `Str`, a struct, a container, a type parameter: design
- *   5.1) read at a place is a place that may be [Operand.Place.snapshot]: D33 reads it before a
- *   sibling's effect, and C++ would hand the callee the object as the effect left it
+ *   5.1) read at a place is a [PlaceMode.SNAPSHOT] place: D33 reads it before a sibling's
+ *   effect, and C++ would hand the callee the object as the effect left it
  *   (`show(gs, changeS())` printed the new `gs`), so where it is not PURE it is copied like a
- *   value, its path ordered first (`const kira::Str t0_ = gs;`). The one exception is an
- *   operand the call may lend from: a view the callee takes into it (through a `View` or
- *   `MutView` parameter, or one it derives from a `const&` parameter with `from`, `slice` or
- *   `view`) can leave the call through the result (`tail(xs, nextSize())` returning
- *   `View<Int32>`, `Win { v = gl, k = nextSize() }` whose field `v` is one), through a `mut`
- *   argument or receiver it writes (`w.attach(gl, nextSize())` storing `src` in `w.v`), or
- *   through anything else it writes; a copy the view points into dies with the lambda (gcc
- *   printed garbage, MSVC's ASan a heap-use-after-free), so such an operand stays where it
- *   lives and the call reads it as the effect left it. The decision is per operand, made
- *   where the parameter it feeds is known ([lentArgument], [lentReceiver], [CppLending.lends]
- *   for a construction's field or an assignment's target), and the emitter passes it as the
- *   operand's `snapshot`: a stdlib binding lends only through its result and its `View`
- *   parameters (its C++ is known), a user function through whatever `EscapePass` (W2.5,
- *   `TypedModel.viewEscapes`) or, where the model has no entry, [CppEscapes]'s conservative
- *   scan of its body says.
+ *   value, its path ordered first (`const kira::Str t0_ = gs;`). A `List` or `Arr` place the
+ *   typer converts to a `View` for a parameter that keeps no view (`sizeOf(gl, grow())`,
+ *   `sizeOf` only reading `v.size()`) is copied the same way, and the view points into the
+ *   copy for the length of the call.
+ * - The exception is an operand the call may lend from ([PlaceMode.LENT]): a view the callee
+ *   takes into it (the `View` the typer converts it to, or one the body derives from a
+ *   `const&` parameter with `from`, `slice` or `view`) can leave the call through the result
+ *   (`tail(xs, nextSize())` returning `View<Int32>`, `Win { v = gl, k = nextSize() }` whose
+ *   field `v` is one), through a `mut` argument or receiver it writes (`w.attach(gl,
+ *   nextSize())` storing `src` in `w.v`), through a generic parameter instantiated with a
+ *   view (`keep<View<Int32>>(mut h, gl, nextSize())` storing `x` in `h.v`), or through
+ *   anything else it writes; a copy the view points into dies with the lambda (gcc printed
+ *   garbage, MSVC's ASan a heap-use-after-free), so such an operand is never copied. It is a
+ *   leaf of its own (its read rank), so an impure sibling is spilled before it, and its path
+ *   is applied where the call uses it, after every sibling: the view is made of the place as
+ *   the siblings' effects left it, on every compiler (a view built in the call's argument
+ *   list was unsequenced against its siblings: `sizeOf(gl, grow())` printed 4 on gcc and 3
+ *   on clang), and never before a sibling that reallocates what it points into. Whether a
+ *   lent operand should see its sibling's effect at all is the open D33/D44 question in
+ *   docs/cpp-known-issues/w2-3-emit-exprs.md; this is the documented behaviour. The decision
+ *   is per operand, made where the parameter it feeds is known ([lentArgument],
+ *   [lentReceiver], [CppLending.lends] for a construction's field or an assignment's target):
+ *   a stdlib binding lends only through its result and its view parameters (its C++ is
+ *   known), a user function through what [CppEscapes]'s scan of its body says (and escapes
+ *   wherever `EscapePass`, W2.5, says so too).
+ * - A written place ([PlaceMode.PATH]: a `mut` argument, an assignment's target, the receiver
+ *   a `mut fx` writes) is bound by reference and read by the callee, never at the call: its
+ *   parts are its only leaves.
  * - An operand's rank is `TypedModel.effects` (EffectsPass, W2.5). Where the model has no
  *   entry (before the merge, or for a node no pass visited), [rank] approximates the same
  *   three values: IMPURE for a call whose own entry is absent (absent means impure) unless
@@ -105,13 +122,29 @@ import java.util.IdentityHashMap
  *   not evaluated where the lambda is written, so it does not count. A place's rank is the
  *   highest of its parts' (PURE when it has none): how its location is found, not what it
  *   holds.
- * - Whether to spill is decided over the leaves: every value operand, and every value part
- *   of a place, at any depth (`grid[nextSize()][nextSize()] = 5` holds two impure leaves in
- *   one place and must order them).
+ * - A local no sibling can reach is PURE, except where a sibling writes it: through a `mut`
+ *   argument, as the receiver of a `mut fx`, as the source of a `MutView`, or as an
+ *   assignment's target. Among such operands ([writtenBy]) a read of it is READS, so it is
+ *   read before the write (`sub(x, inc(mut x))` printed 14 on gcc and 4 on clang).
+ * - Whether to spill is decided over the leaves: every value operand, every snapshot or lent
+ *   place, and every value part of a written place, at any depth (`grid[nextSize()][nextSize()]
+ *   = 5` holds two impure leaves in one place and must order them).
  * - A temporary's name is reserved before its initializer is written, so a nested spill in the
  *   initializer never declares the same name inside it (`-Wshadow`).
  */
 class CppHoister(private val lower: CppLowering) {
+    /** How a [Operand.Place] is ordered among its siblings (the class KDoc). */
+    enum class PlaceMode {
+        /** Written, or only located: bound by reference, never read at the call; its parts are its leaves. */
+        PATH,
+
+        /** Read as a value the call cannot lend from: copied into a typed temporary, its path first, before a sibling's effect. */
+        SNAPSHOT,
+
+        /** Read by a call that may lend from it: never copied; a leaf of its own, its path applied after every sibling. */
+        LENT,
+    }
+
     /** One operand, in source order. [expr] is null for a piece that is no expression (an interpolation's text, an implicit `this`). */
     sealed class Operand(val expr: Expr?) {
         /**
@@ -123,15 +156,14 @@ class CppHoister(private val lower: CppLowering) {
         /**
          * A place: [parts] are the values along its path, in source order, and [build] applies
          * the path to their texts. A place with no parts is a variable, `this` or a field of
-         * `this`: [build] spells it and nothing is ordered. A [snapshot] place is a read of a
-         * value C++ holds by `const&` that the call cannot lend from: copied like a value. A
+         * `this`: [build] spells it and nothing is ordered. [mode] says how it is ordered. A
          * place with no expression of its own (an implicit `this`) carries its [type] and the
          * [rank] of reading it.
          */
         class Place(
             expr: Expr?,
             val parts: List<Operand>,
-            val snapshot: Boolean = false,
+            val mode: PlaceMode = PlaceMode.PATH,
             val type: KType? = null,
             val rank: Int? = null,
             val build: (List<CppEx>) -> CppEx,
@@ -147,10 +179,11 @@ class CppHoister(private val lower: CppLowering) {
      * the IIFE.
      */
     fun lower(ops: List<Operand>, result: KType, force: Boolean = false, build: (List<CppEx>) -> CppEx): CppEx {
-        if (!force && !needsSpill(ops)) {
+        val written = writtenBy(ops)
+        if (!force && !needsSpill(ops, written)) {
             return build(ops.map { text(it) })
         }
-        return spill(ops, result, build)
+        return spill(ops, result, written, build)
     }
 
     /** The text of [op] where nothing needs ordering: a value as written, a place as its path over its parts' texts. */
@@ -161,32 +194,36 @@ class CppHoister(private val lower: CppLowering) {
 
     /**
      * Whether one leaf is [IMPURE] and another is not [PURE] (design R19, D33; `Effect`). A
-     * snapshot place is a leaf of its own (it is copied); any other place is its parts' leaves.
+     * snapshot or lent place is a leaf of its own; a written place is its parts' leaves.
+     * [written] is [writtenBy] of the operands.
      */
-    fun needsSpill(ops: List<Operand>): Boolean {
-        val ranks = leaves(ops)
+    fun needsSpill(ops: List<Operand>, written: Set<Symbol> = writtenBy(ops)): Boolean {
+        val ranks = leaves(ops, written)
         return ranks.any { it == IMPURE } && ranks.count { it != PURE } >= 2
     }
 
     /** The rank of [op]: a value's evaluation, or the highest of a place's parts (how its location is found). */
-    fun rankOf(op: Operand): Int = when (op) {
-        is Operand.Value -> op.expr?.let { rank(it) } ?: PURE
-        is Operand.Place -> op.parts.maxOfOrNull { rankOf(it) } ?: PURE
+    fun rankOf(op: Operand, written: Set<Symbol> = emptySet()): Int = when (op) {
+        is Operand.Value -> op.expr?.let { rank(it, written) } ?: PURE
+        is Operand.Place -> op.parts.maxOfOrNull { rankOf(it, written) } ?: PURE
     }
 
-    /** The rank of reading the snapshot place [op] as a value. */
-    private fun readRank(op: Operand.Place): Int = op.rank ?: op.expr?.let { rank(it) } ?: PURE
+    /** The rank of reading the snapshot or lent place [op] as a value. */
+    private fun readRank(op: Operand.Place, written: Set<Symbol>): Int = op.rank ?: op.expr?.let { rank(it, written) } ?: PURE
 
-    private fun leaves(ops: List<Operand>): List<Int> = ops.flatMap { op ->
+    private fun leaves(ops: List<Operand>, written: Set<Symbol>): List<Int> = ops.flatMap { op ->
         when (op) {
-            is Operand.Value -> listOf(rankOf(op))
-            is Operand.Place -> if (op.snapshot) listOf(readRank(op)) else leaves(op.parts)
+            is Operand.Value -> listOf(rankOf(op, written))
+            is Operand.Place -> when (op.mode) {
+                PlaceMode.PATH -> leaves(op.parts, written)
+                PlaceMode.SNAPSHOT, PlaceMode.LENT -> listOf(readRank(op, written))
+            }
         }
     }
 
-    private fun spill(ops: List<Operand>, result: KType, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
+    private fun spill(ops: List<Operand>, result: KType, written: Set<Symbol>, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
         val lines = mutableListOf<String>()
-        val texts = ops.map { ordered(it, lines) }
+        val texts = ops.map { ordered(it, lines, written) }
         val final = build(texts)
         val void = result == KType.Void || result == KType.Never
         lines += if (void) "${final.text};" else "return ${final.text};"
@@ -196,22 +233,31 @@ class CppHoister(private val lower: CppLowering) {
     /**
      * The text of [op] once its evaluation is ordered, the declarations that order it appended
      * to [lines]: a value that is not PURE is copied into a typed temporary, a place is its path
-     * over its ordered parts, and a snapshot place is that path copied. Called inside a
-     * [CppBodyState.block] that an [iife] closes.
+     * over its ordered parts, and a snapshot place is that path copied. A lent place is its
+     * path, applied where the call uses it, after every sibling. Called inside a
+     * [CppBodyState.block] that an [iife] closes; [written] is [writtenBy] of the operands.
      */
-    fun ordered(op: Operand, lines: MutableList<String>): CppEx = when (op) {
+    fun ordered(op: Operand, lines: MutableList<String>, written: Set<Symbol> = emptySet()): CppEx = when (op) {
         is Operand.Place -> {
             // The parts first, in source order; a snapshot copies the path over them.
-            val texts = op.parts.map { ordered(it, lines) }
-            if (op.snapshot) copied(op.expr, false, { op.build(texts) }, lines, op.type, op.rank) else op.build(texts)
+            val texts = op.parts.map { ordered(it, lines, written) }
+            if (op.mode == PlaceMode.SNAPSHOT) copied(op.expr, false, { op.build(texts) }, lines, written, op.type, op.rank) else op.build(texts)
         }
-        is Operand.Value -> copied(op.expr, op.mutable, op.emit, lines)
+        is Operand.Value -> copied(op.expr, op.mutable, op.emit, lines, written)
     }
 
     /** [emit] copied into a typed temporary declared in [lines] when [e] (of [type], at [rank]) is not PURE, else its text as written. */
-    private fun copied(e: Expr?, mutable: Boolean, emit: () -> CppEx, lines: MutableList<String>, type: KType? = null, rank: Int? = null): CppEx {
+    private fun copied(
+        e: Expr?,
+        mutable: Boolean,
+        emit: () -> CppEx,
+        lines: MutableList<String>,
+        written: Set<Symbol>,
+        type: KType? = null,
+        rank: Int? = null,
+    ): CppEx {
         val t = type ?: e?.let { lower.model.typeOrNull(it) }
-        val r = rank ?: e?.let { rank(it) } ?: PURE
+        val r = rank ?: e?.let { rank(it, written) } ?: PURE
         if (r == PURE || t == null || t == KType.Void || t == KType.Never) {
             return emit()
         }
@@ -228,32 +274,38 @@ class CppHoister(private val lower: CppLowering) {
         return CppEx("$capture() -> $ret\n{\n${indent(lines)}\n}()", CppPrec.POSTFIX)
     }
 
-    // ---- lending: which snapshot places must stay where they live ----------------------------
+    // ---- lending: which places a call may keep a view into -------------------------------------
 
     /**
-     * Whether the call [rc] may lend from its argument [i], a snapshot candidate of type [t]:
-     * a view the callee takes into it can outlive the call. Nothing lends from a value whose
-     * copy owns no storage ([CppLending.borrowable]: a struct of scalars, an `Fx` value). A
-     * stdlib binding or a print lends only through a lending result or a `View` parameter;
-     * a user function, operator or method through what [CppEscapes] says of the parameter,
-     * or through a result that lends ([CppLending.lends]); a virtual, trait, extern or
-     * `Fx`-value callee is not seen through, so it lends.
+     * Whether the call [rc] may lend from [arg], its argument [i]: a view into it can outlive
+     * the call, so it is [PlaceMode.LENT], never copied. Nothing lends from a value whose copy
+     * owns no storage ([CppLending.borrowable]: a scalar, a struct of scalars, a view, an `Fx`
+     * value). An argument the typer converts to a `View` (`ToView`) is that view; any other
+     * is the object the callee's `const&` parameter binds. A print lends nothing; a stdlib
+     * binding lends through a lending result or a parameter that can hold a view, its C++
+     * being known; a user function, operator or method through a lending result, or where
+     * [CppEscapes] says a view into the argument may outlive the call (a generic parameter
+     * instantiated with a view counts as that view: `keep<View<Int32>>(mut h, gl, k)`); a
+     * virtual, trait, extern or `Fx`-value callee is not seen through, so it lends.
      */
-    fun lentArgument(rc: ResolvedCall, i: Int, t: KType): Boolean {
+    fun lentArgument(rc: ResolvedCall, i: Int, arg: Expr): Boolean {
+        val t = lower.model.typeOrNull(arg) ?: return true
         if (!CppLending.borrowable(t)) {
             return false
         }
         val fn = rc.fn
+        val param = fn?.params?.getOrNull(i)
+        val asView = lower.model.coercion(arg) is Coercion.ToView
         return when (rc.kind) {
             CallKind.PRINT -> false
-            CallKind.MAGIC -> CppLending.lends(rc.returnType) || (fn?.params?.getOrNull(i)?.let { CppLending.isView(it.type.substitute(rc.substitution)) } ?: true)
+            CallKind.MAGIC -> CppLending.lends(rc.returnType) || param == null || CppLending.lends(param.type.substitute(rc.substitution))
             CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR ->
-                CppLending.lends(rc.returnType) || (fn?.params?.getOrNull(i)?.let { escapes.viewEscapes(fn, it) } ?: true)
+                CppLending.lends(rc.returnType) || fn == null || param == null || escapes.viewEscapes(fn, param, asView)
             CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true
         }
     }
 
-    /** [lentArgument] for the receiver of [rc], a snapshot candidate of type [t] (the receiver a `mut fx` writes is a place already). */
+    /** [lentArgument] for the receiver of [rc], of type [t] (the receiver a `mut fx` writes is a written place already). */
     fun lentReceiver(rc: ResolvedCall, t: KType): Boolean {
         if (!CppLending.borrowable(t)) {
             return false
@@ -263,7 +315,7 @@ class CppHoister(private val lower: CppLowering) {
             CallKind.PRINT -> false
             CallKind.MAGIC -> CppLending.lends(rc.returnType)
             CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR ->
-                CppLending.lends(rc.returnType) || (fn?.let { escapes.viewEscapes(it, null) } ?: true)
+                CppLending.lends(rc.returnType) || (fn?.let { escapes.viewEscapes(it, null, false) } ?: true)
             CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true
         }
     }
@@ -271,10 +323,161 @@ class CppHoister(private val lower: CppLowering) {
     /** [CppLending.lends]. */
     fun lends(t: KType): Boolean = CppLending.lends(t)
 
-    /** [PURE], [READS] or [IMPURE] for evaluating [e]: the model's answer, else [scan]'s approximation. */
-    fun rank(e: Expr): Int {
-        lower.model.effects[e]?.let { return rankOf(it) }
-        return scan(e)
+    /**
+     * [PURE], [READS] or [IMPURE] for evaluating [e]: the model's answer, else [scan]'s
+     * approximation; a PURE read of a local a sibling writes ([written]) is READS.
+     */
+    fun rank(e: Expr, written: Set<Symbol> = emptySet()): Int {
+        val base = lower.model.effects[e]?.let { rankOf(it) } ?: scan(e)
+        return if (base == PURE && written.isNotEmpty() && readsAny(e, written)) READS else base
+    }
+
+    /**
+     * The variables the operands [ops] write while they are evaluated, outside any lambda: the
+     * root of a call's `mut` argument, of a `MutView` a call is handed (not converted to a
+     * `View`: `writeU32(p.from(4), v)` writes `p`), of the receiver of a `mut fx`, and of an
+     * assignment's target, at any depth. A `MutView` held in a variable writes whatever it was
+     * lent from, which is not traced: then every `Arr`, `List` or `MutView` variable the operands
+     * read counts as written. The operands' own call writes nothing while they are evaluated
+     * (its callee runs after), so a written place among [ops] adds nothing.
+     */
+    fun writtenBy(ops: List<Operand>): Set<Symbol> {
+        val out: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
+        var untraced = false
+        fun collect(op: Operand) {
+            op.expr?.let { if (writes(it, out)) untraced = true }
+            if (op is Operand.Place) {
+                op.parts.forEach { collect(it) }
+            }
+        }
+        ops.forEach { collect(it) }
+        if (untraced) {
+            fun buffers(op: Operand) {
+                op.expr?.let { e ->
+                    outsideLambdas(e) { node ->
+                        if (node is Identifier && CppBindingTable.magicName(lower.model.typeOrNull(node)) in BUFFERS) {
+                            lower.model.symbolOf(node)?.let { out += it }
+                        }
+                    }
+                }
+                if (op is Operand.Place) {
+                    op.parts.forEach { buffers(it) }
+                }
+            }
+            ops.forEach { buffers(it) }
+        }
+        return out
+    }
+
+    /** Adds to [out] what [root] writes ([writtenBy]); true when it writes through a `MutView` variable whose source is not traced. */
+    private fun writes(root: Expr, out: MutableSet<Symbol>): Boolean {
+        val model = lower.model
+        var untraced = false
+        fun through(e: Expr) {
+            val lentFrom = lentMutView(e)
+            if (lentFrom != null) {
+                // `p.from(4)` handed on writes p.
+                through(lentFrom)
+                return
+            }
+            rootSymbol(e)?.let { out += it }
+            if (throughMutView(e)) {
+                untraced = true
+            }
+        }
+        fun call(rc: ResolvedCall) {
+            rc.args.forEach { a ->
+                if (a !is ArgBinding.Given) {
+                    return@forEach
+                }
+                val handedMutView = CppBindingTable.magicName(model.typeOrNull(a.expr)) == "MutView" && model.coercion(a.expr) !is Coercion.ToView
+                if (a.byRef || handedMutView) {
+                    through(a.expr)
+                }
+            }
+            val receiver = rc.receiver ?: return
+            if (rc.fn?.isMutMethod == true) {
+                through(receiver)
+            }
+        }
+        outsideLambdas(root) { node ->
+            when (node) {
+                is FunctionCallExpr -> model.call(node)?.let { call(it) }
+                is AssignmentExpr -> through(node.target)
+                is PlaceAssignmentExpr -> through(node.target)
+                is CompoundAssignmentExpr -> through(node.left)
+                is Expr -> model.opCalls[node]?.let { call(it) }
+                else -> {}
+            }
+        }
+        return untraced
+    }
+
+    /** Every node under [root], [root] included, except inside a lambda (its body is not evaluated where it is written). */
+    private fun outsideLambdas(root: ASTNode, visit: (ASTNode) -> Unit) {
+        val stack = ArrayDeque<ASTNode>()
+        stack.addLast(root)
+        val seen = IdentityHashMap<ASTNode, Boolean>()
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (seen.put(node, true) != null || node is LambdaExpr) {
+                continue
+            }
+            visit(node)
+            AstTree.children(node).forEach { stack.addLast(it) }
+        }
+    }
+
+    /** The receiver a binding lends the `MutView` [e] from (`p` for `p.from(4)`), or null when [e] is no such call. */
+    private fun lentMutView(e: Expr): Expr? {
+        val call = when (e) {
+            is FunctionCallExpr -> e
+            is MemberAccessExpr -> e.member as? FunctionCallExpr
+            else -> null
+        } ?: return null
+        return lower.model.call(call)?.takeIf { CppBindingTable.magicName(it.returnType) == "MutView" }?.receiver
+    }
+
+    /** Whether the place [e] is reached through a `MutView` value (`mv[0]`, `w.mv[0]`), which writes where it was lent from. */
+    private fun throughMutView(e: Expr): Boolean {
+        var cur: Expr? = e
+        while (cur != null) {
+            if (CppBindingTable.magicName(lower.model.typeOrNull(cur)) == "MutView") {
+                return true
+            }
+            cur = when (cur) {
+                is MemberAccessExpr -> if (lower.model.member(cur) is MemberRef.Field) cur.origin else null
+                is ArrayIndexExpr -> cur.originExpr
+                else -> null
+            }
+        }
+        return false
+    }
+
+    /** The variable a place [e] is found through (`xs` for `xs[i].v`), or null. */
+    private fun rootSymbol(e: Expr): Symbol? = when (e) {
+        is Identifier -> lower.model.symbolOf(e)
+        is MemberAccessExpr -> if (lower.model.member(e) is MemberRef.Field) rootSymbol(e.origin) else null
+        is ArrayIndexExpr -> rootSymbol(e.originExpr)
+        else -> null
+    }
+
+    /** Whether [e] reads one of [symbols], outside any lambda. */
+    private fun readsAny(e: Expr, symbols: Set<Symbol>): Boolean {
+        val stack = ArrayDeque<ASTNode>()
+        stack.addLast(e)
+        val seen = IdentityHashMap<ASTNode, Boolean>()
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (seen.put(node, true) != null || node is LambdaExpr) {
+                continue
+            }
+            if (node is Identifier && lower.model.symbolOf(node)?.let { it in symbols } == true) {
+                return true
+            }
+            AstTree.children(node).forEach { stack.addLast(it) }
+        }
+        return false
     }
 
     private fun rankOf(effect: Effect): Int = when (effect) {
@@ -361,6 +564,9 @@ class CppHoister(private val lower: CppLowering) {
         const val PURE = 0
         const val READS = 1
         const val IMPURE = 2
+
+        /** What a `MutView` can be lent from. */
+        private val BUFFERS = setOf("Arr", "List", "MutView")
 
         /** Every line of [lines] (each possibly several) indented four spaces. */
         fun indent(lines: List<String>): String =
@@ -453,50 +659,79 @@ object CppLending {
 }
 
 /**
- * What escapes a call, where `EscapePass` (W2.5) has not said: the model's entry
- * (`TypedModel.fxEscapes`, `TypedModel.viewEscapes`) wins when present; an absent one means
- * escaping there, and this class approximates the pass's answer from the callee's typed body,
- * conservatively (it says "escapes" wherever it cannot see), the way `CppHoister.rank`
- * approximates EffectsPass. When the pass lands, its entries take over and these scans are
- * reached only where it wrote none.
+ * What escapes a call, read from the callee's typed body: the facts the hoister and the
+ * closure lowering need and cannot guess. Each scan is conservative: it says "escapes"
+ * wherever it cannot see.
  *
- * - [fxEscapes]: an `Fx` parameter does not escape when its body mentions it only as the
- *   callee of a call (`each(buf.slice(at, n))`), outside any lambda; stored, returned, passed,
- *   captured or compared, it escapes. A virtual or trait method's does (no template is virtual).
- * - [viewEscapes]: a view derived from a `const&` parameter, a `View` parameter or the
- *   receiver may outlive the call when the body makes any view at all (an expression of a
- *   lending type, or coerced to a view: `xs.from(at)`, `Win { v = src }`), or hands the
- *   parameter, the receiver or a field of it by reference to a callee this cannot see through
- *   (a virtual, trait, extern or `Fx`-value callee, a stdlib `View` parameter) or one whose
- *   own answer is "escapes" (a fixpoint over the calls, a cycle counting as escaping). A body
- *   the emitter has not got (extern, abstract) escapes.
+ * - [fxEscapes]: whether an `Fx` parameter must be a `kira::Fn` rather than a template
+ *   parameter (design 5.1). `TypedModel.fxEscapes` (EscapePass, W2.5) answers where it has an
+ *   entry; where it has none this approximates the pass: the parameter does not escape when
+ *   the body mentions it only as the callee of a call (`each(buf.slice(at, n))`), outside any
+ *   lambda, in a non-virtual, non-trait method. A parameter of a function used as a value
+ *   (`g: Fx<...> = applyTo`, a `FnRef`) escapes whatever the model says, since a template is
+ *   not a value `kira::Fn` can hold, and so does one with a default (no template argument is
+ *   deduced from a default).
+ * - [viewEscapes]: whether a view into a caller's operand can outlive the call, for a
+ *   parameter or (with no parameter) the receiver. The operand is either the view itself
+ *   (`asView`: a `List` or `Arr` place the typer converted to a `View`, which the parameter
+ *   holds) or the object a `const&` parameter or the receiver binds (a view into it is one the
+ *   body derives: `xs.from(at)`, `Win { v = xs }`). [ViewScan] follows such views through the
+ *   body: a view stored anywhere but a local (a field, a global, a `mut` argument, the
+ *   receiver, a thrown value), captured by a lambda, handed to a callee this cannot see
+ *   through (virtual, trait, extern, an `Fx` value, a stdlib `mut` method on a container that
+ *   can hold views) or to one whose own scan says it keeps it, escapes; so does one returned.
+ *   A value of a type parameter counts as a view when `asView` (`keep<T>(x: T)` storing `x`,
+ *   instantiated with `View<Int32>`). `TypedModel.viewEscapes` can only add an escape: its
+ *   entries follow EscapePass's rules (design 3.4), which allow a view that is returned, and
+ *   the hoister's question is whether a copy of the operand may be lent from.
  */
 class CppEscapes(private val model: TypedModel, private val heldByReference: (KType) -> Boolean = ::byReferenceByType) {
+    /** What [viewEscapes] found: a view into the operand kept past the call ([stored]), or returned from it ([returned]). */
+    data class Fate(val stored: Boolean, val returned: Boolean) {
+        val escapes: Boolean get() = stored || returned
+    }
+
+    private data class Key(val fn: FnSymbol, val p: ParamSymbol?, val asView: Boolean)
+
     private val fx = IdentityHashMap<ParamSymbol, Boolean>()
-    private val views = IdentityHashMap<Symbol, Boolean>()
-    private val visiting: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
-    private val makesViews = IdentityHashMap<FnSymbol, Boolean>()
+    private val fates = HashMap<Key, Fate>()
+    private val visiting = HashSet<Key>()
 
-    /** Whether the `Fx` parameter [p] escapes its function: the model's entry, else the scan's. */
-    fun fxEscapes(p: ParamSymbol): Boolean = model.fxEscapes[p] ?: fx.getOrPut(p) { scanFx(p) }
+    /** Every function used as a value somewhere in the program (a `FnRef` coercion). */
+    private val usedAsValue: Set<FnSymbol> by lazy {
+        val out: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
+        model.coercions.values.forEach { if (it is Coercion.FnRef) out += it.fn }
+        out
+    }
 
-    /**
-     * Whether a view derived from [p] of [fn], or from [fn]'s receiver when [p] is null, may
-     * outlive a call: the model's entry for the parameter, else the scan's. (The receiver has
-     * no model key yet; a `viewEscapes` entry keyed by the method would be read here.)
-     */
-    fun viewEscapes(fn: FnSymbol, p: ParamSymbol?): Boolean {
-        val key: Symbol = p ?: fn
-        if (p != null) {
-            model.viewEscapes[p]?.let { return it }
-        }
-        views[key]?.let { return it }
-        if (!visiting.add(key)) {
+    /** Whether the `Fx` parameter [p] escapes its function (the class KDoc). */
+    fun fxEscapes(p: ParamSymbol): Boolean {
+        val fn = p.fn
+        if (p.default != null || (fn != null && fn in usedAsValue)) {
             return true
         }
-        val result = scanView(fn, p)
+        return model.fxEscapes[p] ?: fx.getOrPut(p) { scanFx(p) }
+    }
+
+    /**
+     * Whether a view into the operand fed to [p] of [fn] (the receiver when [p] is null) may
+     * outlive a call; [asView] when the parameter holds that view itself (the class KDoc).
+     */
+    fun viewEscapes(fn: FnSymbol, p: ParamSymbol?, asView: Boolean): Boolean = fate(fn, p, asView).escapes
+
+    private fun fate(fn: FnSymbol, p: ParamSymbol?, asView: Boolean): Fate {
+        if (p != null && model.viewEscapes[p] == true) {
+            return ESCAPED
+        }
+        val key = Key(fn, p, asView)
+        fates[key]?.let { return it }
+        if (!visiting.add(key)) {
+            // A cycle through the call graph: not seen through.
+            return ESCAPED
+        }
+        val result = ViewScan(fn, p, asView).run()
         visiting.remove(key)
-        views[key] = result
+        fates[key] = result
         return result
     }
 
@@ -526,79 +761,311 @@ class CppEscapes(private val model: TypedModel, private val heldByReference: (KT
         return escapes
     }
 
-    private fun scanView(fn: FnSymbol, p: ParamSymbol?): Boolean {
-        val body = fn.body ?: return true
-        if (fn.isVirtual || fn.owner is TraitSymbol) {
-            return true
+    /** Where a value goes: nowhere that outlives it, a local, anywhere else, or out of the function. */
+    private sealed interface Sink {
+        data object Safe : Sink
+        data object Store : Sink
+        data object Return : Sink
+        data class Local(val sym: Symbol) : Sink
+    }
+
+    /**
+     * One scan of [fn]'s body for [p] (the receiver when null), flow-insensitive: a local
+     * that ever holds a view into the operand holds one everywhere, and the body is walked
+     * again until no more locals are found.
+     */
+    private inner class ViewScan(private val fn: FnSymbol, private val p: ParamSymbol?, private val asView: Boolean) {
+        /** Variables whose value is, or holds, a view into the operand (the parameter itself when [asView]). */
+        private val tainted: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
+
+        /** Variables bound by reference to the operand's storage: the parameter (not [asView]), a loop variable over it. */
+        private val roots: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
+
+        /** The receiver and its fields are the operand. */
+        private val thisIsRoot = p == null && !asView
+        private var stored = false
+        private var returned = false
+        private var grew = false
+
+        fun run(): Fate {
+            val body = fn.body ?: return ESCAPED
+            if (fn.isVirtual || fn.owner is TraitSymbol) {
+                return ESCAPED
+            }
+            if (p != null) {
+                if (asView) tainted += p else roots += p
+            }
+            do {
+                grew = false
+                body.forEach { statement(it) }
+            } while (grew && !stored)
+            return Fate(stored, returned)
         }
-        if (makesViews.getOrPut(fn) { makesViews(body) }) {
-            return true
+
+        private fun statement(s: Statement) {
+            if (stored) {
+                return
+            }
+            when (s) {
+                is ReturnStatement -> expr(s.expr, Sink.Return)
+                is ForIterationStatement -> loop(s)
+                else -> children(s)
+            }
         }
-        var escapes = false
-        body.forEach { stmt ->
-            AstTree.walk(stmt) { node ->
-                if (escapes) {
-                    return@walk
-                }
-                val rc = when (node) {
-                    is FunctionCallExpr -> model.call(node)
-                    is BinaryExpr -> model.opCall(node)
-                    else -> null
-                } ?: return@walk
-                rc.args.forEachIndexed { i, a ->
-                    if (a is ArgBinding.Given && byReference(a.expr) && rootedAt(a.expr, fn, p) && argumentEscapes(rc, i)) {
-                        escapes = true
-                    }
-                }
-                val receiver = rc.receiver
-                if (receiver != null) {
-                    if (byReference(receiver) && rootedAt(receiver, fn, p) && receiverEscapes(rc)) {
-                        escapes = true
-                    }
-                } else if (rc.implicitThis && p == null && receiverEscapes(rc)) {
-                    escapes = true
+
+        /** [node]'s statements and expressions, each where nothing outlives it (a value that flows into [node] is [tainted] at [node]). */
+        private fun children(node: ASTNode) {
+            AstTree.children(node).forEach { c ->
+                when (c) {
+                    is Statement -> statement(c)
+                    is Expr -> expr(c, Sink.Safe)
+                    else -> children(c)
                 }
             }
         }
-        return escapes
-    }
 
-    /** Whether [body] makes any view: an expression of a lending type, or one coerced to a view. */
-    private fun makesViews(body: List<Statement>): Boolean {
-        var found = false
-        body.forEach { stmt ->
-            AstTree.walk(stmt) { node ->
-                if (found || node !is Expr) {
-                    return@walk
+        private fun expr(e: Expr, sink: Sink) {
+            if (stored) {
+                return
+            }
+            when (sink) {
+                Sink.Safe -> {}
+                Sink.Store -> if (tainted(e)) {
+                    stored = true
+                    return
                 }
-                if (model.typeOrNull(node)?.let { CppLending.lends(it, paramLends = false) } == true || model.coercion(node) is Coercion.ToView) {
+                Sink.Return -> if (tainted(e)) returned = true
+                is Sink.Local -> if (tainted(e)) taint(sink.sym)
+            }
+            when (e) {
+                // A closure holding a view is not followed: it escapes.
+                is LambdaExpr -> if (mentions(e)) stored = true
+                is VariableDecl -> {
+                    val sym = model.declSymbol(e)
+                    e.value?.let { v -> expr(v, if (sym != null) Sink.Local(sym) else Sink.Store) }
+                }
+                is FunctionCallExpr -> {
+                    val rc = model.call(e)
+                    if (rc == null) unresolved(e) else call(rc, e)
+                }
+                is MemberAccessExpr -> {
+                    val rc = (e.member as? FunctionCallExpr)?.let { model.call(it) }
+                    if (rc != null) call(rc, e.member as FunctionCallExpr) else expr(e.origin, Sink.Safe)
+                }
+                is AssignmentExpr -> assign(e.target, e.value)
+                is PlaceAssignmentExpr -> if (e.operator == null) {
+                    assign(e.target, e.value)
+                } else {
+                    expr(e.target, Sink.Safe)
+                    expr(e.value, Sink.Safe)
+                }
+                is ThrowExpr -> AstTree.children(e).forEach { if (it is Expr) expr(it, Sink.Store) }
+                else -> {
+                    val rc = model.opCall(e)
+                    if (rc != null) call(rc, e) else children(e)
+                }
+            }
+        }
+
+        private fun taint(sym: Symbol) {
+            if (tainted.add(sym)) {
+                grew = true
+            }
+        }
+
+        private fun assign(target: Expr, value: Expr) {
+            val local = localRoot(target)
+            expr(value, if (local != null) Sink.Local(local) else Sink.Store)
+            expr(target, Sink.Safe)
+        }
+
+        /** The local variable a place is found through (`w` for `w.v`), or null for any other place. */
+        private fun localRoot(e: Expr): Symbol? = when (e) {
+            is Identifier -> model.symbolOf(e) as? LocalSymbol
+            is MemberAccessExpr -> if (model.member(e) is MemberRef.Field) localRoot(e.origin) else null
+            is ArrayIndexExpr -> localRoot(e.originExpr)
+            else -> null
+        }
+
+        private fun loop(s: ForIterationStatement) {
+            val target = s.forIterationExpr.target
+            expr(target, Sink.Safe)
+            if (target !is RangeExpr && (rooted(target) || derived(target))) {
+                val plan = model.loop(s)
+                val v = plan?.variable
+                if (plan == null || v == null) {
+                    stored = true
+                    return
+                }
+                // An element that is a view, or a loop variable bound by const& into the operand's storage.
+                if (CppLending.lends(plan.element, paramLends = asView)) {
+                    taint(v)
+                }
+                if (CppLending.borrowable(plan.element) && (v as? LocalSymbol)?.isMut != true && roots.add(v)) {
+                    grew = true
+                }
+            }
+            s.body.forEach { statement(it) }
+        }
+
+        private fun call(rc: ResolvedCall, node: Expr) {
+            val receiver = rc.receiver
+            if (receiver != null) {
+                receiverUse(rc, receiver)
+                expr(receiver, Sink.Safe)
+            } else if (rc.implicitThis && thisIsRoot && delegatesThis(rc)) {
+                stored = true
+            }
+            if (rc.kind == CallKind.FN_VALUE && node is FunctionCallExpr) {
+                expr(node.name, Sink.Safe)
+            }
+            rc.args.forEachIndexed { i, a ->
+                if (a is ArgBinding.Given) {
+                    argumentUse(rc, i, a)
+                    expr(a.expr, Sink.Safe)
+                }
+            }
+        }
+
+        /** Marks [stored] when the call [rc] may keep a view into the operand through its argument [a], parameter [i]. */
+        private fun argumentUse(rc: ResolvedCall, i: Int, a: ArgBinding.Given) {
+            val x = a.expr
+            val view = tainted(x)
+            val place = !view && rooted(x) && byReference(x)
+            if (!view && !place) {
+                return
+            }
+            if (a.byRef) {
+                stored = true
+                return
+            }
+            val keeps = when (rc.kind) {
+                CallKind.PRINT -> false
+                // A stdlib function keeps nothing (a view it returns is the call's own value),
+                // except a method on a container that can hold views, which stores it.
+                CallKind.MAGIC -> view && rc.receiver?.let { model.typeOrNull(it) }?.let { CppLending.lends(it) } == true && keptIn(rc.receiver)
+                CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> {
+                    val callee = rc.fn
+                    val q = callee?.params?.getOrNull(i)
+                    callee == null || q == null || fate(callee, q, asView = view).stored
+                }
+                CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true
+            }
+            if (keeps) {
+                stored = true
+            }
+        }
+
+        /** A view stored in the container [receiver]: the container's local, or an escape. */
+        private fun keptIn(receiver: Expr): Boolean {
+            val local = localRoot(receiver) ?: return true
+            taint(local)
+            return false
+        }
+
+        /** Marks [stored] when the call [rc] may keep a view into the operand through its [receiver]. */
+        private fun receiverUse(rc: ResolvedCall, receiver: Expr) {
+            val view = tainted(receiver)
+            val place = !view && rooted(receiver) && byReference(receiver)
+            if (!view && !place) {
+                return
+            }
+            val keeps = when (rc.kind) {
+                // A stdlib method keeps nothing of its receiver; a view it returns is the call's own value.
+                CallKind.PRINT, CallKind.MAGIC -> false
+                CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> view || (rc.fn?.let { fate(it, null, false).stored } ?: true)
+                CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true
+            }
+            if (keeps) {
+                stored = true
+            }
+        }
+
+        /** Whether a method called on the implicit `this` (the operand) may keep a view into it. */
+        private fun delegatesThis(rc: ResolvedCall): Boolean = when (rc.kind) {
+            CallKind.PRINT, CallKind.MAGIC -> false
+            CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> rc.fn?.let { fate(it, null, false).stored } ?: true
+            CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true
+        }
+
+        private fun unresolved(e: Expr) {
+            if (derived(e) || mentions(e)) {
+                stored = true
+            }
+        }
+
+        /**
+         * Whether the value of [e] is, or holds, a view into the operand: a place of it the typer
+         * converts to a `View`, a tainted variable, a closure over one, or a value of a type that
+         * can hold a view ([CppLending.lends]; a type parameter only when [asView]) computed from
+         * the operand or a tainted variable.
+         */
+        private fun tainted(e: Expr): Boolean {
+            if (e is LambdaExpr) {
+                return mentions(e)
+            }
+            if (model.coercion(e) is Coercion.ToView && (rooted(e) || derived(e))) {
+                return true
+            }
+            if (e is Identifier && model.symbolOf(e)?.let { it in tainted } == true) {
+                return true
+            }
+            val t = model.typeOrNull(e) ?: return false
+            return CppLending.lends(t, paramLends = asView) && derived(e)
+        }
+
+        /** Whether the place [e] is found through the operand's storage: a root, a tainted view, `this` or a field of it. */
+        private fun rooted(e: Expr): Boolean {
+            var cur: Expr = e
+            while (true) {
+                cur = when (cur) {
+                    is Identifier -> return when (val sym = model.symbolOf(cur)) {
+                        null -> false
+                        is FieldSymbol -> thisIsRoot
+                        else -> sym in roots || sym in tainted
+                    }
+                    is ThisExpr -> return thisIsRoot
+                    is MemberAccessExpr -> if (model.member(cur) is MemberRef.Field) cur.origin else return false
+                    is ArrayIndexExpr -> cur.originExpr
+                    else -> return false
+                }
+            }
+        }
+
+        /** Whether [e] mentions the operand or a tainted variable anywhere inside it. */
+        private fun derived(e: Expr): Boolean = anyNode(e) { node ->
+            when (node) {
+                is Identifier -> when (val sym = model.symbolOf(node)) {
+                    null -> false
+                    is FieldSymbol -> thisIsRoot
+                    else -> sym in roots || sym in tainted
+                }
+                is ThisExpr -> thisIsRoot
+                else -> false
+            }
+        }
+
+        /** Whether [e] mentions a tainted variable anywhere inside it (a closure captures by value, so a root copied into one is its own). */
+        private fun mentions(e: Expr): Boolean = anyNode(e) { node ->
+            node is Identifier && model.symbolOf(node)?.let { it in tainted } == true
+        }
+
+        private fun anyNode(root: ASTNode, test: (ASTNode) -> Boolean): Boolean {
+            var found = false
+            AstTree.walk(root) { node ->
+                if (!found && test(node)) {
                     found = true
                 }
             }
+            return found
         }
-        return found
-    }
 
-    private fun argumentEscapes(rc: ResolvedCall, i: Int): Boolean {
-        val callee = rc.fn
-        return when (rc.kind) {
-            CallKind.PRINT -> false
-            CallKind.MAGIC -> callee?.params?.getOrNull(i)?.let { CppLending.isView(it.type.substitute(rc.substitution)) } ?: true
-            CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> callee?.params?.getOrNull(i)?.let { viewEscapes(callee, it) } ?: true
-            CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true
-        }
+        private fun byReference(e: Expr): Boolean = model.typeOrNull(e)?.let { heldByReference(it) } == true
     }
-
-    /** A stdlib receiver lends only through its result, which [makesViews] saw where it lends. */
-    private fun receiverEscapes(rc: ResolvedCall): Boolean = when (rc.kind) {
-        CallKind.PRINT, CallKind.MAGIC -> false
-        CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> rc.fn?.let { viewEscapes(it, null) } ?: true
-        CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true
-    }
-
-    private fun byReference(e: Expr): Boolean = model.typeOrNull(e)?.let { heldByReference(it) } == true
 
     companion object {
+        private val ESCAPED = Fate(stored = true, returned = true)
+
         /**
          * `CppLowering.heldByReference` from the type alone, for a caller without a lowering:
          * a `Str`, a struct, a container, an `Fx` value, a type parameter; not a scalar, an
@@ -617,24 +1084,6 @@ class CppEscapes(private val model: TypedModel, private val heldByReference: (KT
                 else -> false
             }
             else -> false
-        }
-    }
-
-    /** Whether the place [e] is [p], `this` of [fn] (when [p] is null), or a field or element of it, at any depth. */
-    private fun rootedAt(e: Expr, fn: FnSymbol, p: ParamSymbol?): Boolean {
-        var cur: Expr = e
-        while (true) {
-            cur = when (cur) {
-                is Identifier -> return when (val sym = model.symbolOf(cur)) {
-                    null -> false
-                    is FieldSymbol -> p == null && sym.owner === fn.owner
-                    else -> p != null && sym === p
-                }
-                is ThisExpr -> return p == null
-                is MemberAccessExpr -> if (model.member(cur) is MemberRef.Field) cur.origin else return false
-                is ArrayIndexExpr -> cur.originExpr
-                else -> return false
-            }
         }
     }
 }

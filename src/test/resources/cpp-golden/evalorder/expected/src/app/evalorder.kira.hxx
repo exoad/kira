@@ -5,6 +5,8 @@
 namespace evalorder
 {
   struct Box;
+  template<typename T>
+  struct Holder;
   struct Win;
   struct Acc;
 
@@ -14,6 +16,13 @@ namespace evalorder
 
       [[nodiscard]] std::int32_t pair(std::int32_t a, std::int32_t b) const;
       void grow(std::int32_t a, std::int32_t b);
+  };
+
+  template<typename T>
+  struct Holder
+  {
+      T v{};
+      kira::Size k = 0;
   };
 
   struct Win
