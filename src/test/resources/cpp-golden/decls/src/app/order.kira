@@ -16,9 +16,10 @@ pub K: Kind = Kind.K_A
 pub N: Size = 4
 pub B: Int32 = 2
 
-// Kira reads every decimal literal as decimal (010 is ten) and a hex literal
-// past a signed width as in C (0xFFFFFFFFFFFFFFFF is -1); C++ would read octal
-// and reject the overflow.
+// Kira reads every decimal literal as decimal (010 is ten), and its parser folds
+// a 64-bit hex literal as in C (0xFFFFFFFFFFFFFFFF is -1 as an Int64); C++ would
+// read octal and reject the overflow. A hex literal past a narrower signed width
+// (0xFFFFFFFF as an Int32) is a Kira range error, not a wrap.
 pub enum Kind: Int32 {
     K_A = 010,
     K_B = 0x7F
@@ -26,7 +27,6 @@ pub enum Kind: Int32 {
 pub TEN: Int32 = 010
 pub NINE: Int32 = 09
 pub NEG1: Int64 = 0xFFFFFFFFFFFFFFFF
-pub NEG32: Int32 = 0xFFFFFFFF
 pub TENS: Arr<Int32, 010> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 pub struct Pt {
@@ -38,6 +38,8 @@ pub struct Pt {
 }
 
 // Private declarations the public ones name go in the header's namespace impl_.
+// (A default argument may not name one: D48 makes a default a literal or a pub
+// constant, so it is a struct's field defaults that put these in the header.)
 LIMIT: Int32 = 5
 
 enum Mode: Int32 {
@@ -55,8 +57,6 @@ pub struct S {
     pub i: Inner = Inner {}
 }
 
-pub fx f: (x: Int32 = LIMIT) Int32;
-
 // A parameter named like a module declaration would shadow it in C++.
 pub fx scaleBy: (LIMIT: Int32) Int32;
 
@@ -69,7 +69,7 @@ pub struct Sized {
     pub LIMIT: Int32 = LIMIT
     pub Mode: Mode = Mode.MODE_B
     pub std: Int32 = 2
-    pub fx grow: (by: Int32 = LIMIT) Int32;
+    pub fx grow: (by: Int32 = width) Int32;
 }
 
 // A Maybe default of null is kira::none.

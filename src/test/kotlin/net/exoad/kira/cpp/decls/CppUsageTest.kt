@@ -92,12 +92,15 @@ class CppUsageTest {
     }
 
     @Test
-    fun anUntypedProgramUsesNothing() {
+    fun aBodyThatNeverTurnsAnEnumIntoTextUsesNothing() {
+        // The scan reads the body typer's recorded types (phase C, W2.1) and never guesses from syntax.
         val (_, ctx) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("test:main", "pub enum Kind: Int32 { KIND_A = 0 }\npub fx f: (k: Kind) Str { return k as Str }"),
+            DeclTestSupport.module("test:main", "pub enum Kind: Int32 { KIND_A = 0 }\npub struct Pt { pub x: Int32 = 0 }\npub fx f: (k: Kind, p: Pt) Int32 { return p.x }"),
             uri = "test:main",
         )
         val usage = CppUsage.scan(ctx.program)
         assertFalse(usage.needsNameOf(ctx.symbol.members["Kind"] as EnumSymbol))
+        assertFalse(usage.needsEnumValues(ctx.symbol.members["Kind"] as EnumSymbol))
+        assertFalse(usage.needsEquality(ctx.symbol.members["Pt"] as ClassSymbol))
     }
 }

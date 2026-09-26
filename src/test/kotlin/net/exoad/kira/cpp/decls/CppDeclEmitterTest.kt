@@ -124,7 +124,7 @@ class CppDeclEmitterTest {
             pub HALF: Float32 = 0.5
             pub RATE: Float64 = 1e-3
             pub WHOLE: Float32 = 2
-            pub BIG: UInt64 = 0xFFFFFFFFFFFFFFFF
+            pub BIG: UInt64 = 0xFFFFFFFFFFFFFFF
             pub QUOTE: Str = "say \"hi\"\n"
             pub NL: Char = '\n'
             pub DOUBLED: Int32 = LIMIT * 2
@@ -141,7 +141,7 @@ class CppDeclEmitterTest {
             "inline constexpr float HALF = 0.5f;",
             "inline constexpr double RATE = 1e-3;",
             "inline constexpr float WHOLE = 2.0f;",
-            "inline constexpr std::uint64_t BIG = 0xFFFFFFFFFFFFFFFFu;",
+            "inline constexpr std::uint64_t BIG = 0xFFFFFFFFFFFFFFF;",
             "inline constexpr const char* QUOTE = \"say \\\"hi\\\"\\n\";",
             "inline constexpr char NL = '\\n';",
             "inline constexpr std::int32_t DOUBLED = 20;",

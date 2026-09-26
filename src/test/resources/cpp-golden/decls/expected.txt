@@ -22,7 +22,6 @@ decls - declarations by themselves
   ok    inline state in a module with no source file
   ok    state and a constant of a struct type declared later
   ok    a parameter named like a field is renamed
-  ok    a default argument that is a private constant
   ok    a parameter named like a module declaration is renamed
   ok    a field named like a module declaration takes the declaration's value
   ok    a default argument named like a field, and a field named std
@@ -32,4 +31,4 @@ decls - declarations by themselves
   ok    a narrow literal as a Maybe default argument
   ok    containers of a struct declared later
 
-30 checks, 0 failed
+29 checks, 0 failed

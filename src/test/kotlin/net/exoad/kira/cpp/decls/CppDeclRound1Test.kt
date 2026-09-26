@@ -100,7 +100,7 @@ class CppDeclRound1Test {
                 pub LIMIT: Int32 = LIMIT
                 pub other: Int32 = OTHER
                 pub Mode: Mode = Mode.MODE_B
-                pub fx grow: (by: Int32 = LIMIT) Int32;
+                pub fx grow: (by: Int32 = OTHER) Int32;
                 pub fx scale: (x: Int32 = width) Int32;
             }
             pub struct Plain {
@@ -109,17 +109,17 @@ class CppDeclRound1Test {
             }
             """,
         )
-        // a field, a private constant in impl_, an enum both as the field's type and its default, a default argument
+        // a field, a private constant in impl_ (a field default may name one; a default argument may not, D48),
+        // an enum both as the field's type and its default, a default argument a field hides
         assertContains(
             h,
             "std::int32_t width = ::main_::width;",
             "std::int32_t LIMIT = ::main_::impl_::LIMIT;",
             "::main_::impl_::Mode Mode = ::main_::impl_::Mode::MODE_B;",
-            "grow(std::int32_t by = ::main_::impl_::LIMIT) const;",
             "scale(std::int32_t x = ::main_::width) const;",
         )
         // a name no member hides stays bare, inside the struct and outside it
-        assertContains(h, "std::int32_t other = OTHER;", "std::int32_t w = width;", "impl_::Mode m = impl_::Mode::MODE_A;")
+        assertContains(h, "std::int32_t other = OTHER;", "grow(std::int32_t by = OTHER) const;", "std::int32_t w = width;", "impl_::Mode m = impl_::Mode::MODE_A;")
         assertLacks(h, "std::int32_t width = width;", "::main_::OTHER", "::main_::Mode m")
     }
 
