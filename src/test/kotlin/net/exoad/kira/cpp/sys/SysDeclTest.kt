@@ -34,12 +34,13 @@ import kotlin.test.fail
  *     the stdlib every program loads;
  *  2. every `@_magic` callable a module declares has a `cpp` binding in that
  *     module's own `.bind.yaml`, and that manifest names nothing else;
- *  3. a user program whose signatures name the modules' types resolves under
- *     STRICT without an error (its bodies are not typed at this gate: W2.1);
+ *  3. a user program that names the modules' types in its signatures and
+ *     calls them in its bodies types under STRICT without an error, phase C
+ *     included;
  *  4. the structs and constants kira/cpp/kira/os.hxx writes by hand are the
  *     ones kira/os.kira declares, field for field and value for value;
  *  5. Thread's construction is spawn's two arguments, so `Thread { }` has no
- *     lowering to fail in C++: it is a missing require field.
+ *     lowering to fail in C++: phase C refuses it as a missing require field.
  */
 class SysDeclTest {
     private val modules = listOf("time", "sync", "os", "test")
@@ -90,11 +91,11 @@ class SysDeclTest {
 
     /**
      * What this proves is that every type, constant and function the program
-     * names resolves under STRICT, and that a program using the four modules
-     * reaches the typer with no diagnostic. Its bodies are not typed at this
-     * gate: no phase checks that `u.localPort() + d.port` is an Int32, so
-     * a wrong call in a body would pass here. W2.1 types bodies, and the
-     * cpp-golden/sys case (emit: pending) becomes the body-level proof then.
+     * names resolves under STRICT, and that its bodies type there too: phase C
+     * (W2.1) checks that `u.localPort() + d.port` is an Int32 and that
+     * `t.stopRequested()` is the Bool returned, so a wrong call in a body
+     * fails here. The cpp-golden/sys case, which spawns, locks and reports,
+     * is typed by TyperBodyCorpusTest.
      */
     @Test
     fun aProgramNamingTheModulesTypesResolvesStrict() {
@@ -208,6 +209,30 @@ class SysDeclTest {
         val spawnSignature = spawn.def.parameters.map { it.name.value to typeText(it.typeSpecifier) }
         assertEquals(spawnSignature, fieldSignature, "Thread's require fields against spawn's parameters")
         assertEquals(listOf("name" to "Str", "body" to "Fx<Tuple0, Void>"), fieldSignature, "what kira::sync::Thread's constructor takes")
+    }
+
+    /**
+     * The other half of [threadIsConstructedWithSpawnsArguments], through
+     * phase C's construction check (W2.1): `Thread { }` is refused with
+     * types.init.missing-required naming both fields, one field alone names
+     * the other, and both given type clean.
+     */
+    @Test
+    fun theTyperRefusesAThreadWithoutItsRequireFields() {
+        fun missingOf(body: String): List<String> {
+            val program = TyperTestSupport.snippet("use \"kira:sync\"\n\n$body")
+            val all = program.diagnostics
+            assertTrue(all.all { it.code == "types.init.missing-required" }, "only a missing require field:\n${TyperTestSupport.render(program)}")
+            return all.map { it.message }
+        }
+        val none = missingOf("pub fx main: () Void {\n    t: Thread = Thread { }\n}")
+        assertEquals(1, none.size, "Thread { }: $none")
+        assertTrue("'name'" in none[0] && "'body'" in none[0], "Thread { } must name both require fields: ${none[0]}")
+        val nameOnly = missingOf("pub fx main: () Void {\n    t: Thread = Thread { name = \"w\" }\n}")
+        assertEquals(1, nameOnly.size, "Thread { name }: $nameOnly")
+        assertTrue("'body'" in nameOnly[0] && "'name'" !in nameOnly[0], "Thread { name } must name body alone: ${nameOnly[0]}")
+        val both = missingOf("pub fx main: () Void {\n    t: Thread = Thread { name = \"w\", body = fx() Void { } }\n}")
+        assertEquals(emptyList(), both, "Thread { name, body } types clean")
     }
 
     // ---- helpers ------------------------------------------------------
