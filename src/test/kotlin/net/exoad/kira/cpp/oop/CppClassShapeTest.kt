@@ -1867,12 +1867,213 @@ class CppClassShapeTest {
             "      [[nodiscard]] bool take(const bool& v) const override;\n      void keep(bool& v) const override;",
             "      [[nodiscard]] Mode take(const Mode& v) const override;\n      void keep(Mode& v) const override;",
         )
+        // The definition takes the reference as v_ and copies it into v: the body reads the
+        // value the caller passed, never the argument's place (a class's plain fx may write a
+        // field, D29, and f.take(g.n) with take writing n returned the written n; measured).
         assertContains(
             s,
-            "  std::int32_t Five::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
+            "  std::int32_t Five::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }",
             "  void Five::keep(std::int32_t& v) const\n  {\n      static_cast<void>(v = 1);\n  }",
-            "  bool Flag::take(const bool& v) const",
-            "  Mode Which::take(const Mode& v) const",
+            "  bool Flag::take(const bool& v_) const\n  {\n      const bool v = v_;\n      return v;\n  }",
+            "  Mode Which::take(const Mode& v_) const\n  {\n      const Mode v = v_;\n      return v;\n  }",
+        )
+    }
+
+    @Test
+    fun anOverrideTakenByReferenceCopiesOnlyWhatItsBodyNames() {
+        // A parameter the body never names is left as the [[maybe_unused]] reference; a
+        // Str is const& on both sides, so nothing is copied; an alias keeps its name in the copy.
+        val (h, s) = both(
+            """
+            pub alias Count as Int32
+            pub trait Source<T> {
+                pub fx take: (v: T, w: T) T;
+                pub fx name: (s: Str) Str;
+            }
+            pub class Five: Source<Count> {
+                override pub fx take: (v: Count, w: Count) Count {
+                    return v
+                }
+                override pub fx name: (s: Str) Str {
+                    return s
+                }
+            }
+            """
+        )
+        // The return keeps the alias's name: Count is std::int32_t, the type the base returns at Int32.
+        assertContains(h, "      [[nodiscard]] Count take(const std::int32_t& v, const std::int32_t& w) const override;\n      [[nodiscard]] kira::Str name(const kira::Str& s) const override;")
+        assertContains(
+            s,
+            "  Count Five::take(const std::int32_t& v_, [[maybe_unused]] const std::int32_t& w) const\n  {\n      const Count v = v_;\n      return v;\n  }",
+            "  kira::Str Five::name(const kira::Str& s) const\n  {\n      return s;\n  }",
+        )
+    }
+
+    @Test
+    fun anOverrideOfAnOverrideOwesWhatTheRootDeclarationSpells() {
+        // Leaf overrides Mid.take, written at Int32, which overrides Source<T>.take at Int32:
+        // Mid's C++ take is const std::int32_t&, so Leaf's is too (gcc "marked override, but
+        // does not override" on Leaf, and Mid's take hidden under -Woverloaded-virtual;
+        // measured). Through a class template in the middle the arguments compose:
+        // Wide<U>: Source<U> at Int32.
+        val (h, s) = both(
+            """
+            pub trait Source<T> {
+                pub fx take: (v: T) T;
+            }
+            pub class Mid: Source<Int32> {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            pub class Leaf: Mid {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            pub class Wide<U>: Source<U> {
+                override pub fx take: (v: U) U {
+                    return v
+                }
+            }
+            pub class Narrow: Wide<Int32> {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "  class Mid : public Source<std::int32_t>\n  {\n  public:\n      Mid() = default;\n      Mid(const Mid&) = delete;\n      Mid& operator=(const Mid&) = delete;\n      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n  };",
+            "  class Leaf final : public Mid\n  {\n  public:\n      Leaf() = default;\n      Leaf(const Leaf&) = delete;\n      Leaf& operator=(const Leaf&) = delete;\n      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n  };",
+            "      [[nodiscard]] U take(const U& v) const override;",
+            "  class Narrow final : public Wide<std::int32_t>\n  {\n  public:\n      Narrow() = default;\n      Narrow(const Narrow&) = delete;\n      Narrow& operator=(const Narrow&) = delete;\n      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n  };",
+        )
+        assertContains(
+            s,
+            "  std::int32_t Leaf::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }",
+            "  std::int32_t Narrow::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }",
+        )
+    }
+
+    @Test
+    fun anFxParameterOrReturnOfAGenericBaseKeepsTheShapeTheBaseSpells() {
+        // Each<T> spells f as const kira::Fn<std::int32_t(const T&)>&, so at Int32 the
+        // override says kira::Fn<std::int32_t(const std::int32_t&)>: substituting first gave
+        // kira::Fn<std::int32_t(std::int32_t)>, which overrides nothing (gcc, MSVC C3668;
+        // measured). A return type follows the same rule (gcc "invalid covariant return
+        // type", MSVC C2555; measured). A kira::Fn is const& on both sides: no copy.
+        val (h, s) = both(
+            """
+            pub trait Each<T> {
+                pub fx each: (f: Fx<Tuple1<T>, Int32>) Int32;
+            }
+            pub class Nums: Each<Int32> {
+                override pub fx each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+                    return f(2)
+                }
+            }
+            pub trait Maker<T> {
+                pub fx make: () Fx<Tuple1<T>, Int32>;
+            }
+            pub class IntMaker: Maker<Int32> {
+                override pub fx make: () Fx<Tuple1<Int32>, Int32> {
+                    return fx(x: Int32) Int32 {
+                        return x
+                    }
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] virtual std::int32_t each(const kira::Fn<std::int32_t(const T&)>& f) const = 0;",
+            "      [[nodiscard]] std::int32_t each(const kira::Fn<std::int32_t(const std::int32_t&)>& f) const override;",
+            "      [[nodiscard]] virtual kira::Fn<std::int32_t(const T&)> make() const = 0;",
+            "      [[nodiscard]] kira::Fn<std::int32_t(const std::int32_t&)> make() const override;",
+        )
+        assertContains(
+            s,
+            "  std::int32_t Nums::each(const kira::Fn<std::int32_t(const std::int32_t&)>& f) const\n  {\n      return f(2);\n  }",
+            "  kira::Fn<std::int32_t(const std::int32_t&)> IntMaker::make() const\n  {",
+        )
+    }
+
+    @Test
+    fun aFamilyIsComparedAsCppHasItNotAsKiraWroteIt() {
+        // Mid.take is written at Int32 but is const std::int32_t& in C++ (it overrides
+        // Source<T>.take): beside a sibling Gen<Int32>.take it is one signature, and beside
+        // Abs.take written at Int32 (std::int32_t) it is not.
+        val program = """
+            pub trait Source<T> {
+                pub fx take: (v: T) Int32;
+            }
+            pub trait Gen<T> {
+                pub fx take: (v: T) Int32;
+            }
+            pub trait Abs {
+                pub fx take: (v: Int32) Int32;
+            }
+            pub class Mid: Source<Int32> {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            pub class Agreed: Mid, Gen<Int32> {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+            }
+        """
+        val e = emit(program)
+        assertEquals(emptyList(), e.errors(uri).map { it.message })
+        assertContains(e.header(uri), "  class Agreed final : public Mid, public Gen<std::int32_t>\n  {\n  public:\n      Agreed() = default;\n      Agreed(const Agreed&) = delete;\n      Agreed& operator=(const Agreed&) = delete;\n      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n  };")
+        val refused = unsupported(
+            program + """
+            pub class Mixed: Mid, Abs {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            """
+        )
+        assertEquals(
+            listOf("Mixed.take overriding both std::int32_t Mid.take(const std::int32_t&) and std::int32_t Abs.take(std::int32_t), which C++ spells differently, so no one signature overrides both is not lowered yet"),
+            refused,
+        )
+    }
+
+    @Test
+    fun aTraitDefaultsParameterNamedAsACopyingStructsFieldIsRenamed() {
+        // Square copies Shape.scaled as a member of its own, where `side` is its field: gcc
+        // -Wshadow, clang and MSVC C4458 refuse the copy (measured), so the parameter is
+        // side_p wherever the body is spelled, the trait's own definition included.
+        val (h, s) = both(
+            """
+            pub trait Shape {
+                pub fx area: () Int32;
+                pub fx scaled: (side: Int32) Int32 {
+                    return side
+                }
+            }
+            pub struct Square: Shape {
+                pub side: Int32 = 3
+                override pub fx area: () Int32 {
+                    return side
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] virtual std::int32_t scaled(std::int32_t side_p) const;",
+            "      [[nodiscard]] std::int32_t scaled(std::int32_t side_p) const;\n  };",
+        )
+        assertContains(
+            s,
+            "  std::int32_t Shape::scaled(std::int32_t side_p) const\n  {\n      return side_p;\n  }",
+            "  std::int32_t Square::scaled(std::int32_t side_p) const\n  {\n      return side_p;\n  }",
         )
     }
 
@@ -1899,7 +2100,7 @@ class CppClassShapeTest {
             "      [[nodiscard]] virtual std::int32_t take(const T& v) const;",
             "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;",
         )
-        assertContains(s, "  std::int32_t IntBase::take(const std::int32_t& v) const\n  {\n      return v;\n  }")
+        assertContains(s, "  std::int32_t IntBase::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }")
     }
 
     @Test
@@ -1980,7 +2181,7 @@ class CppClassShapeTest {
             """
         )
         assertEquals(
-            listOf("C.id overriding both Abs.id(std::int32_t) and Def<Int32>.id(const std::int32_t&), which C++ spells differently, so no one signature overrides both is not lowered yet"),
+            listOf("C.id overriding both std::int32_t Abs.id(std::int32_t) and std::int32_t Def<Int32>.id(const std::int32_t&), which C++ spells differently, so no one signature overrides both is not lowered yet"),
             messages,
         )
     }
@@ -2005,7 +2206,7 @@ class CppClassShapeTest {
             """
         )
         assertEquals(
-            listOf("C inheriting id from both Def<Int32>(const std::int32_t&) and Abs(std::int32_t), which C++ spells differently, so no one override ties them (override id in C) is not lowered yet"),
+            listOf("C inheriting id from both std::int32_t Def<Int32>.id(const std::int32_t&) and std::int32_t Abs.id(std::int32_t), which C++ spells differently, so no one override ties them (override id in C) is not lowered yet"),
             a,
         )
         val b = unsupported(
@@ -2027,7 +2228,7 @@ class CppClassShapeTest {
         )
         // The struct derives nothing in C++: its copy of Def.id is reached statically, whatever Abs<Int32> spells.
         assertEquals(
-            listOf("C inheriting id from both Def(std::int32_t) and Abs<Int32>(const std::int32_t&), which C++ spells differently, so no one override ties them (override id in C) is not lowered yet"),
+            listOf("C inheriting id from both std::int32_t Def.id(std::int32_t) and std::int32_t Abs<Int32>.id(const std::int32_t&), which C++ spells differently, so no one override ties them (override id in C) is not lowered yet"),
             b,
         )
     }

@@ -13,6 +13,7 @@ import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Prim
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeArg
+import net.exoad.kira.compiler.analysis.types.TypeParamSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
@@ -52,8 +53,46 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
     /** The node a diagnostic of the current spelling is placed at: the `Type` node being spelled, or what the caller named. */
     private var at: ASTNode? = null
 
+    /** The type parameters [spellUnder] replaces by their arguments, at the leaves only; empty in an ordinary spelling. */
+    private var leaves: Map<TypeParamSymbol, KType> = emptyMap()
+
     /** [t] as C++ text at [pos]; a diagnostic it raises is placed at [at] when one is given. */
     fun spell(t: KType, pos: Pos, at: ASTNode? = null): String = located(at) { wrap(base(t), t, pos) }
+
+    /**
+     * [t] as the template that wrote it spells it, with each type parameter in [under]
+     * standing for its argument: what an instantiation of that template's member has, which
+     * an override or a forwarder of it must match exactly. Every choice the columns make is
+     * made on [t] as written, where a type parameter is never known to be by value, and only
+     * then is the parameter's name replaced by its argument, spelled as a template argument.
+     * So `v: T` is `const T&` and at `T = Int32` stays `const std::int32_t&`, not the
+     * `std::int32_t` a declaration written at Int32 spells on its own; `Fx<Tuple1<T>, Int32>`
+     * is `kira::Fn<std::int32_t(const T&)>` and stays `kira::Fn<std::int32_t(const
+     * std::int32_t&)>`, where substituting first would have spelled the `kira::Fn<...(std::int32_t)>`
+     * gcc calls "marked override, but does not override" (measured; MSVC C3668, and on a
+     * return type "invalid covariant return type"). A parameter that stands for itself is
+     * left alone.
+     */
+    fun spellUnder(t: KType, pos: Pos, under: Map<TypeParamSymbol, KType>, at: ASTNode? = null): String {
+        val before = leaves
+        leaves = under.filterNot { (param, arg) -> arg is KType.Param && arg.sym === param }
+        try {
+            return spell(t, pos, at)
+        } finally {
+            leaves = before
+        }
+    }
+
+    /** The argument a type parameter stands for, spelled as a template argument in its own right (no leaf of it is replaced again). */
+    private fun leaf(arg: KType): String {
+        val before = leaves
+        leaves = emptyMap()
+        try {
+            return spell(arg, Pos.TEMPLATE_ARG)
+        } finally {
+            leaves = before
+        }
+    }
 
     fun spell(node: Type, pos: Pos): String {
         val t = ctx.model.typeOf(node)
@@ -203,7 +242,7 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
             report(INTERNAL_CODE, "an unresolved type reached the C++ emitter")
             "/* error */"
         }
-        is KType.Param -> ctx.names.escape(t.sym.name)
+        is KType.Param -> leaves[t.sym]?.let { leaf(it) } ?: ctx.names.escape(t.sym.name)
         is KType.Fn -> "kira::Fn<${spell(t.ret, Pos.RETURN)}(${t.params.joinToString(", ") { fnParam(it) }})>"
         is KType.Nominal -> nominal(t, t.args.map { arg ->
             when (arg) {
@@ -349,7 +388,13 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         }
         return when (pos) {
             Pos.VALUE, Pos.MUT_VALUE, Pos.RETURN, Pos.FIELD, Pos.TEMPLATE_ARG -> text
-            Pos.PARAM, Pos.FN_SIG -> if (byValue(t)) text else "const $text&"
+            // `const T&` with T a pointer (a type parameter standing for Unsafe<X>, an opaque
+            // class or CStr under [spellUnder]) is `X* const&` in C++: the const binds to T.
+            Pos.PARAM, Pos.FN_SIG -> when {
+                byValue(t) -> text
+                t is KType.Param && text.endsWith("*") -> "$text const&"
+                else -> "const $text&"
+            }
             Pos.MUT_PARAM -> "$text&"
         }
     }

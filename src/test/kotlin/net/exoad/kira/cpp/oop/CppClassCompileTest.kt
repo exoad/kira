@@ -481,6 +481,89 @@ class CppClassCompileTest {
         pub fx makeSib: () SibClass {
             return SibClass {}
         }
+
+        // An override of an override of a generic root, at Int32: both say the root's const&.
+        pub trait Feed<T> {
+            pub fx take: (v: T) T;
+        }
+
+        pub class Mid: Feed<Int32> {
+            override pub fx take: (v: Int32) Int32 {
+                return v
+            }
+        }
+
+        pub class Leaf: Mid {
+            override pub fx take: (v: Int32) Int32 {
+                return 12
+            }
+        }
+
+        pub fx makeLeaf: () Leaf {
+            return Leaf {}
+        }
+
+        // An Fx parameter and an Fx return of a generic base, at Int32: kira::Fn<...(const T&)> stays so.
+        pub trait Each<T> {
+            pub fx each: (f: Fx<Tuple1<T>, Int32>) Int32;
+        }
+
+        pub class Nums: Each<Int32> {
+            override pub fx each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+                return f(5)
+            }
+        }
+
+        pub fx makeNums: () Each<Int32> {
+            return Nums {}
+        }
+
+        pub trait Maker<T> {
+            pub fx make: () Fx<Tuple1<T>, Int32>;
+        }
+
+        pub class IntMaker: Maker<Int32> {
+            override pub fx make: () Fx<Tuple1<Int32>, Int32> {
+                return fx(x: Int32) Int32 {
+                    return x
+                }
+            }
+        }
+
+        pub fx makeMaker: () Maker<Int32> {
+            return IntMaker {}
+        }
+
+        // An override taken by const& where Kira takes a value: the body reads the value it
+        // was passed, not the field the argument named, which it writes first.
+        pub class Alias: Feed<Int32> {
+            pub mut n: Int32 = 1
+
+            override pub fx take: (v: Int32) Int32 {
+                n = 100
+                return v
+            }
+        }
+
+        pub fx makeAlias: () Alias {
+            return Alias {}
+        }
+
+        // A trait default whose parameter is named as a field of the struct that copies it.
+        pub trait Scaled {
+            pub fx unit: () Int32;
+            pub fx scaled: (side: Int32) Int32 {
+                return side
+            }
+        }
+
+        pub struct Tile: Scaled {
+            pub side: Int32 = 3
+
+            override pub fx unit: () Int32 {
+                return side
+            }
+        }
     """
 
     private val driver = """
@@ -558,6 +641,16 @@ class CppClassCompileTest {
             const kira::Rc<shapes::SibClass> sibClass = shapes::makeSib();
             const kira::Rc<shapes::Abs> sibAbs = sibClass;
             check(sib.f() == 7 && shapes::sibBound(sib) == 7 && sibClass->f() == 7 && shapes::viaAbs(sibClass) == 7 && sibAbs->f() == 7, "a sibling trait's default satisfies another's requirement: a struct member, a class forwarder");
+            const kira::Rc<shapes::Leaf> leaf = shapes::makeLeaf();
+            const kira::Rc<shapes::Feed<std::int32_t>> feed = leaf;
+            const kira::Rc<shapes::Mid> mid = leaf;
+            check(feed->take(10) == 12 && mid->take(10) == 12 && std::make_shared<shapes::Mid>()->take(10) == 10, "an override of an override at Int32 overrides the generic root's const&");
+            check(shapes::makeNums()->each([](std::int32_t x) { return x * 10; }) == 50, "an Fx parameter of a generic base keeps the base's kira::Fn shape at Int32");
+            check(shapes::makeMaker()->make()(41) == 41, "an Fx return of a generic base keeps the base's kira::Fn shape at Int32");
+            const kira::Rc<shapes::Alias> alias = shapes::makeAlias();
+            check(alias->take(alias->n) == 1 && alias->n == 100, "an override taken by const& reads the value it was passed, not the field it writes");
+            const shapes::Tile tile{};
+            check(tile.scaled(2) == 2 && tile.unit() == 3, "a trait default's parameter named as the copying struct's field");
             std::printf("%d checks, %d failed\n", checks, failures);
             return failures == 0 ? 0 : 1;
         }
@@ -588,7 +681,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("25 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("30 checks, 0 failed"), run.stdout)
             }
         }
     }

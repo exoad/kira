@@ -165,6 +165,14 @@ interface CppClassesPart {
      */
     fun structInherited(ctx: CppEmitContextImpl, s: ClassSymbol): List<String> = emptyList()
 
+    /**
+     * The structs that take the trait default body [fn] as a member of their own
+     * ([structInherited]). Its parameters and locals are spelled in each one's class scope as
+     * well as the trait's, so a name of theirs shadows a field of the struct too
+     * ([CppEmitContextImpl.paramName]). Empty when no struct copies it.
+     */
+    fun structsCopying(ctx: CppEmitContextImpl, fn: FnSymbol): List<ClassSymbol> = emptyList()
+
     /** A class construction `C { ... }` (R9): `std::make_shared<C>(arguments in constructor order)`. */
     fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String {
         ctx.unsupported(e, "the construction of a class")
@@ -598,20 +606,24 @@ class CppEmitContextImpl(
 
     /**
      * The C++ name of the parameter [p]: its Kira name, unless that would shadow (under
-     * `-Wshadow -Werror`) a field or method of the owning struct or a declaration of this
-     * module, in which case a synthesized `name_p` (lowercase with an underscore, which no
-     * Kira name can be). Stable per parameter, so the prototype, the definition and the
+     * `-Wshadow -Werror`) a field or method of the owning struct, of a struct that copies
+     * the trait default it belongs to, or a declaration of this module, in which case a
+     * synthesized `name_p` (lowercase with an underscore, which no Kira name can be).
+     * Stable per parameter, so the prototype, the definition, every struct's copy and the
      * statement part (W2.3) spell it alike.
      */
     fun paramName(p: ParamSymbol): String = paramNames.getOrPut(p) {
         if (shadows(p)) names.fresh(p.name.lowercase() + "_p") else names.escape(p.name)
     }
 
+    /** A struct derives nothing in C++ (its traits are static dispatch, D1): its class scope is its own fields and methods. */
+    private fun structMember(s: ClassSymbol, name: String): Boolean = s.fields.any { it.name == name } || s.methods.any { it.name == name }
+
     private fun shadows(p: ParamSymbol): Boolean {
-        when (val owner = p.fn?.owner) {
-            // A struct derives nothing in C++ (its traits are static dispatch, D1): its own members.
+        val fn = p.fn
+        when (val owner = fn?.owner) {
             is ClassSymbol -> if (owner.isStruct) {
-                if (owner.fields.any { it.name == p.name } || owner.methods.any { it.name == p.name }) {
+                if (structMember(owner, p.name)) {
                     return true
                 }
             } else if (p.name in memberNames(owner)) {
@@ -619,7 +631,9 @@ class CppEmitContextImpl(
                 // member of 'B'" for a field of B's superclass, measured): the whole class scope.
                 return true
             }
-            is TraitSymbol -> if (p.name in memberNames(owner)) {
+            // A trait default's body is a member of every struct that copies it (design 5.5,
+            // CppClassesPart.structInherited), spelled in that struct's class scope as well.
+            is TraitSymbol -> if (p.name in memberNames(owner) || parts.classes.structsCopying(this, fn).any { structMember(it, p.name) }) {
                 return true
             }
             else -> {}
