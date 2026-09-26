@@ -999,6 +999,27 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d24",
+            """
+            pub fx run: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
+                f(mut x)
+            }
+
+            pub fx twiceBumped: () Int32 {
+                mut n: Int32 = 1
+                run(fx(mut v: Int32) Void {
+                    v += 1
+                }, mut n)
+                run(fx(mut v: Int32) Void {
+                    v += 1
+                }, mut n)
+                return n
+            }
+            """,
+            listOf("run([](std::int32_t& v) -> void", "v += 1;", "f(x);", "}, n);"),
+            listOf("""check(d24::twiceBumped() == 3, "D24: a mut lambda parameter is T&, and writing it is a use");"""),
+        ),
+        row(
             "d39",
             """
             pub fx half: (n: Int32) Result<Int32, Str> {
