@@ -1185,4 +1185,268 @@ class EscapePassTest {
         assertTrue(messages.any { it.startsWith("c holds a closure that captures a view of the local 's', which is destroyed when 'h2' returns") }, messages.joinToString("\n"))
         assertTrue(messages.any { it.startsWith("c holds a closure that captures a view of the local 's', which is destroyed when 'h3' returns") }, messages.joinToString("\n"))
     }
+
+    // ---- convergence round 2: an unanalysable callee (virtual, trait, an Fx value) keeps every borrowing argument ------
+
+    @Test
+    fun aVirtualMethodOverriddenElsewhereKeepsAViewOfALocalPastTheCall() {
+        // Issue 1(a): keptArgs used to return nothing for CallKind.VIRTUAL (analysed(rc) is false, and the
+        // magic-mutator fallback needs fn.body == null, which a real virtual method never has), so a view stored
+        // by an override was never seen. The unoverridden keepV was already refused (kept as a regression guard).
+        val p = snippet(
+            """
+            pub mut GV: Maybe<View<Char>> = null
+            pub class Reg {
+                pub fx keepV: (v: View<Char>) Void {
+                    GV = v
+                }
+            }
+            pub class Reg2: Reg {
+                override pub fx keepV: (v: View<Char>) Void {
+                    GV = v
+                }
+            }
+            pub fx stashUnoverridden: (r: Reg, a: Str) Void {
+                s: Str = a + "..."
+                r.keepV(s.view())
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+        assertTrue(message(p, "rules.escape.view-store").contains("keepV"))
+    }
+
+    @Test
+    fun aTraitMethodKeepsAViewOfALocalPastTheCall() {
+        // Issue 1(b): CallKind.TRAIT is unanalysable the same way; any implementor might store the argument.
+        val p = snippet(
+            """
+            pub mut GV: Maybe<View<Char>> = null
+            pub trait Sink {
+                pub fx put: (v: View<Char>) Void;
+            }
+            pub class S1: Sink {
+                override pub fx put: (v: View<Char>) Void {
+                    GV = v
+                }
+            }
+            pub fx stash: (t: Sink, a: Str) Void {
+                s: Str = a + "..."
+                t.put(s.view())
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClosureOverALocalViewHandedToAnOverriddenMutFxKeepsItPastTheCall() {
+        // Issue 1(c): the closure itself (not a bare view) is the borrowing argument, through a virtual mut fx.
+        val p = snippet(
+            """
+            pub class Reg {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                pub mut fx keep: (g: Fx<Tuple0, Size>) Void {
+                    f = g
+                }
+            }
+            pub class Reg2: Reg {
+                override pub mut fx keep: (g: Fx<Tuple0, Size>) Void {
+                    f = g
+                }
+            }
+            pub fx stash: (mut r: Reg, a: Str) Void {
+                s: Str = a + "..."
+                v: View<Char> = s.view()
+                r.keep(fx() Size {
+                    return v.size()
+                })
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aViewOfALocalHandedToAnFxValueKeepsItPastTheCall() {
+        // Issue 1(d): CallKind.FN_VALUE has fn == null, so the old code returned emptyList() at
+        // `val fn = rc.fn ?: return emptyList()` before ever looking at the arguments.
+        val p = snippet(
+            """
+            pub mut GV: Maybe<View<Char>> = null
+            pub fx stash: (a: Str) Int32 {
+                k: Fx<Tuple1<View<Char>>, Int32> = fx(v: View<Char>) Int32 {
+                    GV = v
+                    return 1
+                }
+                s: Str = a + "..."
+                return k(s.view())
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+        assertTrue(message(p, "rules.escape.view-store").contains("'k'"))
+    }
+
+    // ---- convergence round 2: a class field is a shared object's storage, not this body's own (D29) ------
+
+    @Test
+    fun aClosureOverALocalViewStoredIntoAPlainClassParametersFieldEscapes() {
+        // Issue 2: a class parameter is `const kira::Rc<C>&` even without `mut` (D29 lets its fields be
+        // written), so it is the caller's object. Only [beyondThis]'s `mutParam` (byRef) used to count.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub fx c1: (r: CB2, a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                r.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+        assertTrue(message(p, "rules.escape.view-store").contains("'r.f'"))
+    }
+
+    @Test
+    fun aNonVirtualMutFxThatStashesItsArgumentInAClassParameterEscapesAtTheCall() {
+        // The same field write, one call away: `keep`'s own body puts its argument into `this.f`, so Lends
+        // marks the parameter kept-in-this; the caller's receiver `r` is the same non-fresh class parameter.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                pub mut fx keep: (g: Fx<Tuple0, Size>) Void {
+                    f = g
+                }
+            }
+            pub fx c2: (r: CB2, a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                r.keep(fx() Size {
+                    return v.size()
+                })
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClassLocalAliasedFromAnExistingObjectEscapesOnItsFirstFieldWrite() {
+        // `c` aliases the global's object (a plain assignment copies the handle, not the object, D29), so its
+        // field write is visible through GC too, whether or not `c` itself is later returned or reassigned.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub mut GC: Maybe<CB2> = null
+            pub fx c9: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB2 = GC.unwrap()
+                c.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aLocalAliasedFromAFreshClassLocalEscapesOnItsFieldWriteEvenWithoutReturningTheAlias() {
+        // `d: CB2 = c` is not itself a fresh construction, so `d` is never in freshClassLocals: the report
+        // fires at `d.f = ...` directly, without needing to trace that `d` and `c` share an object.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub fx c15: (a: Str) CB2 {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB2 = CB2 {}
+                d: CB2 = c
+                d.f = fx() Size {
+                    return v.size()
+                }
+                return c
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aNestedFieldThroughAClassParameterEscapes() {
+        // `r.inner` is itself a class field reached through the parameter `r`: root() walks through it to `r`,
+        // a parameter, which is never a fresh local.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub class Outer {
+                pub inner: CB2 = CB2 {}
+            }
+            pub fx c11: (r: Outer, a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                r.inner.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+        assertTrue(message(p, "rules.escape.view-store").contains("'r.inner.f'"))
+    }
+
+    @Test
+    fun anElementOfAClassListParameterEscapesOnItsFieldWrite() {
+        // `rs.get(0 as Size)` resolves to a Place.Index whose root is still the parameter `rs`.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub fx c14: (rs: List<CB2>, a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                rs.get(0 as Size).f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aFreshClassLocalsFieldWriteIsStillCleanWhenTheLocalNeverEscapes() {
+        // Regression guard: the fix must not blanket-refuse every class field write. A local built by a fresh
+        // construction, holding a closure over a caller-owned (not local) view, used and dropped in this body,
+        // is exactly the `aClosureCapturingAViewOfALocalEscapesInsideAClassObjectToo` shape without the escape.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub fx safe: (p: View<Char>) Size {
+                c: CB2 = CB2 {}
+                c.f = fx() Size {
+                    return p.size()
+                }
+                return c.f.unwrap()()
+            }
+            """,
+        )
+        expectClean(p)
+    }
 }

@@ -4,6 +4,14 @@ One entry per known minor issue: what, where, reproduction, and why it is safe t
 Fixed in convergence round 1: the two significant issues from the last verdict (the
 generic-instantiation false positive in EscapePass, and the field-through-a-magic-call
 use-after-free gap in ExclusivityPass) — see the round's commit, not this file.
+Fixed in convergence round 2: two silent-miscompile gaps in EscapePass, both use-after-free
+under policy 1 — `keptArgs` returning nothing for a virtual, trait-dispatched or `Fx`-value
+callee (CallKind.VIRTUAL/TRAIT/FN_VALUE never satisfied `analysed(rc)`, and the magic-mutator
+fallback needs `fn.body == null`, which none of the three ever have), and a class object's field
+write being treated as this body's own storage unless reached through `this`, a global or a
+`mut` parameter, when D29 makes every class parameter (`mut` or not) and every plain local
+assignment a shared handle to an object the caller or something else may already hold — see the
+round's commit, not this file.
 
 ## Issue 8 partly covered: three ways a plain `fx` can still write its own state
 
@@ -52,19 +60,29 @@ same use-after-free shape as `resetDirect` (`sc.resetK()`), which HiddenWrites d
 **Where.** `HiddenWrites` (rebasing pass in `ExclusivityPass.kt`'s support code) and
 `MutabilityPass`'s `writesObjectOnly`/`HiddenWrites.of`.
 
-**Reproduction.** `sc.k.plus(resetAlias(sc))` with `resetAlias` as above: no diagnostic, but
-`kira::at`/plain pointer semantics mean the emitted C++ has the same dangling-reference shape
-as `resetDirect`, which g++ demonstrates prints a destroyed object (round 5's
-`scratchpad/w25r5v/*.cxx`, not carried into this tree).
+**Reproduction.** `sc.k.plus(resetAlias(sc))` with `resetAlias` as above: no diagnostic from
+`HiddenWrites`.
 
 **Why it is safe to defer.** Narrower than it sounds: it requires the callee to (a) take the
 class by value (not `mut`, which is already tracked), (b) copy it into a local, and (c) write
 through that local's field — three conditions together, and the far more common direct-write
-and mut-argument shapes (issues 3 and 10 from round 5) are caught. Closing it needs
+and mut-argument shapes (issues 3 and 10 from round 5) are caught. It is also, on the real
+emitter, not a dangling-reference shape at all, which corrects this entry's earlier claim:
+W2.3's `CppExprEmitter.receiverOperand`/`heldByReference` (41575c6) copies a class-handle
+receiver into a typed temporary whenever a sibling operand is IMPURE, and `EffectsPass` rates
+`resetAlias` IMPURE (it writes a field through a class reference, `t.k = ...`). So `sc` in
+`sc.k.plus(resetAlias(sc))` is hoisted into its own temporary before `resetAlias` runs, and the
+`.k.plus(...)` read is sequenced against that copy, not against whatever `resetAlias` does to the
+shared object — the hoist is what makes the shape safe, not an absence of aliasing. The gap this
+entry actually tracks is only that `HiddenWrites` cannot itself see the alias (so a future
+emitter change that stops hoisting a class receiver here would reopen a real UAF with no
+diagnostic to catch it) and that it depends on `EffectsPass`'s IMPURE call classifying every
+callee that could do this, which is not verified by a shared invariant. Closing it needs
 `HiddenWrites`'s per-callee walk to track a local's aliasing of a by-value class parameter the
 same way `ViewAliases` already tracks a view local's aliasing of a view parameter, which is a
 distinct piece of analysis worth doing on its own rather than folding into this round's UAF
-fix. Disclosed unchanged from round 4 and round 5.
+fix. Disclosed unchanged from round 4 and round 5; the "safe because" reasoning corrected in
+round 2 of convergence.
 
 ## `@op_*` overloads and an `Fx`-called-through-a-field are outside HiddenWrites and EscapePass
 
@@ -89,7 +107,49 @@ demonstrated miscompile — they are coverage gaps in an already-conservative pa
 adversarial or ordinary program is likely to hit before W2.5's next round picks them up
 deliberately.
 
+## Full `./gradlew test` fails 3 tests outside this package's OWNS
+
+**What.** `CppDeclFixesTest.privateDeclarationsAPublicOneNamesGoInTheHeadersImplNamespace`,
+`CppDeclFixesTest.aParameterNamedLikeAFieldOrAModuleDeclarationIsRenamed` and
+`TyperBodyCorpusTest > decls` fail on this branch. All three pass on `cpp-backend` (verified at
+09ad744 from an archive copy) and fail here because W2.5's rule passes correctly refuse
+constructs their fixtures use: the first two hit `rules.const.call` and
+`rules.mutability.param`, and the third is a `NamingPass` warning on a parameter name in W2.2's
+`decls` golden.
+
+**Where.** The fixtures are `CppDeclFixesTest.kt` (W2.2's OWNS) and
+`src/test/resources/cpp-golden/decls` (merged from W2.2/W2.1); this package's OWNS is
+`compiler/analysis/types/rules/**` only — the rule refusals themselves are correct per the
+brief's own diagnostic-naming table and are not this entry's subject.
+
+**Reproduction.** `./gradlew test --tests CppDeclFixesTest --tests TyperBodyCorpusTest` fails
+these three on `cpp/w2-5-rules`; the same command against a `cpp-backend` archive checkout
+passes all three (`net.exoad.kira.types.rules.*` itself — 11 classes, 140 tests — is unaffected:
+`RulesCorpusTest` passes in full).
+
+**Why it is safe to defer.** The rule passes are doing their job; the fixtures were written
+before those rules existed and now need updating by whichever package owns them (W2.2 for
+`CppDeclFixesTest`, W2.1/W2.2 for the `decls` golden), not by loosening a correct refusal here.
+Fixing the fixtures is outside this package's OWNS and was previously only recorded in
+`notesForOthers`, per convergence policy item 5 this is now on record here too, with the same
+"emit: pending" status for whoever picks it up.
+
 ## Open decisions
 
 None routed to this ledger this round; D33/D44 evaluation order questions belong to whichever
 package owns the emitter's evaluation-order contract (W2.3/W2.4), not to the rule passes here.
+
+**A view of a local passed to an `@_extern` parameter is accepted.**
+`@_extern(cpp = "ext::keep", header = "ext.hxx") pub fx keep: (v: View<Char>) Void;` then
+`keep(s.view())` with `s` a local types clean under STRICT — `EscapePass.calleeUnknown`
+(`ExclusivityPass`'s and `EscapePass`'s treatment of `CallKind.EXTERN`) does not add it to the
+callees round 2 made conservative (`unanalysable` covers `VIRTUAL`/`TRAIT`/`FN_VALUE` only,
+deliberately not `EXTERN`), so an extern function's parameters are assumed not to retain what
+they are handed, i.e. the FFI contract is "borrows for the duration of the call only." Whether
+that assumption should instead be refused (require the caller to prove the extern body does not
+retain the view, which Kira cannot see into) or documented as the contract every `@_extern`
+declaration makes is a language decision for the user, not something this pass should guess at
+by itself: an FFI boundary is exactly where a real C++ callee could do what the virtual/trait
+case's fix now refuses for Kira-visible bodies, and the same repro shape (`escape_hole.cxx`'s
+pattern, with `ext::keep` implemented to stash the pointer) would UAF identically if a real
+extern ever did this. Not previously in this ledger.

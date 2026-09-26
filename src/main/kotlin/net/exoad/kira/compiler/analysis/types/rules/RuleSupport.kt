@@ -307,6 +307,9 @@ internal class Rules(val program: TypedProgram) {
 
     fun isView(t: KType?): Boolean = t != null && (facts.isView(t) || facts.isMutView(t))
 
+    /** A user or extern class (D29): held by `kira::Rc`, so a parameter or a plain local copies the same handle, not the object. A struct is a value type and never this. */
+    fun isClass(t: KType?): Boolean = t != null && facts.isClass(t)
+
     /**
      * The first view type a value of [t] carries, or null: [t] itself when it is a `View` or
      * `MutView`, else one held by a field of a struct, an element of a container (`Arr`,

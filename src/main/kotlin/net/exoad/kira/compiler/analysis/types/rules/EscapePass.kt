@@ -505,6 +505,37 @@ internal class EscapePass : RulePass {
         /** What each view-typed, view-holding or `Fx`-typed local of this body was built from, in source order. */
         private val sources = IdentityHashMap<Symbol, MutableSet<Src>>()
 
+        /**
+         * Locals of this body that are a fresh, unaliased handle to a class object: declared
+         * with a direct construction (`X { ... }`) of a class (not a struct, D29's value type),
+         * and never reassigned as a whole afterward. Everything else that names a class object —
+         * a parameter (`const kira::Rc<C>&` even without `mut`), `this`, a global, or a local
+         * built from an existing value (`c: CB2 = GC.unwrap()`, `d: CB2 = c`) — copies a handle
+         * that may already be shared with something this call does not own, so [classFieldEscapes]
+         * treats a field written through any of those as outward. A field written through a
+         * fresh local is safe here only because that local's own provenance still joins the
+         * ordinary tracked-local path below, so escaping some other way (returned, stored, passed
+         * to an unanalysable callee) is still caught where it happens.
+         */
+        private val freshClassLocals: Set<LocalSymbol> = run {
+            val fresh = HashSet<LocalSymbol>()
+            val reassigned = HashSet<LocalSymbol>()
+            AstScan.walk(b.roots) { n, _ ->
+                when (n) {
+                    is VariableDecl -> {
+                        val local = model.declSyms[n] as? LocalSymbol
+                        if (local != null && n.value is ObjectInitExpr) {
+                            fresh.add(local)
+                        }
+                    }
+                    is AssignmentExpr -> (model.places[n.target] as? Place.Local)?.sym?.let { reassigned.add(it) }
+                    is PlaceAssignmentExpr -> (model.places[n.target] as? Place.Local)?.sym?.let { reassigned.add(it) }
+                    else -> {}
+                }
+            }
+            fresh - reassigned
+        }
+
         init {
             AstScan.walk(b.roots) { n, _ ->
                 when (n) {
@@ -640,7 +671,8 @@ internal class EscapePass : RulePass {
                     is PlaceAssignmentExpr -> if (n.operator == null) store(model.places[n.target], n.target, n.value, fnName)
                     is FunctionCallExpr -> {
                         val rc = model.calls[n] ?: return@walk
-                        val callee = rc.fn?.name
+                        // rc.fn is null for CallKind.FN_VALUE (`k(v)` through an Fx value): name the call by its callee expression instead.
+                        val callee = rc.fn?.name ?: KiraUnparser.text(n.name)
                         for (k in keptArgs(n)) {
                             val (src, how) = dangling(k.arg, k.srcs) ?: continue
                             // Where the kept argument goes, when that outlives the call: `this`, the receiver,
@@ -653,7 +685,7 @@ internal class EscapePass : RulePass {
                                 Into.Beyond -> null
                                 Into.Receiver -> when {
                                     rc.implicitThis -> "this"
-                                    else -> rc.receiver?.takeIf { keptPlace?.let { outward(it) } == true }?.let { KiraUnparser.text(it) }
+                                    else -> rc.receiver?.takeIf { receiverEscapes(rc, keptPlace) }?.let { KiraUnparser.text(it) }
                                 }
                                 is Into.Param -> into.text.takeIf { into.place == null || outward(into.place) }
                             }
@@ -759,6 +791,25 @@ internal class EscapePass : RulePass {
          */
         private fun keptArgs(e: FunctionCallExpr): List<Kept> {
             val rc = model.calls[e] ?: return emptyList()
+            if (unanalysable(rc)) {
+                // A virtual method (any override may run), a trait method (any implementor may
+                // run) or a call through an `Fx` value (the value's origin is gone by the call
+                // site) has no single body this pass can see; [Lends] says nothing about it.
+                // Whatever it does with a borrowing argument, that argument may be stored beyond
+                // the call: `r.keepV(s.view())` on a virtual `keepV` an override stashes into a
+                // global exactly as an unoverridden one would refuse to (D5). A `mut`-bound
+                // argument (`byRef`) is no safer: the callee's `mut` parameter is just as opaque.
+                val out = mutableListOf<Kept>()
+                rc.args.forEach { a ->
+                    val given = a as? ArgBinding.Given ?: return@forEach
+                    AstScan.values(given.expr).forEach { v ->
+                        if (borrows(v)) {
+                            out.add(Kept(v, lent(v, HashSet()), Into.Beyond, v, KiraUnparser.text(v)))
+                        }
+                    }
+                }
+                return out
+            }
             val fn = rc.fn ?: return emptyList()
             val out = mutableListOf<Kept>()
             if (analysed(rc)) {
@@ -844,8 +895,45 @@ internal class EscapePass : RulePass {
             return null
         }
 
-        /** A place that outlives the call: rooted at a global, a `mut` parameter or `this`. */
-        private fun outward(p: Place?): Boolean = beyondThis(p) || intoThis(p)
+        /** A place that outlives the call: rooted at a global, a `mut` parameter or `this`, or a field of a class object reached through a handle that may already be shared beyond this call ([classFieldEscapes], D29). */
+        private fun outward(p: Place?): Boolean = beyondThis(p) || intoThis(p) || classFieldEscapes(p)
+
+        /** Whether the class handle at [p] might already be visible outside this call: true unless [p]'s root is one of [freshClassLocals]. */
+        private fun classHandleOutward(p: Place?): Boolean {
+            val root = p?.root() ?: return true
+            return !(root is Place.Local && root.sym in freshClassLocals)
+        }
+
+        /**
+         * A field of a class object written through a receiver that may already be shared beyond
+         * this call (D29: unlike a struct, a class parameter is `const kira::Rc<C>&` to the
+         * caller's object, and a plain local assignment copies the same handle rather than the
+         * object). A struct field never triggers this: a struct is embedded value storage, so its
+         * place's own root (already checked by [beyondThis]/[intoThis]) is the whole story.
+         */
+        private fun classFieldEscapes(p: Place?): Boolean {
+            val field = p as? Place.Field ?: return false
+            if ((field.sym.owner as? ClassSymbol)?.kind != ClassKind.CLASS) {
+                return false
+            }
+            return classHandleOutward(field.receiver)
+        }
+
+        /**
+         * Whether the receiver a callee keeps this argument in (`Into.Receiver`) may already be
+         * visible beyond this call: outright (a global, a `mut` parameter, `this`), or, for a
+         * class receiver (D29), a handle that is not a fresh, unaliased local of this body. A
+         * struct receiver has no such handle to alias, so only its own place's root matters.
+         */
+        private fun receiverEscapes(rc: ResolvedCall, keptPlace: Place?): Boolean {
+            if (keptPlace == null) {
+                return false
+            }
+            if (outward(keptPlace)) {
+                return true
+            }
+            return r.isClass(model.types[rc.receiver]) && classHandleOutward(keptPlace)
+        }
 
         /** A place that outlives the call and is not the receiver: rooted at a global or a `mut` parameter. */
         private fun beyondThis(p: Place?): Boolean = global(p) || mutParam(p) != null
@@ -882,6 +970,9 @@ internal class EscapePass : RulePass {
 
         private fun analysed(rc: ResolvedCall): Boolean =
             rc.fn?.body != null && (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD || rc.kind == CallKind.OP_OVERLOAD || rc.kind == CallKind.CTOR)
+
+        /** A callee this pass cannot attribute to one body at all: any override, any trait implementor, or whatever an `Fx` value happens to hold. */
+        private fun unanalysable(rc: ResolvedCall): Boolean = rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT || rc.kind == CallKind.FN_VALUE
 
         /** The storage a place is: the symbol it starts from, the enclosing receiver, or (a field of a call result) a temporary. */
         private fun own(p: Place, seen: MutableSet<Symbol>): Set<Src> = when (val root = p.root()) {
