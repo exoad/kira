@@ -1,16 +1,26 @@
 module "app:evalorder"
 
-// D33: Kira evaluates a call's arguments and an operator's operands left to right.
-// C++ leaves both unsequenced (gcc and clang disagree on x86-64, measured in the
-// design's probes-B/evalorder), so the emitter spills them into typed temporaries
-// whenever two or more of them are impure (R19). Every line below would print
-// something else on some compiler if it did not.
+// D33: Kira evaluates a call's receiver and arguments, and an operator's operands, left
+// to right, and locates an assignment's target before its value runs. C++ leaves the
+// arguments and operands unsequenced (gcc and clang disagree on x86-64, measured in the
+// design's probes-B/evalorder) and runs the right side of `=` first, so the emitter spills
+// them into typed temporaries, in order, whenever one has an effect and another is not
+// pure (R19): a call is copied, a read of shared state is copied before the effect runs,
+// and a place (a mut argument, an assignment's target, the receiver a mut fx writes) is
+// bound by reference, never copied. Every line below would print something else on some
+// compiler if it did not.
 
 mut ticks: Int32 = 0
+mut idx: Size = 0
 
 fx next: () Int32 {
     ticks += 1
     return ticks
+}
+
+fx nextSize: () Size {
+    idx += 1
+    return idx
 }
 
 fx sub: (a: Int32, b: Int32) Int32 {
@@ -19,6 +29,23 @@ fx sub: (a: Int32, b: Int32) Int32 {
 
 fx store: (mut into: Int32, tens: Int32, ones: Int32) Void {
     into = tens * 10 + ones
+}
+
+pub struct Box {
+    pub v: Int32 = 0
+
+    pub fx pair: (a: Int32, b: Int32) Int32 {
+        return v * 100 + a * 10 + b
+    }
+
+    pub mut fx grow: (a: Int32, b: Int32) Void {
+        v = v * 100 + a * 10 + b
+    }
+}
+
+fx makeBox: () Box {
+    ticks += 1
+    return Box { v = ticks }
 }
 
 fx main: () Void {
@@ -36,4 +63,30 @@ fx main: () Void {
     trace("${next()}/${next()}")
     // One impure operand needs nothing: 12 - 100.
     trace(sub(next(), 100))
+    // A read of shared state beside an effect is copied first: 12 - 13.
+    trace(sub(ticks, next()))
+    // The same in an interpolation hole: 13, then 14.
+    trace("${ticks}/${next()}")
+    // A compound assignment reads its target before an impure value runs: 14 + 15.
+    ticks += next()
+    trace(ticks)
+    // An impure receiver runs before the spilled arguments: 30, then 31 and 32.
+    trace(makeBox().pair(next(), next()))
+    // A mut argument's index runs before its siblings: slot 1 takes 33 and 34.
+    mut slots: Arr<Int32, 4> = [0, 0, 0, 90]
+    store(mut slots[nextSize()], next(), next())
+    trace(slots[1])
+    // A place assignment locates its target before the value runs: slot 2 takes 35.
+    slots[nextSize()] = next()
+    trace(slots[2])
+    // A checked compound assignment locates its target once: slot 3 halves, idx is 3.
+    two: Int32 = 2
+    slots[nextSize()] /= two
+    trace(slots[3])
+    trace(idx)
+    // The receiver of a mut fx is bound by reference, never copied: box 0 takes 36 and 37.
+    mut boxes: Arr<Box, 1> = [Box { }]
+    idx = 0
+    boxes[nextSize() - 1].grow(next(), next())
+    trace(boxes[0].v)
 }

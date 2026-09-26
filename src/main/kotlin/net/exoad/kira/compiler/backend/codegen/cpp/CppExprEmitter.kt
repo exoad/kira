@@ -83,9 +83,12 @@ data class CppEx(val text: String, val prec: Int, val op: String? = null)
  * operation ([OPERAND]); `T{lit}` for the widths C++ has no literal of in a literal-only
  * operation, a ternary branch and a `Maybe` ([TYPED]); `T{lit}` for every integer width where a
  * template deduces its type from it ([DEDUCED]: `kira::div`, which on arm-none-eabi would
- * otherwise meet `int` against `long`); the digits alone as a shift count ([SHIFT_COUNT]).
+ * otherwise meet `int` against `long`); the digits alone as a shift count ([SHIFT_COUNT]);
+ * `T{lit}` for the 64-bit widths where the literal's own type is the operation's ([WIDTH]:
+ * the left operand of a shift, `std::int64_t{1} << 40`, and the operand of `~` or `-`,
+ * `~std::uint64_t{0xFF}`, which as an `int` would shift past its width or sign-extend).
  */
-enum class CppLitRole { PLAIN, OPERAND, TYPED, DEDUCED, SHIFT_COUNT }
+enum class CppLitRole { PLAIN, OPERAND, TYPED, DEDUCED, SHIFT_COUNT, WIDTH }
 
 /**
  * What the expression, statement and closure parts share while one module is emitted: the
@@ -348,10 +351,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             is TypeCastExpr -> cast(e)
             is IfExpr -> ifExpr(e)
             is LambdaExpr -> CppEx(ctx.lambda(e, CppPrec.NONE), CppPrec.PRIMARY)
-            is AssignmentExpr -> assignment(e)
+            is AssignmentExpr -> assignment(e.target, e.value, e)
             is CompoundAssignmentExpr -> compound(e.left, e.operator, e.right, e)
             is PlaceAssignmentExpr -> if (e.operator == null) {
-                CppEx("${place(e.target)} = ${emit(e.value, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
+                assignment(e.target, e.value, e)
             } else {
                 compound(e.target, e.operator, e.value, e)
             }
@@ -415,6 +418,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val typed = when (role) {
             CppLitRole.TYPED -> prim != Prim.INT32 && prim != Prim.UINT32
             CppLitRole.DEDUCED -> true
+            CppLitRole.WIDTH -> prim.bits > 32
             else -> false
         }
         if (typed) {
@@ -423,7 +427,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val suffix = when (prim) {
             Prim.UINT32 -> "u"
             Prim.UINT64 -> if (lit.value < 0) "u" else ""
-            Prim.UINT8, Prim.UINT16 -> if (role == CppLitRole.OPERAND) "u" else ""
+            Prim.UINT8, Prim.UINT16 -> if (role == CppLitRole.OPERAND || role == CppLitRole.WIDTH) "u" else ""
             else -> ""
         }
         return CppEx(sign + digits + suffix, precOfSigned)
@@ -571,14 +575,18 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * reference, an `Unsafe`, a `Ref` or an opaque handle; `.` on a struct and the builtins;
      * `kira::deref(x).` on a type parameter ([paramReceiver], design 5.5).
      */
-    private fun access(receiver: Expr, t: KType): String {
+    private fun access(receiver: Expr, t: KType): String = accessWith(receiver, null, t)
+
+    /** [access] over [text], the receiver's C++ once it was spilled or bound (null: spelled here). */
+    private fun accessWith(receiver: Expr, text: CppEx?, t: KType): String {
         if (receiver is ThisExpr) {
             return "${receiverText(receiver)}->"
         }
         if (t is KType.Param) {
-            return paramReceiver(receiver) + "."
+            return (if (text != null) paramReceiverText(wrap(text, CppPrec.ASSIGN)) else paramReceiver(receiver)) + "."
         }
-        return receiverText(receiver) + if (isPointerLike(t)) "->" else "."
+        val object_ = if (text != null) wrap(text, CppPrec.POSTFIX) else receiverText(receiver)
+        return object_ + if (isPointerLike(t)) "->" else "."
     }
 
     /**
@@ -586,7 +594,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * and a class alike (design 5.5, [S1]). W2.4's `CppGenericsPart.receiver` spells this on its
      * branch; at the merge this delegates to it.
      */
-    fun paramReceiver(receiver: Expr): String = "kira::deref(${emit(receiver, CppPrec.ASSIGN)})"
+    fun paramReceiver(receiver: Expr): String = paramReceiverText(emit(receiver, CppPrec.ASSIGN))
+
+    /** [paramReceiver] over the receiver's C++ text. */
+    fun paramReceiverText(text: String): String = "kira::deref($text)"
 
     /**
      * A generic call's explicit type arguments, `<std::int32_t>` (`id<std::int32_t>(7)`), or ""
@@ -654,35 +665,120 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         else -> emit(target, CppPrec.UNARY)
     }
 
-    private fun assignment(e: AssignmentExpr): CppEx =
-        CppEx("${emit(e.target, CppPrec.UNARY)} = ${emit(e.value, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
+    /** The target of an assignment as a place operand: located in order, never copied (R19). */
+    private fun placeOperand(target: Expr): CppHoister.Operand =
+        CppHoister.Operand(target, place = true, mutable = true) { CppEx(place(target), CppPrec.UNARY) }
 
     /**
-     * `x op= y`, bare (R1: clean on every compiler), except where R11 or R12 checks the
-     * operation: a division by what is not a nonzero constant is `x = kira::div(x, y)`, a shift
-     * by what is not a constant below the width `x = kira::shl(x, n)`.
+     * `place = value`. C++ runs the right side first, Kira locates the target first (D33): when
+     * the value has an effect and locating the target reads anything, or the other way round,
+     * the target is bound by reference and the value copied, in order, inside an IIFE.
+     */
+    private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
+        val ops = listOf(placeOperand(target), CppHoister.Operand(value) { coerced(value) })
+        return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void) { (l, r) ->
+            CppEx("${wrap(l, CppPrec.UNARY)} = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
+        }
+    }
+
+    /**
+     * `x op= y`, bare (R1: clean on every compiler), except where the operation is checked or
+     * widened: a division by what is not a nonzero constant is `x = kira::div(x, y)` (R11), a
+     * shift by what is not a constant below the width `x = kira::shl(x, n)` (R12), a UInt16
+     * product `x = static_cast<std::uint16_t>(static_cast<unsigned>(x) * y)` (D8). A rewrite
+     * names the target twice, so a target whose location holds a call is bound by reference
+     * first (`std::int32_t& r0_ = kira::at(p, nextSize());`), and D33 orders the target's
+     * reads before an impure value: the old value is copied, then the value, then the write.
      */
     private fun compound(target: Expr, op: BinaryOp, value: Expr, node: Expr): CppEx {
         val t = typeOf(target)
         val prim = t.prim
-        val lhs = place(target)
+        val rewritten = prim != null && prim.isInteger && (
+            ((op == BinaryOp.DIV || op == BinaryOp.MOD) && !isConstDivisor(value, prim)) ||
+                (op in SHIFT_OPS && (op == BinaryOp.USHR || !isConstCount(value, prim))) ||
+                (op == BinaryOp.MUL && prim == Prim.UINT16)
+            )
+        val sym = COMPOUND[op]
+        if (!rewritten && sym == null) {
+            return unsupported(node, "the compound assignment ${op.name}")
+        }
+        val role = when {
+            op in SHIFT_OPS && isConstCount(value, prim ?: Prim.INT32) -> CppLitRole.SHIFT_COUNT
+            op in SHIFT_OPS -> CppLitRole.PLAIN
+            rewritten -> CppLitRole.DEDUCED
+            else -> CppLitRole.PLAIN
+        }
+        val rhs = { if (role == CppLitRole.SHIFT_COUNT) raw(value, role) else coerced(value, role) }
+        fun text(l: CppEx, r: CppEx): CppEx = if (rewritten) {
+            CppEx("${l.text} = ${applyOp(op, t, l, r, value).text}", CppPrec.ASSIGN, "=")
+        } else {
+            CppEx("${l.text} $sym ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, sym)
+        }
+        val located = hoister.placeRank(target)
+        val read = hoister.rank(target)
+        val given = hoister.rank(value)
+        // A rewrite names the target twice; a call in its location must run once.
+        val force = rewritten && located == CppHoister.IMPURE
+        // D33: the target is located and read before the value runs, and the value before the write.
+        val ordered = (read == CppHoister.IMPURE || given == CppHoister.IMPURE) && read != CppHoister.PURE && given != CppHoister.PURE
+        if (!force && !ordered) {
+            return text(CppEx(place(target), CppPrec.UNARY), rhs())
+        }
+        return state.block {
+            val lines = mutableListOf<String>()
+            val spelled = ctx.spell(t, Pos.VALUE, target)
+            val l = if (located != CppHoister.PURE) {
+                val name = state.fresh("r")
+                lines += "$spelled& $name = ${place(target)};"
+                CppEx(name, CppPrec.PRIMARY)
+            } else {
+                CppEx(place(target), CppPrec.UNARY)
+            }
+            // The value's effect may change what the target holds: Kira read it first.
+            val old = if (read != CppHoister.PURE && given == CppHoister.IMPURE) {
+                val name = state.fresh("t")
+                lines += "const $spelled $name = ${l.text};"
+                CppEx(name, CppPrec.PRIMARY)
+            } else {
+                l
+            }
+            val r = if (given != CppHoister.PURE) {
+                val name = state.fresh("t")
+                lines += "const ${ctx.spell(typeOf(value), Pos.VALUE, value)} $name = ${wrap(rhs(), CppPrec.ASSIGN)};"
+                CppEx(name, CppPrec.PRIMARY)
+            } else {
+                rhs()
+            }
+            lines += if (old === l) "${text(l, r).text};" else "${l.text} = ${applyOp(op, t, old, r, value).text};"
+            hoister.iife(KType.Void, lines)
+        }
+    }
+
+    /**
+     * `l op r` for an operator whose operands are already spelled: the R1 narrowing, R11's
+     * `kira::div`, R12's checked shifts, the UInt16 product in `unsigned` (D8), Str's `+`.
+     * [value] is the right operand's expression, whose constant decides the checked forms.
+     */
+    private fun applyOp(op: BinaryOp, t: KType, l: CppEx, r: CppEx, value: Expr): CppEx {
+        if (t == KType.Str && op == BinaryOp.ADD) {
+            return infix(l, "+", r, CppPrec.ADD)
+        }
+        val prim = t.prim
         if (prim != null && prim.isInteger) {
             if ((op == BinaryOp.DIV || op == BinaryOp.MOD) && !isConstDivisor(value, prim)) {
                 val f = if (op == BinaryOp.DIV) "kira::div" else "kira::mod"
-                return CppEx("$lhs = $f($lhs, ${emit(value, CppPrec.ASSIGN, CppLitRole.DEDUCED)})", CppPrec.ASSIGN, "=")
+                return CppEx("$f(${wrap(l, CppPrec.ASSIGN)}, ${wrap(r, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
             }
             if (op in SHIFT_OPS) {
-                val constant = isConstCount(value, prim)
-                if (op == BinaryOp.USHR || !constant) {
-                    val n = if (constant) raw(value, CppLitRole.SHIFT_COUNT) else coerced(value)
-                    val shifted = shiftText(CppEx(lhs, CppPrec.UNARY), n, constant, op, prim)
-                    return CppEx("$lhs = ${narrowed(shifted, prim).text}", CppPrec.ASSIGN, "=")
-                }
+                return narrowed(shiftText(l, r, isConstCount(value, prim), op, prim), prim)
+            }
+            if (op == BinaryOp.MUL && prim == Prim.UINT16) {
+                // Both operands promote to int, whose product overflows at 65535 * 65535 (UB): multiply as unsigned.
+                return narrowed(infix(CppEx("static_cast<unsigned>(${l.text})", CppPrec.POSTFIX), "*", r, CppPrec.MUL), prim)
             }
         }
-        val sym = COMPOUND[op] ?: return unsupported(node, "the compound assignment ${op.name}")
-        val role = if (op in SHIFT_OPS) CppLitRole.SHIFT_COUNT else CppLitRole.PLAIN
-        return CppEx("$lhs $sym ${emit(value, CppPrec.ASSIGN, role)}", CppPrec.ASSIGN, sym)
+        val sym = CPP_OPS[op] ?: return CppEx("/* ${op.name} */", CppPrec.PRIMARY)
+        return narrowed(infix(l, sym, r, precOf(op)), prim)
     }
 
     // ---- operators (R1, R11, R12, R16, R17) --------------------------------------------------
@@ -709,7 +805,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** An operand of an operator: its literal role follows the other side (R2). */
     private fun operand(e: Expr, other: Expr? = null, role: CppLitRole? = null): CppHoister.Operand {
         val r = role ?: if (other != null && bareLiteral(e) != null && isLiteralOnly(other)) CppLitRole.TYPED else CppLitRole.OPERAND
-        return CppHoister.Operand(e, spillable = true) { coerced(e, r) }
+        return CppHoister.Operand(e) { coerced(e, r) }
     }
 
     /** [child] as an operand of the C++ operator [parentOp] at [need], with the `-Wparentheses` rules. */
@@ -768,15 +864,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val prim = t.prim
         if (prim != null && prim.isInteger && (op == BinaryOp.DIV || op == BinaryOp.MOD) && !isConstDivisor(e.rightExpr, prim)) {
-            // R11: the spec's run-time error on /0 and INT_MIN / -1 (D10).
-            val f = if (op == BinaryOp.DIV) "kira::div" else "kira::mod"
+            // R11: the spec's run-time error on /0 and INT_MIN / -1 (D10), through a deduced template.
             return hoister.lower(
                 listOf(operand(e.leftExpr, role = CppLitRole.DEDUCED), operand(e.rightExpr, role = CppLitRole.DEDUCED)), t,
-            ) { (l, r) -> CppEx("$f(${wrap(l, CppPrec.ASSIGN)}, ${wrap(r, CppPrec.ASSIGN)})", CppPrec.POSTFIX) }
+            ) { (l, r) -> applyOp(op, t, l, r, e.rightExpr) }
         }
-        val sym = CPP_OPS[op]!!
         return hoister.lower(listOf(operand(e.leftExpr, e.rightExpr), operand(e.rightExpr, e.leftExpr)), t) { (l, r) ->
-            narrowed(infix(l, sym, r, precOf(op)), prim)
+            applyOp(op, t, l, r, e.rightExpr)
         }
     }
 
@@ -791,9 +885,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun bitwise(e: BinaryExpr): CppEx {
         val t = typeOf(e)
-        val sym = CPP_OPS[e.operator]!!
         return hoister.lower(listOf(operand(e.leftExpr, e.rightExpr), operand(e.rightExpr, e.leftExpr)), t) { (l, r) ->
-            narrowed(infix(l, sym, r, precOf(e.operator)), t.prim)
+            applyOp(e.operator, t, l, r, e.rightExpr)
         }
     }
 
@@ -802,12 +895,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val prim = t.prim ?: return internal(e, "a shift of a non-integer")
         val constant = isConstCount(e.rightExpr, prim)
         if (constant) {
-            // C++17 sequences the left operand of a shift before its right: nothing to spill.
-            return narrowed(shiftText(coerced(e.leftExpr, CppLitRole.OPERAND), raw(e.rightExpr, CppLitRole.SHIFT_COUNT), true, e.operator, prim), prim)
+            // C++17 sequences the left operand of a shift before its right: nothing to spill. A
+            // literal on the left carries the width (R2): `std::int64_t{1} << 40`, never `1 << 40`.
+            return applyOp(e.operator, t, coerced(e.leftExpr, CppLitRole.WIDTH), raw(e.rightExpr, CppLitRole.SHIFT_COUNT), e.rightExpr)
         }
-        val count = CppHoister.Operand(e.rightExpr, true) { coerced(e.rightExpr) }
+        val count = CppHoister.Operand(e.rightExpr) { coerced(e.rightExpr) }
         return hoister.lower(listOf(operand(e.leftExpr, role = CppLitRole.DEDUCED), count), t) { (l, n) ->
-            narrowed(shiftText(l, n, false, e.operator, prim), prim)
+            applyOp(e.operator, t, l, n, e.rightExpr)
         }
     }
 
@@ -856,21 +950,33 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         return v.signum() >= 0 && v < BigInteger.valueOf(prim.portableBits.toLong())
     }
 
+    /**
+     * `!x`, `-x`, `~x`. A literal operand carries the operation's width ([CppLitRole.WIDTH]):
+     * `~0` on a UInt64 is `~std::uint64_t{0}`, on a UInt32 `~0u`, never the `int` `~0`, which
+     * is `-1` (a narrowing error in a brace-init, a sign conversion in `v & ~0xFF`). A minus
+     * before an operand that starts with one is parenthesized: `--y` is a pre-decrement.
+     */
     private fun unary(e: UnaryExpr): CppEx {
         val t = typeOf(e)
         val prim = t.prim
-        val operand = coerced(e.operand)
+        val operand = coerced(e.operand, CppLitRole.WIDTH)
         return when (e.operator) {
             UnaryOp.NOT -> CppEx("!${wrap(operand, CppPrec.UNARY)}", CppPrec.UNARY)
             UnaryOp.POS -> operand
             UnaryOp.NEG -> when {
-                prim != null && prim.promotesInCpp -> narrowed(CppEx("-${wrap(operand, CppPrec.UNARY)}", CppPrec.UNARY), prim)
+                prim != null && prim.promotesInCpp -> narrowed(CppEx("-${minusOperand(operand)}", CppPrec.UNARY), prim)
                 // MSVC C4146 refuses a unary minus on an unsigned operand; 0u - x is the same wrap (D8).
                 prim != null && prim.isInteger && !prim.signed -> CppEx("0u - ${wrap(operand, CppPrec.ADD + 1)}", CppPrec.ADD, "-")
-                else -> CppEx("-${wrap(operand, CppPrec.UNARY)}", CppPrec.UNARY)
+                else -> CppEx("-${minusOperand(operand)}", CppPrec.UNARY)
             }
             UnaryOp.BIT_NOT -> narrowed(CppEx("~${wrap(operand, CppPrec.UNARY)}", CppPrec.UNARY), prim)
         }
+    }
+
+    /** [operand] after a unary minus: parenthesized when it starts with a minus itself (`-(-y)`, never `--y`). */
+    private fun minusOperand(operand: CppEx): String {
+        val text = wrap(operand, CppPrec.UNARY)
+        return if (text.startsWith("-")) "($text)" else text
     }
 
     /** R13: `as`, by the conversion the typer recorded. */
@@ -916,8 +1022,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val operands = e.parts.map { part ->
             when (part) {
-                is InterpolationPart.Text -> CppHoister.Operand(null, false) { CppEx(CppDeclEmitter.cppString(part.text), CppPrec.PRIMARY) }
-                is InterpolationPart.Hole -> CppHoister.Operand(part.expr, true) { coerced(part.expr) }
+                is InterpolationPart.Text -> CppHoister.Operand(null) { CppEx(CppDeclEmitter.cppString(part.text), CppPrec.PRIMARY) }
+                is InterpolationPart.Hole -> CppHoister.Operand(part.expr) { coerced(part.expr) }
             }
         }
         return hoister.lower(operands, KType.Str) { texts ->
@@ -933,7 +1039,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             CppBindingTable.magicName(ct) == "Map" -> return unsupported(e, "reading a Map with m[k] (read it with m.get(k))")
             else -> "kira::at"
         }
-        val container = CppHoister.Operand(e.originExpr, !isPlaceExpr(e.originExpr)) { coerced(e.originExpr) }
+        val container = CppHoister.Operand(e.originExpr, place = isPlaceExpr(e.originExpr), mutable = false) { coerced(e.originExpr) }
         return hoister.lower(listOf(container, operand(e.indexExpr, role = CppLitRole.PLAIN)), typeOf(e)) { (c, i) ->
             CppEx("$f(${wrap(c, CppPrec.ASSIGN)}, ${wrap(i, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
         }
@@ -945,7 +1051,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun arrayLiteral(e: ArrayLiteral): CppEx {
         val t = typeOf(e)
-        val elements = e.value.map { CppHoister.Operand(it, true) { coerced(it) } }
+        val elements = e.value.map { CppHoister.Operand(it) { coerced(it) } }
         return hoister.lower(elements, t) { texts ->
             CppEx("${ctx.spell(t, Pos.VALUE, e)}{${texts.joinToString(", ") { wrap(it, CppPrec.ASSIGN) }}}", CppPrec.POSTFIX)
         }
@@ -969,7 +1075,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return classConstruction(e, ri, cls)
         }
         val given = ri.sourceOrder.map { ri.fields[it] as FieldInit.Given }
-        val ops = given.map { g -> CppHoister.Operand(g.expr, true) { coerced(g.expr) } }
+        val ops = given.map { g -> CppHoister.Operand(g.expr) { coerced(g.expr) } }
         val byField = IdentityHashMap<FieldSymbol, Int>()
         given.forEachIndexed { i, g -> byField[g.field] = i }
         val typeText = if (model.typeOf(e.typeName) != null) ctx.spell(e.typeName, Pos.VALUE) else ctx.spell(t, Pos.VALUE, e)
@@ -1012,7 +1118,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val g = fields[i] as? FieldInit.Given ?: return@forEach
             if (i < end) {
                 position[g.field] = ops.size
-                ops += CppHoister.Operand(g.expr, true) { coerced(g.expr, CppLitRole.TYPED) }
+                ops += CppHoister.Operand(g.expr) { coerced(g.expr, CppLitRole.TYPED) }
             }
         }
         return hoister.lower(ops, t) { texts ->
@@ -1084,7 +1190,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /**
      * The operands of [rc]'s written arguments in source order (D33), and the slots in
-     * parameter order. A `mut` argument is a place and is never spilled (R19); a trailing
+     * parameter order. A `mut` argument is a place: located in order, never copied (R19); a trailing
      * default is left to C++'s default argument (R6).
      */
     private fun arguments(rc: ResolvedCall, role: (Int) -> CppLitRole = { CppLitRole.PLAIN }, wrap: (Int, Expr, CppEx) -> CppEx = { _, _, ex -> ex }): Pair<List<CppHoister.Operand>, List<Slot>> {
@@ -1094,7 +1200,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val a = rc.args[i] as? ArgBinding.Given ?: return@forEach
             operandOf[i] = operands.size
             val e = a.expr
-            operands += CppHoister.Operand(e, spillable = !a.byRef) { wrap(i, e, coerced(e, role(i))) }
+            operands += argumentOperand(a) { wrap(i, e, coerced(e, role(i))) }
         }
         val slots = mutableListOf<Slot>()
         rc.args.forEachIndexed { i, a ->
@@ -1103,7 +1209,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                     val op = operandOf[i] ?: run {
                         // A written argument missing from sourceOrder: keep it, in parameter order.
                         operandOf[i] = operands.size
-                        operands += CppHoister.Operand(a.expr, spillable = !a.byRef) { wrap(i, a.expr, coerced(a.expr, role(i))) }
+                        operands += argumentOperand(a) { wrap(i, a.expr, coerced(a.expr, role(i))) }
                         operandOf[i]!!
                     }
                     slots += Slot.Given(op, i, a.byRef)
@@ -1115,6 +1221,31 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
         }
         return operands to slots
+    }
+
+    /** A written argument: a `mut` one is a place (located in order, bound `T&`), any other a value. */
+    private fun argumentOperand(a: ArgBinding.Given, emit: () -> CppEx): CppHoister.Operand =
+        CppHoister.Operand(a.expr, place = a.byRef, mutable = a.byRef, emit)
+
+    /**
+     * The receiver of a call as an ordered operand (D33: Kira evaluates it before the
+     * arguments; an IIFE that spills the arguments would otherwise run it after them), or null
+     * for `this`, whose identity is fixed. A reference (a class, a trait, a `Ref`) is read as
+     * a value: the reference is what the call holds. A struct (or a type parameter) read by a
+     * non-`mut` method is a value too (Kira reads it first, C++ would read the caller's
+     * storage after the arguments); one a `mut` method, a lending or a member-style binding
+     * writes through is a place, bound by reference, and so is a value place a member-style
+     * binding reads through, which C++ calls on the object itself.
+     */
+    private fun receiverOperand(receiver: Expr, fn: FnSymbol?, memberStyle: Boolean, lending: Boolean, emit: () -> CppEx): CppHoister.Operand? {
+        if (receiver is ThisExpr) {
+            return null
+        }
+        val t = typeOf(receiver)
+        val writes = fn?.isMutMethod == true || lending
+        val isPlace = isPlaceExpr(receiver)
+        val place = isPlace && !isPointerLike(t) && (writes || memberStyle)
+        return CppHoister.Operand(receiver, place = place, mutable = writes || (memberStyle && !isPlace)) { emit() }
     }
 
     private fun argList(slots: List<Slot>, texts: List<CppEx>): String = slots.joinToString(", ") { s ->
@@ -1133,13 +1264,15 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun methodCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a method call without its method")
-        val (ops, slots) = arguments(rc)
+        val (argOps, argSlots) = arguments(rc)
         val name = ctx.names.escape(fn.name) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
         val receiver = rc.receiver
-        // The receiver is evaluated before the arguments in C++17 as in Kira: only the arguments are operands.
+        // The receiver is an operand before the arguments (D33): spilled, it runs first.
+        val recvOp = receiver?.let { receiverOperand(it, fn, memberStyle = false, lending = false) { coerced(it) } }
+        val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
         return hoister.lower(ops, rc.returnType) { texts ->
             val callee = when {
-                receiver != null -> access(receiver, typeOf(receiver)) + name
+                receiver != null -> accessWith(receiver, if (recvOp != null) texts[0] else null, typeOf(receiver)) + name
                 state.frame?.receiverAccess == CppBodyState.ThisCapture.SELF -> "${selfPointer()}->$name"
                 else -> name
             }
@@ -1147,11 +1280,19 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
     }
 
+    /** [receiver] first among the operands, when it is one, with the argument slots shifted past it. */
+    private fun withReceiver(receiver: CppHoister.Operand?, args: List<CppHoister.Operand>, slots: List<Slot>): Pair<List<CppHoister.Operand>, List<Slot>> {
+        receiver ?: return args to slots
+        return (listOf(receiver) + args) to slots.map { if (it is Slot.Given) it.copy(operand = it.operand + 1) else it }
+    }
+
     /** A call through an `Fx` value: a local, a parameter (a template's `F_p&&` too), or a field. */
     private fun fnValueCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
-        val (ops, slots) = arguments(rc)
-        val callee = emit(e.name, CppPrec.POSTFIX)
-        return hoister.lower(ops, rc.returnType) { texts -> CppEx("$callee(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        val (argOps, argSlots) = arguments(rc)
+        // The callee is evaluated first (D33); as an operand it is spilled with the arguments.
+        val calleeOp = CppHoister.Operand(e.name) { coerced(e.name) }
+        val (ops, slots) = withReceiver(calleeOp, argOps, argSlots)
+        return hoister.lower(ops, rc.returnType) { texts -> CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
     /**
@@ -1159,12 +1300,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * spelled here (spilled as D33 needs); [externCallText] makes the call of them.
      */
     private fun externCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
-        rc.fn ?: return internal(e, "an extern call without its function")
-        val (ops, slots) = arguments(rc)
+        val fn = rc.fn ?: return internal(e, "an extern call without its function")
+        val (argOps, argSlots) = arguments(rc)
         val receiver = rc.receiver
+        val recvOp = receiver?.let { receiverOperand(it, fn, memberStyle = false, lending = false) { coerced(it) } }
+        val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
         return hoister.lower(ops, rc.returnType) { texts ->
             val recv = when {
-                receiver != null -> receiverText(receiver)
+                receiver != null -> if (recvOp != null) wrap(texts[0], CppPrec.POSTFIX) else receiverText(receiver)
                 rc.implicitThis -> if (state.frame?.receiverAccess == CppBodyState.ThisCapture.SELF) selfPointer() else "this"
                 else -> null
             }
@@ -1306,18 +1449,19 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             addAll(rc.typeArgs)
         }.map { ctx.spell(it, Pos.TEMPLATE_ARG, e) }
         val (argOps, slots) = arguments(rc)
+        val lending = recvType != null && fn.name in LENDERS && (CppBindingTable.isArr(recvType) || CppBindingTable.magicName(recvType) == "List") &&
+            CppBindingTable.magicName(rc.returnType) == "MutView"
         val ops = mutableListOf<CppHoister.Operand>()
         val receiverIndex = if (receiver != null) {
-            val spillable = !memberStyle && !isPlaceExpr(receiver)
-            ops += CppHoister.Operand(receiver, spillable) { receiverEx(receiver, memberStyle) }
+            val op = receiverOperand(receiver, fn, memberStyle, lending) { receiverEx(receiver, memberStyle) }
+                ?: CppHoister.Operand(null) { receiverEx(receiver, memberStyle) }
+            ops += op
             0
         } else {
             -1
         }
         val shift = ops.size
         ops += argOps
-        val lending = recvType != null && fn.name in LENDERS && (CppBindingTable.isArr(recvType) || CppBindingTable.magicName(recvType) == "List") &&
-            CppBindingTable.magicName(rc.returnType) == "MutView"
         return hoister.lower(ops, rc.returnType) { texts ->
             val argTexts = slots.map { s ->
                 when (s) {

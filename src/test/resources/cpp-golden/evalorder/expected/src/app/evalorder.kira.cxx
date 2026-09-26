@@ -7,15 +7,24 @@ namespace evalorder
   namespace
   {
     std::int32_t ticks = 0;
+    kira::Size idx = 0;
 
     [[nodiscard]] std::int32_t next();
+    [[nodiscard]] kira::Size nextSize();
     [[nodiscard]] std::int32_t sub(std::int32_t a, std::int32_t b);
     void store(std::int32_t& into, std::int32_t tens, std::int32_t ones);
+    [[nodiscard]] Box makeBox();
 
     std::int32_t next()
     {
         ticks += 1;
         return ticks;
+    }
+
+    kira::Size nextSize()
+    {
+        idx += 1;
+        return idx;
     }
 
     std::int32_t sub(std::int32_t a, std::int32_t b)
@@ -27,6 +36,22 @@ namespace evalorder
     {
         into = tens * 10 + ones;
     }
+
+    Box makeBox()
+    {
+        ticks += 1;
+        return Box{.v = ticks};
+    }
+  }
+
+  std::int32_t Box::pair(std::int32_t a, std::int32_t b) const
+  {
+      return v * 100 + a * 10 + b;
+  }
+
+  void Box::grow(std::int32_t a, std::int32_t b)
+  {
+      v = v * 100 + a * 10 + b;
   }
 
   void main()
@@ -69,6 +94,66 @@ namespace evalorder
           return kira::cat(t0_, "/", t1_);
       }());
       kira::trace(sub(next(), 100));
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = ticks;
+          const std::int32_t t1_ = next();
+          return sub(t0_, t1_);
+      }());
+      kira::trace([&]() -> kira::Str
+      {
+          const std::int32_t t0_ = ticks;
+          const std::int32_t t1_ = next();
+          return kira::cat(t0_, "/", t1_);
+      }());
+      [&]() -> void
+      {
+          const std::int32_t t0_ = ticks;
+          const std::int32_t t1_ = next();
+          ticks = t0_ + t1_;
+      }();
+      kira::trace(ticks);
+      kira::trace([&]() -> std::int32_t
+      {
+          const Box t0_ = makeBox();
+          const std::int32_t t1_ = next();
+          const std::int32_t t2_ = next();
+          return t0_.pair(t1_, t2_);
+      }());
+      std::array<std::int32_t, 4> slots = {0, 0, 0, 90};
+      [&]() -> void
+      {
+          std::int32_t& r0_ = kira::at(slots, nextSize());
+          const std::int32_t t0_ = next();
+          const std::int32_t t1_ = next();
+          store(r0_, t0_, t1_);
+      }();
+      kira::trace(kira::at(slots, 1));
+      [&]() -> void
+      {
+          std::int32_t& r0_ = kira::at(slots, nextSize());
+          const std::int32_t t0_ = next();
+          r0_ = t0_;
+      }();
+      kira::trace(kira::at(slots, 2));
+      const std::int32_t two{2};
+      [&]() -> void
+      {
+          std::int32_t& r0_ = kira::at(slots, nextSize());
+          r0_ = kira::div(r0_, two);
+      }();
+      kira::trace(kira::at(slots, 3));
+      kira::trace(idx);
+      std::array<Box, 1> boxes = {Box{}};
+      idx = 0;
+      [&]() -> void
+      {
+          Box& r0_ = kira::at(boxes, nextSize() - 1);
+          const std::int32_t t0_ = next();
+          const std::int32_t t1_ = next();
+          r0_.grow(t0_, t1_);
+      }();
+      kira::trace(kira::at(boxes, 0).v);
   }
 }
 #include "kira/macro_pop.hxx"
