@@ -32,6 +32,7 @@ namespace golden::shapes
   inline constexpr float EPSILON = 0.001f;
   inline constexpr double HALF = 0.5;
   inline constexpr const char* NAME = "shapes";
+  inline constexpr const char* TRIGRAPHS = "?\?= ?\?/ ?\?' ?\?( ?\?) ?\?! ?\?< ?\?> ?\?- ?\?\?= ?";
   inline constexpr char TAG = 'S';
   inline constexpr bool SIGNED = true;
   inline constexpr std::int64_t BIG = 5000000000;
@@ -63,7 +64,7 @@ namespace golden::shapes
   };
 
   [[nodiscard]] inline std::int32_t scaled(std::int32_t v, std::int32_t by = SCALE, Unit unit = Unit::UNIT_MM);
-  [[nodiscard]] inline kira::Str describe(const Box& b, const kira::Str& label = "box");
+  [[nodiscard]] inline kira::Str describe(const Box& b, const kira::Str& label = "box?\?");
   [[nodiscard]] inline std::int32_t first(const Outline& points);
   [[nodiscard]] inline bool total(kira::View<std::int32_t> points, std::int32_t& sum);
 }

@@ -31,6 +31,9 @@ pub MAX_POINTS: Size = 8
 pub EPSILON: Float32 = 0.001
 pub HALF: Float64 = 0.5
 pub NAME: Str = "shapes"
+// Every trigraph: the header must not spell "??=" and the rest, which gcc and
+// clang refuse under -Wall -Werror, so the second '?' of each pair is escaped.
+pub TRIGRAPHS: Str = "??= ??/ ??' ??( ??) ??! ??< ??> ??- ???= ?"
 pub TAG: Char = 'S'
 pub SIGNED: Bool = true
 pub BIG: Int64 = 5000000000
@@ -64,6 +67,6 @@ pub struct Point {
 pub mut created: Int32 = 0
 
 pub fx scaled: (v: Int32, by: Int32 = SCALE, unit: Unit = Unit.UNIT_MM) Int32;
-pub fx describe: (b: Box, label: Str = "box") Str;
+pub fx describe: (b: Box, label: Str = "box??") Str;
 pub fx first: (points: Outline) Int32;
 pub fx total: (points: View<Int32>, mut sum: Int32) Bool;

@@ -133,6 +133,8 @@ int main()
     check(SCALE == 100 && MAX_POINTS == 8, "integer constants");
     check(EPSILON == 0.001f && HALF == 0.5, "float constants take their own width");
     check(std::strcmp(NAME, "shapes") == 0 && TAG == 'S' && SIGNED, "Str, Char and Bool constants");
+    // the Kira text is "??= ??/ ..." verbatim; the header spells each pair ?\? so no trigraph reaches gcc or clang
+    check(std::strcmp(TRIGRAPHS, "?\?= ?\?/ ?\?' ?\?( ?\?) ?\?! ?\?< ?\?> ?\?- ?\?\?= ?") == 0 && std::strlen(TRIGRAPHS) == 42, "a Str constant holding every trigraph keeps its text");
     {
         const Box b{};
         check(b.origin.x == 0 && b.origin.y == 0, "a require field is value-initialized");

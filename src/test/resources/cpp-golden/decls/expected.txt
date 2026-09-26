@@ -7,6 +7,7 @@ decls - declarations by themselves
   ok    integer constants
   ok    float constants take their own width
   ok    Str, Char and Bool constants
+  ok    a Str constant holding every trigraph keeps its text
   ok    a require field is value-initialized
   ok    defaults name constants and enum entries
   ok    a Str default and an alias-typed field
@@ -31,4 +32,4 @@ decls - declarations by themselves
   ok    a narrow literal as a Maybe default argument
   ok    containers of a struct declared later
 
-29 checks, 0 failed
+30 checks, 0 failed
