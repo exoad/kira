@@ -1,0 +1,35 @@
+
+decls - declarations by themselves
+
+  ok    an Int32 enum keeps its values
+  ok    an Int16 enum keeps its hex values
+  ok    a Str enum numbers its entries in order
+  ok    integer constants
+  ok    float constants take their own width
+  ok    Str, Char and Bool constants
+  ok    a Str constant holding every trigraph keeps its text
+  ok    a require field is value-initialized
+  ok    defaults name constants and enum entries
+  ok    a Str default and an alias-typed field
+  ok    a const method declared in the struct
+  ok    a defaulted method parameter is filled in
+  ok    and a const method reads the fields
+  ok    defaulted function parameters are filled in
+  ok    and can be given
+  ok    inline state in a header-only module
+  ok    defaults from another module
+  ok    constants copied from another module
+  ok    defaults from another module fill a call
+  ok    inline state in a module with no source file
+  ok    state and a constant of a struct type declared later
+  ok    a parameter named like a field is renamed
+  ok    a parameter named like a module declaration is renamed
+  ok    a field named like a module declaration takes the declaration's value
+  ok    a default argument named like a field, and a field named std
+  ok    null defaults are kira::none
+  ok    a null default argument, filled or given
+  ok    Unsafe<T> is const T*, T* when mut
+  ok    a narrow literal as a Maybe default argument
+  ok    containers of a struct declared later
+
+30 checks, 0 failed

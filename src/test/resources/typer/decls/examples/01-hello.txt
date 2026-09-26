@@ -1,2 +1,2 @@
-module app:main  profile=HOSTED ns=main imports=[]
+module app:main  profile=HOSTED ns=main_ imports=[]
   fn main: () Void  body

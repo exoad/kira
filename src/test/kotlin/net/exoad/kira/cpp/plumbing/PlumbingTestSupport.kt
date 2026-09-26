@@ -1,6 +1,7 @@
 package net.exoad.kira.cpp.plumbing
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleLayout
@@ -8,6 +9,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -35,7 +37,10 @@ class FakeCppModuleEmitter(
         val stem = CppModuleLayout.stemOf(File(source.file).name)
         val header = "// fake header for $uri\n#pragma once\n"
         val body = if (options.isHeaderOnly(uri)) null else "// fake source for $uri\n#include \"$stem${options.headerExt}\"\n"
-        return EmittedModule(header, body, extraDiagnostics)
+        // As the real emitter: the header includes every `use`d module's, so the backend reaches them.
+        val uses = mutableListOf<String>()
+        runCatching { AstTree.walk(source.ast) { node -> if (node is UseStatement) uses += node.uri.value } }
+        return EmittedModule(header, body, extraDiagnostics, uses)
     }
 }
 

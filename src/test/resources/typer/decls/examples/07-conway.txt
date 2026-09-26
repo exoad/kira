@@ -6,7 +6,7 @@ module app:grid  profile=HOSTED ns=grid imports=[]
     fn countNeighbors: (row: Int32, col: Int32) Int32  body
     fn step: () Void  mut body
     fn printGrid: () Void  body
-module app:main  profile=HOSTED ns=main imports=[app:grid]
+module app:main  profile=HOSTED ns=main_ imports=[app:grid]
   fn main: () Void  body
 diag error types.index.size app/grid.kira:24:44  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
 diag error types.index.size app/grid.kira:40:38  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.

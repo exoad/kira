@@ -63,13 +63,20 @@ class CppCliTest {
 
     private fun snapshot(dir: File): List<String> = PlumbingTestSupport.listFiles(dir.toPath())
 
+    // Until the expression and statement parts (W2.3) land, every function body is
+    // `cpp.unsupported: ... is not lowered yet`, so a program with a body, and the
+    // Kira-written stdlib (kira:math's clamp) in every unit, still exits 1 and writes
+    // nothing. W2.3 flips these to assert success.
+    private val bodyUnsupported = "cpp.unsupported: the body of 'main' is not lowered yet"
+
     @Test
     fun targetCppExitsOneWithUnsupportedAndWritesNothing() {
         val dir = tempProject("unsupported")
         val before = snapshot(dir)
         val result = runCli(dir, "--target", "cpp")
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported: the C++ emitter is not built yet"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
+        assertTrue(!result.all.contains("Exception"), "a diagnostic, not a stack trace:\n${result.all}")
         assertEquals(before, snapshot(dir), "no file may be written")
     }
 
@@ -78,7 +85,7 @@ class CppCliTest {
         val dir = tempProject("alias")
         val result = runCli(dir, "--target", "c++")
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
     }
 
     @Test
@@ -87,7 +94,7 @@ class CppCliTest {
         val before = snapshot(dir)
         val result = runCli(dir)
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
         assertTrue(!result.all.contains("Manifest validation failed"), result.all)
         assertEquals(before, snapshot(dir))
     }
@@ -107,6 +114,7 @@ class CppCliTest {
         val result = runCli(dir, "--check")
         assertEquals(1, result.exitCode, result.all)
         assertTrue(result.all.contains("--check is only supported with --target cpp"), result.all)
+        assertTrue(!result.all.contains("Exception") && !result.all.contains("\tat "), "a usage error, not a stack trace:\n${result.all}")
         assertEquals(before, snapshot(dir))
     }
 
@@ -116,8 +124,43 @@ class CppCliTest {
         val before = snapshot(dir)
         val result = runCli(dir, "--target", "cpp", "--check")
         assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains("cpp.unsupported"), result.all)
+        assertTrue(result.all.contains(bodyUnsupported), result.all)
         assertEquals(before, snapshot(dir))
+    }
+
+    /** The brief's acceptance: a declaration-only project, emitted twice, then checked, exits 0 each time. */
+    @Test
+    fun aDeclarationOnlyProjectEmitsTwiceAndChecksClean() {
+        val dir = tempProject("decl-only", target = "cpp")
+        File(dir, "src/app/main.kira").writeText(
+            """
+            module "app:main"
+
+            pub LIMIT: Int32 = 5
+            pub enum Mode: Int32 { MODE_A = 0, MODE_B = 1 }
+            pub struct Cfg {
+                pub mode: Mode = Mode.MODE_A
+                pub limit: Int32 = LIMIT
+                pub hint: Maybe<Int32> = null
+            }
+            pub fx apply: (c: Cfg, by: Int32 = LIMIT) Int32;
+            """.trimIndent()
+        )
+        val first = runCli(dir, "--target", "cpp")
+        assertEquals(0, first.exitCode, first.all)
+        assertTrue(!first.all.contains("Exception"), first.all)
+        val after = snapshot(dir)
+        assertTrue("src/app/main.kira.hxx" in after, after.toString())
+        assertTrue("kira.gen.manifest" in after, after.toString())
+        assertTrue(after.none { it.startsWith("gen/kira/kira/std/") }, "no stdlib module is reached, so none is emitted: $after")
+        val second = runCli(dir, "--target", "cpp")
+        assertEquals(0, second.exitCode, second.all)
+        assertEquals(after, snapshot(dir))
+        val check = runCli(dir, "--target", "cpp", "--check")
+        assertEquals(0, check.exitCode, check.all)
+        assertEquals(after, snapshot(dir))
+        val header = File(dir, "src/app/main.kira.hxx").readText()
+        assertTrue(header.contains("kira::Maybe<std::int32_t> hint = kira::none;"), header)
     }
 
     @Test

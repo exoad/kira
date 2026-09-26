@@ -1,0 +1,113 @@
+module "app:order"
+
+// Declarations C++ must see in another order than Kira wrote them, private
+// declarations the public ones name, and spellings C++ would read differently
+// from Kira. Bodiless like the other two modules (the driver defines the
+// functions), so the header is the whole module.
+
+// A constant and state of a struct declared later: the header defines Pt first.
+pub ORIGIN: Pt = Pt {}
+pub mut cursor: Pt = Pt {}
+
+// Forward references among values: each names what the source declares later.
+pub alias Frame as Arr<UInt8, N>
+pub A: Int32 = B
+pub K: Kind = Kind.K_A
+pub N: Size = 4
+pub B: Int32 = 2
+
+// Kira reads every decimal literal as decimal (010 is ten), and its parser folds
+// a 64-bit hex literal as in C (0xFFFFFFFFFFFFFFFF is -1 as an Int64); C++ would
+// read octal and reject the overflow. A hex literal past a narrower signed width
+// (0xFFFFFFFF as an Int32) is a Kira range error, not a wrap.
+pub enum Kind: Int32 {
+    K_A = 010,
+    K_B = 0x7F
+}
+pub TEN: Int32 = 010
+pub NINE: Int32 = 09
+pub NEG1: Int64 = 0xFFFFFFFFFFFFFFFF
+pub TENS: Arr<Int32, 010> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+pub struct Pt {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+
+    // A parameter named like a field would shadow it in C++.
+    pub mut fx setX: (x: Int32) Void;
+}
+
+// Private declarations the public ones name go in the header's namespace impl_.
+// (A default argument may not name one: D48 makes a default a literal or a pub
+// constant, so it is a struct's field defaults that put these in the header.)
+LIMIT: Int32 = 5
+
+enum Mode: Int32 {
+    MODE_A = 0,
+    MODE_B = 1
+}
+
+struct Inner {
+    pub v: Int32 = 1
+}
+
+pub struct S {
+    pub m: Mode = Mode.MODE_A
+    pub n: Int32 = LIMIT
+    pub i: Inner = Inner {}
+}
+
+// A parameter named like a module declaration would shadow it in C++.
+pub fx scaleBy: (LIMIT: Int32) Int32;
+
+// A field or method named like a module declaration hides it inside the struct
+// in C++ (class scope is searched first), so a default that names the declaration
+// is spelled through the namespace; a member named std would hide std:: itself.
+pub width: Int32 = 5
+pub struct Sized {
+    pub width: Int32 = width
+    pub LIMIT: Int32 = LIMIT
+    pub Mode: Mode = Mode.MODE_B
+    pub std: Int32 = 2
+    pub fx grow: (by: Int32 = width) Int32;
+}
+
+// A Maybe default of null is kira::none.
+pub struct Cfg {
+    pub limit: Maybe<Int32> = null
+}
+pub mut last: Maybe<Int32> = null
+pub fx find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
+
+// Unsafe<T> is const T* unless mut.
+pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+
+// A literal under a Maybe carries the narrow type it converts to: std::optional's
+// converting constructor is a template, and int to unsigned char inside it is
+// C4244 under MSVC /W4 /WX (a plain UInt8 initializer stays bare).
+pub MU8: Maybe<UInt8> = 200
+pub MF: Maybe<Float32> = 0.5
+pub MI16: Maybe<Int16> = 5
+pub struct Narrow {
+    pub a: Maybe<UInt8> = 7
+    pub b: UInt8 = 7
+}
+pub fx narrow: (x: Maybe<Int16> = 3) Int32;
+
+// Containers of a struct declared later. A List element needs only the forward
+// declaration, and its empty default is value-initialized in place (libc++
+// rejects the prvalue form before Later is complete); a Deque element must be
+// complete on libc++ and MSVC, so Later is defined before Queued.
+pub struct Early {
+    pub xs: List<Later> = List<Later> {}
+}
+pub struct Queued {
+    pub d: Deque<Later> = Deque<Later> {}
+}
+pub struct Later {
+    pub v: Int32 = 0
+}
+
+// Int and Float are kira:core's aliases of Int32 and Float32, spelled as such.
+pub COUNT: Int = 3
+pub RATIO: Float = 0.5

@@ -1,0 +1,8 @@
+
+macros - a generated header after <windows.h>
+
+  ok    a struct whose methods are named min and max
+  ok    and they are callable
+  ok    free functions named min and max
+
+3 checks, 0 failed

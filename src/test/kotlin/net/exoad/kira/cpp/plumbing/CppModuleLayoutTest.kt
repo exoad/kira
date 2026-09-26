@@ -131,6 +131,14 @@ class CppModuleLayoutTest {
     fun kiraModulesMapToKiraNamespace() {
         val layout = CppModuleLayout(CppOptions(), root, listOf(math))
         assertEquals("kira::math", layout.namespaceFor("kira:math"))
+        // Design 4.3: a kira:x module goes in kira::x. Nested under kira::, a segment named like a
+        // C library global (`time`, `sync`, `exit`) meets nothing, so only a keyword or an
+        // object-like macro is escaped there, unlike a top-level `namespace time_`.
+        listOf("time", "sync", "os", "exit", "log", "clone", "sqrtf").forEach {
+            assertEquals("kira::$it", layout.namespaceFor("kira:$it"))
+        }
+        assertEquals("kira::new_", layout.namespaceFor("kira:new"))
+        assertEquals("kira::linux_", layout.namespaceFor("kira:linux"))
     }
 
     @Test
@@ -268,5 +276,25 @@ class CppModuleLayoutTest {
         assertTrue(errors.all { it.code == "cpp.namespace-invalid" && it.message.contains("macro") }, errors.toString())
         assertNull(spelled.namespaceProblem("firmware:pilot.src.proto", "proto"))
         assertTrue(spelled.namespaceProblem("firmware:pilot.src.proto", "EOF")!!.contains("EOF"))
+    }
+
+    @Test
+    fun aSegmentNamedLikeMainOrACLibraryGlobalIsEscapedAndAManifestOneIsAnError() {
+        // `namespace main {` beside `int main` and `namespace exit {` beside <cstdlib>'s ::exit are
+        // "redeclared as different kind of entity" on gcc, clang and MSVC alike.
+        val modules = listOf("main", "exit", "time", "log", "abs", "div", "select", "random").map {
+            CppModuleRef("app:$it", root.resolve("app/$it.kira"))
+        }
+        val layout = CppModuleLayout(CppOptions(), root, modules)
+        assertEquals(listOf("main_", "exit_", "time_", "log_", "abs_", "div_", "select_", "random_"), modules.map { layout.namespaceFor(it.uri) })
+        assertEquals(emptyList(), layout.checkCollisions().filter { it.isError })
+        assertEquals("proto", layout.namespaceFor("firmware:pilot.src.proto"))
+
+        val spelled = CppModuleLayout(CppOptions(namespaces = mapOf("app:main" to "exit", "app:exit" to "bibo::exit")), root, modules.take(2))
+        val errors = spelled.checkCollisions().filter { it.isError }
+        assertEquals(1, errors.size, errors.toString())
+        assertTrue(errors.single().message.contains("exit") && errors.single().message.contains("global scope"), errors.toString())
+        assertNull(spelled.namespaceProblem("app:exit", "bibo::exit"))
+        assertTrue(spelled.namespaceProblem("app:main", "main")!!.contains("int main"))
     }
 }

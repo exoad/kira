@@ -91,4 +91,39 @@ class CppNamesTest {
         assertFalse("min" in CppNames.OBJECT_LIKE_MACROS)
         assertFalse("max" in CppNames.OBJECT_LIKE_MACROS)
     }
+
+    @Test
+    fun cLibraryGlobalsCoverC17AndWhatTheRuntimesHeadersAddOnEveryToolchain() {
+        // C17 <math.h>: every function in its double, float and long double forms.
+        val math = listOf(
+            "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "cbrt", "ceil", "copysign", "cos", "cosh",
+            "erf", "erfc", "exp", "exp2", "expm1", "fabs", "fdim", "floor", "fma", "fmax", "fmin", "fmod", "frexp",
+            "hypot", "ilogb", "ldexp", "lgamma", "llrint", "llround", "log", "log10", "log1p", "log2", "logb", "lrint",
+            "lround", "modf", "nan", "nearbyint", "nextafter", "nexttoward", "pow", "remainder", "remquo", "rint",
+            "round", "scalbln", "scalbn", "sin", "sinh", "sqrt", "tan", "tanh", "tgamma", "trunc",
+        )
+        math.flatMap { listOf(it, it + "f", it + "l") }.forEach { assertTrue(CppNames.isCGlobal(it), "$it is a C17 <math.h> function") }
+        // The rest of C17, a sample per header, and C11 <threads.h>.
+        listOf(
+            "main", "abort", "qsort", "strtoull", "fopen", "vsnprintf", "memcpy", "strtok", "clock_gettime", "timespec",
+            "size_t", "int64_t", "imaxdiv", "signal", "setjmp", "va_list", "setlocale", "fesetround", "isalnum", "wcslen",
+            "mbrtoc32", "thrd_create", "mtx_lock", "cnd_wait", "tss_get", "call_once",
+        ).forEach { assertTrue(CppNames.isCGlobal(it), "$it is a C17 global") }
+        // glibc's extras under _GNU_SOURCE, and what libstdc++ and libc++ pull in through <thread>
+        // (<pthread.h>, <sched.h>), <cstdlib> and <cstring>: measured by kira/cpp/tools/c_global_names.py.
+        listOf(
+            "clone", "unshare", "sched_yield", "pthread_create", "pthread_mutex_lock", "qsort_r", "reallocarray",
+            "mkostemp", "getpt", "strfromd", "strcasestr", "memalign", "sincosf", "exp10l",
+        ).forEach { assertTrue(CppNames.isCGlobal(it), "$it is declared at global scope by a header the runtime includes") }
+        // and a namespace that meets none of them stays as it is
+        listOf("proto", "bibowire", "odom", "course", "text", "scan", "chain", "plant", "band", "viewer", "Reply")
+            .forEach { assertFalse(CppNames.isCGlobal(it), "$it is no C library global") }
+        assertEquals("time_", CppNames.escapeNamespaceSegment("time"))
+        assertEquals("time", CppNames.escapeNestedSegment("time"))
+        assertEquals("new_", CppNames.escapeNestedSegment("new"))
+        assertEquals("linux_", CppNames.escapeNestedSegment("linux"))
+        // A Kira identifier starts with a letter, so the list never needs a reserved `_name`.
+        assertTrue(CppNames.C_GLOBAL_NAMES.none { it.startsWith("_") }, "the list holds only names a Kira module can have")
+        assertTrue(CppNames.C_GLOBAL_NAMES.size > 2000, "the measured list has ${CppNames.C_GLOBAL_NAMES.size} names")
+    }
 }

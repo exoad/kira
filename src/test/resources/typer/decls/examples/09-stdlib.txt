@@ -1,4 +1,4 @@
-module app:main  profile=HOSTED ns=main imports=[app:text]
+module app:main  profile=HOSTED ns=main_ imports=[app:text]
   fn main: () Void  body
 module app:text  profile=HOSTED ns=text imports=[]
   fn shout: (value: Str) Str  pub body
