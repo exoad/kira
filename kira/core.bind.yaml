@@ -86,3 +86,19 @@ Num.toFloat32: { cpp: { expr: "kira::as<float>({self})", pure: true, constexpr: 
 Num.toFloat64: { cpp: { expr: "kira::as<double>({self})", pure: true, constexpr: true } }
 
 bitCast:       { cpp: { expr: "kira::bitCast<{T0}>({0})", pure: true, constexpr: true } }
+enumOf:        { cpp: { expr: "kira::enumOf<{T0}>({0})", pure: true, constexpr: true } }
+
+# kira::StrBuf<N> (core.hxx) is a literal type, so every entry is constexpr. An
+# interpolation passed to StrBuf.set / StrBuf.add is typed View<Char> and never
+# becomes a Str: the emitter lowers it to clear() (set only) and one add / addInt /
+# addUInt / addFixed / addChar per piece (design section 10), not to these exprs.
+StrBuf.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
+StrBuf.isEmpty:  { cpp: { expr: "{self}.isEmpty()", pure: true, constexpr: true } }
+StrBuf.view:     { cpp: { expr: "{self}.view()", pure: true, constexpr: true } }
+StrBuf.clear:    { cpp: { expr: "{self}.clear()", constexpr: true } }
+StrBuf.add:      { cpp: { expr: "{self}.add({0})", constexpr: true } }
+StrBuf.addChar:  { cpp: { expr: "{self}.addChar({0})", constexpr: true } }
+StrBuf.addInt:   { cpp: { expr: "{self}.addInt({0})", constexpr: true } }
+StrBuf.addUInt:  { cpp: { expr: "{self}.addUInt({0})", constexpr: true } }
+StrBuf.addFixed: { cpp: { expr: "{self}.addFixed({0}, {1})", constexpr: true } }
+StrBuf.set:      { cpp: { expr: "({self}.clear(), {self}.add({0}))", constexpr: true } }

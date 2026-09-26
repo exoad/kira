@@ -4,3 +4,4 @@ module app:main  profile=HOSTED ns=main_ imports=[app:ranges, app:checks]
   fn main: () Void  body
 module app:ranges  profile=HOSTED ns=ranges imports=[]
   fn sumTo: (limit: Int32) Int32  body
+diag warning types.for.legacy app/ranges.kira:5:5  `for mut i: a..b` includes b and is deprecated (D17); write `for i: T in a..(b + 1)`, whose range excludes its end.

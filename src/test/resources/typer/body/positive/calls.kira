@@ -1,0 +1,102 @@
+module "fixture:body.calls"
+
+// Calls (design 3.3): named arguments, defaults, mut parameters, explicit type arguments, the
+// stdlib's @_infer math (D20), the print family, magic methods and function values. R5, R6,
+// R8, R21.
+
+pub LIMIT: Int32 = 3
+
+pub fx sub: (a: Int32, b: Int32) Int32 {
+    return a - b                           // @type Int32
+}
+
+pub fx command: (verb: Str, args: Str = "", retries: Int32 = LIMIT) Str {
+    return verb                            // @type Str place=Param(verb)
+}
+
+pub fx bump: (mut value: Int32, by: Int32 = 1) Void {
+    value += by                            // @type Void
+}
+
+fx id<T>: (value: T) T {
+    return value                           // @type T
+}
+
+pub fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    return f(x)                            // @type Int32 call=FN_VALUE
+}
+
+fx twice: (x: Int32) Int32 {
+    return x * 2                           // @type Int32
+}
+
+pub fx calls: () Void {
+    r1: Int32 = sub(10, 3)                 // @type Int32 call=FREE(sub)
+    r2: Int32 = sub(b = 3, a = 10)         // @type Int32 call=FREE(sub)
+    r3: Str = command("go")                // @type Str call=FREE(command)
+    r4: Str = command("go", retries = 5)   // @type Str call=FREE(command)
+    r4b: Str = command(verb = "go", args = "x") // @type Str call=FREE(command)
+    mut n: Int32 = 0
+    bump(mut n)                            // @type Void call=FREE(bump)
+    bump(mut n, 4)                         // @type Int32 place=Local(n) @ n
+    r5: Int32 = id<Int32>(7)               // @type Int32 call=FREE(id)
+    r6: Str = id<Str>("s")                 // @type Str call=FREE(id)
+    r7: Int32 = apply(twice, 5)            // @type Fx<Tuple1<Int32>, Int32> coerce=FnRef(fixture:body.calls.twice) @ twice
+    r8: Float64 = sqrt(2.0)                // @type Float64 call=MAGIC(sqrt)
+    f32: Float32 = 2.0
+    r9: Float32 = sqrt(f32)                // @type Float32 call=MAGIC(sqrt)
+    r10: Float32 = min(f32, 1.0)           // @type Float32 const=1.0:Float32 @ 1.0
+    r11: Float32 = floor(0.5)              // @type Float32 const=0.5:Float32 @ 0.5
+    r12: Float64 = pow(2.0, 10.0)          // @type Float64 call=MAGIC(pow)
+    r13: Float32 = abs(f32 - 3.0)          // @type Float32 call=MAGIC(abs)
+    r14: Float64 = max(1.0, 2.0)           // @type Float64 call=MAGIC(max)
+    trace(r1)                              // @type Void call=PRINT
+    println("x")                           // @type Void call=PRINT(println)
+    print(r8)                              // @type Void call=PRINT(print)
+    assert(r1 == 7, "seven")               // @type Void call=MAGIC(assert)
+    s: Str = "abc"
+    len: Size = s.length()                 // @type Size call=MAGIC(Str.length)
+    up: Str = s.toUpper()                  // @type Str call=MAGIC(Str.toUpper)
+    sub2: Str = s.substring(0, 2)          // @type Size const=0:Size @ 0
+    at: Maybe<Size> = s.find("b")          // @type Maybe<Size> call=MAGIC(Str.find)
+    mut xs: List<Int32> = List<Int32> { }
+    xs.add(3)                              // @type Void call=MAGIC(List.add)
+    got: Int32 = xs.get(0)                 // @type Int32 call=MAGIC(List.get)
+    count: Int32 = 7
+    wide: Int64 = count.toInt64()          // @type Int64 call=MAGIC(Num.toInt64)
+    small: Int8 = -3
+    ab: Int8 = small.abs()                 // @type Int8 call=MAGIC(Num.abs)
+    eq: Bool = s.equals("abc")             // @type Bool call=MAGIC(Equatable.equals)
+    hc: Int64 = s.hashCode()               // @type Int64 call=MAGIC(Hashable.hashCode)
+    xs.add(r1)                             // @type Int32 place=Local(r1) @ r1
+    mut ages: Map<Str, Int32> = Map<Str, Int32> { }
+    ages.put("ada", 36)                    // @type Void call=MAGIC(Map.put)
+    found: Maybe<Int32> = ages.get("ada")  // @type Maybe<Int32> call=MAGIC(Map.get)
+    mut seen: Set<Int32> = Set<Int32> { }
+    added: Bool = seen.add(1)              // @type Bool call=MAGIC(Set.add)
+    seen.add(2)                            // @type Bool call=MAGIC(Set.add)
+}
+
+pub NAME: Str = "kira"
+
+pub fx receivers: () Size {
+    return NAME.length()                   // @type Str coerce=StrConstReceiver @ NAME
+}
+
+// R7 (D7): a @_const function types like any other; a static assert may call one, and one of
+// constants alone folds.
+pub @_const fx square: (x: Int32) Int32 {
+    return x * x                           // @type Int32
+}
+
+@_static_assert(square(3) == 9, "square") // @type Bool @ square(3) == 9
+@_static_assert(LIMIT * 2 == 6, "limit")  // @type Bool const=true @ LIMIT * 2 == 6
+
+// R19 (D33): two impure arguments; sourceOrder is their written order.
+fx next: () Int32 {
+    return 1
+}
+
+pub fx spilled: () Int32 {
+    return sub(next(), next())             // @type Int32 call=FREE(sub)
+}

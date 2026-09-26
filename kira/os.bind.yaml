@@ -1,0 +1,83 @@
+# Magic binding manifest for kira:os (C++ backend only).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips
+# it (the C backend has no sockets). Keys are `Type.method` and the bare
+# name of each free function; placeholders and flags as in core.bind.yaml.
+# Every class here is a Kira class, so `{self}` is a kira::Rc<C> (design
+# 5.1) and the member is reached with `->`. Nothing is pure: every call
+# reaches the operating system, or reads a per-thread error it may have set.
+#
+# The module's two structs (Datagram, Ready) and its constants (POLL_*,
+# SIGNAL_*) are not bindings: kira/cpp/kira/os.hxx defines them by hand as
+# kira::os::Datagram, kira::os::Ready and inline constexpr constants, the
+# aggregate and constant forms of design 5.2, under the kira::os namespace
+# that the kira:os URI maps to (D14).
+#
+# Runtime names, declared in kira/cpp/kira/os.hxx and defined in os.cxx,
+# namespace kira::os: lastError; UdpSocket (bind, localPort, sendTo,
+# recvFrom, handle, close); TcpListener (listen, localPort, accept, handle,
+# close); TcpStream (connect, read, write, isOpen, handle, close); Poller
+# (add, remove, wait); Serial (open, read, write, isOpen, handle, close);
+# readFile, readText, writeFileAtomic, listDir, exists, makeDirs, freeBytes;
+# Process (readStdout, kill, wait, isRunning, stdoutHandle), spawnProcess;
+# onSignal, env, exit.
+
+lastError: { cpp: { expr: "kira::os::lastError()", includes: ["kira/os.hxx"] } }
+
+# --- UdpSocket -------------------------------------------------------------
+UdpSocket.bind:      { cpp: { expr: "{self}->bind({0}, {1})", includes: ["kira/os.hxx"] } }
+UdpSocket.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] } }
+UdpSocket.sendTo:    { cpp: { expr: "{self}->sendTo({0}, {1}, {2})", includes: ["kira/os.hxx"] } }
+UdpSocket.recvFrom:  { cpp: { expr: "{self}->recvFrom({0})", includes: ["kira/os.hxx"] } }
+UdpSocket.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
+UdpSocket.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+
+# --- TcpListener -----------------------------------------------------------
+TcpListener.listen:    { cpp: { expr: "{self}->listen({0})", includes: ["kira/os.hxx"] } }
+TcpListener.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] } }
+TcpListener.accept:    { cpp: { expr: "{self}->accept()", includes: ["kira/os.hxx"] } }
+TcpListener.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
+TcpListener.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+
+# --- TcpStream -------------------------------------------------------------
+TcpStream.connect: { cpp: { expr: "{self}->connect({0}, {1})", includes: ["kira/os.hxx"] } }
+TcpStream.read:    { cpp: { expr: "{self}->read({0})", includes: ["kira/os.hxx"] } }
+TcpStream.write:   { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] } }
+TcpStream.isOpen:  { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] } }
+TcpStream.handle:  { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
+TcpStream.close:   { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+
+# --- Poller ----------------------------------------------------------------
+Poller.add:    { cpp: { expr: "{self}->add({0}, {1})", includes: ["kira/os.hxx"] } }
+Poller.remove: { cpp: { expr: "{self}->remove({0})", includes: ["kira/os.hxx"] } }
+Poller.wait:   { cpp: { expr: "{self}->wait({0})", includes: ["kira/os.hxx"] } }
+
+# --- Serial ----------------------------------------------------------------
+Serial.open:   { cpp: { expr: "{self}->open({0}, {1})", includes: ["kira/os.hxx"] } }
+Serial.read:   { cpp: { expr: "{self}->read({0}, {1})", includes: ["kira/os.hxx"] } }
+Serial.write:  { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] } }
+Serial.isOpen: { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] } }
+Serial.handle: { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
+Serial.close:  { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+
+# --- files -----------------------------------------------------------------
+readFile:        { cpp: { expr: "kira::os::readFile({0})", includes: ["kira/os.hxx"] } }
+readText:        { cpp: { expr: "kira::os::readText({0})", includes: ["kira/os.hxx"] } }
+writeFileAtomic: { cpp: { expr: "kira::os::writeFileAtomic({0}, {1})", includes: ["kira/os.hxx"] } }
+listDir:         { cpp: { expr: "kira::os::listDir({0})", includes: ["kira/os.hxx"] } }
+exists:          { cpp: { expr: "kira::os::exists({0})", includes: ["kira/os.hxx"] } }
+makeDirs:        { cpp: { expr: "kira::os::makeDirs({0})", includes: ["kira/os.hxx"] } }
+freeBytes:       { cpp: { expr: "kira::os::freeBytes({0})", includes: ["kira/os.hxx"] } }
+
+# --- Process ---------------------------------------------------------------
+Process.readStdout:   { cpp: { expr: "{self}->readStdout({0})", includes: ["kira/os.hxx"] } }
+Process.kill:         { cpp: { expr: "{self}->kill()", includes: ["kira/os.hxx"] } }
+Process.wait:         { cpp: { expr: "{self}->wait()", includes: ["kira/os.hxx"] } }
+Process.isRunning:    { cpp: { expr: "{self}->isRunning()", includes: ["kira/os.hxx"] } }
+Process.stdoutHandle: { cpp: { expr: "{self}->stdoutHandle()", includes: ["kira/os.hxx"] } }
+spawnProcess:         { cpp: { expr: "kira::os::spawnProcess({0})", includes: ["kira/os.hxx"] } }
+
+# --- signals, environment, exit --------------------------------------------
+onSignal: { cpp: { expr: "kira::os::onSignal({0}, {1})", includes: ["kira/os.hxx"] } }
+env:      { cpp: { expr: "kira::os::env({0})", includes: ["kira/os.hxx"] } }
+exit:     { cpp: { expr: "kira::os::exit({0})", includes: ["kira/os.hxx"] } }

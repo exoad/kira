@@ -8,5 +8,13 @@ module app:grid  profile=HOSTED ns=grid imports=[]
     fn printGrid: () Void  body
 module app:main  profile=HOSTED ns=main_ imports=[app:grid]
   fn main: () Void  body
+diag error types.index.size app/grid.kira:24:44  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
+diag error types.index.size app/grid.kira:40:38  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
+diag error types.assign.mismatch app/grid.kira:43:26  argument 'index' expects Size, but this is Int32.
+diag error types.assign.mismatch app/grid.kira:45:26  argument 'index' expects Size, but this is Int32.
+diag error types.assign.mismatch app/grid.kira:47:26  argument 'index' expects Size, but this is Int32.
+diag error types.index.size app/grid.kira:53:38  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
+diag error types.assign.mismatch app/grid.kira:54:23  argument 'index' expects Size, but this is Int32.
+diag error types.index.size app/grid.kira:65:26  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
 diag error types.type.not-visible app/main.kira:6:8  'Grid' is declared in app:grid but is not pub, so this module cannot use it.
 diag error types.type.not-visible app/main.kira:6:15  'Grid' is declared in app:grid but is not pub, so this module cannot use it.
