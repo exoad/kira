@@ -65,9 +65,10 @@ import java.util.WeakHashMap
  * };
  * ```
  * - `public:` holds the constructor, the two copy deletes, the destructor (from `finally`,
- *   or a virtual default when the class is a base), the `pub` methods and the `pub` fields;
- *   `private:` the other methods and fields; each in Kira declaration order, with no blank
- *   line inside the class. A class is an identity: copying one is deleted.
+ *   or a virtual default for the first class of a chain with virtual methods), the `pub`
+ *   methods and the `pub` fields; `private:` the other methods and fields; each in Kira
+ *   declaration order, with no blank line inside the class. A class is an identity:
+ *   copying one is deleted.
  * - The constructor takes every field of the superclass chain, root first, in declaration
  *   order, each by value as `<field>_`; the trailing run of defaulted fields are C++ default
  *   arguments; it is `explicit` for exactly one parameter. Its mem-initializers keep that
@@ -88,10 +89,12 @@ import java.util.WeakHashMap
  * A trait is an abstract class with a virtual destructor. A bodyless method is pure, a
  * method with a body a virtual default whose body goes where a class member's would. Trait
  * inheritance is public, and `virtual` only for a trait that some class or trait of the
- * program reaches twice (a diamond). A virtual cannot be a template, so an `Fx` parameter
- * of a virtual method is always `kira::Fn`. A struct implementing a trait never derives it
- * in C++ (static dispatch through a generic bound, D1); boxing one into a trait value is
- * refused ([upcast], D43).
+ * program reaches twice (a diamond); a class or trait that inherits a method of that trait
+ * by dominance declares a forwarding override ([CppClassFacts.forwarders]), and one that
+ * inherits two different overriders is refused. A virtual cannot be a template, so an `Fx`
+ * parameter of a virtual method is always `kira::Fn`. A struct implementing a trait never
+ * derives it in C++ (static dispatch through a generic bound, D1); boxing one into a trait
+ * value is refused ([upcast], D43).
  */
 class CppClassEmitter : CppClassesPart {
     private val factsByModel = WeakHashMap<TypedModel, CppClassFacts>()
@@ -804,8 +807,13 @@ class CppClassFacts(private val program: TypedProgram) {
         return isKiraClass(sup) && sup !== c && hasVirtualDestructor(sup)
     }
 
-    /** [c] declares `virtual ~C()`: a base of the program, or a class with virtual methods, whose bases have none. */
-    fun ownsVirtualDestructor(c: ClassSymbol): Boolean = !baseHasVirtualDestructor(c) && (c.isSubclassed || c.methods.any { it.isVirtual })
+    /**
+     * [c] declares `virtual ~C()`: it has virtual methods and no base gave it a virtual
+     * destructor (`-Wnon-virtual-dtor`, the goldens' convention). A base without virtual
+     * methods stays non-polymorphic: every Kira reference to a subclass comes from
+     * `make_shared<Sub>`, whose control block destroys the object as a `Sub`.
+     */
+    fun ownsVirtualDestructor(c: ClassSymbol): Boolean = !baseHasVirtualDestructor(c) && c.methods.any { it.isVirtual }
 
     private fun hasVirtualDestructor(c: ClassSymbol): Boolean = baseHasVirtualDestructor(c) || ownsVirtualDestructor(c)
 

@@ -354,6 +354,7 @@ class CppClassShapeTest {
                 pub fx f: () Int32 { return 1 }
             }
             pub class B: A {
+                override pub fx f: () Int32 { return 2 }
                 finally {
                     trace(2)
                 }
@@ -374,9 +375,25 @@ class CppClassShapeTest {
             }
             """
         )
-        // A is a base: its own virtual destructor; B's and C's then override it; D's trait has one
+        // A's f is virtual: A has the virtual destructor; B's and C's then override it; D's trait has one
         assertContains(h, "      virtual ~A() = default;\n", "      ~B() override;\n", "      ~C() override;\n", "      ~D() override;\n")
         assertContains(h, "  class B : public A\n", "  class C final : public B\n")
+
+        // a base without virtual methods stays non-polymorphic
+        val plain = header(
+            """
+            pub class Base {
+                pub fx f: () Int32 { return 1 }
+            }
+            pub class Leaf: Base {
+                finally {
+                    trace(2)
+                }
+            }
+            """
+        )
+        assertContains(plain, "  class Base\n  {\n  public:\n      Base() = default;\n      Base(const Base&) = delete;\n      Base& operator=(const Base&) = delete;\n      [[nodiscard]] std::int32_t f() const;\n  };", "      ~Leaf();\n")
+        assertLacks(plain, "virtual")
     }
 
     @Test
