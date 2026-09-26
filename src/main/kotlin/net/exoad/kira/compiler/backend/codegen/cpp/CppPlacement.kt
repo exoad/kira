@@ -39,6 +39,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolationPart
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
+import java.util.Collections
 import java.util.IdentityHashMap
 
 /** Where a declaration (or its definition) is written. */
@@ -908,7 +909,12 @@ class CppUsage private constructor(
  * name in the same namespace does. The exported name's out-of-line bodies sit in
  * `namespace shared` outside the anonymous one, and a body there naming `LIMIT` finds both
  * `shared::LIMIT` and `shared::{anonymous}::LIMIT` (measured, g++: "reference to 'LIMIT' is
- * ambiguous"). A module's namespace nested under another's (`bibo::text` beside `bibo`)
+ * ambiguous"). That needs the two in one translation unit: the private module's `.cxx`,
+ * which sees another module's header only through the modules it `use`s, directly or
+ * through their headers. So a private name meets an exported one only when the exporting
+ * module is in the private module's transitive `use` closure ([ModuleSymbol.imports]); two
+ * modules of one namespace that never reach each other keep their names. A module's
+ * namespace nested under another's (`bibo::text` beside `bibo`)
  * collides with a declaration of that name (`pub struct text` in `bibo`) the same way, since
  * C++ has one meaning per name and scope. Stdlib modules are skipped: each has its own
  * `kira::<segments>` by construction.
@@ -956,13 +962,21 @@ class CppNamespaceCollisions private constructor(private val byModule: Map<Modul
                     add(segments.subList(0, i).joinToString("::"), segments[i], Entry(m, null, null))
                 }
             }
+            val reach = IdentityHashMap<ModuleSymbol, Set<ModuleSymbol>>()
+            modules.forEach { m -> reach[m] = reachableFrom(m) }
+            /** Whether [a] and [b] can sit in one translation unit: a private name only with what its own `.cxx` includes. */
+            fun meet(a: Entry, b: Entry): Boolean = when {
+                a.isPrivate && b.isPrivate -> false // two anonymous namespaces never meet
+                a.isPrivate -> b.module in reach[a.module].orEmpty()
+                b.isPrivate -> a.module in reach[b.module].orEmpty()
+                else -> true
+            }
             val byModule = IdentityHashMap<ModuleSymbol, MutableList<CppDiagnostic>>()
             entries.forEach { (key, list) ->
                 val scope = key.substringBeforeLast("::")
                 val name = key.substringAfterLast("::")
                 list.forEach { entry ->
-                    // Two private names live in two anonymous namespaces and never meet; anything else does.
-                    val colliding = list.filter { it.module !== entry.module && !(it.isPrivate && entry.isPrivate) }
+                    val colliding = list.filter { it.module !== entry.module && meet(entry, it) }
                     if (colliding.isEmpty()) {
                         return@forEach
                     }
@@ -980,6 +994,19 @@ class CppNamespaceCollisions private constructor(private val byModule: Map<Modul
                 }
             }
             return CppNamespaceCollisions(byModule)
+        }
+
+        /** Every module [m]'s `.cxx` can include a header of: what it `use`s, and what those use, and so on; never [m] itself. */
+        private fun reachableFrom(m: ModuleSymbol): Set<ModuleSymbol> {
+            val seen = Collections.newSetFromMap(IdentityHashMap<ModuleSymbol, Boolean>())
+            val todo = ArrayDeque(m.imports)
+            while (todo.isNotEmpty()) {
+                val next = todo.removeFirst()
+                if (next !== m && seen.add(next)) {
+                    todo.addAll(next.imports)
+                }
+            }
+            return seen
         }
 
         private fun describe(entry: Entry, program: TypedProgram, ctx: CppEmitContextImpl): String {

@@ -1025,9 +1025,15 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             return v.toString().replace('E', 'e')
         }
 
-        /** A C++ string literal for [s]: escapes for `"`, `\`, the C0 controls and DEL; UTF-8 bytes pass through. */
+        /**
+         * A C++ string literal for [s]: escapes for `"`, `\`, the C0 controls and DEL; UTF-8
+         * bytes pass through. A `?` that follows a `?` is written `\?`, so the text never
+         * holds a trigraph (`??=`, `??/`, `??'`, `??(`, `??)`, `??!`, `??<`, `??>`, `??-`):
+         * gcc and clang warn on one under `-Wall`, and the warning contract makes that an error.
+         */
         fun cppString(s: String): String {
             val sb = StringBuilder("\"")
+            var previous = ' '
             s.forEach { c ->
                 when (c) {
                     '"' -> sb.append("\\\"")
@@ -1035,8 +1041,10 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                     '\n' -> sb.append("\\n")
                     '\t' -> sb.append("\\t")
                     '\r' -> sb.append("\\r")
+                    '?' -> sb.append(if (previous == '?') "\\?" else "?")
                     else -> if (c.code < 0x20 || c.code == 0x7f) sb.append(String.format(Locale.ROOT, "\\%03o", c.code)) else sb.append(c)
                 }
+                previous = c
             }
             return sb.append('"').toString()
         }
