@@ -11,7 +11,10 @@ import kotlin.test.assertTrue
  * used, and which operands are left alone (the evalorder golden runs the same rules on gcc,
  * clang and msvc). Without EffectsPass (W2.5) a call's absent effect is impure, a stdlib
  * binding marked `pure: true` is pure, a read of a `mut` global, a field or a by-reference
- * parameter is READS, and an operand holding neither is pure.
+ * parameter is READS, and an operand holding neither is pure. A Str, struct or container
+ * read beside an effect is copied first (D33 reads it before the effect; C++'s const& would
+ * hand the callee the object as the effect left it), except where the call lends a view from
+ * it, which would point into the copy.
  */
 class CppHoisterTest {
     private val module = Module(
@@ -107,12 +110,65 @@ class CppHoisterTest {
             return total(garr.from(nextSize()))
         }
 
-        pub fx mapReadInPlace: () Int32 {
+        pub fx mapReadBeside: () Int32 {
             return gm.get(putKey()).unwrapOr(-1)
         }
 
-        pub fx listReadInPlace: () Int32 {
+        pub fx listReadBeside: () Int32 {
             return gl.get(pushed())
+        }
+
+        mut gs: Str = "a"
+
+        fx changeS: () Int32 {
+            gs = "b"
+            return 1
+        }
+
+        fx resetL: () Int32 {
+            gl = List<Int32> { values = [8] }
+            return 0
+        }
+
+        fx pairS: (s: Str, k: Int32) Str {
+            return "${'$'}{s}${'$'}{k}"
+        }
+
+        fx firstL: (xs: List<Int32>, k: Int32) Int32 {
+            return xs.get(0) + k
+        }
+
+        pub fx strBeside: () Str {
+            return pairS(gs, changeS())
+        }
+
+        pub fx strHole: () Str {
+            return "${'$'}{gs}:${'$'}{changeS()}"
+        }
+
+        pub fx listBeside: () Int32 {
+            return firstL(gl, resetL())
+        }
+
+        pub fx localStrBeside: () Str {
+            s: Str = "x"
+            return pairS(s, changeS())
+        }
+
+        pub fx setOnce: (mut bufs: Arr<StrBuf<8>, 3>) Void {
+            bufs[nextSize()].set("x")
+        }
+
+        pub fx setPlain: (mut buf: StrBuf<8>) Void {
+            buf.set("x")
+        }
+
+        pub fx piecesOnce: (mut bufs: Arr<StrBuf<8>, 3>, n: Int32) Void {
+            bufs[nextSize()].set("a${'$'}{n}b")
+        }
+
+        pub fx piecesPlain: (mut buf: StrBuf<8>, n: Int32) Void {
+            buf.set("a${'$'}{n}b")
         }
 
         pub fx scalarElementBeside: () Int32 {
@@ -266,13 +322,28 @@ class CppHoisterTest {
     }
 
     @Test
-    fun anImpureReceiverIsCopiedBeforeTheArgumentsAndAStructPlaceIsReadInPlace() {
+    fun anImpureReceiverIsCopiedBeforeTheArgumentsAndSoIsAStructParameter() {
         val b = body("receiverFirst")
         assertTrue(b.contains("const Box t0_ = makeBox();\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return t0_.pair(t1_, t2_);"), b)
-        // A struct parameter is a place C++ holds by const&: the call reads it itself, never a copy.
+        // A struct parameter is a const& to the caller's object, which next() may write: D33
+        // reads the receiver first, so it is copied before the arguments run.
         val local = body("localReceiver")
-        assertTrue(local.contains("const std::int32_t t0_ = next();\n          const std::int32_t t1_ = next();\n          return b.pair(t0_, t1_);"), local)
-        assertFalse(local.contains("= b;"), local)
+        assertTrue(local.contains("const Box t0_ = b;\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return t0_.pair(t1_, t2_);"), local)
+    }
+
+    @Test
+    fun aStrStructOrListGlobalBesideACallThatReassignsItIsCopiedFirst() {
+        // D33: `show(gs, changeS())` passes the old gs; C++'s const& would pass the new one.
+        val s = body("strBeside")
+        assertTrue(s.contains("const kira::Str t0_ = gs;\n          const std::int32_t t1_ = changeS();\n          return pairS(t0_, t1_);"), s)
+        val hole = body("strHole")
+        assertTrue(hole.contains("const kira::Str t0_ = gs;\n          const std::int32_t t1_ = changeS();\n          return kira::cat(t0_, \":\", t1_);"), hole)
+        val list = body("listBeside")
+        assertTrue(list.contains("const kira::List<std::int32_t> t0_ = gl;\n          const std::int32_t t1_ = resetL();\n          return firstL(t0_, t1_);"), list)
+        // A local is nothing a sibling can change: read where it is (a parameter is a const&
+        // to the caller's object, so it is copied like a global).
+        val local = body("localStrBeside")
+        assertTrue(local.contains("return pairS(s, changeS());"), local)
     }
 
     @Test
@@ -310,19 +381,46 @@ class CppHoisterTest {
 
     @Test
     fun aMemberStyleAndAFreeFunctionBindingReadTheirReceiverTheSameWay() {
-        val map = body("mapReadInPlace")
-        assertTrue(map.contains("gm.get(putKey())"), map)
-        assertFalse(map.contains("= gm;"), "the Map is read in place, not copied:\n$map")
-        val list = body("listReadInPlace")
-        assertTrue(list.contains("return kira::at(gl, pushed());"), list)
+        // A container receiver beside an effect is read before it (D33): copied, whichever
+        // binding spells the call, unless the call lends a view from it.
+        val map = body("mapReadBeside")
+        assertTrue(map.contains("const kira::Map<std::int32_t, std::int32_t> t0_ = gm;\n          const std::int32_t t1_ = putKey();\n          return t0_.get(t1_);"), map)
+        val list = body("listReadBeside")
+        assertTrue(list.contains("const kira::List<std::int32_t> t0_ = gl;\n          const kira::Size t1_ = pushed();\n          return kira::at(t0_, t1_);"), list)
     }
 
     @Test
-    fun aScalarElementBesideAnEffectIsCopiedAndAStructElementReceiverIsReadInPlace() {
+    fun aScalarElementAndAStructElementReceiverBesideAnEffectAreCopiedAfterTheirPath() {
         val scalar = body("scalarElementBeside")
         assertTrue(scalar.contains("const std::int32_t t0_ = kira::at(garr, row);\n          const std::int32_t t1_ = next();\n          return sub(t0_, t1_);"), scalar)
+        // The element's path is ordered first (row is shared state), then the element is copied.
         val element = body("structElementReceiver")
-        assertTrue(element.contains("const kira::Size t0_ = row;\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return kira::at(gboxes, t0_).pair(t1_, t2_);"), element)
+        assertTrue(element.contains("const kira::Size t0_ = row;\n          const Box t1_ = kira::at(gboxes, t0_);\n          const std::int32_t t2_ = next();\n          const std::int32_t t3_ = next();\n          return t1_.pair(t2_, t3_);"), element)
+    }
+
+    @Test
+    fun aBindingThatRepeatsItsReceiverLocatesItOnce() {
+        // StrBuf.set is `({self}.clear(), {self}.add({0}))`: an impure index in the receiver runs once.
+        val set = body("setOnce")
+        assertTrue(set.contains("const kira::Size t0_ = nextSize();\n          (kira::at(bufs, t0_).clear(), kira::at(bufs, t0_).add(kira::lit(\"x\")));"), set)
+        assertFalse(set.contains("kira::at(bufs, nextSize())"), set)
+        // A receiver that is a plain place needs nothing.
+        val plain = body("setPlain")
+        assertTrue(plain.contains("(buf.clear(), buf.add(kira::lit(\"x\")));"), plain)
+        assertFalse(plain.contains("[&]"), plain)
+    }
+
+    @Test
+    fun aStrBufInterpolationLocatesItsReceiverOnceBeforeThePieces() {
+        val pieces = body("piecesOnce")
+        assertTrue(
+            pieces.contains("const kira::Size t0_ = nextSize();\n          kira::at(bufs, t0_).clear(), kira::at(bufs, t0_).add(kira::lit(\"a\")), kira::at(bufs, t0_).addInt(n), kira::at(bufs, t0_).add(kira::lit(\"b\"));"),
+            pieces,
+        )
+        assertFalse(pieces.contains("kira::at(bufs, nextSize())"), pieces)
+        // A plain receiver: one statement per piece (design 10).
+        val plain = body("piecesPlain")
+        assertTrue(plain.contains("buf.clear();\n      buf.add(kira::lit(\"a\"));\n      buf.addInt(n);\n      buf.add(kira::lit(\"b\"));"), plain)
     }
 
     @Test

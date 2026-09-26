@@ -82,9 +82,11 @@ if [[ ${#CPP_LEGS[@]} -gt 0 ]]; then
   fi
 fi
 CPP_RUNTIME_INC="$ROOT/kira/cpp"
-# kira/os.cxx in the emitted runtime tree uses WinSock, so a MinGW or MSYS c++ links it.
+# kira/os.cxx in the emitted runtime tree uses WinSock, so a MinGW or MSYS c++ links it;
+# a hosted link on Linux glibc passes -pthread, as kira/cpp/tests/goldens.sh does (gcc 11.4
+# on glibc 2.31 leaves pthread_create unresolved without it).
 CPP_LIBS=()
-case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) CPP_LIBS=(-lws2_32) ;; esac
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) CPP_LIBS=(-lws2_32) ;; Linux) CPP_LIBS=(-pthread) ;; esac
 cpp_legs_run=0
 
 C_PRELUDE_REF="$ROOT/examples/prelude.reference.c"

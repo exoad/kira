@@ -5,9 +5,10 @@ module "app:evalorder"
 // arguments and operands unsequenced (gcc and clang disagree on x86-64, measured in the
 // design's probes-B/evalorder) and runs the right side of `=` first, so the emitter spills
 // them into typed temporaries, in order, whenever one has an effect and another is not
-// pure (R19): a call is copied, a read of shared state is copied before the effect runs,
-// and a place (a mut argument, an assignment's target, the receiver a mut fx writes, a
-// struct, Str or container read where it lives) is never copied and never held by
+// pure (R19): a call is copied, a read of shared state is copied before the effect runs
+// (a Str, a struct or a container too, which C++ would otherwise hand the callee as the
+// effect left it), and a place (a mut argument, an assignment's target, the receiver a mut
+// fx writes, a container a call lends a view from) is never copied and never held by
 // reference: the values along its path (each index) are ordered like any other, and the
 // path is applied where the call or assignment uses it. Every line below would print
 // something else on some compiler, or read freed memory, if it did not.
@@ -54,14 +55,44 @@ fx makeBox: () Box {
     return Box { v = ticks }
 }
 
-fx pushed: () Size {
-    gl.add(7)
-    return gl.size() - 1
+fx putKey: () Int32 {
+    gm.put(1, 99)
+    return 1
 }
 
-fx putKey: () Int32 {
-    gm.put(1, 42)
+fx setFirst: () Size {
+    gl.set(0, 50)
+    return 0
+}
+
+mut gs: Str = "a"
+mut gb: Box = Box { v = 1 }
+
+fx changeS: () Int32 {
+    gs = "b"
     return 1
+}
+
+fx bumpB: () Int32 {
+    gb.v = 9
+    return 0
+}
+
+fx resetL: () Int32 {
+    gl = List<Int32> { values = [8] }
+    return 0
+}
+
+fx pairS: (s: Str, k: Int32) Str {
+    return "${s}${k}"
+}
+
+fx sumB: (b: Box, k: Int32) Int32 {
+    return b.v + k
+}
+
+fx firstL: (xs: List<Int32>, k: Int32) Int32 {
+    return xs.get(0) + k
 }
 
 fx tail: (xs: List<Int32>, at: Size) View<Int32> {
@@ -146,8 +177,30 @@ fx main: () Void {
     // A view lent from a global: 20 + 30 + 40.
     idx = 0
     trace(total(garr.from(nextSize())))
-    // A Map and a List receiver beside an effect are read the same way, in place: 42, then 7.
+    // A Map or a List receiver beside an effect is read before it, whichever binding spells
+    // the call: the copy holds 42, not the 99 putKey() writes, and 1, not the 50 setFirst() writes.
+    gm.put(1, 42)
     trace(gm.get(putKey()).unwrapOr(-1))
     gl.add(1)
-    trace(gl.get(pushed()))
+    gl.add(2)
+    trace(gl.get(setFirst()))
+    // A Str, a struct and a List global beside a call that reassigns or writes it are read
+    // before the call: a1, a:1, 1, then 1 (C++'s const& would hand the callee b, b, 9 and 8).
+    trace(pairS(gs, changeS()))
+    gs = "a"
+    trace("${gs}:${changeS()}")
+    trace(sumB(gb, bumpB()))
+    gl.set(0, 1)
+    trace(firstL(gl, resetL()))
+    // A binding that names its receiver twice (StrBuf.set) and a StrBuf interpolation, one
+    // call per piece, locate the receiver once: idx ends at 1 both times, and bufs[1] holds
+    // a2b, 3 characters.
+    mut bufs: Arr<StrBuf<8>, 3> = [StrBuf<8> { }, StrBuf<8> { }, StrBuf<8> { }]
+    idx = 0
+    bufs[nextSize()].set("x")
+    trace(idx)
+    idx = 0
+    bufs[nextSize()].set("a${two}b")
+    trace(idx)
+    trace(bufs[1].size())
 }

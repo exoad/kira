@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr
@@ -62,10 +63,16 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
  *   judges' B5 flaw) or lent from by a view the call returns (a use after free at the end of
  *   the lambda); a reference held while a sibling reallocates the container would dangle. A
  *   variable's own identity never changes, so a plain place has no parts and stays where it
- *   is. Every `mut` argument, assignment target and receiver a method writes is a place, and
- *   so is any value C++ passes by `const&` (a `Str`, a struct, a container, a type parameter:
- *   design 5.1) whenever it is read at a place: the call reads the object itself, as every
- *   unspilled call already does, and a view it lends points at the caller's storage.
+ *   is. Every `mut` argument, assignment target and receiver a method writes is a place.
+ * - A value C++ passes by `const&` (a `Str`, a struct, a container, a type parameter: design
+ *   5.1) read at a place is a place that may be [Operand.Place.snapshot]: D33 reads it before a
+ *   sibling's effect, and C++ would hand the callee the object as the effect left it
+ *   (`show(gs, changeS())` printed the new `gs`), so where it is not PURE it is copied like a
+ *   value, its path ordered first (`const kira::Str t0_ = gs;`). The one exception is a call,
+ *   construction or operator whose result [lends] a view (`tail(xs, nextSize())` returning
+ *   `View<Int32>`): the view would point into the copy, which dies with the lambda, so there
+ *   the place stays where it is and the call reads it as the effect left it. The decision is
+ *   [lower]'s, from the result type it is given.
  * - An operand's rank is `TypedModel.effects` (EffectsPass, W2.5). Where the model has no
  *   entry (before the merge, or for a node no pass visited), [rank] approximates the same
  *   three values: IMPURE for a call whose own entry is absent (absent means impure) unless
@@ -94,21 +101,24 @@ class CppHoister(private val lower: CppLowering) {
         /**
          * A place: [parts] are the values along its path, in source order, and [build] applies
          * the path to their texts. A place with no parts is a variable, `this` or a field of
-         * `this`: [build] spells it and nothing is ordered.
+         * `this`: [build] spells it and nothing is ordered. A [snapshot] place is a read of a
+         * value C++ holds by `const&`: copied like a value where the result does not lend a view.
          */
-        class Place(expr: Expr, val parts: List<Operand>, val build: (List<CppEx>) -> CppEx) : Operand(expr)
+        class Place(expr: Expr, val parts: List<Operand>, val snapshot: Boolean = false, val build: (List<CppEx>) -> CppEx) : Operand(expr)
     }
 
     /**
      * [build] over the operands' texts, spilling them first when D33 needs it, or when [force]
      * says the parts of a place among them must be computed exactly once (a compound
-     * assignment that names its target twice). [result] types the IIFE.
+     * assignment that names its target twice, a binding that repeats `{self}`). [result] types
+     * the IIFE and decides whether a snapshot place is copied (it is not where [result] lends).
      */
     fun lower(ops: List<Operand>, result: KType, force: Boolean = false, build: (List<CppEx>) -> CppEx): CppEx {
-        if (!force && !needsSpill(ops)) {
+        val copy = !lends(result)
+        if (!force && !needsSpill(ops, copy)) {
             return build(ops.map { text(it) })
         }
-        return spill(ops, result, build)
+        return spill(ops, result, copy, build)
     }
 
     /** The text of [op] where nothing needs ordering: a value as written, a place as its path over its parts' texts. */
@@ -117,28 +127,42 @@ class CppHoister(private val lower: CppLowering) {
         is Operand.Place -> op.build(op.parts.map { text(it) })
     }
 
-    /** Whether one leaf is [IMPURE] and another is not [PURE] (design R19, D33; `Effect`). */
-    fun needsSpill(ops: List<Operand>): Boolean {
-        val ranks = leaves(ops)
+    /**
+     * Whether one leaf is [IMPURE] and another is not [PURE] (design R19, D33; `Effect`). A
+     * snapshot place is a leaf of its own where it would be copied ([copy]), its parts' leaves
+     * where it stays in place.
+     */
+    fun needsSpill(ops: List<Operand>, copy: Boolean = true): Boolean {
+        val ranks = leaves(ops, copy)
         return ranks.any { it == IMPURE } && ranks.count { it != PURE } >= 2
     }
 
-    /** The rank of [op]: a value's evaluation, or the highest of a place's parts. */
+    /** The rank of [op]: a value's evaluation, or the highest of a place's parts (how its location is found). */
     fun rankOf(op: Operand): Int = when (op) {
         is Operand.Value -> op.expr?.let { rank(it) } ?: PURE
         is Operand.Place -> op.parts.maxOfOrNull { rankOf(it) } ?: PURE
     }
 
-    private fun leaves(ops: List<Operand>): List<Int> = ops.flatMap { op ->
+    /**
+     * Whether a result of type [t] lends a view into an operand (a `View` or `MutView`, alone
+     * or inside a `Maybe`, a tuple or a `Result`): its operands are read where they live.
+     */
+    fun lends(t: KType): Boolean {
+        val n = t as? KType.Nominal ?: return false
+        val name = CppBindingTable.magicName(n)
+        return name == "View" || name == "MutView" || n.typeArgs().any { lends(it) }
+    }
+
+    private fun leaves(ops: List<Operand>, copy: Boolean): List<Int> = ops.flatMap { op ->
         when (op) {
             is Operand.Value -> listOf(rankOf(op))
-            is Operand.Place -> leaves(op.parts)
+            is Operand.Place -> if (op.snapshot && copy) listOf(op.expr?.let { rank(it) } ?: PURE) else leaves(op.parts, copy)
         }
     }
 
-    private fun spill(ops: List<Operand>, result: KType, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
+    private fun spill(ops: List<Operand>, result: KType, copy: Boolean, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
         val lines = mutableListOf<String>()
-        val texts = ops.map { ordered(it, lines) }
+        val texts = ops.map { ordered(it, lines, copy) }
         val final = build(texts)
         val void = result == KType.Void || result == KType.Never
         lines += if (void) "${final.text};" else "return ${final.text};"
@@ -148,22 +172,28 @@ class CppHoister(private val lower: CppLowering) {
     /**
      * The text of [op] once its evaluation is ordered, the declarations that order it appended
      * to [lines]: a value that is not PURE is copied into a typed temporary, a place is its path
-     * over its ordered parts. Called inside a [CppBodyState.block] that an [iife] closes.
+     * over its ordered parts, and a snapshot place is that path copied where [copy] says the
+     * result lends nothing. Called inside a [CppBodyState.block] that an [iife] closes.
      */
-    fun ordered(op: Operand, lines: MutableList<String>): CppEx = when (op) {
-        is Operand.Place -> op.build(op.parts.map { ordered(it, lines) })
-        is Operand.Value -> {
-            val e = op.expr
-            val t = e?.let { lower.model.typeOrNull(it) }
-            if (e == null || rank(e) == PURE || t == null || t == KType.Void || t == KType.Never) {
-                op.emit()
-            } else {
-                val name = lower.state.fresh("t")
-                val init = op.emit()
-                lines += "${if (op.mutable) "" else "const "}${lower.ctx.spell(t, Pos.VALUE, e)} $name = ${lower.wrap(init, CppPrec.ASSIGN)};"
-                CppEx(name, CppPrec.PRIMARY)
-            }
+    fun ordered(op: Operand, lines: MutableList<String>, copy: Boolean = true): CppEx = when (op) {
+        is Operand.Place -> {
+            // The parts first, in source order; a snapshot copies the path over them.
+            val texts = op.parts.map { ordered(it, lines, copy) }
+            if (op.snapshot && copy) copied(op.expr, false, { op.build(texts) }, lines) else op.build(texts)
         }
+        is Operand.Value -> copied(op.expr, op.mutable, op.emit, lines)
+    }
+
+    /** [emit] copied into a typed temporary declared in [lines] when [e] is not PURE, else its text as written. */
+    private fun copied(e: Expr?, mutable: Boolean, emit: () -> CppEx, lines: MutableList<String>): CppEx {
+        val t = e?.let { lower.model.typeOrNull(it) }
+        if (e == null || rank(e) == PURE || t == null || t == KType.Void || t == KType.Never) {
+            return emit()
+        }
+        val name = lower.state.fresh("t")
+        val init = emit()
+        lines += "${if (mutable) "" else "const "}${lower.ctx.spell(t, Pos.VALUE, e)} $name = ${lower.wrap(init, CppPrec.ASSIGN)};"
+        return CppEx(name, CppPrec.PRIMARY)
     }
 
     /** [lines] (statements, the last a `return` unless [result] is Void) as an immediately invoked lambda. */

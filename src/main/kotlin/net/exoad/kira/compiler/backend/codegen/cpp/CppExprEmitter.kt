@@ -677,29 +677,41 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     fun isPlaceExpr(e: Expr): Boolean = model.place(e) != null
 
     /**
-     * [e] as an operand of a call, an operator or a construction: a place C++ holds by
-     * reference is a [CppHoister.Operand.Place] (its path applied where the operand is used,
-     * never copied), anything else a [CppHoister.Operand.Value] that [emit] spells.
+     * [e] as an operand of a call, an operator or a construction that reads it: a place C++
+     * holds by reference is a snapshot [CppHoister.Operand.Place] (D33 reads it before a
+     * sibling's effect, so the hoister copies it first, unless the result lends a view into
+     * it, where its path is applied in place), anything else a [CppHoister.Operand.Value] that
+     * [emit] spells.
      */
     fun operandOf(e: Expr, emit: () -> CppEx): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e, emit) else CppHoister.Operand.Value(e, emit = emit)
+        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e, emit, snapshot = true) else CppHoister.Operand.Value(e, emit = emit)
+
+    /**
+     * [e] as a step of a place's path (the container of an element, the struct a field is of):
+     * a place C++ holds by reference is the place itself, never a copy, so a write through the
+     * path lands where Kira wrote it; anything else (a call's result, a handle) is a value.
+     */
+    private fun pathOperand(e: Expr): CppHoister.Operand =
+        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e) else CppHoister.Operand.Value(e) { coerced(e) }
 
     /**
      * [target] as a place operand: an element is `kira::at(c, i)` (`c[i]` on a Map, `kira::str::at`
      * on a Str) over its container and index as parts, a field of a value place is `.f` over
      * the place, a field through a handle is `->f` over the handle as a value; a variable, `this`
      * and a field of `this` have no parts and [leaf] spells them. The path is applied at the end,
-     * over the parts as they were ordered (R19, D33).
+     * over the parts as they were ordered (R19, D33). A [snapshot] place is a read the hoister
+     * may copy; a place that is written (a `mut` argument, an assignment's target, the receiver
+     * a `mut fx` writes) or lent from is not.
      */
-    fun placeOperand(target: Expr, leaf: () -> CppEx = { coerced(target) }): CppHoister.Operand = when {
+    fun placeOperand(target: Expr, leaf: () -> CppEx = { coerced(target) }, snapshot: Boolean = false): CppHoister.Operand = when {
         target is ArrayIndexExpr -> {
             val origin = target.originExpr
             val ct = typeOf(origin)
-            val container = operandOf(origin) { coerced(origin) }
+            val container = pathOperand(origin)
             val index = CppHoister.Operand.Value(target.indexExpr) { coerced(target.indexExpr, CppLitRole.PLAIN) }
             val map = CppBindingTable.magicName(ct) == "Map"
             val at = if (ct == KType.Str) "kira::str::at" else "kira::at"
-            CppHoister.Operand.Place(target, listOf(container, index)) { (c, i) ->
+            CppHoister.Operand.Place(target, listOf(container, index), snapshot) { (c, i) ->
                 if (map) {
                     CppEx("${wrap(c, CppPrec.POSTFIX)}[${wrap(i, CppPrec.NONE)}]", CppPrec.POSTFIX)
                 } else {
@@ -710,10 +722,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         target is MemberAccessExpr && target.origin !is ThisExpr && model.member(target) is MemberRef.Field -> {
             val f = (model.member(target) as MemberRef.Field).field
             val origin = target.origin
-            val through = operandOf(origin) { coerced(origin) }
-            CppHoister.Operand.Place(target, listOf(through)) { (o) -> fieldWith(origin, o, f) }
+            val through = pathOperand(origin)
+            CppHoister.Operand.Place(target, listOf(through), snapshot) { (o) -> fieldWith(origin, o, f) }
         }
-        else -> CppHoister.Operand.Place(target, emptyList()) { leaf() }
+        else -> CppHoister.Operand.Place(target, emptyList(), snapshot) { leaf() }
     }
 
     /**
@@ -1268,22 +1280,23 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * The receiver of a call as an ordered operand (D33: Kira evaluates it before the
      * arguments; an IIFE that spills the arguments would otherwise run it after them), or null
      * for `this`, whose identity is fixed. A place C++ holds by reference (a struct, a `Str`, a
-     * container, a type parameter: [heldByReference]) is a place operand, whichever method or
-     * binding reads or writes it: the call runs on the object itself, so `gm.get(k())` and
-     * `gl.get(k())` read the same way, a `mut fx` writes the place, and a lending read lends
-     * from the caller's storage. A handle (a class, a trait, a `Ref`), a view, a scalar, and any
-     * receiver that is no place (a call's result) is a value: what the call holds is a copy of
-     * it, a plain `T t0_` when a member-style binding calls a non-const method on it.
+     * container, a type parameter: [heldByReference]) is a place operand: the one a `mut fx`
+     * writes or a lending method reads stays where it lives (the write lands there, the view
+     * points there), any other is a snapshot the hoister copies before a sibling's effect
+     * (D33), so `gm.get(k())` and `gl.get(k())` read the same way, whichever binding spells
+     * them. A handle (a class, a trait, a `Ref`), a view, a scalar, and any receiver that is
+     * no place (a call's result) is a value: what the call holds is a copy of it, a plain
+     * `T t0_` when a member-style binding calls a non-const method on it.
      */
     private fun receiverOperand(receiver: Expr, fn: FnSymbol?, memberStyle: Boolean, lending: Boolean, emit: () -> CppEx): CppHoister.Operand? {
         if (receiver is ThisExpr) {
             return null
         }
         val isPlace = isPlaceExpr(receiver)
-        if (isPlace && heldByReference(typeOf(receiver))) {
-            return placeOperand(receiver, emit)
-        }
         val writes = fn?.isMutMethod == true || lending
+        if (isPlace && heldByReference(typeOf(receiver))) {
+            return placeOperand(receiver, emit, snapshot = !writes)
+        }
         return CppHoister.Operand.Value(receiver, mutable = writes || (memberStyle && !isPlace)) { emit() }
     }
 
@@ -1501,7 +1514,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val shift = ops.size
         ops += argOps
-        return hoister.lower(ops, rc.returnType) { texts ->
+        // A binding that names an operand twice (`({self}.clear(), {self}.add({0}))`) would run
+        // an impure path or argument twice: such an operand is computed exactly once first.
+        val force = CppBindingTable.repeated(binding).any { name ->
+            val op = if (name == "self") ops.getOrNull(receiverIndex) else slots.getOrNull(name.toInt()).let { s -> (s as? Slot.Given)?.let { ops[it.operand + shift] } }
+            op != null && hoister.rankOf(op) != CppHoister.PURE
+        }
+        return hoister.lower(ops, rc.returnType, force) { texts ->
             val argTexts = slots.map { s ->
                 when (s) {
                     is Slot.Given -> texts[s.operand + shift]
@@ -1591,10 +1610,23 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /**
      * `buf.set("OK servo=${s}")` as the calls it is (design 10): `buf.clear()` for `set`, then
      * one append per piece, text as `kira::lit`, an integer through `addInt` or `addUInt`, a
-     * Char through `addChar`. Each call is spelled by its own binding.
+     * Char through `addChar`. Each call is spelled by its own binding. Every piece names the
+     * receiver, so a receiver whose path is not pure (`bufs[nextSize()]`) is located once
+     * first, and the pieces are then one IIFE (the single element returned).
      */
     fun strBufPieces(receiver: Expr, fn: FnSymbol, text: InterpolatedStringLiteral): List<String> {
-        val recv = receiverText(receiver)
+        val op = receiverOperand(receiver, fn, memberStyle = true, lending = false) { receiverEx(receiver, true) }
+        if (op == null || hoister.rankOf(op) == CppHoister.PURE) {
+            return strBufPiecesOn(if (op == null) receiverText(receiver) else wrap(hoister.text(op), CppPrec.POSTFIX), fn, text)
+        }
+        val iife = hoister.lower(listOf(op), KType.Void, force = true) { (r) ->
+            CppEx(strBufPiecesOn(wrap(r, CppPrec.POSTFIX), fn, text).joinToString(", "), CppPrec.COMMA)
+        }
+        return listOf(iife.text)
+    }
+
+    /** [strBufPieces] over the receiver's C++ text [recv]. */
+    private fun strBufPiecesOn(recv: String, fn: FnSymbol, text: InterpolatedStringLiteral): List<String> {
         val out = mutableListOf<String>()
         fun piece(method: String, arg: String?) {
             val key = "StrBuf.$method"

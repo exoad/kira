@@ -186,6 +186,16 @@ class CppBindingTable : CppBindingsPart {
             return sb.toString()
         }
 
+        /**
+         * The operand placeholders [binding]'s expression names more than once (`self`, `0`, ...):
+         * `({self}.clear(), {self}.add({0}))` names `self` twice, so an impure receiver path
+         * must be computed once before the expansion runs.
+         */
+        fun repeated(binding: CppBinding): List<String> =
+            PLACEHOLDER.findAll(binding.expr).map { it.groupValues[1] }.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.toList()
+
+        private val PLACEHOLDER = Regex("\\{(self|[0-9]+)}")
+
         /** Whether the binding is member-style on its receiver: `{self}.size()`, `{self}[{0}]`, `{self}->bind(...)`. */
         fun isMemberStyle(binding: CppBinding): Boolean {
             val t = binding.expr.trimStart('(')

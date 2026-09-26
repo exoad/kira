@@ -12,14 +12,22 @@ namespace evalorder
     std::array<std::int32_t, 4> garr = {10, 20, 30, 40};
     kira::List<std::int32_t> gl = kira::List<std::int32_t>{};
     kira::Map<std::int32_t, std::int32_t> gm = kira::Map<std::int32_t, std::int32_t>{};
+    kira::Str gs = "a";
+    Box gb = Box{.v = 1};
 
     [[nodiscard]] std::int32_t next();
     [[nodiscard]] kira::Size nextSize();
     [[nodiscard]] std::int32_t sub(std::int32_t a, std::int32_t b);
     void store(std::int32_t& into, std::int32_t tens, std::int32_t ones);
     [[nodiscard]] Box makeBox();
-    [[nodiscard]] kira::Size pushed();
     [[nodiscard]] std::int32_t putKey();
+    [[nodiscard]] kira::Size setFirst();
+    [[nodiscard]] std::int32_t changeS();
+    [[nodiscard]] std::int32_t bumpB();
+    [[nodiscard]] std::int32_t resetL();
+    [[nodiscard]] kira::Str pairS(const kira::Str& s, std::int32_t k);
+    [[nodiscard]] std::int32_t sumB(const Box& b, std::int32_t k);
+    [[nodiscard]] std::int32_t firstL(const kira::List<std::int32_t>& xs, std::int32_t k);
     [[nodiscard]] kira::View<std::int32_t> tail(const kira::List<std::int32_t>& xs, kira::Size at);
     [[nodiscard]] std::int32_t total(kira::View<std::int32_t> v);
     [[nodiscard]] std::int32_t sumTail(const kira::List<std::int32_t>& xs);
@@ -52,16 +60,49 @@ namespace evalorder
         return Box{.v = ticks};
     }
 
-    kira::Size pushed()
-    {
-        gl.push_back(7);
-        return gl.size() - 1;
-    }
-
     std::int32_t putKey()
     {
-        gm.put(1, 42);
+        gm.put(1, 99);
         return 1;
+    }
+
+    kira::Size setFirst()
+    {
+        kira::at(gl, 0) = 50;
+        return 0;
+    }
+
+    std::int32_t changeS()
+    {
+        gs = "b";
+        return 1;
+    }
+
+    std::int32_t bumpB()
+    {
+        gb.v = 9;
+        return 0;
+    }
+
+    std::int32_t resetL()
+    {
+        gl = kira::List<std::int32_t>{8};
+        return 0;
+    }
+
+    kira::Str pairS(const kira::Str& s, std::int32_t k)
+    {
+        return kira::cat(s, k);
+    }
+
+    std::int32_t sumB(const Box& b, std::int32_t k)
+    {
+        return b.v + k;
+    }
+
+    std::int32_t firstL(const kira::List<std::int32_t>& xs, std::int32_t k)
+    {
+        return kira::at(xs, 0) + k;
     }
 
     kira::View<std::int32_t> tail(const kira::List<std::int32_t>& xs, kira::Size at)
@@ -237,9 +278,63 @@ namespace evalorder
       kira::trace(sumTail(kira::List<std::int32_t>{1, 2, 3, 4}));
       idx = 0;
       kira::trace(total(kira::mutView(garr).from(nextSize())));
-      kira::trace(kira::unwrapOr(gm.get(putKey()), -1));
+      gm.put(1, 42);
+      kira::trace(kira::unwrapOr([&]() -> kira::Maybe<std::int32_t>
+      {
+          const kira::Map<std::int32_t, std::int32_t> t0_ = gm;
+          const std::int32_t t1_ = putKey();
+          return t0_.get(t1_);
+      }(), -1));
       gl.push_back(1);
-      kira::trace(kira::at(gl, pushed()));
+      gl.push_back(2);
+      kira::trace([&]() -> std::int32_t
+      {
+          const kira::List<std::int32_t> t0_ = gl;
+          const kira::Size t1_ = setFirst();
+          return kira::at(t0_, t1_);
+      }());
+      kira::trace([&]() -> kira::Str
+      {
+          const kira::Str t0_ = gs;
+          const std::int32_t t1_ = changeS();
+          return pairS(t0_, t1_);
+      }());
+      gs = "a";
+      kira::trace([&]() -> kira::Str
+      {
+          const kira::Str t0_ = gs;
+          const std::int32_t t1_ = changeS();
+          return kira::cat(t0_, ":", t1_);
+      }());
+      kira::trace([&]() -> std::int32_t
+      {
+          const Box t0_ = gb;
+          const std::int32_t t1_ = bumpB();
+          return sumB(t0_, t1_);
+      }());
+      kira::at(gl, 0) = 1;
+      kira::trace([&]() -> std::int32_t
+      {
+          const kira::List<std::int32_t> t0_ = gl;
+          const std::int32_t t1_ = resetL();
+          return firstL(t0_, t1_);
+      }());
+      std::array<kira::StrBuf<8>, 3> bufs = {kira::StrBuf<8>{}, kira::StrBuf<8>{}, kira::StrBuf<8>{}};
+      idx = 0;
+      [&]() -> void
+      {
+          const kira::Size t0_ = nextSize();
+          (kira::at(bufs, t0_).clear(), kira::at(bufs, t0_).add(kira::lit("x")));
+      }();
+      kira::trace(idx);
+      idx = 0;
+      [&]() -> void
+      {
+          const kira::Size t0_ = nextSize();
+          kira::at(bufs, t0_).clear(), kira::at(bufs, t0_).add(kira::lit("a")), kira::at(bufs, t0_).addInt(two), kira::at(bufs, t0_).add(kira::lit("b"));
+      }();
+      kira::trace(idx);
+      kira::trace(kira::at(bufs, 1).size());
   }
 }
 #include "kira/macro_pop.hxx"
