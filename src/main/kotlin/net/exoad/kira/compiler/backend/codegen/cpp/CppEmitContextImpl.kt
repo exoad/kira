@@ -181,10 +181,10 @@ data class CppEmitParts(
         /** The parts the compiler runs with. One registration line per package; keep them apart. */
         fun standard(): CppEmitParts = CppEmitParts(
             // W2.3 (expressions, statements, closures, bindings) registers on these four lines:
-            exprs = CppExprPart.Unsupported,
-            stmts = CppStmtPart.Unsupported,
-            lambdas = CppLambdaPart.Unsupported,
-            bindings = CppBindingsPart.Unsupported,
+            exprs = CppExprEmitter(),
+            stmts = CppStmtEmitter(),
+            lambdas = CppClosureEmitter(),
+            bindings = CppBindingTable(),
             // W2.4 (classes, traits, generics) registers on these two lines:
             classes = CppClassesPart.Unsupported,
             generics = CppGenericsPart.Plain,
@@ -297,6 +297,8 @@ class CppEmitContextImpl(
 
     init {
         symbol.members.keys.forEach { names.reserve(it) }
+        // W2.3: before any class is defined, mark the classes whose `this` escapes (design 5.6).
+        (parts.lambdas as? CppClosureEmitter)?.prepare(program)
     }
 
     // ---- CppEmitContext --------------------------------------------------------------------

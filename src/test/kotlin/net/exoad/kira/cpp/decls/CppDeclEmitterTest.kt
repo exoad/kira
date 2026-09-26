@@ -492,6 +492,8 @@ class CppDeclEmitterTest {
                 """,
             ),
             uri = "test:main",
+            // Every part at its refusing default, whichever parts the packages have registered since.
+            parts = CppEmitParts(),
         )
         val messages = emitted.diagnostics.filter { it.code == "cpp.unsupported" }.map { it.message }
         assertEquals(
