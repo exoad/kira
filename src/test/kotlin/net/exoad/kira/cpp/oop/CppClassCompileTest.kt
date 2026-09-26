@@ -77,6 +77,19 @@ class CppClassCompileTest {
             pub fx me: () Dog {
                 return this
             }
+
+            // Lambdas that escape and capture the receiver: [self = ...], cast to Dog.
+            pub fx later: () Fx<Tuple0, Dog> {
+                return fx() Dog {
+                    return this
+                }
+            }
+
+            pub mut fx laterMut: () Fx<Tuple0, Dog> {
+                return fx() Dog {
+                    return this
+                }
+            }
         }
 
         pub class Both: Tagged, Labelled {
@@ -115,6 +128,12 @@ class CppClassCompileTest {
 
             pub fx me: () Cell<T> {
                 return this
+            }
+
+            pub mut fx later: () Fx<Tuple0, Cell<T>> {
+                return fx() Cell<T> {
+                    return this
+                }
             }
         }
 
@@ -224,6 +243,7 @@ class CppClassCompileTest {
             check(shapes::makeBox(7)->get() == 7, "a generic class");
             const kira::Rc<shapes::Cell<std::int32_t>> cell = shapes::makeCell(3);
             check(cell->me() == cell && cell->value == 3, "this as a value in a class template");
+            check(d->later()() == d && d->laterMut()() == d && cell->later()() == cell, "an escaping lambda's self is the object, in a subclass and a template");
             check(shapes::makeFive()->again() == 5, "a trait template's default body calls the instantiation's override");
             shapes::Holder h(d);
             check(h.getPet() == d && h.getSpare() == nullptr, "a stack-constructed class; Maybe<Class> is a nullable Rc");
@@ -262,7 +282,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("14 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("15 checks, 0 failed"), run.stdout)
             }
         }
     }

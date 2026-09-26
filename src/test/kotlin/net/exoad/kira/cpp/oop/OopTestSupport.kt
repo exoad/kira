@@ -2,6 +2,8 @@ package net.exoad.kira.cpp.oop
 
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
+import net.exoad.kira.compiler.analysis.types.AstTree
+import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
@@ -29,8 +31,10 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppStmtPart
 import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
+import net.exoad.kira.compiler.backend.codegen.cpp.Pos
 import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
@@ -38,6 +42,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
@@ -122,8 +127,37 @@ object OopTestSupport {
                     }
                 }
                 is FunctionCallExpr -> call(ctx, e)
+                is LambdaExpr -> lambda(ctx, e)
                 else -> "<${e.javaClass.simpleName}>"
             }
+        }
+
+        /**
+         * A lambda of a class method, as W2.3's closure part is to spell the one that captures
+         * the receiver and escapes (design 5.6): `[self = ...]` from the classes part's
+         * [net.exoad.kira.compiler.backend.codegen.cpp.CppClassesPart.selfCapture], so `this`
+         * inside it is `self`. Only what these tests' lambdas hold: `return e` statements.
+         */
+        private fun lambda(ctx: CppEmitContextImpl, e: LambdaExpr): String {
+            val ret = ctx.spell(e.def.returnTypeSpecifier, Pos.RETURN)
+            val params = e.def.parameters.joinToString(", ") { p -> "${ctx.spell(p.typeSpecifier, Pos.PARAM)} ${p.name.value}" }
+            val owner = ctx.scope as? ClassSymbol
+            val capture = if (owner != null && owner.kind == ClassKind.CLASS && ctx.model.captures(e).orEmpty().any { it is Capture.This }) {
+                val method = owner.methods.first { m -> m.body.orEmpty().any { s -> contains(s, e) } }
+                "self = ${ctx.parts.classes.selfCapture(ctx, owner, method, e)}"
+            } else {
+                ""
+            }
+            val body = e.def.body.orEmpty().joinToString(" ") { s ->
+                if (s is ReturnStatement) "return ${ctx.expr(s.expr)};" else "static_cast<void>(${ctx.expr(s.expr)});"
+            }
+            return "[$capture]($params) -> $ret { $body }"
+        }
+
+        private fun contains(root: ASTNode, target: ASTNode): Boolean {
+            var found = false
+            AstTree.walk(root) { if (it === target) found = true }
+            return found
         }
 
         private fun isReference(t: KType?): Boolean {

@@ -721,22 +721,50 @@ class CppClassShapeTest {
                     }
                 }
             }
+            pub class Base {
+                pub fx id: () Int32 { return 1 }
+            }
+            pub class Leaf: Base {
+                pub fx later: () Fx<Tuple0, Leaf> {
+                    return fx() Leaf {
+                        return this
+                    }
+                }
+            }
+            pub class Cell<T> {
+                require pub value: T
+                pub mut fx later: () Fx<Tuple0, Cell<T>> {
+                    return fx() Cell<T> {
+                        return this
+                    }
+                }
+            }
             """
         )
         // the lambda escapes and captures the receiver: [self = shared_from_this()] (design 5.6)
-        assertContains(e.header(uri), "  class Node final : public kira::Shared<Node>\n")
+        val h = e.header(uri)
+        assertContains(h, "  class Node final : public kira::Shared<Node>\n", "  class Base : public kira::Shared<Base>\n", "  class Leaf final : public Base\n", "  class Cell final : public kira::Shared<Cell<T>>\n")
         // W2.3's closure part spells the lambda; here the classes part is asked for the `this` inside it
         val m = e.program.modules.single { it.uri == uri }
-        val node = m.members["Node"] as ClassSymbol
         val parts = OopTestSupport.parts()
         val ctx = CppEmitContextImpl(e.program, CppOptions(lineDirectives = false), m.source, e.layout, m, "dev", parts)
-        fun thisIn(method: String): ThisExpr {
+        fun cls(name: String) = m.members[name] as ClassSymbol
+        fun thisIn(owner: String, method: String): ThisExpr {
             var found: ThisExpr? = null
-            node.method(method)!!.body!!.forEach { s -> AstTree.walk(s) { n -> if (n is ThisExpr) found = n } }
-            return found ?: error("no this in $method")
+            cls(owner).method(method)!!.body!!.forEach { s -> AstTree.walk(s) { n -> if (n is ThisExpr) found = n } }
+            return found ?: error("no this in $owner.$method")
         }
-        assertEquals("std::const_pointer_cast<Node>(self)", parts.classes.thisValue(ctx, thisIn("later")))
-        assertEquals("self", parts.classes.thisValue(ctx, thisIn("touch")))
+        fun capture(owner: String, method: String) = parts.classes.selfCapture(ctx, cls(owner), cls(owner).method(method)!!, cls(owner).decl!!)
+        // `self` is shared_from_this(): a shared_ptr to the chain's root, qualified in a class template
+        assertEquals("shared_from_this()", capture("Node", "later"))
+        assertEquals("shared_from_this()", capture("Node", "touch"))
+        assertEquals("shared_from_this()", capture("Leaf", "later"))
+        assertEquals("this->shared_from_this()", capture("Cell", "later"))
+        // so `this` inside the lambda is `self` cast to the class, from const in a non-mut method
+        assertEquals("std::const_pointer_cast<Node>(self)", parts.classes.thisValue(ctx, thisIn("Node", "later")))
+        assertEquals("self", parts.classes.thisValue(ctx, thisIn("Node", "touch")))
+        assertEquals("std::static_pointer_cast<Leaf>(std::const_pointer_cast<Base>(self))", parts.classes.thisValue(ctx, thisIn("Leaf", "later")))
+        assertEquals("self", parts.classes.thisValue(ctx, thisIn("Cell", "later")))
         assertTrue(ctx.diagnostics.isEmpty(), ctx.diagnostics.toString())
     }
 

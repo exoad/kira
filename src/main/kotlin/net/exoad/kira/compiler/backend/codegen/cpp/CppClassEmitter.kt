@@ -120,6 +120,9 @@ class CppClassEmitter : CppClassesPart {
 
     override fun thisValue(ctx: CppEmitContextImpl, e: ThisExpr): String = lowering(ctx).thisValue(e)
 
+    override fun selfCapture(ctx: CppEmitContextImpl, owner: ClassSymbol, method: FnSymbol, at: ASTNode): String =
+        lowering(ctx).selfCapture(owner, method, at)
+
     override fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String = lowering(ctx).construct(e)
 
     override fun upcast(ctx: CppEmitContextImpl, e: Expr, c: Coercion.Upcast, text: String): String {
@@ -551,12 +554,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
     /**
      * `this` as a value. In a struct method `*this` (inside a `[*this]` lambda, the copy).
-     * In a class method the object's own `kira::Rc`: `shared_from_this()`, or the `self` an
-     * escaping lambda captured (design 5.6), turned into this class's `kira::Rc<C>`. The
+     * In a class method the object's own `kira::Rc<C>`, from `shared_from_this()`: the
      * `enable_shared_from_this` base is the chain's root, so a subclass casts down to itself
      * (`static_pointer_cast`), and a non-`mut` method sees a `const` object, whose
      * `shared_from_this()` is `shared_ptr<const Root>` (`const_pointer_cast`: a class is a
-     * reference, and D29 lets a `mut fx` run through any reference).
+     * reference, and D29 lets a `mut fx` run through any reference). Inside a lambda that
+     * escapes the method the same casts apply to the captured `self` ([selfCapture]), which is
+     * that `shared_from_this()`.
      */
     fun thisValue(e: ThisExpr): String {
         val site = facts.site(e)
@@ -582,14 +586,9 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             ctx.diag(e, CppModuleEmitterFactory.INTERNAL_CODE, "this is used as a value in ${owner.name}, but its root class ${root.cls.name} derives no kira::Shared")
             return "/* this */"
         }
-        // In a class template the `kira::Shared` base may be dependent, where unqualified lookup never looks.
-        val source = when {
-            site.inEscapingLambda -> CppClassEmitter.SELF
-            owner.typeParams.isNotEmpty() -> "this->shared_from_this()"
-            else -> "shared_from_this()"
-        }
         val self = ctx.speller.bareClass(owner.selfType)
         val constant = !fn.isMutMethod
+        val source = if (site.inEscapingLambda) CppClassEmitter.SELF else sharedFromThis(owner)
         return when {
             root.cls === owner && !constant -> source
             root.cls === owner -> "std::const_pointer_cast<$self>($source)"
@@ -597,6 +596,25 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             else -> "std::static_pointer_cast<$self>(std::const_pointer_cast<${ctx.speller.bareClass(root.type)}>($source))"
         }
     }
+
+    /**
+     * The initializer of `self` in `[self = ...]` for a lambda that escapes [method] of
+     * [owner] (design 5.6): `shared_from_this()`, a `shared_ptr` to the chain's root (`const`
+     * in a non-`mut` method), as the closures golden spells it and W2.3's closure part
+     * captures it; [thisValue] casts it to the class. In a class template it is
+     * `this->shared_from_this()`, since the `kira::Shared` base may be dependent there.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun selfCapture(owner: ClassSymbol, method: FnSymbol, at: ASTNode): String {
+        val root = facts.chain(owner).first()
+        if (!facts.derivesShared(root.cls)) {
+            ctx.diag(at, CppModuleEmitterFactory.INTERNAL_CODE, "a lambda captures shared_from_this() in ${owner.name}, but its root class ${root.cls.name} derives no kira::Shared")
+        }
+        return sharedFromThis(owner)
+    }
+
+    /** `shared_from_this()`, qualified in a class template, where the `kira::Shared` base may be dependent and unqualified lookup never looks. */
+    private fun sharedFromThis(owner: ClassSymbol): String = if (owner.typeParams.isNotEmpty()) "this->shared_from_this()" else "shared_from_this()"
 
     // ---- construction ------------------------------------------------------------------------------------------
 

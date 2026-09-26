@@ -119,6 +119,16 @@ interface CppClassesPart {
         return "/* this */"
     }
 
+    /**
+     * What a lambda escaping [method] of the class [owner] captures as `self` (design 5.6,
+     * `[self = ...]`): `shared_from_this()`, a `shared_ptr` to the root of the superclass chain,
+     * which holds the one `kira::Shared` base (`this->shared_from_this()` in a class template).
+     */
+    fun selfCapture(ctx: CppEmitContextImpl, owner: ClassSymbol, method: FnSymbol, at: ASTNode): String {
+        ctx.unsupported(at, "a lambda capturing a class's this")
+        return "shared_from_this()"
+    }
+
     /** A class construction `C { ... }` (R9): `std::make_shared<C>(arguments in constructor order)`. */
     fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String {
         ctx.unsupported(e, "the construction of a class")
