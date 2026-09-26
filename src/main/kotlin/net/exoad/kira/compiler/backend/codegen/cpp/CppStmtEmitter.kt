@@ -189,14 +189,22 @@ class CppStmtEmitter : CppStmtPart {
                 else -> {
                     // `for(x : range)` binds the range to a reference, which keeps the outermost
                     // temporary alive and no other: a view into one dies before the first step.
-                    lower.hoister.refuseTemporaryView(fe.target, "the loop")
+                    val refused = lower.hoister.refuseTemporaryView(fe.target, "the loop")
                     val unused = if (isRead(ctx, variable)) "" else "[[maybe_unused]] "
                     val decl = when {
                         (variable as? LocalSymbol)?.isMut == true -> "$typeText $name"
                         ctx.speller.byValue(plan.element) -> "const $typeText $name"
                         else -> "const $typeText& $name"
                     }
-                    "$unused$decl : ${lower.emit(fe.target, CppPrec.NONE)}"
+                    val range = lower.emit(fe.target, CppPrec.NONE)
+                    val rangeType = model.typeOrNull(fe.target)
+                    // A range that may be a reference into a temporary (`kira::at(makeLists(), 0)`,
+                    // `makeRef()->value`) is copied while the temporary lives, and the loop's
+                    // reference keeps the copy alive. A converted range is a view (ToView): one
+                    // into a temporary was refused above.
+                    val copy = !refused && rangeType != null && model.coercion(fe.target) == null && lower.hoister.rangeMayDangle(fe.target)
+                    val text = if (copy && rangeType != null) "${ctx.spell(rangeType, Pos.VALUE, fe.target)}($range)" else range
+                    "$unused$decl : $text"
                 }
             }
             listOf(CppWriter.forHead(head)) + block(ctx, s.body)

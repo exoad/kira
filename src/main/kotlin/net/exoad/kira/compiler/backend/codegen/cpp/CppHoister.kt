@@ -19,6 +19,7 @@ import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.analysis.types.TypedModel
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
@@ -149,7 +150,9 @@ import java.util.IdentityHashMap
  *   [refuseKeptReceiver], [refuseKeptDefault]). A temporary is also one the lowering makes
  *   where the source names none ([Source.Temporary]): the `kira::Str` a `const&` parameter
  *   binds its `Str` default as (D48), and the `kira::Maybe` copy of a place the typer wraps
- *   for a `Maybe` parameter. Storage moves when the viewed value's own type says so or when a
+ *   for a `Maybe` parameter; and the storage of a place a fresh value owns, which the typer
+ *   records as a place all the same ([freshRoot]: `makeRef().value`, `makeMaybe().value`).
+ *   Storage moves when the viewed value's own type says so or when a
  *   step of its path does: an `Arr` element of a `List`, the object behind a `Ref` ([storageMoves]).
  * - A temporary's name is reserved before its initializer is written, so a nested spill in the
  *   initializer never declares the same name inside it (`-Wshadow`).
@@ -395,6 +398,19 @@ class CppHoister(private val lower: CppLowering) {
         val order = mutableListOf<Step>()
         steps(ops, written, order)
         order.forEachIndexed { i, step ->
+            val place = step.op as? Operand.Place
+            if (place != null) {
+                // A lent place whose storage a fresh value owns (`tailL(makeRef().value,
+                // nextSize())`): the value is a part of the place, copied into the lambda or
+                // made in its `return`, and dies as the lambda returns the view.
+                val x = place.expr
+                val temporary = x?.takeIf { place.mode == PlaceMode.LENT && CppLending.lends(result) }
+                    ?.let { lower.model.typeOrNull(it)?.let { t -> owner(it, t) } } as? Source.Temporary
+                if (x != null && temporary != null) {
+                    refuse(x, "a view the call may keep into ${describe(temporary)}, a temporary, would point into a temporary of the lambda that orders the call's operands (D33): ${remedy(temporary)}")
+                }
+                return@forEachIndexed
+            }
             val op = step.op as? Operand.Value ?: return@forEachIndexed
             val e = op.expr ?: return@forEachIndexed
             if (op.lent && CppLending.lends(result)) {
@@ -523,18 +539,29 @@ class CppHoister(private val lower: CppLowering) {
         /**
          * A fresh value that dies with its full expression: [expr] itself (a call's result, a
          * construction, a `Str` constant made a `kira::Str`); the `kira::Maybe` copy C++ makes of
-         * the place [expr] for a `Maybe` parameter ([wrapped]: the typer's `WrapSome`); or the
+         * the place [expr] for a `Maybe` parameter ([wrapped]: the typer's `WrapSome`); the
          * C++ default argument of [param] (D48: a literal or a constant, [expr] its default),
-         * which a `const&` parameter binds as a temporary made at the call.
+         * which a `const&` parameter binds as a temporary made at the call; or, with [via], the
+         * fresh value [expr] that owns the storage of the place [via] ([freshRoot]:
+         * `makeRef()` for `makeRef().value`, whose box the `kira::Rc` temporary frees).
          */
-        class Temporary(expr: Expr, val wrapped: Boolean = false, val param: ParamSymbol? = null) : Source(expr)
+        class Temporary(expr: Expr, val wrapped: Boolean = false, val param: ParamSymbol? = null, val via: Expr? = null) : Source(expr)
     }
 
     /** What the temporary [s] is, for a message. */
     fun describe(s: Source.Temporary): String = when {
         s.param != null -> "the default of '${s.param.name}'"
         s.wrapped -> "the Maybe that C++ copies ${describe(s.expr)} into for the call"
+        s.via != null -> describeOwned(s.via)
         else -> describe(s.expr)
+    }
+
+    /** [e], a place [freshRoot] finds a fresh value under, as the path from that value (`'value' of the result of 'makeRef'`). */
+    private fun describeOwned(e: Expr): String = when {
+        e is MemberAccessExpr && lower.model.member(e) is MemberRef.Field ->
+            "'${(lower.model.member(e) as MemberRef.Field).field.name}' of ${describeOwned(e.origin)}"
+        e is ArrayIndexExpr -> "an element of ${describeOwned(e.originExpr)}"
+        else -> describe(e)
     }
 
     /** What to write instead of keeping a view into the temporary [s]. */
@@ -650,8 +677,46 @@ class CppHoister(private val lower: CppLowering) {
         !lower.isPlaceExpr(x) -> Source.Temporary(x)
         lower.isCharPtr(x) -> Source.Temporary(x)
         lower.isCopiedPlace(x) -> Source.Temporary(x, wrapped = true)
-        else -> Source.Place(x, t)
+        else -> freshRoot(x)?.let { Source.Temporary(it, via = x) } ?: Source.Place(x, t)
     }
+
+    /**
+     * The fresh value that owns the storage of the place [x], or null when [x] is found through
+     * a variable, a parameter, a global or `this`. The typer records a field of any value as a
+     * place (`Place.Field` with no receiver), so `makeRef().value`, `makeMaybe().value` and
+     * `makeBag().items[0]` are places, whose storage a temporary owns: the `kira::Rc` of the
+     * fresh `Ref`, the fresh `kira::Maybe`, the fresh struct, each destroyed at the end of the
+     * full expression. The walk goes up the fields and elements of the path; the first step
+     * that is no place is that value. A step through a view (or an `Unsafe` or a `Weak`) ends
+     * the walk with null: a view points wherever it was made, not into the value that holds it.
+     * A handle (a `Ref`, a class object) is not such a step: the fresh handle may be the only
+     * owner of its object, which is taken to die with it.
+     */
+    fun freshRoot(x: Expr): Expr? {
+        val model = lower.model
+        var cur = x
+        while (true) {
+            val next = when (cur) {
+                is MemberAccessExpr -> if (model.member(cur) is MemberRef.Field) cur.origin else return null
+                is ArrayIndexExpr -> cur.originExpr
+                else -> return null
+            }
+            if (CppBindingTable.magicName(model.typeOrNull(next)) in NON_OWNING) {
+                return null
+            }
+            if (!lower.isPlaceExpr(next)) {
+                return next
+            }
+            cur = next
+        }
+    }
+
+    /**
+     * Whether [x], an operand that owns or reaches storage, is a temporary a view into dies
+     * with ([owner]): a fresh value, a copy the lowering makes of a place, or a place whose
+     * storage a fresh value owns ([freshRoot]).
+     */
+    private fun isTemporary(x: Expr): Boolean = !lower.isPlaceExpr(x) || lower.isCopiedPlace(x) || freshRoot(x) != null
 
     /** Whether [sources] of [e] hold a temporary: a view into it outlives the full expression that made it. */
     fun holdsTemporary(e: Expr): Source.Temporary? = sources(e).firstOrNull { it is Source.Temporary } as Source.Temporary?
@@ -669,6 +734,44 @@ class CppHoister(private val lower: CppLowering) {
         val temporary = holdsTemporary(value) ?: return false
         refuse(value, "this value holds a view into ${describe(temporary)}, a temporary that C++ destroys at the end of the statement, but $sink outlives it: ${remedy(temporary)}")
         return true
+    }
+
+    /**
+     * Whether the C++ of the `for` range [e] may be a reference into a temporary. `for(x : r)`
+     * binds `r` to a reference, which keeps a temporary alive only when `r` is that temporary
+     * itself, and never one `r` is found inside: `kira::at(makeLists(), 0)` and
+     * `makeRef()->value` both dangled before the first step (gcc's `-Wdangling-reference`,
+     * MSVC's ASan a heap-use-after-free). A place found through a variable, a parameter, a
+     * global or `this` is no such reference, and neither is a value C++ returns by value (a
+     * user function's result, a construction, a literal). A place whose object a fresh value
+     * owns ([freshRoot]), a view held in one too (`makeRefV()->value` is the `kira::View`
+     * inside the freed box, though the storage it views lives), an element of a fresh value,
+     * and a stdlib call given a temporary (its binding may return a reference into it:
+     * `kira::at`, `Result.unwrap`) may be; so may anything else. A view into a temporary's
+     * storage is [refuseTemporaryView]'s. The loop copies such a range in its own range
+     * expression, while the temporary lives (CppStmtEmitter), which is what Kira's value
+     * semantics read; a view's copy points where the view did.
+     */
+    fun rangeMayDangle(e: Expr): Boolean {
+        val model = lower.model
+        if (lower.isPlaceExpr(e)) {
+            return freshRoot(e) != null
+        }
+        fun call(rc: ResolvedCall): Boolean = when (rc.kind) {
+            CallKind.MAGIC -> (listOfNotNull(rc.receiver) + rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }).any { x ->
+                val xt = model.typeOrNull(x)
+                xt == null || ((CppLending.borrowable(xt) || lower.isPointerLike(xt)) && isTemporary(x)) ||
+                    (CppLending.isView(xt) && lower.isPlaceExpr(x) && freshRoot(x) != null)
+            }
+            else -> false
+        }
+        return when (e) {
+            is FunctionCallExpr -> model.call(e)?.let { call(it) } ?: true
+            is MemberAccessExpr -> (e.member as? FunctionCallExpr)?.let { c -> model.call(c)?.let { call(it) } } ?: true
+            is ObjectInitExpr, is ArrayLiteral, is InterpolatedStringLiteral, is StringLiteral -> false
+            is IfExpr -> listOfNotNull(lower.branchValue(e.thenBranch), lower.branchValue(e.elseBranch)).any { rangeMayDangle(it) }
+            else -> model.opCall(e)?.let { call(it) } ?: true
+        }
     }
 
     /**
@@ -699,8 +802,10 @@ class CppHoister(private val lower: CppLowering) {
      */
     fun refuseKeptTemporary(rc: ResolvedCall, i: Int, arg: Expr) {
         val t = lower.model.typeOrNull(arg) ?: return
-        val fresh = CppLending.borrowable(t) && lower.model.coercion(arg) !is Coercion.ToView && (!lower.isPlaceExpr(arg) || lower.isCopiedPlace(arg)) && lentArgument(rc, i, arg)
-        val temporary = if (fresh) owner(arg, t) as? Source.Temporary else if (CppLending.lends(t)) holdsTemporary(arg) else null
+        val converted = lower.model.coercion(arg) is Coercion.ToView
+        val fresh = CppLending.borrowable(t) && !converted && isTemporary(arg) && lentArgument(rc, i, arg)
+        // A converted argument is the view: into a fresh value's storage (`keepV(makeRef().value)`) it is a temporary's.
+        val temporary = if (fresh) owner(arg, t) as? Source.Temporary else if (CppLending.lends(t) || converted) holdsTemporary(arg) else null
         if (temporary == null || !keepsArgument(rc, i, arg)) {
             return
         }
@@ -709,18 +814,26 @@ class CppHoister(private val lower: CppLowering) {
     }
 
     /**
-     * Refuses the receiver [receiver] of the user method [rc] when it is a temporary, or holds
-     * a view into one, and the method may keep a view into it past the call: `makeBag().stash()`
+     * Refuses the receiver [receiver] of the method [rc] when it is a temporary, or holds a
+     * view into one, and the method may keep a view into it past the call: `makeBag().stash()`
      * with `stash` storing `items.view()` in a global printed garbage on gcc. A stdlib method
-     * keeps nothing of its receiver, and a class or trait receiver is a handle.
+     * keeps nothing of its receiver itself, but it may hand the receiver's storage to an `Fx`
+     * argument that does ([CppEscapes.fxArgumentKeeps]): `Mutex<List<Int32>> { ... }.lock(fx
+     * (mut l: List<Int32>) Void { gv = l.view() })` kept a view into the value of a mutex whose
+     * `make_shared` temporary freed it at the end of the statement (gcc printed -152925846,
+     * MSVC's ASan a heap-use-after-free). There the fresh receiver may be a handle (a system
+     * class such as a `Mutex`) whose object it alone owns. A user class or trait receiver is a
+     * handle.
      */
     fun refuseKeptReceiver(rc: ResolvedCall, receiver: Expr) {
         val t = lower.model.typeOrNull(receiver) ?: return
-        val fresh = CppLending.borrowable(t) && (!lower.isPlaceExpr(receiver) || lower.isCopiedPlace(receiver))
+        val owns = CppLending.borrowable(t) || (rc.kind == CallKind.MAGIC && lower.isPointerLike(t))
+        val fresh = owns && isTemporary(receiver)
         val temporary = if (fresh) owner(receiver, t) as? Source.Temporary else if (CppLending.lends(t)) holdsTemporary(receiver) else null
         temporary ?: return
         val keeps = when (rc.kind) {
-            CallKind.PRINT, CallKind.MAGIC, CallKind.EXTERN -> false
+            CallKind.MAGIC -> escapes.fxArgumentKeeps(rc)
+            CallKind.PRINT, CallKind.EXTERN -> false
             CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> rc.fn?.let { escapes.viewStored(it, null, false) } ?: true
             CallKind.VIRTUAL, CallKind.TRAIT, CallKind.FN_VALUE -> true
         }
@@ -743,7 +856,8 @@ class CppHoister(private val lower: CppLowering) {
     /**
      * Whether the call [rc] may keep, past the call, a view its parameter [i] holds ([asView])
      * or one it takes into the object that parameter binds, where the caller's storage
-     * outlives the statement: in a container of views it is a method of (a stdlib binding),
+     * outlives the statement: in a container of views it is a method of (a stdlib binding), or
+     * in whatever an `Fx` argument of a stdlib binding stores ([CppEscapes.fxArgumentKeeps]),
      * wherever the body of a user function stores it ([CppEscapes]), and, for a callee not
      * seen through (virtual, trait, an `Fx` value), in a `mut` argument that can hold a view
      * or wherever any body the call may run stores it ([CppEscapes.dispatchStores]: every
@@ -754,7 +868,7 @@ class CppHoister(private val lower: CppLowering) {
      */
     fun keepsParameter(rc: ResolvedCall, i: Int, asView: Boolean): Boolean = when (rc.kind) {
         CallKind.PRINT, CallKind.EXTERN -> false
-        CallKind.MAGIC -> rc.receiver?.let { lower.model.typeOrNull(it) }?.let { CppLending.lends(it) } == true
+        CallKind.MAGIC -> rc.receiver?.let { lower.model.typeOrNull(it) }?.let { CppLending.lends(it) } == true || escapes.fxArgumentKeeps(rc)
         CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> {
             val fn = rc.fn
             val p = fn?.params?.getOrNull(i)
@@ -1159,6 +1273,9 @@ class CppHoister(private val lower: CppLowering) {
         /** What a `MutView` can be lent from. */
         private val BUFFERS = setOf("Arr", "List", "MutView")
 
+        /** The magic classes whose value points at storage it does not own: a step through one ends [freshRoot]'s walk. */
+        private val NON_OWNING = setOf("View", "MutView", "Unsafe", "Weak")
+
         /** Every line of [lines] (each possibly several) indented four spaces. */
         fun indent(lines: List<String>): String =
             lines.flatMap { it.split('\n') }.joinToString("\n") { if (it.isEmpty()) it else "    $it" }
@@ -1396,16 +1513,45 @@ class CppEscapes(private val model: TypedModel, private val heldByReference: (KT
      * Every body a call through an `Fx` value of [arity] parameters, of type [type] where it is
      * known, may run: each lambda of the program (every one the typer saw has a `captures`
      * entry) and each function used as a value, of that type (a lambda's type must match its
-     * `Fx` exactly, D24), or of that arity where [type] is unknown or generic. An `Fx` value is
+     * `Fx` exactly, D24), or of that arity where [type] is unknown or generic. A body whose own
+     * type is generic fits every type it may be instantiated as ([mayInstantiate]): a lambda
+     * written in a generic function (`fx mkKeeper<T>` returning `fx (xs: List<T>) Void { ...
+     * }`) has the type `Fx<Tuple1<List<T>>, Void>`, and is called through the concrete
+     * `Fx<Tuple1<List<Int32>>, Void>` its instantiation returns (it was missed, and
+     * `k(makeList())` kept a view into the temporary: gcc printed 1014930946 where Kira gives
+     * 1360); so is a method of a generic class used as a value. A body whose type is unknown
+     * fits every type. A generic function used as a value fits by arity. An `Fx` value is
      * made only by one of those; a stdlib or extern callee handed one runs it as itself.
      */
     private fun fnValueBodies(arity: Int, type: KType.Fn?): List<Body> {
         val exact = type != null && !mentionsParam(type)
-        fun fits(t: KType?): Boolean = !exact || t == type
+        fun fits(t: KType?): Boolean = !exact || t == null || t == type || (mentionsParam(t) && type != null && mayInstantiate(t, type))
         return model.captures.keys.filter { it.def.parameters.size == arity && fits(model.typeOrNull(it)) }.map { bodyOf(it) } +
             usedAsValue.filter { fn ->
                 fn.params.size == arity && (fn.typeParams.isNotEmpty() || fits(KType.Fn(fn.params.map { FnParam(it.type, it.byRef) }, fn.ret)))
             }.map { bodyOf(it, opaque = false) }
+    }
+
+    /**
+     * Whether [t] may be an instantiation of [pattern], a type that mentions type parameters:
+     * a parameter (or an unknown type) matches any type, and everything else must have the
+     * same shape (the same class, the same `mut` parameters, the same `Arr` sizes where both
+     * are constants). One parameter is not required to match the same type everywhere, so
+     * the answer is "may", never a wrong "no".
+     */
+    private fun mayInstantiate(pattern: KType, t: KType): Boolean = when (pattern) {
+        is KType.Param, KType.Error -> true
+        is KType.Fn -> t is KType.Fn && t.params.size == pattern.params.size &&
+            pattern.params.zip(t.params).all { (a, b) -> a.byRef == b.byRef && mayInstantiate(a.type, b.type) } &&
+            mayInstantiate(pattern.ret, t.ret)
+        is KType.Nominal -> t is KType.Nominal && t.sym == pattern.sym && t.args.size == pattern.args.size &&
+            pattern.args.zip(t.args).all { (a, b) ->
+                when (a) {
+                    is TypeArg.Ty -> b !is TypeArg.Ty || mayInstantiate(a.t, b.t)
+                    is TypeArg.Const -> b !is TypeArg.Const || a.n == b.n
+                }
+            }
+        else -> pattern == t
     }
 
     /** Whether [t] mentions a type parameter anywhere (an `Fx` type a generic body calls through). */
@@ -1454,6 +1600,40 @@ class CppEscapes(private val model: TypedModel, private val heldByReference: (KT
     fun dispatchStores(rc: ResolvedCall, i: Int, asView: Boolean): Boolean {
         val bodies = dispatchBodies(rc) ?: return true
         return bodies.any { b -> val p = b.params.getOrNull(i); p == null || fate(b, p, asView).stored }
+    }
+
+    /**
+     * Whether an `Fx` argument of the stdlib call [rc] may keep, past the call, a view into an
+     * object the binding hands it, which may be the receiver's own storage: `Mutex.lock` runs
+     * its body with the mutex's value by reference (`T&`) and `waitUntil` its predicate with a
+     * `const T&`, so a body that stores `l.view()` in a global keeps a view into the mutex. It
+     * does when some body the argument may run stores a view of a parameter that owns storage
+     * or is a view: the lambda written as the argument, the function a `FnRef` names, or else
+     * every [fnValueBodies] of the argument's type. A binding's C++ is not seen through, so
+     * any parameter may be handed the receiver or another operand.
+     */
+    fun fxArgumentKeeps(rc: ResolvedCall): Boolean = rc.args.any { a ->
+        if (a !is ArgBinding.Given) {
+            return@any false
+        }
+        val t = model.typeOrNull(a.expr) as? KType.Fn ?: return@any false
+        val x = a.expr
+        val bodies = when {
+            x is LambdaExpr -> listOf(bodyOf(x))
+            else -> (model.coercion(x) as? Coercion.FnRef)?.let { listOf(bodyOf(it.fn, opaque = false)) } ?: fnValueBodies(t.params.size, t)
+        }
+        bodies.any { b ->
+            t.params.indices.any { j ->
+                val pt = t.params[j].type
+                val asView = CppLending.lends(pt)
+                if (!asView && !CppLending.borrowable(pt)) {
+                    false
+                } else {
+                    val p = b.params.getOrNull(j)
+                    p == null || fate(b, p, asView).stored
+                }
+            }
+        }
     }
 
     /**
@@ -1758,8 +1938,10 @@ class CppEscapes(private val model: TypedModel, private val heldByReference: (KT
             val keeps = when (rc.kind) {
                 CallKind.PRINT -> false
                 // A stdlib function keeps nothing (a view it returns is the call's own value),
-                // except a method on a container that can hold views, which stores it.
-                CallKind.MAGIC -> view && rc.receiver?.let { model.typeOrNull(it) }?.let { CppLending.lends(it) } == true && keptIn(rc.receiver)
+                // except a method on a container that can hold views, which stores it, and one
+                // that hands the operand to an Fx argument that keeps a view of it.
+                CallKind.MAGIC -> (view && rc.receiver?.let { model.typeOrNull(it) }?.let { CppLending.lends(it) } == true && keptIn(rc.receiver)) ||
+                    fxArgumentKeeps(rc)
                 CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> {
                     val callee = rc.fn
                     val q = callee?.params?.getOrNull(i)
@@ -1782,12 +1964,20 @@ class CppEscapes(private val model: TypedModel, private val heldByReference: (KT
         /** Marks [stored] when the call [rc] may keep a view into the operand through its [receiver]. */
         private fun receiverUse(rc: ResolvedCall, receiver: Expr) {
             val view = tainted(receiver)
+            if (rc.kind == CallKind.MAGIC && (view || rooted(receiver)) && fxArgumentKeeps(rc)) {
+                // A stdlib method that hands the receiver's storage to an Fx argument keeping a
+                // view of it (`m.lock(fx (mut l) { gv = l.view() })`), whatever the receiver's
+                // type: a Mutex parameter is a handle, and a temporary one dies with the caller's
+                // statement (gcc printed -1098113010 where Kira gives 1360).
+                stored = true
+                return
+            }
             val place = !view && rooted(receiver) && byReference(receiver)
             if (!view && !place) {
                 return
             }
             val keeps = when (rc.kind) {
-                // A stdlib method keeps nothing of its receiver; a view it returns is the call's own value.
+                // A stdlib method keeps nothing of its receiver itself; a view it returns is the call's own value.
                 CallKind.PRINT, CallKind.MAGIC -> false
                 CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> view || (rc.fn?.let { fate(it, null, false).stored } ?: true)
                 CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE -> true

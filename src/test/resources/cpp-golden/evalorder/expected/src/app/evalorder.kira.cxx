@@ -37,6 +37,11 @@ namespace evalorder
     [[nodiscard]] kira::View<std::int32_t> tail(const kira::List<std::int32_t>& xs, kira::Size at);
     [[nodiscard]] std::int32_t total(kira::View<std::int32_t> v);
     [[nodiscard]] std::int32_t sumTail(const kira::List<std::int32_t>& xs);
+    template<typename T>
+    [[nodiscard]] kira::Fn<kira::MutView<T>(kira::List<T>&)> mkLender();
+    [[nodiscard]] kira::List<kira::List<std::int32_t>> freshLists();
+    [[nodiscard]] kira::Rc<kira::Box<kira::List<std::int32_t>>> freshRef();
+    [[nodiscard]] kira::Maybe<kira::List<std::int32_t>> freshMaybe();
     [[nodiscard]] kira::MutView<std::int32_t> lendList(kira::List<std::int32_t>& xs);
     [[nodiscard]] kira::MutView<std::int32_t> lendArr(std::array<std::int32_t, 3>& a);
     void lendGlobal(kira::List<std::int32_t>& xs);
@@ -153,6 +158,31 @@ namespace evalorder
             const kira::Size t0_ = nextSize();
             return tail(xs, t0_);
         }());
+    }
+
+    template<typename T>
+    kira::Fn<kira::MutView<T>(kira::List<T>&)> mkLender()
+    {
+        return [](kira::List<T>& zs) -> kira::MutView<T>
+        {
+            return kira::mutView(zs).from(0);
+        };
+    }
+
+    kira::List<kira::List<std::int32_t>> freshLists()
+    {
+        return kira::List<kira::List<std::int32_t>>{kira::List<std::int32_t>{10, 20, 30}};
+    }
+
+    kira::Rc<kira::Box<kira::List<std::int32_t>>> freshRef()
+    {
+        return std::make_shared<kira::Box<kira::List<std::int32_t>>>(kira::List<std::int32_t>{10, 20, 30});
+    }
+
+    kira::Maybe<kira::List<std::int32_t>> freshMaybe()
+    {
+        const kira::Maybe<kira::List<std::int32_t>> m = kira::List<std::int32_t>{10, 20, 30};
+        return m;
     }
 
     kira::MutView<std::int32_t> lendList(kira::List<std::int32_t>& xs)
@@ -695,6 +725,38 @@ namespace evalorder
           const std::int32_t t1_ = pf();
           return sub(t0_, t1_);
       }());
+      const kira::Fn<kira::MutView<std::int32_t>(kira::List<std::int32_t>&)> mkg = mkLender<std::int32_t>();
+      kira::List<std::int32_t> ux = kira::List<std::int32_t>{1, 2, 3};
+      const kira::MutView<std::int32_t> mx = mkg(ux);
+      const kira::Fn<std::int32_t()> px = [mx]() -> std::int32_t
+      {
+          mx[0] = 9;
+          return 1;
+      };
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(ux, 0);
+          const std::int32_t t1_ = px();
+          return sub(t0_, t1_);
+      }());
+      std::int32_t rl{0};
+      for(const std::int32_t el : kira::List<std::int32_t>(kira::at(freshLists(), 0)))
+      {
+          rl += el;
+      }
+      kira::trace(rl);
+      std::int32_t rr{0};
+      for(const std::int32_t er : kira::List<std::int32_t>(freshRef()->value))
+      {
+          rr += er;
+      }
+      kira::trace(rr);
+      std::int32_t rm{0};
+      for(const std::int32_t em : kira::List<std::int32_t>(kira::unwrap(freshMaybe())))
+      {
+          rm += em;
+      }
+      kira::trace(rm);
   }
 
   kira::MutView<std::int32_t> Lender::lend()

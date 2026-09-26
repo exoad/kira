@@ -1622,6 +1622,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             addAll(rc.typeArgs)
         }.map { ctx.spell(it, Pos.TEMPLATE_ARG, e) }
+        // A temporary receiver whose storage the binding hands to an Fx argument that keeps a view of it (`Mutex.lock`).
+        receiver?.let { hoister.refuseKeptReceiver(rc, it) }
         val (argOps, slots) = arguments(rc, e)
         val lending = recvType != null && fn.name in LENDERS && (CppBindingTable.isArr(recvType) || CppBindingTable.magicName(recvType) == "List") &&
             CppBindingTable.magicName(rc.returnType) == "MutView"

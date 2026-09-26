@@ -1429,4 +1429,339 @@ class CppHoisterTest {
         val written = lentText.substring(head2.range.last, lentText.indexOf("\n  }\n", head2.range.last))
         assertTrue(written.contains("sub(kira::at(ws, 0), bump())") && written.contains("sub(x, bump())"), written)
     }
+
+    private val refusingRound4 = """
+        use "kira:sync"
+
+        mut idx: Size = 0
+        mut gref: Ref<List<View<Int32>>> = Ref<List<View<Int32>>> { value = List<View<Int32>> { } }
+        mut gr: Ref<List<Int32>> = Ref<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }
+        mut gv: Maybe<View<Int32>> = null
+        mut gmv: Maybe<MutView<Int32>> = null
+        mut gs: Int32 = 0
+
+        fx nextSize: () Size {
+            idx += 1
+            return idx
+        }
+
+        fx makeList: () List<Int32> {
+            return List<Int32> { values = [10, 20, 30] }
+        }
+
+        fx makeRef: () Ref<List<Int32>> {
+            return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30] } }
+        }
+
+        fx makeRefs: () Ref<List<List<Int32>>> {
+            return Ref<List<List<Int32>>> { value = List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] } }
+        }
+
+        fx makeMaybe: () Maybe<List<Int32>> {
+            m: Maybe<List<Int32>> = List<Int32> { values = [10, 20, 30] }
+            return m
+        }
+
+        fx total: (v: View<Int32>) Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in v {
+                s += x
+            }
+            return s
+        }
+
+        fx total2: (v: View<Int32>, k: Size) Int32 {
+            return total(v) + (k as Int32)
+        }
+
+        fx total3: (k: Size, v: View<Int32>) Int32 {
+            return total(v) + (k as Int32)
+        }
+
+        fx tailL: (xs: List<Int32>, k: Size) View<Int32> {
+            return xs.view().from(k)
+        }
+
+        fx tailV: (v: View<Int32>, k: Size) View<Int32> {
+            return v.from(k)
+        }
+
+        fx keepV: (v: View<Int32>) Void {
+            gv = v
+        }
+
+        fx sizeOfL: (xs: List<Int32>, k: Size) Size {
+            return xs.size() + k
+        }
+
+        fx mkKeeper<T>: (sink: Ref<List<View<T>>>) Fx<Tuple1<List<T>>, Void> {
+            return fx (xs: List<T>) Void {
+                sink.value.add(xs.view())
+            }
+        }
+
+        fx mkSizer<T>: () Fx<Tuple1<List<T>>, Size> {
+            return fx (xs: List<T>) Size {
+                return xs.size()
+            }
+        }
+
+        pub fx genericLambdaKeepsATemporary: () Void {
+            k: Fx<Tuple1<List<Int32>>, Void> = mkKeeper<Int32>(gref)
+            k(makeList())
+        }
+
+        pub fx refStorageLentInASpill: () Int32 {
+            return total(tailL(makeRef().value, nextSize()))
+        }
+
+        pub fx refStorageViewedInASpill: () Int32 {
+            return total3(nextSize(), makeRef().value.from(1))
+        }
+
+        pub fx maybeStorageViewedInASpill: () Int32 {
+            return total3(nextSize(), makeMaybe().value.from(1))
+        }
+
+        pub fx convertedRefStorageInASpill: () Int32 {
+            return total(tailV(makeRef().value, nextSize()))
+        }
+
+        pub fx convertedRefStorageKept: () Void {
+            keepV(makeRef().value)
+        }
+
+        pub fx refStorageBeforeAnEffect: () Int32 {
+            return total2(makeRef().value.view(), nextSize())
+        }
+
+        pub fx refStorageInALocal: () Int32 {
+            v: View<Int32> = makeRef().value.view()
+            return total(v)
+        }
+
+        pub fx maybeStorageInALocal: () Int32 {
+            w: View<Int32> = makeMaybe().value.view()
+            return total(w)
+        }
+
+        pub fx elementOfRefStorageInALocal: () Int32 {
+            e: View<Int32> = makeRefs().value[0].view()
+            return total(e)
+        }
+
+        pub fx temporaryMutexKeepsItsValue: () Void {
+            Mutex<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }.lock(fx (mut l: List<Int32>) Void {
+                gmv = l.view()
+            })
+        }
+
+        pub fx temporaryMutexPredicateKeepsItsValue: () Bool {
+            return Mutex<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }.waitUntil(fx (l: List<Int32>) Bool {
+                gv = l.view()
+                return true
+            }, 10)
+        }
+
+        fx lockAndKeep: (m: Mutex<List<Int32>>) Void {
+            m.lock(fx (mut l: List<Int32>) Void {
+                gmv = l.view()
+            })
+        }
+
+        pub fx wrappedMutexKeepsItsValue: () Void {
+            lockAndKeep(Mutex<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } })
+        }
+
+        pub fx safeRefInALocal: () Int32 {
+            r: Ref<List<Int32>> = makeRef()
+            return total(tailL(r.value, nextSize()))
+        }
+
+        pub fx safeGlobalRef: () Int32 {
+            return total(tailL(gr.value, nextSize()))
+        }
+
+        pub fx safeFreshStorageReadOnly: () Size {
+            return sizeOfL(makeRef().value, nextSize())
+        }
+
+        pub fx safeInOneStatement: () Int32 {
+            return total(makeRef().value.view())
+        }
+
+        pub fx safeMutexInALocal: () Void {
+            m: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }
+            m.lock(fx (mut l: List<Int32>) Void {
+                gmv = l.view()
+            })
+        }
+
+        pub fx safeTemporaryMutexKeepsNothing: () Void {
+            Mutex<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }.lock(fx (mut l: List<Int32>) Void {
+                gs = l.size() as Int32
+            })
+        }
+
+        pub fx safeGenericLambdaOfAnotherType: () Size {
+            k: Fx<Tuple1<List<Int32>>, Size> = mkSizer<Int32>()
+            return k(makeList())
+        }
+    """.trimIndent()
+
+    @Test
+    fun aViewIntoAFreshValuesStorageOrKeptByALambdaInAGenericFunctionIsRefused() {
+        // Round 4 of the convergence policy. Each refused shape compiled before and read freed
+        // memory: a lambda written in a generic function keeping a view of a temporary through
+        // a concrete Fx value (gcc 1014930946 where Kira gives 1360); a view into the storage of
+        // a fresh Ref or Maybe reached through a field (the typer records `makeRef().value` as
+        // a place), inside a D33 spill (gcc -1951855684 and -1448277679 where Kira gives 1350
+        // and 1351), kept by a callee or in a local; and a temporary Mutex whose lock body or
+        // waitUntil predicate keeps a view of its value, directly or through a function handed
+        // the Mutex (gcc -152925846 and -1098113010 where Kira gives 1360).
+        // Each message names the temporary. The safe* functions are their neighbours, which
+        // still compile: a lambda of another type is not the generic keeper.
+        val emitted = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:round4", refusingRound4))
+        val lines = "module \"vl:round4\"\n\n$refusingRound4\n".lines()
+        fun line(snippet: String): Int = lines.indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
+        val found = emitted.diagnostics("vl:round4")
+            .filter { it.code == net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.VIEW_LIFETIME_CODE }
+            .map { (it.position?.lineNumber ?: -1) to it.message }
+        val expected = listOf(
+            line("k(makeList())") to "the Fx value called here may keep a view into the result of 'makeList', a temporary, past the call",
+            line("return total(tailL(makeRef().value, nextSize()))") to "a view the call may keep into 'value' of the result of 'makeRef', a temporary, would point into a temporary of the lambda that orders the call's operands (D33): store the result of 'makeRef' in a local first",
+            line("return total3(nextSize(), makeRef().value.from(1))") to "this value holds a view into 'value' of the result of 'makeRef', a temporary, which would not outlive the lambda",
+            line("return total3(nextSize(), makeMaybe().value.from(1))") to "this value holds a view into 'value' of the result of 'makeMaybe', a temporary, which would not outlive the lambda",
+            line("return total(tailV(makeRef().value, nextSize()))") to "a view the call may keep into 'value' of the result of 'makeRef', a temporary",
+            line("keepV(makeRef().value)") to "'keepV' may keep a view into 'value' of the result of 'makeRef', a temporary, past the call",
+            line("return total2(makeRef().value.view(), nextSize())") to "this value holds a view into 'value' of the result of 'makeRef', a temporary",
+            line("v: View<Int32> = makeRef().value.view()") to "but the local 'v' outlives it: store the result of 'makeRef' in a local first",
+            line("w: View<Int32> = makeMaybe().value.view()") to "but the local 'w' outlives it: store the result of 'makeMaybe' in a local first",
+            line("e: View<Int32> = makeRefs().value[0].view()") to "a view into an element of 'value' of the result of 'makeRefs', a temporary",
+            line("Mutex<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }.lock(fx (mut l: List<Int32>) Void {") to "'lock' may keep a view into its receiver, the construction, a temporary, past the call",
+            line("return Mutex<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }.waitUntil(") to "'waitUntil' may keep a view into its receiver, the construction, a temporary, past the call",
+            line("lockAndKeep(Mutex<List<Int32>>") to "'lockAndKeep' may keep a view into the construction, a temporary, past the call",
+        )
+        assertEquals(expected.size, found.size, "one refusal per unsafe shape, and none for the safe ones:\n" + found.joinToString("\n"))
+        expected.forEach { (at, text) ->
+            assertTrue(found.any { (l, m) -> l == at && m.contains(text) }, "line $at: '$text' in:\n" + found.joinToString("\n"))
+        }
+    }
+
+    private val round4Safe = Module(
+        "hoist:round4",
+        """
+        mut gcount: Int32 = 0
+        mut gsrc: List<Int32> = List<Int32> { values = [1, 2, 3] }
+
+        fx sub: (a: Int32, b: Int32) Int32 {
+            return a - b
+        }
+
+        fx makeLists: () List<List<Int32>> {
+            return List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
+        }
+
+        fx makeRef: () Ref<List<Int32>> {
+            return Ref<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }
+        }
+
+        fx makeMaybe: () Maybe<List<Int32>> {
+            m: Maybe<List<Int32>> = List<Int32> { values = [1, 2, 3] }
+            return m
+        }
+
+        fx makeList: () List<Int32> {
+            return List<Int32> { values = [1, 2, 3] }
+        }
+
+        fx makeRefV: () Ref<View<Int32>> {
+            return Ref<View<Int32>> { value = gsrc.view() }
+        }
+
+        fx mkLender<T>: () Fx<Tuple1<mut List<T>>, MutView<T>> {
+            return fx (mut zs: List<T>) MutView<T> {
+                return zs.from(0)
+            }
+        }
+
+        pub fx lentByAGenericLambda: () Int32 {
+            mkf: Fx<Tuple1<mut List<Int32>>, MutView<Int32>> = mkLender<Int32>()
+            mut zs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            mz: MutView<Int32> = mkf(mut zs)
+            pz: Fx<Tuple0, Int32> = fx () Int32 {
+                mz.set(0, 9)
+                return 1
+            }
+            return sub(zs[0], pz())
+        }
+
+        pub fx rangesOfTemporaries: () Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in makeLists()[0] {
+                s += x
+            }
+            for y: Int32 in makeRef().value {
+                s += y
+            }
+            for z: Int32 in makeMaybe().value {
+                s += z
+            }
+            for w: Int32 in makeRefV().value {
+                s += w
+            }
+            return s
+        }
+
+        pub fx rangesThatNeedNoCopy: () Int32 {
+            mut s: Int32 = 0
+            l: List<Int32> = makeList()
+            for x: Int32 in l {
+                s += x
+            }
+            for y: Int32 in makeList() {
+                s += y
+            }
+            for z: Int32 in l.view() {
+                s += z
+            }
+            return s
+        }
+        """,
+    )
+
+    private val round4Text by lazy { CppExprTestSupport.emit("hoister-round4", listOf(round4Safe)).source(round4Safe) }
+
+    private fun round4Body(fn: String): String {
+        val head = Regex("\\n  [^\\n ][^\\n]* $fn\\([^\\n]*\\)\\n  \\{\\n").find(round4Text) ?: error("no definition of $fn in:\n$round4Text")
+        return round4Text.substring(head.range.last, round4Text.indexOf("\n  }\n", head.range.last))
+    }
+
+    @Test
+    fun aMutViewALambdaInAGenericFunctionLendsMakesItsSourceShared() {
+        // mkLender<T>'s lambda has the type Fx<Tuple1<mut List<T>>, MutView<T>>, and mkf the
+        // concrete Fx<Tuple1<mut List<Int32>>, MutView<Int32>>: it is one of the bodies mkf may
+        // run, so zs is lent a MutView and zs[0] is read before pz() writes through it (gcc and
+        // MSVC printed 8, clang 0; Kira gives 0).
+        val b = round4Body("lentByAGenericLambda")
+        assertTrue(b.contains("const std::int32_t t0_ = kira::at(zs, 0);\n          const std::int32_t t1_ = pz();\n          return sub(t0_, t1_);"), b)
+    }
+
+    @Test
+    fun aForRangeThatMayBeAReferenceIntoATemporaryIsCopiedWhileItLives() {
+        // `for(x : kira::at(makeLists(), 0))` and `for(y : makeRef()->value)` bound a reference
+        // into a temporary that died before the first step (gcc -Werror=dangling-reference; MSVC's
+        // ASan a heap-use-after-free). The copy is made in the range expression, and the loop's
+        // reference keeps it alive; so is a View held in a fresh Ref's box, whose storage lives
+        // but whose kira::View object is freed with the box. A variable, a fresh List and a view
+        // of a variable are iterated as they are.
+        val copied = round4Body("rangesOfTemporaries")
+        assertTrue(copied.contains(": kira::List<std::int32_t>(kira::at(makeLists(), 0)))"), copied)
+        assertTrue(copied.contains(": kira::List<std::int32_t>(makeRef()->value))"), copied)
+        assertTrue(copied.contains(": kira::List<std::int32_t>(kira::unwrap(makeMaybe())))"), copied)
+        assertTrue(copied.contains(": kira::View<std::int32_t>(makeRefV()->value))"), copied)
+        val plain = round4Body("rangesThatNeedNoCopy")
+        assertTrue(plain.contains("x : l)") && plain.contains("y : makeList())") && plain.contains("z : kira::view(l))"), plain)
+        assertFalse(plain.contains("kira::List<std::int32_t>("), plain)
+    }
 }

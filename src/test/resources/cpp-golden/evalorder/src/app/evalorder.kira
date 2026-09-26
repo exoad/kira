@@ -329,6 +329,55 @@ fx main: () Void {
         return 1
     }
     trace(sub(uf[0], pf()))
+    // So does one a lambda written in a generic function lends: mkLender<T>'s lambda has the
+    // type Fx<Tuple1<mut List<T>>, MutView<T>>, and is one of the bodies the concrete mkg may
+    // run (gcc and MSVC printed 8, clang 0): 1 - 1.
+    mkg: Fx<Tuple1<mut List<Int32>>, MutView<Int32>> = mkLender<Int32>()
+    mut ux: List<Int32> = List<Int32> { values = [1, 2, 3] }
+    mx: MutView<Int32> = mkg(mut ux)
+    px: Fx<Tuple0, Int32> = fx () Int32 {
+        mx.set(0, 9)
+        return 1
+    }
+    trace(sub(ux[0], px()))
+    // A for range whose storage a temporary owns (an element of a fresh List, a fresh Ref's
+    // box, a fresh Maybe's value) is copied while the temporary lives: C++'s range reference
+    // keeps only a temporary it is bound to itself, and the loop read freed storage (gcc
+    // -Werror=dangling-reference, MSVC's ASan a heap-use-after-free). 60, three times.
+    mut rl: Int32 = 0
+    for el: Int32 in freshLists()[0] {
+        rl += el
+    }
+    trace(rl)
+    mut rr: Int32 = 0
+    for er: Int32 in freshRef().value {
+        rr += er
+    }
+    trace(rr)
+    mut rm: Int32 = 0
+    for em: Int32 in freshMaybe().value {
+        rm += em
+    }
+    trace(rm)
+}
+
+fx mkLender<T>: () Fx<Tuple1<mut List<T>>, MutView<T>> {
+    return fx (mut zs: List<T>) MutView<T> {
+        return zs.from(0)
+    }
+}
+
+fx freshLists: () List<List<Int32>> {
+    return List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] }
+}
+
+fx freshRef: () Ref<List<Int32>> {
+    return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30] } }
+}
+
+fx freshMaybe: () Maybe<List<Int32>> {
+    m: Maybe<List<Int32>> = List<Int32> { values = [10, 20, 30] }
+    return m
 }
 
 fx lendList: (mut xs: List<Int32>) MutView<Int32> {
