@@ -269,13 +269,19 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
      * class name, with the runtime header included. Null for any other class.
      */
     private fun systemClass(sym: ClassSymbol): String? {
-        if (sym.kind != ClassKind.MAGIC) {
+        if (!isSystemClass(sym)) {
             return null
         }
-        val header = systemHeaderFor(sym.module.uri) ?: return null
-        ctx.includeInHeader(header)
+        ctx.includeInHeader(systemHeaderFor(sym.module.uri)!!)
         return "${ctx.layout.namespaceFor(sym.module.uri)}::${ctx.names.escape(sym.name)}"
     }
+
+    /**
+     * Whether [sym] is a `@_magic` class of a system module ([SYSTEM_MODULE_HEADERS]): a Kira
+     * class the runtime defines, held as `kira::Rc<C>` and constructed through `make_shared`
+     * like any class (R9), never a value container like `List` or `Map`.
+     */
+    fun isSystemClass(sym: ClassSymbol): Boolean = sym.kind == ClassKind.MAGIC && systemHeaderFor(sym.module.uri) != null
 
     private fun spellArg(arg: TypeArg): String = when (arg) {
         is TypeArg.Ty -> spell(arg.t, Pos.TEMPLATE_ARG)

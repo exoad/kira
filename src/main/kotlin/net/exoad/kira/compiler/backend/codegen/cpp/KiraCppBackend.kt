@@ -402,7 +402,10 @@ object KiraCppBackend {
      * stdlib modules (`kira:*`) their headers include, transitively through
      * [EmittedModule.uses], by URI. A stdlib module nothing reaches is not emitted: its
      * bodies are not the project's, and a project that never names `kira:math` has no
-     * `kira/std/math.kira.hxx`. CppGoldenEmitTest runs the same path.
+     * `kira/std/math.kira.hxx`. A system module (`kira:os`, `kira:sync`, `kira:test`,
+     * `kira:time`) is never emitted: its runtime header is its whole C++ face, the
+     * hand-written structs and constants included ([CppTypeSpeller.SYSTEM_MODULE_HEADERS]),
+     * and headers include that. CppGoldenEmitTest runs the same path.
      */
     fun emitModules(emitter: CppModuleEmitter, sources: List<Pair<CppModuleRef, SourceContext>>): List<EmittedSource> {
         val byUri = sources.associateBy { it.first.uri }
@@ -411,7 +414,7 @@ object KiraCppBackend {
         val queued = HashSet<String>()
         fun reach(uses: List<String>) {
             uses.forEach { uri ->
-                if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX) && queued.add(uri)) {
+                if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX) && CppTypeSpeller.systemHeaderFor(uri) == null && queued.add(uri)) {
                     reached.add(uri)
                 }
             }
