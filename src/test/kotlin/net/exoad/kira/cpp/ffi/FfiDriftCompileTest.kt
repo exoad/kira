@@ -29,6 +29,10 @@ import kotlin.test.fail
  *   `__cplusplus` guard: it builds only because the generated header includes it inside
  *   `extern "C" { }`, since the driver defines `pt_len` with C linkage and an unwrapped
  *   include would declare it with C++ linkage first.
+ * - a C struct `PtCfg { PtMode mode; int32_t n; }` with a typedef'd enum field, declared
+ *   in Kira as `mode: Int32` (an extern enum is not a Kira declaration): it builds, since
+ *   the field check takes an unscoped enum of the integer's size; declared `Int16`, the
+ *   twin pads to the same 8 bytes and only the field's size gate catches it.
  */
 class FfiDriftCompileTest {
     private val driver = File("src/test/resources/cpp-golden/forward/driver")
@@ -66,7 +70,19 @@ class FfiDriftCompileTest {
         pub fx ptLen: (s: CStr) Int32;
     """
 
-    /** A C header as C libraries ship them, minus the `__cplusplus` guard. */
+    /** Kira's view of `pt.h`'s `PtCfg`, whose first field is a C enum: declared as the integer given. */
+    private fun cfgModule(modeType: String): String = """
+        @_extern(c = "PtCfg", header = "pt.h")
+        pub struct Cfg {
+            pub mode: $modeType = 0
+            pub n: Int32 = 0
+        }
+    """
+
+    /**
+     * A C header as C libraries ship them, minus the `__cplusplus` guard. `PtCfg` holds a
+     * typedef'd enum, which gcc gives the underlying type `unsigned int` and MSVC `int`.
+     */
     private val ptHeader = """
         #ifndef PT_H
         #define PT_H
@@ -76,7 +92,23 @@ class FfiDriftCompileTest {
             int32_t y;
         };
         int32_t pt_len(const char* s);
+        typedef enum { PT_OFF, PT_ON } PtMode;
+        struct PtCfg {
+            PtMode mode;
+            int32_t n;
+        };
         #endif
+    """.trimIndent() + "\n"
+
+    private val cfgMain = """
+        #include "cfg.kira.hxx"
+
+        int main()
+        {
+            PtCfg c{PT_ON, 3};
+            int32_t mode = c.mode;
+            return mode == 1 && c.n == 3 ? 0 : 1;
+        }
     """.trimIndent() + "\n"
 
     private val ptMain = """
@@ -117,6 +149,8 @@ class FfiDriftCompileTest {
                 DynamicTest.dynamicTest("${tc.id}: a same-size field type drift fails with Kira's message") { fieldTypeDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: two same-typed fields in the other order fail with Kira's message") { fieldOrderDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: the right struct, and a C header without a guard through c =, build") { ptClean(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a C enum field declared as the Int32 of its size builds") { enumFieldClean(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a C enum field declared as Int16 fails with Kira's message") { enumFieldSizeDrift(tc) },
             )
         }
     }
@@ -191,6 +225,29 @@ class FfiDriftCompileTest {
         if (!result.success) {
             fail("${tc.id}: the right struct and the c = function do not build:\n${result.describe()}")
         }
+    }
+
+    // ---- a C enum field, declared as the integer of its size ---------------------------------
+
+    private fun compileCfg(tc: CppToolchain, name: String, modeType: String): Pair<String, CppCompileSupport.CompileResult> {
+        val header = emitHeader("c:cfg", cfgModule(modeType), CppOptions(lineDirectives = false))
+        return header to compile(tc, name, mapOf("cfg.kira.hxx" to header, "pt.h" to ptHeader, "main.cxx" to cfgMain), withCarDriver = false)
+    }
+
+    private fun enumFieldClean(tc: CppToolchain) {
+        val (header, result) = compileCfg(tc, "enum-clean", "Int32")
+        assertTrue(header.contains("KIRA_EXTERN_FIELD(PtCfg, cfg::ffi_::Cfg, mode, std::int32_t, \"Cfg.mode\");"), header)
+        if (!result.success) {
+            fail("${tc.id}: a C enum field declared as Int32 does not build:\n${result.describe()}")
+        }
+    }
+
+    /** `{ int16_t mode; int32_t n; }` pads to the same 8 bytes, so only the field's size gate catches it. */
+    private fun enumFieldSizeDrift(tc: CppToolchain) {
+        val (header, result) = compileCfg(tc, "enum-size", "Int16")
+        assertTrue(header.contains("namespace cfg::ffi_ { struct Cfg { std::int16_t mode; std::int32_t n; }; }"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'mode: Int16' against a 4-byte C enum compiled (sizeof passes by padding):\n${result.describe()}")
+        assertMessage(tc, result, "Kira's Cfg.mode ${CppExternEmitter.DRIFT_MESSAGE}")
     }
 
     private fun assertMessage(tc: CppToolchain, result: CppCompileSupport.CompileResult, wanted: String) {

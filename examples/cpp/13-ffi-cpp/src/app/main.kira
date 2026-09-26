@@ -2,7 +2,7 @@ module "app:main"
 
 use "app:shape"
 
-// A Kira program over a C++ class and three C functions, through extern.
+// A Kira program over a C++ class, three C functions and a C macro constant, through extern.
 
 fx main: () Int32 {
     box: Box = makeBox(3, 4)
@@ -14,5 +14,6 @@ fx main: () Int32 {
     mut count: Int32 = 0
     countTo(mut count, 7)
     trace(count)
+    trace(LIMIT)
     return 0
 }

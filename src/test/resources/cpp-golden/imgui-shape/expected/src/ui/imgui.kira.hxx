@@ -21,4 +21,5 @@ KIRA_EXTERN_CHECK(ImGui::InputText(kira::ffi::in(std::declval<const kira::Str&>(
 KIRA_EXTERN_CHECK(ImGui::GetWindowDrawList(), ImDrawList*, "getWindowDrawList");
 KIRA_EXTERN_CHECK(ImGuiWindowFlags_None, std::int32_t, "WINDOW_FLAGS_NONE");
 KIRA_EXTERN_CHECK(ImGuiWindowFlags_NoTitleBar, std::int32_t, "WINDOW_FLAGS_NO_TITLE_BAR");
+KIRA_EXTERN_CHECK(IM_COL32_WHITE, std::uint32_t, "COL_WHITE");
 #include "kira/macro_pop.hxx"

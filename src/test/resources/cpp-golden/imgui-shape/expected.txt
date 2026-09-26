@@ -12,6 +12,6 @@ imgui-shape - Kira's extern view of an ImGui-like header
   ok    dl->AddLine(a, b, color) reached ImDrawList::AddLine with its default thickness
   ok    dl->VtxCount() is const and counts both
   ok    Vec2's layout twin has ImVec2's size
-  ok    the flag constants read by their C++ names
+  ok    the flag constants and the IM_COL32 macro read by their C++ names
 
 12 checks, 0 failed

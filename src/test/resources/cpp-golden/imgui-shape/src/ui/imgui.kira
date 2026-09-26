@@ -48,9 +48,14 @@ pub fx inputText: (label: Str, mut buf: Unsafe<Char>, size: Size) Bool;
 @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h")
 pub fx getWindowDrawList: () DrawList;
 
-// ImGui's flag values are extern constants, read by their C++ names.
+// ImGui's flag values are extern constants, read by their C++ names as the marker
+// spells them: an enumerator here, and IM_COL32_WHITE, which is a macro (a `::` in
+// front of it would not compile).
 @_extern(cpp = "ImGuiWindowFlags_None", header = "imgui.h")
 pub WINDOW_FLAGS_NONE: Int32;
 
 @_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h")
 pub WINDOW_FLAGS_NO_TITLE_BAR: Int32;
+
+@_extern(cpp = "IM_COL32_WHITE", header = "imgui.h")
+pub COL_WHITE: UInt32;

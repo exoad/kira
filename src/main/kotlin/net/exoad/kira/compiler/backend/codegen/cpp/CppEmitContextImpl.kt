@@ -164,7 +164,7 @@ interface CppExternsPart {
      */
     fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String
 
-    /** The C++ text an extern constant is read by: its C++ name (`::ImGuiWindowFlags_None`). */
+    /** The C++ text an extern constant is read by: its C++ name as the marker spells it (`ImGuiWindowFlags_None`; a macro takes no `::`). */
     fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String
 
     object Unsupported : CppExternsPart {

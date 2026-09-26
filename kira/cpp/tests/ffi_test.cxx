@@ -147,7 +147,54 @@ KIRA_EXTERN_FIELD(fake::Vec2, test::ffi_::Vec2, x, float, "Vec2.x");
 KIRA_EXTERN_FIELD(fake::Vec2, test::ffi_::Vec2, y, float, "Vec2.y");
 // What the field check refuses that is_convertible would not: the same size, a converting type;
 // and the same types, the other order.
-static_assert(!std::is_same_v<decltype(std::declval<fake::Vec2&>().x), int>, "a float field is not an int field");
+static_assert(!kira::ffi::field_matches_v<decltype(std::declval<fake::Vec2&>().x), int>, "a float field is not an int field");
+// A C struct's enum field, declared in Kira as the integer of its size (an extern enum is
+// not a Kira declaration): it passes the field check and the twin has its size. A scoped
+// enum, or an enum of another size, is a drift. That size is the target ABI's, not 4:
+// the hosts make Mode 4 bytes, and arm-none-eabi-g++ 13.3 makes it 1 (AAPCS short
+// enums; measured: declared std::int32_t, the size gate refused it there while sizeof
+// passed by padding, which is the drift the gate exists for).
+namespace fake
+{
+  enum Mode
+  {
+      MODE_OFF,
+      MODE_ON
+  };
+  using ModeInt = std::conditional_t<sizeof(Mode) == 4, std::int32_t, std::uint8_t>;
+  enum class Scoped : std::int32_t
+  {
+      A
+  };
+  enum Small : std::uint8_t
+  {
+      SMALL
+  };
+  enum Wide : std::int64_t
+  {
+      WIDE
+  };
+  struct Cfg
+  {
+      Mode mode;
+      std::int32_t n;
+  };
+}
+namespace test::ffi_
+{
+  struct Cfg
+  {
+      fake::ModeInt mode;
+      std::int32_t n;
+  };
+}
+static_assert(sizeof(fake::Cfg) == sizeof(test::ffi_::Cfg), "Kira's Cfg no longer matches its C++ header");
+KIRA_EXTERN_FIELD(fake::Cfg, test::ffi_::Cfg, mode, fake::ModeInt, "Cfg.mode");
+KIRA_EXTERN_FIELD(fake::Cfg, test::ffi_::Cfg, n, std::int32_t, "Cfg.n");
+static_assert(!kira::ffi::field_matches_v<fake::Scoped, std::int32_t>, "a scoped enum field is not an Int32 field");
+static_assert(!kira::ffi::field_matches_v<fake::Small, std::int32_t>, "a 1-byte enum field is not an Int32 field");
+static_assert(!kira::ffi::field_matches_v<fake::Wide, std::int32_t>, "an 8-byte enum field is not an Int32 field");
+static_assert(!kira::ffi::field_matches_v<fake::Mode, float>, "an enum field is not a Float32 field");
 namespace test::swapped_
 {
   struct Vec2

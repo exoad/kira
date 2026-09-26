@@ -27,3 +27,8 @@ pub fx cLen: (s: Str) Size;
 
 @_extern(c = "cshape_count", header = "cshape.h")
 pub fx countTo: (mut out: Int32, n: Int32) Void;
+
+// A C constant is a macro (`#define CSHAPE_LIMIT 42`): the check and the read both
+// spell it as written, since `::CSHAPE_LIMIT` would be `::42`.
+@_extern(c = "CSHAPE_LIMIT", header = "cshape.h")
+pub LIMIT: Int32;
