@@ -9,6 +9,7 @@ import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
@@ -22,6 +23,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.NamedArguments
 import net.exoad.kira.core.OperatorIntrinsics
+import net.exoad.kira.core.intrinsics.ExternIntrinsic
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -739,6 +741,19 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     /**
+     * The C symbol the `@_extern` mark on [node] names (design 7.3): its positional string
+     * (`@_extern("fopen")`), else its `c =`, else the Kira name. Read from the parser's stored
+     * invocation, so the symbol reaches this backend whether or not the semantic pass ran
+     * [ExternIntrinsic.apply] (a `runSemantic = false` emit skips it).
+     */
+    private fun externCSymbolOf(source: SourceContext, node: ASTNode, kiraName: String): String {
+        val invocation = runCatching { source.intrinsicInvocationsOf(node) }.getOrNull()
+            ?.firstOrNull { it.intrinsicKey.name == ExternIntrinsic.name }
+            ?: return kiraName
+        return ExternIntrinsic.cSymbolOf(invocation) ?: kiraName
+    }
+
+    /**
      * Pull @_opaque / @_extern from parser marks into CompilationUnit registries.
      * Semantic apply() may not run on all stub shapes; emit must still see them.
      */
@@ -760,10 +775,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 }
                 if ("_extern" in names && node is FunctionDecl) {
                     val kiraName = functionLikeName(node.name)
-                    // Optional C symbol not recovered from mark alone; default to Kira name.
-                    // Full apply() path can override via registerExternFunction.
                     if (compilationUnit.externCNameOrNull(kiraName) == null) {
-                        compilationUnit.registerExternFunction(kiraName, kiraName)
+                        compilationUnit.registerExternFunction(kiraName, externCSymbolOf(source, node, kiraName))
                     }
                 }
             }
@@ -784,7 +797,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                         if (marked) {
                             val kiraName = functionLikeName(expr.name)
                             if (compilationUnit.externCNameOrNull(kiraName) == null) {
-                                compilationUnit.registerExternFunction(kiraName, kiraName)
+                                compilationUnit.registerExternFunction(kiraName, externCSymbolOf(source, expr, kiraName))
                             }
                         }
                     }
