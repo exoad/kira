@@ -1249,12 +1249,31 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         return null
     }
 
-    /** Hands a binding's includes to the header or the source, where the code using it is placed. */
+    /**
+     * Hands a binding's includes to the header or the source, where the code using it is
+     * placed. One the header already includes (a system module's runtime header, which its
+     * types brought in) is not repeated in the source, which includes the header first.
+     */
     fun use(binding: CppBinding) {
         binding.includes.forEach { inc ->
             val name = CppBindingTable.includeName(inc)
-            if (state.headerPlaced || ctx.isHeaderOnly) ctx.includeInHeader(name) else ctx.includeInSource(name)
+            when {
+                state.headerPlaced || ctx.isHeaderOnly -> ctx.includeInHeader(name)
+                !headerIncludes(name) -> ctx.includeInSource(name)
+            }
         }
+    }
+
+    /**
+     * Whether the module's header already includes [name]: an include a part asked for, or the
+     * runtime header of a system module the module uses or names (`kira/sync.hxx` for `use
+     * "kira:sync"`), which the declaration emitter writes with the module includes.
+     */
+    private fun headerIncludes(name: String): Boolean {
+        if (name in ctx.headerIncludes) {
+            return true
+        }
+        return (ctx.symbol.imports + ctx.referencedModules).any { CppTypeSpeller.systemHeaderFor(it.uri) == name }
     }
 
     private fun magicCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {

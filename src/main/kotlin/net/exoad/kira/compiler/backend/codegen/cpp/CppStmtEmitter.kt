@@ -436,24 +436,25 @@ class CppStmtEmitter : CppStmtPart {
     fun isRead(ctx: CppEmitContextImpl, sym: Symbol): Boolean = reads[ctx]?.get(sym) ?: true
 
     /**
-     * The locals and parameters [statements] declare or read: true for one an identifier reads
+     * The locals and parameters [statements] declare or use: true for one an identifier reads
      * (anything but the name that declares it or the whole target of `=` or `op=`), false for
      * one that is only declared or written (gcc's -Wunused-but-set-variable counts `x += 1` as a
-     * write only).
+     * write only). Writing a `mut` parameter writes the caller's variable (`T&`), which is a use.
      */
     fun readsIn(ctx: CppEmitContextImpl, statements: List<Statement>): Map<Symbol, Boolean> {
         val model = ctx.model
         val out = IdentityHashMap<Symbol, Boolean>()
-        val notReads = Collections.newSetFromMap(IdentityHashMap<Identifier, Boolean>())
+        val declaring = Collections.newSetFromMap(IdentityHashMap<Identifier, Boolean>())
+        val written = Collections.newSetFromMap(IdentityHashMap<Identifier, Boolean>())
         statements.forEach { st ->
             AstTree.walk(st) { node ->
                 when (node) {
-                    is AssignmentExpr -> notReads.add(node.target)
-                    is CompoundAssignmentExpr -> (node.left as? Identifier)?.let { notReads.add(it) }
-                    is VariableDecl -> notReads.add(node.name)
-                    is net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationExpr -> notReads.add(node.initializer)
-                    is net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr -> notReads.add(node.name)
-                    is TryExpr -> node.exceptionName?.let { notReads.add(it) }
+                    is AssignmentExpr -> written.add(node.target)
+                    is CompoundAssignmentExpr -> (node.left as? Identifier)?.let { written.add(it) }
+                    is VariableDecl -> declaring.add(node.name)
+                    is net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationExpr -> declaring.add(node.initializer)
+                    is net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr -> declaring.add(node.name)
+                    is TryExpr -> node.exceptionName?.let { declaring.add(it) }
                     else -> {}
                 }
             }
@@ -463,8 +464,8 @@ class CppStmtEmitter : CppStmtPart {
                 if (node is Identifier && node !is IntrinsicExpr) {
                     val sym = model.symbolOf(node)
                     if (sym is LocalSymbol || sym is ParamSymbol) {
-                        val read = node !in notReads
-                        out[sym] = (out[sym] ?: false) || read
+                        val use = node !in declaring && (node !in written || (sym is ParamSymbol && sym.byRef))
+                        out[sym] = (out[sym] ?: false) || use
                     }
                 }
             }
