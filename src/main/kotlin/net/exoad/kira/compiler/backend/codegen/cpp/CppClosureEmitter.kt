@@ -92,9 +92,17 @@ class CppClosureEmitter : CppLambdaPart {
                 }
             }
         }
-        if (thisCapture == CppBodyState.ThisCapture.SELF && (owner as? ClassSymbol)?.kind == ClassKind.CLASS && !(owner as ClassSymbol).thisEscapes) {
-            // prepare() saw every lambda of the program; a class it missed would fail to compile.
-            ctx.diag(l, CppModuleEmitterFactory.INTERNAL_CODE, "class ${owner.name} captures shared_from_this() but was not marked thisEscapes before its definition")
+        if (thisCapture == CppBodyState.ThisCapture.SELF && outerAccess != CppBodyState.ThisCapture.SELF) {
+            val cls = owner as? ClassSymbol
+            when {
+                cls == null || cls.kind != ClassKind.CLASS ->
+                    ctx.unsupported(l, "an escaping lambda capturing the receiver of ${owner?.name ?: "no class"} (only a class has a shared_from_this)")
+                outer?.fn == null ->
+                    ctx.unsupported(l, "an escaping lambda capturing this in an initially or finally block of ${cls.name} (C++ has no shared_ptr to an object under construction or destruction)")
+                !cls.thisEscapes ->
+                    // prepare() saw every lambda of the program; a class it missed would fail to compile.
+                    ctx.diag(l, CppModuleEmitterFactory.INTERNAL_CODE, "class ${cls.name} captures shared_from_this() but was not marked thisEscapes before its definition")
+            }
         }
         val stmts = ctx.parts.stmts as? CppStmtEmitter
         val def = l.def
