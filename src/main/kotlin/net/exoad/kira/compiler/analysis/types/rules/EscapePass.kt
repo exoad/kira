@@ -507,15 +507,26 @@ internal class EscapePass : RulePass {
 
         /**
          * Locals of this body that are a fresh, unaliased handle to a class object: declared
-         * with a direct construction (`X { ... }`) of a class (not a struct, D29's value type),
-         * and never reassigned as a whole afterward. Everything else that names a class object —
-         * a parameter (`const kira::Rc<C>&` even without `mut`), `this`, a global, or a local
-         * built from an existing value (`c: CB2 = GC.unwrap()`, `d: CB2 = c`) — copies a handle
-         * that may already be shared with something this call does not own, so [classFieldEscapes]
-         * treats a field written through any of those as outward. A field written through a
-         * fresh local is safe here only because that local's own provenance still joins the
-         * ordinary tracked-local path below, so escaping some other way (returned, stored, passed
-         * to an unanalysable callee) is still caught where it happens.
+         * with a direct construction (`X { ... }`) of a real user class (`ClassKind.CLASS`, not
+         * a struct or a magic container such as `List`); that class never publishes `this`
+         * anywhere in its own bodies (`ClassSymbol.thisEscapes` false, computed to a fixpoint
+         * before this runs — no `initially` and no method stashes it, so no *other* handle to
+         * this exact object can already exist); and the local is never reassigned as a whole
+         * afterward, including by binding it as a `mut` argument (call-site `mut`, D4): the
+         * callee may rebind what the argument denotes (`rebind(mut c)` doing `c =
+         * GC.unwrap()`), invisible to this walk except at the call site. Everything else that
+         * names a class object — a parameter (`const kira::Rc<C>&` even without `mut`), `this`,
+         * a global, or a local built from an existing value (`c: CB2 = GC.unwrap()`, `d: CB2 =
+         * c`) — copies a handle that may already be shared with something this call does not
+         * own.
+         *
+         * The exemption in [classHandleOutward] only ever applies to a place that *is* one of
+         * these locals directly (`Place.Local` itself), never one reached by walking a place's
+         * root through a field or an index: `o.inner` and `xs[0]` are not exempt even when `o`
+         * or `xs` is fresh, because the object at the far end of that field or element is not
+         * the fresh local's own object — it is whatever that field or element already holds (a
+         * constructor argument, a shared global, another alias), which this analysis has not
+         * traced and must not assume is equally fresh.
          */
         private val freshClassLocals: Set<LocalSymbol> = run {
             val fresh = HashSet<LocalSymbol>()
@@ -524,12 +535,24 @@ internal class EscapePass : RulePass {
                 when (n) {
                     is VariableDecl -> {
                         val local = model.declSyms[n] as? LocalSymbol
-                        if (local != null && n.value is ObjectInitExpr) {
-                            fresh.add(local)
+                        val value = n.value
+                        if (local != null && value is ObjectInitExpr) {
+                            val cls = model.inits[value]?.cls
+                            if (cls != null && cls.kind == ClassKind.CLASS && !cls.thisEscapes) {
+                                fresh.add(local)
+                            }
                         }
                     }
                     is AssignmentExpr -> (model.places[n.target] as? Place.Local)?.sym?.let { reassigned.add(it) }
                     is PlaceAssignmentExpr -> (model.places[n.target] as? Place.Local)?.sym?.let { reassigned.add(it) }
+                    is FunctionCallExpr -> {
+                        val rc = model.calls[n] ?: return@walk
+                        for (a in rc.args) {
+                            if (a is ArgBinding.Given && a.byRef) {
+                                (r.placeOf(a.expr)?.root() as? Place.Local)?.sym?.let { reassigned.add(it) }
+                            }
+                        }
+                    }
                     else -> {}
                 }
             }
@@ -898,11 +921,13 @@ internal class EscapePass : RulePass {
         /** A place that outlives the call: rooted at a global, a `mut` parameter or `this`, or a field of a class object reached through a handle that may already be shared beyond this call ([classFieldEscapes], D29). */
         private fun outward(p: Place?): Boolean = beyondThis(p) || intoThis(p) || classFieldEscapes(p)
 
-        /** Whether the class handle at [p] might already be visible outside this call: true unless [p]'s root is one of [freshClassLocals]. */
-        private fun classHandleOutward(p: Place?): Boolean {
-            val root = p?.root() ?: return true
-            return !(root is Place.Local && root.sym in freshClassLocals)
-        }
+        /**
+         * Whether the class handle at [p] might already be visible outside this call: true
+         * unless [p] is *itself* the bare local place of one of [freshClassLocals]. Walking to
+         * [Place.root] here would also exempt a field or an element reached through a fresh
+         * local (`o.inner`, `xs[0]`) — see [freshClassLocals]'s doc for why that is unsound.
+         */
+        private fun classHandleOutward(p: Place?): Boolean = !(p is Place.Local && p.sym in freshClassLocals)
 
         /**
          * A field of a class object written through a receiver that may already be shared beyond

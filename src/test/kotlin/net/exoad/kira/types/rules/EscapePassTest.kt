@@ -1449,4 +1449,223 @@ class EscapePassTest {
         )
         expectClean(p)
     }
+
+    // ---- convergence round 3: the fresh-local exemption only ever covers the local itself (D29) --------
+
+    @Test
+    fun aFieldOfAFreshLocalsOwnFieldSetFromAParameterAtConstructionEscapes() {
+        // F1: `o` is a fresh local, but `o.inner` is `r`, a class parameter that may already be shared -- the
+        // write must be judged by the place `o.inner` names, not by walking its root back to `o`.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub class Outer {
+                pub mut inner: CB2 = CB2 {}
+            }
+            pub fx f1: (r: CB2, a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                o: Outer = Outer { inner = r }
+                o.inner.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+        assertTrue(message(p, "rules.escape.view-store").contains("'o.inner.f'"))
+    }
+
+    @Test
+    fun aFieldOfAFreshLocalsOwnFieldReassignedFromAGlobalEscapes() {
+        // F2: the same shape as F1, but `o.inner` is reassigned from `GC.unwrap()` after construction instead
+        // of handed in at construction -- still not `o`'s own fresh object.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub class Outer {
+                pub mut inner: CB2 = CB2 {}
+            }
+            pub mut GC: Maybe<CB2> = null
+            pub fx f2: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                o: Outer = Outer {}
+                o.inner = GC.unwrap()
+                o.inner.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aFieldOfAFreshLocalsOwnFieldSetFromASharedHelperEscapes() {
+        // F7: the same shape again, with `o.inner` set from a helper that hands back a global's object rather
+        // than from the global directly.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub class Outer {
+                pub mut inner: CB2 = CB2 {}
+            }
+            pub mut GC: Maybe<CB2> = null
+            pub fx shared: () CB2 {
+                return GC.unwrap()
+            }
+            pub fx f7: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                o: Outer = Outer { inner = shared() }
+                o.inner.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aMethodCalledOnAFreshLocalsOwnFieldThatKeepsItsArgumentEscapes() {
+        // F3: `receiverEscapes` used to check only the root of the kept receiver's place; `o.inner` is a field
+        // of the fresh local `o`, not `o` itself, so the callee's own object may already be shared.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                pub mut fx keep: (g: Fx<Tuple0, Size>) Void {
+                    f = g
+                }
+            }
+            pub class Outer {
+                pub inner: CB2 = CB2 {}
+            }
+            pub fx f3: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                o: Outer = Outer {}
+                o.inner.keep(fx() Size {
+                    return v.size()
+                })
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun anElementOfAFreshListLocalEscapesOnItsFieldWrite() {
+        // F4: the old exemption never checked the constructed type was a user class -- `List<CB2> {}` is a
+        // magic container (`ClassKind.MAGIC`), not a `ClassKind.CLASS`, and the element added from a
+        // parameter is not `xs`'s own object either way.
+        val p = snippet(
+            """
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub fx f4: (r: CB2, a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                mut xs: List<CB2> = List<CB2> {}
+                xs.add(r)
+                xs[0 as Size].f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClassThatPublishesItselfInItsOwnConstructorIsNeverAFreshLocal() {
+        // F6: `CB6`'s `initially` block stashes `this` into a global, so every `CB6 {}` construction may
+        // already be visible beyond this call the instant it is built, whatever this body does with the
+        // local afterward.
+        val p = snippet(
+            """
+            pub class CB6 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                initially {
+                    GC6 = this
+                }
+            }
+            pub mut GC6: Maybe<CB6> = null
+            pub fx f6: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB6 = CB6 {}
+                c.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aClassThatPublishesItselfInAnyMethodIsNeverAFreshLocal() {
+        // F9: `ClassSymbol.thisEscapes` is a per-class fact, not a per-call-site one -- `CB9.register`
+        // stashing `this` in a global means no `CB9 {}` local is ever fresh, whether or not this body calls
+        // `register` at all.
+        val p = snippet(
+            """
+            pub class CB9 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+                pub mut fx register: () Void {
+                    GC9 = this
+                }
+            }
+            pub mut GC9: Maybe<CB9> = null
+            pub fx f9: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB9 = CB9 {}
+                c.register()
+                c.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
+
+    @Test
+    fun aFreshLocalRebiddenThroughAMutArgumentIsNoLongerFreshOnItsNextFieldWrite() {
+        // F8: passing `c` as a `mut` argument (call-site `mut`, D4) lets the callee rebind what `c` itself
+        // denotes (`c = GC.unwrap()`), invisible to this body's own reassignment walk -- a `mut`-argument
+        // binding must count as a reassignment.
+        val p = snippet(
+            """
+            pub class CB8 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub mut GC8: Maybe<CB8> = null
+            pub fx rebind: (mut c: CB8) Void {
+                c = GC8.unwrap()
+            }
+            pub fx f8: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                mut c: CB8 = CB8 {}
+                rebind(mut c)
+                c.f = fx() Size {
+                    return v.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+    }
 }

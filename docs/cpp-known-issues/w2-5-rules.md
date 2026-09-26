@@ -12,6 +12,21 @@ write being treated as this body's own storage unless reached through `this`, a 
 `mut` parameter, when D29 makes every class parameter (`mut` or not) and every plain local
 assignment a shared handle to an object the caller or something else may already hold — see the
 round's commit, not this file.
+Fixed in convergence round 3: round 2's own fresh-local exemption (`EscapePass.freshClassLocals`
+/ `classHandleOutward`) was itself unsound — it exempted every place whose *root* walked back to
+a locally-constructed class, not just the local itself, so `o.inner.f = ...` (a field of a fresh
+local's own field), `o.inner.keep(...)` (a method call kept through that field), `xs[0].f = ...`
+(an element of a fresh `List` local, which is `ClassKind.MAGIC` and never a user class to begin
+with), a class that publishes `this` from its own `initially` block or any of its own methods,
+and a `mut`-argument rebind of the local itself (`rebind(mut c)` doing `c = GC.unwrap()`) all
+typed clean while lowering to a use-after-free (confirmed by hand-lowering to C++ and running
+it: every hole read a freed `Str`). `classHandleOutward` now only exempts a place that *is*
+`Place.Local` itself, never one reached by walking a place's root through a field or an index;
+`freshClassLocals` now also requires the constructed type to be `ClassKind.CLASS` with
+`ClassSymbol.thisEscapes` false (computed to a fixpoint before this pass's own fixpoint runs),
+and counts a `mut`-argument binding of the local as a reassignment. Nine regression tests added
+to `EscapePassTest` (round 3 section) reproduce the reported F1/F2/F3/F4/F6/F7/F8/F9 shapes and
+fail without the fix. See the round's commit, not this file.
 
 ## Issue 8 partly covered: three ways a plain `fx` can still write its own state
 
@@ -67,22 +82,29 @@ same use-after-free shape as `resetDirect` (`sc.resetK()`), which HiddenWrites d
 class by value (not `mut`, which is already tracked), (b) copy it into a local, and (c) write
 through that local's field — three conditions together, and the far more common direct-write
 and mut-argument shapes (issues 3 and 10 from round 5) are caught. It is also, on the real
-emitter, not a dangling-reference shape at all, which corrects this entry's earlier claim:
-W2.3's `CppExprEmitter.receiverOperand`/`heldByReference` (41575c6) copies a class-handle
-receiver into a typed temporary whenever a sibling operand is IMPURE, and `EffectsPass` rates
-`resetAlias` IMPURE (it writes a field through a class reference, `t.k = ...`). So `sc` in
-`sc.k.plus(resetAlias(sc))` is hoisted into its own temporary before `resetAlias` runs, and the
-`.k.plus(...)` read is sequenced against that copy, not against whatever `resetAlias` does to the
-shared object — the hoist is what makes the shape safe, not an absence of aliasing. The gap this
-entry actually tracks is only that `HiddenWrites` cannot itself see the alias (so a future
-emitter change that stops hoisting a class receiver here would reopen a real UAF with no
-diagnostic to catch it) and that it depends on `EffectsPass`'s IMPURE call classifying every
-callee that could do this, which is not verified by a shared invariant. Closing it needs
-`HiddenWrites`'s per-callee walk to track a local's aliasing of a by-value class parameter the
-same way `ViewAliases` already tracks a view local's aliasing of a view parameter, which is a
-distinct piece of analysis worth doing on its own rather than folding into this round's UAF
-fix. Disclosed unchanged from round 4 and round 5; the "safe because" reasoning corrected in
-round 2 of convergence.
+emitter, not meant to stay a dangling-reference shape at all, which corrects this entry's
+earlier claim of an unqualified "safe today": W2.3's `CppExprEmitter.receiverOperand`/
+`heldByReference` (41575c6) copies a class-handle receiver into a typed temporary whenever a
+sibling operand is IMPURE, and `EffectsPass` rates `resetAlias` IMPURE (it writes a field
+through a class reference, `t.k = ...`), so once that hoist is in place, `sc` in
+`sc.k.plus(resetAlias(sc))` is copied into its own temporary before `resetAlias` runs and the
+`.k.plus(...)` read is sequenced against that copy, not against whatever `resetAlias` does to
+the shared object. But that hoist lives on W2.3's own branch and is **not merged into
+cpp-backend** as of this round — `git log --oneline -- '**/CppExprEmitter*'` on `cpp-backend`
+does not show 41575c6 — so on the code this branch actually builds against today, the safety
+this entry describes does not yet exist; it holds only once W2.3 lands with that hoist. Nothing
+pins the dependency: there is no shared constant, `static_assert`, or cross-package test that
+would fail loudly if W2.3 merged without it or changed the hoist's condition, so a silent
+regression on either side would reopen a real UAF with no diagnostic to catch it. The gap this
+entry actually tracks is `HiddenWrites` itself never seeing the alias, `EffectsPass`'s IMPURE
+call needing to classify every callee that could do this (unverified by a shared invariant
+either), and this W2.3 dependency having no pin across the two packages. Closing the analysis
+gap needs `HiddenWrites`'s per-callee walk to track a local's aliasing of a by-value class
+parameter the same way `ViewAliases` already tracks a view local's aliasing of a view parameter,
+which is a distinct piece of analysis worth doing on its own rather than folding into this
+round's UAF fix. Disclosed unchanged from round 4 and round 5; the "safe because" reasoning
+corrected in round 2 of convergence and corrected again (the W2.3 merge dependency and the
+missing pin) in round 3.
 
 ## `@op_*` overloads and an `Fx`-called-through-a-field are outside HiddenWrites and EscapePass
 
@@ -124,8 +146,9 @@ brief's own diagnostic-naming table and are not this entry's subject.
 
 **Reproduction.** `./gradlew test --tests CppDeclFixesTest --tests TyperBodyCorpusTest` fails
 these three on `cpp/w2-5-rules`; the same command against a `cpp-backend` archive checkout
-passes all three (`net.exoad.kira.types.rules.*` itself — 11 classes, 140 tests — is unaffected:
-`RulesCorpusTest` passes in full).
+passes all three (`net.exoad.kira.types.rules.*` itself — 11 classes, 159 tests as of round 3
+(151 before this round's 8 new `EscapePassTest` regression cases for F1/F2/F3/F4/F6/F7/F8/F9) —
+is unaffected: `RulesCorpusTest` passes in full).
 
 **Why it is safe to defer.** The rule passes are doing their job; the fixtures were written
 before those rules existed and now need updating by whichever package owns them (W2.2 for
@@ -136,8 +159,25 @@ Fixing the fixtures is outside this package's OWNS and was previously only recor
 
 ## Open decisions
 
-None routed to this ledger this round; D33/D44 evaluation order questions belong to whichever
-package owns the emitter's evaluation-order contract (W2.3/W2.4), not to the rule passes here.
+D33/D44 evaluation order questions belong to whichever package owns the emitter's
+evaluation-order contract (W2.3/W2.4), not to the rule passes here; current documented behaviour
+is kept, per convergence policy item 4.
+
+**The round-2 blanket refusal narrows accepted code more than a whole-program view would need.**
+Routed to this ledger in round 3 (previously not recorded here). Since round 2, every view,
+view-holder or closure over a local passed to a `VIRTUAL`, `TRAIT` or `FN_VALUE`-dispatched
+callee is `rules.escape.view-store`, even on a program where no override or implementor of that
+callee actually keeps the argument: the common `sink.write(buf.view())` on a trait, or
+`send(frame.view())` / `f(buf.view())` through an `Fx`-typed callback parameter, are all refused
+today. This is the correct, conservative call under policy 1 (no silent miscompile: the pass
+cannot itself attribute a `VIRTUAL`/`TRAIT`/`FN_VALUE` call to one body, so it must assume the
+worst), and it is not a bug — but it is a real, user-visible narrowing of what compiles, worth a
+decision rather than silent acceptance: a future round could instead take the union of `Lends`
+facts over every override and implementor actually declared in the whole program (which W2.5
+already sees in project mode, per `ZC2VerifyProbeTest`'s p2/p2b runs) and refuse only when at
+least one of them keeps the argument, refining the diagnostic instead of blanket-refusing the
+call kind. Left as documented behaviour for now; not routed anywhere else. Flagged because W3's
+bibo ports (carlink's `SendFn`-style callbacks) are expected to hit this shape directly.
 
 **A view of a local passed to an `@_extern` parameter is accepted.**
 `@_extern(cpp = "ext::keep", header = "ext.hxx") pub fx keep: (v: View<Char>) Void;` then
