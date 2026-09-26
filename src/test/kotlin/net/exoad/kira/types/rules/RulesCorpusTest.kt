@@ -111,11 +111,16 @@ class RulesCorpusTest {
     @TestFactory
     fun noGoldenOperandGroupNeedsASpill(): List<DynamicTest> {
         // The expected C++ of every case has no R19 spill, so no call, operator, compound assignment, assignment
-        // index, class construction or interpolation may have an IMPURE operand beside a non-PURE sibling. The one
-        // known exception is classes' `"${'$'}{name} says ${'$'}{sound()}"` (a class field READS beside a virtual call),
-        // which W2.4's golden emits bare; it is listed here so a change to either side is noticed.
+        // index, class construction or interpolation may have an IMPURE operand beside a non-PURE sibling. The two
+        // known exceptions are classes' `"${'$'}{name} says ${'$'}{sound()}"` (a class field READS beside a virtual
+        // call) and chain's `b.id() == wanted` (a trait call beside a `const kira::Str&` parameter, READS since
+        // round 3's issue 9), which W2.4's and W1.3's goldens emit bare; they are listed here so a change to either
+        // side is noticed. The integrator picks the emitter's spill rule (round 3, issue 8).
         val cases = corpus.listFiles { f -> f.isDirectory && File(f, "src").isDirectory }?.sortedBy { it.name }.orEmpty()
-        val known = mapOf("classes" to listOf("\"${'$'}{name} says ${'$'}{sound()}\""))
+        val known = mapOf(
+            "classes" to listOf("\"${'$'}{name} says ${'$'}{sound()}\""),
+            "chain" to listOf("b.id() == wanted"),
+        )
         return cases.map { dir ->
             DynamicTest.dynamicTest(dir.name) {
                 val p = TyperTestSupport.project(dir, TyperMode.STRICT, options(dir))

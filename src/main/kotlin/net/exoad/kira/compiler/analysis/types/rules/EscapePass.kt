@@ -26,11 +26,13 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import java.util.IdentityHashMap
 
@@ -57,14 +59,22 @@ import java.util.IdentityHashMap
  *   coerced to one), a call that returns one of its parameters (`keep(a.view())`, `keep2(a)`
  *   returning a view of its Arr parameter) or a view of its receiver (`b.all()` where `all`
  *   returns `data.view()`; `c.get()` returning a view field), a construction or array literal
- *   holding one (`Cursor { text = s.view() }`), or a local that holds one (`c` after `c.text =
- *   s.view()`); a view local's provenance is what it was built from, and `mk().view()` is a
- *   view of a temporary. What a callee returns of what it is handed is a fixpoint over the
- *   call graph ([Lends]).
+ *   holding one (`Cursor { text = s.view() }`), a local that holds one (`c` after `c.text =
+ *   s.view()`, `vs` after `vs.add(s.view())`, `p` after `p.load(s.view())` where `load`
+ *   stores into `this`), or a closure that captured one (`fx() Size { return v.size() }`
+ *   with `v` a view of a local); a view local's provenance is what it was built from. A
+ *   temporary is any owning value that is no place: a call result (`mk().view()`), a
+ *   construction, an array literal, an operator's result (`(a + b).view()`), an
+ *   interpolation, a cast (`(n as Str).view()`), or a coerced one (`return a + b` as a view).
+ *   What a callee returns of what it is handed is a fixpoint over the call graph ([Lends]).
  * - `rules.escape.view-store`: such a value is stored where it outlives the local: in a
  *   global, a `mut` parameter or `this` (`GV = s.view()`, `out = s.view()`, `h.v = s.view()`),
- *   or passed to a parameter the callee keeps that way; and a view of a temporary stored in a
- *   local (`v: View<T> = mk().view()`), which dangles when the statement ends.
+ *   passed to a parameter the callee keeps that way, or captured by a closure that leaves
+ *   the call; put by a mutator into a container that outlives it (`GL.add(s.view())`,
+ *   `out.set(0, s.view())`) or handed to a method that keeps it in `this` when the receiver
+ *   outlives it (`GP.load(s.view())`; on a local struct the view merely joins the local's
+ *   provenance); and a view of a temporary stored in a local (`v: View<T> = mk().view()`),
+ *   which dangles when the statement ends.
  * - `rules.escape.view-field`: a class field whose type holds a view anywhere (a `View`, a
  *   `Maybe` of one, a struct with a view field, a `List<View<T>>`), at the declaration, or at
  *   a construction whose type arguments put one there (`K2<View<Char>> { }`). A struct field
@@ -391,19 +401,25 @@ internal class EscapePass : RulePass {
      * (the sets only grow): [returnsThis] when a returned value borrows the receiver
      * (`return data.view()`, `return text`); [returned] the parameters a returned value
      * borrows (`return v`, `return a` coerced to a view of the Arr parameter `a`); [kept] the
-     * parameters a value stored outward borrows (into a global, a `mut` parameter or `this`),
-     * or that an escaping lambda captures, or that are passed to a kept parameter.
+     * parameters a value stored outward borrows (into a global or a `mut` parameter, or into
+     * the receiver of a call on one), or that an escaping lambda captures, or that are passed
+     * to a kept parameter; [keptInThis] the parameters a value stored into `this` borrows
+     * (`text = t` in a `mut fx`), which go where the receiver is: a call on a local struct
+     * keeps them in that local, a call on a global or a `mut` parameter keeps them outward.
      */
     private class Lends {
         val returnsThis = IdentityHashMap<FnSymbol, Boolean>()
         val returned = IdentityHashMap<FnSymbol, MutableSet<ParamSymbol>>()
         val kept = IdentityHashMap<FnSymbol, MutableSet<ParamSymbol>>()
+        val keptInThis = IdentityHashMap<FnSymbol, MutableSet<ParamSymbol>>()
 
         fun returnsThis(fn: FnSymbol): Boolean = returnsThis[fn] == true
 
         fun returned(fn: FnSymbol): Set<ParamSymbol> = returned[fn].orEmpty()
 
         fun kept(fn: FnSymbol): Set<ParamSymbol> = kept[fn].orEmpty()
+
+        fun keptInThis(fn: FnSymbol): Set<ParamSymbol> = keptInThis[fn].orEmpty()
     }
 
     private fun lends(r: Rules, bodies: List<Body>, escapingLambdas: IdentityHashMap<LambdaExpr, Boolean>): Lends {
@@ -420,18 +436,17 @@ internal class EscapePass : RulePass {
                     lends.returnsThis[fn] = true
                     changed = true
                 }
-                val ret = lends.returned.getOrPut(fn) { LinkedHashSet() }
-                for (s in out) {
-                    if (s is Src.Sym && s.sym is ParamSymbol && s.sym.fn === fn && ret.add(s.sym)) {
-                        changed = true
+                fun grow(into: IdentityHashMap<FnSymbol, MutableSet<ParamSymbol>>, srcs: Set<Src>) {
+                    val set = into.getOrPut(fn) { LinkedHashSet() }
+                    for (s in srcs) {
+                        if (s is Src.Sym && s.sym is ParamSymbol && s.sym.fn === fn && set.add(s.sym)) {
+                            changed = true
+                        }
                     }
                 }
-                val kept = lends.kept.getOrPut(fn) { LinkedHashSet() }
-                for (s in prov.keptOutward()) {
-                    if (s is Src.Sym && s.sym is ParamSymbol && s.sym.fn === fn && kept.add(s.sym)) {
-                        changed = true
-                    }
-                }
+                grow(lends.returned, out)
+                grow(lends.kept, prov.keptOutward())
+                grow(lends.keptInThis, prov.keptInThis())
             }
         }
         return lends
@@ -455,7 +470,7 @@ internal class EscapePass : RulePass {
     ) {
         private val model = r.model
 
-        /** What each view-typed or view-holding local of this body was built from, in source order. */
+        /** What each view-typed, view-holding or `Fx`-typed local of this body was built from, in source order. */
         private val sources = IdentityHashMap<Symbol, MutableSet<Src>>()
 
         init {
@@ -469,6 +484,15 @@ internal class EscapePass : RulePass {
                     }
                     is AssignmentExpr -> stored(model.places[n.target], n.value)
                     is PlaceAssignmentExpr -> if (n.operator == null) stored(model.places[n.target], n.value)
+                    is FunctionCallExpr -> {
+                        // A callee keeping an argument in its receiver stores it in the local the receiver is.
+                        val local = receiverLocal(n) ?: return@walk
+                        for (k in keptArgs(n)) {
+                            if (k.intoThis) {
+                                sources.getOrPut(local) { LinkedHashSet() }.addAll(k.srcs)
+                            }
+                        }
+                    }
                     else -> {}
                 }
             }
@@ -485,16 +509,43 @@ internal class EscapePass : RulePass {
             return out
         }
 
-        /** The provenance of every value stored outward, captured, or passed to a kept parameter. */
+        /** The provenance of every value stored outward (a global, a `mut` parameter, the receiver of a call on one), captured by an escaping lambda, or passed to a kept parameter. */
         fun keptOutward(): Set<Src> {
             val out = LinkedHashSet<Src>()
             AstScan.walk(b.roots) { n, _ ->
                 when (n) {
-                    is AssignmentExpr -> if (outward(model.places[n.target])) AstScan.values(n.value).forEach { out.addAll(borrowed(it, HashSet())) }
-                    is PlaceAssignmentExpr -> if (n.operator == null && outward(model.places[n.target])) AstScan.values(n.value).forEach { out.addAll(borrowed(it, HashSet())) }
-                    is FunctionCallExpr -> keptArgs(n).forEach { (_, srcs) -> out.addAll(srcs) }
+                    is AssignmentExpr -> if (beyondThis(model.places[n.target])) AstScan.values(n.value).forEach { out.addAll(borrowed(it, HashSet())) }
+                    is PlaceAssignmentExpr -> if (n.operator == null && beyondThis(model.places[n.target])) AstScan.values(n.value).forEach { out.addAll(borrowed(it, HashSet())) }
+                    is FunctionCallExpr -> {
+                        val recv = receiverPlace(n)
+                        for (k in keptArgs(n)) {
+                            if (!k.intoThis || (recv != null && beyondThis(recv))) {
+                                out.addAll(k.srcs)
+                            }
+                        }
+                    }
                     is LambdaExpr -> if (escapingLambdas[n] == true) {
-                        model.captures[n]?.forEach { c -> if (c is Capture.Value) out.add(Src.Sym(c.symbol)) }
+                        out.addAll(captured(n, HashSet()))
+                    }
+                    else -> {}
+                }
+            }
+            return out
+        }
+
+        /** The provenance of every value stored into `this` (a field assigned, or an argument a callee keeps in `this` when called on it). */
+        fun keptInThis(): Set<Src> {
+            val out = LinkedHashSet<Src>()
+            AstScan.walk(b.roots) { n, _ ->
+                when (n) {
+                    is AssignmentExpr -> if (intoThis(model.places[n.target])) AstScan.values(n.value).forEach { out.addAll(borrowed(it, HashSet())) }
+                    is PlaceAssignmentExpr -> if (n.operator == null && intoThis(model.places[n.target])) AstScan.values(n.value).forEach { out.addAll(borrowed(it, HashSet())) }
+                    is FunctionCallExpr -> {
+                        val rc = model.calls[n] ?: return@walk
+                        val onThis = rc.implicitThis || receiverPlace(n)?.let { intoThis(it) } == true
+                        if (onThis) {
+                            keptArgs(n).filter { it.intoThis }.forEach { out.addAll(it.srcs) }
+                        }
                     }
                     else -> {}
                 }
@@ -523,20 +574,44 @@ internal class EscapePass : RulePass {
                     }
                     is AssignmentExpr -> store(model.places[n.target], n.target, n.value, fnName)
                     is PlaceAssignmentExpr -> if (n.operator == null) store(model.places[n.target], n.target, n.value, fnName)
-                    is FunctionCallExpr -> for ((arg, srcs) in keptArgs(n)) {
-                        val (_, how) = dangling(arg, srcs) ?: continue
-                        val callee = model.calls[n]?.fn?.name
-                        r.report(
-                            "rules.escape.view-store",
-                            "${KiraUnparser.text(arg)} $how, and '$callee' keeps it beyond the call (D5): the view would outlive its " +
-                                "storage. Pass a view of a value that outlives the callee, or let the callee copy.",
-                            arg,
-                        )
+                    is FunctionCallExpr -> {
+                        val rc = model.calls[n] ?: return@walk
+                        val callee = rc.fn?.name
+                        // Where a kept-in-receiver argument goes: `this`, or the receiver when it outlives the call.
+                        val into = when {
+                            rc.implicitThis -> "this"
+                            else -> rc.receiver?.takeIf { recv -> receiverPlace(n)?.let { outward(it) } == true }?.let { KiraUnparser.text(it) }
+                        }
+                        for (k in keptArgs(n)) {
+                            val (_, how) = dangling(k.arg, k.srcs) ?: continue
+                            if (!k.intoThis) {
+                                r.report(
+                                    "rules.escape.view-store",
+                                    "${KiraUnparser.text(k.arg)} $how, and '$callee' keeps it beyond the call (D5): the view would outlive its " +
+                                        "storage. Pass a view of a value that outlives the callee, or let the callee copy.",
+                                    k.arg,
+                                )
+                            } else if (into != null) {
+                                r.report(
+                                    "rules.escape.view-store",
+                                    "${KiraUnparser.text(k.arg)} $how, and '$callee' keeps it in '$into', which outlives $fnName (D5): the view " +
+                                        "would outlive its storage. Pass a view of a value that outlives the store, or let the callee copy.",
+                                    k.arg,
+                                )
+                            }
+                        }
                     }
                     else -> {}
                 }
             }
         }
+
+        /** The place a call's receiver is, when it is one (a lent view stands for what it was lent from). */
+        private fun receiverPlace(e: FunctionCallExpr): Place? = model.calls[e]?.receiver?.let { r.placeOf(it) }
+
+        /** The tracked local a call's receiver starts from, when it is one. */
+        private fun receiverLocal(e: FunctionCallExpr): LocalSymbol? =
+            (receiverPlace(e)?.root() as? Place.Local)?.sym?.takeIf { tracked(it) }
 
         /** A store into a place that outlives this call (a global, a `mut` parameter, `this`): the value must not borrow a local. */
         private fun store(target: Place?, at: Expr, value: Expr, fnName: String) {
@@ -570,23 +645,45 @@ internal class EscapePass : RulePass {
             }
         }
 
-        /** The arguments of [e] bound to parameters the callee keeps, with their provenance. */
-        private fun keptArgs(e: FunctionCallExpr): List<Pair<Expr, Set<Src>>> {
+        /** An argument the callee keeps: [intoThis] in its receiver (`text = t`; a magic mutator's `add`, `set`, `put`), else beyond the call. */
+        private class Kept(val arg: Expr, val srcs: Set<Src>, val intoThis: Boolean)
+
+        /**
+         * The arguments of [e] bound to parameters the callee keeps, with their provenance.
+         * A callee with a body keeps what [Lends] says; a mutator without one (a magic
+         * container's `add`, `set`, `put`, `push`) called on a receiver that holds views keeps
+         * every view or view-holding argument in that receiver.
+         */
+        private fun keptArgs(e: FunctionCallExpr): List<Kept> {
             val rc = model.calls[e] ?: return emptyList()
             val fn = rc.fn ?: return emptyList()
-            if (!analysed(rc)) {
-                return emptyList()
-            }
-            val kept = lends.kept(fn)
-            if (kept.isEmpty()) {
-                return emptyList()
-            }
-            val out = mutableListOf<Pair<Expr, Set<Src>>>()
-            rc.args.forEachIndexed { i, a ->
-                val given = a as? ArgBinding.Given ?: return@forEachIndexed
-                val param = fn.params.getOrNull(i) ?: return@forEachIndexed
-                if (param in kept) {
-                    AstScan.values(given.expr).forEach { out.add(it to lent(it, HashSet())) }
+            val out = mutableListOf<Kept>()
+            if (analysed(rc)) {
+                val kept = lends.kept(fn)
+                val inThis = lends.keptInThis(fn)
+                if (kept.isEmpty() && inThis.isEmpty()) {
+                    return emptyList()
+                }
+                rc.args.forEachIndexed { i, a ->
+                    val given = a as? ArgBinding.Given ?: return@forEachIndexed
+                    val param = fn.params.getOrNull(i) ?: return@forEachIndexed
+                    if (param in kept) {
+                        AstScan.values(given.expr).forEach { out.add(Kept(it, lent(it, HashSet()), false)) }
+                    } else if (param in inThis) {
+                        AstScan.values(given.expr).forEach { out.add(Kept(it, lent(it, HashSet()), true)) }
+                    }
+                }
+            } else if (fn.body == null && fn.isMutMethod && rc.receiver != null && r.holdsView(model.types[rc.receiver])) {
+                for (a in rc.args) {
+                    val given = a as? ArgBinding.Given ?: continue
+                    if (given.byRef) {
+                        continue
+                    }
+                    AstScan.values(given.expr).forEach { v ->
+                        if (traceable(v)) {
+                            out.add(Kept(v, borrowed(v, HashSet()), true))
+                        }
+                    }
                 }
             }
             return out
@@ -603,21 +700,33 @@ internal class EscapePass : RulePass {
                     continue
                 }
                 val self = v is Identifier && model.refs[v] === local
-                return s to if (self) "is returned as a view of itself, a local" else "is a view of the local '${local.name}'"
+                return s to when {
+                    v is LambdaExpr -> "captures a view of the local '${local.name}'"
+                    self -> "is returned as a view of itself, a local"
+                    else -> "is a view of the local '${local.name}'"
+                }
             }
             return null
         }
 
         /** A place that outlives the call: rooted at a global, a `mut` parameter or `this`. */
-        private fun outward(p: Place?): Boolean = when (val root = p?.root()) {
+        private fun outward(p: Place?): Boolean = beyondThis(p) || intoThis(p)
+
+        /** A place that outlives the call and is not the receiver: rooted at a global or a `mut` parameter. */
+        private fun beyondThis(p: Place?): Boolean = when (val root = p?.root()) {
             is Place.Global -> true
             is Place.Param -> root.sym.byRef
-            is Place.This -> true
             else -> false
         }
 
-        /** A local whose value is a view or holds one: its provenance is what was stored in it, never its own storage. */
-        private fun tracked(s: Symbol): Boolean = s is LocalSymbol && (r.isView(s.type) || r.holdsView(s.type))
+        /** A place rooted at the enclosing receiver. */
+        private fun intoThis(p: Place?): Boolean = p?.root() is Place.This
+
+        /**
+         * A local whose value is a view, holds one, or is a closure: its provenance is what
+         * was stored in it (a closure's, what it captured), never its own storage.
+         */
+        private fun tracked(s: Symbol): Boolean = s is LocalSymbol && (r.isView(s.type) || r.holdsView(s.type) || s.type is KType.Fn)
 
         /** A store into (a part of) a tracked local: the value's provenance joins the local's. */
         private fun stored(target: Place?, value: Expr) {
@@ -631,8 +740,8 @@ internal class EscapePass : RulePass {
         /** A value that is a view: typed as one, or coerced to one (`return a` on an `Arr`, `List` or `Str` where a `View` is expected). */
         private fun isViewValue(e: Expr): Boolean = r.isView(model.types[e]) || model.coercions[e] is Coercion.ToView
 
-        /** A value whose provenance can be traced: a view, or something holding one. */
-        private fun traceable(e: Expr): Boolean = isViewValue(e) || r.holdsView(model.types[e])
+        /** A value whose provenance can be traced: a view, something holding one, or a closure (which holds what it captured). */
+        private fun traceable(e: Expr): Boolean = isViewValue(e) || r.holdsView(model.types[e]) || e is LambdaExpr || model.types[e] is KType.Fn
 
         private fun analysed(rc: ResolvedCall): Boolean =
             rc.fn?.body != null && (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD || rc.kind == CallKind.OP_OVERLOAD || rc.kind == CallKind.CTOR)
@@ -648,11 +757,15 @@ internal class EscapePass : RulePass {
         }
 
         /**
-         * The storage a value borrows, when it is or holds a view: the locals, parameters,
-         * fields and globals it can be traced to, the receiver, or a temporary. A value that
-         * is neither borrows nothing.
+         * The storage a value borrows, when it is or holds a view, or is a closure: the
+         * locals, parameters, fields and globals it can be traced to, the receiver, or a
+         * temporary (an owning value that is no place, coerced to a view: `return a + b`).
+         * A value that is none of these borrows nothing.
          */
         private fun borrowed(e: Expr, seen: MutableSet<Symbol>): Set<Src> {
+            if (e is LambdaExpr) {
+                return captured(e, seen)
+            }
             if (!traceable(e)) {
                 return emptySet()
             }
@@ -670,14 +783,37 @@ internal class EscapePass : RulePass {
                     e.value.forEach { a -> AstScan.values(a).forEach { out.addAll(borrowed(it, seen)) } }
                     out
                 }
-                else -> emptySet()
+                is IfExpr -> AstScan.values(e).flatMapTo(LinkedHashSet()) { borrowed(it, seen) }
+                is StringLiteral -> emptySet()
+                else -> if (model.coercions[e] is Coercion.ToView) setOf(Src.Temp) else emptySet()
             }
         }
 
         /**
-         * What a value handed to a lender or a keeping callee is: a view or holder (traced),
-         * storage of its own (the symbol, the receiver), or a temporary (a call result, a
-         * construction or an array literal; a string literal is static and borrows nothing).
+         * What a closure holds: the provenance of every view, view-holding or closure local it
+         * captured, and every such parameter (the caller's storage). A captured scalar, `Str`
+         * or container is a copy and borrows nothing.
+         */
+        private fun captured(l: LambdaExpr, seen: MutableSet<Symbol>): Set<Src> {
+            val out = LinkedHashSet<Src>()
+            for (c in model.captures[l].orEmpty()) {
+                val sym = (c as? Capture.Value)?.symbol ?: continue
+                when {
+                    sym is LocalSymbol && tracked(sym) -> out.addAll(ofLocal(sym, seen))
+                    sym is ParamSymbol && (r.isView(sym.type) || r.holdsView(sym.type) || sym.type is KType.Fn) -> out.add(Src.Sym(sym))
+                    else -> {}
+                }
+            }
+            return out
+        }
+
+        /**
+         * What a value handed to a lender or a keeping callee is: a view, holder or closure
+         * (traced), storage of its own (the symbol, the receiver), or a temporary: a call
+         * result, a construction, an array literal, an operator's result (`a + b`), an
+         * interpolation, a cast (`n as Str`); anything that owns its value and is no place.
+         * A string literal is static and borrows nothing; a name without a place (a function,
+         * kira:core's `true`/`false`/`null`) owns nothing to view.
          */
         private fun lent(v: Expr, seen: MutableSet<Symbol>): Set<Src> {
             if (traceable(v)) {
@@ -685,8 +821,10 @@ internal class EscapePass : RulePass {
             }
             model.places[v]?.let { return own(it, seen) }
             return when (v) {
-                is FunctionCallExpr, is ObjectInitExpr, is ArrayLiteral -> setOf(Src.Temp)
-                else -> emptySet()
+                is StringLiteral, is Identifier -> emptySet()
+                is ThisExpr -> b.owner?.let { setOf<Src>(Src.This(it)) } ?: emptySet()
+                is IfExpr -> AstScan.values(v).flatMapTo(LinkedHashSet()) { lent(it, seen) }
+                else -> setOf(Src.Temp)
             }
         }
 

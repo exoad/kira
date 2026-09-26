@@ -431,6 +431,206 @@ class EscapePassTest {
     }
 
     @Test
+    fun aViewOfATemporaryMadeByAnOperatorAnInterpolationOrACastDanglesToo() {
+        // Round 3, issue 1: a Str made by `+`, by interpolation or by `as Str` is as much a temporary as one a
+        // call returns, whether it is viewed at once or handed to a callee that returns a view of it (idv).
+        // A string literal is static and borrows nothing.
+        val p = snippet(
+            """
+            pub fx idv: (s: Str) View<Char> {
+                return s.view()
+            }
+            pub fx t1: (a: Str, b: Str) Int32 {
+                v: View<Char> = (a + b).view()
+                return v.size() as Int32
+            }
+            pub fx t2: (b: Str) View<Char> {
+                return ("a" + b).view()
+            }
+            pub fx t3: (n: Int32) View<Char> {
+                return "${'$'}{n}".view()
+            }
+            pub fx t4: (n: Int32) View<Char> {
+                return (n as Str).view()
+            }
+            pub fx t5: (n: Int32) Int32 {
+                v: View<Char> = (n as Str).view()
+                return v.size() as Int32
+            }
+            pub fx t6: (a: Str, b: Str) Int32 {
+                v: View<Char> = idv(a + b)
+                return v.size() as Int32
+            }
+            pub fx t7: (a: Str, b: Str) View<Char> {
+                return idv(a + b)
+            }
+            pub fx ok: (a: Str) View<Char> {
+                v: View<Char> = "lit"
+                w: View<Char> = idv("lit")
+                return idv(a)
+            }
+            """,
+        )
+        expectExactly(
+            p,
+            "rules.escape.view-store", "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return",
+            "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-return",
+        )
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("(a + b).view() is a view of a temporary, which is destroyed at the end of this statement, and 'v' would keep it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("(n as Str).view() is a view of a temporary, which is destroyed when 't4' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("idv(a + b) is a view of a temporary, which is destroyed when 't7' returns") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aViewOfALocalPutInAContainerByAMutatorIsTracked() {
+        // Round 3, issue 2: `vs.add(s.view())` stores the view into vs as surely as `vs = [s.view()]` would, so a
+        // local container carries it (and returning the container returns it), and a container that outlives the
+        // call (a global, a `mut` parameter) keeps it. A container of no view type copies what it is given.
+        val p = snippet(
+            """
+            pub mut GL: List<View<Char>> = List<View<Char>> {}
+            pub fx c1: (a: Str) List<View<Char>> {
+                s: Str = a + "d"
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                vs.add(s.view())
+                return vs
+            }
+            pub fx c2: (a: Str) Void {
+                s: Str = a + "d"
+                GL.add(s.view())
+            }
+            pub fx c3: (a: Str, mut out: List<View<Char>>) Void {
+                s: Str = a + "d"
+                out.add(s.view())
+            }
+            pub fx c4: (a: Str, mut out: Arr<View<Char>, 2>) Void {
+                s: Str = a + "d"
+                out.set(0 as Size, s.view())
+            }
+            pub fx ok: (a: Str, mut out: List<View<Char>>, mut names: List<Str>) Size {
+                out.add(a.view())
+                s: Str = a + "d"
+                names.add(s)
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                vs.add(s.view())
+                return vs.size()
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("vs is a view of the local 's', which is destroyed when 'c1' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'add' keeps it in 'GL', which outlives 'c2'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'set' keeps it in 'out', which outlives 'c4'") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun anEscapingLambdaKeepsTheViewOfALocalItCaptured() {
+        // Round 3, issue 3: a closure copies the view it captures, and outlives the local the view borrows when it
+        // is returned, stored outward or passed to a callee that keeps its Fx parameter. One called in the same
+        // body keeps nothing; a captured view of a parameter is the caller's storage.
+        val p = snippet(
+            """
+            pub mut GF: Maybe<Fx<Tuple0, Size>> = null
+            pub fx keepFn: (f: Fx<Tuple0, Size>) Void {
+                GF = f
+            }
+            pub fx mk: (a: Str) Fx<Tuple0, Size> {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                return fx() Size {
+                    return v.size()
+                }
+            }
+            pub fx mk2: (a: Str, mut out: Fx<Tuple0, Size>) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                out = fx() Size {
+                    return v.size()
+                }
+            }
+            pub fx mk3: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                keepFn(fx() Size {
+                    return v.size()
+                })
+            }
+            pub fx ok: (a: Str) Size {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                g: Fx<Tuple0, Size> = fx() Size {
+                    return v.size()
+                }
+                return g()
+            }
+            pub fx ok2: (p: View<Char>) Fx<Tuple0, Size> {
+                return fx() Size {
+                    return p.size()
+                }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.contains("captures a view of the local 's', which is destroyed when 'mk' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("captures a view of the local 's', and 'out' outlives 'mk2'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("captures a view of the local 's', and 'keepFn' keeps it beyond the call") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aSetterStoringAViewIntoItsReceiverStoresItWhereTheReceiverIs() {
+        // Round 3, issue 4: `load` keeps its parameter in `this`, so the view goes where the receiver is: into a
+        // local struct (fine, and tracked, so returning that struct returns the view), into a `mut` parameter, a
+        // global or the enclosing `this` (each outlives the local).
+        val p = snippet(
+            """
+            pub struct Parser {
+                pub text: View<Char> = ""
+                pub mut fx load: (t: View<Char>) Void {
+                    text = t
+                }
+            }
+            pub mut GP: Parser = Parser {}
+            pub struct Outer {
+                pub p: Parser = Parser {}
+                pub mut fx fill: (a: Str) Void {
+                    line: Str = a + "\n"
+                    p.load(line.view())
+                }
+            }
+            pub fx ok: (a: Str) Size {
+                line: Str = a + "\n"
+                mut p: Parser = Parser { text = a.view() }
+                p.load(line.view())
+                return p.text.size()
+            }
+            pub fx bad1: (a: Str) Parser {
+                line: Str = a + "\n"
+                mut p: Parser = Parser { text = a.view() }
+                p.load(line.view())
+                return p
+            }
+            pub fx bad2: (a: Str, mut p: Parser) Void {
+                line: Str = a + "\n"
+                p.load(line.view())
+            }
+            pub fx bad3: (a: Str) Void {
+                line: Str = a + "\n"
+                GP.load(line.view())
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store", "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("line.view() is a view of the local 'line', and 'load' keeps it in 'p', which outlives Outer.fill") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("p is a view of the local 'line', which is destroyed when 'bad1' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("line.view() is a view of the local 'line', and 'load' keeps it in 'p', which outlives 'bad2'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("line.view() is a view of the local 'line', and 'load' keeps it in 'GP', which outlives 'bad3'") }, messages.joinToString("\n"))
+    }
+
+    @Test
     fun aClassConstructedWithAViewTypeArgumentHoldsAView() {
         // Round 2, issue 7: the declaration of K2<T> cannot see it; the construction can.
         val p = snippet(

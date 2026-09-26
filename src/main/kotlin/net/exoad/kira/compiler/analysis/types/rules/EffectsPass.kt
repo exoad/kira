@@ -53,12 +53,14 @@ import java.util.IdentityHashMap
  *   `pure: true`, or may throw (a `throw` is caught by a `try` around the call, so which
  *   operand ran first decides what a sibling's print or write left behind);
  * - READS when it has no effect but reads shared state ([Rules.isSharedPlace]): a `mut`
- *   global, a `mut` parameter, a field of a class (its own `this` included), a view (its
- *   elements, or the view itself, which is iterated or indexed next), or the contents of a
- *   view or reference receiver (`v.get(0)`, `c.peek()`), which a sibling's effect could
- *   change before the read. Two READS siblings need no ordering, so `p[0] | p[1] << 8` on a
- *   View parameter is emitted bare;
- * - PURE otherwise: reads of locals, by-value parameters, constants and what they hold by
+ *   global, a `mut` parameter, a parameter C++ passes by `const&` (a struct, a `Str`, a
+ *   container: design 5.1, so the callee reads the caller's storage, which a sibling's
+ *   effect could write), a field through `this` (a class's shared object; a struct's `const
+ *   S&`), a view (its elements, or the view itself, which is iterated or indexed next), or
+ *   the contents of a view or reference receiver (`v.get(0)`, `c.peek()`), which a sibling's
+ *   effect could change before the read. Two READS siblings need no ordering, so `p[0] |
+ *   p[1] << 8` on a View parameter is emitted bare;
+ * - PURE otherwise: reads of locals, scalar parameters, constants and what they hold by
  *   copy. Only a `mut` argument, the receiver of a `mut fx` or a `MutView` lent from such a
  *   place, nested in a sibling, could change those, and ExclusivityPass refuses that pair
  *   (`rules.exclusivity.order`).

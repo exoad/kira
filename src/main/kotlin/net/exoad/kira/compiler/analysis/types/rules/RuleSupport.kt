@@ -6,6 +6,8 @@ import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Coercion
+import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
@@ -18,6 +20,7 @@ import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.PathStep
 import net.exoad.kira.compiler.analysis.types.Place
+import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Severity
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
@@ -30,6 +33,7 @@ import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
@@ -163,6 +167,9 @@ internal class Rules(val program: TypedProgram) {
 
     private companion object {
         val flagsByProgram = java.util.WeakHashMap<TypedProgram, BindingFlags>()
+
+        /** The magic classes the parameter column passes by value (CppTypeSpeller.BY_VALUE_MAGIC). */
+        val BY_VALUE_MAGIC = setOf("View", "MutView", "Unsafe", "CStr")
     }
 
     private val reported = IdentityHashMap<ASTNode, MutableSet<String>>()
@@ -205,6 +212,32 @@ internal class Rules(val program: TypedProgram) {
         val sym = (t as? KType.Nominal)?.sym as? ClassSymbol ?: return false
         return sym.kind == ClassKind.MAGIC && sym.name !in Builtins.NOMINAL_PARAMS
     }
+
+    /**
+     * Whether a parameter of type [t] without `mut` is passed by `const T&` (design 5.1), so
+     * the callee reads the caller's storage, not a copy: a `Str`, a container, a `Maybe`, a
+     * tuple, a struct, a class or trait reference, an `Fx` value, a type parameter. The
+     * scalars, `Bool`, `Char`, an enum, a `View`/`MutView`, an `Unsafe`, a `CStr` and an
+     * opaque handle are copied. This is the C++ emitter's own `byValue` rule, negated; the
+     * two must agree.
+     */
+    fun aliasesCaller(t: KType): Boolean = when (t) {
+        is KType.Scalar, KType.Void, KType.Never, KType.NullT, KType.Error -> false
+        is KType.Nominal -> when (val sym = t.sym) {
+            is EnumSymbol -> false
+            is ClassSymbol -> when (sym.kind) {
+                ClassKind.OPAQUE -> false
+                ClassKind.MAGIC -> sym.name !in BY_VALUE_MAGIC
+                else -> true
+            }
+            else -> true
+        }
+        else -> true
+    }
+
+    /** A callee this pass can look into: a function, method, operator or constructor with a body, called statically (no vtable, binding or Fx value between). */
+    fun hasAnalysedBody(rc: ResolvedCall): Boolean =
+        rc.fn?.body != null && (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD || rc.kind == CallKind.OP_OVERLOAD || rc.kind == CallKind.CTOR)
 
     /** Whether the owner of a field is a reference type, so writing the field writes shared state. */
     fun ownerIsReference(f: FieldSymbol): Boolean = when (val o = f.owner) {
@@ -306,7 +339,7 @@ internal class Rules(val program: TypedProgram) {
             b.owner?.let { out.add(CallOperand(Place.This(it), listOf(Place.This(it)), (e.name as? MemberAccessExpr)?.member ?: e.name, "this", receiverWrites, true, "the receiver")) }
         } else {
             rc.receiver?.let { recv ->
-                placeOf(recv)?.let { out.add(CallOperand(it, aliases.expand(it), recv, KiraUnparser.text(recv), receiverWrites, true, "the receiver")) }
+                placeOf(recv)?.let { out.add(CallOperand(it, aliases.expand(it, forWrite = receiverWrites), recv, KiraUnparser.text(recv), receiverWrites, true, "the receiver")) }
             }
         }
         rc.args.forEachIndexed { i, a ->
@@ -315,25 +348,29 @@ internal class Rules(val program: TypedProgram) {
             val param = fn?.params?.getOrNull(i)
             val lendsWrite = !given.byRef && param != null && holdsMutView(param.type.substitute(rc.substitution))
             val how = if (given.byRef) "mut" else if (lendsWrite) "a MutView of" else ""
-            out.add(CallOperand(place, aliases.expand(place), given.expr, KiraUnparser.text(given.expr), given.byRef || lendsWrite, false, how))
+            val writes = given.byRef || lendsWrite
+            out.add(CallOperand(place, aliases.expand(place, forWrite = writes), given.expr, KiraUnparser.text(given.expr), writes, false, how))
         }
         return out
     }
 
     /**
      * A place whose value another expression evaluated beside this one could change (D33):
-     * one rooted at a `mut` global, a `mut` parameter or the `this` of a class, or reached
+     * one rooted at a `mut` global, a `mut` parameter, a parameter C++ passes by `const&`
+     * ([aliasesCaller]: a struct, a `Str`, a container, whose storage is the caller's, so a
+     * sibling's write to that storage reaches it), `this` (a class's is shared; a struct's is
+     * the `const S&` or `S&` the caller's object was passed as, design 5.1), or reached
      * through a field of a reference (a class, trait, `Ref` or stdlib handle) or an element of
-     * a view (which borrows storage the reader does not own). A local, a by-value parameter,
-     * a constant, a struct receiver and every value they hold by copy are private: only this
-     * expression's own evaluation can change them.
+     * a view (which borrows storage the reader does not own). A local, a scalar parameter, a
+     * constant and every value they hold by copy are private: only this expression's own
+     * evaluation can change them.
      */
     fun isSharedPlace(p: Place): Boolean {
         val rootShared = when (val root = p.root()) {
             is Place.Local -> false
-            is Place.Param -> root.sym.byRef
+            is Place.Param -> root.sym.byRef || aliasesCaller(root.sym.type)
             is Place.Global -> root.sym.isMut
-            is Place.This -> (root.owner as? ClassSymbol)?.kind != ClassKind.STRUCT
+            is Place.This -> true
             is Place.Field -> false
             is Place.Index -> false
         }
@@ -437,12 +474,28 @@ internal fun rebase(base: Place, steps: List<PathStep>, throughFields: Boolean):
  * What the view-typed and view-holding locals of one body stand for: `v: View<T> =
  * xs.from(1)` makes `v` stand for `xs`, `w: W = W { mv = arr.view() }` makes `w` stand for
  * `arr`, and `u: View<T> = v` makes `u` stand for what `v` does. Assignments add to a
- * local's sources. A call's view result stands for its view or view-holding arguments and
- * such a receiver (over-approximate: whichever of them it returned).
+ * local's sources, and so does a mutator handed a view (`vs.add(arr.view())` makes `vs`
+ * stand for `arr`). A call's view result stands for its view or view-holding arguments (a
+ * container coerced to a view among them) and such a receiver (over-approximate: whichever
+ * of them it returned).
  */
-internal class ViewAliases private constructor(private val sources: IdentityHashMap<LocalSymbol, MutableSet<Place>>) {
-    /** [p], and [p] rebased onto everything the local it starts from stands for. */
-    fun expand(p: Place): List<Place> {
+internal class ViewAliases private constructor(
+    private val r: Rules,
+    private val sources: IdentityHashMap<LocalSymbol, MutableSet<Place>>,
+) {
+    /** The places a view-valued expression stands for, each expanded: its own place, or what a call's view result was lent from. */
+    fun standsFor(e: Expr): List<Place> {
+        val out = LinkedHashSet<Place>()
+        lent(r, e, out)
+        return out.flatMap { expand(it) }
+    }
+
+    /**
+     * [p], and [p] rebased onto everything the local it starts from stands for. Reading the
+     * local reads all of it; writing it ([forWrite]) writes only what it holds a `MutView`
+     * of (`mv.set(0, 9)` writes `arr`, `vs.add(v)` on a `List<View<T>>` writes `vs` alone).
+     */
+    fun expand(p: Place, forWrite: Boolean = false): List<Place> {
         val out = mutableListOf(p)
         val root = p.root() as? Place.Local ?: return out
         if (!sources.containsKey(root.sym)) {
@@ -453,10 +506,13 @@ internal class ViewAliases private constructor(private val sources: IdentityHash
             if (!seen.add(sym)) {
                 return
             }
+            if (forWrite && !r.holdsMutView(sym.type)) {
+                return
+            }
             for (s in sources[sym].orEmpty()) {
-                val r = s.root()
-                if (r is Place.Local && sources.containsKey(r.sym)) {
-                    go(r.sym)
+                val root = s.root()
+                if (root is Place.Local && sources.containsKey(root.sym)) {
+                    go(root.sym)
                 } else {
                     out.add(rebase(s, p.path(), throughFields = false))
                 }
@@ -471,49 +527,80 @@ internal class ViewAliases private constructor(private val sources: IdentityHash
 
         fun of(r: Rules, b: Body): ViewAliases = synchronized(memo) { memo.getOrPut(b) { build(r, b) } }
 
-        private fun build(r: Rules, b: Body): ViewAliases {
+        /** A value that is or holds a view: typed as one, or a container coerced to a view where one is expected. */
+        private fun viewish(r: Rules, e: Expr): Boolean {
+            val t = r.model.types[e]
+            return r.isView(t) || r.holdsView(t) || r.model.coercions[e] is Coercion.ToView
+        }
+
+        /**
+         * A value a call's view result may have been lent from: a view or view holder, or a
+         * place whose value the callee takes by reference ([Rules.aliasesCaller]: a `Str`, a
+         * container, a struct) and may return a view of (`half(xs)` returning `xs.view()`).
+         */
+        private fun lendable(r: Rules, e: Expr): Boolean =
+            viewish(r, e) || (r.placeOf(e) != null && r.model.types[e]?.let { r.aliasesCaller(it) } == true)
+
+        /** The places the view-valued [e] was lent from, into [out]. */
+        private fun lent(r: Rules, e: Expr, out: MutableSet<Place>) {
             val model = r.model
-            val sources = IdentityHashMap<LocalSymbol, MutableSet<Place>>()
-            fun tracked(s: Symbol?): LocalSymbol? = (s as? LocalSymbol)?.takeIf { r.isView(it.type) || r.holdsView(it.type) }
-            fun lent(e: Expr, out: MutableSet<Place>) {
-                for (v in AstScan.values(e)) {
-                    val p = r.placeOf(v)
-                    if (p != null) {
-                        out.add(p)
-                        continue
+            for (v in AstScan.values(e)) {
+                val p = r.placeOf(v)
+                if (p != null) {
+                    out.add(p)
+                    continue
+                }
+                when (v) {
+                    is ObjectInitExpr -> {
+                        v.positionalArgs.forEach { lent(r, it, out) }
+                        v.namedArgs.forEach { lent(r, it.value, out) }
                     }
-                    when (v) {
-                        is ObjectInitExpr -> {
-                            v.positionalArgs.forEach { lent(it, out) }
-                            v.namedArgs.forEach { lent(it.value, out) }
-                        }
-                        is ArrayLiteral -> v.value.forEach { lent(it, out) }
-                        is FunctionCallExpr -> {
-                            val rc = model.calls[v] ?: continue
-                            rc.receiver?.takeIf { r.isView(model.types[it]) || r.holdsView(model.types[it]) }?.let { lent(it, out) }
-                            for (a in rc.args) {
-                                val given = a as? ArgBinding.Given ?: continue
-                                val t = model.types[given.expr]
-                                if (r.isView(t) || r.holdsView(t)) {
-                                    lent(given.expr, out)
-                                }
+                    is ArrayLiteral -> v.value.forEach { lent(r, it, out) }
+                    is FunctionCallExpr -> {
+                        val rc = model.calls[v] ?: continue
+                        rc.receiver?.takeIf { lendable(r, it) }?.let { lent(r, it, out) }
+                        for (a in rc.args) {
+                            val given = a as? ArgBinding.Given ?: continue
+                            if (lendable(r, given.expr)) {
+                                lent(r, given.expr, out)
                             }
                         }
-                        else -> {}
-                    }
-                }
-            }
-            AstScan.walk(b.roots) { n, _ ->
-                when (n) {
-                    is VariableDecl -> tracked(model.declSyms[n])?.let { local -> n.value?.let { lent(it, sources.getOrPut(local) { LinkedHashSet() }) } }
-                    is AssignmentExpr -> tracked((model.places[n.target]?.root() as? Place.Local)?.sym)?.let { lent(n.value, sources.getOrPut(it) { LinkedHashSet() }) }
-                    is PlaceAssignmentExpr -> if (n.operator == null) {
-                        tracked((model.places[n.target]?.root() as? Place.Local)?.sym)?.let { lent(n.value, sources.getOrPut(it) { LinkedHashSet() }) }
                     }
                     else -> {}
                 }
             }
-            return ViewAliases(sources)
+        }
+
+        private fun build(r: Rules, b: Body): ViewAliases {
+            val model = r.model
+            val sources = IdentityHashMap<LocalSymbol, MutableSet<Place>>()
+            fun tracked(s: Symbol?): LocalSymbol? = (s as? LocalSymbol)?.takeIf { r.isView(it.type) || r.holdsView(it.type) }
+            AstScan.walk(b.roots) { n, _ ->
+                when (n) {
+                    is VariableDecl -> tracked(model.declSyms[n])?.let { local -> n.value?.let { lent(r, it, sources.getOrPut(local) { LinkedHashSet() }) } }
+                    is AssignmentExpr -> tracked((model.places[n.target]?.root() as? Place.Local)?.sym)?.let { lent(r, n.value, sources.getOrPut(it) { LinkedHashSet() }) }
+                    is PlaceAssignmentExpr -> if (n.operator == null) {
+                        tracked((model.places[n.target]?.root() as? Place.Local)?.sym)?.let { lent(r, n.value, sources.getOrPut(it) { LinkedHashSet() }) }
+                    }
+                    is FunctionCallExpr -> {
+                        // A mutator handed a view stores it in its receiver (`vs.add(arr.view())`, `out.set(0, v)`).
+                        val rc = model.calls[n] ?: return@walk
+                        val recv = rc.receiver ?: return@walk
+                        if (rc.fn?.isMutMethod != true) {
+                            return@walk
+                        }
+                        val local = tracked((r.placeOf(recv)?.root() as? Place.Local)?.sym) ?: return@walk
+                        for (a in rc.args) {
+                            val given = a as? ArgBinding.Given ?: continue
+                            if (!given.byRef && viewish(r, given.expr)) {
+                                lent(r, given.expr, sources.getOrPut(local) { LinkedHashSet() })
+                            }
+                        }
+                    }
+                    else -> {}
+                }
+            }
+            return ViewAliases(r, sources)
         }
     }
 }
@@ -523,31 +610,127 @@ internal class ViewAliases private constructor(private val sources: IdentityHash
  * a method, fields reached through `this`, whether written by its own body or by the
  * functions it calls (a fixpoint over the call graph; a callee's `this` writes are seen
  * through the receiver they were called on). A write to a `mut` parameter or through a
- * `MutView` parameter is the caller's to see ([Rules.callOperands]) and is left out. Paths
+ * `MutView` parameter is the caller's to see ([Rules.callOperands]) and is left out; a write
+ * through a view local stands for the storage the view was lent from ([ViewAliases]). Paths
  * deeper than [MAX_DEPTH] are cut to their root, which overlaps everything under it.
+ *
+ * A call dispatched at run time (a virtual method, a trait method) runs whichever override
+ * the object has, so it writes what the method and every override of it write. A call handed
+ * a lambda may run it, so the lambda's body writes at the call (`run(fx() { LOG.add(1) })`
+ * writes `LOG`); so does a call of an `Fx` local through the lambdas stored in it (`g()`).
+ * Captures are by value and immutable, so a lambda writes nothing of the enclosing body but
+ * what a captured view lends. A lambda that reaches a call through a field, a global or an
+ * `Fx` parameter is not followed: it is charged where it was written down, and a function
+ * that only receives it is charged nothing for it.
  */
-internal class HiddenWrites private constructor(private val r: Rules, private val table: IdentityHashMap<FnSymbol, MutableSet<Place>>) {
+internal class HiddenWrites private constructor(
+    private val r: Rules,
+    private val table: IdentityHashMap<FnSymbol, MutableSet<Place>>,
+    private val overriders: IdentityHashMap<FnSymbol, MutableList<FnSymbol>>,
+) {
     /** What the call [e] writes beyond what its operands show, seen from the caller's body [b]. */
-    fun of(b: Body, e: FunctionCallExpr, aliases: ViewAliases): List<Place> {
+    fun of(b: Body, e: FunctionCallExpr, aliases: ViewAliases): List<Place> = of(b, e, aliases, IdentityHashMap())
+
+    /** [visiting]: the lambdas whose writes are being collected up the stack (two `Fx` locals reassigned into each other's lambdas would otherwise recurse without end). */
+    private fun of(b: Body, e: FunctionCallExpr, aliases: ViewAliases, visiting: IdentityHashMap<LambdaExpr, Boolean>): List<Place> {
         val rc = r.model.calls[e] ?: return emptyList()
-        val fn = rc.fn ?: return emptyList()
-        val hidden = table[fn] ?: return emptyList()
-        val out = mutableListOf<Place>()
-        for (w in hidden.toList()) {
-            when (w.root()) {
-                is Place.Global -> out.add(w)
-                is Place.This -> if (rc.implicitThis) {
-                    if (b.owner != null) {
-                        out.add(rebase(Place.This(b.owner), w.path(), throughFields = true))
+        val out = LinkedHashSet<Place>()
+        for (fn in callees(rc)) {
+            val hidden = table[fn] ?: continue
+            for (w in hidden.toList()) {
+                when (w.root()) {
+                    is Place.Global -> out.add(w)
+                    is Place.This -> if (rc.implicitThis) {
+                        if (b.owner != null) {
+                            out.add(rebase(Place.This(b.owner), w.path(), throughFields = true))
+                        }
+                    } else {
+                        val recv = rc.receiver?.let { r.placeOf(it) } ?: continue
+                        aliases.expand(recv).forEach { out.add(rebase(it, w.path(), throughFields = true)) }
                     }
-                } else {
-                    val recv = rc.receiver?.let { r.placeOf(it) } ?: continue
-                    aliases.expand(recv).forEach { out.add(rebase(it, w.path(), throughFields = true)) }
+                    else -> {}
+                }
+            }
+        }
+        for (l in lambdasRun(b, e, rc)) {
+            if (visiting.put(l, true) == null) {
+                out.addAll(lambdaWrites(b, l, aliases, visiting))
+                visiting.remove(l)
+            }
+        }
+        return out.toList()
+    }
+
+    /** The functions the call may run: its callee and, dispatched at run time, every override of it. */
+    private fun callees(rc: ResolvedCall): List<FnSymbol> {
+        val fn = rc.fn ?: return emptyList()
+        return if (rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT) listOf(fn) + overriders[fn].orEmpty() else listOf(fn)
+    }
+
+    /** The lambdas the call may run: its lambda arguments, the lambdas stored in an `Fx` local it is handed, and those in the `Fx` local it calls. */
+    private fun lambdasRun(b: Body, e: FunctionCallExpr, rc: ResolvedCall): List<LambdaExpr> {
+        val out = mutableListOf<LambdaExpr>()
+        fun value(v: Expr) {
+            for (x in AstScan.values(v)) {
+                when (x) {
+                    is LambdaExpr -> out.add(x)
+                    is Identifier -> (r.model.refs[x] as? LocalSymbol)?.let { out.addAll(lambdasIn(b)[it].orEmpty()) }
+                    else -> {}
+                }
+            }
+        }
+        for (a in rc.args) {
+            (a as? ArgBinding.Given)?.let { value(it.expr) }
+        }
+        if (rc.kind == CallKind.FN_VALUE) {
+            value(e.name)
+        }
+        return out
+    }
+
+    private val lambdasInBody = IdentityHashMap<Body, IdentityHashMap<LocalSymbol, MutableList<LambdaExpr>>>()
+
+    /** The lambdas each local of [b] was given (at its declaration or by assignment). */
+    private fun lambdasIn(b: Body): IdentityHashMap<LocalSymbol, MutableList<LambdaExpr>> = lambdasInBody.getOrPut(b) {
+        val model = r.model
+        val out = IdentityHashMap<LocalSymbol, MutableList<LambdaExpr>>()
+        fun store(local: Symbol?, v: Expr?) {
+            val sym = local as? LocalSymbol ?: return
+            v?.let { AstScan.values(it).filterIsInstance<LambdaExpr>().forEach { l -> out.getOrPut(sym) { ArrayList() }.add(l) } }
+        }
+        AstScan.walk(b.roots) { n, _ ->
+            when (n) {
+                is VariableDecl -> store(model.declSyms[n], n.value)
+                is AssignmentExpr -> store((model.places[n.target] as? Place.Local)?.sym, n.value)
+                is PlaceAssignmentExpr -> if (n.operator == null) store((model.places[n.target] as? Place.Local)?.sym, n.value)
+                else -> {}
+            }
+        }
+        out
+    }
+
+    /** The places the body of [l] (its own lambdas included) writes, seen from the body [b] that wrote it down. */
+    private fun lambdaWrites(b: Body, l: LambdaExpr, aliases: ViewAliases, visiting: IdentityHashMap<LambdaExpr, Boolean>): List<Place> {
+        val model = r.model
+        val out = LinkedHashSet<Place>()
+        val body = l.def.body ?: return emptyList()
+        AstScan.walk(body) { n, _ ->
+            when (n) {
+                is AssignmentExpr -> model.places[n.target]?.let { out.addAll(aliases.expand(it, forWrite = true)) }
+                is CompoundAssignmentExpr -> model.places[n.left]?.let { out.addAll(aliases.expand(it, forWrite = true)) }
+                is PlaceAssignmentExpr -> model.places[n.target]?.let { out.addAll(aliases.expand(it, forWrite = true)) }
+                is FunctionCallExpr -> {
+                    for (op in r.callOperands(b, n, aliases)) {
+                        if (op.writes) {
+                            out.addAll(op.places)
+                        }
+                    }
+                    out.addAll(of(b, n, aliases, visiting))
                 }
                 else -> {}
             }
         }
-        return out
+        return out.toList()
     }
 
     companion object {
@@ -558,7 +741,18 @@ internal class HiddenWrites private constructor(private val r: Rules, private va
             val table = IdentityHashMap<FnSymbol, MutableSet<Place>>()
             val fnBodies = bodies.filter { it.fn != null }
             fnBodies.forEach { table[it.fn!!] = LinkedHashSet() }
-            val hidden = HiddenWrites(r, table)
+            // Every method with a body, under each method it overrides (a trait method, a superclass method, and theirs).
+            val overriders = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
+            for (b in fnBodies) {
+                val fn = b.fn!!
+                var base = fn.overrides
+                val seen = IdentityHashMap<FnSymbol, Boolean>()
+                while (base != null && seen.put(base, true) == null) {
+                    overriders.getOrPut(base) { ArrayList() }.add(fn)
+                    base = base.overrides
+                }
+            }
+            val hidden = HiddenWrites(r, table, overriders)
             fun add(set: MutableSet<Place>, p: Place) {
                 val root = p.root()
                 if (root !is Place.Global && root !is Place.This) {
@@ -578,9 +772,9 @@ internal class HiddenWrites private constructor(private val r: Rules, private va
                             return@walk
                         }
                         when (n) {
-                            is AssignmentExpr -> model.places[n.target]?.let { add(set, it) }
-                            is CompoundAssignmentExpr -> model.places[n.left]?.let { add(set, it) }
-                            is PlaceAssignmentExpr -> model.places[n.target]?.let { add(set, it) }
+                            is AssignmentExpr -> model.places[n.target]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
+                            is CompoundAssignmentExpr -> model.places[n.left]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
+                            is PlaceAssignmentExpr -> model.places[n.target]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
                             is FunctionCallExpr -> {
                                 for (op in r.callOperands(b, n, aliases)) {
                                     if (op.writes) {

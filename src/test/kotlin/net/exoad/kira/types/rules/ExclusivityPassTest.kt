@@ -337,11 +337,25 @@ class ExclusivityPassTest {
                 u: Str = "${'$'}{n} and ${'$'}{bump(mut n)}"
                 mut c: Ctr = Ctr {}
                 v: Int32 = c.plus(c.grow())
-                return n + bx.a + pt.a + arr[0] + xs[0]
+                mut k: CCtr = CCtr {}
+                w: Int32 = k.plus(k.grow())
+                return n + bx.a + pt.a + arr[0] + xs[0] + w
+            }
+            pub class CCtr {
+                pub mut a: Int32 = 0
+                pub mut fx grow: () Int32 {
+                    a += 1
+                    return a
+                }
+                pub fx plus: (v: Int32) Int32 {
+                    return a + v
+                }
             }
             """,
         )
         // A struct construction and an array literal are sequenced; `n = bump(mut n)` writes n after its value.
+        // Round 3, issue 7: on a class, `k->plus(k->grow())` reads the reference before the arguments and the
+        // fields after them, in C++17 as in Kira, so the receiver of a reference type is no sibling read.
         expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
         val messages = p.diagnostics.map { it.message }
         assertTrue(messages.any { it.contains("one operand of the assignment is evaluated, and 'n' is read") }, messages.joinToString("\n"))
@@ -387,6 +401,9 @@ class ExclusivityPassTest {
                     for z: Int32 in other {
                         push(z)
                     }
+                    for z: Int32 in items {
+                        push(z)
+                    }
                     return n
                 }
             }
@@ -412,15 +429,173 @@ class ExclusivityPassTest {
             }
             """,
         )
-        // A `mut fx` on the holder of the iterated collection is reported as such, whichever field it writes
-        // (the receiver rule, conservative); the hidden-write rule is the fallback for a callee the call site
-        // does not show writing (note on LOG).
-        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop")
+        // A `mut fx` with a body writes what its body writes (round 3, issue 7: pushOther on b while b.items is
+        // iterated writes only b.other, so it is no invalidation); the hidden-write rule sees a callee the call
+        // site does not show writing (note on LOG, push on items).
+        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop")
         val messages = p.diagnostics.map { it.message }
         assertTrue(messages.any { it.contains("iterates 'LOG', and its body calls 'note', which writes 'LOG'") }, messages.joinToString("\n"))
         assertTrue(messages.none { it.contains("quiet") }, messages.joinToString("\n"))
         assertTrue(messages.any { it.contains("iterates 'xs', and its body passes a MutView of 'xs.view()'") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.contains("iterates 'b.other', and its body calls the `mut fx` 'pushOther' on 'b', which holds it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("iterates 'items', and its body calls 'push', which writes 'this.items'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("iterates 'b.other', and its body calls 'pushOther', which writes 'b.other'") }, messages.joinToString("\n"))
+        assertTrue(messages.none { it.contains("iterates 'b.items'") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aLoopBodyHiddenWriteThroughAnOverrideATraitOrAnFxValueIsSeen() {
+        // Round 3, issue 5: a virtual call runs whichever override the object has, a trait call whichever
+        // implementor, and a callee handed a lambda may call it; each is a push_back under the range-for.
+        val p = snippet(
+            """
+            pub mut LOG: List<Int32> = List<Int32> {}
+            pub class A {
+                pub fx act: () Void { }
+            }
+            pub class B: A {
+                override pub fx act: () Void {
+                    LOG.add(1)
+                }
+            }
+            pub trait T {
+                pub fx act: () Void;
+            }
+            pub struct SI: T {
+                override pub fx act: () Void {
+                    LOG.add(1)
+                }
+            }
+            pub fx run: (f: Fx<Tuple0, Int32>) Int32 {
+                return f()
+            }
+            pub fx l1: (a: A) Int32 {
+                mut n: Int32 = 0
+                for x: Int32 in LOG {
+                    a.act()
+                    n += x
+                }
+                return n
+            }
+            pub fx l2: (t: T) Int32 {
+                mut n: Int32 = 0
+                for x: Int32 in LOG {
+                    t.act()
+                    n += x
+                }
+                return n
+            }
+            pub fx l3: () Int32 {
+                mut n: Int32 = 0
+                for x: Int32 in LOG {
+                    n += run(fx() Int32 {
+                        LOG.add(1)
+                        return 1
+                    })
+                }
+                return n
+            }
+            pub fx l4: () Int32 {
+                mut n: Int32 = 0
+                g: Fx<Tuple0, Int32> = fx() Int32 {
+                    LOG.add(1)
+                    return 1
+                }
+                for x: Int32 in LOG {
+                    n += g()
+                }
+                return n
+            }
+            pub fx ok: () Int32 {
+                mut n: Int32 = 0
+                for x: Int32 in LOG {
+                    n += run(fx() Int32 {
+                        return 1
+                    })
+                }
+                return n
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.contains("iterates 'LOG', and its body calls 'act', which writes 'LOG'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("iterates 'LOG', and its body calls 'run', which writes 'LOG'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("iterates 'LOG', and its body calls 'g', which writes 'LOG'") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aLoopOverAViewACalleeLentAndAWriteThroughAViewAliasInACalleeAreSeen() {
+        // Round 3, issue 6: `half(xs)` returns a view of xs, so the loop iterates xs; and poke writes GL through
+        // a MutView local of its own, which its caller cannot see at the call site.
+        val p = snippet(
+            """
+            pub mut GL: List<Int32> = List<Int32> {}
+            pub fx half: (a: List<Int32>) View<Int32> {
+                return a.view()
+            }
+            pub fx poke: () Void {
+                mv: MutView<Int32> = GL.view()
+                mv[0 as Size] = 5
+            }
+            pub fx l1: () Int32 {
+                mut xs: List<Int32> = List<Int32> {}
+                for x: Int32 in half(xs) {
+                    xs.add(x)
+                }
+                return 0
+            }
+            pub fx l2: () Int32 {
+                mut n: Int32 = 0
+                for x: Int32 in GL {
+                    poke()
+                    n += x
+                }
+                return n
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.contains("iterates 'half(xs)', and its body calls the `mut fx` 'add' on it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("iterates 'GL', and its body calls 'poke', which writes 'GL[..]'") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aByValueArgumentMustNotAliasWhatTheCalleeWrites() {
+        // Round 3, issue 9: design 5.1 passes a struct, a Str or a container by `const&`, so `f(GS)` hands f a
+        // reference to the global it writes: Kira's p is a copy that stays 0, C++'s p sees the bump. A scalar
+        // is copied in both, and a place the callee never writes is fine.
+        val p = snippet(
+            """
+            pub struct S {
+                pub a: Int32 = 0
+            }
+            pub mut GS: S = S {}
+            pub mut GN: Int32 = 0
+            pub mut GT: S = S {}
+            pub fx bumpGS: () Int32 {
+                GS.a += 1
+                return GS.a
+            }
+            pub fx f: (p: S) Int32 {
+                n: Int32 = bumpGS()
+                return p.a + n
+            }
+            pub fx g: (p: Int32) Int32 {
+                GN += 1
+                return p
+            }
+            pub fx h: (p: S) Int32 {
+                GN += 1
+                return p.a
+            }
+            pub fx main: () Int32 {
+                return f(GS) + g(GN) + h(GS) + f(GT)
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.alias")
+        assertTrue(message(p, "rules.exclusivity.alias").startsWith("'f' writes 'GS.a', and the argument 'GS' is passed to it by reference (design 5.1)"))
     }
 
     @Test
@@ -454,7 +629,11 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop")
-        assertTrue(p.diagnostics.any { it.message.contains("calls the `mut fx` 'reset' on 'k', which holds it") }, p.diagnostics.joinToString("\n") { it.message })
+        // Round 3, issue 7: reset writes k.a, not k.items, so it is no invalidation; push writes c.items.
+        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.contains("iterates 'xs', and its body calls the `mut fx` 'add' on it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("calls 'push', which writes 'c.items'") }, messages.joinToString("\n"))
+        assertTrue(messages.none { it.contains("reset") }, messages.joinToString("\n"))
     }
 }

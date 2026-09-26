@@ -5,8 +5,10 @@ import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.Place
+import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.TypedProgram
+import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
@@ -50,15 +52,25 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatem
  *   call; a struct's designated initializer and an array literal are sequenced); and the
  *   holes of an interpolated string (`kira::cat`). The receiver of a `mut fx` is not a
  *   sibling read: the callee takes it by reference after the arguments ran, in both
- *   languages, and `rules.exclusivity.receiver` covers a `mut` argument overlapping it. Writes
- *   hidden inside a callee's body (a
- *   global it assigns) are EffectsPass's: the operand is IMPURE, a sibling reading that state
- *   is READS, and the emitter spills them.
+ *   languages, and `rules.exclusivity.receiver` covers a `mut` argument overlapping it. Nor
+ *   is the place of a receiver of reference type (a class): C++17 reads the reference before
+ *   the arguments and the object after them, as Kira does, so `c.plus(c.grow())` on a class
+ *   is in order (on a struct it is not: Kira reads the value first). Writes hidden inside a
+ *   callee's body (a global it assigns) are EffectsPass's: the operand is IMPURE, a sibling
+ *   reading that state is READS, and the emitter spills them.
+ * - `rules.exclusivity.alias` (design 5.1): an argument C++ passes by `const&` (a struct, a
+ *   `Str`, a container; the receiver of a struct method too) is a place the callee writes
+ *   out of sight (`f(GS)` where `f` calls `bumpGS()`): Kira hands the callee a copy, C++ a
+ *   reference to what it writes, and the callee would read its own write.
  * - `rules.exclusivity.loop`: a `for` body assigns the place it iterates (or a place inside
- *   or around it), passes it or a place around it as `mut` or as a `MutView`, calls a `mut
- *   fx` on it or on a place around it (`s.reset()` while iterating `s.items`), or calls a
- *   function that writes it out of sight (`note()` adding to the global `LOG` being
- *   iterated, [HiddenWrites]): iterator invalidation.
+ *   or around it; a view iterated stands for what it was lent from, `half(xs)` for `xs`),
+ *   passes it or a place around it as `mut` or as a `MutView`, calls a `mut fx` without a
+ *   body on it or on a place around it (`xs.add(x)`, a magic mutator), or calls a function
+ *   that writes it out of sight ([HiddenWrites]: `note()` adding to the global `LOG` being
+ *   iterated, a `mut fx` with a body writing the iterated field, an override the object may
+ *   have, a lambda the callee may run): iterator invalidation. A `mut fx` with a body writing
+ *   only another field (`s.reset()` writing `s.a` while `s.items` is iterated) is no
+ *   invalidation.
  */
 internal class ExclusivityPass : RulePass {
     override val name: String = "exclusivity"
@@ -83,14 +95,20 @@ internal class ExclusivityPass : RulePass {
                 when (n) {
                     is FunctionCallExpr -> {
                         call(n)
+                        aliasing(n)
                         val rc = model.calls[n]
                         if (rc != null) {
                             val args = rc.sourceOrder.mapNotNull { (rc.args[it] as? ArgBinding.Given)?.expr }
                             // A receiver the call writes is a reference the callee takes after the arguments ran,
-                            // in Kira and in C++ alike; a receiver it only reads is a value taken before them.
+                            // in Kira and in C++ alike; a receiver it only reads is a value taken before them. A
+                            // receiver of a reference type (a class) is read as the reference before the
+                            // arguments and as the object after them, in both languages (C++17 sequences the
+                            // postfix-expression before the arguments): its own place is no sibling read, though
+                            // what its expression evaluates on the way still is.
                             val receiverWritten = r.callOperands(b, n, aliases).any { it.isReceiver && it.writes }
                             val receiver = rc.receiver?.takeIf { !receiverWritten }
-                            siblings(n, listOfNotNull(receiver) + args, "'${rc.fn?.name ?: KiraUnparser.text(n.name)}'")
+                            val reference = receiver?.takeIf { recv -> model.types[recv]?.let { r.isReference(it) } == true }
+                            siblings(n, listOfNotNull(receiver) + args, "'${rc.fn?.name ?: KiraUnparser.text(n.name)}'", notRead = reference)
                         }
                     }
                     is BinaryExpr -> if (n.operator != BinaryOp.AND && n.operator != BinaryOp.OR) {
@@ -157,14 +175,68 @@ internal class ExclusivityPass : RulePass {
         }
 
         /**
+         * `rules.exclusivity.alias` (design 5.1, D37): an argument C++ passes by `const&` (a
+         * struct, a `Str`, a container: [Rules.aliasesCaller]) that is a place the callee
+         * writes out of sight ([HiddenWrites]: a global, or `this` through the receiver). Kira
+         * hands the callee a copy, which its own write never reaches; C++ hands it a reference
+         * to the very storage it writes, and the callee reads the written value. The receiver
+         * of a struct method that is not a `mut fx` is a `const S&` as well. A `mut` argument
+         * overlapping the receiver or another argument is the `argument`/`receiver` rule's.
+         */
+        private fun aliasing(e: FunctionCallExpr) {
+            val rc = model.calls[e] ?: return
+            val all = r.callOperands(b, e, aliases)
+            val written = all.filter { it.writes }
+            // An operand overlapping a written operand of the same call is the argument/receiver rule's.
+            val ops = all.filter { op -> !op.writes && aliased(rc, op) && written.none { w -> w.places.any { wp -> op.places.any { it.overlaps(wp) } } } }
+            if (ops.isEmpty()) {
+                return
+            }
+            val hiddenWrites = hidden.of(b, e, aliases)
+            if (hiddenWrites.isEmpty()) {
+                return
+            }
+            val fnName = rc.fn?.name ?: KiraUnparser.text(e.name)
+            for (op in ops) {
+                val w = hiddenWrites.firstOrNull { w -> op.places.any { it.overlaps(w) } } ?: continue
+                val what = if (op.isReceiver) "the receiver" else "the argument"
+                r.report(
+                    "rules.exclusivity.alias",
+                    "'$fnName' writes '${r.describe(w)}', and $what '${op.text}' is passed to it by reference (design 5.1): Kira hands " +
+                        "'$fnName' a copy its write never reaches, but C++ would let it read what it wrote (D37). Copy the value into a local first.",
+                    op.at,
+                )
+            }
+        }
+
+        /** An operand C++ passes by `const&`: a by-value argument whose parameter type aliases the caller, or a struct receiver read in place. */
+        private fun aliased(rc: ResolvedCall, op: CallOperand): Boolean {
+            if (op.isReceiver) {
+                val t = (op.at as? Expr)?.let { model.types[it] } ?: return false
+                return !r.isReference(t) && r.aliasesCaller(t)
+            }
+            val i = rc.args.indexOfFirst { (it as? ArgBinding.Given)?.expr === op.at }
+            if (i < 0) {
+                return false
+            }
+            val given = rc.args[i] as ArgBinding.Given
+            if (given.byRef) {
+                return false
+            }
+            val param = rc.fn?.params?.getOrNull(i)
+            val t = param?.type?.substitute(rc.substitution) ?: model.types[given.expr] ?: return false
+            return r.aliasesCaller(t)
+        }
+
+        /**
          * `rules.exclusivity.order` over the sibling [operands] of [e]: what evaluating one of
          * them writes against what evaluating any other reads or writes. Lambdas inside an
          * operand run later, or never: they are skipped. [assigned] is the place a plain
          * assignment writes after both operands: the target itself and the places around it are
          * no reads of the target operand (only its indices are), and `n = bump(mut n)` is in
-         * order.
+         * order. [notRead] is an operand whose own place is no read (a reference receiver).
          */
-        private fun siblings(e: Expr, operands: List<Expr>, what: String, assigned: Place? = null) {
+        private fun siblings(e: Expr, operands: List<Expr>, what: String, assigned: Place? = null, notRead: Expr? = null) {
             if (operands.size < 2) {
                 return
             }
@@ -173,7 +245,7 @@ internal class ExclusivityPass : RulePass {
                 return
             }
             val reads = operands.mapIndexed { i, op ->
-                val all = readsOf(op)
+                val all = readsOf(op).filter { notRead == null || it.at !== notRead }
                 if (assigned != null && i == 0) all.filter { !(it.place.overlaps(assigned) && it.place.path().size <= assigned.path().size) } else all
             }
             // Once per pair of operands: a write in one against a read or write in the other, either way round.
@@ -221,9 +293,9 @@ internal class ExclusivityPass : RulePass {
                             op.places.forEach { out.add(Touch(it, n, text, r.describe(it))) }
                         }
                     }
-                    is AssignmentExpr -> model.places[n.target]?.let { add(aliases.expand(it), n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
-                    is CompoundAssignmentExpr -> model.places[n.left]?.let { add(aliases.expand(it), n, KiraUnparser.text(n), KiraUnparser.text(n.left)) }
-                    is PlaceAssignmentExpr -> model.places[n.target]?.let { add(aliases.expand(it), n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
+                    is AssignmentExpr -> model.places[n.target]?.let { add(aliases.expand(it, forWrite = true), n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
+                    is CompoundAssignmentExpr -> model.places[n.left]?.let { add(aliases.expand(it, forWrite = true), n, KiraUnparser.text(n), KiraUnparser.text(n.left)) }
+                    is PlaceAssignmentExpr -> model.places[n.target]?.let { add(aliases.expand(it, forWrite = true), n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
                     else -> {}
                 }
             }
@@ -248,7 +320,11 @@ internal class ExclusivityPass : RulePass {
                 return
             }
             val target = s.forIterationExpr.target
-            val iterated = r.placeOf(target)?.let { aliases.expand(it) } ?: return
+            // The place iterated, or what a view iterated was lent from (`half(xs)` returning a view of xs).
+            val iterated = r.placeOf(target)?.let { aliases.expand(it) } ?: aliases.standsFor(target)
+            if (iterated.isEmpty()) {
+                return
+            }
             val iteratedText = KiraUnparser.text(target)
             fun writes(places: List<Place>, at: ASTNode, how: String): Boolean {
                 if (places.any { p -> iterated.any { p.overlaps(it) } }) {
@@ -267,19 +343,26 @@ internal class ExclusivityPass : RulePass {
                     return@walk
                 }
                 when (n) {
-                    is AssignmentExpr -> model.places[n.target]?.let { writes(aliases.expand(it), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
-                    is CompoundAssignmentExpr -> model.places[n.left]?.let { writes(aliases.expand(it), n.left, "assigns '${KiraUnparser.text(n.left)}'") }
-                    is PlaceAssignmentExpr -> model.places[n.target]?.let { writes(aliases.expand(it), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
+                    is AssignmentExpr -> model.places[n.target]?.let { writes(aliases.expand(it, forWrite = true), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
+                    is CompoundAssignmentExpr -> model.places[n.left]?.let { writes(aliases.expand(it, forWrite = true), n.left, "assigns '${KiraUnparser.text(n.left)}'") }
+                    is PlaceAssignmentExpr -> model.places[n.target]?.let { writes(aliases.expand(it, forWrite = true), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
                     is FunctionCallExpr -> {
-                        val fnName = model.calls[n]?.fn?.name
+                        val rc = model.calls[n]
+                        val fnName = rc?.fn?.name
                         var seen = false
                         for (op in r.callOperands(b, n, aliases)) {
                             if (!op.writes) {
                                 continue
                             }
                             seen = if (op.isReceiver) {
-                                val around = if (iterated.any { op.place.path().size < it.path().size }) "'${op.text}', which holds it" else "it"
-                                writes(op.places, op.at, "calls the `mut fx` '$fnName' on $around")
+                                if (rc != null && r.hasAnalysedBody(rc)) {
+                                    // A `mut fx` with a body writes what its body writes (a field beside the
+                                    // iterated one is no invalidation): the hidden-write rule below has it.
+                                    false
+                                } else {
+                                    val around = if (iterated.any { op.place.path().size < it.path().size }) "'${op.text}', which holds it" else "it"
+                                    writes(op.places, op.at, "calls the `mut fx` '$fnName' on $around")
+                                }
                             } else if (op.how == "mut") {
                                 writes(op.places, op.at, "passes '${op.text}' as mut")
                             } else {
@@ -287,9 +370,9 @@ internal class ExclusivityPass : RulePass {
                             } || seen
                         }
                         if (!seen) {
-                            // A write the call site does not show: the callee's own.
+                            // A write the call site does not show: the callee's own, an override's, or a lambda's it may run.
                             hidden.of(b, n, aliases).firstOrNull { w -> iterated.any { w.overlaps(it) } }?.let { w ->
-                                writes(listOf(w), n, "calls '$fnName', which writes '${r.describe(w)}'")
+                                writes(listOf(w), n, "calls '${fnName ?: KiraUnparser.text(n.name)}', which writes '${r.describe(w)}'")
                             }
                         }
                     }

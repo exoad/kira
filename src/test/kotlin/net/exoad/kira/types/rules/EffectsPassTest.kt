@@ -47,9 +47,14 @@ class EffectsPassTest {
         )
         expectClean(p)
         assertEquals(Effect.PURE, p.model.effect(fn(p, "twice")))
-        assertEquals(Effect.PURE, p.model.effect(fn(p, "quad")), "reads of a constant, writes to locals and a struct method on a local are pure")
-        assertEquals(Effect.PURE, p.model.effect(fn(p, "len")), "Str.length and List.size are marked pure, and their receivers are the caller's own values")
-        assertEquals(Effect.PURE, p.model.effect(method(p, "P", "doubled")), "a struct reads its own fields by value")
+        // Round 3, issue 9: a struct method's `this` and a Str or List parameter are `const&` to the caller's
+        // storage (design 5.1), so reading them is READS, and a caller of such a function is READS too; a
+        // local's own List is the function's alone.
+        assertEquals(Effect.READS, p.model.effect(fn(p, "quad")), "quad calls a struct method, which reads through its const S& this")
+        assertEquals(Effect.READS, p.model.effect(fn(p, "len")), "Str.length and List.size are marked pure, but s and xs are the caller's storage")
+        assertEquals(Effect.PURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "ys.size()")), "a pure binding on a local receiver")
+        assertEquals(Effect.PURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "twice(v)")), "a pure callee on a scalar")
+        assertEquals(Effect.READS, p.model.effect(method(p, "P", "doubled")), "a struct reads its fields through the reference its receiver is")
     }
 
     @Test
@@ -256,6 +261,40 @@ class EffectsPassTest {
         assertEquals(Effect.IMPURE, p.model.effect(fn(p, "uses")))
         assertEquals(Effect.IMPURE, p.model.effect(fn(p, "usesUses")))
         assertEquals(Effect.IMPURE, p.model.effect(fn(p, "builds")), "List.add is a mutator without a pure flag")
+    }
+
+    @Test
+    fun aByValueParameterPassedByConstReferenceReadsTheCallersStorage() {
+        // Round 3, issue 9: design 5.1 lowers a struct, Str, container, Maybe, tuple or class parameter to
+        // `const T&`, which aliases the caller's argument, so a read of it is READS beside a sibling's effect
+        // (`pair(p.a, bumpGS())` spills p.a first). A scalar, enum or view parameter is copied and stays PURE.
+        val p = snippet(
+            """
+            pub struct S {
+                pub a: Int32 = 0
+            }
+            pub enum E: Int32 { E_A = 0 }
+            pub fx st: (p: S) Int32 {
+                return p.a
+            }
+            pub fx str: (s: Str) Size {
+                return s.size()
+            }
+            pub fx arr: (xs: Arr<Int32, 2>) Int32 {
+                return xs[0]
+            }
+            pub fx sc: (n: Int32, e: E, v: View<Int32>) Int32 {
+                return n + (v.size() as Int32)
+            }
+            """,
+        )
+        expectClean(p)
+        val model = p.model
+        assertEquals(Effect.READS, model.effect(fn(p, "st")), "a struct parameter is a const S&")
+        assertEquals(Effect.READS, model.effect(fn(p, "str")), "a Str parameter is a const kira::Str&")
+        assertEquals(Effect.READS, model.effect(fn(p, "arr")), "an Arr parameter is a const std::array&")
+        assertEquals(Effect.READS, model.effect(fn(p, "sc")), "a view reads what it borrows")
+        assertEquals(Effect.PURE, model.effect(BodyTestSupport.node<BinaryExpr>(p, "n + (v.size() as Int32)").leftExpr), "a scalar parameter is copied")
     }
 
     @Test
