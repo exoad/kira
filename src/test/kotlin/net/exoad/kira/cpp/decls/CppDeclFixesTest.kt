@@ -100,9 +100,6 @@ class CppDeclFixesTest {
             pub NINE: Int32 = 09
             pub ZERO: Int32 = 000
             pub NEG1: Int64 = 0xFFFFFFFFFFFFFFFF
-            pub NEG32: Int32 = 0xFFFFFFFF
-            pub NEG8: Int8 = 0xFF
-            pub BIG: UInt64 = 0xFFFFFFFFFFFFFFFF
             pub MASK: UInt32 = 0xFFFFFFFF
             pub MINUS: Int32 = -010
             pub TENS: Arr<Int32, 010> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -115,10 +112,8 @@ class CppDeclFixesTest {
             "inline constexpr std::int32_t TEN = 10;",
             "inline constexpr std::int32_t NINE = 9;",
             "inline constexpr std::int32_t ZERO = 0;",
+            // the parser folds a 64-bit hex literal to its Int64 value (-1); a narrower one past its signed width is a typer range error
             "inline constexpr std::int64_t NEG1 = static_cast<std::int64_t>(0xFFFFFFFFFFFFFFFFu);",
-            "inline constexpr std::int32_t NEG32 = static_cast<std::int32_t>(0xFFFFFFFFu);",
-            "inline constexpr std::int8_t NEG8 = static_cast<std::int8_t>(0xFFu);",
-            "inline constexpr std::uint64_t BIG = 0xFFFFFFFFFFFFFFFFu;",
             "inline constexpr std::uint32_t MASK = 0xFFFFFFFFu;",
             "inline constexpr std::int32_t MINUS = -10;",
             "inline constexpr std::array<std::int32_t, 10> TENS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};",
@@ -189,7 +184,7 @@ class CppDeclFixesTest {
             fx helper: (v: Int32) Int32 { return v }
             fx unseenHelper: (v: Int32) Int32 { return v }
             pub struct S { pub m: Mode = Mode.MODE_A pub n: Int32 = LIMIT pub i: Inner = Inner {} }
-            pub fx f: (x: Int32 = LIMIT) Int32 { return unseenHelper(x) }
+            pub fx f: (x: Int32) Int32 { return unseenHelper(x) }
             pub @_const fx c: (x: Int32) Int32 { return helper(x) }
             @_static_assert(LIMIT == 5, "limit")
             """
@@ -199,7 +194,7 @@ class CppDeclFixesTest {
         assertContains(
             h,
             "  namespace impl_\n  {\n    inline constexpr std::int32_t LIMIT = 5;\n\n    enum class Mode : std::int32_t\n    {\n        MODE_A = 0,\n    };\n\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      impl_::Mode m = impl_::Mode::MODE_A;\n      std::int32_t n = impl_::LIMIT;\n      impl_::Inner i = impl_::Inner{};\n  };",
-            "  namespace impl_\n  {\n    [[nodiscard]] inline std::int32_t helper(std::int32_t v);\n  }\n  [[nodiscard]] std::int32_t f(std::int32_t x = impl_::LIMIT);\n  [[nodiscard]] constexpr std::int32_t c(std::int32_t x);",
+            "  namespace impl_\n  {\n    [[nodiscard]] inline std::int32_t helper(std::int32_t v);\n  }\n  [[nodiscard]] std::int32_t f(std::int32_t x);\n  [[nodiscard]] constexpr std::int32_t c(std::int32_t x);",
             "  namespace impl_\n  {\n    inline std::int32_t helper(std::int32_t v)\n    {\n        return {}; // body of helper\n    }\n  }\n\n  constexpr std::int32_t c(std::int32_t x)",
             "  static_assert(<BinaryExpr>, \"limit\");",
         )
@@ -281,12 +276,12 @@ class CppDeclFixesTest {
         val h = header(
             """
             pub class Reg { pub n: Int32 = 0 }
-            pub mut reg: Reg = Reg {}
             pub struct Holder { pub r: Reg = Reg {} pub p: Pt = Pt {} }
             pub struct Pt { pub x: Int32 = 0 }
             """
         )
-        assertContains(h, "  inline kira::Rc<Reg> reg = std::make_shared<Reg>();", "      kira::Rc<Reg> r = std::make_shared<Reg>();\n      Pt p = Pt{};")
+        // (module-level mut state may not start from a class construction: D49 wants a constant expression)
+        assertContains(h, "      kira::Rc<Reg> r = std::make_shared<Reg>();\n      Pt p = Pt{};")
     }
 
     // ---- issue 8: a generic struct's out-of-line methods ---------------------------------------
@@ -440,7 +435,7 @@ class CppDeclFixesTest {
     fun aContainerOfALaterStructIsOrderedOrValueInitializedAsTheCompilersNeed() {
         val h = header(
             """
-            pub struct Early { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> = null }
+            pub struct Early { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
             pub struct Queued { pub d: Deque<Later> = Deque<Later> {} }
             pub struct Viewed { pub v: View<Later> }
             pub struct Later { pub v: Int32 = 0 }
@@ -453,7 +448,7 @@ class CppDeclFixesTest {
         // Queue or View element must be complete on libc++ and MSVC, so Later moves up.
         assertContains(
             h,
-            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w = kira::none;\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };\n\n  struct Viewed\n  {\n      kira::View<Later> v{};\n  };",
+            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w{};\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };\n\n  struct Viewed\n  {\n      kira::View<Later> v{};\n  };",
         )
     }
 
@@ -491,13 +486,14 @@ class CppDeclFixesTest {
             """
             LIMIT: Int32 = 5
             HIDDEN: Int32 = 6
-            pub fx f: (x: Int32 = LIMIT) Int32 { return x + HIDDEN }
+            pub struct S { pub n: Int32 = LIMIT }
+            pub fx f: (x: Int32) Int32 { return x + HIDDEN }
             """,
         )
         val app = DeclTestSupport.module("app:b", "use \"lib:a\"\npub Y: Int32 = 1")
         val (_, ctx) = DeclTestSupport.emitWith(lib, app, uri = "app:b", parts = fakeBodies)
         val a = ctx.program.module("lib:a") ?: fail("no lib:a")
-        // LIMIT is a default of an exported prototype, so lib:a's header holds it in impl_; HIDDEN is only the body's, so the .cxx holds it.
+        // LIMIT is a field default of an exported struct, so lib:a's header holds it in impl_; HIDDEN is only the body's, so the .cxx holds it.
         assertEquals("::a::impl_::LIMIT", ctx.qualified(a.members["LIMIT"]!!))
         assertEquals("::a::HIDDEN", ctx.qualified(a.members["HIDDEN"]!!))
         assertEquals("::a::f", ctx.qualified(a.members["f"]!!))
@@ -536,44 +532,41 @@ class CppDeclFixesTest {
 
     @Test
     fun aHoistedPrototypeFollowsTheStructItsDefaultArgumentConstructsOrReturns() {
-        // g++ and clang reject `std::int32_t limit(const Pt& p = Pt{});` before `struct Pt`
-        // ('invalid use of incomplete type'): a default argument is checked where it is
-        // declared, so what it constructs, or a call in it returns by value, must be complete.
+        // g++ and clang reject `std::int32_t limit(const Pt& p = ORIGIN);` before `ORIGIN` (and
+        // `struct Pt`) is defined: a default argument is checked where it is declared, so the
+        // constant it names, of a struct type, must be complete. (D48 makes a default a literal
+        // or a pub constant, so `Pt {}` or a call cannot sit there; a field default can hold either.)
         val h = header(
             """
             pub struct S { pub n: Int32 = limit() }
-            pub fx limit: (p: Pt = Pt {}) Int32 { return 1 }
+            pub fx limit: (p: Pt = ORIGIN) Int32 { return 1 }
+            pub ORIGIN: Pt = Pt {}
             pub struct Pt { pub x: Int32 = 0 }
             """
         )
-        assertContains(h, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  [[nodiscard]] std::int32_t limit(const Pt& p = Pt{});\n\n  struct S\n  {\n      std::int32_t n = <FunctionCallExpr>;\n  };")
+        assertContains(h, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  inline constexpr Pt ORIGIN = Pt{};\n  [[nodiscard]] std::int32_t limit(const Pt& p = ORIGIN);\n\n  struct S\n  {\n      std::int32_t n = <FunctionCallExpr>;\n  };")
         val const = header(
             """
             pub X: Int32 = pick()
-            pub @_const fx pick: (p: Pt = Pt {}) Int32 { return 1 }
+            pub @_const fx pick: (p: Pt = ORIGIN) Int32 { return 1 }
+            pub ORIGIN: Pt = Pt {}
             pub struct Pt { pub x: Int32 = 0 }
             """
         )
-        assertContains(const, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  [[nodiscard]] constexpr std::int32_t pick(const Pt& p = Pt{});\n\n  constexpr std::int32_t pick([[maybe_unused]] const Pt& p)\n  {\n      return {}; // body of pick\n  }\n\n  inline constexpr std::int32_t X = <FunctionCallExpr>;")
+        assertContains(const, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  inline constexpr Pt ORIGIN = Pt{};\n  [[nodiscard]] constexpr std::int32_t pick(const Pt& p = ORIGIN);\n\n  constexpr std::int32_t pick([[maybe_unused]] const Pt& p)\n  {\n      return {}; // body of pick\n  }\n\n  inline constexpr std::int32_t X = <FunctionCallExpr>;")
         val call = header(
             """
-            pub struct S { pub n: Int32 = limit() }
-            pub fx limit: (p: Pt = origin()) Int32 { return 1 }
+            pub struct S { pub p: Pt = origin() }
             pub fx origin: () Pt { return Pt {} }
             pub struct Pt { pub x: Int32 = 0 }
             """
         )
-        // origin's prototype may return the still-incomplete Pt; limit's default may not call it until Pt is defined
-        assertContains(call, "  [[nodiscard]] Pt origin();\n\n  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  [[nodiscard]] std::int32_t limit(const Pt& p = <FunctionCallExpr>);\n\n  struct S\n")
-        // a parameter of a later struct's type alone needs only the forward declaration
-        val plain = header(
-            """
-            pub struct S { pub n: Int32 = limit() }
-            pub fx limit: (p: Pt) Int32 { return 1 }
-            pub struct Pt { pub x: Int32 = 0 }
-            """
-        )
-        assertContains(plain, "  [[nodiscard]] std::int32_t limit(const Pt& p);\n\n  struct S\n  {\n      std::int32_t n = <FunctionCallExpr>;\n  };\n\n  struct Pt\n")
+        // origin's prototype may return the still-incomplete Pt; the field default that calls it waits for Pt
+        assertContains(call, "  [[nodiscard]] Pt origin();\n\n  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  struct S\n  {\n      Pt p = <FunctionCallExpr>;\n  };")
+        // (A prototype hoisted with a parameter of a later struct's type and no default cannot be
+        // written any more: `limit()` with `p: Pt` undefaulted is types.call.missing-arg, and every
+        // legal way of naming limit in a default, D48, completes Pt first. origin() above is the
+        // forward-declaration-suffices case that remains.)
     }
 
     @Test

@@ -14,7 +14,7 @@
 
 static_assert(order::TEN == 10 && order::NINE == 9, "Kira reads 010 and 09 as decimal");
 static_assert(static_cast<int>(order::Kind::K_A) == 10 && static_cast<int>(order::Kind::K_B) == 0x7F, "an enum entry too");
-static_assert(order::NEG1 == -1 && order::NEG32 == -1, "a hex literal past a signed width wraps as in C");
+static_assert(order::NEG1 == -1, "a 64-bit hex literal folds as in C");
 static_assert(order::TENS.size() == 10 && order::TENS[9] == 10, "an Arr size of 010 is ten");
 static_assert(order::A == 2 && order::N == 4 && order::K == order::Kind::K_A, "forward references among values");
 static_assert(std::is_same_v<order::Frame, std::array<std::uint8_t, 4>>, "an alias naming a later constant");
@@ -30,11 +30,6 @@ namespace order
   void Pt::setX(std::int32_t x_p)
   {
       x = x_p;
-  }
-
-  std::int32_t f(std::int32_t x)
-  {
-      return x * 2;
   }
 
   std::int32_t scaleBy(std::int32_t limit_p)
@@ -170,7 +165,6 @@ int main()
         order::Pt p{};
         p.setX(4);
         check(p.x == 4, "a parameter named like a field is renamed");
-        check(order::f() == 10, "a default argument that is a private constant");
         check(order::scaleBy(2) == 6, "a parameter named like a module declaration is renamed");
         const order::Sized sized{};
         check(sized.width == 5 && sized.LIMIT == 5 && sized.Mode == order::impl_::Mode::MODE_B, "a field named like a module declaration takes the declaration's value");

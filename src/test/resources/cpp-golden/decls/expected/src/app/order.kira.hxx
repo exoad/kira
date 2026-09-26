@@ -28,7 +28,6 @@ namespace order
   inline constexpr std::int32_t TEN = 10;
   inline constexpr std::int32_t NINE = 9;
   inline constexpr std::int64_t NEG1 = static_cast<std::int64_t>(0xFFFFFFFFFFFFFFFFu);
-  inline constexpr std::int32_t NEG32 = static_cast<std::int32_t>(0xFFFFFFFFu);
   inline constexpr std::array<std::int32_t, 10> TENS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
   namespace impl_
@@ -83,7 +82,7 @@ namespace order
       ::order::impl_::Mode Mode = ::order::impl_::Mode::MODE_B;
       std::int32_t std_ = 2;
 
-      [[nodiscard]] std::int32_t grow(std::int32_t by = ::order::impl_::LIMIT) const;
+      [[nodiscard]] std::int32_t grow(std::int32_t by = ::order::width) const;
   };
 
   struct Cfg
@@ -112,7 +111,6 @@ namespace order
       kira::Deque<Later> d{};
   };
 
-  [[nodiscard]] std::int32_t f(std::int32_t x = impl_::LIMIT);
   [[nodiscard]] std::int32_t scaleBy(std::int32_t limit_p);
   [[nodiscard]] kira::Maybe<std::int32_t> find(const kira::Str& key, const kira::Maybe<std::int32_t>& hint = kira::none);
   [[nodiscard]] std::int32_t peek(const std::int32_t* p, std::int32_t* q);
