@@ -164,17 +164,20 @@ class KiraCppBackendTest {
     }
 
     @Test
-    fun defaultFactoryReportsUnsupportedAndWritesNothing() {
-        val p = project("backend-unsupported")
-        val before = p.files()
+    fun defaultFactoryLowersBodiesAndChecksClean() {
+        // W2.3 registered the expression and statement parts: the real emitter lowers every
+        // body, writes the tree, and a --check right after finds nothing to redo.
+        val p = project("backend-default")
         val result = p.run(check = false, factory = CppModuleEmitterFactory::create)
-        assertEquals(1, result.exitCode)
-        assertTrue(result.diagnostics.any { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE && it.isError })
-        // Bodies are W2.3's; until then the real emitter refuses every function body (and the
-        // Kira-written stdlib carries some), so the default factory still writes nothing.
-        assertTrue(p.reportLines.any { it.contains("cpp.unsupported: the body of 'command' is not lowered yet") }, p.reportLines.toString())
-        assertTrue(p.reportLines.any { it.contains("no file was written") })
-        assertEquals(before, p.files(), "nothing may be written when an emitter reports an error")
+        assertEquals(0, result.exitCode, p.reportLines.joinToString("\n"))
+        assertTrue(result.diagnostics.none { it.isError }, result.diagnostics.joinToString("\n") { it.render() })
+        // lineDirectives is on by default (design 4.5): each statement points back at its line.
+        val source = Files.readString(p.root.resolve("src/pilot/proto.kira.cxx")).replace("\r\n", "\n")
+        assertTrue(source.contains("  kira::Str command(const kira::Str& verb)\n  {\n      #line 4 \"src/pilot/proto.kira\"\n      return verb;\n  }\n"), source)
+        val header = Files.readString(p.root.resolve("lib/text.kira.hxx")).replace("\r\n", "\n")
+        assertTrue(header.contains("  inline bool isSpace(std::int32_t c)\n  {\n      #line 4 \"lib/text.kira\"\n      return c == 32;\n  }\n"), header)
+        val check = p.run(check = true, factory = CppModuleEmitterFactory::create)
+        assertEquals(0, check.exitCode, p.outLines.joinToString("\n"))
     }
 
     @Test
