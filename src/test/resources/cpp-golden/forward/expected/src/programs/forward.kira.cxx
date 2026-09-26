@@ -13,7 +13,7 @@ namespace forward
 
   std::int32_t main()
   {
-      const kira::Rc<::bibo::Car> car = ::bibo::openCar();
+      const kira::Rc<::bibo::Car> car = static_cast<kira::Rc<::bibo::Car>>(::bibo::openCar());
       if(!car->arm())
       {
           return car->finish();
@@ -25,7 +25,7 @@ namespace forward
           {
               continue;
           }
-          const float ahead{car->scan().ahead()};
+          const float ahead{static_cast<::bibo::Scan>(car->scan()).ahead()};
           if(ahead < STOP_AT_M)
           {
               blocked = true;

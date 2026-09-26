@@ -32,22 +32,33 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * "Match" is kira/ffi.hxx's rule, recorded at the head of that file: a scalar exactly (the
  * same size, signedness and kind, which is what `int` and `long` are on arm-none-eabi, where
  * `std::int32_t` is `long`), at the return, at every by-value parameter and at every struct
- * field; anything else when it converts. Section 7.2 wrote `is_convertible` for the return;
- * that let a C++ `std::uint32_t count()` pass as `count: () Int32`, and since the call site
- * keeps the C++ type, `count() - 1` was computed unsigned (measured: 4294967295 for Kira's
- * -1, with -Wconversion -Wsign-conversion -Werror silent).
+ * field; a `Maybe` and a `Fn` part by part by the same rule; anything else when it converts.
+ * Section 7.2 wrote `is_convertible` for the return; that let a C++ `std::uint32_t count()`
+ * pass as `count: () Int32`, and since the call site keeps the C++ type, `count() - 1` was
+ * computed unsigned (measured: 4294967295 for Kira's -1, with -Wconversion -Wsign-conversion
+ * -Werror silent); `std::optional`'s converting constructor opened the same hole one level
+ * down (`std::optional<std::uint32_t> find()` as `find: () Maybe<Int32>`, measured the same).
  *
  * The checks follow section 7.2 at global scope: names as the marker spells them
  * (`bibo::Car`, never `::bibo::Car`), a non-mut method through a `const` receiver, a `Void`
  * method as `(call, 0)` against `int`, a `Str` parameter as `kira::ffi::in(...)`, a `mut`
- * parameter as `kira::ffi::out(...)`, a by-value scalar parameter as `kira::ffi::arg<T>()`
- * (7.2 wrote `std::declval<T>()`, which converts to any scalar parameter, the same hole as
- * the return's), except a `mut p: Unsafe<T>`, which is the writable `T*` itself (table 5.1:
- * `Unsafe<T>` is `const T*` unless `mut`), passed by value with no proxy: that is how a C
- * `void fill(uint8_t*, size_t)` or ImGui's `InputText(char* buf, ...)` is declared. A struct
- * declared with fields also gets a layout twin of the same fields and a `static_assert` on
- * `sizeof`, and one `KIRA_EXTERN_FIELD` per field (the matching type, and the offset the twin
- * gives it, so a same-size drift or a reordered pair is caught).
+ * parameter as `kira::ffi::out(...)`, a by-value scalar, `Maybe` or `Fn` parameter as
+ * `kira::ffi::arg<T>()` (7.2 wrote `std::declval<T>()`, which converts to any scalar
+ * parameter, the same hole as the return's), except a `mut p: Unsafe<T>`, which is the
+ * writable `T*` itself (table 5.1: `Unsafe<T>` is `const T*` unless `mut`), passed by value
+ * with no proxy: that is how a C `void fill(uint8_t*, size_t)` or ImGui's `InputText(char*
+ * buf, ...)` is declared. A struct declared with fields also gets a layout twin of the same
+ * fields and a `static_assert` on `sizeof`, and one `KIRA_EXTERN_FIELD` per field (the
+ * matching type, and the offset the twin gives it, so a same-size drift or a reordered pair
+ * is caught).
+ *
+ * What the check lets through is then made the declared type at the use: a call's result
+ * and a constant's read are `static_cast<T>(...)` unless T is a scalar (proved exact by the
+ * check), `Void`, or a pointer (`Unsafe<T>`, `CStr`, an opaque handle: the check lets only a
+ * qualification differ). A C++ `const char* name()` declared `name: () Str` passes its
+ * check, and left as the call's own type `name() == ABC` compared two pointers where Kira
+ * compares a Str by value (measured: 0 for Kira's 1, on g++, clang and MSVC with -Werror
+ * silent); `static_cast<kira::Str>(::probe::name()) == ABC` compares the text.
  *
  * An extern parameter takes no Kira default: the C++ header's own default fills a parameter
  * Kira leaves undeclared, and a Kira default would be a second, unchecked declaration of it
@@ -63,8 +74,9 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * the header unwrapped.
  *
  * At a call, [call] spells the C++ name with a leading `::` and the proxies (the expression
- * part hands over the spelled receiver and arguments). An extern constant is read by its
- * C++ name exactly as the marker spells it, with no `::` added ([constant]): a C constant
+ * part hands over the spelled receiver and arguments), and converts the result as above.
+ * An extern constant is read by its C++ name exactly as the marker spells it, with no `::`
+ * added ([constant]), converted the same way: a C constant
  * reached through `c =` is usually an object-like macro (`#define LIMIT 42`, and ImGui's
  * `IM_COL32_*` are too), `::LIMIT` expands to `::42`, and the check already proves the
  * unqualified spelling, so the read uses the spelling the check proved.
@@ -245,18 +257,26 @@ object CppExternEmitter : CppExternsPart {
      * One argument of a check: the proxy the call would pass, over a `std::declval` of the
      * Kira type. A `mut` `Unsafe<T>` is the bare `T*` (the speller's `MUT_PARAM` column),
      * never `out(...)`, whose `Out<const T*>` could bind only a `const T*&` or `const T**`.
-     * A by-value scalar is `kira::ffi::arg<T>()`, which converts to a scalar of T's size,
-     * signedness and kind and to nothing else (kira/ffi.hxx): `std::declval<T>()` converted
-     * to whatever the C++ parameter was, so a Kira `v: Int32` passed the check over a C++
-     * `std::uint8_t v` and the call then narrowed silently.
+     * A by-value scalar, `Maybe` or `Fn` is `kira::ffi::arg<T>()`, which converts to what
+     * matches T and to nothing else (kira/ffi.hxx): `std::declval<T>()` converted to whatever
+     * the C++ parameter was, so a Kira `v: Int32` passed the check over a C++ `std::uint8_t
+     * v` and the call then narrowed silently, and a `Maybe<Int32>` did the same over a
+     * `std::optional<std::uint8_t>` through optional's converting constructor (300 reached
+     * C++ as 44, measured). A struct, a class handle or a pointer has no such constructor
+     * and stays `std::declval<const T&>()`, the lvalue the call passes: with a proxy, an
+     * overload taking T itself and one taking a type T converts to would rank equal (both
+     * user-defined conversions) and the check would be ambiguous where the call is not.
      */
     private fun checkArg(ctx: CppEmitContextImpl, p: ParamSymbol): String = when {
         isUnsafe(p.type) -> "std::declval<${checkType(ctx, p.type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM)}>()"
         p.byRef -> "kira::ffi::out(std::declval<${checkType(ctx, p.type, Pos.VALUE)}&>())"
         p.type == KType.Str -> "kira::ffi::in(std::declval<const kira::Str&>())"
-        p.type is KType.Scalar -> "kira::ffi::arg<${checkType(ctx, p.type, Pos.VALUE)}>()"
+        takesProxy(p.type) -> "kira::ffi::arg<${checkType(ctx, p.type, Pos.VALUE)}>()"
         else -> "std::declval<${checkType(ctx, p.type, Pos.PARAM)}>()"
     }
+
+    /** Whether a by-value parameter of type [t] is stated as `kira::ffi::arg<T>()`: a scalar, a `Maybe` or a `Fn`. */
+    private fun takesProxy(t: KType): Boolean = t is KType.Scalar || t is KType.Fn || isMagic(t, MAYBE)
 
     private fun globalCheck(ctx: CppEmitContextImpl, g: GlobalSymbol, w: CppWriter) {
         if (g.isMut) {
@@ -296,8 +316,24 @@ object CppExternEmitter : CppExternsPart {
             (d.param.default ?: fn.decl)?.let { ctx.unsupported(it, "the default of parameter '${d.param.name}' of the extern function '${fn.name}'") }
         }
         val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text) }
-        return "$callee(${texts.joinToString(", ")})"
+        return declared(ctx, fn.ret, "$callee(${texts.joinToString(", ")})")
     }
+
+    /**
+     * [text], a C++ value the check proved matches the Kira type [t], as that type: itself
+     * when [t] is `Void`, a scalar (the check is exact there) or a pointer (`Unsafe<T>`,
+     * `CStr`, an opaque handle: only a qualification could differ, and a pointer's operations
+     * are the same either way); `static_cast<T>(text)` otherwise, since what is_convertible
+     * let through is not yet the declared type. A `const char*` result declared `Str` is the
+     * case that bit: `name() == ABC` compared pointers (measured, 0 for Kira's 1), and a
+     * `std::optional<const char*>` declared `Maybe<Str>` would do the same one level down.
+     * A result of the declared type itself is a prvalue and the cast is elided.
+     */
+    private fun declared(ctx: CppEmitContextImpl, t: KType, text: String): String =
+        if (keepsCppType(t)) text else "static_cast<${ctx.spell(t, Pos.VALUE)}>($text)"
+
+    private fun keepsCppType(t: KType): Boolean =
+        t == KType.Void || t == KType.Never || t is KType.Scalar || isUnsafe(t) || isCStr(t) || isOpaque(t)
 
     /** `->` for a class or an opaque handle (an `Rc` or a pointer), `.` for a struct (a value). */
     private fun accessor(owner: TypeSymbol): String = when {
@@ -312,8 +348,9 @@ object CppExternEmitter : CppExternsPart {
      * becomes `.c_str()`, anything else `kira::ffi::CStrBuf(expr).c_str()`, which lives to
      * the end of the full-expression. A named `Str` that is a Kira `Str` constant is already
      * a `const char*` (D12: `inline constexpr const char*`), so it passes through as the
-     * literal does; an extern `Str` constant is whatever C++ declared (a `std::string` or a
-     * `const char*` both pass its check), so it takes the buffer.
+     * literal does; an extern `Str` constant is read as a `kira::Str` made from whatever C++
+     * declared ([constant]: a `std::string` or a `const char*` both pass its check), a
+     * temporary, so it takes the buffer.
      */
     private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String): String {
         if (p == null) {
@@ -357,18 +394,26 @@ object CppExternEmitter : CppExternsPart {
         return sym.kind == ClassKind.MAGIC && sym.name == name
     }
 
+    /** An `@_opaque` class, the C++ pointer `C*` (table 5.1). */
+    private fun isOpaque(t: KType): Boolean {
+        val sym = (t as? KType.Nominal)?.sym as? ClassSymbol ?: return false
+        return sym.kind == ClassKind.OPAQUE
+    }
+
     /**
-     * The read of an extern constant: [cppName], never [globalName]. A macro cannot take a
-     * `::`, and [globalCheck] stated the check over this same spelling; a marker that wants
-     * the global one writes it (`cpp = "::bibo::LIMIT"`), and it passes through unchanged.
+     * The read of an extern constant: [cppName], never [globalName], as the declared type
+     * ([declared]). A macro cannot take a `::`, and [globalCheck] stated the check over this
+     * same spelling; a marker that wants the global one writes it (`cpp = "::bibo::LIMIT"`),
+     * and it passes through unchanged.
      */
-    override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String = cppName(sym)
+    override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String = declared(ctx, sym.type, cppName(sym))
 
     /** Whether [call] is one the expression part must hand to [CppExternEmitter.call]: its callee is extern. */
     fun isExternCall(call: ResolvedCall): Boolean = call.fn?.foreign is Foreign.Extern
 
     private const val CSTR = "CStr"
     private const val UNSAFE = "Unsafe"
+    private const val MAYBE = "Maybe"
 
     /** The key DeclarationCollector stores `@_extern("sym")`'s positional string under. */
     private const val POSITIONAL = "symbol"

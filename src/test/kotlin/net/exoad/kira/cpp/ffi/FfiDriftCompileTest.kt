@@ -2,6 +2,7 @@ package net.exoad.kira.cpp.ffi
 
 import net.exoad.kira.compiler.backend.codegen.cpp.CppExternEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
+import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.cpp.decls.DeclTestSupport
 import net.exoad.kira.cpp.support.CppCompileSupport
 import net.exoad.kira.cpp.support.CppProfile
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.DynamicNode
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import java.io.File
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -33,6 +35,13 @@ import kotlin.test.fail
  *   in Kira as `mode: Int32` (an extern enum is not a Kira declaration): it builds, since
  *   the field check takes an unscoped enum of the integer's size; declared `Int16`, the
  *   twin pads to the same 8 bytes and only the field's size gate catches it.
+ * - a C++ `std::optional<std::uint32_t>` declared `Maybe<Int32>`, a `std::optional<std::uint8_t>`
+ *   parameter declared `Maybe<Int32>`, and a `std::function<void(unsigned)>` declared
+ *   `Fx<Tuple1<Int32>, Void>`: the converting constructors of optional and function let
+ *   each through is_convertible, and the same rule one level down refuses them; the right
+ *   ones build.
+ * - a C++ `const char* name()` declared `Str`: the call the emitter writes compares by
+ *   value against a Kira Str constant, and the program says so by exiting 0.
  */
 class FfiDriftCompileTest {
     private val driver = File("src/test/resources/cpp-golden/forward/driver")
@@ -111,6 +120,29 @@ class FfiDriftCompileTest {
         $decls
     """
 
+    /**
+     * A C++ header with the shapes std::optional and std::function let through one level
+     * down: an optional of the wrong scalar, an optional parameter of a narrower one, a
+     * std::function of the wrong scalar; and a `const char*` result, which is a Str by 7.2.
+     */
+    private val probeHeader = """
+        #pragma once
+        #include <cstdint>
+        #include <functional>
+        #include <optional>
+        namespace probe {
+            inline std::optional<std::uint32_t> find_u() { return 0u; }
+            inline std::optional<std::int32_t> find_i() { return 0; }
+            inline std::uint8_t seen = 0;
+            inline void put_u8(std::optional<std::uint8_t> m) { seen = m.value_or(0); }
+            inline void put_i(const std::optional<std::int32_t>& m) { seen = static_cast<std::uint8_t>(m.value_or(0)); }
+            inline std::function<void(unsigned)> on_u() { return [](unsigned) {}; }
+            inline std::function<void(std::int32_t)> on_i() { return [](std::int32_t) {}; }
+            inline void set_i(std::function<void(std::int32_t)>) {}
+            inline const char* name() { static char buf[] = "abc"; return buf; }
+        }
+    """.trimIndent() + "\n"
+
     /** A translation unit that includes the module's header and calls nothing: the header is the test. */
     private fun headerOnlyMain(header: String): String = """
         #include "$header"
@@ -175,8 +207,113 @@ class FfiDriftCompileTest {
                 DynamicTest.dynamicTest("${tc.id}: a uint32_t return declared Int32 fails with Kira's message") { returnSignednessDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a uint8_t parameter declared Int32 is no viable call") { parameterWidthDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a C int field declared Int32 builds") { cIntFieldClean(tc) },
+                DynamicTest.dynamicTest("${tc.id}: an optional<uint32_t> return declared Maybe<Int32> fails with Kira's message") { maybeReturnDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: an optional<uint8_t> parameter declared Maybe<Int32> is no viable call") { maybeParameterDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a function<void(unsigned)> return declared Fx<Tuple1<Int32>, Void> fails with Kira's message") { fnReturnDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: the right Maybe and Fn declarations build") { maybeAndFnClean(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a const char* result declared Str compares by value at the call") { strResultIsConvertedAtTheCall(tc) },
             )
         }
+    }
+
+    // ---- Maybe and Fn: the same rule one level down (kira/ffi.hxx's head) ----------------------
+
+    private fun compileProbe(tc: CppToolchain, name: String, decls: String, main: String = headerOnlyMain("sc.kira.hxx")): Pair<String, CppCompileSupport.CompileResult> {
+        val header = emitHeader("c:sc", scalarModule(decls), CppOptions(lineDirectives = false))
+        return header to compile(tc, name, mapOf("sc.kira.hxx" to header, "probe.hxx" to probeHeader, "main.cxx" to main), withCarDriver = false)
+    }
+
+    /** `std::optional<std::uint32_t> find_u()` declared `() Maybe<Int32>`: optional's converting constructor passed it, and `unwrap(find()) - 1` printed 4294967295 (measured). */
+    private fun maybeReturnDrift(tc: CppToolchain) {
+        val (header, result) = compileProbe(tc, "maybe-return", "@_extern(cpp = \"probe::find_u\", header = \"probe.hxx\")\npub fx findU: () Maybe<Int32>;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::find_u(), kira::Maybe<std::int32_t>, \"findU\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'findU: () Maybe<Int32>' against C++'s std::optional<std::uint32_t> compiled (is_convertible would let it):\n${result.describe()}")
+        assertMessage(tc, result, "Kira's findU ${CppExternEmitter.DRIFT_MESSAGE}")
+    }
+
+    /** `void put_u8(std::optional<std::uint8_t>)` declared `(m: Maybe<Int32>)`: a declval of the Maybe converted, and 300 reached C++ as 44 (measured). */
+    private fun maybeParameterDrift(tc: CppToolchain) {
+        val (header, result) = compileProbe(tc, "maybe-param", "@_extern(cpp = \"probe::put_u8\", header = \"probe.hxx\")\npub fx putU8: (m: Maybe<Int32>) Void;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK((probe::put_u8(kira::ffi::arg<kira::Maybe<std::int32_t>>()), 0), int, \"putU8\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'putU8: (m: Maybe<Int32>)' against C++'s put_u8(std::optional<std::uint8_t>) compiled (declval would let it):\n${result.describe()}")
+        assertTrue(result.diagnostics.contains("Arg<"), "${tc.id}: the build failed, but not at the kira::ffi::Arg proxy:\n${result.describe()}")
+    }
+
+    /** `std::function<void(unsigned)> on_u()` declared `() Fx<Tuple1<Int32>, Void>`: std::function converts from any callable of a compatible signature. */
+    private fun fnReturnDrift(tc: CppToolchain) {
+        val (header, result) = compileProbe(tc, "fn-return", "@_extern(cpp = \"probe::on_u\", header = \"probe.hxx\")\npub fx onU: () Fx<Tuple1<Int32>, Void>;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::on_u(), kira::Fn<void(std::int32_t)>, \"onU\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'onU: () Fx<Tuple1<Int32>, Void>' against C++'s std::function<void(unsigned)> compiled (is_convertible would let it):\n${result.describe()}")
+        assertMessage(tc, result, "Kira's onU ${CppExternEmitter.DRIFT_MESSAGE}")
+    }
+
+    private fun maybeAndFnClean(tc: CppToolchain) {
+        val (_, result) = compileProbe(
+            tc, "maybe-fn-clean",
+            """
+            @_extern(cpp = "probe::find_i", header = "probe.hxx")
+            pub fx findI: () Maybe<Int32>;
+            @_extern(cpp = "probe::put_i", header = "probe.hxx")
+            pub fx putI: (m: Maybe<Int32>) Void;
+            @_extern(cpp = "probe::on_i", header = "probe.hxx")
+            pub fx onI: () Fx<Tuple1<Int32>, Void>;
+            @_extern(cpp = "probe::set_i", header = "probe.hxx")
+            pub fx setI: (f: Fx<Tuple1<Int32>, Void>) Void;
+            """.trimIndent(),
+        )
+        if (!result.success) {
+            fail("${tc.id}: the right Maybe and Fn declarations do not build:\n${result.describe()}")
+        }
+    }
+
+    /**
+     * The call the emitter writes for `name()`, a C++ `const char*` declared `Str`, against
+     * a Kira Str constant (D12: `inline constexpr const char*`). Left as C++'s type, `name()
+     * == ABC` compared two pointers and printed 0 for Kira's 1 (measured, on all three of
+     * these with -Werror silent); converted at the call it compares the text. The program
+     * exits 0 only when it does.
+     */
+    private fun strResultIsConvertedAtTheCall(tc: CppToolchain) {
+        val uri = "c:sc"
+        val decls = """
+            @_extern(cpp = "probe::name", header = "probe.hxx")
+            pub fx name: () Str;
+
+            fx run: () Bool {
+                return name() == "abc"
+            }
+        """.trimIndent()
+        val (emitted, ctx) = DeclTestSupport.emitWith(DeclTestSupport.module(uri, decls), uri = uri, options = CppOptions(lineDirectives = false))
+        // The typer types run's body, which is where the call comes from; whether this build
+        // lowers the body (W2.3's part) is beside the point, and its "not lowered yet" is let by.
+        val errors = emitted.diagnostics.filter { it.isError && !it.message.contains("is not lowered yet") }
+        assertTrue(errors.isEmpty(), "errors:\n" + errors.joinToString("\n") { it.render() })
+        val call = ctx.model.calls.values.firstOrNull { it.fn?.name == "name" } ?: fail("no call of name() in the model")
+        val text = CppExternEmitter.call(ctx, call, null, emptyList())
+        assertEquals("static_cast<kira::Str>(::probe::name())", text)
+        val main = """
+            #include "sc.kira.hxx"
+
+            namespace
+            {
+              constexpr const char* ABC = "abc";
+            }
+
+            int main()
+            {
+                return ($text == ABC) ? 0 : 1;
+            }
+        """.trimIndent() + "\n"
+        org.junit.jupiter.api.Assumptions.assumeTrue(CppToolchains.isEnabled(tc), "toolchain '${tc.id}' is disabled by KIRA_TOOLCHAINS")
+        val located = CppToolchains.requireOrSkip(tc)
+        val result = compile(tc, "str-result", mapOf("sc.kira.hxx" to CppWriter.normalize(emitted.header), "probe.hxx" to probeHeader, "main.cxx" to main), withCarDriver = false)
+        if (!result.success) {
+            fail("${tc.id}: the converted call does not build:\n${result.describe()}")
+        }
+        val exe = result.exe ?: fail("${tc.id}: reported success without an executable")
+        val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
+        assertTrue(!run.timedOut, "${tc.id}: the program timed out")
+        assertEquals(0, run.exitCode, "${tc.id}: '$text == ABC' is false: the Str result was compared as a pointer\nstderr:\n${run.stderr}")
     }
 
     // ---- the scalar rule at the return and at a parameter (kira/ffi.hxx's head) ----------------

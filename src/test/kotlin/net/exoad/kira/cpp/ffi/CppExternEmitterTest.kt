@@ -381,17 +381,120 @@ class CppExternEmitterTest {
             }
             """
         )
-        assertEquals("::bibo::openCar()", c.text("openCar", null))
+        // A class handle and a struct reach Kira as the declared type (a unique_ptr or a Scan& would
+        // pass the check); a scalar, a Void and a pointer are what C++ gave.
+        assertEquals("static_cast<kira::Rc<::bibo::Car>>(::bibo::openCar())", c.text("openCar", null))
+        assertEquals("static_cast<::bibo::Scan>(::bibo::scanOf(car))", c.text("scanOf", null, "car"))
         assertEquals("car->arm()", c.text("arm", "car"))
         assertEquals("car->Drive(0.1f, 0.0f)", c.text("drive", "car", "0.1f", "0.0f"))
-        assertEquals("::bibo::scanOf(car).ahead()", c.text("ahead", "::bibo::scanOf(car)"))
+        assertEquals("static_cast<::bibo::Scan>(::bibo::scanOf(car)).ahead()", c.text("ahead", "static_cast<::bibo::Scan>(::bibo::scanOf(car))"))
         assertEquals("::ImGui::SliderFloat(kira::ffi::in(\"throttle\"), kira::ffi::out(v), 0.0f, 1.0f)", c.text("sliderFloat", null, "\"throttle\"", "v", "0.0f", "1.0f"))
         assertEquals("::ImGui::GetWindowDrawList()->AddLine(7u)", c.text("addLine", "::ImGui::GetWindowDrawList()", "7u"))
         assertEquals("::c_hypot(3, 4)", c.text("hypot", null, "3", "4"))
         // A C name (7.3) and a mut Unsafe<T>, which is the T* itself: no out(...) around it.
         assertEquals("::c_only_fn(1)", c.text("cOnly", null, "1"))
         assertEquals("::fill_buf(buf, 4u)", c.text("fill", null, "buf", "4u"))
+        assertEquals("::alloc_buf(4u)", c.text("allocBuf", null, "4u"))
         assertTrue(c.ctx.model.calls.values.filter { it.fn?.name == "arm" }.all { CppExternEmitter.isExternCall(it) })
+    }
+
+    /**
+     * The check lets a `const char* name()` pass as `name: () Str` (7.2: a const char*
+     * converts to a Str), and the call kept C++'s type: `name() == ABC`, with ABC a Kira Str
+     * constant (D12: `inline constexpr const char*`), compared two pointers and printed 0 for
+     * Kira's 1, on g++ 13, zig clang 20 and MSVC /W4 /WX with no warning (measured). So a
+     * result that is not a scalar (proved exact), not Void and not a pointer (only a
+     * qualification could differ) is `static_cast` to the declared type at the call, and an
+     * extern constant's read the same.
+     */
+    @Test
+    fun aResultAndAConstantReachKiraAsTheDeclaredType() {
+        val c = callsOf(
+            """
+            @_extern(cpp = "probe::name", header = "probe.hxx")
+            pub fx name: () Str;
+
+            @_extern(cpp = "probe::find", header = "probe.hxx")
+            pub fx find: () Maybe<Int32>;
+
+            @_extern(cpp = "probe::version", header = "probe.hxx")
+            pub fx version: () CStr;
+
+            @_extern(cpp = "probe::count", header = "probe.hxx")
+            pub fx count: () Int32;
+
+            @_extern(cpp = "probe::buffer", header = "probe.hxx")
+            pub fx buffer: () Unsafe<UInt8>;
+
+            @_extern(cpp = "probe::VERSION", header = "probe.hxx")
+            pub VERSION: Str;
+
+            @_extern(cpp = "probe::LIMIT", header = "probe.hxx")
+            pub LIMIT: Int32;
+
+            fx main: () Int32 {
+                s: Str = name()
+                m: Maybe<Int32> = find()
+                v: CStr = version()
+                p: Unsafe<UInt8> = buffer()
+                return count()
+            }
+            """
+        )
+        assertEquals("static_cast<kira::Str>(::probe::name())", c.text("name", null))
+        assertEquals("static_cast<kira::Maybe<std::int32_t>>(::probe::find())", c.text("find", null))
+        assertEquals("::probe::version()", c.text("version", null))
+        assertEquals("::probe::count()", c.text("count", null))
+        assertEquals("::probe::buffer()", c.text("buffer", null))
+        val version = c.ctx.symbol.members["VERSION"] as GlobalSymbol
+        val limit = c.ctx.symbol.members["LIMIT"] as GlobalSymbol
+        assertEquals("static_cast<kira::Str>(probe::VERSION)", CppExternEmitter.constant(c.ctx, version))
+        assertEquals("probe::LIMIT", CppExternEmitter.constant(c.ctx, limit))
+    }
+
+    /**
+     * std::optional and std::function convert from any optional or callable whose parts
+     * convert, which is the is_convertible hole one level down: a Kira `Maybe<Int32>` reached
+     * a C++ `std::optional<std::uint8_t>` through `std::declval<const kira::Maybe<std::int32_t>&>()`
+     * and 300 arrived as 44 (measured). A Maybe or a Fn parameter is stated as
+     * `kira::ffi::arg<T>()`, whose conversion kira/ffi.hxx enables part by part; a struct
+     * stays the lvalue `std::declval<const T&>()`, so an overload taking it outranks one
+     * taking a type it converts to, as at the call.
+     */
+    @Test
+    fun aMaybeOrFnParameterIsStatedAsTheProxyAndAStructAsTheLvalue() {
+        val h = header(
+            """
+            @_extern(cpp = "probe::put", header = "probe.hxx")
+            pub fx put: (m: Maybe<Int32>) Void;
+
+            @_extern(cpp = "probe::onTick", header = "probe.hxx")
+            pub fx onTick: (f: Fx<Tuple1<Int32>, Void>) Void;
+
+            @_extern(cpp = "probe::ticker", header = "probe.hxx")
+            pub fx ticker: () Fx<Tuple1<Int32>, Int32>;
+
+            @_extern(cpp = "probe::find", header = "probe.hxx")
+            pub fx find: () Maybe<Int32>;
+
+            @_extern(cpp = "ImVec2", header = "imgui.h")
+            pub struct Vec2 {
+                pub x: Float32 = 0.0
+                pub y: Float32 = 0.0
+            }
+
+            @_extern(cpp = "ImGui::Dummy", header = "imgui.h")
+            pub fx dummy: (size: Vec2) Void;
+            """
+        )
+        assertLines(
+            h,
+            "KIRA_EXTERN_CHECK((probe::put(kira::ffi::arg<kira::Maybe<std::int32_t>>()), 0), int, \"put\");",
+            "KIRA_EXTERN_CHECK((probe::onTick(kira::ffi::arg<kira::Fn<void(std::int32_t)>>()), 0), int, \"onTick\");",
+            "KIRA_EXTERN_CHECK(probe::ticker(), kira::Fn<std::int32_t(std::int32_t)>, \"ticker\");",
+            "KIRA_EXTERN_CHECK(probe::find(), kira::Maybe<std::int32_t>, \"find\");",
+            "KIRA_EXTERN_CHECK((ImGui::Dummy(std::declval<const ImVec2&>()), 0), int, \"dummy\");",
+        )
     }
 
     @Test
@@ -497,14 +600,20 @@ class CppExternEmitterTest {
 
             @_extern(c = "C_LIMIT", header = "limits.h")
             pub C_LIMIT: Int32;
+
+            @_extern(c = "C_VERSION", header = "limits.h")
+            pub C_VERSION: Str;
             """
         )
         val noTitle = ctx.symbol.members["NO_TITLE_BAR"] as GlobalSymbol
         val limit = ctx.symbol.members["LIMIT"] as GlobalSymbol
         val cLimit = ctx.symbol.members["C_LIMIT"] as GlobalSymbol
+        val cVersion = ctx.symbol.members["C_VERSION"] as GlobalSymbol
         assertEquals("ImGuiWindowFlags_NoTitleBar", CppExternEmitter.constant(ctx, noTitle))
         assertEquals("::bibo::LIMIT", CppExternEmitter.constant(ctx, limit))
         assertEquals("C_LIMIT", CppExternEmitter.constant(ctx, cLimit))
+        // A Str constant is a kira::Str made from whatever the macro or object is (a `#define C_VERSION "1.2"`).
+        assertEquals("static_cast<kira::Str>(C_VERSION)", CppExternEmitter.constant(ctx, cVersion))
         val header = CppWriter.normalize(emitted.header)
         assertLines(header, "KIRA_EXTERN_CHECK(C_LIMIT, std::int32_t, \"C_LIMIT\");")
         assertTrue("::C_LIMIT" !in header, "the check is spelled as the read is:\n$header")

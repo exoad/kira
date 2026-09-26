@@ -88,7 +88,10 @@ object ExternIntrinsic : CompilerIntrinsic(
      * the constant `@_extern(c = "INT_MAX", header = "limits.h") pub IMAX: Int32;` was written
      * as a new zero global `Int32 IMAX;` and the program printed 0 for it, `--target js` wrote
      * `const IMAX;`, which node refuses, and both exited 0 (measured). Refused here, with the
-     * target named; `--target none` and the tests (mode NONE) take every target of 7.2.
+     * target named; `--target none` and the tests (mode NONE) take every target of 7.2. A free
+     * function whose marker names a C++ symbol and no C one (`cpp =` without `c =` or the
+     * positional) is refused under those two targets too: bound to its Kira name it would
+     * link to nothing, or to an unrelated C function of that name.
      */
     override fun apply(
         invocation: IntrinsicExpr,
@@ -133,6 +136,15 @@ object ExternIntrinsic : CompilerIntrinsic(
             if (what != null) {
                 throw KiraRuntimeException(
                     "@_extern on $what reaches C++ only (--target cpp, design 7.2): the ${mode.name} backend takes @_extern on a free function, whose symbol it calls"
+                )
+            }
+            if (CPP in invocation.namedParameters && cSymbolOf(invocation) == null) {
+                // `@_extern(cpp = "probe::twice", header = "probe.hxx")` names no C symbol; bound
+                // to its Kira name, the C backend wrote `extern Int32 twice(Int32 n);` and called
+                // it (measured), which links to nothing or to an unrelated C `twice`.
+                throw KiraRuntimeException(
+                    "@_extern on the function '${nameOf(target)}' names a C++ symbol only (cpp =); the ${mode.name} backend calls the C symbol: " +
+                        "add c = \"name\" (or the positional symbol) beside it"
                 )
             }
         }

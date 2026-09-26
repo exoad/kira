@@ -36,19 +36,37 @@
 //     integer's size (a C `enum Mode mode;`, declared `mode: Int32`), since an
 //     extern enum is not a Kira declaration; the size is the target ABI's
 //     (4 bytes on the hosts, 1 on arm-none-eabi with its short enums, measured).
+// A Maybe<T> (std::optional) matches an optional whose value matches by this
+// same rule, and a Fn (std::function) a std::function, a function pointer or a
+// function of the same arity whose return and parameters match by it (a
+// parameter also agrees on being a mutable reference or not; a callable of any
+// other kind, a lambda say, is a seam). The two are stated on their own because
+// their converting constructors are the is_convertible hole one level down:
+// std::optional converts from any optional whose value converts, so a C++
+// `std::optional<std::uint32_t> find()` passed as `find: () Maybe<Int32>` and
+// `find().unwrap() - 1` printed 4294967295, and a `Maybe<Int32>` reached a
+// `std::optional<std::uint8_t>` parameter as 44 for 300; std::function takes
+// any callable with a compatible signature (measured, g++ 13, zig clang 20 and
+// MSVC /W4 /WX, every one under its strict warnings, silent).
 // Anything else (a class handle, a Str, a pointer, a struct) matches when it
-// converts: a `Car*` or a `std::unique_ptr<Car>` to `kira::Rc<Car>`, a
-// `const char*` to `kira::Str`, a `const std::string&` to `kira::Str`.
+// converts: a `std::unique_ptr<Car>` to `kira::Rc<Car>` (a raw `Car*` does
+// not: shared_ptr's constructor from it is explicit, and adopting one is a
+// seam's decision), a `const char*` to `kira::Str`, a `const std::string&` to
+// `kira::Str`. The generated call then converts the result to the declared
+// type (`static_cast<kira::Str>(probe::name())`), since a `const char*` kept
+// as the call's type compared as a pointer where Kira compares a Str by value
+// (measured: `name() == ABC` printed 0 for Kira's 1, with -Werror silent).
 // A returned or field drift fails the static_assert with Kira's message. A
-// by-value scalar parameter is stated as `kira::ffi::arg<T>()`, a proxy that
-// converts to a scalar matching T and to nothing else, so a Kira `v: Int32`
-// against a C++ `std::uint8_t v` (which is_convertible passed, and a call then
-// narrowed silently) is no viable call: it fails as "no matching function"
-// naming kira::ffi::Arg<T>, not with Kira's message, since the expression is
-// ill-formed before the assertion looks at it (a wrong parameter count or a
-// Str against an int failed that way already). A parameter that C++ declares
-// as `double` is declared Float64 in Kira, never Float32 (the promotion that
-// is_convertible allowed is a declared-type drift under this rule).
+// by-value scalar, Maybe or Fn parameter is stated as `kira::ffi::arg<T>()`, a
+// proxy that converts to what matches T and to nothing else, so a Kira `v:
+// Int32` against a C++ `std::uint8_t v` (which is_convertible passed, and a
+// call then narrowed silently) is no viable call: it fails as "no matching
+// function" naming kira::ffi::Arg<T>, not with Kira's message, since the
+// expression is ill-formed before the assertion looks at it (a wrong parameter
+// count or a Str against an int failed that way already). A parameter that C++
+// declares as `double` is declared Float64 in Kira, never Float32 (the
+// promotion that is_convertible allowed is a declared-type drift under this
+// rule).
 //
 // An extern struct declared with fields gets a layout twin (the same fields, in
 // Kira's order, under ns::ffi_) and, per field, KIRA_EXTERN_FIELD: the C++ member
@@ -64,10 +82,14 @@
 //   kira::ffi::out(x)   a mut argument: converts to T& or T*; never to a T by
 //                       value, which would copy and write nothing (a deleted
 //                       conversion makes that ambiguous, so it does not compile)
-//   kira::ffi::arg<T>() a by-value scalar in a check only (never in a call, which
-//                       passes the Kira value itself): converts to a scalar that
-//                       matches T, so the check resolves the overload the value
-//                       would and no other
+//   kira::ffi::arg<T>() a by-value scalar, Maybe or Fn in a check only (never in
+//                       a call, which passes the Kira value itself): converts to
+//                       what matches T, so the check resolves the overload the
+//                       value would and no other. A struct, a class handle or a
+//                       pointer is stated as std::declval<const T&>() instead,
+//                       the lvalue the call passes, so that an overload taking T
+//                       itself outranks one taking a type T converts to, as it
+//                       does at the call; a proxy would make the two ambiguous
 //   kira::ffi::CStrBuf  a CStr made from a Str that is neither a literal nor a
 //                       Str constant nor a named Str; its c_str() lives to the
 //                       end of the full-expression
@@ -84,54 +106,169 @@
 #include "kira/core.hxx"
 
 #include <cstddef>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
 #if KIRA_PROFILE_HOSTED
+#include <functional>
 #include <string>
 #include <string_view>
 #endif
 
 namespace kira::ffi
 {
+  // The traits are built from std::conjunction and std::conditional_t rather than
+  // && and ?:, so that a clause is instantiated only when the ones before it hold:
+  // sizeof(void) is ill-formed wherever it is spelled, short-circuit or not, and a
+  // void reaches these through a Fn's return (`Fn<void(std::int32_t)>`) and through
+  // a `void f()` declared with a result.
+  template<class A, class B>
+  struct SameSize : std::bool_constant<sizeof(A) == sizeof(B)>
+  {
+  };
+
   // A and B are one scalar on this target: the same type, or two arithmetic types
   // of the same size, signedness and kind (see the head of this file). bool is
   // only bool.
   template<class A, class B>
-  inline constexpr bool same_scalar_v =
-      std::is_same_v<A, B>
-      || (std::is_arithmetic_v<A> && std::is_arithmetic_v<B>
-          && std::is_same_v<A, bool> == std::is_same_v<B, bool>
-          && std::is_integral_v<A> == std::is_integral_v<B>
-          && std::is_signed_v<A> == std::is_signed_v<B>
-          && sizeof(A) == sizeof(B));
+  inline constexpr bool same_scalar_v = std::disjunction<
+      std::is_same<A, B>,
+      std::conjunction<std::is_arithmetic<A>,
+                       std::is_arithmetic<B>,
+                       std::bool_constant<std::is_same_v<A, bool> == std::is_same_v<B, bool>>,
+                       std::bool_constant<std::is_integral_v<A> == std::is_integral_v<B>>,
+                       std::bool_constant<std::is_signed_v<A> == std::is_signed_v<B>>,
+                       SameSize<A, B>>>::value;
 
   // The C++ member type M is what Kira declared as T when the two are one scalar,
   // when M is an unscoped enum of T's size that converts to the integer T (a C
   // enum field read as Int32), or when M is T. Anything else is a drift.
   template<class M, class T>
-  inline constexpr bool field_matches_v =
-      same_scalar_v<M, T>
-      || (std::is_enum_v<M> && std::is_integral_v<T> && std::is_convertible_v<M, T> && sizeof(M) == sizeof(T));
+  inline constexpr bool field_matches_v = std::disjunction<
+      std::bool_constant<same_scalar_v<M, T>>,
+      std::conjunction<std::is_enum<M>, std::is_integral<T>, std::is_convertible<M, T>, SameSize<M, T>>>::value;
+  template<class M, class T>
+  struct FieldMatches : std::bool_constant<field_matches_v<M, T>>
+  {
+  };
+
+  // What a C++ value of type From may be when Kira declared To (the head of this
+  // file): a scalar or an enum exactly, as field_matches_v says; an optional and
+  // a std::function part by part, below; anything else when it converts. The
+  // same trait serves both directions, a C++ result reaching Kira's declared
+  // type and a Kira value reaching a C++ parameter, since the scalar rule is
+  // symmetric and the rest is is_convertible in the direction asked.
+  template<class From, class To>
+  struct Matches
+      : std::conditional_t<std::is_arithmetic_v<To> || std::is_arithmetic_v<From> || std::is_enum_v<From>,
+                           FieldMatches<From, To>,
+                           std::is_convertible<From, To>>
+  {
+  };
+  template<class From, class To>
+  inline constexpr bool matches_v = Matches<From, To>::value;
+
+  // Maybe<T>: only an optional, and one whose value matches (an int is no
+  // Maybe<Int32>, though std::optional converts from it).
+  template<class From, class T>
+  struct Matches<From, std::optional<T>> : std::false_type
+  {
+  };
+  template<class F, class T>
+  struct Matches<std::optional<F>, std::optional<T>> : Matches<F, T>
+  {
+  };
+
+#if KIRA_PROFILE_HOSTED
+  // Fn: a std::function, a function pointer or a function type of the same arity
+  // whose return and parameters match. A parameter's reference and const are
+  // stripped before matching, and the two agree on being a mutable lvalue
+  // reference (a `mut` parameter) or not; a return matches as a result does,
+  // and void only void.
+  template<class A>
+  inline constexpr bool is_mutable_ref_v = std::is_lvalue_reference_v<A> && !std::is_const_v<std::remove_reference_t<A>>;
+  template<class A, class B>
+  struct FnParamMatches
+      : std::conjunction<std::bool_constant<is_mutable_ref_v<A> == is_mutable_ref_v<B>>,
+                         Matches<std::remove_cv_t<std::remove_reference_t<A>>, std::remove_cv_t<std::remove_reference_t<B>>>>
+  {
+  };
+  template<class A, class B>
+  struct FnReturnMatches : Matches<A, B>
+  {
+  };
+  template<class B>
+  struct FnReturnMatches<void, B> : std::false_type
+  {
+  };
+  template<class A>
+  struct FnReturnMatches<A, void> : std::false_type
+  {
+  };
+  template<>
+  struct FnReturnMatches<void, void> : std::true_type
+  {
+  };
+
+  template<class... T>
+  struct TypeList
+  {
+  };
+  template<class A, class B>
+  struct ParamsMatch : std::false_type
+  {
+  };
+  template<>
+  struct ParamsMatch<TypeList<>, TypeList<>> : std::true_type
+  {
+  };
+  template<class A, class... As, class B, class... Bs>
+  struct ParamsMatch<TypeList<A, As...>, TypeList<B, Bs...>>
+      : std::conjunction<FnParamMatches<A, B>, ParamsMatch<TypeList<As...>, TypeList<Bs...>>>
+  {
+  };
+  template<class S2, class S>
+  struct SigMatches : std::false_type
+  {
+  };
+  template<class R2, class... A2, class R, class... A>
+  struct SigMatches<R2(A2...), R(A...)>
+      : std::conjunction<FnReturnMatches<R2, R>, ParamsMatch<TypeList<A2...>, TypeList<A...>>>
+  {
+  };
+
+  template<class From, class Sig>
+  struct Matches<From, std::function<Sig>> : std::false_type
+  {
+  };
+  template<class S2, class Sig>
+  struct Matches<std::function<S2>, std::function<Sig>> : SigMatches<S2, Sig>
+  {
+  };
+  template<class R2, class... A2, class Sig>
+  struct Matches<R2 (*)(A2...), std::function<Sig>> : SigMatches<R2(A2...), Sig>
+  {
+  };
+  template<class R2, class... A2, class Sig>
+  struct Matches<R2(A2...), std::function<Sig>> : SigMatches<R2(A2...), Sig>
+  {
+  };
+#endif
 
   // What an extern call (or an extern constant) of type Got is when Kira declared
-  // R: a scalar or an enum exactly, as field_matches_v says, and anything else
-  // when it converts. decltype gives a reference for an lvalue call and a
-  // const-qualified type for a constant; the value's type is what is matched.
+  // R. decltype gives a reference for an lvalue call and a const-qualified type
+  // for a constant; the value's type is what is matched.
   template<class Got, class R>
-  inline constexpr bool result_matches_v =
-      (std::is_arithmetic_v<R> || std::is_arithmetic_v<std::remove_cv_t<std::remove_reference_t<Got>>>
-       || std::is_enum_v<std::remove_cv_t<std::remove_reference_t<Got>>>)
-          ? field_matches_v<std::remove_cv_t<std::remove_reference_t<Got>>, R>
-          : std::is_convertible_v<Got, R>;
+  inline constexpr bool result_matches_v = matches_v<std::remove_cv_t<std::remove_reference_t<Got>>, R>;
 
-  // A by-value scalar argument of a check: converts to a scalar that matches T and
-  // to nothing else, so the check is viable only against the parameter the Kira
+  // A by-value scalar, Maybe or Fn argument of a check: converts to what matches T
+  // and to nothing else, so the check is viable only against the parameter the Kira
   // value would reach unchanged. Never evaluated, so the conversion is declared only.
   template<class T>
   struct Arg
   {
-      template<class U, std::enable_if_t<same_scalar_v<U, T>, int> = 0>
+      template<class U, std::enable_if_t<matches_v<T, U>, int> = 0>
       operator U() const noexcept;
   };
   template<class T>

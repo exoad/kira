@@ -220,6 +220,9 @@ class ExternIntrinsicTest {
             "@_extern(cpp = \"ImVec2\", header = \"imgui.h\")\npub struct Vec2 { pub x: Float32 = 0.0 }" to "@_extern on the struct 'Vec2' reaches C++ only",
             "@_extern(cpp = \"bibo::Car\", header = \"car.hxx\")\npub class Car { pub fx ok: () Bool; }" to "@_extern on the class 'Car' reaches C++ only",
             "@_opaque @_extern(cpp = \"ImDrawList\", header = \"imgui.h\")\npub class DrawList {\n    @_extern(cpp = \"VtxCount\") pub fx count: () Int32;\n}" to "@_extern on the method 'count' reaches C++ only",
+            // A free function whose marker names a C++ symbol and no C one: bound to its Kira name,
+            // the C backend wrote `extern Int32 twice(Int32 n);` and called it (measured).
+            "@_extern(cpp = \"probe::twice\", header = \"probe.hxx\")\npub fx twice: (n: Int32) Int32;" to "@_extern on the function 'twice' names a C++ symbol only (cpp =); the C backend calls the C symbol: add c = \"name\"",
         )
         val previous = GeneratedProvider.outputMode
         try {
@@ -228,8 +231,10 @@ class ExternIntrinsicTest {
                 for ((body, message) in cases) {
                     assertRefused(body, message.replace("the C backend", "the ${mode.name} backend"))
                 }
-                // A free function is what these backends lower: still accepted.
+                // A free function with a C symbol is what these backends lower: still accepted, a cpp = beside it or not.
                 assertEquals(emptyList(), semantic("@_extern(\"fopen\")\npub fx openFile: (path: Str) Int32;"), mode.name)
+                assertEquals(emptyList(), semantic("@_extern(c = \"twice_c\", cpp = \"probe::twice\", header = \"probe.hxx\")\npub fx twice: (n: Int32) Int32;"), mode.name)
+                assertEquals(emptyList(), semantic("@_extern(header = \"probe.h\")\npub fx twice: (n: Int32) Int32;"), "${mode.name}: the Kira name is the symbol")
             }
             GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.CPP
             val everyTarget = cases.map { it.first }.filterNot { it.startsWith("@_extern(\"INT_MAX\")") }.joinToString("\n")

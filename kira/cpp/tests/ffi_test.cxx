@@ -123,6 +123,14 @@ namespace fake
           p[i] = static_cast<std::uint8_t>(i);
       }
   }
+
+  // A const char* result Kira declares as Str (7.2), from storage of its own, so that a
+  // pointer comparison against a literal elsewhere is false by construction.
+  const char* nameStatic()
+  {
+      static char buf[] = {'a', 'b', 'c', 0};
+      return buf;
+  }
 }
 
 // ---- the checks an extern module would state (design 7.2, literally) --------------------
@@ -267,9 +275,83 @@ static_assert(!std::is_convertible_v<kira::ffi::Arg<std::int32_t>, std::uint8_t>
 static_assert(!std::is_convertible_v<kira::ffi::Arg<std::int32_t>, std::uint32_t>, "arg<Int32> does not reach a uint32_t parameter");
 static_assert(!std::is_convertible_v<kira::ffi::Arg<float>, double>, "arg<Float32> does not reach a double parameter");
 static_assert(!std::is_convertible_v<kira::ffi::Arg<bool>, int>, "arg<Bool> does not reach an int parameter");
+// Maybe and Fn are matched part by part by the same rule. std::optional's converting
+// constructor is the is_convertible hole one level down: `std::optional<std::uint32_t>
+// find()` passed as `find: () Maybe<Int32>` and `unwrap(find()) - 1` printed 4294967295
+// (measured), and a Maybe<Int32> stated as a declval reached `put(std::optional<std::uint8_t>)`,
+// where 300 arrived as 44; std::function takes any callable of a compatible signature.
+// A Maybe is only an optional (an int is no Maybe<Int32>, though optional converts from it),
+// and a Fn a std::function, a function pointer or a function type of the same arity whose
+// return and parameters match, agreeing on which are mutable references.
+namespace fake
+{
+  std::optional<std::uint32_t> findU();
+  std::optional<std::int32_t> findI();
+  std::optional<int> findInt();
+  std::optional<const char*> findName();
+  int found();
+  void putI(const std::optional<std::int32_t>&);
+}
+static_assert(!kira::ffi::result_matches_v<decltype(fake::findU()), kira::Maybe<std::int32_t>>, "an optional<uint32_t> result is not a Maybe<Int32>");
+static_assert(kira::ffi::result_matches_v<decltype(fake::findI()), kira::Maybe<std::int32_t>>, "an optional<int32_t> result is a Maybe<Int32>");
+static_assert(kira::ffi::result_matches_v<decltype(fake::findInt()), kira::Maybe<std::int32_t>>, "an optional<int> result is a Maybe<Int32> on every target this runs on");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::found()), kira::Maybe<std::int32_t>>, "an int result is not a Maybe<Int32>");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::findI()), std::int32_t>, "an optional<int32_t> result is not an Int32");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::findU()), kira::Maybe<std::uint64_t>>, "an optional<uint32_t> result is not a Maybe<UInt64>");
+KIRA_EXTERN_CHECK((fake::putI(kira::ffi::arg<kira::Maybe<std::int32_t>>()), 0), int, "putI");
+static_assert(std::is_convertible_v<kira::ffi::Arg<kira::Maybe<std::int32_t>>, std::optional<std::int32_t>>, "arg<Maybe<Int32>> reaches an optional<int32_t> parameter");
+static_assert(std::is_convertible_v<kira::ffi::Arg<kira::Maybe<std::int32_t>>, const std::optional<int>&>, "arg<Maybe<Int32>> binds a const optional<int>&");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<kira::Maybe<std::int32_t>>, std::optional<std::uint8_t>>, "arg<Maybe<Int32>> does not reach an optional<uint8_t> parameter");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<kira::Maybe<std::int32_t>>, std::optional<std::int64_t>>, "arg<Maybe<Int32>> does not reach an optional<int64_t> parameter");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<kira::Maybe<std::int32_t>>, std::int32_t>, "arg<Maybe<Int32>> does not reach an int32_t parameter");
 #if KIRA_PROFILE_HOSTED
+static_assert(kira::ffi::result_matches_v<decltype(fake::findName()), kira::Maybe<kira::Str>>, "an optional<const char*> result is a Maybe<Str>, converted at the call");
 KIRA_EXTERN_CHECK(fake::button(kira::ffi::in(std::declval<const kira::Str&>())), bool, "button");
 KIRA_EXTERN_CHECK(fake::sliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), kira::ffi::arg<float>(), kira::ffi::arg<float>()), bool, "sliderFloat");
+namespace fake
+{
+  std::function<int(int)> onTick();
+  std::function<unsigned(int)> onTickU();
+  std::function<int(unsigned)> onTickTakesU();
+  std::function<int(int, int)> onTick2();
+  int (*rawTick())(int);
+  int tick(int);
+  std::function<void(const std::string&)> onName();
+  std::function<void(std::string)> onNameByValue();
+  std::function<void(std::string&)> onNameMut();
+  void setTick(std::function<void(std::int32_t)>);
+}
+using Tick = kira::Fn<std::int32_t(std::int32_t)>;
+static_assert(kira::ffi::result_matches_v<decltype(fake::onTick()), Tick>, "a function<int(int)> result is a Fn<(Int32) Int32>");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::onTickU()), Tick>, "a function<unsigned(int)> result is not a Fn<(Int32) Int32>");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::onTickTakesU()), Tick>, "a function<int(unsigned)> result is not a Fn<(Int32) Int32>");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::onTick2()), Tick>, "a function of two parameters is not a Fn of one");
+static_assert(kira::ffi::result_matches_v<decltype(fake::rawTick()), Tick>, "a function pointer result is a Fn of its signature");
+static_assert(kira::ffi::result_matches_v<decltype(fake::tick), Tick>, "a function itself is a Fn of its signature");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::found()), Tick>, "an int result is not a Fn");
+static_assert(kira::ffi::result_matches_v<decltype(fake::onName()), kira::Fn<void(const kira::Str&)>>, "a function<void(const string&)> result is a Fn<(Str) Void>");
+static_assert(kira::ffi::result_matches_v<decltype(fake::onNameByValue()), kira::Fn<void(const kira::Str&)>>, "a function<void(string)> result is a Fn<(Str) Void> too: the parameter reads the same");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::onNameMut()), kira::Fn<void(const kira::Str&)>>, "a function<void(string&)> result is not a Fn<(Str) Void>: it writes its parameter");
+static_assert(kira::ffi::result_matches_v<decltype(fake::onNameMut()), kira::Fn<void(kira::Str&)>>, "a function<void(string&)> result is a Fn<(mut Str) Void>");
+KIRA_EXTERN_CHECK((fake::setTick(kira::ffi::arg<kira::Fn<void(std::int32_t)>>()), 0), int, "setTick");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<kira::Fn<void(std::int32_t)>>, std::function<void(unsigned)>>, "arg<Fn<(Int32) Void>> does not reach a function<void(unsigned)> parameter");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<kira::Fn<void(std::int32_t)>>, void (*)(std::int32_t)>, "arg<Fn<(Int32) Void>> does not reach a function pointer parameter (a std::function does not either)");
+#endif
+// What a result reaches Kira as, when it is not a scalar: the generated call converts it to
+// the declared type (a std::unique_ptr<Car> to an Rc; a Car* is no Rc, shared_ptr's
+// constructor from a raw pointer being explicit).
+#if KIRA_PROFILE_HOSTED
+namespace fake
+{
+  std::unique_ptr<Car> openUnique();
+  Car* openRaw();
+  const std::string& nameRef();
+  const char* nameC();
+}
+static_assert(kira::ffi::result_matches_v<decltype(fake::openUnique()), kira::Rc<fake::Car>>, "a unique_ptr<Car> result is a Car");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::openRaw()), kira::Rc<fake::Car>>, "a Car* result is not a Car (adopting it is a seam's decision)");
+static_assert(kira::ffi::result_matches_v<decltype(fake::nameRef()), kira::Str>, "a const string& result is a Str");
+static_assert(kira::ffi::result_matches_v<decltype(fake::nameC()), kira::Str>, "a const char* result is a Str");
 #endif
 #if defined(KIRA_FFI_DRIFT) && KIRA_FFI_DRIFT
 // A Kira `pub mut fx finish: () Str;` against C++'s `std::int32_t finish()`.
@@ -347,6 +429,14 @@ int main()
 
     // ---- CStrBuf: a CStr over a computed Str, alive for the full-expression --------
     check(lenCStr(kira::ffi::CStrBuf(s + "-x").c_str()) == 10, "CStrBuf(expr).c_str() lives to the end of the full-expression");
+
+    // ---- a const char* result declared Str: the generated call converts it -----------
+    // Left as the call's own type, `name() == ABC` (ABC a Kira Str constant, D12: a
+    // constexpr const char*) compared two pointers and printed 0 for Kira's 1 (measured,
+    // g++, clang and MSVC, -Werror silent). The emitter writes the static_cast.
+    constexpr const char* ABC = "abc";
+    check(!(fake::nameStatic() == ABC), "a const char* result kept as the call's type compares as a pointer (the bug)");
+    check(static_cast<kira::Str>(fake::nameStatic()) == ABC, "static_cast<kira::Str>(name()) == ABC compares the text, as Kira means");
 
     // ---- C++ default arguments fill what Kira left out ---------------------------
     fake::calls = 0;
