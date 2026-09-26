@@ -901,12 +901,17 @@ class CppUsage private constructor(
 
 /**
  * Design 4.3 and D14: two modules may share a namespace, and a duplicate symbol in one is a
- * Kira error. Every declaration a header holds takes part, in the module's namespace (an
- * exported one) or its `impl_` (a private one the header needs, [CppPlacement.inImpl]); the
- * `.cxx`'s anonymous namespace is one per file and never collides. A module's namespace
- * nested under another's (`bibo::text` beside `bibo`) collides with a declaration of that
- * name (`pub struct text` in `bibo`) the same way, since C++ has one meaning per name and
- * scope. Stdlib modules are skipped: each has its own `kira::<segments>` by construction.
+ * Kira error. Every declaration takes part, in the module's namespace (an exported one) or
+ * its `impl_` (a private one the header needs, [CppPlacement.inImpl]), and so does a
+ * private declaration of the `.cxx`: its anonymous namespace is one per file, so two
+ * modules' private names never meet, but a private name beside another module's exported
+ * name in the same namespace does. The exported name's out-of-line bodies sit in
+ * `namespace shared` outside the anonymous one, and a body there naming `LIMIT` finds both
+ * `shared::LIMIT` and `shared::{anonymous}::LIMIT` (measured, g++: "reference to 'LIMIT' is
+ * ambiguous"). A module's namespace nested under another's (`bibo::text` beside `bibo`)
+ * collides with a declaration of that name (`pub struct text` in `bibo`) the same way, since
+ * C++ has one meaning per name and scope. Stdlib modules are skipped: each has its own
+ * `kira::<segments>` by construction.
  *
  * Every colliding declaration gets [CODE] at its own node, naming the other, so the error
  * reaches whichever module is emitted and no header is written.
@@ -920,7 +925,8 @@ class CppNamespaceCollisions private constructor(private val byModule: Map<Modul
 
         val NONE = CppNamespaceCollisions(emptyMap())
 
-        private class Entry(val module: ModuleSymbol, val symbol: Symbol?, val ctx: CppEmitContextImpl?)
+        /** One declared name; [isPrivate] for a `.cxx`-private one (in the file's anonymous namespace). */
+        private class Entry(val module: ModuleSymbol, val symbol: Symbol?, val ctx: CppEmitContextImpl?, val isPrivate: Boolean = false)
 
         /** Scans every non-stdlib module of [program]; [contextOf] gives a module's emit context (its placement and layout). */
         fun scan(program: TypedProgram, contextOf: (ModuleSymbol) -> CppEmitContextImpl): CppNamespaceCollisions {
@@ -941,6 +947,7 @@ class CppNamespaceCollisions private constructor(private val byModule: Map<Modul
                     when {
                         placement.isExported(sym) -> add(ns, name, Entry(m, sym, ctx))
                         placement.inImpl(sym) -> add("$ns::${CppEmitContextImpl.IMPL_NAMESPACE}", name, Entry(m, sym, ctx))
+                        else -> add(ns, name, Entry(m, sym, ctx, isPrivate = true))
                     }
                 }
                 // `a::b::c` declares `b` in `a` and `c` in `a::b`.
@@ -951,21 +958,25 @@ class CppNamespaceCollisions private constructor(private val byModule: Map<Modul
             }
             val byModule = IdentityHashMap<ModuleSymbol, MutableList<CppDiagnostic>>()
             entries.forEach { (key, list) ->
-                if (list.map { it.module }.distinct().size < 2) {
-                    return@forEach
-                }
                 val scope = key.substringBeforeLast("::")
                 val name = key.substringAfterLast("::")
                 list.forEach { entry ->
+                    // Two private names live in two anonymous namespaces and never meet; anything else does.
+                    val colliding = list.filter { it.module !== entry.module && !(it.isPrivate && entry.isPrivate) }
+                    if (colliding.isEmpty()) {
+                        return@forEach
+                    }
                     val sym = entry.symbol ?: return@forEach
                     val ctx = entry.ctx ?: return@forEach
                     val node = sym.decl ?: return@forEach
-                    val others = list.filter { it.module !== entry.module }.joinToString(", ") { describe(it, program, ctx) }
-                    byModule.getOrPut(entry.module) { mutableListOf() } += ctx.diagnosticAt(
-                        node,
-                        CODE,
-                        "'$name' is declared in namespace $scope by $others too; two modules may share a namespace, but one name is one declaration (design 4.3)",
-                    )
+                    val others = colliding.joinToString(", ") { describe(it, program, ctx) }
+                    val message = if (entry.isPrivate) {
+                        "'$name' is private to this module's .cxx, but namespace $scope holds '$name' from $others too; " +
+                            "a body of this module naming it would find both (C++ calls that ambiguous), so one of them needs another name"
+                    } else {
+                        "'$name' is declared in namespace $scope by $others too; two modules may share a namespace, but one name is one declaration (design 4.3)"
+                    }
+                    byModule.getOrPut(entry.module) { mutableListOf() } += ctx.diagnosticAt(node, CODE, message)
                 }
             }
             return CppNamespaceCollisions(byModule)
@@ -975,7 +986,8 @@ class CppNamespaceCollisions private constructor(private val byModule: Map<Modul
             val sym = entry.symbol ?: return "module '${entry.module.uri}' (its namespace ${ctx.layout.namespaceFor(entry.module.uri)})"
             val where = sym.decl?.let { program.locate(it) }
             val at = if (where == null) "" else " (${ctx.layout.relativeToRoot(java.nio.file.Path.of(where.first.file))}:${where.second.lineNumber})"
-            return "module '${entry.module.uri}'$at"
+            val private = if (entry.isPrivate) ", private to its .cxx" else ""
+            return "module '${entry.module.uri}'$at$private"
         }
     }
 }

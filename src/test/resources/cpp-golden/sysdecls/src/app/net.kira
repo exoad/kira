@@ -1,0 +1,20 @@
+module "app:net"
+
+use "kira:os"
+
+// Declarations that name kira:os. The module is its runtime header alone:
+// kira/os.hxx defines UdpSocket and Poller, and defines Datagram, Ready and
+// POLL_READ by hand too, so the emitter writes no kira/std/os.kira.hxx that
+// would define them a second time (measured: gcc, clang and MSVC each reject
+// the pair). `Poller {}` is std::make_shared of kira::os::Poller.
+
+pub struct Link {
+    pub last: Datagram
+    pub sock: Maybe<UdpSocket> = null
+    pub poll: Poller = Poller {}
+    pub events: Int32 = POLL_READ
+    pub port: Int32 = 0
+}
+
+pub fx send: (s: UdpSocket, d: Datagram) Bool;
+pub fx ready: (r: Ready) Bool;

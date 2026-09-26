@@ -155,16 +155,21 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     /**
      * The include of [target]'s header, or null when there is none (this module; a stdlib
-     * module that is all `@_magic`, unless the runtime defines its classes in a header of its
-     * own, `kira/sync.hxx` for `kira:sync`, [CppTypeSpeller.systemHeaderFor]).
+     * module that is all `@_magic` with nothing of its own to emit). A system module
+     * (`kira:os`, [CppTypeSpeller.systemHeaderFor]) is its runtime header alone, whole:
+     * `kira/os.hxx` defines the module's magic classes and, by hand, its structs and
+     * constants too (`Datagram`, `POLL_READ`), so the emitted `kira/std/os.kira.hxx` would
+     * define them a second time (measured: gcc, clang and MSVC each reject the pair), and
+     * [KiraCppBackend.emitModules] never writes it.
      */
     private fun includeFor(target: ModuleSymbol): String? {
         if (target === m) {
             return null
         }
         if (target.isStdlib) {
+            CppTypeSpeller.systemHeaderFor(target.uri)?.let { return it }
             if (target.declarations.none { !ctx.isMagic(it) }) {
-                return CppTypeSpeller.systemHeaderFor(target.uri)
+                return null
             }
             val segments = CppModuleLayout.uriSegments(target.uri)
             return "kira/std/" + segments.joinToString("/") + ctx.options.headerExt
@@ -735,14 +740,21 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return "$type $name = ${initText(default, f.type)};"
     }
 
-    /** `List<T> {}`, `Map<K, V> {}`: an empty construction of a runtime container (a struct or class keeps `= T{}` / `make_shared`). */
+    /**
+     * `List<T> {}`, `Map<K, V> {}`: an empty construction of a runtime container. A struct
+     * keeps `= T{}`, and a class `make_shared`, a system module's `@_magic` class among them
+     * (`BlockingQueue<Str> {}` is a `kira::Rc`, and `kira::Rc<C> q{};` would be a null pointer).
+     */
     private fun isEmptyMagicConstruction(e: Expr): Boolean {
         if (e !is ObjectInitExpr || e.positionalArgs.isNotEmpty() || e.namedArgs.isNotEmpty()) {
             return false
         }
         val sym = (model.typeOf(e.typeName) as? KType.Nominal)?.sym as? ClassSymbol ?: return false
-        return sym.kind == ClassKind.MAGIC
+        return sym.kind == ClassKind.MAGIC && !ctx.speller.isSystemClass(sym)
     }
+
+    /** A class held as `kira::Rc<C>`: a Kira class, or a system module's `@_magic` class the runtime defines. */
+    private fun isRcClass(sym: ClassSymbol): Boolean = sym.kind == ClassKind.CLASS || ctx.speller.isSystemClass(sym)
 
     // ---- functions -------------------------------------------------------------------------------
 
@@ -889,8 +901,10 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             is ObjectInitExpr -> if (e.positionalArgs.isEmpty() && e.namedArgs.isEmpty()) {
                 val t = model.typeOf(e.typeName) ?: type
                 val sym = (t as? KType.Nominal)?.sym as? ClassSymbol
-                if (sym != null && sym.kind == ClassKind.CLASS) {
-                    // R9: a class is constructed through make_shared; `kira::Rc<C>{}` would be a null pointer.
+                if (sym != null && isRcClass(sym)) {
+                    // R9: a class is constructed through make_shared; `kira::Rc<C>{}` would be a null
+                    // pointer. A system module's magic class (`BlockingQueue<Str> {}`, `UdpSocket {}`)
+                    // is one: the runtime's class, default-constructed.
                     return "std::make_shared<${ctx.speller.bareClass(t)}>()"
                 }
                 val spelled = if (model.typeOf(e.typeName) != null) ctx.spell(e.typeName, Pos.VALUE) else ctx.spell(type, Pos.VALUE)

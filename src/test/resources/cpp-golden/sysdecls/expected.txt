@@ -1,0 +1,13 @@
+
+sysdecls - the system modules' classes in declarations
+
+  ok    BlockingQueue<Str> {} is a queue, not a null Rc
+  ok    and it is the runtime's: push and pop go through it
+  ok    Maybe<Thread> = null is none
+  ok    module state and a constant of a system class are queues of their own
+  ok    Poller {} is a poller
+  ok    Maybe<UdpSocket> = null is none, and POLL_READ is kira/os.hxx's
+  ok    Datagram and Ready are the structs kira/os.hxx defines by hand
+  ok    functions take the runtime's classes by const Rc& and its structs by const&
+
+8 checks, 0 failed
