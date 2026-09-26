@@ -789,8 +789,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return if (node != null && model.typeOf(node) != null) ctx.spell(node, Pos.RETURN) else ctx.spell(fn.ret, Pos.RETURN, fn.decl)
     }
 
-    private fun paramText(p: ParamSymbol, withDefault: Boolean, markUnused: Boolean, fn: FnSymbol): String {
-        val name = ctx.paramName(p)
+    /** One parameter; [rename] is the name a definition's guard gives it ([CppGuards.references]), else its own. */
+    private fun paramText(p: ParamSymbol, withDefault: Boolean, markUnused: Boolean, fn: FnSymbol, rename: String? = null): String {
+        val name = rename ?: ctx.paramName(p)
         val unused = if (markUnused && !placement.bodyNames(fn, p)) "[[maybe_unused]] " else ""
         if (placement.isNonEscapingFx(p)) {
             return "$unused${ctx.speller.templateParamName(p)}&& $name"
@@ -836,7 +837,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             p.inlineDefinition && !placement.isTemplate(fn, owner) -> "inline "
             else -> ""
         }
-        val params = fn.params.joinToString(", ") { paramText(it, withDefault = false, markUnused = true, fn) }
+        // A parameter some effect of the body may reach before the body reads it is copied at entry (W2.4's guards).
+        val guards = parts.classes.guards(ctx, fn)
+        val params = fn.params.joinToString(", ") { paramText(it, withDefault = false, markUnused = true, fn, guards.references[it]) }
         val constSuffix = if (owner != null && !fn.isMutMethod) " const" else ""
         fn.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
         if (owner != null) {
@@ -845,6 +848,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         templateHead(fn).forEach { w.line(it) }
         val qualifier = owner?.let { ownerQualifier(it) } ?: ""
         w.block("$specifier${returnText(fn)} $qualifier${ctx.names.escape(fn.name)}($params)$constSuffix") {
+            guards.prologue.forEach { line(it) }
             ctx.body(fn, fn.body ?: emptyList(), this)
         }
     }

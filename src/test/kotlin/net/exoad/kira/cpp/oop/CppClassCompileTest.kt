@@ -16,7 +16,8 @@ import kotlin.test.assertTrue
  * trait, a trait default body, a diamond of traits, `this` as a value (the chain root's
  * `kira::Shared`), a generic class and a generic bound, `Maybe<Class>`, `Ref<T>`, a stack-
  * constructed class, a destructor from `finally`, a skipped middle default of a narrow
- * type, and plain methods that write their receiver (not `const`). The bodies are W2.4's
+ * type, plain methods that write their receiver (not `const`), and the lifetime guards (a
+ * parameter copied at entry, a method that holds itself for its call). The bodies are W2.4's
  * fakes ([OopTestSupport.FakeStmtEmitter]), so the Kira bodies here only return values and
  * assign; the shapes around them are the real classes part.
  */
@@ -628,6 +629,52 @@ class CppClassCompileTest {
         pub fx makeLoose: () Loose {
             return Loose { n = 1 }
         }
+
+        // A method whose Str parameter names an object the body drops: copied at entry. One
+        // that reads itself after dropping its only owner: holds itself for the call.
+        pub class Link {
+            require pub name: Str
+            pub mut next: Maybe<Link> = null
+
+            pub mut fx cut: (s: Str) Str {
+                next = null
+                return s
+            }
+
+            pub fx detach: (owner: Link) Str {
+                owner.drop()
+                return name
+            }
+
+            pub mut fx drop: () Void {
+                next = null
+            }
+        }
+
+        pub fx makeLink: (name: Str) Link {
+            return Link { name }
+        }
+
+        // A free function whose Str parameter names an object its other parameter drops.
+        pub fx consume: (h: Link, s: Str) Str {
+            h.drop()
+            return s
+        }
+
+        // A template's const T& parameter, bound to the field the body writes first.
+        pub class Twin<T> {
+            pub mut n: T
+            require pub m: T
+
+            pub mut fx take: (v: T) T {
+                n = m
+                return v
+            }
+        }
+
+        pub fx makeTwin: (n: Int32, m: Int32) Twin<Int32> {
+            return Twin<Int32> { n = n, m = m }
+        }
     """
 
     private val driver = """
@@ -761,6 +808,21 @@ class CppClassCompileTest {
             const kira::Rc<shapes::PtrHolder> held = shapes::makePtrHolder();
             const kira::Rc<shapes::Loose> loose = shapes::makeLoose();
             check(held->p == shapes::cell() && held->h == shapes::open() && loose->p == nullptr && loose->h == nullptr && loose->n == 1, "a construction spills pointers into const pointers and value-initializes a skipped one");
+            // Longer than any small-string buffer, so a read of a freed Str reads freed heap memory.
+            const char* longName = "a name long enough that no standard library keeps it in the string object itself";
+            const kira::Rc<shapes::Link> head = shapes::makeLink("head");
+            head->next = shapes::makeLink(longName);
+            check(head->cut(kira::unwrap(head->next)->name) == longName && head->next == nullptr, "a parameter naming what the body drops is copied at entry");
+            head->next = shapes::makeLink(longName);
+            check(kira::unwrap(head->next)->detach(head) == longName && head->next == nullptr, "a method that reads itself after dropping its only owner holds itself for the call");
+            head->next = shapes::makeLink(longName);
+            check(shapes::consume(head, kira::unwrap(head->next)->name) == longName && head->next == nullptr, "a free function's parameter naming what the body drops is copied at entry");
+            {
+                shapes::Link stacked("stacked");
+                check(stacked.detach(head) == "stacked", "a method that holds itself runs on an object no Rc owns (weak_from_this is empty)");
+            }
+            const kira::Rc<shapes::Twin<std::int32_t>> twin = shapes::makeTwin(1, 7);
+            check(twin->take(twin->n) == 1 && twin->n == 7, "a template's const T& parameter is copied before the body writes the field it named");
             std::printf("%d checks, %d failed\n", checks, failures);
             return failures == 0 ? 0 : 1;
         }
@@ -791,7 +853,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("32 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("37 checks, 0 failed"), run.stdout)
             }
         }
     }
