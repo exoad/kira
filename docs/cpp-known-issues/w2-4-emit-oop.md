@@ -4,8 +4,9 @@ The C++ backend's classes part: `CppClassEmitter.kt`, `CppClassLifetimes.kt`,
 `CppGenericsEmitter.kt` and the tests under `src/test/kotlin/net/exoad/kira/cpp/oop/`. Each
 entry says what the issue is, where it lives, how to reproduce it, and why it is safe to leave
 for now. "Measured" means the probe was run through the CLI of a trial tree, then g++ 13.2 and
-zig c++ 0.15 with the goldens' warning flags and `-Werror`. A trial tree is this branch with the
-current W2.3 head (`cpp/w2-3-emit-exprs` 7c0fb42) merged without a commit and the verifier's
+zig c++ 0.15 with the goldens' warning flags and `-Werror` (and, for convergence round 3's
+probes, MSVC 14.44 with `/fsanitize=address`). A trial tree is this branch with the current
+W2.3 head (`cpp/w2-3-emit-exprs` a00af85) merged without a commit and the verifier's
 `rewire.py` applied, plus, where it says so, the W2.5 head (`cpp/w2-5-rules` 1dc7587) applied
 without a commit.
 
@@ -25,8 +26,9 @@ without a commit.
   the three gets a copied parameter or a hold (convergence round 2).
 - **Reproduce.** On a trial tree, set `emit: required` in the three `case.yaml` files and run
   `./gradlew test --tests net.exoad.kira.cpp.CppGoldenEmitTest`: chain and classes fail with
-  the two spill hunks only, with and without this round's change (measured on both, with and
-  without W2.5). `CppGoldenCompileTest` passes, so the spilled trees compile and run on gcc,
+  the two spill hunks only, with and without convergence round 3's change (measured with and
+  without W2.5: the failure messages are byte-identical to those of the tree without the
+  round's change). `CppGoldenCompileTest` passes, so the spilled trees compile and run on gcc,
   clang and MSVC and compile for aarch64.
 - **Why it can wait.** The emitted code is correct and compiles. The difference is W2.3's
   rule against expected text written before that rule. W2.3 or the integrator has to either
@@ -99,8 +101,9 @@ without a commit.
 - **zig-aarch64 only compiles.** `CppClassCompileTest`'s aarch64 case builds the classes and
   the driver but runs nothing, because there is no emulator (`result.exe` is null for the
   cross build). The checks run on gcc, clang and MSVC.
-- **The probes ran on g++ and zig c++ only**, not MSVC. `CppClassCompileTest` runs the same
-  guards (a copied parameter, a hold, a free function's copy, a template's copy) on MSVC.
+- **The earlier rounds' probes ran on g++ and zig c++ only**, not MSVC. `CppClassCompileTest`
+  runs the same guards (a copied parameter, a hold, a free function's copy, a template's copy)
+  on MSVC. Convergence round 3's probes also ran under MSVC ASan.
 - **Why it can wait.** None of these gaps can hide a wrong program. A gcc 11 incompatibility is
   a compile error, and the aarch64 build is the same source the three runnable toolchains
   execute. Whoever has gcc 11.4 (CI, the Orange Pi) can run `CppClassCompileTest` there.
@@ -140,10 +143,13 @@ without a commit.
   plain `fx` write its receiver). W2.5's rule (`rules.mutability.this`: declare it `mut fx`)
   refuses them, so on a tree with W2.5 merged those six tests fail at typing.
 - **Where.** `src/test/kotlin/net/exoad/kira/cpp/oop/`, against W2.5's `MutabilityPass`.
-- **Reproduce.** On a trial with W2.3 and W2.5, `./gradlew test`: the six fail with
-  `rules.mutability.this` and `rules.mutability.method`, with and without this round's
-  change (measured: the two trees' failing tests are the same 84, of 1261 and 1241; the other
-  78 are the two KI-1 spills and W2.5's rules against W2.3's and W2.2's fixtures).
+- **Reproduce.** On a trial with W2.3 (a00af85) and W2.5 (1dc7587), `./gradlew test` with the
+  three OOP goldens at `emit: required`: the six fail with `rules.mutability.this` and
+  `rules.mutability.method`, with and without convergence round 3's change (measured: 94 of
+  1280 fail with the change and 94 of 1267 without it, the same tests with byte-identical
+  messages; the other 88 are the two KI-1 spills and W2.5's rules against W2.3's and W2.2's
+  fixtures). On W2.3 alone, 2 of 1113 fail with the change and 2 of 1100 without it, the two
+  KI-1 spills. The 13 new tests are convergence round 3's.
 - **Why it can wait.** It is a disagreement between two correct rules about test inputs, not
   a miscompile. Whoever merges W2.5 turns those methods into `mut fx` (the C++ is the same,
   non-`const`), or keeps them as W2.5's negative cases; the classes part's derived `const`
@@ -177,7 +183,127 @@ without a commit.
   safely instead (iterate a copy, call a copy of the `kira::Fn`, copy a lambda's parameters at
   entry as the classes part does a method's) and the refusal could then go.
 
+### KI-12. With a `finally` anywhere, constructions and object-holding locals count as releases
+
+- **What.** When any class of the program has a `finally` (or kira:sync is in use, KI-8), every
+  class construction counts as an effect that may free an object (the new object may be dropped
+  at once and run its `finally`), and so does every local that holds an object, at its
+  declaration (it is dropped at the end of its block). So a method that builds an object and
+  then reads `this` holds itself (a `kira::Shared` base and a `weak_from_this().lock()` per
+  call), more parameters are copied, and a trait default that does the same is refused.
+- **Where.** `CppClassLifetimes.Walker.construction` and the Walker's `VariableDecl` case.
+- **Reproduce.** The `holdctor` probe (`Counter.make` builds an `Other`, whose class has a
+  `finally`, then reads `n`) emits `keepAlive_` in `Counter::make`; it prints the right values.
+- **Why it can wait.** It only ever copies, holds or refuses more than it must, never less.
+  Narrowing it means placing a local's drop at the end of its block and charging a
+  construction only with what its `finally` does, a precision change with no safety gain.
+
+### KI-13. The guards rely on W2.5 for globals and direct aliasing
+
+- **What.** `CppClassLifetimes.holdable` asks what class fields, `Ref` arguments and held `Fx`
+  values hold by value, never what a global holds. So on a tree with W2.3 and without W2.5, a
+  `const&` parameter bound to an element of a global List the callee grows (`globalalias`)
+  still throws `std::bad_alloc` on g++, and a view stored in a generic class's field
+  (`genview`) prints garbage. W2.5 refuses both (`rules.exclusivity.alias`, and EscapePass's
+  `rules.escape.view-store`). The same holds for a place passed twice to one call directly
+  (`fxparam`: `callIt(b.f, b)`), which W2.5 refuses as `rules.exclusivity.alias`, and for a
+  loop whose body changes what it iterates through the variable the range is reached from
+  (`loopreassign`: `for s in it.labels { it = Item {} }`, freed heap bytes on W2.3 alone),
+  which W2.5 refuses as `rules.exclusivity.loop`: the classes part's loop rule covers a change
+  made through another handle (`bagloop2`), which W2.5 cannot see.
+- **Where.** `CppClassLifetimes.collectHeld` and `holdable`, against W2.5's ExclusivityPass
+  and EscapePass.
+- **Reproduce.** `globalalias` and `genview` on a trial with W2.3 alone (the verifier's
+  convergence round 3 measurement); on a trial with W2.3 and W2.5 both are refused.
+- **Why it can wait.** The C++ backend is shipped with W2.5's rules: the cpp target runs them
+  (design 3.4). This entry records that the classes part's guards are not safe without W2.5
+  merged, so W2.5 has to be merged no later than this package.
+
+### KI-14. `keepAlive_` and `<param>Ref_` could meet a C++ name in scope
+
+- **What.** The hold's local is `keepAlive_` and a copied parameter's reference is `vRef_`.
+  Kira's lexer refuses both spellings for a Kira name (an underscore is allowed only in
+  UPPER_SNAKE_CASE), and W2.3's synthesized names are lowercase stems, so neither can meet a
+  Kira name. A C++ name in scope can: a namespace-scope `keepAlive_` from an FFI header.
+- **Where.** `ClassLowering.bodyName`.
+- **Why it can wait.** The result is a loud `-Wshadow` compile error, not a wrong program.
+
+### KI-15. A parameter a returned view may point into stays the caller's reference
+
+- **What.** A parameter C++ takes by `const&`, of a type a view can point into, that the body
+  takes a view of when a view may leave the call (`return xs.view()`) is never copied at entry:
+  the copy was what the view pointed into, and it died at return (convergence round 3's
+  significant #1). The reference sees what the caller's storage holds when the view is taken.
+  Where that cannot be right, the body is refused by name: a read of the parameter after an
+  effect that may free or move what it names, and a read of its value (not a view of it) after
+  an effect that may change it (`lentval`: `trace(xs.size())` after `b.grow()`, with `c = b`,
+  would read the grown List of 3 where Kira's parameter has 2; round 2's copy printed 2, then
+  freed heap bytes through the view). Taking the view after such an effect is kept, and the
+  view shows the caller's storage (OD-4).
+- **Where.** `CppClassLifetimes.lentParams`, `Guard.lent`, `lentRefusal`. Whether a view may
+  leave the call is approximated from the body and the program (its return type, a `mut`
+  parameter, a throw, a lambda, a view handed to C++, and any global or class field that can
+  hold a view, an `Fx` or a type parameter), meant to cover every route W2.3's
+  `CppEscapes.viewEscapes` counts (a callee that keeps a view keeps it in one of those).
+- **Reproduce.** `viewlend`, `viewlend2`, `viewlend3` print 1 2 on g++, zig and MSVC ASan
+  (clean); `lentval` is refused; its rewrite (`lentvalok`, the size read first) prints 1 5.
+- **Why it can wait.** Where the approximation says a view may leave and none does, a copy is
+  skipped that was harmless, and a read the copy made right is refused by name instead. It is
+  never unsafe. Sharing W2.3's `viewEscapes` once both are merged would make it exact.
+
+### KI-16. Receiver paths through a handle rely on W2.3 copying the `kira::Rc`
+
+- **What.** A call whose receiver lies one handle away from a parameter or a field of `this`
+  (`it.labels.add(h.take())`, `other.labels.add(h.take())`), with an argument that frees that
+  object, is safe because W2.3 copies the `kira::Rc` of the receiver path before the
+  arguments run. The classes part guards only `this`, which W2.3 cannot copy: a method whose
+  argument may free its own object holds itself (`recvfree`, `implicitcall`).
+- **Where.** W2.3's receiver ordering (`CppExprEmitter.receiverOperand`) and
+  `CppClassLifetimes.Walker.call`.
+- **Reproduce.** `recvfree2` and `recvfield` print the right values on g++, zig and MSVC ASan
+  on a trial with W2.3 a00af85.
+- **Why it can wait.** It is measured safe on the W2.3 this package merges with. If W2.3
+  stops copying a handle receiver, the same refusal as a `mut` argument's
+  (`CppClassLifetimes.mutArgRefusals`) extends to it.
+
+### KI-17. More refusals that a different lowering could keep
+
+- **What.** Convergence round 3 refuses, by name and with the rewrite that compiles:
+  - a range-for over storage only a temporary keeps alive (`loopfresh`:
+    `for s in makeItem().labels`), including a Kira call's result that another owner keeps
+    alive (the analysis cannot know): "store it in a local first" (`loopfreshok` prints both
+    labels, then `freed`);
+  - a view of storage the body does not own, or of its own local, read after an effect that
+    may move what it points into (`viewbefore`, `viewlocalmut`, and `viewreassign`, where the
+    local the view was reached from is pointed at a new object: freed heap bytes), or handed to
+    a call that may (`viewparamgrow`): "take the view after the call" (`viewbeforeok` prints 3
+    and 1), or view a local copy. A `List` method the analysis cannot tell from a resizing one
+    (`items.set(0, v)`) counts as one that may move it;
+  - a `mut` argument inside another `mut` argument of the same call (`f(mut x, mut x.label)`),
+    which W2.5 refuses first as `rules.exclusivity.argument`.
+- **Where.** `CppClassLifetimes.temporaryRange`, `Walker.readView` and the view check in
+  `Walker.call`, `overlappingMutArgs`.
+- **Why it can wait.** Refusing is correct under the convergence policy; each rewrite is a
+  local. W2.3 could lower the loop over a temporary safely (bind the temporary first) and the
+  refusal could then go.
+
 ## Open decisions
+
+### OD-4. A view lent from a value parameter while the caller's storage changes
+
+- **What.** Kira's parameters are values, and D5 lets a function return a view derived from
+  one, which W2.3 lends from the caller's own storage. When the callee changes that storage
+  through another handle before taking the view (`lentalias`: `firstOf(c.items, b)` with
+  `c = b` and `firstOf` growing `b.items`, then returning `xs.view()`), the view shows the
+  caller's storage as it is then: its size is 3, where the parameter's value had 2 elements.
+  It is memory-safe (the view is taken after the growth; MSVC ASan is clean).
+- **The options, for the user.**
+  1. The view is of the caller's storage, as lending says (current): it shows the change.
+  2. Refuse a returned view of a parameter the body's effects may reach (this refuses
+     `viewlend`, `viewlend2` and `viewlend3`, which print 1 2 today).
+  3. Leave it to W2.5's exclusivity rules, as a borrow of `c.items` while `b` is written.
+- **Current behaviour kept.** Option 1. A read of the parameter's value after such an effect
+  is refused (KI-15), so the difference shows only through the view.
 
 ### OD-2. What C++ supplies is taken to leave Kira's objects alone during a call
 
@@ -215,7 +341,45 @@ without a commit.
   its parameter, is not charged by `HiddenWrites`, although its ledger says it catches this
   direct-write shape (the verifier's probe `uaf3`). The C++ is now safe (the classes part
   copies `s` at entry), but the rule's claim is not.
-- **W2.3.** See KI-11 for the three refusals its lowering could replace.
+- **W2.3.** See KI-11 and KI-17 for the refusals its lowering could replace, and KI-16 for
+  the receiver copy the classes part relies on.
+- **W2.5.** KI-13: the guards are not safe without W2.5's alias and escape rules merged.
+  OD-4 names W2.5's exclusivity as one way to decide a view lent while its source changes.
+
+## Fixed in convergence round 3 (for the record)
+
+Each shape was measured on a trial with W2.3 and W2.5 (g++, zig c++ and MSVC ASan): before
+the change it printed freed heap bytes, crashed or printed the wrong value; after it, it prints
+Kira's values with ASan clean, or is refused by name.
+
+- **The copy at entry broke a view the function returns** (significant #1, a regression of
+  round 2: `viewlend2`, `viewlend3`). A parameter a returned view may point into stays the
+  caller's reference (KI-15); both print 1 2 again.
+- **A `mut` argument one field away from `this` or a parameter** (significant #2: `mutthis`,
+  `mutparam` and their `_nf` forms). The walk counts a `mut` argument as a use of the object
+  it lies in until the call returns, so a method holds itself (`setAfter(h, mut label)`) and a
+  parameter is copied at entry (`const kira::Rc<Item> it = itRef_;`), which keeps the Item
+  alive while `setAfter` writes into it. A place one field away from `this` or a parameter is
+  taken as kept only when the method holds itself or the parameter is copied.
+- **A receiver freed by its own argument** (significant #3: `recvfree`, `implicitcall`). The
+  walk counts the receiver as used after the arguments, so the method holds itself.
+- **A range-for over a temporary's field** (significant #4: `loopfresh`, `loopfresh_nf`).
+  Refused by name (KI-17); `h.item.unwrap().labels` and `makeItem().labels.toArr()` stay loops.
+- **A field's default was never checked** (significant #5: `fielddefault`). A field's default
+  is checked as a body is, the lambda-parameter rule included.
+- **A template `Fx` parameter bound to an `Fx` an object holds** (significant #6: `fxparam3`
+  freed its own capture; `fxparam2` printed `other`). It is copied at entry
+  (`const auto g = gRef_;`), as a `kira::Fn` parameter already was; both print the captured
+  string.
+- **Found this round, not listed.** A view of storage read after an effect that may move it
+  (`viewbefore`, `viewlocalmut`, `viewreassign`) or handed to a call that may
+  (`viewparamgrow`) printed freed heap bytes and is refused (KI-17); W2.5 accepts all four. `theOopGoldensNeedNoGuard` now fails when a golden emits
+  no files, and checks every `Ref_`, where `Ref_ = ` never matched a copy line.
+- **No old probe changed.** 132 probes (the earlier rounds', the verifier's and this round's)
+  ran on the trial with W2.3 and W2.5 before and after the change: only the ones above differ
+  (and `lentalias`, OD-4). The 27 that compile among the changed and neighbouring ones
+  (`viewlend*`, `mut*`, `recv*`, `fxparam2/3`, the rewrites, `uaflist`, `uaf3`, `stralias2`,
+  `genalias4`, `selfkill2`) are ASan-clean on MSVC.
 
 ## Fixed in convergence round 2 (for the record)
 

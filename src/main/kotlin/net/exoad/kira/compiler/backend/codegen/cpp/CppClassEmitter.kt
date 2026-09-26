@@ -51,7 +51,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentEx
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
-import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.WeakHashMap
@@ -288,6 +287,10 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             )
         }
         refuseAmbiguous(c)
+        // A field's default is spelled in the constructor's declaration, and a lambda there is
+        // the statement part's as much as one in a body (fielddefault: a Fx field defaulting to
+        // bagloop2's lambda read freed heap bytes on g++; MSVC ASan: heap-use-after-free).
+        c.fields.forEach { f -> f.default?.let { reportRefusals(listOf(it), null, c) } }
     }
 
     /** A diamond whose paths override a trait method differently, and [x] does not: C++ has no final overrider. */
@@ -614,7 +617,11 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * or an element of an object, the reference would read what the body's own writes left
      * there, or freed memory (`a.append(b.lines[0])` with `append` growing `lines`; measured on
      * g++: std::bad_alloc). Each is copied at entry ([copyLine]), which is the value the caller
-     * passed. [owed] when the definition is spelled as what it overrides spells it
+     * passed. A template `Fx` parameter (`F_p&& g`) bound to an `Fx` an object holds is
+     * copied the same way ([copyLine]: `const auto g = gRef_;`), since what it runs may replace
+     * that `Fx` (fxparam3: the lambda reassigning `b.f` it runs as freed its own captures;
+     * fxparam2: the body's `b.f = ...` then `g()` ran the replacement where Kira runs the
+     * value passed). [owed] when the definition is spelled as what it overrides spells it
      * ([overrideParams]); a struct's copy of a trait default is spelled as written.
      */
     private fun snapshotParams(fn: FnSymbol, owed: Boolean): List<ParamSymbol> {
@@ -624,11 +631,11 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
         val spelled = if (owed) overrideParams(fn) else null
         return fn.params.filterIndexed { i, p ->
-            snapshots.any { it === p } && !isTemplateFx(fn, p) && placement.bodyNames(fn, p) && isReference(spelled?.getOrNull(i) ?: ownParam(fn, p))
+            snapshots.any { it === p } && placement.bodyNames(fn, p) && (isTemplateFx(fn, p) || isReference(spelled?.getOrNull(i) ?: ownParam(fn, p)))
         }
     }
 
-    /** A parameter spelling that binds a reference: `const kira::Str&`, not `std::int32_t` or a template's `F_p&&`. */
+    /** A parameter spelling that binds a reference: `const kira::Str&`, not `std::int32_t` or a template's `F_p&&` (which [snapshotParams] takes apart). */
     private fun isReference(text: String): Boolean = text.endsWith("&") && !text.endsWith("&&")
 
     /**
@@ -658,8 +665,14 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * by-value type as [valueCopy] spells it, anything else as a `const` value of its own type,
      * `const kira::Str s = sRef_;`, `const T v = vRef_;`.
      */
-    private fun copyLine(fn: FnSymbol, p: ParamSymbol, reference: String): String =
-        if (ctx.speller.byValue(p.type)) valueCopy(fn, p, reference) else "${constLocal(valueText(fn, p))} ${ctx.paramName(p)} = $reference;"
+    private fun copyLine(fn: FnSymbol, p: ParamSymbol, reference: String): String = when {
+        isTemplateFx(fn, p) -> templateFxCopy(p, reference)
+        ctx.speller.byValue(p.type) -> valueCopy(fn, p, reference)
+        else -> "${constLocal(valueText(fn, p))} ${ctx.paramName(p)} = $reference;"
+    }
+
+    /** `const auto g = gRef_;`: a copy of what a template `Fx` parameter was bound to, a closure or a `kira::Fn`, whose call is `const`. */
+    private fun templateFxCopy(p: ParamSymbol, reference: String): String = "const auto ${ctx.paramName(p)} = $reference;"
 
     /** [p]'s type as a value, alias-aware from its declaration: `kira::Str`, `kira::Maybe<kira::Rc<Item>>`, `T`. */
     private fun valueText(fn: FnSymbol, p: ParamSymbol): String {
@@ -680,9 +693,9 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return "[[maybe_unused]] const auto ${bodyName("keep", "Alive")} = $weak.lock();"
     }
 
-    /** Reports what [statements] do that no guard makes safe ([CppClassLifetimes.refusals]). */
-    private fun reportRefusals(statements: List<Statement>, fn: FnSymbol?, owner: TypeSymbol?) {
-        facts.lifetimes.refusals(statements, fn, owner).forEach { (node, message) -> ctx.diag(node, CppModuleEmitterFactory.UNSUPPORTED_CODE, message) }
+    /** Reports what [nodes] (a body, or a field's default) do that no guard makes safe ([CppClassLifetimes.refusals]). */
+    private fun reportRefusals(nodes: List<ASTNode>, fn: FnSymbol?, owner: TypeSymbol?) {
+        facts.lifetimes.refusals(nodes, fn, owner).forEach { (node, message) -> ctx.diag(node, CppModuleEmitterFactory.UNSUPPORTED_CODE, message) }
     }
 
     /**
@@ -700,14 +713,19 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         reportRefusals(body, fn, fn.owner)
         val snapshots = facts.lifetimes.guard(fn).snapshots
         val copied = fn.params.filter { p ->
-            snapshots.any { it === p } && !placement.isNonEscapingFx(p) && !ctx.speller.byValue(p.type) && placement.bodyNames(fn, p)
+            snapshots.any { it === p } && (placement.isNonEscapingFx(p) || !ctx.speller.byValue(p.type)) && placement.bodyNames(fn, p)
         }
         if (copied.isEmpty()) {
             return CppGuards.NONE
         }
         val references = LinkedHashMap<ParamSymbol, String>()
         copied.forEach { p -> references[p] = bodyName(ctx.paramName(p), "Ref") }
-        return CppGuards(references, references.map { (p, reference) -> "${constLocal(valueText(fn, p))} ${ctx.paramName(p)} = $reference;" })
+        return CppGuards(
+            references,
+            references.map { (p, reference) ->
+                if (placement.isNonEscapingFx(p)) templateFxCopy(p, reference) else "${constLocal(valueText(fn, p))} ${ctx.paramName(p)} = $reference;"
+            },
+        )
     }
 
     /**
