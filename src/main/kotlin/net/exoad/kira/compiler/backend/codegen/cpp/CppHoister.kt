@@ -23,8 +23,9 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
  * object before its arguments, the left operand of `<<` and `>>` before the right, and `&&`,
  * `||` and `?:`, so those need nothing.
  *
- * [lower] spills the operands of one call or operator into typed temporaries, in source order,
- * inside an immediately invoked lambda, when two or more of them are not pure and one is impure:
+ * [lower] spills the operands of one call or operator that hold an impure call into typed
+ * temporaries, in source order, inside an immediately invoked lambda, when two or more of them
+ * do:
  *
  * ```
  * [&]() -> std::int32_t
@@ -35,14 +36,16 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
  * }()
  * ```
  *
- * - An operand's effect is `TypedModel.effects` (EffectsPass, W2.5). Where the model has no
- *   entry for an operand, the operand is impure when it contains a call whose own entry is
- *   absent (absent means impure), unless the callee is a stdlib binding marked `pure: true` or
- *   a function EffectsPass proved pure; an operand holding no call holds no impure call. A
- *   lambda's body is not evaluated where the lambda is written, so it does not count.
- * - Only operands are spilled that are neither a `mut` argument nor a place a binding writes
- *   through (the judges' B5 flaw: a place copied into a temporary is written in the copy).
- *   Temporaries are typed (never `auto`, which would keep a `kira::at` reference).
+ * - An operand's effect is `TypedModel.effects` (EffectsPass, W2.5): only an IMPURE operand
+ *   counts and is spilled; one that only reads (READS: a class field, a `mut` global, a view's
+ *   contents) is a place and stays where it is. Where the model has no entry for an operand,
+ *   the operand is impure when it contains a call whose own entry is absent (absent means
+ *   impure), unless the callee is a stdlib binding marked `pure: true` or a function
+ *   EffectsPass proved pure; an operand holding no call holds no impure call. A lambda's body
+ *   is not evaluated where the lambda is written, so it does not count.
+ * - A `mut` argument and a receiver a binding writes through are never spilled (the judges'
+ *   B5 flaw: a place copied into a temporary is written in the copy). Temporaries are typed
+ *   (never `auto`, which would keep a `kira::at` reference).
  * - A temporary's name is reserved before its initializer is written, so a nested spill in the
  *   initializer never declares the same name inside it (`-Wshadow`).
  */
@@ -61,13 +64,17 @@ class CppHoister(private val lower: CppLowering) {
         return spill(ops, result, build)
     }
 
-    /** Whether two or more operands are not pure and one of them is impure. */
+    /**
+     * Whether two or more operands hold an impure call (design R19, D33). An operand that only
+     * reads shared state ([READS]: a class field, a `mut` global) is left where it is: it is a
+     * place, and places are never spilled; ExclusivityPass (W2.5) refuses the one order a
+     * sibling's write could change (`rules.exclusivity.order`).
+     */
     fun needsSpill(ops: List<Operand>): Boolean {
         if (ops.size < 2) {
             return false
         }
-        val ranks = ops.map { op -> op.expr?.let { rank(it) } ?: PURE }
-        return ranks.count { it == IMPURE } >= 1 && ranks.count { it != PURE } >= 2
+        return ops.count { op -> op.expr?.let { rank(it) } == IMPURE } >= 2
     }
 
     private fun spill(ops: List<Operand>, result: KType, build: (List<CppEx>) -> CppEx): CppEx {
@@ -78,7 +85,7 @@ class CppHoister(private val lower: CppLowering) {
             val texts = ops.map { op ->
                 val e = op.expr
                 val t = e?.let { lower.model.typeOrNull(it) }
-                if (e == null || !op.spillable || rank(e) == PURE || t == null || t == KType.Void || t == KType.Never) {
+                if (e == null || !op.spillable || rank(e) != IMPURE || t == null || t == KType.Void || t == KType.Never) {
                     op.emit()
                 } else {
                     val name = state.fresh("t")
