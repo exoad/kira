@@ -6,6 +6,7 @@ namespace order
 {
   struct Pt;
   struct S;
+  struct Sized;
   struct Cfg;
   struct Narrow;
   struct Early;
@@ -41,6 +42,7 @@ namespace order
     };
   }
 
+  inline constexpr std::int32_t width = 5;
   inline kira::Maybe<std::int32_t> last = kira::none;
   inline constexpr kira::Maybe<std::uint8_t> MU8 = std::uint8_t{200};
   inline constexpr kira::Maybe<float> MF = 0.5f;
@@ -72,6 +74,16 @@ namespace order
       impl_::Mode m = impl_::Mode::MODE_A;
       std::int32_t n = impl_::LIMIT;
       impl_::Inner i = impl_::Inner{};
+  };
+
+  struct Sized
+  {
+      std::int32_t width = ::order::width;
+      std::int32_t LIMIT = ::order::impl_::LIMIT;
+      ::order::impl_::Mode Mode = ::order::impl_::Mode::MODE_B;
+      std::int32_t std_ = 2;
+
+      [[nodiscard]] std::int32_t grow(std::int32_t by = ::order::impl_::LIMIT) const;
   };
 
   struct Cfg

@@ -42,6 +42,11 @@ namespace order
       return limit_p * 3;
   }
 
+  std::int32_t Sized::grow(std::int32_t by) const
+  {
+      return width + by;
+  }
+
   kira::Maybe<std::int32_t> find(const kira::Str& key, const kira::Maybe<std::int32_t>& hint)
   {
       return key.empty() ? kira::none : hint;
@@ -167,6 +172,9 @@ int main()
         check(p.x == 4, "a parameter named like a field is renamed");
         check(order::f() == 10, "a default argument that is a private constant");
         check(order::scaleBy(2) == 6, "a parameter named like a module declaration is renamed");
+        const order::Sized sized{};
+        check(sized.width == 5 && sized.LIMIT == 5 && sized.Mode == order::impl_::Mode::MODE_B, "a field named like a module declaration takes the declaration's value");
+        check(sized.grow() == 10 && sized.std_ == 2, "a default argument named like a field, and a field named std");
         const order::Cfg cfg{};
         check(!kira::isSome(cfg.limit) && !kira::isSome(order::last), "null defaults are kira::none");
         check(!kira::isSome(order::find("k")) && kira::isSome(order::find("k", 3)), "a null default argument, filled or given");

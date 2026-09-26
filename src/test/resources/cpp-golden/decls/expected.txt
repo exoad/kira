@@ -24,10 +24,12 @@ decls - declarations by themselves
   ok    a parameter named like a field is renamed
   ok    a default argument that is a private constant
   ok    a parameter named like a module declaration is renamed
+  ok    a field named like a module declaration takes the declaration's value
+  ok    a default argument named like a field, and a field named std
   ok    null defaults are kira::none
   ok    a null default argument, filled or given
   ok    Unsafe<T> is const T*, T* when mut
   ok    a narrow literal as a Maybe default argument
   ok    containers of a struct declared later
 
-28 checks, 0 failed
+30 checks, 0 failed

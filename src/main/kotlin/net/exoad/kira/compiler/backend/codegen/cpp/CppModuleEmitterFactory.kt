@@ -65,12 +65,21 @@ class TypedCppModuleEmitter(
     private val usage: CppUsage by lazy { CppUsage.scan(program) }
     private var placements = CppPlacements()
 
+    /** Design 4.3: a duplicate symbol in a shared namespace. Scanned once per layout, on the first emit, over every module. */
+    private var collisions: CppNamespaceCollisions? = null
+
     override fun prepare(layout: CppModuleLayout, version: String) {
         this.layout = layout
         this.version = version
         // A placement reads the layout (header-only, freestanding), so a new layout starts a new set.
         placements = CppPlacements()
+        collisions = null
     }
+
+    private fun contextOf(module: ModuleSymbol): CppEmitContextImpl =
+        CppEmitContextImpl(program, options, module.source, layout, module, version, parts, placements)
+
+    private fun collisions(): CppNamespaceCollisions = collisions ?: CppNamespaceCollisions.scan(program, ::contextOf).also { collisions = it }
 
     override fun emit(source: SourceContext): EmittedModule {
         val module: ModuleSymbol = program.moduleOf(source)
@@ -78,9 +87,11 @@ class TypedCppModuleEmitter(
                 "", null,
                 listOf(CppDiagnostic(CppModuleEmitterFactory.INTERNAL_CODE, "the typer collected no module for ${source.file}", file = source.file)),
             )
-        val ctx = CppEmitContextImpl(program, options, source, layout, module, version, parts, placements)
+        val ctx = contextOf(module)
         return try {
-            CppDeclEmitter(ctx, usage).emit()
+            val emitted = CppDeclEmitter(ctx, usage).emit()
+            val duplicates = collisions().of(module)
+            if (duplicates.isEmpty()) emitted else emitted.copy(diagnostics = emitted.diagnostics + duplicates)
         } catch (e: UnsupportedConstruct) {
             ctx.unsupported(e.node, e.construct)
             EmittedModule("", null, ctx.diagnostics.toList())
