@@ -434,7 +434,8 @@ class EscapePassTest {
     fun aViewOfATemporaryMadeByAnOperatorAnInterpolationOrACastDanglesToo() {
         // Round 3, issue 1: a Str made by `+`, by interpolation or by `as Str` is as much a temporary as one a
         // call returns, whether it is viewed at once or handed to a callee that returns a view of it (idv).
-        // A string literal is static and borrows nothing.
+        // A string literal coerced straight to a View<Char> is static text; handed to a Str it is a temporary
+        // (the next test).
         val p = snippet(
             """
             pub fx idv: (s: Str) View<Char> {
@@ -466,7 +467,6 @@ class EscapePassTest {
             }
             pub fx ok: (a: Str) View<Char> {
                 v: View<Char> = "lit"
-                w: View<Char> = idv("lit")
                 return idv(a)
             }
             """,
@@ -696,5 +696,236 @@ class EscapePassTest {
         assertTrue(p.model.viewEscapes(fn(p, "f").params[0]), "f.xs escapes through v, w and keep")
         assertFalse(p.model.viewEscapes(fn(p, "g").params[0]), "g.ys is only read through v")
         assertEquals(true, p.model.viewEscapes[fn(p, "keep").params[0]])
+    }
+
+    @Test
+    fun aLiteralHandedToAStrIsATemporaryStrInCpp() {
+        // Round 4, issue 2: a string literal and a literal Str constant are `const char*` (design 5.1, 5.8). Bound
+        // to a `const kira::Str&` parameter, or as the receiver of Str.view (R5), C++ makes a temporary kira::Str
+        // that dies with the full-expression, so a view of it dangles at once (MSVC ASan: heap-use-after-free).
+        // Coerced straight to a View<Char> the literal is static text, and a local Str made from it is storage.
+        val p = snippet(
+            """
+            pub GREETING: Str = "hello"
+            pub mut GV: View<Char> = ""
+            pub fx idv: (s: Str) View<Char> {
+                return s.view()
+            }
+            pub fx keepV: (s: Str) Void {
+                GV = s.view()
+            }
+            pub fx d1: () Size {
+                w: View<Char> = idv("lit")
+                return w.size()
+            }
+            pub fx d2: () View<Char> {
+                return idv("lit")
+            }
+            pub fx d3: () Size {
+                w: View<Char> = idv(GREETING)
+                return w.size()
+            }
+            pub fx d4: () Size {
+                w: View<Char> = GREETING.view()
+                return w.size()
+            }
+            pub fx d5: () Size {
+                w: View<Char> = "lit".view()
+                return w.size()
+            }
+            pub fx d6: () Void {
+                keepV("lit")
+                keepV(GREETING)
+            }
+            pub fx ok: (a: Str) View<Char> {
+                v: View<Char> = "lit"
+                n: Size = idv("lit").size() + GREETING.view().size()
+                s: Str = GREETING
+                w: View<Char> = idv(s)
+                keepV(a)
+                return idv(a)
+            }
+            """,
+        )
+        expectExactly(
+            p,
+            "rules.escape.view-store", "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store",
+            "rules.escape.view-store", "rules.escape.view-store",
+        )
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("idv(\"lit\") is a view of a temporary Str made from a literal, which is destroyed at the end of this statement, and 'w' would keep it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("idv(\"lit\") is a view of a temporary Str made from a literal, which is destroyed when 'd2' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("idv(GREETING) is a view of a temporary Str made from a literal") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("GREETING.view() is a view of a temporary Str made from a literal") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("\"lit\".view() is a view of a temporary Str made from a literal") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("\"lit\" is a temporary Str made from a literal, and 'keepV' keeps a view of it beyond the call") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("GREETING is a temporary Str made from a literal, and 'keepV' keeps a view of it beyond the call") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aLoopVariableBorrowsWhatTheIterableDoes() {
+        // Round 4, issue 3: the variable of `for v in vs` holds an element of vs, so it borrows what vs does (a
+        // view of the local s). Over a parameter's list, or a local list of views of a parameter, it borrows the
+        // caller's storage.
+        val p = snippet(
+            """
+            pub mut GV: View<Char> = ""
+            pub fx b1: (a: Str) View<Char> {
+                s: Str = a + "x"
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                vs.add(s.view())
+                for v: View<Char> in vs {
+                    return v
+                }
+                return a.view()
+            }
+            pub fx b3: (a: Str) Void {
+                s: Str = a + "x"
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                vs.add(s.view())
+                for v: View<Char> in vs {
+                    GV = v
+                }
+            }
+            pub fx ok: (a: Str, xs: List<View<Char>>) View<Char> {
+                for v: View<Char> in xs {
+                    GV = v
+                }
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                vs.add(a.view())
+                for w: View<Char> in vs {
+                    return w
+                }
+                return a.view()
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("v is a view of the local 's', which is destroyed when 'b1' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("v is a view of the local 's', and 'GV' outlives 'b3'") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aClosureCapturingAViewOfALocalEscapesInsideAContainerAStructOrAMaybe() {
+        // Round 4, issue 4: a List<Fx<...>>, a struct with an Fx field and a Maybe<Fx<...>> hold closures as a
+        // List<View<T>> holds views, so a closure that captured a view of a local escapes with them: returned,
+        // added to a global list, or returned inside a struct or a Maybe. Called in the same body, or capturing a
+        // view of a parameter, it keeps nothing of this call.
+        val p = snippet(
+            """
+            pub struct HF {
+                pub f: Fx<Tuple0, Size>
+            }
+            pub mut GFS: List<Fx<Tuple0, Size>> = List<Fx<Tuple0, Size>> {}
+            pub fx a1: (a: Str) List<Fx<Tuple0, Size>> {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                mut fs: List<Fx<Tuple0, Size>> = List<Fx<Tuple0, Size>> {}
+                fs.add(fx() Size {
+                    return v.size()
+                })
+                return fs
+            }
+            pub fx a2: (a: Str) Void {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                GFS.add(fx() Size {
+                    return v.size()
+                })
+            }
+            pub fx a3: (a: Str) HF {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                return HF { f = fx() Size {
+                    return v.size()
+                } }
+            }
+            pub fx a3b: (a: Str) HF {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                h: HF = HF { f = fx() Size {
+                    return v.size()
+                } }
+                return h
+            }
+            pub fx a4: (a: Str) Maybe<Fx<Tuple0, Size>> {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                m: Maybe<Fx<Tuple0, Size>> = fx() Size {
+                    return v.size()
+                }
+                return m
+            }
+            pub fx ok: (a: Str, p: View<Char>) List<Fx<Tuple0, Size>> {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                mut fs: List<Fx<Tuple0, Size>> = List<Fx<Tuple0, Size>> {}
+                fs.add(fx() Size {
+                    return v.size()
+                })
+                n: Size = fs.size()
+                mut gs: List<Fx<Tuple0, Size>> = List<Fx<Tuple0, Size>> {}
+                gs.add(fx() Size {
+                    return p.size()
+                })
+                return gs
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("fs holds a closure that captures a view of the local 's', which is destroyed when 'a1' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("captures a view of the local 's', and 'add' keeps it in 'GFS', which outlives 'a2'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("HF { f = fx() Size { ... } } holds a closure that captures a view of the local 's', which is destroyed when 'a3' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("h holds a closure that captures a view of the local 's', which is destroyed when 'a3b' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("m holds a closure that captures a view of the local 's', which is destroyed when 'a4' returns") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aCalleeKeepingAnArgumentInAMutParameterKeepsItWhereTheArgumentIs() {
+        // Round 4, issue 7 (I2): `put(mut out, v)` stores v into out, so at the call the view goes where the
+        // argument bound to out is: into a local list it merely joins that local's provenance (and returning the
+        // list is what is refused), into a global or a mut parameter of the caller it outlives the local. The
+        // same through a callee that passes both on.
+        val p = snippet(
+            """
+            pub mut GL: List<View<Char>> = List<View<Char>> {}
+            pub fx put: (mut out: List<View<Char>>, v: View<Char>) Void {
+                out.add(v)
+            }
+            pub fx put2: (mut out: List<View<Char>>, v: View<Char>) Void {
+                put(mut out, v)
+            }
+            pub fx ok: (a: Str, mut dest: List<View<Char>>) Size {
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                s: Str = a + "x"
+                put(mut vs, s.view())
+                put2(mut vs, s.view())
+                put(mut dest, a.view())
+                put(mut GL, a.view())
+                return vs.size()
+            }
+            pub fx bad1: (a: Str) List<View<Char>> {
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                s: Str = a + "x"
+                put(mut vs, s.view())
+                return vs
+            }
+            pub fx bad2: (a: Str, mut dest: List<View<Char>>) Void {
+                s: Str = a + "x"
+                put(mut dest, s.view())
+            }
+            pub fx bad3: (a: Str) Void {
+                s: Str = a + "x"
+                put2(mut GL, s.view())
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("vs is a view of the local 's', which is destroyed when 'bad1' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'put' keeps it in 'dest', which outlives 'bad2'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'put2' keeps it in 'GL', which outlives 'bad3'") }, messages.joinToString("\n"))
     }
 }

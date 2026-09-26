@@ -293,6 +293,20 @@ internal class Rules(val program: TypedProgram) {
     /** Whether a value of [t] is or holds a `MutView`: passing it lends write access to what the view was lent from. */
     fun holdsMutView(t: KType?): Boolean = mutViewInside(t) != null
 
+    /** Whether a value of [t] is or holds a closure (the same walk as [viewInside]: an `Fx`, a `Maybe` or container of one, a struct with an `Fx` field): it holds what the closure captured. */
+    fun holdsClosure(t: KType?): Boolean = inside(t, HashSet()) { it is KType.Fn } != null
+
+    /** Whether a value of [t] borrows storage it does not own: it is or holds a view, or holds a closure that may have captured one. */
+    fun holdsViewOrClosure(t: KType?): Boolean = holdsView(t) || holdsClosure(t)
+
+    /**
+     * A literal `Str` constant (design 5.1: `inline constexpr const char*`), which C++ converts
+     * to a temporary `kira::Str` wherever a `Str` is taken (a `const kira::Str&` parameter, the
+     * receiver of a `Str` method, R5). Phase C requires every module-level `Str` without `mut`
+     * to be a compile-time literal.
+     */
+    fun isLiteralStrConstant(sym: Symbol?): Boolean = sym is GlobalSymbol && sym.isConstant && sym.type == KType.Str
+
     private fun inside(t: KType?, path: MutableSet<KType>, wanted: (KType) -> Boolean): KType? {
         if (t == null) {
             return null
@@ -620,8 +634,10 @@ internal class ViewAliases private constructor(
  * writes `LOG`); so does a call of an `Fx` local through the lambdas stored in it (`g()`).
  * Captures are by value and immutable, so a lambda writes nothing of the enclosing body but
  * what a captured view lends. A lambda that reaches a call through a field, a global or an
- * `Fx` parameter is not followed: it is charged where it was written down, and a function
- * that only receives it is charged nothing for it.
+ * `Fx` parameter is not followed, and nothing else charges it either: writing it down runs
+ * nothing, and the walk skips lambda bodies. `for x in LOG { h.f() }` with `h.f` a lambda
+ * that adds to `LOG` is a known gap of the loop rule; the writes of every lambda in the
+ * program are the only sound answer, and that refuses every callback called in a loop.
  */
 internal class HiddenWrites private constructor(
     private val r: Rules,

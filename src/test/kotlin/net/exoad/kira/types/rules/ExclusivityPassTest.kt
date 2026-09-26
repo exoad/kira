@@ -636,4 +636,157 @@ class ExclusivityPassTest {
         assertTrue(messages.any { it.contains("calls 'push', which writes 'c.items'") }, messages.joinToString("\n"))
         assertTrue(messages.none { it.contains("reset") }, messages.joinToString("\n"))
     }
+
+    @Test
+    fun aClassReceiverIsReadAsAReferenceAndRebindingItIsTheOneHazard() {
+        // Round 4, issue 1: `k->plus(rebind(k))` evaluates `k.operator->()` to a raw K* before the argument
+        // (C++17), and rebind drops the last reference, so plus runs on a freed object (MSVC ASan: heap-use-
+        // after-free). Kira keeps the reference alive until the call returns. A write of the variable holding
+        // the reference, or of a place around it, is the hazard: a mut argument, an assignment inside an
+        // if-expression, a mut fx on a struct holding it. A class mut fx on the same place writes the object,
+        // which both languages read after the arguments, and what the receiver expression reads on the way
+        // is sequenced before the arguments in both. A call result is kept alive by its own temporary.
+        val p = snippet(
+            """
+            pub class K {
+                pub mut n: Int32 = 0
+                pub mut fx grow: () Int32 {
+                    n += 1
+                    return n
+                }
+                pub fx plus: (v: Int32) Int32 {
+                    return n + v
+                }
+                pub mut fx add: (v: Int32) Int32 {
+                    n += v
+                    return n
+                }
+            }
+            pub struct Holder {
+                pub k: K
+                pub mut fx swap: () Int32 {
+                    k = K { n = 9 }
+                    return 1
+                }
+            }
+            pub fx rebind: (mut k: K) Int32 {
+                k = K { n = 5 }
+                return 1
+            }
+            pub fx reset: (mut h: Holder) Int32 {
+                h = Holder { k = K {} }
+                return 1
+            }
+            pub fx bumpI: (mut i: Size) Int32 {
+                i += 1 as Size
+                return 1
+            }
+            pub fx mk: () K {
+                return K {}
+            }
+            pub fx c1: () Int32 {
+                mut k: K = K {}
+                return k.plus(rebind(mut k))
+            }
+            pub fx c3: (c: Bool) Int32 {
+                mut k: K = K {}
+                return k.plus(if c {
+                    k = K { n = 5 }
+                    1
+                } else {
+                    2
+                })
+            }
+            pub fx c4: (c: Bool) Int32 {
+                mut k: K = K {}
+                return k.add(if c {
+                    k = K { n = 5 }
+                    1
+                } else {
+                    2
+                })
+            }
+            pub fx c5: () Int32 {
+                mut st: Holder = Holder { k = K {} }
+                a: Int32 = st.k.plus(reset(mut st))
+                b: Int32 = st.k.plus(st.swap())
+                return a + b
+            }
+            pub fx ok: () Int32 {
+                mut k: K = K {}
+                mut st: Holder = Holder { k = K {} }
+                mut ks: List<K> = List<K> {}
+                ks.add(K {})
+                mut i: Size = 0
+                mut k2: K = K {}
+                a: Int32 = k.plus(k.grow())
+                b: Int32 = st.k.plus(st.k.grow())
+                c: Int32 = ks[i].plus(bumpI(mut i))
+                d: Int32 = mk().plus(rebind(mut k2))
+                return a + b + c + d
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("'mut k' writes 'k' while one operand of 'plus' is evaluated, and 'k' is the receiver, a reference read before the arguments") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'k = K { n = 5 }' writes 'k' while one operand of 'plus' is evaluated, and 'k' is the receiver") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'k = K { n = 5 }' writes 'k' while one operand of 'add' is evaluated, and 'k' is the receiver") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'mut st' writes 'st' while one operand of 'plus' is evaluated, and 'st.k' is the receiver") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'st.swap()' writes 'st' while one operand of 'plus' is evaluated, and 'st.k' is the receiver") }, messages.joinToString("\n"))
+        assertTrue(messages.all { it.contains("C++ holds only a raw pointer, and rebinding the last reference destroys the object") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aClassArgumentOrReceiverAliasesOnlyWhenTheCalleeRebindsIt() {
+        // Round 4, issue 5: a class is shared by Kira and C++ alike, so a callee writing the fields of the object
+        // an argument refers to (Scene.read calling bump, which writes this.child.n) is seen the same way on
+        // both sides: no alias. Only rebinding the place diverges: readSwapped(child), where readSwapped rebinds
+        // this.child, reads the new object through its `const Rc<Node>&` in C++ and the old one in Kira. (A
+        // class global cannot exist, D49, so a hidden rebind of a class receiver's own place is not writable
+        // in Kira today; the same operand loop would report it.)
+        val p = snippet(
+            """
+            pub class Node {
+                pub mut n: Int32 = 0
+                pub fx plus: (v: Int32) Int32 {
+                    return n + v
+                }
+            }
+            pub class Scene {
+                pub mut child: Node = Node {}
+                pub fx bump: () Void {
+                    child.n += 1
+                }
+                pub fx swap: () Void {
+                    child = Node { n = 5 }
+                }
+                pub fx read: (k: Node) Int32 {
+                    bump()
+                    return k.n
+                }
+                pub fx readSwapped: (k: Node) Int32 {
+                    swap()
+                    return k.n
+                }
+                pub fx go: () Int32 {
+                    a: Int32 = read(child)
+                    b: Int32 = readSwapped(child)
+                    c: Int32 = child.plus(1)
+                    return a + b + c
+                }
+            }
+            pub fx outside: (sc: Scene) Int32 {
+                a: Int32 = sc.read(sc.child)
+                b: Int32 = sc.readSwapped(sc.child)
+                c: Int32 = sc.child.plus(1)
+                return a + b + c
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.alias", "rules.exclusivity.alias")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("'readSwapped' writes 'this.child', and the argument 'child' is that reference (design 5.1): Kira hands 'readSwapped' the reference as it was, but C++ passes a `const Rc&` to the variable itself, and after the write 'readSwapped' reads the new object") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'readSwapped' writes 'sc.child', and the argument 'sc.child' is that reference") }, messages.joinToString("\n"))
+    }
 }
