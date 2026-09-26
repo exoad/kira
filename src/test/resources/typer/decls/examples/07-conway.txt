@@ -18,3 +18,5 @@ diag error types.assign.mismatch app/grid.kira:54:23  argument 'index' expects S
 diag error types.index.size app/grid.kira:65:26  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
 diag error types.type.not-visible app/main.kira:6:8  'Grid' is declared in app:grid but is not pub, so this module cannot use it.
 diag error types.type.not-visible app/main.kira:6:15  'Grid' is declared in app:grid but is not pub, so this module cannot use it.
+diag error rules.visibility.member app/main.kira:9:11  Method 'printGrid' of Grid is not pub, so it is reachable only inside Grid (a declaration is private by default). Mark it `pub`, or reach it through a pub method.
+diag error rules.visibility.member app/main.kira:11:11  Method 'step' of Grid is not pub, so it is reachable only inside Grid (a declaration is private by default). Mark it `pub`, or reach it through a pub method.

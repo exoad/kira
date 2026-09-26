@@ -126,7 +126,7 @@ pub mut GG: Sized = Sized { 3 }
 pub mut GB: SizedBag = SizedBag { }        // @error types.global.mut-init
 pub mut GBG: SizedBag = SizedBag { n = 3 }
 
-pub @_const fx firstOf: (xs: Arr<Int32> = DYN) Int32 {
+pub @_const fx firstOf: (xs: Arr<Int32> = DYN) Int32 { // @error rules.const.type
     return xs.get(0)
 }
 

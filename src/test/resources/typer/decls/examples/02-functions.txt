@@ -4,3 +4,5 @@ module app:main  profile=HOSTED ns=main imports=[app:greetings]
   fn main: () Void  body
 module app:utils  profile=HOSTED ns=utils imports=[]
   fn normalize: (text: Str) Str  body
+diag error rules.visibility.module app/greetings.kira:6:12  Function 'normalize' is declared in app:utils but is not pub, so app:greetings cannot use it. Mark it `pub`.
+diag error rules.visibility.module app/main.kira:6:20  Function 'greeting' is declared in app:greetings but is not pub, so app:main cannot use it. Mark it `pub`.

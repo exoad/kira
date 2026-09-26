@@ -9,3 +9,4 @@ module app:status  profile=HOSTED ns=status imports=[]
     entry READY = 0:Int32  #0
     entry RUNNING = 1:Int32  #1
     entry DONE = 2:Int32  #2
+diag error rules.visibility.module app/main.kira:9:20  Function 'id' is declared in app:box but is not pub, so app:main cannot use it. Mark it `pub`.

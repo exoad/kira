@@ -35,6 +35,9 @@ diag error types.type.not-visible app/main.kira:11:16  'Cat' is declared in app:
 diag error types.type.not-visible app/main.kira:16:10  'Dog' is declared in app:animals but is not pub, so this module cannot use it.
 diag error types.type.not-visible app/main.kira:17:10  'Cat' is declared in app:animals but is not pub, so this module cannot use it.
 diag error types.type.not-visible app/main.kira:17:16  'Cat' is declared in app:animals but is not pub, so this module cannot use it.
+diag error rules.visibility.module app/main.kira:19:5  Function 'announce' is declared in app:animals but is not pub, so app:main cannot use it. Mark it `pub`.
+diag error rules.visibility.module app/main.kira:20:5  Function 'announce' is declared in app:animals but is not pub, so app:main cannot use it. Mark it `pub`.
+diag error rules.visibility.module app/main.kira:22:22  Function 'noiseLevel' is declared in app:animals but is not pub, so app:main cannot use it. Mark it `pub`.
 diag error types.type.not-visible app/main.kira:25:8  'Speaker' is declared in app:animals but is not pub, so this module cannot use it.
 diag error types.type.not-visible app/main.kira:29:11  'Speaker' is declared in app:animals but is not pub, so this module cannot use it.
 diag error types.type.not-visible app/main.kira:29:21  'Dog' is declared in app:animals but is not pub, so this module cannot use it.

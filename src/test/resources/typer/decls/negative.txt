@@ -16,6 +16,7 @@ module fixture:negative  profile=HOSTED ns=negative imports=[]
   class Late : Marker  pub
   trait Wrong  pub
     flat []
+diag warning rules.naming.constant fixture/negative.kira:6:5  Constant 'value' does not conform to UPPER_SNAKE_CASE (a module-level binding without `mut` is a constant); did you mean 'VALUE'?
 diag error types.type.unknown fixture/negative.kira:6:12  Unknown type 'Missing'.
 diag error types.alias.cycle fixture/negative.kira:9:5  Alias 'Ping' refers to itself (Ping -> Pong -> Ping); an alias is inlined, so it cannot be recursive.
 diag error types.decl.duplicate fixture/negative.kira:15:5  'twice' is already declared in module fixture:negative (line 14).
