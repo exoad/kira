@@ -57,8 +57,12 @@ internal enum class BodyKind { FUNCTION, INITIALLY, FINALLY, FIELD_DEFAULT, PARA
  * One typed body the rule passes walk: a function, method or trait default body, a class's
  * `initially`/`finally`, a field or parameter default, a global's initializer or a module
  * statement. [fn] is null for everything but a function body; [owner] is the type whose
- * members are reachable without a receiver; [thisMutable] follows phase C's BodyContext (a
- * struct's `mut fx`, and any class body).
+ * members are reachable without a receiver; [thisMutable] is whether the receiver's own
+ * state may be written: a `mut fx` of a struct or a class, and a class's `initially` and
+ * `finally`. A plain `fx` of a class modifies no instance state (the spec's rule for `mut
+ * fx`; design 5.5 makes it `const`, and W2.4 drops the `const` only where the typer let a
+ * write through); phase C's BodyContext is looser (any class body), and MutabilityPass is
+ * where the rule is reported, with a lambda's captured `this` exempt.
  */
 internal class Body(
     val kind: BodyKind,
@@ -112,9 +116,8 @@ internal object Bodies {
             p.default?.let { out.add(Body(BodyKind.PARAM_DEFAULT, fn.module, null, null, listOf(it), false, "the default of '${p.name}'", p.decl)) }
         }
         val body = fn.body ?: return
-        val struct = (owner as? ClassSymbol)?.kind == ClassKind.STRUCT
         val what = if (owner != null) "${owner.name}.${fn.name}" else "'${fn.name}'"
-        out.add(Body(BodyKind.FUNCTION, fn.module, fn, owner, body, !struct || fn.isMutMethod, what, fn.decl))
+        out.add(Body(BodyKind.FUNCTION, fn.module, fn, owner, body, owner == null || fn.isMutMethod, what, fn.decl))
     }
 }
 
@@ -239,6 +242,21 @@ internal class Rules(val program: TypedProgram) {
     fun hasAnalysedBody(rc: ResolvedCall): Boolean =
         rc.fn?.body != null && (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD || rc.kind == CallKind.OP_OVERLOAD || rc.kind == CallKind.CTOR)
 
+    /** The type of a call's receiver operand: the owner's own type for an implicit `this`, else the receiver expression's. */
+    fun receiverType(b: Body, e: FunctionCallExpr, op: CallOperand): KType? {
+        val rc = model.calls[e] ?: return null
+        return if (rc.implicitThis) (b.owner as? ClassSymbol)?.selfType else (op.at as? Expr)?.let { model.types[it] }
+    }
+
+    /**
+     * A written receiver of reference type (a class `mut fx`, a stdlib handle's): the call
+     * writes the object the reference names, never the variable holding the reference, so the
+     * receiver's place is no write of that place. With a body ([hasAnalysedBody]), what the
+     * body writes (`this.k`, rebased onto the receiver) is the call's write ([HiddenWrites]).
+     */
+    fun writesObjectOnly(b: Body, e: FunctionCallExpr, op: CallOperand): Boolean =
+        op.isReceiver && op.writes && receiverType(b, e, op)?.let { isReference(it) } == true
+
     /** Whether the owner of a field is a reference type, so writing the field writes shared state. */
     fun ownerIsReference(f: FieldSymbol): Boolean = when (val o = f.owner) {
         is TraitSymbol -> true
@@ -247,7 +265,16 @@ internal class Rules(val program: TypedProgram) {
         else -> false
     }
 
-    /** Phase C's rule for whether writing a place writes a variable the code may change (PhaseC.isMutablePlace). */
+    /**
+     * Whether writing a place writes a variable the code may change (phase C's
+     * isMutablePlace, with the receiver's own state added). A field of a class needs `mut` on
+     * the field, and, when it is the enclosing receiver's own field (`count = ...` in a method
+     * of the class, reached straight from `this`), a body whose receiver is writable
+     * ([Body.thisMutable]): a plain `fx` of a class modifies no instance state (the spec), and
+     * is `const` in C++ (design 5.5). A field of another object reached through a
+     * class-typed field of `this` (`child.n = 1`, `this->child->n`) is that object's, which
+     * any reference may write (D29).
+     */
     fun isMutablePlace(p: Place, thisMutable: Boolean): Boolean = when (p) {
         is Place.Local -> p.sym.isMut
         is Place.Param -> p.sym.byRef
@@ -255,7 +282,11 @@ internal class Rules(val program: TypedProgram) {
         is Place.This -> thisMutable
         is Place.Field -> {
             val owner = p.sym.owner
-            if (owner is ClassSymbol && owner.kind == ClassKind.STRUCT) p.receiver?.let { isMutablePlace(it, thisMutable) } ?: true else p.sym.isMut
+            when {
+                owner is ClassSymbol && owner.kind == ClassKind.STRUCT -> p.receiver?.let { isMutablePlace(it, thisMutable) } ?: true
+                p.receiver is Place.This && !thisMutable -> false
+                else -> p.sym.isMut
+            }
         }
         is Place.Index -> when (p.kind) {
             IndexKind.MUT_VIEW -> true
@@ -293,11 +324,21 @@ internal class Rules(val program: TypedProgram) {
     /** Whether a value of [t] is or holds a `MutView`: passing it lends write access to what the view was lent from. */
     fun holdsMutView(t: KType?): Boolean = mutViewInside(t) != null
 
-    /** Whether a value of [t] is or holds a closure (the same walk as [viewInside]: an `Fx`, a `Maybe` or container of one, a struct with an `Fx` field): it holds what the closure captured. */
-    fun holdsClosure(t: KType?): Boolean = inside(t, HashSet()) { it is KType.Fn } != null
+    /**
+     * Whether a value of [t] is or holds a closure (an `Fx`, a `Maybe` or container of one, a
+     * struct or a class with an `Fx` field, at any depth): it holds what the closure captured.
+     * Unlike a view, a closure may sit in a class field, so the walk looks into classes too.
+     */
+    fun holdsClosure(t: KType?): Boolean = inside(t, HashSet(), throughClasses = true) { it is KType.Fn } != null
 
-    /** Whether a value of [t] borrows storage it does not own: it is or holds a view, or holds a closure that may have captured one. */
-    fun holdsViewOrClosure(t: KType?): Boolean = holdsView(t) || holdsClosure(t)
+    /**
+     * Whether a value of [t] may borrow storage it does not own, so EscapePass traces its
+     * provenance: it is or holds a view, is or holds a closure (which holds what it captured),
+     * or its type is, or holds, a type parameter (`T` in `idG<T>: (x: T) T`), which a call may
+     * instantiate with a view or a closure: the generic body is analysed once, for every
+     * instantiation, and a `T` value borrows whatever the caller's argument does.
+     */
+    fun mayBorrow(t: KType?): Boolean = holdsView(t) || inside(t, HashSet(), throughClasses = true) { it is KType.Fn || it is KType.Param } != null
 
     /**
      * A literal `Str` constant (design 5.1: `inline constexpr const char*`), which C++ converts
@@ -307,7 +348,7 @@ internal class Rules(val program: TypedProgram) {
      */
     fun isLiteralStrConstant(sym: Symbol?): Boolean = sym is GlobalSymbol && sym.isConstant && sym.type == KType.Str
 
-    private fun inside(t: KType?, path: MutableSet<KType>, wanted: (KType) -> Boolean): KType? {
+    private fun inside(t: KType?, path: MutableSet<KType>, throughClasses: Boolean = false, wanted: (KType) -> Boolean): KType? {
         if (t == null) {
             return null
         }
@@ -320,13 +361,16 @@ internal class Rules(val program: TypedProgram) {
         val nominal = t as? KType.Nominal ?: return null
         val sym = nominal.sym as? ClassSymbol ?: return null
         return when (sym.kind) {
-            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, wanted) }
-            ClassKind.STRUCT -> {
+            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, throughClasses, wanted) }
+            ClassKind.STRUCT, ClassKind.CLASS -> {
+                if (sym.kind == ClassKind.CLASS && !throughClasses) {
+                    return null
+                }
                 if (!path.add(t)) {
                     return null
                 }
                 val sub = sym.typeParams.zip(nominal.typeArgs()).toMap()
-                val found = sym.fields.firstNotNullOfOrNull { inside(it.type.substitute(sub), path, wanted) }
+                val found = sym.fields.firstNotNullOfOrNull { inside(it.type.substitute(sub), path, throughClasses, wanted) }
                 path.remove(t)
                 found
             }
@@ -620,13 +664,19 @@ internal class ViewAliases private constructor(
 }
 
 /**
- * The places a function writes that its caller cannot see at the call site: globals and, for
- * a method, fields reached through `this`, whether written by its own body or by the
- * functions it calls (a fixpoint over the call graph; a callee's `this` writes are seen
- * through the receiver they were called on). A write to a `mut` parameter or through a
- * `MutView` parameter is the caller's to see ([Rules.callOperands]) and is left out; a write
- * through a view local stands for the storage the view was lent from ([ViewAliases]). Paths
- * deeper than [MAX_DEPTH] are cut to their root, which overlaps everything under it.
+ * The places a function writes that its caller cannot see at the call site: globals, for a
+ * method, fields reached through `this`, and what it writes through a parameter it takes
+ * without `mut` (a class reference, `sc: Sc`, whose fields any reference may write, D29:
+ * `sc.k = K {}`, `sc.resetK()`), whether written by its own body or by the functions it calls
+ * (a fixpoint over the call graph; a callee's `this` writes are seen through the receiver
+ * they were called on, and its parameter writes through the argument bound to the
+ * parameter). A write to a `mut` parameter or through a `MutView` parameter is the caller's
+ * to see ([Rules.callOperands]) and is left out; a write through a view local stands for the
+ * storage the view was lent from ([ViewAliases]). Paths deeper than [MAX_DEPTH] are cut to
+ * their root, which overlaps everything under it. A class `mut fx` called on a reference
+ * writes the object, not the reference's place ([Rules.writesObjectOnly]): with a body, its
+ * writes are listed field by field; without one (a stdlib handle's) they are not nameable,
+ * and nothing is listed.
  *
  * A call dispatched at run time (a virtual method, a trait method) runs whichever override
  * the object has, so it writes what the method and every override of it write. A call handed
@@ -654,7 +704,7 @@ internal class HiddenWrites private constructor(
         for (fn in callees(rc)) {
             val hidden = table[fn] ?: continue
             for (w in hidden.toList()) {
-                when (w.root()) {
+                when (val root = w.root()) {
                     is Place.Global -> out.add(w)
                     is Place.This -> if (rc.implicitThis) {
                         if (b.owner != null) {
@@ -663,6 +713,14 @@ internal class HiddenWrites private constructor(
                     } else {
                         val recv = rc.receiver?.let { r.placeOf(it) } ?: continue
                         aliases.expand(recv).forEach { out.add(rebase(it, w.path(), throughFields = true)) }
+                    }
+                    is Place.Param -> {
+                        // Written through a parameter: at this call, through the argument bound to it (an
+                        // override's parameter is at the same index as the overridden one's).
+                        val i = fn.params.indexOfFirst { it === root.sym }
+                        val given = rc.args.getOrNull(i) as? ArgBinding.Given ?: continue
+                        val arg = r.placeOf(given.expr) ?: continue
+                        aliases.expand(arg).forEach { out.add(rebase(it, w.path(), throughFields = true)) }
                     }
                     else -> {}
                 }
@@ -737,7 +795,7 @@ internal class HiddenWrites private constructor(
                 is PlaceAssignmentExpr -> model.places[n.target]?.let { out.addAll(aliases.expand(it, forWrite = true)) }
                 is FunctionCallExpr -> {
                     for (op in r.callOperands(b, n, aliases)) {
-                        if (op.writes) {
+                        if (op.writes && !r.writesObjectOnly(b, n, op)) {
                             out.addAll(op.places)
                         }
                     }
@@ -771,7 +829,13 @@ internal class HiddenWrites private constructor(
             val hidden = HiddenWrites(r, table, overriders)
             fun add(set: MutableSet<Place>, p: Place) {
                 val root = p.root()
-                if (root !is Place.Global && root !is Place.This) {
+                val hidden = when (root) {
+                    is Place.Global, is Place.This -> true
+                    // A `mut` parameter, or one lending a MutView, is written in the open (Rules.callOperands).
+                    is Place.Param -> !root.sym.byRef && !r.holdsMutView(root.sym.type)
+                    else -> false
+                }
+                if (!hidden) {
                     return
                 }
                 set.add(if (p.path().size > MAX_DEPTH) root else p)
@@ -792,8 +856,10 @@ internal class HiddenWrites private constructor(
                             is CompoundAssignmentExpr -> model.places[n.left]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
                             is PlaceAssignmentExpr -> model.places[n.target]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
                             is FunctionCallExpr -> {
+                                // A class `mut fx` writes the object, which its body's hidden writes name field by
+                                // field; the variable holding the reference is untouched (Rules.writesObjectOnly).
                                 for (op in r.callOperands(b, n, aliases)) {
-                                    if (op.writes) {
+                                    if (op.writes && !r.writesObjectOnly(b, n, op)) {
                                         op.places.forEach { add(set, it) }
                                     }
                                 }

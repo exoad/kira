@@ -928,4 +928,222 @@ class EscapePassTest {
         assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'put' keeps it in 'dest', which outlives 'bad2'") }, messages.joinToString("\n"))
         assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'put2' keeps it in 'GL', which outlives 'bad3'") }, messages.joinToString("\n"))
     }
+
+    @Test
+    fun aTemporaryACalleeKeepsInALocalDanglesWhenTheStatementEnds() {
+        // Round 5, issue 2: a value that joins a local's provenance through a callee (a mut parameter bound to
+        // the local, a setter on a local struct, a magic mutator on a local list) is a temporary that dies at the
+        // end of the statement: the local then holds a view of freed storage (temp_into_local.cxx: w[0] = 'Z').
+        // The same view stored straight into the local was already refused; a view of a parameter is fine.
+        val p = snippet(
+            """
+            pub struct P {
+                pub text: View<Char> = ""
+                pub mut fx loadS: (t: Str) Void {
+                    text = t.view()
+                }
+            }
+            pub fx setS: (mut out: View<Char>, s: Str) Void {
+                out = s.view()
+            }
+            pub fx t1: () Size {
+                mut w: View<Char> = ""
+                setS(mut w, "lit")
+                return w.size()
+            }
+            pub fx t2: (a: Str, b: Str) Size {
+                mut w: View<Char> = ""
+                setS(mut w, a + b)
+                return w.size()
+            }
+            pub fx t3: () Size {
+                mut p: P = P {}
+                p.loadS("lit")
+                return p.text.size()
+            }
+            pub fx t4: (a: Str, b: Str) Size {
+                mut p: P = P {}
+                p.loadS(a + b)
+                return p.text.size()
+            }
+            pub fx t5: (a: Str, b: Str) Size {
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                vs.add((a + b).view())
+                return vs[0 as Size].size()
+            }
+            pub fx ok: (a: Str) Size {
+                mut w: View<Char> = ""
+                setS(mut w, a)
+                mut p: P = P {}
+                p.loadS(a)
+                mut vs: List<View<Char>> = List<View<Char>> {}
+                vs.add(a.view())
+                return w.size() + p.text.size() + vs.size()
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("\"lit\" is a temporary Str made from a literal, which is destroyed at the end of this statement, and 'setS' keeps a view of it in 'w'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("a + b is a temporary, which is destroyed at the end of this statement, and 'setS' keeps a view of it in 'w'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("\"lit\" is a temporary Str made from a literal, which is destroyed at the end of this statement, and 'loadS' keeps a view of it in 'p'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("a + b is a temporary, which is destroyed at the end of this statement, and 'loadS' keeps a view of it in 'p'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("(a + b).view() is a view of a temporary, which is destroyed at the end of this statement, and 'add' keeps it in 'vs'") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aStrParametersDefaultIsATemporaryStrToo() {
+        // Round 5, issue 4: a Str default is a literal or a literal constant (D48), left to the C++ default argument
+        // `const kira::Str& s = "dflt"`, which makes a temporary kira::Str in the caller's full-expression exactly as
+        // idd("lit") does: returned as a view it dangles at the end of the statement, and a callee keeping it keeps
+        // a dead one. A default that is copied by the callee (idn) is no view of anything.
+        val p = snippet(
+            """
+            pub GREETING: Str = "hello"
+            pub mut GV: View<Char> = ""
+            pub fx idd: (s: Str = "dflt") View<Char> {
+                return s.view()
+            }
+            pub fx idg: (s: Str = GREETING) View<Char> {
+                return s.view()
+            }
+            pub fx idn: (s: Str = "dflt") Size {
+                return s.size()
+            }
+            pub fx keepD: (s: Str = "dflt") Void {
+                GV = s.view()
+            }
+            pub fx d1: () Size {
+                w: View<Char> = idd()
+                return w.size()
+            }
+            pub fx d2: () View<Char> {
+                return idd()
+            }
+            pub fx d3: () View<Char> {
+                return idg()
+            }
+            pub fx d4: () Void {
+                keepD()
+            }
+            pub fx ok: (a: Str) View<Char> {
+                n: Size = idd().size() + idn()
+                keepD(a)
+                return idd(a)
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store", "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("idd() is a view of a temporary Str made from a literal, which is destroyed at the end of this statement, and 'w' would keep it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("idd() is a view of a temporary Str made from a literal, which is destroyed when 'd2' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("idg() is a view of a temporary Str made from a literal, which is destroyed when 'd3' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("the default of 's', \"dflt\", is a temporary Str made from a literal, and 'keepD' keeps a view of it beyond the call") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aGenericBodyPassesAViewThroughItsTypeParameter() {
+        // Round 5, issue 5: a generic body is analysed once, and a `T` value borrows whatever the caller's argument
+        // does, so idG<View<Char>>(s.view()) returns a view of s, and storeG<View<Char>>(mut GV, s.view()) keeps one
+        // in GV. Instantiated with a value (idG<Int32>) nothing borrows, and a view of a parameter passes through.
+        val p = snippet(
+            """
+            pub mut GV: View<Char> = ""
+            pub fx idG<T>: (x: T) T {
+                return x
+            }
+            pub fx storeG<T>: (mut out: T, v: T) Void {
+                out = v
+            }
+            pub fx g1: (a: Str) View<Char> {
+                s: Str = a + "x"
+                return idG<View<Char>>(s.view())
+            }
+            pub fx g2: (a: Str) Size {
+                w: View<Char> = idG<View<Char>>((a + "x").view())
+                return w.size()
+            }
+            pub fx g3: (a: Str) Void {
+                s: Str = a + "x"
+                storeG<View<Char>>(mut GV, s.view())
+            }
+            pub fx g4: (a: Str) View<Char> {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                return idG<View<Char>>(v)
+            }
+            pub fx ok: (a: Str) View<Char> {
+                s: Str = a + "x"
+                n: Int32 = idG<Int32>(s.size() as Int32)
+                m: Size = idG<View<Char>>(s.view()).size()
+                mut w: View<Char> = ""
+                storeG<View<Char>>(mut w, a.view())
+                return idG<View<Char>>(a.view())
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-return")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("idG<View<Char>>(s.view()) is a view of the local 's', which is destroyed when 'g1' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("idG<View<Char>>((a + \"x\").view()) is a view of a temporary, which is destroyed at the end of this statement, and 'w' would keep it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'storeG' keeps it in 'GV', which outlives 'g3'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("idG<View<Char>>(v) is a view of the local 's', which is destroyed when 'g4' returns") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aClosureCapturingAViewOfALocalEscapesInsideAClassObjectToo() {
+        // Round 5, issue 6: a class may hold an Fx (only a view is refused at a class's declaration), so a class
+        // object built or filled in this body holds the closure's captures as a struct does: returned straight, or
+        // through a local, or after an assignment into its Maybe<Fx> field.
+        val p = snippet(
+            """
+            pub class CB {
+                pub f: Fx<Tuple0, Size>
+            }
+            pub class CB2 {
+                pub mut f: Maybe<Fx<Tuple0, Size>> = null
+            }
+            pub fx h1: (a: Str) CB {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                return CB { f = fx() Size {
+                    return v.size()
+                } }
+            }
+            pub fx h2: (a: Str) CB {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB = CB { f = fx() Size {
+                    return v.size()
+                } }
+                return c
+            }
+            pub fx h3: (a: Str) CB2 {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB2 = CB2 {}
+                c.f = fx() Size {
+                    return v.size()
+                }
+                return c
+            }
+            pub fx ok: (a: Str, p: View<Char>) CB {
+                s: Str = a + "x"
+                v: View<Char> = s.view()
+                c: CB = CB { f = fx() Size {
+                    return v.size()
+                } }
+                n: Size = c.f()
+                return CB { f = fx() Size {
+                    return p.size()
+                } }
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("CB { f = fx() Size { ... } } holds a closure that captures a view of the local 's', which is destroyed when 'h1' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("c holds a closure that captures a view of the local 's', which is destroyed when 'h2' returns") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("c holds a closure that captures a view of the local 's', which is destroyed when 'h3' returns") }, messages.joinToString("\n"))
+    }
 }

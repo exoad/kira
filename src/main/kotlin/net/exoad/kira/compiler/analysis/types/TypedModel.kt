@@ -78,7 +78,15 @@ data class LoopPlan(
  *   extern, a virtual or an `Fx` value, a magic binding without `pure: true`, or a `throw`.
  *
  * The C++ emitter spills the operands of a call or operator into typed temporaries, in
- * source order, when one of them is IMPURE and another is not PURE (R19).
+ * source order, when one of them is IMPURE and another is not PURE (R19). Every non-PURE
+ * operand is copied then, the READS ones included: `add2(G, bump())`, where `bump` writes
+ * `G`, reads `G` first in Kira (D33), and C++ does the same only as `t0 = G; t1 = bump();
+ * add2(t0, t1)`; copying `bump()` alone would run it before `G` is read. The operands the
+ * emitter cannot copy, because C++ takes them by reference (a `mut` argument, a receiver, the
+ * target of a compound assignment, whose old value Kira reads first), are ExclusivityPass's:
+ * it refuses a sibling whose write, visible or hidden in its callee, reaches such an operand
+ * (`rules.exclusivity.order`), and leaves every other read to the spill; a place that is only
+ * located (an assignment's target, `xs[G] = f()`) is bound by reference in order.
  */
 enum class Effect { PURE, READS, IMPURE }
 

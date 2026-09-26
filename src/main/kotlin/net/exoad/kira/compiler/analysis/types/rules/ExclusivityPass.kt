@@ -61,16 +61,32 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatem
  *   first). But Kira holds that reference until the callee returns and C++ only a raw
  *   pointer, so a sibling that may rebind the variable it was read from, or one around it
  *   (`k.plus(rebind(mut k))`, `k.plus(if c { k = K {}; 1 } else { 2 })`), may destroy the
- *   object the callee runs on: that is the one read the receiver makes. Writes hidden
- *   inside a callee's body (a global it assigns) are EffectsPass's: the operand is IMPURE,
- *   a sibling reading that state is READS, and the emitter spills them.
+ *   object the callee runs on: that is the one read the receiver makes. A receiver that is
+ *   a magic call returning a reference into its own receiver (`m.unwrap()` is
+ *   `kira::unwrap(const std::shared_ptr<U>&)` returning that `const&`, `ks.get(0)` is
+ *   `kira::at`) lives as long as that receiver's place, so `m.unwrap().plus(rebindM(mut
+ *   m))` is the same hazard; a Kira function returns its `Rc` by value, and `mk().plus(...)`
+ *   is safe. Writes hidden inside a callee's body ([HiddenWrites]: a global it assigns, a
+ *   field of `this` or of a class parameter, a lambda it runs) count when the sibling is one
+ *   the emitter can never copy (a receiver, or the target of a compound assignment, whose
+ *   old value Kira reads first): `sc.k.plus(resetVia(sc))`, where `resetVia` rebinds `sc.k` through
+ *   its parameter, `sc.k.plus(sc.swapOut())`, `k.plus(swapOut())` inside the class,
+ *   `sc.k.plus(g())` with `g` a lambda that rebinds `sc.k`, `G.startsWith(bumpG())` and `G
+ *   += bumpG()`. A class `mut fx` with a body writes what its body writes, so
+ *   `sc.k.plus(sc.bumpC())` is in order when `bumpC` writes only `c`, and
+ *   `sc.k.plus(sc.resetK())` is not. Against an argument or an operator's operand a hidden
+ *   write is EffectsPass's and the emitter's: the operand is IMPURE, a sibling reading that
+ *   state is READS, and the emitter copies every non-PURE operand into a typed temporary in
+ *   source order (`add2(G, bump())` reads `G` first only if `G` is copied before `bump()`
+ *   runs; see [net.exoad.kira.compiler.analysis.types.Effect]).
  * - `rules.exclusivity.alias` (design 5.1): an argument C++ passes by `const&` (a struct, a
  *   `Str`, a container; the receiver of a struct method too) is a place the callee writes
  *   out of sight (`f(GS)` where `f` calls `bumpGS()`): Kira hands the callee a copy, C++ a
  *   reference to what it writes, and the callee would read its own write. A class is shared
  *   by both languages, so only a hidden write that may rebind the reference (of its place or
- *   one around it, `GK = K {}`) counts: as an argument, C++'s `const Rc<K>&` then names the
- *   new object; as the receiver, C++'s `this` points into an object the write may destroy.
+ *   one around it, `GK = K {}`, or `sc.k` through the parameter `sc` in `readAfter(sc.k,
+ *   sc)`) counts: as an argument, C++'s `const Rc<K>&` then names the new object; as the
+ *   receiver, C++'s `this` points into an object the write may destroy.
  * - `rules.exclusivity.loop`: a `for` body assigns the place it iterates (or a place inside
  *   or around it; a view iterated stands for what it was lent from, `half(xs)` for `xs`),
  *   passes it or a place around it as `mut` or as a `MutView`, calls a `mut fx` without a
@@ -89,9 +105,21 @@ internal class ExclusivityPass : RulePass {
      * and the place's own text. A [lifetime] touch is a class receiver read as a reference: it
      * conflicts only with a write that may rebind the reference (of the place or one around it),
      * and not with an [objectOnly] write at that place (a class `mut fx`, which writes the
-     * object's fields through the reference and never the variable holding it).
+     * object's fields through the reference and never the variable holding it). An
+     * [objectOnly] write whose callee's body is [analysed] is stood for by that body's writes
+     * ([HiddenWrites]), listed as [hidden] touches of their own: `sc.bumpC()` writes `sc.c`,
+     * not `sc`.
      */
-    private class Touch(val place: Place, val at: ASTNode, val text: String, val placeText: String, val lifetime: Boolean = false, val objectOnly: Boolean = false)
+    private class Touch(
+        val place: Place,
+        val at: ASTNode,
+        val text: String,
+        val placeText: String,
+        val lifetime: Boolean = false,
+        val objectOnly: Boolean = false,
+        val analysed: Boolean = false,
+        val hidden: Boolean = false,
+    )
 
     override fun run(program: TypedProgram) {
         val r = Rules(program)
@@ -123,24 +151,29 @@ internal class ExclusivityPass : RulePass {
                                 // expression reads on the way is a sibling read. What remains is the object's
                                 // lifetime: Kira holds the reference until the callee returns, C++ only a raw
                                 // pointer (`k->plus(...)`), so an argument that rebinds the variable the reference
-                                // was read from (`rebind(mut k)`, `k = K {}` in an if-expression) may destroy the
-                                // object the callee then runs on. A class `mut fx` on that place writes the
-                                // object, not the variable, and is in order (`k.plus(k.grow())`).
-                                siblings(n, listOf(reference) + args, what, reference = reference)
+                                // was read from (`rebind(mut k)`, `k = K {}` in an if-expression, a callee that
+                                // rebinds it out of sight) may destroy the object the callee then runs on. A class
+                                // `mut fx` on that place writes the object, not the variable, and is in order
+                                // (`k.plus(k.grow())`).
+                                siblings(n, listOf(reference) + args, what, reference = reference, pinned = 0)
                             } else {
                                 // A receiver the call writes is a reference the callee takes after the arguments
                                 // ran, in Kira and in C++ alike; a receiver it only reads is a value taken before
-                                // them.
+                                // them, and C++ passes it by `const&` to a free function, unsequenced with the
+                                // arguments and never copied by the emitter.
                                 val receiverWritten = r.callOperands(b, n, aliases).any { it.isReceiver && it.writes }
-                                siblings(n, listOfNotNull(rc.receiver?.takeIf { !receiverWritten }) + args, what)
+                                val receiver = rc.receiver?.takeIf { !receiverWritten }
+                                siblings(n, listOfNotNull(receiver) + args, what, pinned = if (receiver != null) 0 else null)
                             }
                         }
                     }
                     is BinaryExpr -> if (n.operator != BinaryOp.AND && n.operator != BinaryOp.OR) {
                         siblings(n, listOf(n.leftExpr, n.rightExpr), "the operator")
                     }
-                    is CompoundAssignmentExpr -> siblings(n, listOf(n.left, n.right), "the assignment")
-                    is PlaceAssignmentExpr -> siblings(n, listOf(n.target, n.value), "the assignment", if (n.operator == null) model.places[n.target] else null)
+                    // A compound assignment reads its target's old value, which no reference can give C++ once the
+                    // right side ran; a plain assignment's target is only located, which the emitter binds in order.
+                    is CompoundAssignmentExpr -> siblings(n, listOf(n.left, n.right), "the assignment", pinned = 0)
+                    is PlaceAssignmentExpr -> siblings(n, listOf(n.target, n.value), "the assignment", if (n.operator == null) model.places[n.target] else null, pinned = if (n.operator != null) 0 else null)
                     is ObjectInitExpr -> {
                         val cls = model.inits[n]?.cls
                         if (cls != null && cls.kind == ClassKind.CLASS) {
@@ -162,11 +195,22 @@ internal class ExclusivityPass : RulePass {
         private fun isReferenceReceiver(rc: ResolvedCall, recv: Expr): Boolean =
             (rc.kind == CallKind.METHOD || rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT) && model.types[recv]?.let { r.isReference(it) } == true
 
+        /**
+         * The receiver of a class `mut fx` whose body this pass analysed: the object is shared
+         * by both languages, and the body writes what [HiddenWrites] lists (`this.child`,
+         * rebased onto the receiver), so an argument overlapping the receiver is the alias
+         * rule's (`readSwapped(child)`, which rebinds `this.child`), not an object passed by
+         * reference twice. A receiver of a `mut fx` without a body (a stdlib handle's, a
+         * virtual one) keeps the receiver rule: its writes are unknown.
+         */
+        private fun isAnalysedReferenceReceiver(e: FunctionCallExpr, op: CallOperand): Boolean =
+            r.writesObjectOnly(b, e, op) && model.calls[e]?.let { r.hasAnalysedBody(it) } == true
+
         private fun call(e: FunctionCallExpr) {
             val ops = r.callOperands(b, e, aliases)
             for (i in ops.indices) {
                 val w = ops[i]
-                if (!w.writes) {
+                if (!w.writes || isAnalysedReferenceReceiver(e, w)) {
                     continue
                 }
                 for (j in ops.indices) {
@@ -226,9 +270,10 @@ internal class ExclusivityPass : RulePass {
         private fun aliasing(e: FunctionCallExpr) {
             val rc = model.calls[e] ?: return
             val all = r.callOperands(b, e, aliases)
-            val written = all.filter { it.writes }
-            // An operand overlapping a written operand of the same call is the argument/receiver rule's. A written
-            // reference receiver (a class `mut fx`) stays: its own writes are the object's, and a rebind still kills it.
+            // An operand overlapping a written operand of the same call is the argument/receiver rule's, unless the
+            // written one is the receiver of a class `mut fx` with a body, whose writes are listed as hidden writes.
+            val written = all.filter { it.writes && !isAnalysedReferenceReceiver(e, it) }
+            // A written reference receiver (a class `mut fx`) stays: its own writes are the object's, and a rebind still kills it.
             val ops = all.mapNotNull { op ->
                 val passing = passing(rc, op) ?: return@mapNotNull null
                 if (op.writes && passing != Passing.REFERENCE) {
@@ -311,31 +356,62 @@ internal class ExclusivityPass : RulePass {
          * no reads of the target operand (only its indices are), and `n = bump(mut n)` is in
          * order. [reference] is a class receiver of a member call: its only read is the
          * [Touch.lifetime] of the reference it evaluates to.
+         *
+         * A write hidden inside a callee ([HiddenWrites]: a global it assigns, a field of
+         * `this` or of a class parameter, what a lambda it runs writes) is the emitter's when
+         * the sibling reading the place is an argument or an operator's operand: the operand is
+         * IMPURE, the read is READS, and the emitter copies both into temporaries in source
+         * order (R19). It is this rule's when the sibling is [pinned]: an operand the emitter
+         * never copies, because C++ takes it by reference. That is a call's receiver (a
+         * reference receiver's lifetime, `sc.k.plus(resetVia(sc))` where `resetVia` rebinds
+         * `sc.k` out of sight; a value receiver's place, which a free function takes by
+         * `const&`, `G.startsWith(bumpG())`), and the target of a compound assignment (`G +=
+         * bumpG()`: Kira reads the old `G`, C++ evaluates the right side first, and a reference
+         * to `G` cannot give the old value). A plain assignment's target is only located, and
+         * the emitter binds it by reference in order (`xs[G] = bumpG()` locates `xs[G]` first).
          */
-        private fun siblings(e: Expr, operands: List<Expr>, what: String, assigned: Place? = null, reference: Expr? = null) {
+        private fun siblings(e: Expr, operands: List<Expr>, what: String, assigned: Place? = null, reference: Expr? = null, pinned: Int? = null) {
             if (operands.size < 2) {
                 return
             }
             val writes = operands.map { writesOf(it) }
-            if (writes.all { it.isEmpty() }) {
+            val hidden = if (pinned != null) operands.map { hiddenWritesOf(it) } else operands.map { emptyList() }
+            if (writes.all { it.isEmpty() } && hidden.all { it.isEmpty() }) {
                 return
             }
             val reads = operands.mapIndexed { i, op ->
                 val all = if (op === reference) lifetimeOf(op) else readsOf(op)
                 if (assigned != null && i == 0) all.filter { !(it.place.overlaps(assigned) && it.place.path().size <= assigned.path().size) } else all
             }
-            // Once per pair of operands: a write in one against a read or write in the other, either way round.
+            // Once per pair of operands: a write in one against a read or write in the other, either way round;
+            // then a hidden write in one against the pinned other's reads.
             for (i in operands.indices) {
                 for (j in i + 1 until operands.size) {
-                    val pair = overlap(writes[i], reads[j] + writes[j]) ?: overlap(writes[j], reads[i]) ?: continue
+                    val pair = overlap(writes[i], reads[j] + writes[j])
+                        ?: overlap(writes[j], reads[i])
+                        ?: (if (pinned == i) overlap(hidden[j], reads[i]) else null)
+                        ?: (if (pinned == j) overlap(hidden[i], reads[j]) else null)
+                        ?: continue
                     val (w, hit) = pair
+                    val where = if (w.hidden) " inside its callee" else ""
                     if (hit.lifetime) {
                         r.report(
                             "rules.exclusivity.order",
-                            "'${w.text}' writes '${w.placeText}' while one operand of $what is evaluated, and '${hit.text}' is the receiver, a " +
+                            "'${w.text}' writes '${w.placeText}'$where while one operand of $what is evaluated, and '${hit.text}' is the receiver, a " +
                                 "reference read before the arguments (D33, D37): Kira keeps its object alive until $what returns, but C++ holds " +
                                 "only a raw pointer, and rebinding the last reference destroys the object $what then runs on. Evaluate the " +
                                 "argument into a local first.",
+                            hit.at,
+                        )
+                        continue
+                    }
+                    if (w.hidden) {
+                        val role = if (e is FunctionCallExpr) "the receiver, which C++ passes by reference" else "the target, which C++ evaluates last"
+                        r.report(
+                            "rules.exclusivity.order",
+                            "'${w.text}' writes '${w.placeText}' inside its callee while one operand of $what is evaluated, and '${hit.text}' is " +
+                                "read by $role (D33, D37): Kira evaluates left to right, but C++ would read the written value, and the emitter " +
+                                "never copies a place it passes by reference. Evaluate the other operand into a local first.",
                             hit.at,
                         )
                         continue
@@ -364,7 +440,10 @@ internal class ExclusivityPass : RulePass {
          * reference conflicts only with a write that may rebind it: of the place itself, unless
          * the write is [Touch.objectOnly], or of a place around it (`st = Holder {}` while
          * `st.k` is the receiver). A write below the reference (`k.n = 5`) is the object's
-         * contents, which both languages read after the arguments.
+         * contents, which both languages read after the arguments. An [Touch.objectOnly] write
+         * whose body is [Touch.analysed] never conflicts by itself: the body's own writes are
+         * hidden touches, and they decide (`sc.bumpC()` writes `sc.c`, which leaves `sc.k`
+         * alone; `sc.resetK2()` writes `sc.k`).
          */
         private fun conflicts(w: Touch, t: Touch): Boolean {
             if (!t.place.overlaps(w.place)) {
@@ -374,14 +453,48 @@ internal class ExclusivityPass : RulePass {
                 return true
             }
             val depth = w.place.path().size - t.place.path().size
-            return depth < 0 || (depth == 0 && !w.objectOnly)
+            return when {
+                w.objectOnly && w.analysed -> false
+                w.objectOnly -> depth < 0
+                else -> depth <= 0
+            }
         }
 
-        /** The one read a reference receiver makes: the reference in its place, as a [Touch.lifetime]; none when it is no place (a call result, kept alive by its own temporary). */
+        /**
+         * The one read a reference receiver makes: the reference in its place, as a
+         * [Touch.lifetime]. A call result is kept alive by its own temporary when the callee
+         * returns the reference by value (a Kira function returns `kira::Rc<C>`), but a magic
+         * method may return a reference into its receiver (`m.unwrap()` is
+         * `kira::unwrap(const std::shared_ptr<U>&)`, which returns that `const&`; `ks.get(0)`
+         * is `kira::at`, a reference into the list), so its lifetime is its receiver's, through
+         * any chain of them. None when there is no place underneath.
+         */
         private fun lifetimeOf(recv: Expr): List<Touch> {
-            val p = model.places[recv] ?: return emptyList()
             val text = KiraUnparser.text(recv)
-            return aliases.expand(p).map { Touch(it, recv, text, text, lifetime = true) }
+            fun placesOf(e: Expr): List<Place> {
+                r.placeOf(e)?.let { return aliases.expand(it) }
+                if (e is FunctionCallExpr) {
+                    val rc = model.calls[e] ?: return emptyList()
+                    if (rc.kind == CallKind.MAGIC && rc.receiver != null) {
+                        return placesOf(rc.receiver)
+                    }
+                }
+                return emptyList()
+            }
+            return placesOf(recv).map { Touch(it, recv, text, r.describe(it), lifetime = true) }
+        }
+
+        /** The places the calls inside [e] (its lambdas aside) write out of sight ([HiddenWrites]), each as a [Touch.hidden] of the call. */
+        private fun hiddenWritesOf(e: Expr): List<Touch> {
+            val out = mutableListOf<Touch>()
+            AstScan.walk(listOf(e)) { n, lambdas ->
+                if (lambdas.isNotEmpty() || n !is FunctionCallExpr) {
+                    return@walk
+                }
+                val text = KiraUnparser.text(n)
+                hidden.of(b, n, aliases).forEach { out.add(Touch(it, n, text, r.describe(it), hidden = true)) }
+            }
+            return out
         }
 
         /** The places evaluating [e] writes: the written operands of every call inside it, and assignment targets inside it. */
@@ -402,9 +515,11 @@ internal class ExclusivityPass : RulePass {
                                 op.how == "mut" -> "mut ${op.text}"
                                 else -> "the MutView '${op.text}'"
                             }
-                            // A class `mut fx` writes the object its receiver refers to, never the variable holding the reference.
-                            val objectOnly = op.isReceiver && (op.at as? Expr)?.let { model.types[it] }?.let { r.isReference(it) } == true
-                            op.places.forEach { out.add(Touch(it, n, text, r.describe(it), objectOnly = objectOnly)) }
+                            // A class `mut fx` writes the object its receiver refers to, never the variable holding
+                            // the reference; with a body, it writes what the body writes (its hidden writes).
+                            val objectOnly = r.writesObjectOnly(b, n, op)
+                            val analysed = objectOnly && model.calls[n]?.let { r.hasAnalysedBody(it) } == true
+                            op.places.forEach { out.add(Touch(it, n, text, r.describe(it), objectOnly = objectOnly, analysed = analysed)) }
                         }
                     }
                     is AssignmentExpr -> model.places[n.target]?.let { add(aliases.expand(it, forWrite = true), n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
