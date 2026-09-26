@@ -4,6 +4,7 @@ import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.types.body.BodyTestSupport
 import net.exoad.kira.types.rules.RulesTestSupport.expectClean
 import net.exoad.kira.types.rules.RulesTestSupport.fn
@@ -146,12 +147,13 @@ class EffectsPassTest {
         assertEquals(Effect.IMPURE, model.effect(fn(p, "viewed")))
         assertEquals(Effect.IMPURE, model.effect(fn(p, "ref")))
         assertEquals(Effect.IMPURE, model.effect(method(p, "C", "bump")), "a mut fx writing its receiver")
-        assertEquals(Effect.IMPURE, model.effect(method(p, "C", "peek")), "a class reads its field through a reference a sibling could write")
+        assertEquals(Effect.READS, model.effect(method(p, "C", "peek")), "a class reads its field through a reference a sibling could write: no effect, but READS")
     }
 
     @Test
-    fun readsOfSharedStateAndThrowsAreImpure() {
-        // D33: an operand that observes what a sibling could change, or that a try could catch, needs its order kept.
+    fun readsOfSharedStateAreReadsAndThrowsAreImpure() {
+        // D33: an operand that observes what a sibling's effect could change is READS (two of them need no
+        // ordering); one a try could catch is IMPURE.
         val p = snippet(
             """
             pub mut STATE: Int32 = 0
@@ -182,9 +184,49 @@ class EffectsPassTest {
             """,
         )
         expectClean(p)
-        for (name in listOf("readG", "byRef", "element", "through", "field", "parse")) {
-            assertEquals(Effect.IMPURE, p.model.effect(fn(p, name)), name)
+        for (name in listOf("readG", "byRef", "element", "through", "field")) {
+            assertEquals(Effect.READS, p.model.effect(fn(p, name)), name)
         }
+        assertEquals(Effect.IMPURE, p.model.effect(fn(p, "parse")), "a throw")
+    }
+
+    @Test
+    fun twoReadsNeedNoOrderButAReadBesideAnEffectDoes() {
+        // The unilidar shape: `p[0] | p[1] << 8` on a View parameter is two READS, so the emitter leaves it bare;
+        // `p[0] + bump()` is READS beside IMPURE, so it spills both; and READS flows up the call graph like IMPURE.
+        val p = snippet(
+            """
+            pub mut STATE: Int32 = 0
+            pub fx bump: () UInt32 {
+                STATE += 1
+                return 1
+            }
+            pub fx readU16: (p: View<UInt8>) UInt32 {
+                return (p[0] as UInt32) | ((p[1] as UInt32) << 8)
+            }
+            pub fx mixed: (p: View<UInt8>) UInt32 {
+                return (p[0] as UInt32) + bump()
+            }
+            pub fx viaCall: (p: View<UInt8>) UInt32 {
+                return readU16(p) + 1
+            }
+            pub fx sizes: (out: Size, buf: View<UInt8>) Bool {
+                return out == buf.size()
+            }
+            """,
+        )
+        expectClean(p)
+        val model = p.model
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<TypeCastExpr>(p, "p[0] as UInt32")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "(p[1] as UInt32) << 8")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | (p[1] as UInt32) << 8")))
+        assertEquals(Effect.IMPURE, model.effect(BodyTestSupport.node<BinaryExpr>(p, "(p[0] as UInt32) + bump()")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "readU16(p)")), "a call of a READS function on a view")
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "buf.size()")), "a pure binding on a view receiver reads what it borrows")
+        assertEquals(Effect.READS, model.effect(fn(p, "readU16")))
+        assertEquals(Effect.READS, model.effect(fn(p, "viaCall")))
+        assertEquals(Effect.READS, model.effect(fn(p, "sizes")))
+        assertEquals(Effect.IMPURE, model.effect(fn(p, "mixed")))
     }
 
     @Test

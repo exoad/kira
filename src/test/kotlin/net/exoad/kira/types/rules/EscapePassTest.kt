@@ -246,6 +246,210 @@ class EscapePassTest {
     }
 
     @Test
+    fun aViewOfALocalCannotLeaveThroughAMethodReceiverOrAReturnedParameter() {
+        // Round 2, issue 4a: a method that returns a view of its receiver (all: data.view(); get: a view field)
+        // lends the receiver, and keep2 returns a view of its Arr parameter. Each is a fixpoint over the call
+        // graph, so a method calling such a method on this lends this too.
+        val p = snippet(
+            """
+            pub struct Buf {
+                pub data: Arr<Int32, 4> = [1, 2, 3, 4]
+                pub fx all: () View<Int32> {
+                    return data.view()
+                }
+                pub fx tail: () View<Int32> {
+                    return all().from(1)
+                }
+            }
+            pub struct Cursor {
+                pub text: View<Char> = ""
+                pub fx get: () View<Char> {
+                    return text
+                }
+            }
+            pub fx keep2: (a: Arr<Int32>) View<Int32> {
+                return a
+            }
+            pub fx bad1: () View<Int32> {
+                b: Buf = Buf { }
+                return b.all()
+            }
+            pub fx bad2: () View<Char> {
+                s: Str = "abc"
+                c: Cursor = Cursor { text = s.view() }
+                return c.get()
+            }
+            pub fx bad3: () View<Int32> {
+                xs: Arr<Int32> = [1, 2]
+                return keep2(xs)
+            }
+            pub fx bad4: () View<Int32> {
+                b: Buf = Buf { }
+                return b.tail()
+            }
+            pub fx ok1: (b: Buf) View<Int32> {
+                return b.all()
+            }
+            pub fx ok2: (s: View<Char>) View<Char> {
+                c: Cursor = Cursor { text = s }
+                return c.get()
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("b.all() is a view of the local 'b'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("c.get() is a view of the local 's'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("keep2(xs) is a view of the local 'xs'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("b.tail() is a view of the local 'b'") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aViewOfALocalCannotBeStoredWhereItOutlivesTheLocal() {
+        // Round 2, issue 4b: a global, a mut parameter, a field of a mut parameter, this, and a callee that
+        // keeps its parameter that way (a fixpoint: keep stores into GV, keepVia passes on to keep).
+        val p = snippet(
+            """
+            pub mut GV: View<Char> = ""
+            pub struct Holder {
+                pub v: View<Char> = ""
+                pub mut fx take: () Void {
+                    s: Str = "abc"
+                    v = s.view()
+                }
+            }
+            pub fx keep: (v: View<Char>) Void {
+                GV = v
+            }
+            pub fx keepVia: (w: View<Char>) Void {
+                keep(w)
+            }
+            pub fx look: (v: View<Char>) Size {
+                return v.size()
+            }
+            pub fx toGlobal: () Void {
+                s: Str = "abc"
+                GV = s.view()
+            }
+            pub fx toParam: (mut out: View<Char>) Void {
+                s: Str = "abc"
+                out = s.view()
+            }
+            pub fx toParamField: (mut h: Holder) Void {
+                s: Str = "abc"
+                h.v = s.view()
+            }
+            pub fx toKeeper: () Void {
+                s: Str = "abc"
+                keep(s.view())
+                keepVia(s.view())
+                n: Size = look(s.view())
+            }
+            pub fx ok: (p: View<Char>) Void {
+                GV = p
+                keep(p)
+                mut h: Holder = Holder { }
+                s: Str = "abc"
+                h.v = s.view()
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store", "rules.escape.view-store")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'v' outlives Holder.take") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'GV' outlives 'toGlobal'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'h.v' outlives 'toParamField'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("s.view() is a view of the local 's', and 'keepVia' keeps it beyond the call") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aClosureKeepsWhatItCapturedOnlyWhenItLeavesTheCall() {
+        // A lambda held in a local and called there outlives nothing; one stored into a mut parameter does.
+        val p = snippet(
+            """
+            pub fx each: (v: View<Int32>, f: Fx<Tuple1<Int32>, Int32>) Int32 {
+                g: Fx<Tuple0, Int32> = fx() Int32 {
+                    return v[0]
+                }
+                return g() + f(1)
+            }
+            pub fx hold: (v: View<Int32>, mut out: Fx<Tuple0, Int32>) Void {
+                out = fx() Int32 {
+                    return v[0]
+                }
+            }
+            pub fx f: (mut hook: Fx<Tuple0, Int32>) Int32 {
+                a: Arr<Int32, 2> = [1, 2]
+                n: Int32 = each(a.view(), fx(x: Int32) Int32 { return x })
+                hold(a.view(), mut hook)
+                return n
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store")
+        assertTrue(message(p, "rules.escape.view-store").startsWith("a.view() is a view of the local 'a', and 'hold' keeps it beyond the call"))
+    }
+
+    @Test
+    fun aViewOfATemporaryDanglesAtOnce() {
+        // Round 2, issue 4c: a lender on a call result, a construction or an array literal.
+        val p = snippet(
+            """
+            pub fx mk: () Arr<Int32, 4> {
+                return [1, 2, 3, 4]
+            }
+            pub fx sum: (v: View<Int32>) Int32 {
+                return v[0]
+            }
+            pub struct Cursor {
+                pub text: View<Int32>
+            }
+            pub fx t1: () Int32 {
+                v: View<Int32> = mk().view()
+                return v[0]
+            }
+            pub fx t2: () View<Int32> {
+                return mk().view()
+            }
+            pub fx t3: () Int32 {
+                c: Cursor = Cursor { text = mk().from(1) }
+                return c.text[0]
+            }
+            pub fx t4: (p: View<Int32>) Int32 {
+                mut v: View<Int32> = p
+                v = mk().view()
+                return v[0]
+            }
+            pub fx ok: () Int32 {
+                return sum(mk().view()) + sum(Cursor { text = mk().view() }.text)
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-store", "rules.escape.view-return", "rules.escape.view-store", "rules.escape.view-store")
+        assertTrue(message(p, "rules.escape.view-store").startsWith("mk().view() is a view of a temporary, which is destroyed at the end of this statement, and 'v' would keep it"))
+        assertTrue(message(p, "rules.escape.view-return").startsWith("mk().view() is a view of a temporary, which is destroyed when 't2' returns"))
+    }
+
+    @Test
+    fun aClassConstructedWithAViewTypeArgumentHoldsAView() {
+        // Round 2, issue 7: the declaration of K2<T> cannot see it; the construction can.
+        val p = snippet(
+            """
+            pub class K2<T> {
+                pub mut f: Maybe<T> = null
+            }
+            pub fx mk: () Int32 {
+                k: K2<View<Char>> = K2<View<Char>> { }
+                ok: K2<Int32> = K2<Int32> { }
+                return 1
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-field")
+        assertTrue(message(p, "rules.escape.view-field").startsWith("Field 'f' of this K2<View<Char>> is a Maybe<View<Char>>, which holds a View<Char>"))
+    }
+
+    @Test
     fun aClassFieldCannotHoldAView() {
         val p = snippet(
             """

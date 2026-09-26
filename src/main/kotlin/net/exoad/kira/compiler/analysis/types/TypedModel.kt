@@ -63,8 +63,24 @@ data class LoopPlan(
     val isLegacy: Boolean,
 )
 
-/** Purity (EffectsPass); an absent entry means [IMPURE]. */
-enum class Effect { PURE, IMPURE }
+/**
+ * Purity (EffectsPass), ordered: what evaluating an expression (or calling a function) does
+ * to its siblings under D33. An absent entry means [IMPURE].
+ *
+ * - [PURE]: no effect, and a value only its own evaluation can change (locals, by-value
+ *   parameters, constants, and what they hold by copy). It may be evaluated in any order
+ *   against any sibling.
+ * - [READS]: no effect, but it observes state a sibling's effect could change: a `mut`
+ *   global or `mut` parameter, a field of a class, the elements of a view, or what a view or
+ *   reference receiver borrows. Two READS siblings need no ordering; a READS beside an
+ *   [IMPURE] sibling does.
+ * - [IMPURE]: an effect: a write outside the writer's own locals, a print, a call of an
+ *   extern, a virtual or an `Fx` value, a magic binding without `pure: true`, or a `throw`.
+ *
+ * The C++ emitter spills the operands of a call or operator into typed temporaries, in
+ * source order, when one of them is IMPURE and another is not PURE (R19).
+ */
+enum class Effect { PURE, READS, IMPURE }
 
 /**
  * Every fact the typer establishes, in side tables keyed by AST node **identity**:

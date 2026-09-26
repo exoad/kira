@@ -1,10 +1,29 @@
 package net.exoad.kira.types.rules
 
+import net.exoad.kira.compiler.analysis.types.ArgBinding
+import net.exoad.kira.compiler.analysis.types.AstTree
+import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KiraTyper
+import net.exoad.kira.compiler.analysis.types.KiraUnparser
+import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.TyperMode
+import net.exoad.kira.compiler.analysis.types.TyperOptions
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolationPart
 import net.exoad.kira.types.TyperTestSupport
+import net.exoad.kira.types.body.BodyTestSupport
+import org.yaml.snakeyaml.Yaml
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
@@ -35,11 +54,27 @@ class RulesCorpusTest {
         assertTrue(cases.isNotEmpty(), "no golden cases under $corpus")
         return cases.map { dir ->
             DynamicTest.dynamicTest(dir.name) {
-                val program = TyperTestSupport.project(dir, TyperMode.STRICT)
+                val program = TyperTestSupport.project(dir, TyperMode.STRICT, options(dir))
                 assertEquals(0, program.errors.size, "${dir.name}:\n${TyperTestSupport.render(program)}")
                 assertTrue(program.diagnostics.none { it.code.startsWith("rules.") }, "${dir.name}:\n${TyperTestSupport.render(program)}")
             }
         }
+    }
+
+    /** The typer options the case's `kira.yaml` asks for: its `build.cpp.freestanding` globs (hall, text), so ProfilePass runs as the CLI would run it. */
+    private fun options(dir: File): TyperOptions {
+        val manifest = File(dir, "kira.yaml").takeIf { it.isFile } ?: return TyperOptions()
+        val yaml = Yaml().load<Any>(manifest.readText()) as? Map<*, *> ?: return TyperOptions()
+        val cpp = (yaml["build"] as? Map<*, *>)?.get("cpp") as? Map<*, *> ?: return TyperOptions()
+        fun globs(key: String): List<String> = (cpp[key] as? List<*>)?.map { it.toString() } ?: emptyList()
+        return TyperOptions(freestanding = globs("freestanding"), headerOnly = globs("headerOnly"))
+    }
+
+    @Test
+    fun hallAndTextAreTypedFreestanding() {
+        // The corpus test reads each case's kira.yaml; these two declare freestanding modules, so ProfilePass runs on them.
+        assertEquals(listOf("pico:hall"), options(File(corpus, "hall")).freestanding)
+        assertEquals(listOf("lib:text"), options(File(corpus, "text")).freestanding)
     }
 
     @Test
@@ -53,18 +88,69 @@ class RulesCorpusTest {
 
     @Test
     fun unilidarPurityAndEachPacketIsATemplate() {
-        // Every function is IMPURE for D33: crc32, readU32, tailClosed and packetAt read the storage their
-        // View borrows (a sibling operand could write it); writeU32 and readHeader write through a MutView
-        // or to a mut parameter, and command and the frames built on it call writeU32; eachPacket calls
-        // through an Fx value. So `f(readU32(p), readU32(p.from(4)))` is spilled, in source order.
+        // D33 over the golden: crc32, readU32, tailClosed and packetAt only read the storage their View borrows,
+        // so they are READS, and `(p[0] as UInt32) | ((p[1] as UInt32) << 8)` (two READS) and
+        // `(out.size as Size) == buf.size()` (two READS) are emitted bare, as the expected C++ has them.
+        // writeU32 and readHeader write through a MutView or to a mut parameter, command and the frames built
+        // on it call writeU32, and eachPacket calls through an Fx value: IMPURE.
         val p = TyperTestSupport.project(File(corpus, "unilidar"), TyperMode.STRICT)
         val m = p.module("pilot:unilidar")!!
-        val fns = m.declarations.filterIsInstance<FnSymbol>()
-        assertTrue(fns.size >= 12, fns.map { it.name }.toString())
-        for (fn in fns) {
-            assertEquals(Effect.IMPURE, p.model.effect(fn), fn.name)
+        val fns = m.declarations.filterIsInstance<FnSymbol>().associateBy { it.name }
+        assertTrue(fns.size >= 12, fns.keys.toString())
+        val reads = setOf("crc32", "readU32", "tailClosed", "packetAt")
+        for ((name, fn) in fns) {
+            assertEquals(if (name in reads) Effect.READS else Effect.IMPURE, p.model.effect(fn), name)
         }
+        val model = p.model
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | (p[1] as UInt32) << 8", "pilot:unilidar")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "out.size as Size == buf.size()", "pilot:unilidar")))
         assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "eachPacket", "pilot:unilidar").params[1]))
+    }
+
+    @TestFactory
+    fun noGoldenOperandGroupNeedsASpill(): List<DynamicTest> {
+        // The expected C++ of every case has no R19 spill, so no call, operator, compound assignment, assignment
+        // index, class construction or interpolation may have an IMPURE operand beside a non-PURE sibling. The one
+        // known exception is classes' `"${'$'}{name} says ${'$'}{sound()}"` (a class field READS beside a virtual call),
+        // which W2.4's golden emits bare; it is listed here so a change to either side is noticed.
+        val cases = corpus.listFiles { f -> f.isDirectory && File(f, "src").isDirectory }?.sortedBy { it.name }.orEmpty()
+        val known = mapOf("classes" to listOf("\"${'$'}{name} says ${'$'}{sound()}\""))
+        return cases.map { dir ->
+            DynamicTest.dynamicTest(dir.name) {
+                val p = TyperTestSupport.project(dir, TyperMode.STRICT, options(dir))
+                assertEquals(known[dir.name].orEmpty(), spillSites(p), dir.name)
+            }
+        }
+    }
+
+    /** The source text of every operand group that R19 would spill under the three-valued rule. */
+    private fun spillSites(p: TypedProgram): List<String> {
+        val model = p.model
+        val out = mutableListOf<String>()
+        fun group(e: Expr, ops: List<Expr>) {
+            val effs = ops.map { model.effect(it) }
+            if (effs.any { it == Effect.IMPURE } && effs.count { it != Effect.PURE } >= 2) {
+                out.add(KiraUnparser.text(e))
+            }
+        }
+        fun walk(n: ASTNode) {
+            when (n) {
+                is FunctionCallExpr -> model.calls[n]?.let { rc -> group(n, listOfNotNull(rc.receiver) + rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }) }
+                is BinaryExpr -> if (n.operator != BinaryOp.AND && n.operator != BinaryOp.OR) group(n, listOf(n.leftExpr, n.rightExpr))
+                is CompoundAssignmentExpr -> group(n, listOf(n.left, n.right))
+                is PlaceAssignmentExpr -> group(n, AstTree.children(n.target).filterIsInstance<Expr>().filter { it !is Type } + n.value)
+                is ObjectInitExpr -> model.inits[n]?.let { ri -> if (ri.cls?.kind == ClassKind.CLASS) group(n, n.positionalArgs + n.namedArgs.map { it.value }) }
+                is InterpolatedStringLiteral -> group(n, n.parts.filterIsInstance<InterpolationPart.Hole>().map { it.expr })
+                else -> {}
+            }
+            AstTree.children(n).forEach { walk(it) }
+        }
+        for (m in p.modules) {
+            if (!m.isStdlib) {
+                walk(m.source.ast)
+            }
+        }
+        return out
     }
 
     @Test
@@ -74,7 +160,7 @@ class RulesCorpusTest {
         val sender = TyperTestSupport.project(File(corpus, "sender"), TyperMode.STRICT)
         assertFalse(RulesTestSupport.cls(sender, "Sender", "pilot:carrules").thisEscapes)
         assertEquals(Effect.IMPURE, sender.model.effect(RulesTestSupport.method(sender, "Sender", "send", "pilot:carrules")))
-        // A class method reads its fields through a reference a sibling operand could write (D33): impure.
-        assertEquals(Effect.IMPURE, sender.model.effect(RulesTestSupport.method(sender, "Sender", "sentMs", "pilot:carrules")))
+        // A class method reads its fields through a reference a sibling operand could write (D33): READS.
+        assertEquals(Effect.READS, sender.model.effect(RulesTestSupport.method(sender, "Sender", "sentMs", "pilot:carrules")))
     }
 }

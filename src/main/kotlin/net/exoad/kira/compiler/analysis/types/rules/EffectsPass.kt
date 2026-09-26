@@ -39,37 +39,40 @@ import java.util.IdentityHashMap
  * `TypedModel.fnEffects` for every function with a body (and every stdlib binding marked
  * `pure: true`) and `TypedModel.effects` for every expression of every body.
  *
- * PURE is the answer to one question, D33's: may this operand be evaluated in any order
- * against its siblings without the program noticing? Kira evaluates call arguments and the
- * operands of an operator left to right (C and JS do); C++ leaves them unsequenced, so the
- * C++ emitter spills the operands of a call or an operator into typed temporaries, in source
- * order, whenever two or more of them are IMPURE (R19). That condition is sufficient only if
- * IMPURE covers everything a sibling's evaluation could interact with, so an expression is
- * IMPURE when it
+ * The answer is three-valued ([Effect], ordered PURE < READS < IMPURE), because D33 asks two
+ * things of an operand: does evaluating it change anything a sibling could see, and does a
+ * sibling's change reach it? Kira evaluates call arguments and the operands of an operator
+ * left to right (C and JS do); C++ leaves them unsequenced, so the C++ emitter spills the
+ * operands of a call or an operator into typed temporaries, in source order, when one of
+ * them is IMPURE and another is not PURE (R19). An expression is
  *
- * - has an effect: it writes anything but the writer's own locals (a `mut` parameter, the
- *   receiver of a `mut fx`, a global, a field through a class reference, a `Ref`, a
- *   `MutView`), prints, calls an extern, a virtual or trait-dispatched method or an `Fx`
- *   value, calls a function that does any of these, or calls a magic binding without
- *   `pure: true`;
- * - or may throw: a `throw` is caught by a `try` around the call, so which operand ran first
- *   decides what a sibling's print or write left behind;
- * - or reads shared state ([Rules.isSharedPlace]): a `mut` global, a `mut` parameter, a field
- *   of a class (its own `this` included), a view (its elements, or the view itself, which is
- *   iterated or indexed next), or the contents of a view or reference receiver (`v.get(0)`,
- *   `c.peek()`), which a sibling could change before the read.
+ * - IMPURE when it has an effect: it writes anything but the writer's own locals (a `mut`
+ *   parameter, the receiver of a `mut fx`, a global, a field through a class reference, a
+ *   `Ref`, a `MutView`), prints, calls an extern, a virtual or trait-dispatched method or an
+ *   `Fx` value, calls a function that does any of these, calls a magic binding without
+ *   `pure: true`, or may throw (a `throw` is caught by a `try` around the call, so which
+ *   operand ran first decides what a sibling's print or write left behind);
+ * - READS when it has no effect but reads shared state ([Rules.isSharedPlace]): a `mut`
+ *   global, a `mut` parameter, a field of a class (its own `this` included), a view (its
+ *   elements, or the view itself, which is iterated or indexed next), or the contents of a
+ *   view or reference receiver (`v.get(0)`, `c.peek()`), which a sibling's effect could
+ *   change before the read. Two READS siblings need no ordering, so `p[0] | p[1] << 8` on a
+ *   View parameter is emitted bare;
+ * - PURE otherwise: reads of locals, by-value parameters, constants and what they hold by
+ *   copy. Only a `mut` argument, the receiver of a `mut fx` or a `MutView` lent from such a
+ *   place, nested in a sibling, could change those, and ExclusivityPass refuses that pair
+ *   (`rules.exclusivity.order`).
  *
- * Reads of locals, by-value parameters, constants and what they hold by copy are pure: only
- * a `mut` argument or the receiver of a `mut fx` nested in a sibling could change those, and
- * ExclusivityPass refuses that pair (`rules.exclusivity.order`). A stdlib binding marked
- * `pure: true` keeps its promise (no effect, a result from its receiver and arguments); the
- * receiver's own effect is the receiver expression's, so `XS.size()` on a `mut` global is
- * IMPURE while `xs.size()` on a local is PURE. A checked binding's panic is not a throw a
- * `try` catches (D10), so it stays pure as the manifests say.
+ * A stdlib binding marked `pure: true` keeps its promise (no effect, a result from its
+ * receiver and arguments); the receiver's own effect is the receiver expression's, so
+ * `XS.size()` on a `mut` global is READS while `xs.size()` on a local is PURE. A checked
+ * binding's panic is not a throw a `try` catches (D10), so it stays pure as the manifests
+ * say.
  *
- * The computation starts from "every function is pure" and removes functions until nothing
- * changes, so mutually recursive functions that do nothing impure stay pure. "Pure" never
- * licenses dropping a call: the emitter spills or emits it in place, and only that.
+ * A function's effect is the join of its body's (its lambdas aside, which run only when
+ * called). The computation starts from "every function is PURE" and raises functions until
+ * nothing changes, so mutually recursive functions that do nothing impure stay pure. "Pure"
+ * never licenses dropping a call: the emitter spills or emits it in place, and only that.
  */
 internal class EffectsPass : RulePass {
     override val name: String = "effects"
@@ -78,91 +81,96 @@ internal class EffectsPass : RulePass {
         val r = Rules(program)
         val bodies = Bodies.of(program)
         val fnBodies = bodies.filter { it.fn != null }
-        val pure = IdentityHashMap<FnSymbol, Boolean>()
-        fnBodies.forEach { pure[it.fn!!] = true }
+        val fns = IdentityHashMap<FnSymbol, Effect>()
+        fnBodies.forEach { fns[it.fn!!] = Effect.PURE }
         var changed = true
         while (changed) {
             changed = false
             for (b in fnBodies) {
                 val fn = b.fn!!
-                if (pure[fn] != true) {
+                val was = fns[fn]!!
+                if (was == Effect.IMPURE) {
                     continue
                 }
-                if (!bodyIsPure(r, b, pure)) {
-                    pure[fn] = false
+                val now = bodyEffect(r, b, fns)
+                if (now > was) {
+                    fns[fn] = now
                     changed = true
                 }
             }
         }
         val model = r.model
-        for ((fn, isPure) in pure) {
-            model.fnEffects[fn] = if (isPure) Effect.PURE else Effect.IMPURE
-        }
+        model.fnEffects.putAll(fns)
         // A stdlib binding marked pure is pure to the emitter too, so it can ask one table.
         for (m in program.modules) {
             if (!m.isStdlib) {
                 continue
             }
             for (s in m.declarations) {
-                val fns = when (s) {
+                val declared = when (s) {
                     is FnSymbol -> listOf(s)
                     is ClassSymbol -> s.methods
                     is TraitSymbol -> s.methods
                     else -> emptyList()
                 }
-                for (fn in fns) {
+                for (fn in declared) {
                     if (fn.foreign is Foreign.Magic && fn.body == null && r.bindings.isPure(fn)) {
                         model.fnEffects[fn] = Effect.PURE
                     }
                 }
             }
         }
-        val exprs = ExprEffects(r, pure)
+        val exprs = ExprEffects(r, fns)
         for (b in bodies) {
             b.roots.forEach { root -> AstTree.walk(root) { n -> if (n is Expr && n !is Type) exprs.of(n) } }
         }
     }
 
-    /** True when nothing in [b] (outside its lambdas, which run only when called) is impure under the current [pure] set. */
-    private fun bodyIsPure(r: Rules, b: Body, pure: Map<FnSymbol, Boolean>): Boolean {
-        var ok = true
+    /** The join of every node of [b] (outside its lambdas, which run only when called) under the current [fns]. */
+    private fun bodyEffect(r: Rules, b: Body, fns: Map<FnSymbol, Effect>): Effect {
+        var e = Effect.PURE
         AstScan.walk(b.roots) { n, lambdas ->
-            if (!ok || lambdas.isNotEmpty()) {
+            if (e == Effect.IMPURE || lambdas.isNotEmpty()) {
                 return@walk
             }
-            if (nodeIsImpure(r, n, pure)) {
-                ok = false
-            }
+            e = maxOf(e, nodeEffect(r, n, fns))
         }
-        return ok
+        return e
     }
 
     companion object {
-        /** Whether [n] is itself an impure operation (its children aside). */
-        fun nodeIsImpure(r: Rules, n: ASTNode, pure: Map<FnSymbol, Boolean>): Boolean {
+        /** The effect of [n] itself (its children aside). */
+        fun nodeEffect(r: Rules, n: ASTNode, fns: Map<FnSymbol, Effect>): Effect {
             val model = r.model
-            val e = n as? Expr ?: return false
-            model.opCalls[e]?.let { if (!callIsPure(r, it, pure)) return true }
+            val e = n as? Expr ?: return Effect.PURE
+            var out = Effect.PURE
+            model.opCalls[e]?.let { out = maxOf(out, callEffect(r, it, fns)) }
             if (sharedRead(r, e)) {
-                return true
+                out = maxOf(out, Effect.READS)
             }
-            return when (n) {
-                is FunctionCallExpr -> !callIsPure(r, model.calls[n], pure)
-                is IntrinsicExpr -> n.intrinsicKey.name != "_static_assert"
-                is ThrowExpr -> true
-                is AssignmentExpr -> !localWrite(r, model.places[n.target])
-                is CompoundAssignmentExpr -> !localWrite(r, model.places[n.left])
-                is PlaceAssignmentExpr -> !localWrite(r, model.places[n.target])
+            val own = when (n) {
+                is FunctionCallExpr -> callEffect(r, model.calls[n], fns)
+                is IntrinsicExpr -> if (n.intrinsicKey.name != "_static_assert") Effect.IMPURE else Effect.PURE
+                is ThrowExpr -> Effect.IMPURE
+                is AssignmentExpr -> if (localWrite(r, model.places[n.target])) Effect.PURE else Effect.IMPURE
+                is CompoundAssignmentExpr -> if (localWrite(r, model.places[n.left])) Effect.PURE else Effect.IMPURE
+                is PlaceAssignmentExpr -> if (localWrite(r, model.places[n.target])) Effect.PURE else Effect.IMPURE
                 is ObjectInitExpr -> {
-                    val ri = model.inits[n] ?: return true
+                    val ri = model.inits[n] ?: return Effect.IMPURE
                     val cls = ri.cls
                     if (cls != null && cls.kind == ClassKind.CLASS && cls.initially != null) {
-                        return true
+                        return Effect.IMPURE
                     }
-                    ri.fields.any { f -> f is FieldInit.Default && f.field.default?.let { d -> !exprTreeIsPure(r, d, pure) } == true }
+                    var defaults = Effect.PURE
+                    for (f in ri.fields) {
+                        val d = (f as? FieldInit.Default)?.field?.default ?: continue
+                        defaults = maxOf(defaults, exprTreeEffect(r, d, fns))
+                    }
+                    defaults
                 }
-                else -> false
+                else -> Effect.PURE
             }
+            return maxOf(out, own)
         }
 
         /**
@@ -186,41 +194,48 @@ internal class EffectsPass : RulePass {
         }
 
         /**
-         * A call is pure when its callee is, every defaulted parameter's default is, and its
-         * receiver is no view or reference (the callee reads the storage those borrow or share,
-         * which a sibling could change; a struct or container receiver is read as the place
-         * the receiver expression is).
+         * A call's effect: its callee's, joined with READS when its receiver is a view or a
+         * reference (the callee reads the storage those borrow or share, which a sibling could
+         * change; a struct or container receiver is read as the place the receiver expression
+         * is), and with every defaulted parameter's default.
          */
-        fun callIsPure(r: Rules, rc: ResolvedCall?, pure: Map<FnSymbol, Boolean>): Boolean {
+        fun callEffect(r: Rules, rc: ResolvedCall?, fns: Map<FnSymbol, Effect>): Effect {
             if (rc == null) {
-                return false
+                return Effect.IMPURE
             }
             val fn = rc.fn
-            val callee = when (rc.kind) {
-                CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR ->
-                    fn != null && (if (fn.foreign is Foreign.Magic && fn.body == null) r.bindings.isPure(fn) else pure[fn] == true)
-                CallKind.MAGIC -> fn != null && r.bindings.isPure(fn)
-                CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE, CallKind.PRINT -> false
+            var e = when (rc.kind) {
+                CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> when {
+                    fn == null -> Effect.IMPURE
+                    fn.foreign is Foreign.Magic && fn.body == null -> if (r.bindings.isPure(fn)) Effect.PURE else Effect.IMPURE
+                    else -> fns[fn] ?: Effect.IMPURE
+                }
+                CallKind.MAGIC -> if (fn != null && r.bindings.isPure(fn)) Effect.PURE else Effect.IMPURE
+                CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE, CallKind.PRINT -> Effect.IMPURE
             }
-            if (!callee) {
-                return false
+            if (e == Effect.IMPURE) {
+                return e
             }
             val receiverType = rc.receiver?.let { r.model.types[it] }
             if (receiverType != null && (r.isView(receiverType) || r.isReference(receiverType))) {
-                return false
+                e = Effect.READS
             }
-            return rc.args.all { a -> a !is ArgBinding.Default || a.param.default?.let { exprTreeIsPure(r, it, pure) } != false }
+            for (a in rc.args) {
+                val d = (a as? ArgBinding.Default)?.param?.default ?: continue
+                e = maxOf(e, exprTreeEffect(r, d, fns))
+            }
+            return e
         }
 
-        /** Every node of [e] is pure (lambda bodies aside). */
-        fun exprTreeIsPure(r: Rules, e: Expr, pure: Map<FnSymbol, Boolean>): Boolean {
-            var ok = true
+        /** The join of every node of [e] (lambda bodies aside). */
+        fun exprTreeEffect(r: Rules, e: Expr, fns: Map<FnSymbol, Effect>): Effect {
+            var out = Effect.PURE
             AstScan.walk(listOf(e)) { n, lambdas ->
-                if (ok && lambdas.isEmpty() && nodeIsImpure(r, n, pure)) {
-                    ok = false
+                if (out != Effect.IMPURE && lambdas.isEmpty()) {
+                    out = maxOf(out, nodeEffect(r, n, fns))
                 }
             }
-            return ok
+            return out
         }
 
         /**
@@ -241,8 +256,8 @@ internal class EffectsPass : RulePass {
         }
     }
 
-    /** Per-expression purity, bottom-up: a node is pure when it is not itself impure and every child expression is. */
-    private class ExprEffects(private val r: Rules, private val pure: Map<FnSymbol, Boolean>) {
+    /** Per-expression effect, bottom-up: the join of the node's own effect and every child expression's. */
+    private class ExprEffects(private val r: Rules, private val fns: Map<FnSymbol, Effect>) {
         private val memo = IdentityHashMap<Expr, Effect>()
 
         fun of(e: Expr): Effect {
@@ -258,32 +273,26 @@ internal class EffectsPass : RulePass {
                 // Creating a closure is pure; its body is walked on its own, for its own expressions.
                 return Effect.PURE
             }
-            if (nodeIsImpure(r, e, pure)) {
-                return Effect.IMPURE
-            }
+            var out = nodeEffect(r, e, fns)
             for (k in AstTree.children(e)) {
-                if (k is Expr && k !is Type && of(k) == Effect.IMPURE) {
-                    return Effect.IMPURE
+                if (out == Effect.IMPURE) {
+                    break
                 }
-                if (k !is Expr && childrenImpure(k)) {
-                    return Effect.IMPURE
-                }
+                out = maxOf(out, if (k is Expr && k !is Type) of(k) else childrenEffect(k))
             }
-            return Effect.PURE
+            return out
         }
 
-        /** A non-expression child (a statement of an if-expression): impure when anything under it is. */
-        private fun childrenImpure(n: ASTNode): Boolean {
+        /** A non-expression child (a statement of an if-expression): the join of everything under it. */
+        private fun childrenEffect(n: ASTNode): Effect {
+            var out = Effect.PURE
             for (k in AstTree.children(n)) {
-                if (k is Expr && k !is Type) {
-                    if (of(k) == Effect.IMPURE) {
-                        return true
-                    }
-                } else if (childrenImpure(k)) {
-                    return true
+                if (out == Effect.IMPURE) {
+                    break
                 }
+                out = maxOf(out, if (k is Expr && k !is Type) of(k) else childrenEffect(k))
             }
-            return false
+            return out
         }
     }
 }
