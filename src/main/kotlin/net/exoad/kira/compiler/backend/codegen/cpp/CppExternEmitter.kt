@@ -14,7 +14,10 @@ import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
+import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.core.intrinsics.ExternIntrinsic
@@ -339,8 +342,37 @@ object CppExternEmitter : CppExternsPart {
         call.args.filterIsInstance<ArgBinding.Default>().firstOrNull()?.let { d ->
             (d.param.default ?: fn.decl)?.let { ctx.unsupported(it, "the default of parameter '${d.param.name}' of the extern function '${fn.name}'") }
         }
-        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text) }
+        val resultCarriesPointer = carriesPointer(call.returnType)
+        val texts = args.mapIndexed { i, text -> argument(ctx, fn, resultCarriesPointer, fn.params.getOrNull(i), call.args.getOrNull(i), text) }
         return declared(ctx, fn.ret, "$callee(${texts.joinToString(", ")})")
+    }
+
+    /**
+     * Whether a result of type [t] can point into memory a call's own argument owns: a
+     * `CStr` or an `Unsafe<T>` directly, a `Maybe<X>` where [carriesPointer] is true of X
+     * (nothing else names one today), or a class or struct with such a field, checked
+     * recursively through its own type arguments ([seen] stops a self-referential type from
+     * recursing forever; re-visiting one it has already cleared adds no new pointer). Used at
+     * [argument] to refuse a computed `Str` there (policy 1): `kira::ffi::CStrBuf(expr)` and
+     * `kira::ffi::in(expr)` build a temporary that lives only to the end of the call's own
+     * full-expression, which is not long enough once a result answering true here is read
+     * afterward. `field<T>` (an extern struct field's read) never returns such a value from a
+     * *computed* expression the way a call does, so this only guards [argument].
+     */
+    private fun carriesPointer(t: KType, seen: MutableSet<ClassSymbol> = mutableSetOf()): Boolean {
+        if (isCStr(t) || isUnsafe(t)) {
+            return true
+        }
+        val nominal = t as? KType.Nominal ?: return false
+        if (isMagic(t, MAYBE)) {
+            return nominal.typeArgs().any { carriesPointer(it, seen) }
+        }
+        val cls = nominal.sym as? ClassSymbol ?: return false
+        if (!seen.add(cls)) {
+            return false
+        }
+        val substitution = cls.typeParams.zip(nominal.typeArgs()).toMap()
+        return cls.fields.any { carriesPointer(it.type.substitute(substitution), seen) }
     }
 
     /**
@@ -397,36 +429,96 @@ object CppExternEmitter : CppExternsPart {
      * literal does; an extern `Str` constant is read as a `kira::Str` made from whatever C++
      * declared ([constant]: a `std::string` or a `const char*` both pass its check), a
      * temporary, so it takes the buffer.
+     *
+     * Policy 1 (no silent miscompile): when [resultCarriesPointer] says [fn]'s result can
+     * point into that same buffer (a `CStr`, an `Unsafe<T>`, or a `Maybe` or struct holding
+     * one), a buffer built here is not proven to outlive it. The buffer's own lifetime, "to
+     * the end of the full-expression," is already not long enough for a stored result read on
+     * a later statement (`m: Maybe<CStr> = afterS(a + b, 44); trace(lenM(m))`, measured: `m`
+     * dangles); it is shorter still once W2.3's hoister spills the call into its own statement
+     * for sitting beside an impure sibling (measured with MSVC ASan, freed by `~CStrBuf` in
+     * the spilled statement, before the result the caller kept was read). Rather than track
+     * whether a spill will happen, or how far the result travels, the call is refused
+     * whenever a temporary buffer would feed a pointer-carrying result at all: [isTemporaryStr]
+     * is exactly the shape [argument] would otherwise wrap in `CStrBuf`/`in(...)`, so refusing
+     * there is narrower than emitting code no lifetime analysis here can back up (naming the
+     * `Str` first, `s: Str = ...; then pass s`, keeps the buffer as the caller's own local,
+     * whose lifetime is the caller's to manage instead of this call's).
      */
-    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String): String {
+    private fun argument(ctx: CppEmitContextImpl, fn: FnSymbol, resultCarriesPointer: Boolean, p: ParamSymbol?, binding: ArgBinding?, text: String): String {
         if (p == null) {
             return text
         }
         if (p.byRef) {
             return if (isUnsafe(p.type)) text else "kira::ffi::out($text)"
         }
+        val expr = (binding as? ArgBinding.Given)?.expr
         if (p.type == KType.Str) {
+            if (resultCarriesPointer && expr != null && isTemporaryStr(ctx, expr)) {
+                refuseDanglingStr(ctx, fn, expr)
+            }
             return "kira::ffi::in($text)"
         }
         if (isCStr(p.type)) {
-            val expr = (binding as? ArgBinding.Given)?.expr ?: return text
-            if (ctx.model.types[expr] != KType.Str) {
+            if (expr == null || ctx.model.types[expr] != KType.Str) {
                 return text
             }
             return when {
                 expr is StringLiteral -> text
                 expr is Identifier && expr !is IntrinsicExpr -> when (val sym = ctx.model.symbolOf(expr)) {
                     is GlobalSymbol -> when {
-                        externOf(sym) != null -> "kira::ffi::CStrBuf($text).c_str()"
+                        externOf(sym) != null -> {
+                            if (resultCarriesPointer) {
+                                refuseDanglingStr(ctx, fn, expr)
+                            }
+                            "kira::ffi::CStrBuf($text).c_str()"
+                        }
                         sym.isConstant -> text
                         else -> "$text.c_str()"
                     }
                     else -> "$text.c_str()"
                 }
-                else -> "kira::ffi::CStrBuf($text).c_str()"
+                else -> {
+                    if (resultCarriesPointer) {
+                        refuseDanglingStr(ctx, fn, expr)
+                    }
+                    "kira::ffi::CStrBuf($text).c_str()"
+                }
             }
         }
         return text
+    }
+
+    /**
+     * Whether [expr], bound to a `Str`- or `CStr`-typed parameter, is the shape [argument]
+     * wraps in a fresh temporary (`kira::ffi::in(...)` or `kira::ffi::CStrBuf(...)`) rather
+     * than reading a `Str` that already persists on its own: a computed expression, or a read
+     * of an extern `Str` constant (its read manufactures a fresh `kira::Str` on every call,
+     * D12, not the header's own storage). A literal, or a named non-extern `Str` (a local, a
+     * plain global, a Kira `Str` constant), reads storage that outlives this call already.
+     */
+    private fun isTemporaryStr(ctx: CppEmitContextImpl, expr: Expr): Boolean = when {
+        expr is StringLiteral -> false
+        expr is Identifier && expr !is IntrinsicExpr -> when (val sym = ctx.model.symbolOf(expr)) {
+            is GlobalSymbol -> externOf(sym) != null
+            else -> false
+        }
+        else -> true
+    }
+
+    /**
+     * Refuses [expr] as a computed `Str` argument to the extern function [fn], whose result
+     * [carriesPointer] says can point into the temporary buffer that argument would build
+     * ([argument]'s doc has the reasoning). Named for what to write instead, as every other
+     * refusal in this file does.
+     */
+    private fun refuseDanglingStr(ctx: CppEmitContextImpl, fn: FnSymbol, expr: Expr) {
+        ctx.diag(
+            expr,
+            CppModuleEmitterFactory.UNSUPPORTED_CODE,
+            "a computed Str argument to the extern function '${fn.name}', whose result can point into it " +
+                "(name it first: s: Str = ...; then pass s)",
+        )
     }
 
     /** `CStr`, the FFI `const char*` (design 7.2, a magic class of the builtins). */

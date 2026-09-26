@@ -1,7 +1,115 @@
-# Known issues: w2-6-ffi (convergence round 1)
+# Known issues: w2-6-ffi (convergence round 3)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
+
+## Convergence round 3
+
+### A computed Str argument to a pointer-carrying extern result was a heap-use-after-free (fixed, not deferred)
+
+**What.** `CppExternEmitter.argument` passed a computed `Str` (neither a literal, a
+constant, nor a named `Str`) to a `CStr` parameter as `kira::ffi::CStrBuf(expr).c_str()`,
+and to a `Str` parameter as `kira::ffi::in(expr)`. Both build a temporary that lives only to
+the end of the call's own full-expression. When the extern function's result is a `CStr`,
+an `Unsafe<T>`, or a `Maybe` or struct holding one, nothing proved the result did not still
+point into that buffer once it was gone — and once read on a later statement (a stored
+result), or once W2.3's hoister spills the call into its own statement for sitting beside an
+impure sibling, it already did (verifier's reproduction, trial CLI `526467b` + W2.3
+`7c0fb42`: `trace(lenM(after(a + b, 44), next()))` printed 1 on g++ and 75 on clang, where
+75 is correct, and MSVC ASan reported a heap-use-after-free freed by `~CStrBuf`; the same
+through a `Str` parameter (`in(a + b)`) and through a stored `m: Maybe<CStr> = afterS(a + b,
+44)`).
+
+**Where.** `src/main/kotlin/net/exoad/kira/compiler/backend/codegen/cpp/CppExternEmitter.kt`:
+`call` now computes whether the callee's result `carriesPointer` (a `CStr`, an `Unsafe<T>`
+directly, a `Maybe<X>` recursively, or a class/struct with such a field, recursively) and
+passes it to `argument`, which refuses (via `refuseDanglingStr`, `ctx.diag`,
+`cpp.unsupported`) a computed `Str` argument into such a call instead of building the
+temporary. `kira/cpp/tests/ffi_test.cxx` and `kira/ffi.hxx` are unchanged: the fix is
+entirely at the Kira-compiler level, so the C++ side never sees the unsafe code at all.
+
+**Status: fixed this round, not deferred (policy 1).** Per the convergence policy's choice
+(a): the construct is refused with a diagnostic naming the callee and telling the caller to
+name the `Str` first (`s: Str = a + b`, then pass `s`), rather than attempting a
+lifetime-extension fix in `kira/ffi.hxx` or coordinating with W2.3's hoister — a spill is
+not the only way the buffer's lifetime is too short (the stored-result case above needs no
+hoisting at all), so narrowing what compiles is the only fix that does not miss a case.
+`CppExternEmitterTest.aComputedStrIntoAPointerCarryingResultIsRefusedNotALiteralOrANamedOne`
+covers a computed argument to a `CStr` parameter, to a `Str` parameter, and to a `CStr`
+result directly (`strip(nameOf(1))`), and confirms a literal, a named `Str`, and a Kira
+`Str` constant into the same callees are not refused.
+
+### `ffi_test.cxx`'s `declared<T>(fake::Holder::N)` comment names the wrong ambiguity
+
+**What.** The comment block above the file-scope `static_assert` on
+`declared<std::int32_t>(fake::Holder::N)` describes the array/function ambiguity (round 2's
+fix), not `Holder::N`'s own in-class `static const int` case (round 5's fix, re-tested in
+round 2). That `static_assert` sits in an unevaluated `decltype`, so it cannot exercise the
+odr-use the comment's neighboring test is named for; only `check()` in `main()` does, which
+does catch it (verified: the link fails when the by-value `declared<T>` overload is
+removed).
+
+**Where.** `kira/cpp/tests/ffi_test.cxx`, the comment above the `Holder::N` `static_assert`.
+
+**Why it is safe to defer.** The test itself is correct and exercises what it should
+(`run.sh` and `msvc.bat` both build and run it, and removing the by-value overload breaks
+the link as expected, measured this round); only the prose above it points at the wrong one
+of the two ambiguities this file's tests cover. A comment fix, not a behavior fix.
+
+### This ledger's own title was stale by two rounds
+
+**What.** The title said "(convergence round 1)" while the file already held a "Convergence
+round 2" section (and, before this fix, would have held a "Convergence round 3" section
+under a "round 1" title). Fixed in this same edit: the title above now reads "round 3".
+
+**Where.** The top of this file.
+
+**Why it is safe to defer (moot).** Not deferred — corrected in this round's own edit to
+this file, alongside the entries above.
+
+### Cross-package note for W2.3: `CppHoister.copied`'s `const const` spelling must not be fixed before the buffer/lifetime issue above
+
+**What.** `CppHoister.copied` (line 266 on the verifier's trial) writes `const ` before any
+spelled type, so a hoisted `CStr` or `Unsafe<T>` temporary is spelled `const const char*
+t0_`, which g++, clang and MSVC `/WX` all reject (MSVC: C4114). Fixing that spelling alone,
+with nothing else changed, turns `useC(strip(a + b), next())` into a heap-use-after-free
+(measured with MSVC ASan on the verifier's trial) — the same mechanism the fix above closes,
+but from the hoister's side, which this package does not own.
+
+**Where.** W2.3's `CppHoister.kt` (not this package's file; recorded here because it
+currently masks this round's significant issue and interacts with the fix above).
+
+**Why it is safe to defer.** It is W2.3's own bug to fix on its own branch, not something
+this package's `OWNS`/`TOUCHES` list reaches. It is flagged here, rather than left silent,
+because once W2.3 fixes the spelling, `strip(a + b)`-shaped calls will compile where they
+did not before — and this round's fix (refusing a computed `Str` into a pointer-carrying
+extern result at the Kira-compiler level, independent of whatever C++ the hoister emits)
+already covers that case regardless of which order the two branches merge in, so no
+re-check is needed at `cpp-backend`'s merge step beyond confirming this package's own tests
+(they do: `strip(nameOf(1))` is refused today, ahead of the hoister fix landing anywhere).
+
+### The W2.3 merge-conflict trial is current against `7c0fb42`, not `41575c6`
+
+**What.** The previous round's note below this one named W2.3's head as `41575c6` and its
+own `resolve.py` as the working script. `cpp/w2-3-emit-exprs` has since moved to `7c0fb42`.
+The verifier's trial this round (`526467b` + `7c0fb42` + `vc1/resolve.py` + the four
+delegation hooks applied by hand from `vc2ffi/hooks.py`, since `v26r5-fix/deleg.patch` no
+longer applies — `CppExprEmitter.kt` line 479 now reads `functionValue(sym, at)` where the
+patch expects `ctx.qualified(sym)`) still gives a clean result: `cpp.*` 537/0/0, forward
+`emit: required` byte for byte, `ExternDelegationTest` 2/0 unskipped. `CppDeclEmitter.kt`'s
+conflict still resolves with `vc1/resolve.py` unchanged.
+
+**Where.** `scratchpad/vc2ffi/hooks.py` (this session's copy of the four hand-applied
+hooks, replacing the stale `v26r5-fix/deleg.patch`); `scratchpad/vc1/resolve.py` (unchanged,
+matches any `>>>>>>> origin/<branch>` marker rather than a literal branch name, so it keeps
+working as W2.3's head moves).
+
+**Why it is safe to defer.** Same reasoning as every round's version of this note: a
+merge-order fact between two sibling branches, not a defect in this package standalone;
+this package's own `cpp-backend` ancestor check passes today with no merge needed
+(`cpp-backend` `09ad744` is already an ancestor of this branch's head). Recorded so the next
+round's trial merge does not have to re-discover which head and which patch/hooks still
+work.
 
 ## Convergence round 2
 

@@ -604,6 +604,126 @@ class CppExternEmitterTest {
         }
     }
 
+    /**
+     * Policy 1 (no silent miscompile): `kira::ffi::CStrBuf(expr)` and `kira::ffi::in(expr)`
+     * build a temporary that lives only to the end of the call's own full-expression. When
+     * the call's result is a `CStr`, an `Unsafe<T>`, or a `Maybe` or struct holding one, that
+     * is not proven long enough (measured on the trial CLI, MSVC ASan: `Maybe<CStr>` from a
+     * `strchr`-shaped `after`, and a bare `CStr` from `strip`, both freed by `~CStrBuf` before
+     * the result was read). Rather than track whether a spill or a stored result outlives the
+     * buffer, a computed `Str` (here, `nameOf(1)`: neither a literal, a constant, nor a named
+     * `Str`) into such a call is refused outright; a literal or a named `Str` is not, since
+     * neither builds a temporary at all. Bodies are not lowered on this branch yet (pending on
+     * W2.3, ledgered), so each call is built directly through [CppExternEmitter.call], the same
+     * way [aCStrParameterTakesAStrAsSection72Says] and [aCallSpellsTheCppNameAndTheProxies] do;
+     * a fresh module per call keeps its diagnostics to exactly what that one call reports.
+     */
+    private fun diagsOf(body: String, fnName: String, receiver: String? = null, vararg args: String): List<String> {
+        val c = callsOf(body)
+        val call = c.ctx.model.calls.values.firstOrNull { it.fn?.name == fnName } ?: fail("no call of '$fnName' in the model")
+        CppExternEmitter.call(c.ctx, call, receiver, args.toList())
+        // Bodies are not lowered on this branch (pending on W2.3, ledgered), so emit(body)
+        // already reported "the body of '<fn>' is not lowered yet" for every function with a
+        // body; that noise is unrelated to what this test checks and is filtered out here.
+        return c.ctx.diagnostics.filter { it.isError && "a computed Str argument" in it.message }.map { it.render() }
+    }
+
+    @Test
+    fun aComputedStrIntoAPointerCarryingResultIsRefusedNotALiteralOrANamedOne() {
+        val computedCStr = diagsOf(
+            """
+            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
+            pub fx nameOf: (i: Int32) Str;
+            @_extern(cpp = "probe::after", header = "probe.hxx")
+            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
+            fx cat: () Void {
+                r: Maybe<CStr> = after(nameOf(1), 1)
+            }
+            """,
+            "after", null, "::probe::nameOf(1)", "1",
+        )
+        assertTrue(computedCStr.any { it.contains("a computed Str argument") && it.contains("'after'") && it.contains("can point into it") }, computedCStr.toString())
+
+        val computedStr = diagsOf(
+            """
+            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
+            pub fx nameOf: (i: Int32) Str;
+            @_extern(cpp = "probe::afterS", header = "probe.hxx")
+            pub fx afterS: (s: Str, c: Int32) Maybe<CStr>;
+            fx cat: () Void {
+                r: Maybe<CStr> = afterS(nameOf(1), 1)
+            }
+            """,
+            "afterS", null, "::probe::nameOf(1)", "1",
+        )
+        assertTrue(computedStr.any { it.contains("a computed Str argument") && it.contains("'afterS'") && it.contains("can point into it") }, computedStr.toString())
+
+        val computedIntoCStrResult = diagsOf(
+            """
+            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
+            pub fx nameOf: (i: Int32) Str;
+            @_extern(cpp = "probe::strip", header = "probe.hxx")
+            pub fx strip: (s: CStr) CStr;
+            fx cat: () Void {
+                r: CStr = strip(nameOf(1))
+            }
+            """,
+            "strip", null, "::probe::nameOf(1)",
+        )
+        assertTrue(computedIntoCStrResult.any { it.contains("a computed Str argument") && it.contains("'strip'") && it.contains("can point into it") }, computedIntoCStrResult.toString())
+
+        // A literal, a plain named Str, and a Kira Str constant build no temporary at all, so
+        // none of them are refused even though the callee's result is the same shape.
+        val literal = diagsOf(
+            """
+            @_extern(cpp = "probe::after", header = "probe.hxx")
+            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
+            fx cat: () Void {
+                r: Maybe<CStr> = after("literal", 1)
+            }
+            """,
+            "after", null, "\"literal\"", "1",
+        )
+        assertTrue(literal.isEmpty(), literal.toString())
+
+        val namedCStr = diagsOf(
+            """
+            @_extern(cpp = "probe::after", header = "probe.hxx")
+            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
+            fx cat: (a: Str) Void {
+                r: Maybe<CStr> = after(a, 1)
+            }
+            """,
+            "after", null, "a", "1",
+        )
+        assertTrue(namedCStr.isEmpty(), namedCStr.toString())
+
+        val constantCStr = diagsOf(
+            """
+            @_extern(cpp = "probe::after", header = "probe.hxx")
+            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
+            pub GREETING: Str = "hi"
+            fx cat: () Void {
+                r: Maybe<CStr> = after(GREETING, 1)
+            }
+            """,
+            "after", null, "::ext::GREETING", "1",
+        )
+        assertTrue(constantCStr.isEmpty(), constantCStr.toString())
+
+        val namedStr = diagsOf(
+            """
+            @_extern(cpp = "probe::afterS", header = "probe.hxx")
+            pub fx afterS: (s: Str, c: Int32) Maybe<CStr>;
+            fx cat: (a: Str) Void {
+                r: Maybe<CStr> = afterS(a, 1)
+            }
+            """,
+            "afterS", null, "a", "1",
+        )
+        assertTrue(namedStr.isEmpty(), namedStr.toString())
+    }
+
     @Test
     fun aStrIsNoCStrAnywhereElse() {
         // Only an extern function has a CStr parameter to fill; the typer's rule is scoped to
