@@ -1,7 +1,182 @@
-# Known issues: w2-6-ffi (convergence round 3)
+# Known issues: w2-6-ffi (convergence round 4)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
+
+## Open decisions
+
+### The FFI contract only proves the buffer safe to the end of the full-expression, never beyond what the typed model can see
+
+**What.** Round 3 and round 4's refusals (`CppExternEmitter.argument`, `carriesPointer`)
+close every escape this package's typed model can trace: the call's own result, a `mut`
+parameter, and a `mut` method's receiver. Design 7.2 promises a computed `Str`'s buffer only
+"to the end of the full-expression," and nothing refuses a C++ callee that squirrels a
+pointer to it away somewhere that promise does not reach and the typed model cannot see:
+an `@_opaque` handle or a `kira::Rc<C>` result whose C++ object stores a `string_view` or a
+`const char*` into what it was constructed from; a plain C++ global a setter-shaped `Void`
+function writes into (ImGui's `io.IniFilename` is the standing example); or a `CStr` read
+from a named `Str` that is later reassigned before the pointer is used (a `mut` global a
+sibling call changes in between). None of these are call-shaped in a way `carriesPointer`
+can see them through — the pointer leaves via C++ side effects the Kira type signature does
+not name.
+
+**Where.** `CppExternEmitter.kt`'s `carriesPointer`/`argument`, and design 7.2 (the buffer
+lifetime promise).
+
+**Why this is a decision, not a bug to fix here.** Proving either of these safe or unsafe
+needs information the FFI's typed-signature contract does not carry (whether a C++ callee
+retains a pointer past the call, which C++ has no way to declare short of reading its
+source or hand-annotating every extern). Two ways forward: (a) leave the contract as "safe
+to the end of the full-expression, and no further" and document the gap explicitly (an
+`@_extern` author's responsibility to avoid these shapes, the same trust boundary the rest
+of 7.2 already places on `header =`), or (b) add an annotation (`@_retains` or similar) an
+extern author states when a parameter's buffer is retained, and refuse a computed `Str`
+into any such parameter unconditionally regardless of the result shape. Nothing in this
+package's brief asks for (b), and no in-tree example needs it; recorded here for the user
+to pick a direction before an extern binding relies on it.
+
+## Convergence round 4
+
+### Issue 1 (fixed, not deferred): a literal or a Kira `Str` constant into a `Str` parameter of a pointer-carrying result was a heap-use-after-free
+
+**What.** `isTemporaryStr` returned `false` for a `StringLiteral` and for a named,
+non-extern `Str` global (which includes a Kira `Str` constant), on the theory that neither
+builds a temporary. That is only true on the `CStr`-parameter path (`argument`'s own `when`
+there passes a literal and a Kira constant through as the `const char*` they already are,
+with no wrapper). On the `Str`-parameter path, every argument is wrapped in
+`kira::ffi::in(text)`, whose parameter is `const std::string&`; a literal (a C string
+literal) and a Kira `Str` constant (D12: `inline constexpr const char*`) are both
+`const char*` there, and binding that to `in`'s reference parameter converts through a
+fresh `std::string` temporary exactly as a computed expression would, dying at the same
+full-expression's end. Verifier's reproduction (trial `27a2876` + W2.3 `7c0fb42`):
+`afterS("hello, world, a literal long enough to live on the heap and not in the small
+buffer", 44)` and `afterS(GREETING, 44)` (a `pub GREETING: Str` constant) both read 0 where
+77/78 are correct on g++ and clang, and MSVC ASan reported a heap-use-after-free freed by
+`~basic_string` in the same statement for each.
+
+**Where.** `CppExternEmitter.kt`'s `isTemporaryStr` (previously lines 500-507).
+
+**Status: fixed this round.** `isTemporaryStr` now returns `true` for a `StringLiteral` and
+for a named `Str` global that is `externOf(sym) != null || sym.isConstant` (an extern
+constant's read, already refused, or a Kira constant, newly refused); only a local, or a
+plain non-constant global `Str` — already an lvalue of `in`'s own parameter type — reads
+existing storage with no temporary built. `CppExternEmitterTest.
+aLiteralOrAKiraStrConstantIntoAStrParameterOfAPointerCarryingResultIsRefusedToo` covers the
+literal and the constant into `afterS`, plus a literal into a scalar-returning call staying
+unrefused (the temporary is never read past the full-expression there).
+
+### Issue 2 (fixed, not deferred): a pointer could also escape through a `mut` parameter or a `mut` method's receiver, uncaught by a return-type-only check
+
+**What.** `call` computed `resultCarriesPointer` from `call.returnType` alone.
+`kira::ffi::out(x)` lets an extern callee write a *new* value into any `mut` parameter, and
+a `mut fx`'s receiver is written the same way; either is exactly as much an output channel
+as the return value, and a computed `Str` argument feeding a call that writes a
+pointer-carrying value through one of those dangled the same way (verifier's reproduction:
+`afterInto: (s: Str, c: Int32, mut out: Maybe<CStr>) Void` called `afterInto(a + b, 44, mut
+e)`; `setName: (mut o: Opts, s: CStr) Void` on a struct `Opts { name: Maybe<CStr>, n:
+Int32 }` called `setName(mut o, a + b)`; `rename: (s: CStr) Void`, a `mut fx` on `Opts`,
+called `o.rename(a + b)` — all compiled with no diagnostic, g++ read 0/0/6 and 6 where
+74/74/80 and 80 are correct, and MSVC ASan reported a heap-use-after-free for each).
+
+**Where.** `CppExternEmitter.kt`'s `call` (the `resultCarriesPointer` computation) and
+`carriesPointer`.
+
+**Status: fixed this round.** `call` now ORs three channels into one `pointerEscapes` flag:
+`carriesPointer(call.returnType)`, any `byRef` parameter whose type `carriesPointer` and
+which is not a bare `Unsafe<T>` (a `mut p: Unsafe<T>` is the caller's own buffer passed in
+to be filled, not a value the callee produces — table 5.1 — so it alone never triggers the
+refusal), and, for a `mut fx` call, the receiver's type (`call.receiver`'s typed-model type,
+or the owning class when called through an implicit `this`). `CppExternEmitterTest.
+aComputedStrEscapingThroughAMutParameterOrAMutMethodReceiverIsRefused` covers all three
+escapes from the reproduction, plus a `mut Unsafe<T>` out-buffer alongside a computed `Str`
+staying unrefused.
+
+### Issue 3 (fixed, not deferred): `View<T>`/`MutView<T>` were not pointer-carrying types
+
+**What.** `carriesPointer` covered `CStr`, `Unsafe<T>`, `Maybe<X>` and a struct field, but
+not `View<T>`/`MutView<T>` — `kira::View`/`kira::MutView` is a borrowed ptr+len over
+someone else's storage (core.hxx) with no fields of its own the recursive struct check
+could see. A computed `Str` argument feeding a call whose result is a view was therefore
+never refused (verifier's reproduction: a C++ seam `kira::View<char> tailOf(const
+std::string&, std::int32_t)` declared `tailOf: (s: Str, at: Int32) View<Char>`, called
+`t: View<Char> = tailOf(a + b, 7); trace(t[0])`; g++ and clang printed `' '` where `'w'` is
+correct, and MSVC ASan reported a heap-use-after-free).
+
+**Where.** `CppExternEmitter.kt`'s `carriesPointer` (previously lines 362-376).
+
+**Status: fixed this round.** `carriesPointer` now returns `true` directly for `View<T>`
+and `MutView<T>`, alongside `CStr` and `Unsafe<T>`. `CppExternEmitterTest.
+aComputedStrIntoAViewOrMutViewResultIsRefused` covers both `View<Char>` and `MutView<Char>`
+results.
+
+### The pending-on-W2.3 entry did not name `13-ffi-cpp`
+
+**What.** `examples/cpp/13-ffi-cpp/run.sh` fails on this branch alone with `cpp.unsupported:
+the body of 'main' is not lowered yet`, and passes on a trial merge with W2.3
+(`13-ffi-cpp: ok`) — the same W2.3-lowers-bodies dependency the round-2 ledger entry below
+("The forward golden and ExternDelegationTest's body check are pending on W2.3") already
+names for the forward golden and `ExternDelegationTest`, just without this example.
+
+**Where.** `examples/cpp/13-ffi-cpp/run.sh`; the round-2 entry, updated in this edit to
+name it too.
+
+**Why it is safe to defer.** Same reasoning as that entry: nothing in this package's own
+code needs to change, and the example passes once `cpp-backend` has both packages merged
+(measured this round on the trial merge).
+
+### The round report's CppExternEmitterTest count was off by one
+
+**What.** An earlier round's report said `CppExternEmitterTest` has 19 tests;
+`TEST-...CppExternEmitterTest.xml` lists 18 for that round (17 earlier tests plus
+`aComputedStrIntoAPointerCarryingResultIsRefusedNotALiteralOrANamedOne`, which does run and
+pass). Only the report's count was wrong; the test itself ran, passed, and is unaffected by
+this round's fixes (still green, verified in this round's full run).
+
+**Where.** The round-3 report text (not a file in this repo); `build/test-results/test/
+TEST-net.exoad.kira.cpp.ffi.CppExternEmitterTest.xml`.
+
+**Why it is safe to defer.** A reporting slip, not a code defect; the ledger records it so
+a future count mismatch is not mistaken for a missing test.
+
+### The round-3 regression test's `r: CStr = strip(nameOf(1))` local models a program the CLI frontend rejects
+
+**What.** `aComputedStrIntoAPointerCarryingResultIsRefusedNotALiteralOrANamedOne`'s
+`computedIntoCStrResult` case declares a bare `r: CStr = strip(nameOf(1))` local. The CLI
+frontend rejects that shape today ("The type CStr was not found at this scope"), while
+`Maybe<CStr>` locals and fields are accepted (`diagsOf` builds the `ResolvedCall` directly
+through `CppExternEmitter.call`, bypassing the frontend's own type-resolution pass, so the
+test still exercises the call-emission path it names even though the CLI could not compile
+the program it is modeled on). `diagsOf` filters to "a computed Str argument" messages, so
+the mismatch is silent unless someone tries to compile the literal source through the CLI.
+
+**Where.** `src/test/kotlin/net/exoad/kira/cpp/ffi/CppExternEmitterTest.kt`,
+`aComputedStrIntoAPointerCarryingResultIsRefusedNotALiteralOrANamedOne`'s
+`computedIntoCStrResult` case.
+
+**Why it is safe to defer.** The test's assertion is still true of what it actually
+exercises (`CppExternEmitter.call`'s refusal), and no acceptance path routes this exact
+source text through the full CLI. The inconsistency this surfaces — a bare `CStr` type
+annotation rejected at local/field scope while `Maybe<CStr>` is accepted — is itself worth
+a separate look (immediately below), since it is plausibly a scoping gap in the type
+resolver rather than an intentional restriction (design 7.2 does not say a bare `CStr`
+local should be refused).
+
+### A bare `CStr` local or field annotation is rejected; `Maybe<CStr>` is accepted
+
+**What.** `r: CStr = strip(nameOf(1))` as a local declaration is rejected by the CLI
+frontend with "The type CStr was not found at this scope," while the identical shape under
+`Maybe<CStr>` (`r: Maybe<CStr> = after(nameOf(1), 1)`, used throughout this file's tests) is
+accepted. `CStr` is otherwise an ordinary magic type (a parameter, a return type, a struct
+field), so a bare local/field annotation being the one shape the resolver does not find is
+inconsistent on its face.
+
+**Where.** Whatever scope-resolution pass rejects a bare `CStr` local/field annotation
+(not this package's `OWNS`/`TOUCHES` files — not investigated further this round).
+
+**Why it is safe to defer.** No acceptance command in this package's brief, and no example
+in the tree, declares a bare `CStr` local or field; every in-tree use of `CStr` at that
+position goes through `Maybe<CStr>` already. Fixing the resolver gap (if it is one) is
+outside this package's own files and does not block anything this round needs.
 
 ## Convergence round 3
 
@@ -129,22 +304,25 @@ touches only those three). Doing it mid-round would rewrite commits an earlier v
 already reviewed; it belongs right before the `cpp-backend` merge, once no more rounds are
 expected to add commits underneath it.
 
-### The forward golden and ExternDelegationTest's body check are `pending` on W2.3
+### The forward golden, ExternDelegationTest's body check, and `13-ffi-cpp` are `pending` on W2.3
 
-**What.** The forward golden's `case.yaml` still states `emit: pending`, and
-`ExternDelegationTest`'s body-check case is skipped (1 skipped of 991 in
-`./gradlew test`), because both need classes W2.3 lowers bodies for; this package's own
-branch does not have them yet.
+**What.** The forward golden's `case.yaml` still states `emit: pending`,
+`ExternDelegationTest`'s body-check case is skipped (1 skipped of 991, then 995 once round
+4's tests are added, in `./gradlew test`), and `examples/cpp/13-ffi-cpp/run.sh` fails with
+`cpp.unsupported: the body of 'main' is not lowered yet` — all three because they need
+classes W2.3 lowers bodies for; this package's own branch does not have them yet. (Round 4
+added `13-ffi-cpp` to this entry; the first two are unchanged from round 2.)
 
 **Where.** `src/test/resources/cpp-golden/forward/case.yaml`;
-`src/test/kotlin/net/exoad/kira/cpp/ffi/ExternDelegationTest.kt`.
+`src/test/kotlin/net/exoad/kira/cpp/ffi/ExternDelegationTest.kt`;
+`examples/cpp/13-ffi-cpp/run.sh`.
 
-**Why it is safe to defer (policy 5).** A trial merge of `a60ab54` (this round's head) with
-W2.3 `41575c6` and this package's own `v26r5-fix/deleg.patch` (measured in scratch, not
-applied to the worktree) makes both pass: the forward golden emits byte for byte, and
-`ExternDelegationTest` runs 2/0 with the body check included. Nothing in this package's own
-code needs to change for that; the golden and the test are already written to expect it.
-They resolve automatically once `cpp-backend` has both packages merged.
+**Why it is safe to defer (policy 5).** A trial merge of this round's head with W2.3
+`7c0fb42` (round 2: `a60ab54` with W2.3 `41575c6`) makes all three pass: the forward golden
+emits byte for byte, `ExternDelegationTest` runs 2/0 with the body check included, and
+`13-ffi-cpp: ok`. Nothing in this package's own code needs to change for that; the golden,
+the test and the example are already written to expect it. They resolve automatically once
+`cpp-backend` has both packages merged.
 
 ### The W2.3 merge-conflict entry named a moved head; the resolution still applies
 
