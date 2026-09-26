@@ -5,6 +5,7 @@ import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
@@ -41,14 +42,23 @@ import java.util.IdentityHashMap
  *   in a container (an array literal or a construction), captured by a lambda, or passed to a
  *   parameter that escapes, to an extern, magic, virtual or trait-dispatched callee, or
  *   through an `Fx` value. The parameters of a virtual method always escape (a vtable has no
- *   templates). The rest is a fixpoint over the call graph, starting from "nothing escapes".
+ *   templates), and so do the `Fx` parameters of a function that is itself taken as a value
+ *   (`h: Fx<...> = applyTo`, [Coercion.FnRef]): a function whose `Fx` parameter is a template
+ *   parameter (design 5.1) is a template, and a template converts to no `kira::Fn`. The rest
+ *   is a fixpoint over the call graph, starting from "nothing escapes".
  * - `this` escapes a class when it is used as a value anywhere but as a receiver (returned,
  *   stored, passed, put in a container) or when a lambda capturing it escapes.
  * - A view (a symbol, or a `from`/`slice`/`view` of one) escapes by the same sinks; a view
  *   stored in a local of view type escapes when that local does.
- * - `rules.escape.view-return`: a returned view derived from a local of the function (the
- *   view outlives its storage). `rules.escape.view-field`: a class field of view type. A
- *   struct field of view type is allowed (D5).
+ * - `rules.escape.view-return`: a returned value borrows a local of the function (the view
+ *   outlives its storage). The value is a view (`a.view()`, or `a` itself coerced to one), a
+ *   call that returns one of its view parameters that escapes (`keep(a.view())`), a
+ *   construction or array literal holding one (`Cursor { text = s.view() }`), or a local that
+ *   holds one (`c` after `c.text = s.view()`); a view local's provenance is what it was built
+ *   from. A view returned through a struct parameter of a called function is not traced.
+ *   `rules.escape.view-field`: a class field whose type holds a view anywhere (a `View`, a
+ *   `Maybe` of one, a struct with a view field, a `List<View<T>>`). A struct field of view
+ *   type is allowed (D5).
  */
 internal class EscapePass : RulePass {
     override val name: String = "escape"
@@ -79,6 +89,16 @@ internal class EscapePass : RulePass {
                     is FunctionDeclParameterExpr -> (r.model.declSyms[n] as? ParamSymbol)?.let { seed(r, it, null, fxEsc, viewEsc) }
                     is VariableDecl -> (r.model.declSyms[n] as? LocalSymbol)?.let { if (r.isView(it.type)) viewEsc[it] = false }
                     else -> {}
+                }
+            }
+        }
+        // A function taken as a value is no template: its Fx parameters are std::function.
+        for ((_, c) in r.model.coercions) {
+            if (c is Coercion.FnRef) {
+                for (p in c.fn.params) {
+                    if (fxEsc.containsKey(p)) {
+                        fxEsc[p] = true
+                    }
                 }
             }
         }
@@ -128,15 +148,14 @@ internal class EscapePass : RulePass {
                 }
                 for (f in cls.fields) {
                     val t = f.type
-                    val viewT = if (r.isView(t)) t else r.facts.maybeInner(t)?.takeIf { r.isView(it) }
-                    if (viewT != null) {
-                        r.report(
-                            "rules.escape.view-field",
-                            "Field '${f.name}' of class ${cls.name} is a ${t.display()}: a view borrows storage it does not own, and an " +
-                                "object outlives the call that lent it (D5). Hold an Arr<T, N> or a List<T>, or keep the view in a struct.",
-                            f.decl,
-                        )
-                    }
+                    val viewT = r.viewInside(t) ?: continue
+                    val holds = if (viewT == t) "" else ", which holds a ${viewT.display()}"
+                    r.report(
+                        "rules.escape.view-field",
+                        "Field '${f.name}' of class ${cls.name} is a ${t.display()}$holds: a view borrows storage it does not own, and an " +
+                            "object outlives the call that lent it (D5). Hold an Arr<T, N> or a List<T>, or keep the view in a struct.",
+                        f.decl,
+                    )
                 }
             }
         }
@@ -302,11 +321,14 @@ internal class EscapePass : RulePass {
         }
     }
 
-    /** `rules.escape.view-return` over one body: the provenance of every returned view. */
+    /**
+     * `rules.escape.view-return` over one body: the provenance of every returned value that
+     * is, or holds, a view.
+     */
     private class ViewReturns(private val r: Rules, private val b: Body) {
         private val model = r.model
 
-        /** What each view local of this body was built from, in source order. */
+        /** What each view-typed or view-holding local of this body was built from, in source order. */
         private val sources = IdentityHashMap<Symbol, MutableSet<Symbol>>()
 
         fun check() {
@@ -314,16 +336,12 @@ internal class EscapePass : RulePass {
                 when (n) {
                     is VariableDecl -> {
                         val local = model.declSyms[n] as? LocalSymbol ?: return@walk
-                        if (r.isView(local.type)) {
-                            n.value?.let { v -> AstScan.values(v).forEach { sources.getOrPut(local) { LinkedHashSet() }.addAll(provenance(it, HashSet())) } }
+                        if (tracked(local)) {
+                            n.value?.let { v -> AstScan.values(v).forEach { sources.getOrPut(local) { LinkedHashSet() }.addAll(borrowed(it, HashSet())) } }
                         }
                     }
-                    is AssignmentExpr -> {
-                        val local = (model.places[n.target] as? Place.Local)?.sym ?: return@walk
-                        if (r.isView(local.type)) {
-                            AstScan.values(n.value).forEach { sources.getOrPut(local) { LinkedHashSet() }.addAll(provenance(it, HashSet())) }
-                        }
-                    }
+                    is AssignmentExpr -> stored(model.places[n.target], n.value)
+                    is PlaceAssignmentExpr -> if (n.operator == null) stored(model.places[n.target], n.value)
                     else -> {}
                 }
             }
@@ -333,13 +351,12 @@ internal class EscapePass : RulePass {
                 }
                 val fnName = lambdas.lastOrNull()?.let { "this lambda" } ?: b.what
                 for (v in AstScan.values(n.expr)) {
-                    if (!r.isView(model.types[v])) {
-                        continue
-                    }
-                    val local = provenance(v, HashSet()).firstOrNull { it is LocalSymbol && !r.isView(it.type) } ?: continue
+                    val local = borrowed(v, HashSet()).firstOrNull { it is LocalSymbol && !tracked(it) } ?: continue
+                    val self = v is Identifier && model.refs[v] === local
+                    val how = if (self) "is returned as a view of itself, a local" else "is a view of the local '${local.name}'"
                     r.report(
                         "rules.escape.view-return",
-                        "${KiraUnparser.text(v)} is a view of the local '${local.name}', which is destroyed when $fnName returns (D5): " +
+                        "${KiraUnparser.text(v)} $how, which is destroyed when $fnName returns (D5): " +
                             "return a copy (an Arr<T, N> or a List<T>), or view a value the caller owns.",
                         v,
                     )
@@ -347,39 +364,104 @@ internal class EscapePass : RulePass {
             }
         }
 
-        /** The storage a view expression borrows from: locals, parameters, fields and globals it can be traced to. */
-        private fun provenance(e: Expr, seen: MutableSet<Symbol>): Set<Symbol> {
+        /** A local whose value is a view or holds one: its provenance is what was stored in it, never its own storage. */
+        private fun tracked(s: Symbol): Boolean = s is LocalSymbol && (r.isView(s.type) || r.holdsView(s.type))
+
+        /** A store into (a part of) a tracked local: the value's provenance joins the local's. */
+        private fun stored(target: Place?, value: Expr) {
+            val local = (target?.root() as? Place.Local)?.sym ?: return
+            if (!tracked(local)) {
+                return
+            }
+            AstScan.values(value).forEach { sources.getOrPut(local) { LinkedHashSet() }.addAll(borrowed(it, HashSet())) }
+        }
+
+        /** A value that is a view: typed as one, or coerced to one (`return a` on an `Arr`, `List` or `Str` where a `View` is expected). */
+        private fun isViewValue(e: Expr): Boolean = r.isView(model.types[e]) || model.coercions[e] is Coercion.ToView
+
+        /** A value whose provenance can be traced: a view, or something holding one. */
+        private fun traceable(e: Expr): Boolean = isViewValue(e) || r.holdsView(model.types[e])
+
+        /**
+         * The storage a value borrows, when it is or holds a view: the locals, parameters,
+         * fields and globals it can be traced to. A value that is neither borrows nothing.
+         */
+        private fun borrowed(e: Expr, seen: MutableSet<Symbol>): Set<Symbol> {
+            if (!traceable(e)) {
+                return emptySet()
+            }
             model.places[e]?.let { p ->
                 val root = r.rootSymbol(p) ?: return emptySet()
-                if (root is LocalSymbol && r.isView(root.type)) {
-                    if (!seen.add(root)) {
-                        return emptySet()
-                    }
-                    val out = LinkedHashSet<Symbol>()
-                    out.add(root)
-                    sources[root]?.forEach { s -> out.addAll(if (s is LocalSymbol && r.isView(s.type)) provenance(s, seen) else setOf(s)) }
-                    return out
+                val t = model.types[e]
+                if (root is LocalSymbol && tracked(root) && (r.isView(t) || r.holdsView(t))) {
+                    // A view (or holder) kept in the local: what was stored there, not the local itself.
+                    return ofLocal(root, seen)
                 }
+                // Storage of its own (an Arr, a List, a Str, a struct's array), viewed: the symbol is what is borrowed.
                 return setOf(root)
             }
-            if (e is FunctionCallExpr) {
-                val rc = model.calls[e] ?: return emptySet()
-                val recv = rc.receiver ?: return emptySet()
-                if (rc.kind == CallKind.MAGIC && rc.fn?.name in r.lenders) {
-                    return provenance(recv, seen)
+            return when (e) {
+                is FunctionCallExpr -> call(e, seen)
+                is ObjectInitExpr -> {
+                    val out = LinkedHashSet<Symbol>()
+                    e.positionalArgs.forEach { a -> AstScan.values(a).forEach { out.addAll(borrowed(it, seen)) } }
+                    e.namedArgs.forEach { a -> AstScan.values(a.value).forEach { out.addAll(borrowed(it, seen)) } }
+                    out
                 }
+                is ArrayLiteral -> {
+                    val out = LinkedHashSet<Symbol>()
+                    e.value.forEach { a -> AstScan.values(a).forEach { out.addAll(borrowed(it, seen)) } }
+                    out
+                }
+                else -> emptySet()
             }
+        }
+
+        /** What a lending magic method's receiver is: a view or holder (traced), or storage of its own (the symbol). */
+        private fun lent(recv: Expr, seen: MutableSet<Symbol>): Set<Symbol> {
+            if (traceable(recv)) {
+                return borrowed(recv, seen)
+            }
+            model.places[recv]?.let { p -> return r.rootSymbol(p)?.let { setOf(it) } ?: emptySet() }
             return emptySet()
         }
 
-        /** Provenance of a view local by symbol (through what it was built from). */
-        private fun provenance(local: LocalSymbol, seen: MutableSet<Symbol>): Set<Symbol> {
+        /**
+         * What a call's view result borrows: the receiver of a lending magic method
+         * (`xs.view()`, `v.from(1)`); for a callee with a body, the arguments bound to view
+         * parameters that escape it (its result may be one of them); for a callee this pass
+         * never analysed, every view or view-holding argument and such a receiver.
+         */
+        private fun call(e: FunctionCallExpr, seen: MutableSet<Symbol>): Set<Symbol> {
+            val rc = model.calls[e] ?: return emptySet()
+            if (rc.kind == CallKind.MAGIC && rc.fn?.name in r.lenders && rc.receiver != null) {
+                return lent(rc.receiver, seen)
+            }
+            val fn = rc.fn
+            val analysed = fn?.body != null && (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD || rc.kind == CallKind.OP_OVERLOAD || rc.kind == CallKind.CTOR)
+            val out = LinkedHashSet<Symbol>()
+            rc.args.forEachIndexed { i, a ->
+                val given = a as? ArgBinding.Given ?: return@forEachIndexed
+                val param = fn?.params?.getOrNull(i)
+                val mayReturnIt = if (analysed) param != null && r.isView(param.type) && model.viewEscapes(param) else traceable(given.expr)
+                if (mayReturnIt) {
+                    AstScan.values(given.expr).forEach { out.addAll(borrowed(it, seen)) }
+                }
+            }
+            if (!analysed) {
+                rc.receiver?.takeIf { traceable(it) }?.let { out.addAll(borrowed(it, seen)) }
+            }
+            return out
+        }
+
+        /** Provenance of a tracked local: itself (filtered out by the report), and what was stored in it. */
+        private fun ofLocal(local: LocalSymbol, seen: MutableSet<Symbol>): Set<Symbol> {
             if (!seen.add(local)) {
                 return emptySet()
             }
             val out = LinkedHashSet<Symbol>()
             out.add(local)
-            sources[local]?.forEach { s -> out.addAll(if (s is LocalSymbol && r.isView(s.type)) provenance(s, seen) else setOf(s)) }
+            sources[local]?.forEach { s -> out.addAll(if (s is LocalSymbol && tracked(s)) ofLocal(s, seen) else setOf(s)) }
             return out
         }
     }

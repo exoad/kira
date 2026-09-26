@@ -85,6 +85,40 @@ class ConstEligibilityPassTest {
     }
 
     @Test
+    fun constOperatorsLiteralGlobalsAndConstDefaults() {
+        // The three hidden calls, each constant: a @_const @op_add, a global of a literal type, a field default that is @_const.
+        expectClean(
+            snippet(
+                """
+                pub struct V2 {
+                    pub x: Int32 = 0
+                }
+                pub @_const fx @op_add: (a: V2, b: V2) V2 {
+                    return V2 { a.x + b.x }
+                }
+                pub @_const fx sum: (a: V2, b: V2) V2 {
+                    return a + b
+                }
+                pub LIMITS: Arr<Int32, 2> = [1, 2]
+                pub @_const fx lim: (i: Size) Int32 {
+                    return LIMITS[i]
+                }
+                pub @_const fx seed: () Int32 {
+                    return 4
+                }
+                pub struct W {
+                    pub n: Int32 = seed()
+                }
+                pub @_const fx mk: () Int32 {
+                    w: W = W { }
+                    return w.n
+                }
+                """,
+            ),
+        )
+    }
+
+    @Test
     fun genericsAndTuples() {
         expectClean(
             snippet(
@@ -167,6 +201,50 @@ class ConstEligibilityPassTest {
         )
         expectExactly(p, "rules.const.call", "rules.const.call", "rules.const.extern", "rules.const.trace", "rules.const.call")
         assertTrue(message(p, "rules.const.call").contains("'slow', which is not @_const"))
+    }
+
+    @Test
+    fun operatorOverloadsRunTimeGlobalsAndDefaultsAreCalls() {
+        // p02, p03 and p09 of the fix round: each of these typed clean in Kira and failed in C++.
+        val p = snippet(
+            """
+            pub struct V2 {
+                pub x: Int32 = 0
+            }
+            pub fx @op_add: (a: V2, b: V2) V2 {
+                return V2 { a.x + b.x }
+            }
+            pub fx @op_eq: (a: V2, b: V2) Bool {
+                return a.x == b.x
+            }
+            pub @_const fx sum: (a: V2, b: V2) V2 {
+                return a + b
+            }
+            pub @_const fx same: (a: V2, b: V2) Bool {
+                return a == b
+            }
+            pub DYN: Arr<Int32> = [1, 2, 3]
+            pub @_const fx firstOf: () Int32 {
+                return DYN.get(0)
+            }
+            pub fx seed: () Int32 {
+                return 4
+            }
+            pub struct W {
+                pub n: Int32 = seed()
+            }
+            pub @_const fx mk: () Int32 {
+                w: W = W { }
+                return w.n
+            }
+            """,
+        )
+        // A parameter default is a literal or a constant (D48, phase C), so a call there never reaches this pass.
+        expectExactly(p, "rules.const.call", "rules.const.call", "rules.const.global", "rules.const.call")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.contains("a + b calls '@op_add', which is not @_const") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("reads the global 'DYN', which is Arr<Int32>") && it.contains("inline const") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("constructs W leaving field 'n' to its default seed(), which calls 'seed', which is not @_const") }, messages.joinToString("\n"))
     }
 
     @Test

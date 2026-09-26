@@ -37,6 +37,36 @@ class ExclusivityPassTest {
         pub fx fill: (mut xs: Arr<Int32>, v: View<Int32>) Void {
             xs.set(0, v[0])
         }
+        pub fx sz: (n: Size, v: Int32) Int32 {
+            return v
+        }
+        pub fx pair: (a: Int32, b: Int32) Int32 {
+            return a + b
+        }
+        pub fx bump: (mut x: Int32) Int32 {
+            x += 1
+            return x
+        }
+        pub struct Counter {
+            pub a: Int32 = 0
+            pub items: Arr<Int32> = []
+            pub mut fx grow: () Int32 {
+                a += 1
+                return a
+            }
+            pub fx peek: () Int32 {
+                return a
+            }
+            pub mut fx reset: () Void {
+                a = 0
+            }
+        }
+        pub class Cache {
+            pub mut items: List<Int32> = List<Int32> {}
+            pub mut fx push: (v: Int32) Void {
+                items.add(v)
+            }
+        }
     """
 
     // ---- positive ----------------------------------------------------------------------------
@@ -101,7 +131,51 @@ class ExclusivityPassTest {
         )
     }
 
+    @Test
+    fun siblingsThatWriteNothingAnotherReadsAreInOrder() {
+        // A call's receiver is sequenced before its arguments in C++, so a mut receiver beside an argument
+        // that reads it is the receiver rule's business, not the order rule's; a nested write beside a
+        // sibling that reads something else is fine, and so are two reads.
+        expectClean(
+            snippet(
+                bag + """
+                pub fx f: () Int32 {
+                    mut b: Counter = Counter {}
+                    mut n: Int32 = 1
+                    t: Int32 = sz(b.items.size(), b.peek())
+                    u: Int32 = pair(b.peek(), bump(mut n))
+                    v: Int32 = pair(bump(mut n), 1) + b.grow()
+                    w: Int32 = b.grow() + 1
+                    put(mut b.a, b.peek())
+                    return t + u + v + w
+                }
+                """,
+            ),
+        )
+    }
+
     // ---- negative ----------------------------------------------------------------------------
+
+    @Test
+    fun aPlaceWrittenByOneArgumentAndReadByItsSiblingHasNoOrderInCpp() {
+        val p = snippet(
+            bag + """
+            pub fx f: () Int32 {
+                mut b: Counter = Counter {}
+                mut n: Int32 = 1
+                t: Int32 = sz(b.items.size(), b.grow())
+                u: Int32 = pair(n, bump(mut n))
+                v: Int32 = b.a + b.grow()
+                w: Int32 = pair(b.grow(), b.grow())
+                mut c: Cache = Cache {}
+                x: Int32 = sz(c.items.size(), bump(mut n))
+                return t + u + v + w + x
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
+        assertTrue(message(p, "rules.exclusivity.order").contains("'b.grow()' writes 'b' while one operand of 'sz' is evaluated, and 'b.items' is read by another"))
+    }
 
     @Test
     fun aMutArgumentMustNotOverlapAnotherArgument() {
@@ -159,9 +233,18 @@ class ExclusivityPassTest {
                 for w: Int32 in s.items {
                     s = Bag {}
                 }
+                mut k: Counter = Counter {}
+                for v: Int32 in k.items {
+                    k.reset()
+                }
+                mut c: Cache = Cache {}
+                for z: Int32 in c.items {
+                    c.push(z)
+                }
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop")
+        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop", "rules.exclusivity.loop")
+        assertTrue(p.diagnostics.any { it.message.contains("calls the `mut fx` 'reset' on 'k', which holds it") }, p.diagnostics.joinToString("\n") { it.message })
     }
 }

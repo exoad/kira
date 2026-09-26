@@ -53,14 +53,16 @@ class RulesCorpusTest {
 
     @Test
     fun unilidarPurityAndEachPacketIsATemplate() {
-        // Pure: reads only. Impure: a write through a MutView or to a mut parameter writes the caller's
-        // storage (writeU32, readHeader), and whoever calls such a function is impure too (command and
-        // the frames built on it); eachPacket calls through an Fx value.
+        // Every function is IMPURE for D33: crc32, readU32, tailClosed and packetAt read the storage their
+        // View borrows (a sibling operand could write it); writeU32 and readHeader write through a MutView
+        // or to a mut parameter, and command and the frames built on it call writeU32; eachPacket calls
+        // through an Fx value. So `f(readU32(p), readU32(p.from(4)))` is spilled, in source order.
         val p = TyperTestSupport.project(File(corpus, "unilidar"), TyperMode.STRICT)
         val m = p.module("pilot:unilidar")!!
-        val pure = setOf("crc32", "readU32", "tailClosed", "packetAt")
-        for (fn in m.declarations.filterIsInstance<FnSymbol>()) {
-            assertEquals(if (fn.name in pure) Effect.PURE else Effect.IMPURE, p.model.effect(fn), fn.name)
+        val fns = m.declarations.filterIsInstance<FnSymbol>()
+        assertTrue(fns.size >= 12, fns.map { it.name }.toString())
+        for (fn in fns) {
+            assertEquals(Effect.IMPURE, p.model.effect(fn), fn.name)
         }
         assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "eachPacket", "pilot:unilidar").params[1]))
     }
@@ -72,6 +74,7 @@ class RulesCorpusTest {
         val sender = TyperTestSupport.project(File(corpus, "sender"), TyperMode.STRICT)
         assertFalse(RulesTestSupport.cls(sender, "Sender", "pilot:carrules").thisEscapes)
         assertEquals(Effect.IMPURE, sender.model.effect(RulesTestSupport.method(sender, "Sender", "send", "pilot:carrules")))
-        assertEquals(Effect.PURE, sender.model.effect(RulesTestSupport.method(sender, "Sender", "sentMs", "pilot:carrules")))
+        // A class method reads its fields through a reference a sibling operand could write (D33): impure.
+        assertEquals(Effect.IMPURE, sender.model.effect(RulesTestSupport.method(sender, "Sender", "sentMs", "pilot:carrules")))
     }
 }

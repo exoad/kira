@@ -75,6 +75,14 @@ class ReturnPathPassTest {
                         return 1
                     } while false
                 }
+                pub fx again: (x: Int32) Int32 {
+                    do {
+                        if x > 0 {
+                            continue
+                        }
+                        return 1
+                    } while true
+                }
                 pub fx nested: () Int32 {
                     while true {
                         mut i: Int32 = 0
@@ -133,9 +141,27 @@ class ReturnPathPassTest {
                     break
                 }
             }
+            pub fx leftEarly: (x: Int32) Int32 {
+                do {
+                    if x > 0 {
+                        break
+                    }
+                    return 1
+                } while true
+            }
+            pub fx skipped: (x: Int32) Int32 {
+                mut i: Int32 = x
+                do {
+                    i -= 1
+                    if i > 0 {
+                        continue
+                    }
+                    return 1
+                } while i > 5
+            }
             """,
         )
-        expectExactly(p, "rules.return.missing", "rules.return.missing", "rules.return.missing")
+        expectExactly(p, "rules.return.missing", "rules.return.missing", "rules.return.missing", "rules.return.missing", "rules.return.missing")
     }
 
     @Test

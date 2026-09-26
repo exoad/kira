@@ -19,9 +19,12 @@ class EffectsPassTest {
     fun arithmeticLocalsAndPureCalleesArePure() {
         val p = snippet(
             """
-            pub mut STATE: Int32 = 3
+            pub LIMIT: Int32 = 3
             pub struct P {
                 pub x: Int32 = 0
+                pub fx doubled: () Int32 {
+                    return x * 2
+                }
             }
             pub fx twice: (v: Int32) Int32 {
                 return v * 2
@@ -33,17 +36,19 @@ class EffectsPassTest {
                 p.x = acc
                 mut xs: Arr<Int32, 2> = [1, 2]
                 xs[0] = p.x
-                return xs[0] + STATE
+                return xs[0] + LIMIT + p.doubled()
             }
             pub fx len: (s: Str, xs: List<Int32>) Size {
-                return s.length() + xs.size()
+                mut ys: List<Int32> = List<Int32> {}
+                return s.length() + xs.size() + ys.size()
             }
             """,
         )
         expectClean(p)
         assertEquals(Effect.PURE, p.model.effect(fn(p, "twice")))
-        assertEquals(Effect.PURE, p.model.effect(fn(p, "quad")), "reads of a mut global and writes to locals are pure")
-        assertEquals(Effect.PURE, p.model.effect(fn(p, "len")), "Str.length and List.size are marked pure")
+        assertEquals(Effect.PURE, p.model.effect(fn(p, "quad")), "reads of a constant, writes to locals and a struct method on a local are pure")
+        assertEquals(Effect.PURE, p.model.effect(fn(p, "len")), "Str.length and List.size are marked pure, and their receivers are the caller's own values")
+        assertEquals(Effect.PURE, p.model.effect(method(p, "P", "doubled")), "a struct reads its own fields by value")
     }
 
     @Test
@@ -141,7 +146,45 @@ class EffectsPassTest {
         assertEquals(Effect.IMPURE, model.effect(fn(p, "viewed")))
         assertEquals(Effect.IMPURE, model.effect(fn(p, "ref")))
         assertEquals(Effect.IMPURE, model.effect(method(p, "C", "bump")), "a mut fx writing its receiver")
-        assertEquals(Effect.PURE, model.effect(method(p, "C", "peek")))
+        assertEquals(Effect.IMPURE, model.effect(method(p, "C", "peek")), "a class reads its field through a reference a sibling could write")
+    }
+
+    @Test
+    fun readsOfSharedStateAndThrowsAreImpure() {
+        // D33: an operand that observes what a sibling could change, or that a try could catch, needs its order kept.
+        val p = snippet(
+            """
+            pub mut STATE: Int32 = 0
+            pub class C {
+                pub mut n: Int32 = 0
+            }
+            pub fx readG: () Int32 {
+                return STATE
+            }
+            pub fx byRef: (mut x: Int32) Int32 {
+                return x
+            }
+            pub fx element: (v: View<UInt8>) Int32 {
+                return v[0] as Int32
+            }
+            pub fx through: (v: View<UInt8>) Size {
+                return v.size()
+            }
+            pub fx field: (c: C) Int32 {
+                return c.n
+            }
+            pub fx parse: (s: Str) Int32 {
+                if s.isEmpty() {
+                    throw "empty"
+                }
+                return 1
+            }
+            """,
+        )
+        expectClean(p)
+        for (name in listOf("readG", "byRef", "element", "through", "field", "parse")) {
+            assertEquals(Effect.IMPURE, p.model.effect(fn(p, name)), name)
+        }
     }
 
     @Test

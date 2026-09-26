@@ -20,6 +20,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
@@ -41,6 +42,8 @@ import java.util.IdentityHashMap
  * - `rules.profile.class`: a `class` declared in the module (a heap reference).
  * - `rules.profile.try`: `try` (a `throw` becomes `kira::panic`, D41).
  * - `rules.profile.interpolation`: `"${...}"` producing a `Str`; into a `StrBuf` it appends in place.
+ * - `rules.profile.type` again for a `Str` concatenation (`"a" + b`): it allocates a `kira::Str`
+ *   even when no `Str` is spelled, so it is reported at the innermost `+` that builds one.
  * - `rules.profile.module`: `kira:os`, `kira:sync` and `kira:time` are hosted.
  */
 internal class ProfilePass : RulePass {
@@ -105,6 +108,17 @@ internal class ProfilePass : RulePass {
                     )
                 }
                 is FunctionCallExpr -> call(r, n)
+                is BinaryExpr -> if (model.types[n] == KType.Str && model.opCalls[n] == null) {
+                    // Reported once per chain, at the innermost `+` that builds a Str.
+                    val innerReported = listOf(n.leftExpr, n.rightExpr).any { it is BinaryExpr && model.types[it] == KType.Str }
+                    if (!innerReported) {
+                        r.report(
+                            "rules.profile.type",
+                            "Str concatenation allocates (a kira::Str), which the Pico profile refuses: append into a StrBuf<N> instead (buf.set(\"...\") appends in place).",
+                            n,
+                        )
+                    }
+                }
                 is Identifier -> if (n !is IntrinsicExpr) hostedSymbol(r, model.refs[n], n)
                 else -> {}
             }

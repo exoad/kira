@@ -13,6 +13,7 @@ import net.exoad.kira.compiler.analysis.types.IndexKind
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
+import net.exoad.kira.compiler.analysis.types.PathStep
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.Severity
 import net.exoad.kira.compiler.analysis.types.Symbol
@@ -22,6 +23,8 @@ import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.TypedModel
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.containsError
+import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
@@ -144,7 +147,13 @@ internal object AstScan {
 internal class Rules(val program: TypedProgram) {
     val model: TypedModel = program.model
     val facts = TypeFacts(program.builtins)
-    val bindings = BindingFlags()
+
+    /** One reader per program, so the ten passes parse each manifest once. */
+    val bindings: BindingFlags = synchronized(flagsByProgram) { flagsByProgram.getOrPut(program) { BindingFlags() } }
+
+    private companion object {
+        val flagsByProgram = java.util.WeakHashMap<TypedProgram, BindingFlags>()
+    }
 
     private val reported = IdentityHashMap<ASTNode, MutableSet<String>>()
 
@@ -224,6 +233,69 @@ internal class Rules(val program: TypedProgram) {
 
     fun isView(t: KType?): Boolean = t != null && (facts.isView(t) || facts.isMutView(t))
 
+    /**
+     * The first view type a value of [t] carries, or null: [t] itself when it is a `View` or
+     * `MutView`, else one held by a field of a struct, an element of a container (`Arr`,
+     * `List`, `Set`, `Deque`, `Stack`, `Queue`, a `Map`'s key or value), a tuple, a `Maybe`, a
+     * `Result` or a `Ref`. A class is never looked into (a class holding a view is refused at
+     * its own declaration). A struct that contains itself ends the walk.
+     */
+    fun viewInside(t: KType?): KType? = viewInside(t, HashSet())
+
+    fun holdsView(t: KType?): Boolean = viewInside(t) != null
+
+    private fun viewInside(t: KType?, path: MutableSet<KType>): KType? {
+        if (t == null) {
+            return null
+        }
+        if (isView(t)) {
+            return t
+        }
+        val nominal = t as? KType.Nominal ?: return null
+        val sym = nominal.sym as? ClassSymbol ?: return null
+        return when (sym.kind) {
+            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { viewInside(it, path) }
+            ClassKind.STRUCT -> {
+                if (!path.add(t)) {
+                    return null
+                }
+                val sub = sym.typeParams.zip(nominal.typeArgs()).toMap()
+                val found = sym.fields.firstNotNullOfOrNull { viewInside(it.type.substitute(sub), path) }
+                path.remove(t)
+                found
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * A place whose value another expression evaluated beside this one could change (D33):
+     * one rooted at a `mut` global, a `mut` parameter or the `this` of a class, or reached
+     * through a field of a reference (a class, trait, `Ref` or stdlib handle) or an element of
+     * a view (which borrows storage the reader does not own). A local, a by-value parameter,
+     * a constant, a struct receiver and every value they hold by copy are private: only this
+     * expression's own evaluation can change them.
+     */
+    fun isSharedPlace(p: Place): Boolean {
+        val rootShared = when (val root = p.root()) {
+            is Place.Local -> false
+            is Place.Param -> root.sym.byRef
+            is Place.Global -> root.sym.isMut
+            is Place.This -> (root.owner as? ClassSymbol)?.kind != ClassKind.STRUCT
+            is Place.Field -> false
+            is Place.Index -> false
+        }
+        if (rootShared) {
+            return true
+        }
+        return p.path().any { step ->
+            when (step) {
+                is PathStep.FieldStep -> ownerIsReference(step.sym)
+                is PathStep.IndexStep -> step.kind == IndexKind.VIEW || step.kind == IndexKind.MUT_VIEW
+            }
+        }
+    }
+
     /** The receiver of a `mut fx`: a value type needs a mutable place, a reference does not (D29). */
     fun needsMutablePlace(receiverType: KType): Boolean = !isReference(receiverType) && !receiverType.containsError()
 }
@@ -234,7 +306,9 @@ internal class Rules(val program: TypedProgram) {
  * depends only on the receiver and arguments; it may still panic) and `constexpr`
  * (ConstEligibilityPass: usable in a constant expression when the receiver and arguments are
  * literal types). A missing manifest, key or flag is the conservative answer: not pure, not
- * constexpr.
+ * constexpr. Phase C's MagicBindings reads `constexpr` from the same manifests by the same
+ * rule (the file beside the module, the `cpp` map under the key); that reader is phase C's,
+ * outside this package, and knows nothing of `pure`, so this one stays.
  */
 internal class BindingFlags {
     private class Flags(val pure: Boolean, val constexpr: Boolean)

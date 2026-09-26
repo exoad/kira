@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.analysis.types.rules
 
+import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.RulePass
@@ -13,6 +14,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
@@ -29,7 +31,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStat
  *
  * A path ends at a `return`, a `throw`, a call typed `Never` (`panic`), an `if` whose every
  * branch (else included) ends, a `try` whose block and handler both end, a `do`/`while` whose
- * body ends, or a `while true` with no `break` of its own. Statements after such an end are
+ * body ends with no `break` or `continue` of its own to leave the body before its end, or a
+ * `while true` or `do`/`while true` with no `break` of its own (a `continue` only re-enters
+ * it). Any other loop (a `for`, a `while` over a condition that is not the constant `true`)
+ * may run its body zero times or leave, so it ends no path. Statements after an end are
  * unreachable and change nothing.
  */
 internal class ReturnPathPass : RulePass {
@@ -83,7 +88,8 @@ internal class ReturnPathPass : RulePass {
             hasElse && all
         }
         is WhileIterationStatement -> isTrue(r, s.condition) && !breaks(s.statements)
-        is DoWhileIterationStatement -> ends(r, s.statements) || (isTrue(r, s.condition) && !breaks(s.statements))
+        is DoWhileIterationStatement ->
+            (ends(r, s.statements) && !breaks(s.statements) && !continues(s.statements)) || (isTrue(r, s.condition) && !breaks(s.statements))
         is ForIterationStatement -> false
         else -> endsExpr(r, s.expr)
     }
@@ -104,6 +110,16 @@ internal class ReturnPathPass : RulePass {
         is BreakStatement -> true
         is WhileIterationStatement, is DoWhileIterationStatement, is ForIterationStatement -> false
         is LambdaExpr -> false
-        else -> net.exoad.kira.compiler.analysis.types.AstTree.children(n).any { breaks(it) }
+        else -> AstTree.children(n).any { breaks(it) }
+    }
+
+    /** A `continue` that re-enters this loop (one inside a nested loop re-enters that loop). */
+    private fun continues(statements: List<Statement>): Boolean = statements.any { continues(it) }
+
+    private fun continues(n: ASTNode): Boolean = when (n) {
+        is ContinueStatement -> true
+        is WhileIterationStatement, is DoWhileIterationStatement, is ForIterationStatement -> false
+        is LambdaExpr -> false
+        else -> AstTree.children(n).any { continues(it) }
     }
 }

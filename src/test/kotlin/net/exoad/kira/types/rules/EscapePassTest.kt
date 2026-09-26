@@ -134,6 +134,42 @@ class EscapePassTest {
         assertFalse(p.model.viewEscapes(fn(p, "read").params[0]), "read.v is only read")
     }
 
+    @Test
+    fun aViewOfTheCallersStorageMayTravelThroughStructsCallsAndCoercions() {
+        val p = snippet(
+            """
+            pub struct Cursor {
+                pub text: View<Char> = ""
+            }
+            pub fx keep: (v: View<Int32>) View<Int32> {
+                return v
+            }
+            pub fx viaStruct: (s: View<Char>) Cursor {
+                return Cursor { text = s }
+            }
+            pub fx viaLocal: (s: View<Char>) View<Char> {
+                c: Cursor = Cursor { text = s }
+                return c.text
+            }
+            pub fx viaCall: (xs: Arr<Int32, 4>) View<Int32> {
+                return keep(xs.view())
+            }
+            pub fx coerced: (xs: Arr<Int32>) View<Int32> {
+                return xs
+            }
+            pub fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+                return f(x)
+            }
+            pub fx taken: () Int32 {
+                h: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
+                return 1
+            }
+            """,
+        )
+        expectClean(p)
+        assertTrue(p.model.fxEscapes(fn(p, "applyTo").params[0]), "applyTo is taken as a value, so it is no template: its Fx parameter is a std::function")
+    }
+
     // ---- negative ----------------------------------------------------------------------------
 
     @Test
@@ -164,6 +200,52 @@ class EscapePassTest {
     }
 
     @Test
+    fun aViewOfALocalCannotLeaveByCoercionCallOrStruct() {
+        val p = snippet(
+            """
+            pub struct Cursor {
+                pub text: View<Char> = ""
+            }
+            pub fx keep: (v: View<Int32>) View<Int32> {
+                return v
+            }
+            pub fx coercedArr: () View<Int32> {
+                a: Arr<Int32, 4> = [1, 2, 3, 4]
+                return a
+            }
+            pub fx coercedList: () View<Int32> {
+                mut xs: List<Int32> = List<Int32> {}
+                return xs
+            }
+            pub fx throughCall: () View<Int32> {
+                a: Arr<Int32, 4> = [1, 2, 3, 4]
+                return keep(a.view())
+            }
+            pub fx inStruct: () Cursor {
+                s: Str = "abc"
+                return Cursor { text = s.view() }
+            }
+            pub fx inLocalStruct: () Cursor {
+                s: Str = "abc"
+                mut c: Cursor = Cursor {}
+                c.text = s.view()
+                return c
+            }
+            pub fx outOfLocalStruct: () View<Char> {
+                s: Str = "abc"
+                c: Cursor = Cursor { text = s.view() }
+                return c.text
+            }
+            """,
+        )
+        expectExactly(p, "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return", "rules.escape.view-return")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("a is returned as a view of itself, a local") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("keep(a.view()) is a view of the local 'a'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("c is a view of the local 's'") }, messages.joinToString("\n"))
+    }
+
+    @Test
     fun aClassFieldCannotHoldAView() {
         val p = snippet(
             """
@@ -172,10 +254,20 @@ class EscapePassTest {
                 pub maybe: Maybe<MutView<UInt8>> = null
                 pub n: Int32 = 0
             }
+            pub struct Cursor {
+                pub v: View<Char> = ""
+            }
+            pub class Keeper {
+                pub mut h: Cursor = Cursor {}
+                pub mut vs: List<View<Char>> = List<View<Char>> {}
+                pub mut ok: List<Int32> = List<Int32> {}
+            }
             """,
         )
-        expectExactly(p, "rules.escape.view-field", "rules.escape.view-field")
+        expectExactly(p, "rules.escape.view-field", "rules.escape.view-field", "rules.escape.view-field", "rules.escape.view-field")
         assertTrue(message(p, "rules.escape.view-field").contains("keep the view in a struct"))
+        assertTrue(p.diagnostics.any { it.message.startsWith("Field 'h' of class Keeper is a Cursor, which holds a View<Char>") }, p.diagnostics.joinToString("\n") { it.message })
+        assertTrue(p.diagnostics.any { it.message.startsWith("Field 'vs' of class Keeper is a List<View<Char>>, which holds a View<Char>") }, p.diagnostics.joinToString("\n") { it.message })
     }
 
     @Test

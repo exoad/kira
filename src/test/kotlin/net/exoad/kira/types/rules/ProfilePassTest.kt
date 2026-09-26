@@ -150,6 +150,21 @@ class ProfilePassTest {
     }
 
     @Test
+    fun aStrConcatenationAllocatesWithoutSpellingStr() {
+        val p = snippet(
+            """
+            pub fx g: () Void {
+                trace("a" + "b")
+                trace("a" + "b" + "c")
+            }
+            """,
+            options = pico,
+        )
+        expectExactly(p, "rules.profile.type", "rules.profile.type")
+        assertTrue(message(p, "rules.profile.type").contains("Str concatenation allocates"))
+    }
+
+    @Test
     fun whatAFreestandingModuleUsesIsCheckedToo() {
         val p = modules(
             "test:util" to """

@@ -9,7 +9,10 @@ import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
+import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.IndexKind
+import net.exoad.kira.compiler.analysis.types.MemberRef
+import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.PathStep
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -17,6 +20,7 @@ import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
@@ -24,8 +28,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import java.util.IdentityHashMap
 
 /**
@@ -33,16 +39,37 @@ import java.util.IdentityHashMap
  * `TypedModel.fnEffects` for every function with a body (and every stdlib binding marked
  * `pure: true`) and `TypedModel.effects` for every expression of every body.
  *
- * A function is PURE when it calls only pure functions (or bindings marked `pure: true`),
- * writes no global, calls nothing extern, virtual, trait-dispatched or through an `Fx`
- * value, prints nothing, and writes only to its own locals: a write to a `mut` parameter, to
- * the receiver of a `mut fx`, through a class reference, a `Ref`, or a `MutView` counts as
- * impure. A `throw` does not: as the manifests say of a checked binding, a pure call may
- * still panic. The computation starts from "every function is pure" and removes functions
- * until nothing changes, so mutually recursive functions that do nothing impure stay pure.
+ * PURE is the answer to one question, D33's: may this operand be evaluated in any order
+ * against its siblings without the program noticing? Kira evaluates call arguments and the
+ * operands of an operator left to right (C and JS do); C++ leaves them unsequenced, so the
+ * C++ emitter spills the operands of a call or an operator into typed temporaries, in source
+ * order, whenever two or more of them are IMPURE (R19). That condition is sufficient only if
+ * IMPURE covers everything a sibling's evaluation could interact with, so an expression is
+ * IMPURE when it
  *
- * "Pure" means only that D33 needs no spill for the call; the emitter never drops a pure
- * call (its panic is still an effect the program relies on).
+ * - has an effect: it writes anything but the writer's own locals (a `mut` parameter, the
+ *   receiver of a `mut fx`, a global, a field through a class reference, a `Ref`, a
+ *   `MutView`), prints, calls an extern, a virtual or trait-dispatched method or an `Fx`
+ *   value, calls a function that does any of these, or calls a magic binding without
+ *   `pure: true`;
+ * - or may throw: a `throw` is caught by a `try` around the call, so which operand ran first
+ *   decides what a sibling's print or write left behind;
+ * - or reads shared state ([Rules.isSharedPlace]): a `mut` global, a `mut` parameter, a field
+ *   of a class (its own `this` included), a view (its elements, or the view itself, which is
+ *   iterated or indexed next), or the contents of a view or reference receiver (`v.get(0)`,
+ *   `c.peek()`), which a sibling could change before the read.
+ *
+ * Reads of locals, by-value parameters, constants and what they hold by copy are pure: only
+ * a `mut` argument or the receiver of a `mut fx` nested in a sibling could change those, and
+ * ExclusivityPass refuses that pair (`rules.exclusivity.order`). A stdlib binding marked
+ * `pure: true` keeps its promise (no effect, a result from its receiver and arguments); the
+ * receiver's own effect is the receiver expression's, so `XS.size()` on a `mut` global is
+ * IMPURE while `xs.size()` on a local is PURE. A checked binding's panic is not a throw a
+ * `try` catches (D10), so it stays pure as the manifests say.
+ *
+ * The computation starts from "every function is pure" and removes functions until nothing
+ * changes, so mutually recursive functions that do nothing impure stay pure. "Pure" never
+ * licenses dropping a call: the emitter spills or emits it in place, and only that.
  */
 internal class EffectsPass : RulePass {
     override val name: String = "effects"
@@ -114,10 +141,15 @@ internal class EffectsPass : RulePass {
         /** Whether [n] is itself an impure operation (its children aside). */
         fun nodeIsImpure(r: Rules, n: ASTNode, pure: Map<FnSymbol, Boolean>): Boolean {
             val model = r.model
-            model.opCalls[n as? Expr ?: return false]?.let { if (!callIsPure(r, it, pure)) return true }
+            val e = n as? Expr ?: return false
+            model.opCalls[e]?.let { if (!callIsPure(r, it, pure)) return true }
+            if (sharedRead(r, e)) {
+                return true
+            }
             return when (n) {
                 is FunctionCallExpr -> !callIsPure(r, model.calls[n], pure)
                 is IntrinsicExpr -> n.intrinsicKey.name != "_static_assert"
+                is ThrowExpr -> true
                 is AssignmentExpr -> !localWrite(r, model.places[n.target])
                 is CompoundAssignmentExpr -> !localWrite(r, model.places[n.left])
                 is PlaceAssignmentExpr -> !localWrite(r, model.places[n.target])
@@ -133,7 +165,32 @@ internal class EffectsPass : RulePass {
             }
         }
 
-        /** A call is pure when its callee is, and every defaulted parameter's default is. */
+        /**
+         * A read of state a sibling operand could change before it happens (D33): a `mut`
+         * global or `mut` parameter by name, or a place that is shared ([Rules.isSharedPlace]).
+         */
+        fun sharedRead(r: Rules, e: Expr): Boolean {
+            val model = r.model
+            when (e) {
+                is Identifier -> when (val s = model.refs[e]) {
+                    is GlobalSymbol -> if (s.isMut) return true
+                    is ParamSymbol -> if (s.byRef) return true
+                    else -> {}
+                }
+                is MemberAccessExpr -> ((model.members[e] as? MemberRef.ModuleMember)?.symbol as? GlobalSymbol)?.let { if (it.isMut) return true }
+                else -> {}
+            }
+            val p = model.places[e] ?: return false
+            // A view read as a value is iterated or indexed next: its contents are borrowed storage.
+            return r.isSharedPlace(p) || r.isView(model.types[e])
+        }
+
+        /**
+         * A call is pure when its callee is, every defaulted parameter's default is, and its
+         * receiver is no view or reference (the callee reads the storage those borrow or share,
+         * which a sibling could change; a struct or container receiver is read as the place
+         * the receiver expression is).
+         */
         fun callIsPure(r: Rules, rc: ResolvedCall?, pure: Map<FnSymbol, Boolean>): Boolean {
             if (rc == null) {
                 return false
@@ -146,6 +203,10 @@ internal class EffectsPass : RulePass {
                 CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE, CallKind.PRINT -> false
             }
             if (!callee) {
+                return false
+            }
+            val receiverType = rc.receiver?.let { r.model.types[it] }
+            if (receiverType != null && (r.isView(receiverType) || r.isReference(receiverType))) {
                 return false
             }
             return rc.args.all { a -> a !is ArgBinding.Default || a.param.default?.let { exprTreeIsPure(r, it, pure) } != false }
