@@ -66,7 +66,9 @@ fi
 "$cxx_bin" -std=c++20 -O2 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Werror -ffp-contract=off \
     -I "$work/gen" -I "$here/native" "${sources[@]}" "$work/cshape.o" "${hostlink[@]}" -o "$work/app"
 "$work/app" | tr -d '\r' > "$work/actual.txt"
-if diff -u "$here/expected.txt" "$work/actual.txt"; then
+# Both sides without '\r': a checkout with core.autocrlf=true holds expected.txt as CRLF.
+tr -d '\r' < "$here/expected.txt" > "$work/expected.txt"
+if diff -u "$work/expected.txt" "$work/actual.txt"; then
     echo "13-ffi-cpp: ok"
 else
     echo "13-ffi-cpp: stdout differs from expected.txt" >&2
