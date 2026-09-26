@@ -1,4 +1,4 @@
-module app:main  profile=HOSTED ns=main imports=[app:model]
+module app:main  profile=HOSTED ns=main_ imports=[app:model]
   fn main: () Void  body
 module app:model  profile=HOSTED ns=model imports=[]
   class Point  pub

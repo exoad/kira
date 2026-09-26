@@ -1472,9 +1472,26 @@ namespace kira::os
   {
       begin();
 #if defined(_WIN32)
+      // The promise is the filesystem holding `path`, a file or a directory,
+      // as statvfs answers on the other half. GetDiskFreeSpaceEx takes a
+      // directory only (a file path is ERROR_DIRECTORY, 267), so the path is
+      // first required to exist (statvfs fails on a missing one too) and
+      // then mapped to its volume's mount point, the directory whose free
+      // space is the answer for everything on that volume.
+      if(GetFileAttributesA(path.c_str()) == INVALID_FILE_ATTRIBUTES)
+      {
+          failWin("GetFileAttributes");
+          return -1;
+      }
+      Str volume(32768, '\0'); // the longest path Win32 names, mount point included
+      if(!GetVolumePathNameA(path.c_str(), volume.data(), static_cast<DWORD>(volume.size())))
+      {
+          failWin("GetVolumePathName");
+          return -1;
+      }
       ULARGE_INTEGER avail;
       avail.QuadPart = 0;
-      if(!GetDiskFreeSpaceExA(path.c_str(), &avail, nullptr, nullptr))
+      if(!GetDiskFreeSpaceExA(volume.c_str(), &avail, nullptr, nullptr))
       {
           failWin("GetDiskFreeSpaceEx");
           return -1;

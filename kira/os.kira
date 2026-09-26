@@ -127,7 +127,8 @@ pub @_magic fx listDir: (path: Str) List<Str>;
 pub @_magic fx exists: (path: Str) Bool;
 // Creates every missing directory on the path; true when it exists after.
 pub @_magic fx makeDirs: (path: Str) Bool;
-// Bytes free to this process on the filesystem holding `path`, or -1.
+// Bytes free to this process on the filesystem holding `path`, a file or a
+// directory, on both halves; -1 when `path` does not exist.
 pub @_magic fx freeBytes: (path: Str) Int64;
 
 // --- processes -------------------------------------------------------------

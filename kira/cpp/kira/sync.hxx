@@ -94,17 +94,39 @@ namespace kira::sync
       }
       Thread(const Thread&) = delete;
       Thread& operator=(const Thread&) = delete;
-      // std::jthread joins here, so dropping the last reference waits.
-      ~Thread() = default;
+      // std::jthread joins here, so dropping the last reference waits, with
+      // one exception: the last reference dropped by the body itself, on
+      // its own thread (a body that captured a Ref holding its handle, a
+      // class that owns its worker and whose body captured self, design
+      // 5.6). No thread can join itself: libstdc++ throws EDEADLK out of
+      // the jthread destructor, which is noexcept, so std::terminate. That
+      // drop detaches instead: the body runs to its end and nothing waits
+      // for it, which is all a body can ask of itself.
+      ~Thread()
+      {
+          if(thread_.joinable() && thread_.get_id() == std::this_thread::get_id())
+          {
+              thread_.detach();
+          }
+      }
 
       [[nodiscard]] bool stopRequested() const noexcept { return thread_.get_stop_token().stop_requested(); }
       void requestStop() noexcept { (void)thread_.request_stop(); }
+      // Waits for the body to finish; a second join is a no-op. A body
+      // that joins its own handle would wait for itself: that is a panic
+      // with its name, not libstdc++'s EDEADLK (std::terminate) and not
+      // libc++'s silent return.
       void join()
       {
-          if(thread_.joinable())
+          if(!thread_.joinable())
           {
-              thread_.join();
+              return;
           }
+          if(thread_.get_id() == std::this_thread::get_id())
+          {
+              kira::panic("Thread.join from its own body: a thread cannot wait for itself");
+          }
+          thread_.join();
       }
 
   private:

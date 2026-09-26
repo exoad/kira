@@ -25,7 +25,8 @@ corpus="$root/src/test/resources/cpp-golden"
 out="$root/build/cpp-tests/goldens"
 mkdir -p "$out"
 
-WARN=(-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror)
+# -ffp-contract=off is D28: the goldens' fixed3 pins hold only unfused, and aarch64 g++ fuses by default.
+WARN=(-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off)
 
 passes=0
 fails=0
@@ -42,7 +43,16 @@ skip() {
 }
 
 windows=0
-case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) windows=1 ;; esac
+linux=0
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) windows=1 ;;
+    Linux) linux=1 ;;
+esac
+# A hosted link on Linux glibc needs -pthread (kira/os.hxx says so, and sys.sh passes it):
+# glibc 2.35 (the Pi) folds libpthread into libc, but gcc 11.4 on glibc 2.31 leaves
+# pthread_create and pthread_cond_clockwait unresolved for any case that reaches
+# kira/sync.hxx (measured: sysdecls in the gcc:11.4 image, Debian 11).
+if [ "$linux" = 1 ]; then hostlink=(-pthread); else hostlink=(); fi
 p() { if [ "$windows" = 1 ]; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 have() { command -v "$1" > /dev/null 2>&1 || [ -x "$1" ]; }
 exe() { if [ "$windows" = 1 ]; then printf '%s.exe' "$1"; else printf '%s' "$1"; fi; }
@@ -107,7 +117,7 @@ build_gnu() {
     local bin
     bin=$(exe "$out/$name/$tc")
     rm -f "$bin"
-    if "$@" "${WARN[@]}" "${defs[@]}" -I "$inc" -I "$(p "$dir/driver")" "${srcs[@]}" -o "$(p "$bin")" > "$out/$name/$tc.log" 2>&1 && [ -f "$bin" ]; then
+    if "$@" "${WARN[@]}" "${defs[@]}" -I "$inc" -I "$(p "$dir/driver")" "${srcs[@]}" "${hostlink[@]}" -o "$(p "$bin")" > "$out/$name/$tc.log" 2>&1 && [ -f "$bin" ]; then
         run_hosted "$name" "$dir" "$tc" "$bin"
     else
         grep -v '^[[:space:]]*|' "$out/$name/$tc.log" | head -30
@@ -159,7 +169,7 @@ build_arm() {
         obj="$out/$name/arm-$(basename "$s").o"
         rm -f "$obj"
         if ! "$arm" -std=c++20 -mcpu=cortex-m33 -mthumb -Os -fno-exceptions -fno-rtti -DKIRA_PROFILE_FREESTANDING=1 \
-            -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror "${defs[@]}" \
+            -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off "${defs[@]}" \
             -I "$inc" -I "$(p "$dir/driver")" -c "$s" -o "$(p "$obj")" > "$out/$name/arm.log" 2>&1 || [ ! -f "$obj" ]; then
             grep -v '^[[:space:]]*|' "$out/$name/arm.log" | head -30
             fail "$name/arm: $(basename "$s") does not compile freestanding"

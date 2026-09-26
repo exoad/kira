@@ -26,8 +26,13 @@ class CppNames {
         used.add(name)
     }
 
-    /** `new` becomes `new_`; anything else is returned as it is. */
-    fun escape(name: String): String = escapeKeyword(name)
+    /**
+     * `new` becomes `new_`, and so do `std` and `kira`: a declaration of either name
+     * (`pub std: Int32` as a field or a constant) would hide the namespace every later
+     * `std::int32_t` or `kira::Str` in its scope spells (gcc: "changes meaning of 'std'").
+     * Anything else is returned as it is.
+     */
+    fun escape(name: String): String = if (name in SPELLED_NAMESPACES) "${name}_" else escapeKeyword(name)
 
     /**
      * A new synthesized name for [stem]: `fresh("t")` gives `t0_`, `t1_`,
@@ -59,19 +64,47 @@ class CppNames {
 
         fun isKeyword(name: String): Boolean = name in KEYWORDS
 
+        /** The namespaces generated text spells unqualified (`std::int32_t`, `kira::Str`), which no declaration may take as its name. */
+        val SPELLED_NAMESPACES: Set<String> = setOf("std", "kira")
+
         fun escapeKeyword(name: String): String = if (isKeyword(name)) "${name}_" else name
 
         /**
-         * A namespace segment derived from a module URI: a keyword or an
-         * object-like macro gets the trailing underscore (`new_`, `linux_`,
-         * `errno_`). `namespace errno {` is legal to the compiler that wrote
-         * it and unnameable to every caller that includes `<cerrno>`, and
-         * `linux` is `1` under `-std=gnu++20`, so a derived namespace never
-         * spells one; a manifest override that does is an error instead.
+         * A top-level namespace segment derived from a module URI: a keyword,
+         * an object-like macro or a name the C library declares at global
+         * scope gets the trailing underscore (`new_`, `linux_`, `errno_`,
+         * `main_`, `exit_`). `namespace errno {` is legal to the compiler that
+         * wrote it and unnameable to every caller that includes `<cerrno>`,
+         * `linux` is `1` under `-std=gnu++20`, and `namespace main {` or
+         * `namespace exit {` is "redeclared as different kind of entity" the
+         * moment `<cstdlib>` (which `kira/core.hxx` includes) or the program's
+         * own `int main` sits beside it, so a derived namespace never spells
+         * one; a manifest override that does is an error instead.
          */
         fun escapeNamespaceSegment(name: String): String {
+            return if (isKeyword(name) || isObjectLikeMacro(name) || isCGlobal(name)) "${name}_" else name
+        }
+
+        /**
+         * A segment nested under another namespace (`kira::time` for
+         * `kira:time`, design 4.3): a keyword or an object-like macro is
+         * escaped as at top level, but a C library global is not, since
+         * `::time` and `kira::time` are different scopes and never meet.
+         */
+        fun escapeNestedSegment(name: String): String {
             return if (isKeyword(name) || isObjectLikeMacro(name)) "${name}_" else name
         }
+
+        /**
+         * [name] is declared at global scope by C17's headers or by what the
+         * runtime's includes reach on gcc, clang or MSVC (glibc's POSIX and GNU
+         * names under `_GNU_SOURCE`, `<pthread.h>` and `<sched.h>` through
+         * `<thread>`, the `f`/`l`/`f128` forms of every math function, the
+         * enumerators of `<signal.h>`), or is `main`. A namespace of that name
+         * at global scope is an error on gcc, clang and MSVC alike: a name is
+         * one kind of entity per scope. The list is [C_GLOBAL_NAMES].
+         */
+        fun isCGlobal(name: String): Boolean = name in C_GLOBAL_NAMES
 
         /**
          * D35: [name] is an object-like macro in `<windows.h>` (and what it
@@ -104,6 +137,30 @@ class CppNames {
             "thread_local", "throw", "true", "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
             "virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq",
         )
+
+        /**
+         * The program's entry point and every global name of C17's headers and of what the
+         * runtime's includes reach, read from the classpath resource
+         * `net/exoad/kira/cpp/c-global-names.txt`. That file is measured, not written:
+         * `kira/cpp/tools/c_global_names.py` compiles a namespace and a variable of every
+         * identifier the headers mention on zig's x86_64 and aarch64 glibc and musl, MinGW g++
+         * and MSVC, and keeps the names they reject (2,000 and more, so no hand list holds
+         * them). A missing resource is a packaging fault and fails loudly rather than
+         * escaping nothing.
+         */
+        val C_GLOBAL_NAMES: Set<String> by lazy { readCGlobalNames() }
+
+        const val C_GLOBAL_NAMES_RESOURCE = "/net/exoad/kira/cpp/c-global-names.txt"
+
+        private fun readCGlobalNames(): Set<String> {
+            val stream = CppNames::class.java.getResourceAsStream(C_GLOBAL_NAMES_RESOURCE)
+                ?: throw IllegalStateException("the classpath resource $C_GLOBAL_NAMES_RESOURCE is missing; regenerate it with kira/cpp/tools/c_global_names.py")
+            val names = stream.bufferedReader(Charsets.UTF_8).useLines { lines ->
+                lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.toHashSet()
+            }
+            check("main" in names && "exit" in names && "sqrtf" in names) { "$C_GLOBAL_NAMES_RESOURCE holds ${names.size} names and lacks main, exit or sqrtf: not the measured list" }
+            return names
+        }
 
         /** Families `<windows.h>` and friends define wholesale; a name `PREFIX...` is taken. */
         val MACRO_FAMILIES: List<String> = listOf(

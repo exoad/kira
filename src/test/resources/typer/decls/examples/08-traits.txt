@@ -17,7 +17,7 @@ module app:animals  profile=HOSTED ns=animals imports=[]
     fn name: () Str  pub virtual body overrides=Speaker.name
   fn announce: (s: Speaker) Void  body
   fn noiseLevel: (s: Noisy) Int32  body
-module app:main  profile=HOSTED ns=main imports=[app:animals]
+module app:main  profile=HOSTED ns=main_ imports=[app:animals]
   fn makeDog: () Dog  body
   fn makeSpeaker: () Speaker  body
   fn main: () Void  body

@@ -232,10 +232,16 @@ object CppCompileSupport {
         toolchain: LocatedToolchain.Found, outDir: File, exeName: String,
     ): CompileResult {
         val exe = File(outDir, if (CppToolchains.isWindows) "$exeName.exe" else exeName)
+        // A hosted link on Linux glibc needs -pthread (kira/os.hxx says so; goldens.sh and
+        // sys.sh pass it): glibc 2.35 folds libpthread into libc, but gcc 11.4 on glibc 2.31
+        // leaves pthread_create unresolved for a case that reaches kira/sync.hxx (measured).
+        // The aarch64 cross link targets glibc 2.35 and is left alone.
+        val hostLink = if (!CppToolchains.isWindows && toolchain.toolchain != CppToolchain.ZIG_AARCH64) listOf("-pthread") else emptyList()
         val command = toolchain.command + gnuWarningContract +
             includeDirs.flatMap { listOf("-I", it.absolutePath) } +
             defines.map { "-D$it" } +
             sources.map { it.absolutePath } +
+            hostLink +
             listOf("-o", exe.absolutePath)
         val r = execute(command, outDir)
         val ok = r.exitCode == 0 && exe.isFile
