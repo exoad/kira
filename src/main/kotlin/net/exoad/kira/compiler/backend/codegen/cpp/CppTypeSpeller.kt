@@ -15,6 +15,7 @@ import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.display
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -48,7 +49,11 @@ enum class Pos {
  * the constant's name as the array size.
  */
 class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
-    fun spell(t: KType, pos: Pos): String = wrap(base(t), t, pos)
+    /** The node a diagnostic of the current spelling is placed at: the `Type` node being spelled, or what the caller named. */
+    private var at: ASTNode? = null
+
+    /** [t] as C++ text at [pos]; a diagnostic it raises is placed at [at] when one is given. */
+    fun spell(t: KType, pos: Pos, at: ASTNode? = null): String = located(at) { wrap(base(t), t, pos) }
 
     fun spell(node: Type, pos: Pos): String {
         val t = ctx.model.typeOf(node)
@@ -56,7 +61,29 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
             ctx.diag(node, INTERNAL_CODE, "no type was recorded for a type reference (${node.javaClass.simpleName})")
             return "/* untyped */"
         }
-        return wrap(text(node, t), t, pos)
+        return located(node) { wrap(text(node, t), t, pos) }
+    }
+
+    private inline fun located(node: ASTNode?, block: () -> String): String {
+        val before = at
+        if (node != null) {
+            at = node
+        }
+        try {
+            return block()
+        } finally {
+            at = before
+        }
+    }
+
+    /** A diagnostic of the current spelling: at [at] when there is one, else on the module's file alone. */
+    private fun report(code: String, message: String) {
+        val node = at
+        if (node != null) {
+            ctx.diag(node, code, message)
+        } else {
+            ctx.report(CppDiagnostic(code, message, file = ctx.module.file))
+        }
     }
 
     /**
@@ -169,11 +196,11 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         KType.Void -> "void"
         KType.Never -> "void"
         KType.NullT -> {
-            ctx.report(CppDiagnostic(INTERNAL_CODE, "the type Null has no C++ spelling of its own", file = ctx.module.file))
+            report(INTERNAL_CODE, "the type Null has no C++ spelling of its own")
             "/* Null */"
         }
         KType.Error -> {
-            ctx.report(CppDiagnostic(INTERNAL_CODE, "an unresolved type reached the C++ emitter", file = ctx.module.file))
+            report(INTERNAL_CODE, "an unresolved type reached the C++ emitter")
             "/* error */"
         }
         is KType.Param -> ctx.names.escape(t.sym.name)
@@ -230,10 +257,24 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         val sym = n.sym
         val targs = if (n.args.isEmpty()) "" else n.args.joinToString(", ", "<", ">") { spellArg(it) }
         return when (sym) {
-            is ClassSymbol -> (externName(sym) ?: ctx.qualified(sym)) + targs
+            is ClassSymbol -> (externName(sym) ?: systemClass(sym) ?: ctx.qualified(sym)) + targs
             is TraitSymbol -> ctx.qualified(sym) + targs
             else -> spell(t, Pos.VALUE)
         }
+    }
+
+    /**
+     * A `@_magic` class the runtime defines under its own module's namespace (`kira:sync`'s
+     * `Thread` is `kira::sync::Thread` in `kira/sync.hxx`, [SYSTEM_MODULE_HEADERS]): the bare
+     * class name, with the runtime header included. Null for any other class.
+     */
+    private fun systemClass(sym: ClassSymbol): String? {
+        if (sym.kind != ClassKind.MAGIC) {
+            return null
+        }
+        val header = systemHeaderFor(sym.module.uri) ?: return null
+        ctx.includeInHeader(header)
+        return "${ctx.layout.namespaceFor(sym.module.uri)}::${ctx.names.escape(sym.name)}"
     }
 
     private fun spellArg(arg: TypeArg): String = when (arg) {
@@ -276,11 +317,13 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
                 Builtins.tupleArity(sym.name)?.let { n ->
                     return if (n == 0) "kira::Tuple0" else "kira::Tuple$n<${a.joinToString(", ")}>"
                 }
-                ctx.report(CppDiagnostic(
-                    CppModuleEmitterFactory.UNSUPPORTED_CODE,
-                    "the type ${t.display()} is not lowered yet",
-                    file = ctx.module.file,
-                ))
+                // A class of a hosted system module is a Kira class the runtime defines (table 5.1's
+                // class row): `kira::Rc<kira::sync::Mutex<std::int32_t>>`, `kira::Rc<kira::test::Suite>`.
+                systemClass(sym)?.let { name ->
+                    val targs = if (a.isEmpty()) "" else "<${a.joinToString(", ")}>"
+                    return "kira::Rc<$name$targs>"
+                }
+                report(CppModuleEmitterFactory.UNSUPPORTED_CODE, "the type ${t.display()} is not lowered yet")
                 "/* ${t.display()} */"
             }
         }
@@ -331,5 +374,23 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         /** The stdlib module whose aliases (`Int`, `Float`) are spelled as their targets. */
         const val CORE_URI = "kira:core"
         private val BY_VALUE_MAGIC = setOf("View", "MutView", "Unsafe", "CStr")
+
+        /**
+         * The hosted system modules whose `@_magic` classes the runtime defines in a header
+         * of its own, under the module's namespace (design 4.3, section 6's runtime list:
+         * `kira/sync.hxx` holds `kira::sync::Thread`, `Mutex`, `Atomic`, `BlockingQueue`;
+         * `kira/test.hxx` `kira::test::Suite`; `kira/os.hxx` `kira::os::UdpSocket` and the
+         * rest; `kira/time.hxx` its functions). A magic class of any other module (`kira:result`'s
+         * `Exception`, which no runtime type backs) is `cpp.unsupported`.
+         */
+        val SYSTEM_MODULE_HEADERS: Map<String, String> = mapOf(
+            "kira:sync" to "kira/sync.hxx",
+            "kira:test" to "kira/test.hxx",
+            "kira:time" to "kira/time.hxx",
+            "kira:os" to "kira/os.hxx",
+        )
+
+        /** The runtime header of the system module [uri], or null when it has none. */
+        fun systemHeaderFor(uri: String): String? = SYSTEM_MODULE_HEADERS[uri]
     }
 }

@@ -60,6 +60,18 @@ pub fx f: (x: Int32 = LIMIT) Int32;
 // A parameter named like a module declaration would shadow it in C++.
 pub fx scaleBy: (LIMIT: Int32) Int32;
 
+// A field or method named like a module declaration hides it inside the struct
+// in C++ (class scope is searched first), so a default that names the declaration
+// is spelled through the namespace; a member named std would hide std:: itself.
+pub width: Int32 = 5
+pub struct Sized {
+    pub width: Int32 = width
+    pub LIMIT: Int32 = LIMIT
+    pub Mode: Mode = Mode.MODE_B
+    pub std: Int32 = 2
+    pub fx grow: (by: Int32 = LIMIT) Int32;
+}
+
 // A Maybe default of null is kira::none.
 pub struct Cfg {
     pub limit: Maybe<Int32> = null

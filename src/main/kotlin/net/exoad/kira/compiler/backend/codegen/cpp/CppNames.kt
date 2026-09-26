@@ -26,8 +26,13 @@ class CppNames {
         used.add(name)
     }
 
-    /** `new` becomes `new_`; anything else is returned as it is. */
-    fun escape(name: String): String = escapeKeyword(name)
+    /**
+     * `new` becomes `new_`, and so do `std` and `kira`: a declaration of either name
+     * (`pub std: Int32` as a field or a constant) would hide the namespace every later
+     * `std::int32_t` or `kira::Str` in its scope spells (gcc: "changes meaning of 'std'").
+     * Anything else is returned as it is.
+     */
+    fun escape(name: String): String = if (name in SPELLED_NAMESPACES) "${name}_" else escapeKeyword(name)
 
     /**
      * A new synthesized name for [stem]: `fresh("t")` gives `t0_`, `t1_`,
@@ -58,6 +63,9 @@ class CppNames {
         }
 
         fun isKeyword(name: String): Boolean = name in KEYWORDS
+
+        /** The namespaces generated text spells unqualified (`std::int32_t`, `kira::Str`), which no declaration may take as its name. */
+        val SPELLED_NAMESPACES: Set<String> = setOf("std", "kira")
 
         fun escapeKeyword(name: String): String = if (isKeyword(name)) "${name}_" else name
 

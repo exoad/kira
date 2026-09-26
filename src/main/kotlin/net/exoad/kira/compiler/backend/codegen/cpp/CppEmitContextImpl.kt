@@ -355,7 +355,8 @@ class CppEmitContextImpl(
 
     // ---- Typed extensions -------------------------------------------------------------------
 
-    fun spell(t: KType, pos: Pos): String = speller.spell(t, pos)
+    /** [t] as C++ text; a diagnostic the spelling raises is placed at [at] when one is given. */
+    fun spell(t: KType, pos: Pos, at: ASTNode? = null): String = speller.spell(t, pos, at)
 
     /** Alias-aware: `Frame` stays `Frame`, `Arr<UInt8, USER_CMD_BYTES>` keeps the constant's name. */
     fun spell(t: Type, pos: Pos): String = speller.spell(t, pos)
@@ -375,16 +376,85 @@ class CppEmitContextImpl(
      * module (`::ns::impl_::Name` when that module's header put it there), and a Kira-written
      * stdlib declaration as `::kira::x::name`. A `@_magic` symbol has no name of its own here;
      * the binding table spells its uses.
+     *
+     * Inside a struct, class or trait ([scope]) a bare name is looked up in class scope first,
+     * so a same-module declaration that shares its name with a member (`pub width: Int32 =
+     * width` in a struct with a field `width`, a method named like a module function) is
+     * spelled from the global namespace, `::ns::width`, where C++ reads the declaration Kira
+     * meant instead of the member (self-initialization, or "invalid use of non-static data
+     * member" in a default argument).
      */
     fun qualified(sym: Symbol): String {
         val name = names.escape(sym.name)
         val owner: ModuleSymbol = sym.module
         if (owner === symbol) {
-            return if (placement.inImpl(sym)) "$IMPL_NAMESPACE::$name" else name
+            val inImpl = placement.inImpl(sym)
+            if (hiddenByScope(sym.name)) {
+                return if (inImpl) "::$namespace::$IMPL_NAMESPACE::$name" else "::$namespace::$name"
+            }
+            return if (inImpl) "$IMPL_NAMESPACE::$name" else name
         }
         referencedModules.add(owner)
         val ns = layout.namespaceFor(owner.uri)
         return if (placementOf(owner).inImpl(sym)) "::$ns::$IMPL_NAMESPACE::$name" else "::$ns::$name"
+    }
+
+    /**
+     * The struct, class or trait whose class scope the text being emitted lies in: its
+     * field defaults, its in-class prototypes and their default arguments, and its member
+     * definitions (in-class or out-of-line; C++ reads both in class scope). Null at
+     * namespace scope. Set with [inScopeOf]; read by [qualified].
+     */
+    var scope: TypeSymbol? = null
+        private set
+
+    /** Runs [block] with [scope] set to [owner] (null for namespace scope), restoring it after. */
+    fun <T> inScopeOf(owner: TypeSymbol?, block: () -> T): T {
+        val before = scope
+        scope = owner
+        try {
+            return block()
+        } finally {
+            scope = before
+        }
+    }
+
+    private val memberNamesOf = IdentityHashMap<TypeSymbol, Set<String>>()
+
+    /**
+     * The names class scope declares for [owner]: its fields and methods, and those of every
+     * base (a class's superclass chain, its traits, a trait's parents), which C++ finds by
+     * the same lookup.
+     */
+    fun memberNames(owner: TypeSymbol): Set<String> = memberNamesOf.getOrPut(owner) {
+        val out = HashSet<String>()
+        val seen = java.util.Collections.newSetFromMap(IdentityHashMap<TypeSymbol, Boolean>())
+        fun collect(t: TypeSymbol) {
+            if (!seen.add(t)) {
+                return
+            }
+            when (t) {
+                is ClassSymbol -> {
+                    t.fields.forEach { out.add(it.name) }
+                    t.methods.forEach { out.add(it.name) }
+                    t.superclass?.sym?.let { collect(it) }
+                    t.traits.forEach { collect(it.sym) }
+                }
+                is TraitSymbol -> {
+                    t.methods.forEach { out.add(it.name) }
+                    t.parents.forEach { collect(it.sym) }
+                }
+                else -> {}
+            }
+        }
+        collect(owner)
+        out
+    }
+
+    /** Whether the bare [name] inside the current [scope] would name a member rather than this module's declaration. */
+    private fun hiddenByScope(name: String): Boolean {
+        val s = scope ?: return false
+        return name in memberNames(s)
     }
 
     /**

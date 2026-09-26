@@ -13,6 +13,7 @@ import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
@@ -894,6 +895,87 @@ class CppUsage private constructor(
                 else -> true
             }
             else -> true
+        }
+    }
+}
+
+/**
+ * Design 4.3 and D14: two modules may share a namespace, and a duplicate symbol in one is a
+ * Kira error. Every declaration a header holds takes part, in the module's namespace (an
+ * exported one) or its `impl_` (a private one the header needs, [CppPlacement.inImpl]); the
+ * `.cxx`'s anonymous namespace is one per file and never collides. A module's namespace
+ * nested under another's (`bibo::text` beside `bibo`) collides with a declaration of that
+ * name (`pub struct text` in `bibo`) the same way, since C++ has one meaning per name and
+ * scope. Stdlib modules are skipped: each has its own `kira::<segments>` by construction.
+ *
+ * Every colliding declaration gets [CODE] at its own node, naming the other, so the error
+ * reaches whichever module is emitted and no header is written.
+ */
+class CppNamespaceCollisions private constructor(private val byModule: Map<ModuleSymbol, List<CppDiagnostic>>) {
+    /** The collisions [module]'s own declarations take part in. */
+    fun of(module: ModuleSymbol): List<CppDiagnostic> = byModule[module].orEmpty()
+
+    companion object {
+        const val CODE = "cpp.duplicate-symbol"
+
+        val NONE = CppNamespaceCollisions(emptyMap())
+
+        private class Entry(val module: ModuleSymbol, val symbol: Symbol?, val ctx: CppEmitContextImpl?)
+
+        /** Scans every non-stdlib module of [program]; [contextOf] gives a module's emit context (its placement and layout). */
+        fun scan(program: TypedProgram, contextOf: (ModuleSymbol) -> CppEmitContextImpl): CppNamespaceCollisions {
+            val entries = LinkedHashMap<String, MutableList<Entry>>()
+            fun add(ns: String, name: String, entry: Entry) {
+                entries.getOrPut("$ns::$name") { mutableListOf() }.add(entry)
+            }
+            val modules = program.modules.filter { !it.isStdlib }
+            modules.forEach { m ->
+                val ctx = contextOf(m)
+                val ns = ctx.namespace
+                val placement = ctx.placement
+                placement.declarations.forEach { sym ->
+                    if (sym is FnSymbol && sym.isOperator) {
+                        return@forEach
+                    }
+                    val name = ctx.names.escape(sym.name)
+                    when {
+                        placement.isExported(sym) -> add(ns, name, Entry(m, sym, ctx))
+                        placement.inImpl(sym) -> add("$ns::${CppEmitContextImpl.IMPL_NAMESPACE}", name, Entry(m, sym, ctx))
+                    }
+                }
+                // `a::b::c` declares `b` in `a` and `c` in `a::b`.
+                val segments = ns.split("::")
+                for (i in 1 until segments.size) {
+                    add(segments.subList(0, i).joinToString("::"), segments[i], Entry(m, null, null))
+                }
+            }
+            val byModule = IdentityHashMap<ModuleSymbol, MutableList<CppDiagnostic>>()
+            entries.forEach { (key, list) ->
+                if (list.map { it.module }.distinct().size < 2) {
+                    return@forEach
+                }
+                val scope = key.substringBeforeLast("::")
+                val name = key.substringAfterLast("::")
+                list.forEach { entry ->
+                    val sym = entry.symbol ?: return@forEach
+                    val ctx = entry.ctx ?: return@forEach
+                    val node = sym.decl ?: return@forEach
+                    val others = list.filter { it.module !== entry.module }.joinToString(", ") { describe(it, program, ctx) }
+                    byModule.getOrPut(entry.module) { mutableListOf() } += ctx.diagnosticAt(
+                        node,
+                        CODE,
+                        "'$name' is declared in namespace $scope by $others too; two modules may share a namespace, but one name is one declaration (design 4.3)",
+                    )
+                }
+            }
+            return CppNamespaceCollisions(byModule)
+        }
+
+        private fun describe(entry: Entry, program: TypedProgram, ctx: CppEmitContextImpl): String {
+            val sym = entry.symbol ?: return "module '${entry.module.uri}' (its namespace ${ctx.layout.namespaceFor(entry.module.uri)})"
+            val where = sym.decl?.let { program.locate(it) }
+            val at = if (where == null) "" else " (${ctx.layout.relativeToRoot(java.nio.file.Path.of(where.first.file))}:${where.second.lineNumber})"
+            return "module '${entry.module.uri}'$at"
         }
     }
 }
