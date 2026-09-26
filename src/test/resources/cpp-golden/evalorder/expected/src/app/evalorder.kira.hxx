@@ -4,6 +4,16 @@
 #include "kira/macro_push.hxx"
 namespace evalorder
 {
+  struct Box;
+
+  struct Box
+  {
+      std::int32_t v = 0;
+
+      [[nodiscard]] std::int32_t pair(std::int32_t a, std::int32_t b) const;
+      void grow(std::int32_t a, std::int32_t b);
+  };
+
   void main();
 }
 #include "kira/macro_pop.hxx"

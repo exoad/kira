@@ -14,6 +14,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections
 import java.util.IdentityHashMap
+import java.util.WeakHashMap
 
 /**
  * The `cpp:` blocks of the stdlib's binding manifests (design 7.4): every `kira/<m>.bind.yaml`
@@ -39,7 +40,9 @@ import java.util.IdentityHashMap
 class CppBindingTable : CppBindingsPart {
     private val entries = LinkedHashMap<String, CppBinding>()
     private val loadedDirs = HashSet<Path>()
-    private val loadedPrograms = Collections.newSetFromMap(IdentityHashMap<TypedProgram, Boolean>())
+
+    /** The programs whose manifests are loaded, held weakly: the parts outlive any one run. */
+    private val loadedPrograms = Collections.newSetFromMap(WeakHashMap<TypedProgram, Boolean>())
 
     /** Loads the manifests beside the stdlib modules of [program] (once per program and directory). */
     fun load(program: TypedProgram) {
@@ -65,12 +68,8 @@ class CppBindingTable : CppBindingsPart {
         }
     }
 
-    override fun lookup(key: String): CppBinding? {
-        if (loadedDirs.isEmpty()) {
-            loadDir(Path.of("kira"))
-        }
-        return entries[key]
-    }
+    /** The binding under [key] among the manifests loaded so far ([load], [loadDir]); nothing is read from the process's directory. */
+    override fun lookup(key: String): CppBinding? = entries[key]
 
     companion object {
         const val MANIFEST_SUFFIX = ".bind.yaml"

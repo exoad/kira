@@ -1081,6 +1081,196 @@ class CppExprRowsTest {
                 """{ kira::StrBuf<32> buf; b1::fill(-5, 7u, buf); b1::append(buf); check(std::string(buf.c_str()) == "servo=-5 esc=7!", "10: interpolation into a StrBuf appends piece by piece"); }""",
             ),
         ),
+        row(
+            "f1",
+            """
+            pub fx negneg: (y: Int32) Int32 {
+                return -(-y)
+            }
+
+            pub fx negTwice: (a: Int32) Int32 {
+                mut y: Int32 = a
+                z: Int32 = -(-y)
+                y += 1
+                return z * 10 + y
+            }
+
+            pub fx big: () Int64 {
+                big: Int64 = 1 << 40
+                return big
+            }
+
+            pub fx ubig: () UInt64 {
+                u: UInt64 = 1 << 63
+                return u
+            }
+
+            pub fx mask: (v: UInt64) UInt64 {
+                m: UInt64 = ~0
+                return v & ~0xFF & m
+            }
+
+            pub fx alignDown: (x: Size) Size {
+                return x & ~7
+            }
+
+            pub fx lowNibbleOff: (v: UInt8) UInt8 {
+                return v & ~0x0F
+            }
+
+            pub @_const fx mul16: (a: UInt16, b: UInt16) UInt16 {
+                return a * b
+            }
+
+            pub fx mulAssign16: (a: UInt16, b: UInt16) UInt16 {
+                mut x: UInt16 = a
+                x *= b
+                return x
+            }
+            """,
+            listOf(
+                "return -(-y);",
+                "const std::int32_t z{-(-y)};",
+                "const std::int64_t big{std::int64_t{1} << 40};",
+                "const std::uint64_t u{std::uint64_t{1} << 63};",
+                "const std::uint64_t m{~std::uint64_t{0}};",
+                "return v & ~std::uint64_t{0xFF} & m;",
+                "return x & ~kira::Size{7};",
+                "return static_cast<std::uint8_t>(v & static_cast<std::uint8_t>(~0x0Fu));",
+                "return static_cast<std::uint16_t>(static_cast<unsigned>(a) * b);",
+                "x = static_cast<std::uint16_t>(static_cast<unsigned>(x) * b);",
+            ),
+            listOf(
+                """check(f1::negneg(7) == 7 && f1::negTwice(5) == 56, "a minus before a minus is -(-y), never the pre-decrement --y");""",
+                """check(f1::big() == (std::int64_t{1} << 40) && f1::ubig() == 9223372036854775808ull, "R2: a literal on the left of a shift carries the operation's width");""",
+                """check(f1::mask(0xFFFFu) == 0xFF00u && f1::alignDown(23) == 16 && f1::lowNibbleOff(0xABu) == 0xA0u, "R2: a literal under ~ carries the operation's width");""",
+                """static_assert(f1::mul16(65535, 65535) == 1, "D8: a UInt16 product wraps in a constant expression too");""",
+                """check(f1::mul16(65535, 65535) == 1 && f1::mulAssign16(65535, 65535) == 1, "D8: a UInt16 product is multiplied as unsigned, never as an overflowing int");""",
+            ),
+        ),
+        row(
+            "f2",
+            """
+            mut ticks: Int32 = 0
+            mut idx: Size = 0
+
+            fx next: () Int32 {
+                ticks += 1
+                return ticks
+            }
+
+            fx nextSize: () Size {
+                idx += 1
+                return idx
+            }
+
+            fx sub: (a: Int32, b: Int32) Int32 {
+                return a - b
+            }
+
+            fx store: (mut into: Int32, tens: Int32, ones: Int32) Void {
+                into = tens * 10 + ones
+            }
+
+            pub struct Box {
+                pub v: Int32 = 0
+
+                pub fx pair: (a: Int32, b: Int32) Int32 {
+                    return v * 100 + a * 10 + b
+                }
+
+                pub mut fx grow: (a: Int32, b: Int32) Void {
+                    v = v * 100 + a * 10 + b
+                }
+            }
+
+            fx makeBox: () Box {
+                ticks += 1
+                return Box { v = ticks }
+            }
+
+            pub fx readBesideEffect: () Int32 {
+                ticks = 0
+                return sub(ticks, next())
+            }
+
+            pub fx holeBesideEffect: () Str {
+                ticks = 0
+                return "${'$'}{ticks}:${'$'}{next()}"
+            }
+
+            pub fx compoundReadsFirst: () Int32 {
+                ticks = 0
+                ticks += next()
+                return ticks
+            }
+
+            pub fx receiverFirst: () Int32 {
+                ticks = 0
+                return makeBox().pair(next(), next())
+            }
+
+            pub fx mutIndexFirst: () Int32 {
+                ticks = 0
+                idx = 0
+                mut q: Arr<Int32, 4> = [0, 0, 0, 0]
+                store(mut q[nextSize()], next(), next())
+                return q[1]
+            }
+
+            pub fx targetFirst: () Int32 {
+                ticks = 0
+                idx = 0
+                mut s: Arr<Int32, 4> = [0, 0, 0, 0]
+                s[nextSize()] = next()
+                return s[1] * 10 + s[2]
+            }
+
+            pub fx dividedOnce: () Int32 {
+                idx = 0
+                mut p: Arr<Int32, 4> = [80, 80, 80, 80]
+                d: Int32 = 2
+                p[nextSize()] /= d
+                return p[1] * 100 + p[2] + (idx as Int32)
+            }
+
+            pub fx shiftedOnce: () Int32 {
+                idx = 0
+                mut q: Arr<Int32, 4> = [1, 1, 1, 1]
+                n: Int32 = 3
+                q[nextSize()] <<= n
+                return q[1] * 10 + (idx as Int32)
+            }
+
+            pub fx mutReceiverBound: () Int32 {
+                ticks = 0
+                idx = 0
+                mut boxes: Arr<Box, 1> = [Box { }]
+                boxes[nextSize() - 1].grow(next(), next())
+                return boxes[0].v
+            }
+            """,
+            listOf(
+                "const std::int32_t t0_ = ticks;\n          const std::int32_t t1_ = next();\n          return sub(t0_, t1_);",
+                "return kira::cat(t0_, \":\", t1_);",
+                "const std::int32_t t0_ = ticks;\n          const std::int32_t t1_ = next();\n          ticks = t0_ + t1_;",
+                "const Box t0_ = makeBox();\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return t0_.pair(t1_, t2_);",
+                "std::int32_t& r0_ = kira::at(q, nextSize());\n          const std::int32_t t0_ = next();\n          const std::int32_t t1_ = next();\n          store(r0_, t0_, t1_);",
+                "std::int32_t& r0_ = kira::at(s, nextSize());\n          const std::int32_t t0_ = next();\n          r0_ = t0_;",
+                "std::int32_t& r0_ = kira::at(p, nextSize());\n          r0_ = kira::div(r0_, d);",
+                "std::int32_t& r0_ = kira::at(q, nextSize());\n          r0_ = kira::shl(r0_, n);",
+                "Box& r0_ = kira::at(boxes, nextSize() - 1);\n          const std::int32_t t0_ = next();\n          const std::int32_t t1_ = next();\n          r0_.grow(t0_, t1_);",
+            ),
+            listOf(
+                """check(f2::readBesideEffect() == -1 && f2::holeBesideEffect() == "0:1", "D33: a read of shared state beside an effect is copied before the effect runs");""",
+                """check(f2::compoundReadsFirst() == 1, "D33: a compound assignment reads its target before an impure value runs");""",
+                """check(f2::receiverFirst() == 123, "D33: an impure receiver runs before the spilled arguments");""",
+                """check(f2::mutIndexFirst() == 12, "D33: a mut argument's index runs before its siblings, and the place is bound, not copied");""",
+                """check(f2::targetFirst() == 10, "D33: a place assignment locates its target before the value runs");""",
+                """check(f2::dividedOnce() == 4081 && f2::shiftedOnce() == 81, "R11, R12: a rewritten compound assignment locates its target once");""",
+                """check(f2::mutReceiverBound() == 12, "D33: the receiver of a mut fx on an element is bound by reference, never copied");""",
+            ),
+        ),
     )
 
     private val tree by lazy { CppExprTestSupport.emit("rows", rows.map { it.module } + shapes) }
