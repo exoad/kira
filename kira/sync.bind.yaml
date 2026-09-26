@@ -9,7 +9,10 @@
 # changes state another thread may be changing too. None is constexpr.
 #
 # Runtime names, all in kira/cpp/kira/sync.hxx, namespace kira::sync:
-#   Thread: stopRequested(), requestStop(), join()
+#   Thread(const Str& name, F&& body): stopRequested(), requestStop(), join()
+#     (the class's two require fields are that constructor's arguments, so
+#     `Thread { name, body }` lowers to make_shared<Thread>(name, body) as
+#     every class construction does, and starts the thread as spawn does)
 #   spawn(const Str& name, F&& body) -> Rc<Thread>        (F: Callable<F, void>)
 #   Mutex<T>(T): with(F&& body) (F: Callable<F, void, T&>; Kira's Mutex.lock),
 #                waitUntil(F&& pred, int64 timeoutMs) -> bool (F: Callable<F, bool, const T&>)

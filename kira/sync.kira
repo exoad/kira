@@ -5,15 +5,27 @@ module "kira:sync"
 // between threads by reference, never copied. Data races on anything else
 // are unchecked (D24), so shared state goes in a Mutex or an Atomic.
 
-// A running thread. The object joins the thread when it is dropped, so a
-// Thread that goes out of scope waits for its body to finish; a body that
-// loops must watch a flag (an Atomic<Bool>, or stopRequested() through a
-// handle it was given) or the drop never returns.
+// A running thread. Constructing one starts it: `Thread { name, body }` is
+// what spawn(name, body) does, and there is no Thread without a body (the
+// C++ runtime has no other constructor). The object joins the thread when
+// it is dropped, so a Thread that goes out of scope waits for its body to
+// finish; a body that loops must watch a flag (an Atomic<Bool>, or
+// stopRequested() through a handle it was given) or the drop never returns.
+//
+// A body can hold its own handle (through a Ref it captured, or a class
+// that owns its worker). When that body's copy is the last one, the drop
+// happens on the thread itself, which cannot wait for itself: that drop
+// detaches the thread instead, and the body runs to its end with nothing
+// waiting for it. A join() from the body on its own handle is a panic.
 pub @_magic class Thread {
+    require name: Str
+    require body: Fx<Tuple0, Void>
+
     // Set by requestStop(), read by whoever has the handle.
     pub fx stopRequested: () Bool;
     pub fx requestStop: () Void;
-    // Waits for the body to finish; a second join is a no-op.
+    // Waits for the body to finish; a second join is a no-op. From the
+    // body itself, on its own handle: a panic, never a wait.
     pub fx join: () Void;
 }
 
