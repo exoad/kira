@@ -1129,4 +1129,304 @@ class CppHoisterTest {
             assertTrue(found.any { (l, m) -> l == at && m.contains(text) }, "line $at: '$text' in:\n" + found.joinToString("\n"))
         }
     }
+
+    /** Round 3's shapes: a temporary the lowering makes that the source never names, and storage a path moves. */
+    private val refusingRound3 = """
+        mut idx: Size = 0
+        mut gla: List<Arr<Int32, 3>> = List<Arr<Int32, 3>> { values = [[1, 2, 3]] }
+        mut gr: Ref<Arr<Int32, 3>> = Ref<Arr<Int32, 3>> { value = [1, 2, 3] }
+        mut gxs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        mut gvs: List<View<Int32>> = List<View<Int32>> { }
+        mut gref: Ref<List<View<Int32>>> = Ref<List<View<Int32>>> { value = List<View<Int32>> { } }
+        mut gcs: List<View<Char>> = List<View<Char>> { }
+        mut gview: Maybe<View<Int32>> = null
+
+        fx nextSize: () Size {
+            idx += 1
+            return idx
+        }
+
+        fx grow: () Int32 {
+            gla.add([7, 7, 7])
+            return 100
+        }
+
+        fx reset: () Int32 {
+            gr = Ref<Arr<Int32, 3>> { value = [5, 5, 5] }
+            return 100
+        }
+
+        fx makeList: () List<Int32> {
+            return List<Int32> { values = [10, 20, 30] }
+        }
+
+        fx total: (v: View<Int32>) Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in v {
+                s += x
+            }
+            return s
+        }
+
+        fx total2: (v: View<Int32>, k: Int32) Int32 {
+            return total(v) + k
+        }
+
+        fx count: (v: View<Char>, k: Size) Size {
+            return v.size() + k
+        }
+
+        fx countOnly: (v: View<Char>) Size {
+            return v.size()
+        }
+
+        fx plus: (a: Size, b: Size) Size {
+            return a + b
+        }
+
+        fx lenS: (at: Size, s: Str = "a literal long enough for the heap, not the small buffer") Size {
+            return s.length() - at
+        }
+
+        fx tailS: (at: Size, s: Str = "a literal long enough for the heap, not the small buffer") View<Char> {
+            return s.view().from(at)
+        }
+
+        fx tailK: (at: Size, k: Size, s: Str = "a literal long enough for the heap, not the small buffer") View<Char> {
+            return s.view().from(at + k)
+        }
+
+        fx keepS: (s: Str = "a literal long enough for the heap, not the small buffer") Void {
+            gcs.add(s.view())
+        }
+
+        fx mview: (m: Maybe<List<Int32>>) View<Int32> {
+            return m.value.view()
+        }
+
+        fx mfrom: (m: Maybe<List<Int32>>, k: Size) View<Int32> {
+            return m.value.from(k)
+        }
+
+        fx keepR: (xs: List<Int32>) Void {
+            r: Ref<List<View<Int32>>> = gref
+            r.value.add(xs.view())
+        }
+
+        pub struct Bag {
+            pub items: List<Int32> = List<Int32> { values = [1, 2, 3] }
+
+            pub fx stash: () Void {
+                gview = items.view()
+            }
+
+            pub fx sum: () Int32 {
+                return total(items.view())
+            }
+        }
+
+        fx makeBag: () Bag {
+            return Bag { }
+        }
+
+        pub fx defaultInASpill: () Size {
+            return count(tailS(1), nextSize())
+        }
+
+        pub fx defaultReturnedFromASpill: () Size {
+            return countOnly(tailK(nextSize(), nextSize()))
+        }
+
+        pub fx localKeepsADefault: () Size {
+            v: View<Char> = tailS(1)
+            return v.size()
+        }
+
+        pub fx calleeKeepsADefault: () Void {
+            keepS()
+        }
+
+        pub fx arrInAListBeforeAGrowth: () Int32 {
+            return total2(gla[0].view(), grow())
+        }
+
+        pub fx arrInARefBeforeAReset: () Int32 {
+            return total2(gr.value.view(), reset())
+        }
+
+        pub fx localKeepsAMaybeCopy: () Int32 {
+            xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            v: View<Int32> = mview(xs)
+            return total(v)
+        }
+
+        pub fx maybeCopyInASpill: () Int32 {
+            return total(mfrom(gxs, nextSize()))
+        }
+
+        pub fx fnValueKeepsATemporary: () Void {
+            keep: Fx<Tuple1<List<Int32>>, Void> = fx (ys: List<Int32>) Void {
+                gvs.add(ys.view())
+            }
+            keep(makeList())
+        }
+
+        pub fx keptThroughALocalRef: () Void {
+            keepR(makeList())
+        }
+
+        pub fx receiverKept: () Void {
+            makeBag().stash()
+        }
+
+        pub fx refBoxesATemporaryView: () Int32 {
+            r: Ref<View<Int32>> = Ref<View<Int32>> { value = makeList().view() }
+            return total(r.value)
+        }
+
+        pub fx safeDefaultNotViewed: () Size {
+            return plus(lenS(1), nextSize())
+        }
+
+        pub fx safeDefaultInOneStatement: () Size {
+            return countOnly(tailS(1))
+        }
+
+        pub fx safeArrInAListBesidePure: () Int32 {
+            return total2(gla[0].view(), 5)
+        }
+
+        pub fx safeLocalArrBesideAGrowth: () Int32 {
+            mut la: Arr<Int32, 3> = [1, 2, 3]
+            return total2(la.view(), grow())
+        }
+
+        pub fx safeMaybeLocal: () Int32 {
+            m: Maybe<List<Int32>> = gxs
+            v: View<Int32> = mview(m)
+            return total(v)
+        }
+
+        pub fx safeMaybeInOneStatement: () Int32 {
+            xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            return total(mfrom(xs, nextSize()))
+        }
+
+        pub fx safeFnValueHandedALocal: () Void {
+            keep: Fx<Tuple1<List<Int32>>, Void> = fx (ys: List<Int32>) Void {
+                gvs.add(ys.view())
+            }
+            l: List<Int32> = makeList()
+            keep(l)
+        }
+
+        pub fx safeFnValueOfAnotherType: () Int32 {
+            sum: Fx<Tuple1<List<Int32>>, Int32> = fx (ys: List<Int32>) Int32 {
+                return total(ys.view())
+            }
+            return sum(makeList())
+        }
+
+        pub fx safeFreshReceiverKeepsNothing: () Int32 {
+            return makeBag().sum()
+        }
+    """.trimIndent()
+
+    @Test
+    fun aTemporaryTheLoweringMakesOrStorageAPathMovesIsRefusedWithWhatToWriteInstead() {
+        // Round 3 of the convergence policy. Each refused shape compiled before and read freed
+        // memory: a Str default's kira::Str inside a D33 spill (gcc 102 against clang 103, MSVC's
+        // ASan a heap-use-after-free), an Arr viewed inside a List or a Ref before a sibling that
+        // moves or frees it (gcc -886930616 where Kira gives 106), the kira::Maybe copy a place
+        // becomes for a Maybe parameter (gcc 331473940 where Kira gives 210), a temporary an Fx
+        // value keeps a view of in a global or through a captured Ref (gcc -741963422 where Kira
+        // gives 1360), a temporary receiver a method keeps a view of, and a Ref's box holding a
+        // view into a temporary. The safe* functions are their neighbours, which still compile.
+        val emitted = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:round3", refusingRound3))
+        val lines = "module \"vl:round3\"\n\n$refusingRound3\n".lines()
+        fun line(snippet: String): Int = lines.indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
+        val found = emitted.diagnostics("vl:round3")
+            .filter { it.code == net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.VIEW_LIFETIME_CODE }
+            .map { (it.position?.lineNumber ?: -1) to it.message }
+        val expected = listOf(
+            line("return count(tailS(1), nextSize())") to "this value holds a view into the default of 's', a temporary, which would not outlive the lambda",
+            line("return countOnly(tailK(nextSize(), nextSize()))") to "this call's result may hold a view into the default of 's', which would not outlive the lambda",
+            line("v: View<Char> = tailS(1)") to "but the local 'v' outlives it: pass 's' explicitly, from a local (C++ binds its default, the Str literal, as a temporary of the call)",
+            line("keepS()") to "'keepS' may keep a view into the default of 's' past the call",
+            line("return total2(gla[0].view(), grow())") to "this view into an element of 'gla' would be made before the call behind the result of 'grow' runs (D33), which may move or free",
+            line("return total2(gr.value.view(), reset())") to "this view into 'value' would be made before the call behind the result of 'reset' runs (D33)",
+            line("v: View<Int32> = mview(xs)") to "this value holds a view into the Maybe that C++ copies 'xs' into for the call, a temporary",
+            line("return total(mfrom(gxs, nextSize()))") to "a view the call may keep into the Maybe that C++ copies 'gxs' into for the call, a temporary, would point into a temporary of the lambda",
+            line("keep(makeList())") to "the Fx value called here may keep a view into the result of 'makeList', a temporary, past the call",
+            line("keepR(makeList())") to "'keepR' may keep a view into the result of 'makeList', a temporary, past the call",
+            line("makeBag().stash()") to "'stash' may keep a view into its receiver, the result of 'makeBag', a temporary, past the call",
+            line("r: Ref<View<Int32>> = Ref<View<Int32>> { value = makeList().view() }") to "but the object it is stored in outlives it: store the result of 'makeList' in a local first",
+        )
+        assertEquals(expected.size, found.size, "one refusal per unsafe shape, and none for the safe ones:\n" + found.joinToString("\n"))
+        expected.forEach { (at, text) ->
+            assertTrue(found.any { (l, m) -> l == at && m.contains(text) }, "line $at: '$text' in:\n" + found.joinToString("\n"))
+        }
+    }
+
+    private val lentMutViews = Module(
+        "hoist:lent",
+        """
+        mut gcount: Int32 = 0
+
+        fx sub: (a: Int32, b: Int32) Int32 {
+            return a - b
+        }
+
+        fx bump: () Int32 {
+            gcount += 1
+            return gcount
+        }
+
+        fx inc: (mut v: Int32) Int32 {
+            v += 10
+            return 1
+        }
+
+        fx lendList: (mut xs: List<Int32>) MutView<Int32> {
+            return xs.from(0)
+        }
+
+        fx fillList: (mut xs: List<Int32>) Void {
+            xs.set(0, 4)
+        }
+
+        pub fx lentByAFunction: () Int32 {
+            mut us: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            mu: MutView<Int32> = lendList(mut us)
+            pu: Fx<Tuple0, Int32> = fx () Int32 {
+                mu.set(0, 9)
+                return 1
+            }
+            return sub(us[0], pu())
+        }
+
+        pub fx writtenButNeverLent: () Int32 {
+            mut ws: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            fillList(mut ws)
+            mut x: Int32 = 5
+            q: Int32 = inc(mut x)
+            return sub(ws[0], bump()) + sub(x, bump()) + q
+        }
+        """,
+    )
+
+    private val lentText by lazy { CppExprTestSupport.emit("hoister-lent", listOf(lentMutViews)).source(lentMutViews) }
+
+    @Test
+    fun aLocalAUserCalleeLendsAMutViewFromIsReadBeforeAnySiblingsCall() {
+        // lendList returns a MutView of its mut argument: the closure writes us through it, so
+        // us[0] is read first (gcc and MSVC printed 8, clang 0; Kira gives 0). A callee that
+        // only writes its mut argument lends nothing, and the local stays unspilled.
+        val head = Regex("\\n  [^\\n ][^\\n]* lentByAFunction\\([^\\n]*\\)\\n  \\{\\n").find(lentText) ?: error(lentText)
+        val lent = lentText.substring(head.range.last, lentText.indexOf("\n  }\n", head.range.last))
+        assertTrue(lent.contains("const std::int32_t t0_ = kira::at(us, 0);\n          const std::int32_t t1_ = pu();\n          return sub(t0_, t1_);"), lent)
+        val head2 = Regex("\\n  [^\\n ][^\\n]* writtenButNeverLent\\([^\\n]*\\)\\n  \\{\\n").find(lentText) ?: error(lentText)
+        val written = lentText.substring(head2.range.last, lentText.indexOf("\n  }\n", head2.range.last))
+        assertTrue(written.contains("sub(kira::at(ws, 0), bump())") && written.contains("sub(x, bump())"), written)
+    }
 }

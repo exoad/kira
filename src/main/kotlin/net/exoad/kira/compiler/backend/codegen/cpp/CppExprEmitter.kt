@@ -692,6 +692,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     fun isPlaceExpr(e: Expr): Boolean = model.place(e) != null
 
     /**
+     * Whether the place [e] reaches its use in C++ as a copy made for it, which dies with the
+     * full expression: a `Str` constant (a `const char*` that a `const kira::Str&` binds as a
+     * fresh `kira::Str`: [isCharPtr]), or a value that owns storage which the typer wraps in a
+     * `Maybe` (`WrapSome`: a `const kira::Maybe<T>&` parameter binds a `kira::Maybe<T>` copy of
+     * it, and `m.value.view()` in the callee points into the copy, not into [e]).
+     */
+    fun isCopiedPlace(e: Expr): Boolean =
+        isCharPtr(e) || (model.coercion(e) is Coercion.WrapSome && isPlaceExpr(e) && model.typeOrNull(e)?.let { CppLending.borrowable(it) } == true)
+
+    /**
      * [e] as an operand of a call, an operator or a construction that reads it: a place C++
      * holds by reference is a snapshot [CppHoister.Operand.Place] (D33 reads it before a
      * sibling's effect, so the hoister copies it first), unless the use is [lent] from (a view
@@ -704,7 +714,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * ([CppHoister.Operand.Value.lent]).
      */
     fun operandOf(e: Expr, lent: Boolean = false, emit: () -> CppEx): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e)) && !(lent && isCharPtr(e))) {
+        if (isPlaceExpr(e) && heldByReference(typeOf(e)) && !(lent && isCopiedPlace(e))) {
             placeOperand(e, emit, if (lent) CppHoister.PlaceMode.LENT else CppHoister.PlaceMode.SNAPSHOT)
         } else {
             CppHoister.Operand.Value(e, lent = lent && CppLending.borrowable(typeOf(e)) && model.coercion(e) !is Coercion.ToView, emit = emit)
@@ -871,6 +881,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             // overload takes the left operand as its receiver, a free one as its first argument.
             val sym = CPP_OPS[op] ?: return unsupported(e, "the operator overload ${op.name}")
             val member = rc.receiver != null
+            // A temporary operand the overload keeps a view into dangles once the statement ends.
+            if (member) hoister.refuseKeptReceiver(rc, e.leftExpr) else hoister.refuseKeptTemporary(rc, 0, e.leftExpr)
+            hoister.refuseKeptTemporary(rc, if (member) 0 else 1, e.rightExpr)
             val left = if (member) hoister.lentReceiver(rc, typeOf(e.leftExpr)) else hoister.lentArgument(rc, 0, e.leftExpr)
             val right = hoister.lentArgument(rc, if (member) 0 else 1, e.rightExpr)
             return hoister.lower(
@@ -1185,6 +1198,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * W2.4's `CppClassesPart.construct` spells this on its branch; at the merge this delegates to it.
      */
     fun classConstruction(e: ObjectInitExpr, ri: net.exoad.kira.compiler.analysis.types.ResolvedInit, cls: ClassSymbol): CppEx {
+        // A heap object outlives the statement: a view field given a view into a temporary
+        // (`Ref<View<Int32>> { value = makeList().view() }`) would dangle in it.
+        ri.fields.forEach { f -> if (f is FieldInit.Given) hoister.refuseTemporaryView(f.expr, "the object it is stored in") }
         val t = ri.type
         val target = if (cls.kind == ClassKind.MAGIC && cls.name == "Ref") {
             "kira::Box<${ctx.spell((t as? KType.Nominal)?.typeArgs()?.firstOrNull() ?: KType.Error, Pos.TEMPLATE_ARG, e)}>"
@@ -1280,9 +1296,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /**
      * The operands of [rc]'s written arguments in source order (D33), and the slots in
      * parameter order. A `mut` argument is a place: located in order, never copied (R19); a trailing
-     * default is left to C++'s default argument (R6).
+     * default is left to C++'s default argument (R6). A default C++ binds as a temporary that
+     * the callee may keep a view into is refused at the call [node] ([CppHoister.refuseKeptDefault]).
      */
-    private fun arguments(rc: ResolvedCall): Pair<List<CppHoister.Operand>, List<Slot>> {
+    private fun arguments(rc: ResolvedCall, node: Expr): Pair<List<CppHoister.Operand>, List<Slot>> {
+        hoister.refuseKeptDefault(rc, node)
         val operands = mutableListOf<CppHoister.Operand>()
         val indexOf = HashMap<Int, Int>()
         rc.sourceOrder.forEach { i ->
@@ -1401,16 +1419,18 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun freeCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a free call without its function")
-        val (ops, slots) = arguments(rc)
+        val (ops, slots) = arguments(rc, e)
         val name = ctx.qualified(fn) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
-        return hoister.lower(ops, rc.returnType) { texts -> CppEx("$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts -> CppEx("$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
     private fun methodCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a method call without its method")
-        val (argOps, argSlots) = arguments(rc)
+        val (argOps, argSlots) = arguments(rc, e)
         val name = ctx.names.escape(fn.name) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
         val receiver = rc.receiver
+        // A temporary receiver the method keeps a view into dangles once the statement ends.
+        receiver?.let { hoister.refuseKeptReceiver(rc, it) }
         // The receiver is an operand before the arguments (D33): spilled, it runs first.
         val recvOp = when {
             receiver != null -> receiverOperand(receiver, rc, fn, memberStyle = false, lending = false) { coerced(receiver) }
@@ -1418,7 +1438,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             else -> null
         }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType) { texts ->
+        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts ->
             val callee = when {
                 receiver != null -> accessWith(receiver, if (recvOp != null) texts[0] else null, typeOf(receiver)) + name
                 recvOp != null && texts[0] !== thisLeaf -> "${wrap(texts[0], CppPrec.POSTFIX)}.$name"
@@ -1437,11 +1457,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /** A call through an `Fx` value: a local, a parameter (a template's `F_p&&` too), or a field. */
     private fun fnValueCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
-        val (argOps, argSlots) = arguments(rc)
+        val (argOps, argSlots) = arguments(rc, e)
         // The callee is evaluated first (D33); as an operand it is spilled with the arguments.
         val calleeOp = operandOf(e.name) { coerced(e.name) }
         val (ops, slots) = withReceiver(calleeOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType) { texts -> CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts -> CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
     /**
@@ -1450,11 +1470,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      */
     private fun externCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "an extern call without its function")
-        val (argOps, argSlots) = arguments(rc)
+        val (argOps, argSlots) = arguments(rc, e)
         val receiver = rc.receiver
         val recvOp = receiver?.let { receiverOperand(it, rc, fn, memberStyle = false, lending = false) { coerced(it) } }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType) { texts ->
+        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts ->
             val recv = when {
                 receiver != null -> if (recvOp != null) wrap(texts[0], CppPrec.POSTFIX) else receiverText(receiver)
                 rc.implicitThis -> if (state.frame?.receiverAccess == CppBodyState.ThisCapture.SELF) selfPointer() else "this"
@@ -1514,7 +1534,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (freestanding) {
             return unsupported(e, "$name in a freestanding module (kira/core.hxx has no output; the board's serial seam prints)")
         }
-        val (ops, slots) = arguments(rc)
+        val (ops, slots) = arguments(rc, e)
         return hoister.lower(ops, KType.Void) { texts -> CppEx("kira::$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
@@ -1577,9 +1597,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val key = (fn.foreign as? Foreign.Magic)?.key
             if (key == "Result.success" || key == "Result.error") {
                 // D39: compiler-known; kira::Result's static factories.
-                val (ops, slots) = arguments(rc)
+                val (ops, slots) = arguments(rc, e)
                 val result = ctx.spell(rc.returnType, Pos.VALUE, e)
-                return hoister.lower(ops, rc.returnType) { texts -> CppEx("$result::${fn.name}(${argList(slots, texts)})", CppPrec.POSTFIX) }
+                return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts -> CppEx("$result::${fn.name}(${argList(slots, texts)})", CppPrec.POSTFIX) }
             }
             return unsupported(e, "the magic call '${fn.qualifiedName}' (no cpp binding under ${CppBindingTable.keysFor(fn, recvType, program)})")
         }
@@ -1602,7 +1622,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             addAll(rc.typeArgs)
         }.map { ctx.spell(it, Pos.TEMPLATE_ARG, e) }
-        val (argOps, slots) = arguments(rc)
+        val (argOps, slots) = arguments(rc, e)
         val lending = recvType != null && fn.name in LENDERS && (CppBindingTable.isArr(recvType) || CppBindingTable.magicName(recvType) == "List") &&
             CppBindingTable.magicName(rc.returnType) == "MutView"
         val ops = mutableListOf<CppHoister.Operand>()
@@ -1622,7 +1642,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val op = if (name == "self") ops.getOrNull(receiverIndex) else slots.getOrNull(name.toInt()).let { s -> (s as? Slot.Given)?.let { ops[it.operand + shift] } }
             op != null && hoister.rankOf(op) != CppHoister.PURE
         }
-        return hoister.lower(ops, rc.returnType, force) { texts ->
+        return hoister.lower(ops, rc.returnType, force, call = rc, node = e) { texts ->
             val argTexts = slots.map { s ->
                 when (s) {
                     is Slot.Given -> texts[s.operand + shift]

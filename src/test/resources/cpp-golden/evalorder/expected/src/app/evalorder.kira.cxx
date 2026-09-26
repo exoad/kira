@@ -13,6 +13,7 @@ namespace evalorder
     kira::List<std::int32_t> gl = kira::List<std::int32_t>{};
     kira::Map<std::int32_t, std::int32_t> gm = kira::Map<std::int32_t, std::int32_t>{};
     kira::Str gs = "a";
+    kira::Maybe<kira::MutView<std::int32_t>> glent = kira::none;
     kira::List<kira::List<std::int32_t>> gll = kira::List<kira::List<std::int32_t>>{};
     kira::List<std::int32_t> gls = kira::List<std::int32_t>{};
     kira::List<std::int32_t> gv = kira::List<std::int32_t>{1, 2, 3};
@@ -36,6 +37,10 @@ namespace evalorder
     [[nodiscard]] kira::View<std::int32_t> tail(const kira::List<std::int32_t>& xs, kira::Size at);
     [[nodiscard]] std::int32_t total(kira::View<std::int32_t> v);
     [[nodiscard]] std::int32_t sumTail(const kira::List<std::int32_t>& xs);
+    [[nodiscard]] kira::MutView<std::int32_t> lendList(kira::List<std::int32_t>& xs);
+    [[nodiscard]] kira::MutView<std::int32_t> lendArr(std::array<std::int32_t, 3>& a);
+    void lendGlobal(kira::List<std::int32_t>& xs);
+    [[nodiscard]] std::int32_t writeLent();
     [[nodiscard]] std::int32_t growGll();
     [[nodiscard]] std::int32_t growGls();
     [[nodiscard]] std::int32_t setGv();
@@ -148,6 +153,27 @@ namespace evalorder
             const kira::Size t0_ = nextSize();
             return tail(xs, t0_);
         }());
+    }
+
+    kira::MutView<std::int32_t> lendList(kira::List<std::int32_t>& xs)
+    {
+        return kira::mutView(xs).from(0);
+    }
+
+    kira::MutView<std::int32_t> lendArr(std::array<std::int32_t, 3>& a)
+    {
+        return kira::mutView(a).from(0);
+    }
+
+    void lendGlobal(kira::List<std::int32_t>& xs)
+    {
+        glent = kira::mutView(xs).from(0);
+    }
+
+    std::int32_t writeLent()
+    {
+        kira::unwrap(glent)[0] = 9;
+        return 1;
     }
 
     std::int32_t growGll()
@@ -605,6 +631,75 @@ namespace evalorder
           const std::int32_t t1_ = pokeAll(ms);
           return sub(t0_, t1_);
       }());
+      kira::List<std::int32_t> us = kira::List<std::int32_t>{1, 2, 3};
+      const kira::MutView<std::int32_t> mu = lendList(us);
+      const kira::Fn<std::int32_t()> pu = [mu]() -> std::int32_t
+      {
+          mu[0] = 9;
+          return 1;
+      };
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(us, 0);
+          const std::int32_t t1_ = pu();
+          return sub(t0_, t1_);
+      }());
+      std::array<std::int32_t, 3> ua = {1, 2, 3};
+      const kira::MutView<std::int32_t> ma = lendArr(ua);
+      const kira::Fn<std::int32_t()> pa = [ma]() -> std::int32_t
+      {
+          ma[0] = 9;
+          return 1;
+      };
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(ua, 0);
+          const std::int32_t t1_ = pa();
+          return sub(t0_, t1_);
+      }());
+      Lender lb = Lender{};
+      const kira::MutView<std::int32_t> mb = lb.lend();
+      const kira::Fn<std::int32_t()> pb = [mb]() -> std::int32_t
+      {
+          mb[0] = 9;
+          return 1;
+      };
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(lb.xs, 0);
+          const std::int32_t t1_ = pb();
+          return sub(t0_, t1_);
+      }());
+      kira::List<std::int32_t> ug = kira::List<std::int32_t>{1, 2, 3};
+      lendGlobal(ug);
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(ug, 0);
+          const std::int32_t t1_ = writeLent();
+          return sub(t0_, t1_);
+      }());
+      const kira::Fn<kira::MutView<std::int32_t>(kira::List<std::int32_t>&)> lendFx = [](kira::List<std::int32_t>& zs) -> kira::MutView<std::int32_t>
+      {
+          return kira::mutView(zs).from(0);
+      };
+      kira::List<std::int32_t> uf = kira::List<std::int32_t>{1, 2, 3};
+      const kira::MutView<std::int32_t> mf = lendFx(uf);
+      const kira::Fn<std::int32_t()> pf = [mf]() -> std::int32_t
+      {
+          mf[0] = 9;
+          return 1;
+      };
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(uf, 0);
+          const std::int32_t t1_ = pf();
+          return sub(t0_, t1_);
+      }());
+  }
+
+  kira::MutView<std::int32_t> Lender::lend()
+  {
+      return kira::mutView(xs).from(0);
   }
 
   void Win::attach(kira::View<std::int32_t> src, kira::Size k_p)

@@ -290,6 +290,72 @@ fx main: () Void {
     mut ms: List<MutView<Int32>> = List<MutView<Int32>> { }
     ms.add(ws.from(0))
     trace(sub(ws[0], pokeAll(ms)))
+    // A MutView a user callee lends out of a mut argument or a mut fx's receiver writes
+    // that variable from wherever it went: returned from a function (a List and an Arr),
+    // from a struct's mut fx, stored in a global, or returned by an Fx value. Each read is
+    // made before the sibling that writes through the view (gcc and MSVC printed 8, clang
+    // 0): 1 - 1, five times.
+    mut us: List<Int32> = List<Int32> { values = [1, 2, 3] }
+    mu: MutView<Int32> = lendList(mut us)
+    pu: Fx<Tuple0, Int32> = fx () Int32 {
+        mu.set(0, 9)
+        return 1
+    }
+    trace(sub(us[0], pu()))
+    mut ua: Arr<Int32, 3> = [1, 2, 3]
+    ma: MutView<Int32> = lendArr(mut ua)
+    pa: Fx<Tuple0, Int32> = fx () Int32 {
+        ma.set(0, 9)
+        return 1
+    }
+    trace(sub(ua[0], pa()))
+    mut lb: Lender = Lender { }
+    mb: MutView<Int32> = lb.lend()
+    pb: Fx<Tuple0, Int32> = fx () Int32 {
+        mb.set(0, 9)
+        return 1
+    }
+    trace(sub(lb.xs[0], pb()))
+    mut ug: List<Int32> = List<Int32> { values = [1, 2, 3] }
+    lendGlobal(mut ug)
+    trace(sub(ug[0], writeLent()))
+    lendFx: Fx<Tuple1<mut List<Int32>>, MutView<Int32>> = fx (mut zs: List<Int32>) MutView<Int32> {
+        return zs.from(0)
+    }
+    mut uf: List<Int32> = List<Int32> { values = [1, 2, 3] }
+    mf: MutView<Int32> = lendFx(mut uf)
+    pf: Fx<Tuple0, Int32> = fx () Int32 {
+        mf.set(0, 9)
+        return 1
+    }
+    trace(sub(uf[0], pf()))
+}
+
+fx lendList: (mut xs: List<Int32>) MutView<Int32> {
+    return xs.from(0)
+}
+
+fx lendArr: (mut a: Arr<Int32, 3>) MutView<Int32> {
+    return a.from(0)
+}
+
+pub struct Lender {
+    pub xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+
+    pub mut fx lend: () MutView<Int32> {
+        return xs.from(0)
+    }
+}
+
+mut glent: Maybe<MutView<Int32>> = null
+
+fx lendGlobal: (mut xs: List<Int32>) Void {
+    glent = xs.from(0)
+}
+
+fx writeLent: () Int32 {
+    glent.unwrap().set(0, 9)
+    return 1
 }
 
 mut gll: List<List<Int32>> = List<List<Int32>> { }
