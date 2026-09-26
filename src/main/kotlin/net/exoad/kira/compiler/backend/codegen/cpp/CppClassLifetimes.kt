@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.CallKind
+import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
@@ -25,6 +26,7 @@ import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -34,6 +36,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmen
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallNamedParameterExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
@@ -41,8 +44,14 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.DoWhileIterationStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStatement
 import java.util.Collections
@@ -55,7 +64,7 @@ import java.util.IdentityHashMap
  *
  * A class is a shared object (D11). Any number of handles reach it, and a callee may reach it
  * through a handle the caller cannot see (`b: Log = a`, then `a.append(b.lines[0])`). The
- * lowering holds three kinds of reference into such storage.
+ * lowering holds four kinds of reference into such storage.
  *
  * 1. A parameter C++ takes by `const&` (design table 5.1). Bound to a field or an element of an
  *    object, it reads whatever the callee's own effects leave there, or freed memory:
@@ -64,9 +73,12 @@ import java.util.IdentityHashMap
  *    some effect of the body may reach before the body reads it is copied at entry
  *    ([Guard.snapshots]). The copy is the value the caller passed, as Kira's parameters are
  *    values (`c.set(d.name)` with `set` renaming `c` gives `a`, as the C and JS backends do).
- *    A template `Fx` parameter is copied the same way. One a view the call hands back may
- *    point into ([Guard.lent]) stays the caller's reference, since the copy would die at
- *    return under the view, and a read of it that the reference cannot make right is refused.
+ *    A template `Fx` parameter is copied the same way. One a view that may leave the call may
+ *    point into ([Guard.lent]: returned, or kept through a `mut` parameter, a `Ref` box, an
+ *    `Fx`) stays the caller's reference, since the copy would die at return under the view,
+ *    and a read of it that the reference cannot make right is refused. A view that may leave
+ *    the call into storage only a copied handle or a method's hold keeps alive is refused
+ *    ([reachedRefusals]).
  * 2. `this` in a method. Reached through a field, an element or `unwrap()`, the object can lose
  *    its last owner while its method runs (`t.kids[0].leave()` with `leave` calling
  *    `tree.clear()`). A class method that reads its receiver after an effect that may free an
@@ -78,23 +90,33 @@ import java.util.IdentityHashMap
  *    copied at entry, which holds that object.
  * 3. A range-for over a field or an element of an object: an effect in the loop body that may
  *    change that storage invalidates the iterators (`for s in b.items { c.grow() }` with
- *    `c = b`, measured: freed heap bytes), and a range reached from a temporary through a
- *    handle is freed before the first iteration (`for s in makeItem().labels`). Refused
- *    ([refusals]), as are a `mut` argument that names such storage when the call may change
- *    it, or lies inside another `mut` argument of the call, a call through an `Fx` such storage
- *    holds while the code it runs may replace it, and a lambda's `const&` parameter read after
- *    an effect that may reach it: each of those lowerings is the statement part's, and each
- *    diagnostic names the local copy that makes the program safe. A field's default is checked
- *    as a body is.
+ *    `c = b`, measured: freed heap bytes). Refused ([refusals]), as are a `mut` argument that
+ *    names such storage when the call may change it, or lies inside another `mut` argument of
+ *    the call, a call through an `Fx` such storage holds while the code it runs may replace
+ *    it, and a lambda's `const&` parameter read after an effect that may reach it: each of
+ *    those lowerings is the statement part's, and each diagnostic names the local copy that
+ *    makes the program safe. A range reached from a temporary is the statement part's, which
+ *    copies it (W2.3 9e00cfb). A field's default is checked as a body is.
+ * 4. A view (`View`, `MutView`) into such storage, which C++ keeps as a pointer: the object
+ *    holding the buffer freed, or the buffer moved by a growth, leaves it dangling. Each view a
+ *    body keeps ([Walker.viewSources]) is followed to what it may point into: a place taken in
+ *    place (`b.items.view()`), or, through a call, whatever its receiver, arguments, implicit
+ *    `this` and (for a Kira callee) the globals may reach (`b.all()`, `viewOf(b)`); a view kept
+ *    in a local container (`vs.add(v)`), a `Ref` box, a struct or an if-expression holds what
+ *    its parts do. A view read after an effect that may move or free that storage, captured by
+ *    a lambda that may run after one, handed to a call that may have one, read by a call after
+ *    a later argument that may, iterated by a loop whose body may, or returned through a
+ *    local's handle is refused by name, and so is a heap object given a view into a temporary.
+ *    (g++ printed garbage and MSVC ASan reported a heap-use-after-free on every one.)
  *
  * Effects are decided over the whole program ([summaries]): the fields, globals and `mut`
  * parameters each body may overwrite, with the types written there, and whether it may free an
  * object (drop a handle, or run a `finally`). A call's effects are its callee's: every body of
  * the name for a virtual or trait call, and every lambda and function value for a call through
- * an `Fx`. What C++ supplies (a C++ override of a trait method, an `Fx` built in C++, an
- * `@_extern`, a bodyless `pub` prototype a C++ file defines) is taken to leave Kira's objects
- * alone during the call: the FFI contract, recorded as an open decision in
- * `docs/cpp-known-issues/w2-4-emit-oop.md`.
+ * an `Fx` (the lambda itself, for a local that is not `mut` and was given one). What C++
+ * supplies (a C++ override of a trait method, an `Fx` built in C++, an `@_extern`, a bodyless
+ * `pub` prototype a C++ file defines) is taken to leave Kira's objects alone during the call:
+ * the FFI contract, recorded as an open decision in `docs/cpp-known-issues/w2-4-emit-oop.md`.
  */
 class CppClassLifetimes(private val program: TypedProgram) {
     private val model = program.model
@@ -119,7 +141,10 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
         internal val writes = LinkedHashSet<Write>()
 
-        val isEmpty: Boolean get() = !releases && !any && writes.isEmpty()
+        /** The body's own locals it destroys: the end of the block that declares them (only a view check records these). */
+        internal val drops: MutableSet<LocalSymbol> = Collections.newSetFromMap(IdentityHashMap())
+
+        val isEmpty: Boolean get() = !releases && !any && writes.isEmpty() && drops.isEmpty()
 
         /** Adds [other]; true when this grew. */
         fun addAll(other: Effects): Boolean {
@@ -133,6 +158,9 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 changed = true
             }
             if (writes.addAll(other.writes)) {
+                changed = true
+            }
+            if (drops.addAll(other.drops)) {
                 changed = true
             }
             return changed
@@ -198,6 +226,9 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
     private val bodies = mutableListOf<Body>()
     private val lambdas = mutableListOf<LambdaExpr>()
+
+    /** The locals that are not `mut` and are given a lambda where they are declared: a call through one runs that lambda. */
+    private val lambdaLocals = IdentityHashMap<LocalSymbol, LambdaExpr>()
     private val fnValues: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
 
     /** Each body's effects, keyed by its statement list (identity): a fixpoint over the call graph. */
@@ -248,14 +279,55 @@ class CppClassLifetimes(private val program: TypedProgram) {
                         lambdas += node
                         node.def.body?.let { bodies += Body(it, null, null) }
                     }
+                    is VariableDecl -> (node.value as? LambdaExpr)?.let { l ->
+                        (model.declSymbol(node) as? LocalSymbol)?.let { local -> if (!local.isMut) lambdaLocals[local] = l }
+                    }
                     is Identifier -> if (node !in callees) {
                         (model.symbolOf(node) as? FnSymbol)?.let { fnValues.add(it) }
                     }
                     else -> {}
                 }
             }
+            // A lambda local named anywhere but as the callee of a call in its own body (not inside another lambda) may run anywhere.
+            val declaredNames: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
+            fun visit(n: ASTNode, lambda: LambdaExpr?) {
+                if (n is VariableDecl) {
+                    declaredNames.add(n.name)
+                    if (n.value is LambdaExpr) {
+                        (model.declSymbol(n) as? LocalSymbol)?.let { declaredIn[it] = lambda }
+                    }
+                }
+                if (n is Identifier && n !in declaredNames) {
+                    (model.symbolOf(n) as? LocalSymbol)?.let { local ->
+                        if (n !in callees) {
+                            namedAsValue.add(local)
+                        } else {
+                            callSites.getOrPut(local) { mutableListOf() } += lambda
+                        }
+                    }
+                }
+                AstTree.children(n).forEach { c -> visit(c, if (n is LambdaExpr) n else lambda) }
+            }
+            visit(ast, null)
+        }
+        lambdaLocals.keys.forEach { local ->
+            val home = declaredIn[local]
+            if (local !in namedAsValue && callSites[local].orEmpty().all { it === home }) {
+                calledInPlace.add(local)
+            }
         }
     }
+
+    private val declaredIn = IdentityHashMap<LocalSymbol, LambdaExpr?>()
+    private val namedAsValue: MutableSet<LocalSymbol> = Collections.newSetFromMap(IdentityHashMap())
+    private val callSites = IdentityHashMap<LocalSymbol, MutableList<LambdaExpr?>>()
+
+    /**
+     * The lambda locals ([lambdaLocals]) that are only ever called, and only by the body that
+     * declares them: the lambda runs at those calls and nowhere else, so what it captures is
+     * in use there ([Walker.capture]).
+     */
+    private val calledInPlace: MutableSet<LocalSymbol> = Collections.newSetFromMap(IdentityHashMap())
 
     private fun collectHeld() {
         val roots = mutableListOf<KType>()
@@ -358,11 +430,43 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
     fun guard(fn: FnSymbol): Guard = guards.getOrPut(fn) {
         val body = fn.body ?: return@getOrPut Guard.NONE
-        val (lent, viewReads) = lentParams(fn, body)
-        val w = Walker(summary = false, fn = fn, owner = fn.owner, tracked = fn.params, viewReads = viewReads).run(body)
-        val snapshots = fn.params.filter { p -> !p.byRef && p in w.paramHits && holdable(p.type) && p !in lent }
-        val refused = lent.filter { holdable(it.type) }.mapNotNull { p -> lentRefusal(p, w) }
-        Guard(snapshots, w.thisReleasedBy != null, w.thisReleasedBy, lent.toList(), refused)
+        val lending = lentParams(fn, body)
+        val w = Walker(summary = false, fn = fn, owner = fn.owner, tracked = fn.params, viewReads = lending.viewReads).run(body)
+        val snapshots = fn.params.filter { p -> !p.byRef && p in w.paramHits && holdable(p.type) && p !in lending.lent }
+        val refused = lending.lent.filter { holdable(it.type) }.mapNotNull { p -> lentRefusal(p, w) } + reachedRefusals(fn, lending, snapshots, w)
+        Guard(snapshots, w.thisReleasedBy != null, w.thisReleasedBy, lending.lent.toList(), refused)
+    }
+
+    /**
+     * A view that may leave the call ([Lending.reachedParams], [Lending.reachedThis]) taken of
+     * storage reached through a handle the call itself keeps alive: a parameter copied at entry
+     * (the copy holds the object once an effect of the body may drop the caller's handle to it),
+     * or `this` in a method that holds itself. The copy and the hold die at return, and when
+     * they were the object's last owner the view points into freed memory (`return b.items.view()`
+     * after `h.reset()` replaced the Bag the caller passed, and `return items.view()` from a method
+     * holding itself, were a heap-use-after-free under MSVC ASan). Without the copy or the hold
+     * the body reads freed memory, or another object than the one it was passed, so both are
+     * refused.
+     */
+    private fun reachedRefusals(fn: FnSymbol, lending: Lending, snapshots: List<ParamSymbol>, w: Walker): List<Pair<ASTNode, String>> {
+        val out = mutableListOf<Pair<ASTNode, String>>()
+        val remedy = "Return a copy of what the view shows (`items: List<T> = ...`, then return items), or take the view in the caller"
+        lending.reachedParams.forEach { (p, at) ->
+            if (snapshots.any { it === p }) {
+                val cause = w.firstHits[p]?.let(::describe) ?: "an effect of the body"
+                out += at to "the view of ${KiraUnparser.text(at)}, which may leave ${fn.name}, points into storage reached through the parameter ${p.name}, which the body copies at entry " +
+                    "because $cause may change or free what ${p.name} names: once the call returns, that copy may have been the object's only owner, and the view would point into freed memory. $remedy"
+            }
+        }
+        val owner = fn.owner
+        val released = w.thisReleasedBy
+        lending.reachedThis?.let { at ->
+            if (released != null && owner is ClassSymbol && owner.kind == ClassKind.CLASS) {
+                out += at to "the view of ${KiraUnparser.text(at)}, which may leave ${fn.name}, points into the object the method runs on, which the method keeps alive only for the call " +
+                    "(it holds itself because ${describe(released)} may free it): once the call returns, that hold may have been the object's only owner, and the view would point into freed memory. $remedy"
+            }
+        }
+        return out
     }
 
     /**
@@ -386,44 +490,78 @@ class CppClassLifetimes(private val program: TypedProgram) {
     }
 
     /**
+     * What [lentParams] finds in a body: the parameters a view the call may hand back points
+     * into ([lent]) with the reads that take such a view ([viewReads]), and, where a view may
+     * leave the call, each parameter and `this` whose storage, reached through a handle, the
+     * body takes a view of, with the first expression that takes it ([reachedParams],
+     * [reachedThis]; [reachedRefusals] refuses those the call alone may keep alive).
+     */
+    private class Lending(
+        val lent: Set<ParamSymbol>,
+        val viewReads: Set<ASTNode>,
+        val reachedParams: Map<ParamSymbol, Expr>,
+        val reachedThis: Expr?,
+    )
+
+    /**
      * The parameters of [fn] a view the call may hand back can point into, with the reads of
      * them that take such a view: one C++ takes by `const&`, of a type a view can point into
      * (it owns a buffer: a `Str`, a container, a struct holding one), that the body takes a
      * view of in place (a conversion to a `View`, the receiver or an argument of a call whose
      * result or `mut` argument can hold a view), when a view may leave the call: its return
-     * type or a `mut` parameter can hold one, the body throws, builds a lambda or hands a view
-     * to C++, or the program has storage that may keep one (a global, a class field of a view,
-     * an `Fx` or a type parameter). W2.3 lends such an argument from the caller's own storage;
-     * a copy would be a local that dies at return.
+     * type or a `mut` parameter can hold one, a parameter reaches storage that can keep one (a
+     * `Ref` of a view, a generic class, an `Fx`, a type parameter: `r.value = xs.view()` kept
+     * the view of the copy in the caller's box, and MSVC ASan reported a heap-use-after-free),
+     * the body throws, builds a lambda or hands a view to C++, or the program has storage that
+     * may keep one (a global, a class field of a view, an `Fx` or a type parameter). W2.3 lends
+     * such an argument from the caller's own storage; a copy would be a local that dies at
+     * return.
+     *
+     * The storage a view is taken of through a handle (`b.items.view()`, `b.all()`, `items.view()`
+     * in a method) is recorded as reached through the parameter or `this` it starts from, when a
+     * view may leave the call by the call itself (a global or a class field that keeps a view is
+     * W2.5's EscapePass, D5).
      */
-    private fun lentParams(fn: FnSymbol, body: List<Statement>): Pair<Set<ParamSymbol>, Set<ASTNode>> {
+    private fun lentParams(fn: FnSymbol, body: List<Statement>): Lending {
         val candidates = identitySet<ParamSymbol>()
         fn.params.filter { !it.byRef && passedByReference(it.type) && ownsBuffer(it.type) }.forEach { candidates.add(it) }
-        if (candidates.isEmpty()) {
-            return emptySet<ParamSymbol>() to emptySet()
-        }
         val viewReads = identitySet<ASTNode>()
-        var escapes = programKeepsViews || pointsInto(fn.ret) || fn.params.any { it.byRef && pointsInto(it.type) }
+        val reachedParams = IdentityHashMap<ParamSymbol, Expr>()
+        var reachedThis: Expr? = null
+        var leaves = pointsInto(fn.ret) || fn.params.any { p -> if (p.byRef) pointsInto(p.type) else keepsViewsThrough(p.type) }
         fun mark(e: Expr?) {
-            val root = e?.let(::rootIdentifier) ?: return
-            val p = model.symbolOf(root) as? ParamSymbol ?: return
+            e ?: return
+            val root = rootIdentifier(e)
+            val p = root?.let { model.symbolOf(it) } as? ParamSymbol
             val place = model.place(e)
-            if (p in candidates && place != null && !throughReference(place)) {
+            if (root != null && p != null && p in candidates && place != null && !throughReference(place)) {
                 viewReads.add(root)
+                return
+            }
+            val roots: MutableSet<Any> = identitySet()
+            viewRoots(e, roots)
+            roots.forEach { r ->
+                when {
+                    r === THIS -> if (reachedThis == null) reachedThis = e
+                    r is ParamSymbol && passedByReference(r.type) && reachesThroughHandle(r.type) -> reachedParams.putIfAbsent(r, e)
+                }
             }
         }
         body.forEach { s ->
             AstTree.walk(s) { node ->
                 when (node) {
-                    is LambdaExpr, is ThrowExpr -> escapes = true
+                    is LambdaExpr, is ThrowExpr -> leaves = true
                     is FunctionCallExpr -> model.call(node)?.let { rc ->
                         val given = rc.args.filterIsInstance<ArgBinding.Given>()
                         if (pointsInto(rc.returnType) || given.any { it.byRef && pointsInto(model.typeOrNull(it.expr) ?: KType.Error) }) {
                             mark(rc.receiver)
                             given.forEach { mark(it.expr) }
+                            if (rc.implicitThis && reachedThis == null) {
+                                reachedThis = node
+                            }
                         }
                         if (rc.kind == CallKind.EXTERN && given.any { pointsInto(model.typeOrNull(it.expr) ?: KType.Error) }) {
-                            escapes = true
+                            leaves = true
                         }
                     }
                     else -> {}
@@ -433,13 +571,80 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 }
             }
         }
-        if (!escapes || viewReads.isEmpty()) {
-            return emptySet<ParamSymbol>() to emptySet()
-        }
+        val escapes = leaves || programKeepsViews
         val lent = identitySet<ParamSymbol>()
-        viewReads.forEach { r -> (model.symbolOf(r as Identifier) as? ParamSymbol)?.let { lent.add(it) } }
-        return lent to viewReads
+        if (escapes) {
+            viewReads.forEach { r -> (model.symbolOf(r as Identifier) as? ParamSymbol)?.let { lent.add(it) } }
+        }
+        return Lending(
+            lent,
+            if (escapes) viewReads else emptySet(),
+            if (leaves) reachedParams else emptyMap(),
+            if (leaves) reachedThis else null,
+        )
     }
+
+    /**
+     * The parameters and `this` ([THIS]) whose storage [e] may be reached through: the variable
+     * a path starts from, and through a call, its receiver, its arguments and an implicit
+     * `this` (`b.get().items` is reached through b).
+     */
+    private fun viewRoots(e: Expr, out: MutableSet<Any>) {
+        fun call(c: FunctionCallExpr) {
+            val rc = model.call(c) ?: return
+            if (rc.implicitThis) {
+                out.add(THIS)
+            }
+            rc.receiver?.let { viewRoots(it, out) }
+            rc.args.forEach { a -> if (a is ArgBinding.Given) viewRoots(a.expr, out) }
+        }
+        when (e) {
+            is Identifier -> when (val sym = model.symbolOf(e)) {
+                is ParamSymbol -> out.add(sym)
+                is FieldSymbol -> out.add(THIS)
+                else -> {}
+            }
+            is ThisExpr -> out.add(THIS)
+            is MemberAccessExpr -> (e.member as? FunctionCallExpr)?.let(::call) ?: viewRoots(e.origin, out)
+            is ArrayIndexExpr -> viewRoots(e.originExpr, out)
+            is FunctionCallExpr -> call(e)
+            else -> {}
+        }
+    }
+
+    /**
+     * Whether a parameter of type [t], not `mut`, can carry a view out of the call through what
+     * it reaches: a `Ref` box or a generic class that can hold one ([sharesViews]), an `Fx`
+     * (the lambda it runs may keep it), or a type parameter (any of those).
+     */
+    private fun keepsViewsThrough(t: KType): Boolean = sharesViews(t) || mentionsFn(t) || hasParam(t)
+
+    /**
+     * Whether a [t] reaches, through a handle, storage that can keep a view: a `Ref` or `Weak`
+     * box, or a generic class, instantiated with a type that can hold one (a view, an `Fx`, a
+     * type parameter), or a value holding such a handle (a `List<Ref<View<Int32>>>`). Anyone
+     * holding the same handle can store a view there, so a view read out of it may point
+     * anywhere.
+     */
+    private fun sharesViews(t: KType, seen: MutableSet<TypeSymbol> = identitySet()): Boolean = when (t) {
+        is KType.Nominal -> {
+            val sym = t.sym
+            val args = t.typeArgs()
+            when {
+                (isReferenceOwner(sym) || (sym is ClassSymbol && sym.kind == ClassKind.CLASS)) && args.any { keepsViews(it) || sharesViews(it, seen) } -> true
+                sym is ClassSymbol && sym.kind == ClassKind.STRUCT ->
+                    seen.add(sym) && sym.typeParams.zip(args).toMap().let { sub -> sym.fields.any { sharesViews(it.type.substitute(sub), seen) } }
+                else -> args.any { sharesViews(it, seen) }
+            }
+        }
+        else -> false
+    }
+
+    /** Whether a value of type [t] is, or holds, a view, or reaches storage that can keep one ([sharesViews]). */
+    private fun holdsViews(t: KType): Boolean = pointsInto(t) || sharesViews(t)
+
+    /** Whether a [t] reaches objects through a handle it holds (a class, trait, `Ref`, `Weak`, system class, `Fx`, type parameter), where a view it leads to may point. */
+    private fun reachesThroughHandle(t: KType): Boolean = ownsObjects(t) || mentions(t) { it is ClassSymbol && it.kind == ClassKind.MAGIC && it.name == "Weak" }
 
     /** The variable an expression reads storage from: `xs` of `xs`, `xs.a`, `xs[0].a`; null for anything else (a call's result, a construction). */
     private fun rootIdentifier(e: Expr): Identifier? = when (e) {
@@ -465,6 +670,17 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
     private fun keepsViews(t: KType): Boolean = pointsInto(t) || hasParam(t) || mentionsFn(t)
 
+    /**
+     * The program's own modules have a global a view may be taken into or through: one that
+     * owns a buffer, holds an object, or holds a view. A view a Kira function returns may then
+     * point into it whatever its arguments are (`allNums()` returning `nums.view()`).
+     */
+    private val globalsHoldStorage: Boolean by lazy {
+        program.modules.filter { !it.isStdlib }.flatMap { it.declarations }.any { sym ->
+            sym is GlobalSymbol && (ownsBuffer(sym.type) || reachesThroughHandle(sym.type) || holdsViews(sym.type))
+        }
+    }
+
     private fun mentionsFn(t: KType): Boolean = when (t) {
         is KType.Fn -> true
         is KType.Nominal -> t.typeArgs().any { mentionsFn(it) }
@@ -482,14 +698,48 @@ class CppClassLifetimes(private val program: TypedProgram) {
      */
     private class Keeps(val thisKept: Boolean, val keptParams: Set<ParamSymbol>)
 
-    /** Storage a view may point into: its place, its type, and the expression that names it. */
-    private class ViewSource(val place: Place, val type: KType, val expr: Expr)
+    /**
+     * Storage a view may point into: its [place] and [type], and the expression that names it.
+     * A null [place] is storage reached through [expr], wherever that leads: a handle
+     * (`b.all()`, `viewOf(b)`), `this`, a global a call may view, or a box a view is kept in;
+     * [locals] are the body's locals it is reached from, whose handles keep it alive until they
+     * are written whole; [box] names the local whose shared box (`Ref<View<T>>`) any holder of
+     * it may point elsewhere.
+     */
+    private class ViewSource(val place: Place?, val type: KType, val expr: Expr, val locals: Set<LocalSymbol> = emptySet(), val box: String? = null)
+
+    /** The end of the block that declares [local], as the cause of a view check's hit ([Walker.block]). */
+    private class BlockEnd(val local: LocalSymbol) : ASTNode() {
+        override fun accept(visitor: KiraASTVisitor) {}
+    }
+
+    /** How a view is in use when an effect may move or free what it points into ([ViewHit]). */
+    private enum class HitKind {
+        /** The view local is read after the effect. */
+        READ,
+
+        /** The view is handed to a call whose callee may have the effect. */
+        HANDED,
+
+        /** The view, read before a later argument of the same call has the effect, is read by the call after it. */
+        SIBLING,
+
+        /** A range-for over the view, whose body may have the effect. */
+        LOOP,
+
+        /** A lambda captures the view, and may run after the effect. */
+        CAPTURE,
+
+        /** The body returns the view, which points into storage only a local's handle may keep alive. */
+        RETURN,
+    }
 
     /**
      * A view in use while an effect may move or free what it points into: the view local [view]
-     * read at [at] after [cause], or (with [callee]) the view [at] handed to a call that may.
+     * read at [at] after [cause], or the view at [at] used the way [kind] says ([callee] is the
+     * call it is handed to).
      */
-    private class ViewHit(val at: ASTNode, val view: String?, val of: Expr, val cause: ASTNode, val callee: String?)
+    private class ViewHit(val at: ASTNode, val view: String?, val source: ViewSource, val cause: ASTNode, val callee: String?, val kind: HitKind = HitKind.READ)
 
     private fun keepsOf(fn: FnSymbol?, owner: TypeSymbol?): Keeps {
         if (fn == null) {
@@ -505,11 +755,13 @@ class CppClassLifetimes(private val program: TypedProgram) {
      * What [nodes] (a function's, method's, `initially`'s or `finally`'s body, or a field's
      * default, with every lambda inside it) do that no guard makes safe, each with the message
      * that refuses it: a range-for over storage an object holds whose body may change that
-     * storage, or over storage only a temporary keeps alive; a `mut` argument naming such
-     * storage that the call may change or free; a call through an `Fx` such storage holds while
-     * the code it runs may replace or free it; a lambda's `const&` parameter read after an
-     * effect that may reach it (a lambda is the statement part's, and copies nothing at entry);
-     * and a lent parameter the body reads after an effect that may reach it ([Guard.lent]).
+     * storage; a `mut` argument naming such storage that the call may change or free; a call
+     * through an `Fx` such storage holds while the code it runs may replace or free it; a
+     * lambda's `const&` parameter read after an effect that may reach it (a lambda is the
+     * statement part's, and copies nothing at entry); a lent parameter the body reads after an
+     * effect that may reach it ([Guard.lent]), and a view that may leave the call into storage
+     * only the call keeps alive ([reachedRefusals]); and each view the body keeps that is in use
+     * after an effect that may move or free what it points into ([ViewHit]).
      * [fn] and [owner] are the body's function (null for `initially`, `finally` and a field's
      * default) and type.
      */
@@ -545,18 +797,107 @@ class CppClassLifetimes(private val program: TypedProgram) {
         return out
     }
 
+    /**
+     * The temporary a view [e] holds points into, when [e] is stored in a heap object's field of
+     * type [field] (a class construction, a `Ref`'s box): `makeList()` of `Ref<View<Int32>> {
+     * value = makeList().view() }`, which C++ destroys at the end of the statement while the box
+     * keeps the view (g++ printed 2 and zig c++ 334 where Kira gives 2 and 2). A temporary is a
+     * value no place names that owns a buffer (a call's result, a construction), or storage one
+     * holds (`makeItem().labels`); a view of a view, or the result of a call made from one,
+     * points where its operands do. The statement part refuses the same construction when it
+     * lowers it; this does not rely on that.
+     */
+    fun temporaryViewed(e: Expr, field: KType): Expr? {
+        if (!holdsViews(field)) {
+            return null
+        }
+        return viewedTemporary(e)
+    }
+
+    private fun viewedTemporary(e: Expr): Expr? {
+        if (model.coercion(e) is Coercion.ToView) {
+            return temporaryStorage(e)
+        }
+        val t = model.typeOrNull(e) ?: return null
+        if (!holdsViews(t)) {
+            return null
+        }
+        val call = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr
+        if (call != null) {
+            val rc = model.call(call) ?: return null
+            val operands = listOfNotNull(rc.receiver) + rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }
+            return operands.firstNotNullOfOrNull { x -> temporaryStorage(x) ?: viewedTemporary(x) }
+        }
+        return when (e) {
+            is Identifier, is LambdaExpr -> null
+            else -> if (model.place(e) != null) null else AstTree.children(e).filterIsInstance<Expr>().firstNotNullOfOrNull(::viewedTemporary)
+        }
+    }
+
+    /** [x] as the temporary whose buffer a view of it points into: a fresh value that owns one, or a place inside such a value. */
+    private fun temporaryStorage(x: Expr): Expr? {
+        val t = model.typeOrNull(x) ?: return null
+        // A literal's storage is static (`"x".view()` is `kira::lit("x")`).
+        if (!ownsBuffer(t) || pointsInto(t) || x is StringLiteral) {
+            return null
+        }
+        val place = model.place(x) ?: return x
+        return if (place.root() is Place.Field) x else null
+    }
+
     private fun viewRefusal(h: ViewHit): String {
-        val of = KiraUnparser.text(h.of)
-        val type = model.typeOrNull(h.of)?.display() ?: "its type"
+        val source = h.source
+        val of = KiraUnparser.text(source.expr)
+        val type = model.typeOrNull(source.expr)?.display() ?: "its type"
+        val cause = describe(h.cause)
         // The body's own local is copied by taking the view later; storage outside the body by viewing a local copy of it.
-        val own = model.place(h.of)?.root() is Place.Local
-        val copy = "a view of a local copy (`items: $type = $of`, then a view of items)"
-        return if (h.callee != null) {
-            "the view of $of handed to ${h.callee}, which may change or free $of while the view is in use: C++ passes a pointer into that storage, which the call may move. " +
-                (if (own) "Take the view after the call, or copy $of first" else "Pass $copy")
-        } else {
-            "the view ${h.view}, taken of $of, read after ${describe(h.cause)}, which may change or free $of: C++ keeps the view pointing into that storage, which the effect may move. " +
-                "Take the view after ${describe(h.cause)}" + (if (own) "" else ", or take $copy")
+        val own = source.place?.root() is Place.Local
+        val copy = if (source.place == null) "a view of a local copy of what it shows (`items: List<T> = ...`, then a view of items)" else "a view of a local copy (`items: $type = $of`, then a view of items)"
+        // What the view points into: a place, or wherever storage reached through an expression leads.
+        val into = when {
+            source.box != null -> "what it points into (anyone who holds the box ${source.box} may have stored a view of any storage there)"
+            source.place == null -> "storage reached through $of"
+            else -> of
+        }
+        val view = h.view?.let { "the view $it" } ?: "the view ${KiraUnparser.text(h.at)}"
+        (h.cause as? BlockEnd)?.let { end ->
+            val taken = if (source.place == null) "which may point into storage reached through $of" else "taken of $of"
+            val how = if (h.kind == HitKind.CAPTURE) "captured by a lambda that may run after" else "read after"
+            return "$view, $taken, $how $cause, which destroys ${end.local.name}: C++ keeps the view pointing into storage that no longer exists. " +
+                "Declare ${end.local.name} before that block, or finish with the view inside it"
+        }
+        if (source.box != null && h.kind == HitKind.READ) {
+            return "the view the box ${source.box} holds, read after $cause, which may change or free $into: C++ keeps the view pointing where it was, which the effect may move. " +
+                "Read it before $cause, or keep a copy of what the view shows (a List<T>) in the box instead of a view"
+        }
+        return when (h.kind) {
+            HitKind.HANDED -> if (source.place == null) {
+                "the view ${KiraUnparser.text(h.at)} handed to ${h.callee}, which may change or free $into while the view is in use: C++ passes a pointer into that storage, which the call may move. Pass $copy"
+            } else {
+                "the view of $of handed to ${h.callee}, which may change or free $of while the view is in use: C++ passes a pointer into that storage, which the call may move. " +
+                    (if (own) "Take the view after the call, or copy $of first" else "Pass $copy")
+            }
+            HitKind.SIBLING ->
+                "$view, read by the call to ${h.callee} after $cause among its arguments, which may change or free $into: C++ reads the view where it pointed before. " +
+                    "Evaluate that argument into a local first, then take the view, or pass $copy"
+            HitKind.LOOP ->
+                "the loop over ${KiraUnparser.text((h.at as? ForIterationStatement)?.forIterationExpr?.target ?: h.at)}, a view of $into, while its body may change or free that storage ($cause): a C++ range-for keeps pointers into it. " +
+                    "Iterate over a local copy instead (`items: List<T> = ...` of what the view shows, then `for ... in items`)"
+            HitKind.RETURN -> {
+                val local = source.locals.firstOrNull()?.name ?: (source.place?.root() as? Place.Local)?.sym?.name ?: of
+                "the returned view ${KiraUnparser.text(h.at)} points into storage reached through the local $local, whose handle is dropped as the function returns: " +
+                    "when $local is that object's only owner, the view points into freed memory. Return a copy of what the view shows (a List<T>), or view storage the caller passed"
+            }
+            HitKind.CAPTURE ->
+                "$view, captured by a lambda that may run after $cause, which may change or free $into: the lambda keeps the view pointing where it was. " +
+                    "Capture a local copy of what the lambda needs instead, or take the view inside the lambda"
+            HitKind.READ -> if (source.place == null) {
+                "$view, which may point into $into, read after $cause, which may change or free that storage: C++ keeps the view pointing where it was, which the effect may move. " +
+                    "Take the view after $cause, or take $copy"
+            } else {
+                "the view ${h.view}, taken of $of, read after $cause, which may change or free $of: C++ keeps the view pointing into that storage, which the effect may move. " +
+                    "Take the view after $cause" + (if (own) "" else ", or take $copy")
+            }
         }
     }
 
@@ -614,12 +955,10 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
     private fun loopRefusal(s: ForIterationStatement, fn: FnSymbol?, owner: TypeSymbol?, keeps: Keeps): String? {
         val target = s.forIterationExpr.target
-        temporaryRange(target)?.let { base ->
-            val text = KiraUnparser.text(target)
-            val baseText = KiraUnparser.text(base)
-            val baseType = model.typeOrNull(base)?.display() ?: "the type it has"
-            return "the loop over $text, storage only the temporary $baseText keeps alive: a C++ range-for keeps its range alive, not what the range is reached through, " +
-                "so that temporary is destroyed before the first iteration. Store it in a local first (`v: $baseType = $baseText`, then loop over v's storage)"
+        // The statement part (W2.3 9e00cfb and later) copies such a range while the temporary lives, and
+        // refuses a view of one: the loop iterates its own copy, which nothing in the body can reach.
+        if (temporaryRange(target) != null) {
+            return null
         }
         val place = model.place(target) ?: return null
         if (kindOf(place) != PlaceKind.SHARED) {
@@ -637,11 +976,15 @@ class CppClassLifetimes(private val program: TypedProgram) {
      * The temporary a loop's range lies inside, when only that temporary keeps the range alive:
      * the range is reached from a call's result or a construction through a handle (a field of
      * a class object), an element, or a runtime accessor (`unwrap()`, `get(i)`), each of which
-     * C++ spells as a reference into what it is reached from. `for s in makeItem().labels` is
-     * `for(const kira::Str& s : makeItem()->labels)`, and the `kira::Rc` temporary dies at the
+     * C++ spells as a reference into what it is reached from. `for s in makeItem().labels` was
+     * `for(const kira::Str& s : makeItem()->labels)`, and the `kira::Rc` temporary died at the
      * end of the range's initializer, freeing the Item before the first iteration (g++ printed
-     * freed heap bytes; MSVC ASan: heap-use-after-free). A temporary that is the range itself,
-     * or a struct's field reached by value, is kept alive by the range-for's reference.
+     * freed heap bytes; MSVC ASan: heap-use-after-free). The statement part now copies such a
+     * range in the range expression (`kira::List<kira::Str>(makeItem()->labels)`,
+     * `CppHoister.rangeMayDangle`), and refuses a view of one, so [loopRefusal] leaves every
+     * such loop to it: the copy is the loop's own, which its body cannot change. A temporary
+     * that is the range itself, or a struct's field reached by value, is kept alive by the
+     * range-for's reference.
      */
     private fun temporaryRange(target: Expr): Expr? {
         var e: Expr = target
@@ -691,7 +1034,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
         }
         // What runs while the callee writes through the argument: the callee. A sibling argument's effect comes before the
         // binding, since the statement part locates a mut argument's place after its impure siblings (D33).
-        val during = Walker(summary = true, fn = null, owner = null).calleeEffects(rc)
+        val during = Walker(summary = true, fn = null, owner = null).calleeEffects(rc, n.name)
         shared.forEachIndexed { i, a ->
             val place = model.place(a.expr)!!
             val type = model.typeOrNull(a.expr) ?: KType.Error
@@ -728,6 +1071,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
     /** [cause] as a diagnostic names it: `the call to clear`, `the assignment `next = null``. */
     fun describe(cause: ASTNode): String = when (cause) {
+        is BlockEnd -> "the end of the block that declares ${cause.local.name}"
         is FunctionCallExpr -> "the call to ${model.call(cause)?.fn?.name ?: KiraUnparser.text(cause.name)}"
         is ObjectInitExpr -> "the construction of ${model.init(cause)?.cls?.name ?: "an object"}"
         is AssignmentExpr, is CompoundAssignmentExpr, is PlaceAssignmentExpr -> "the assignment `${KiraUnparser.text(cause)}`"
@@ -807,6 +1151,12 @@ class CppClassLifetimes(private val program: TypedProgram) {
      * grown, a `Str` assigned), or a container holding it by value resized. An element written
      * in place (`items[0] = 5`, `a = [4, 5, 6]` on an `Arr`) leaves the buffer where it was.
      */
+    private fun movesBuffer(e: Effects, source: ViewSource, keeps: Keeps): Boolean {
+        // A block's end destroys its locals: storage in one, or reached through its handle, is gone.
+        val dropped = source.place?.let { p -> (p.root() as? Place.Local)?.sym?.let { it in e.drops } } ?: source.locals.any { it in e.drops }
+        return dropped || (source.place?.let { movesBuffer(e, it, source.type, keeps) } ?: (movesReached(e) || e.writes.any { w -> !w.inside && source.locals.any { it === w.at } }))
+    }
+
     private fun movesBuffer(e: Effects, place: Place, type: KType, keeps: Keeps): Boolean {
         if (e.any || (e.releases && releasable(place, keeps))) {
             return true
@@ -822,12 +1172,26 @@ class CppClassLifetimes(private val program: TypedProgram) {
             val there = when {
                 w.at == null || at == null -> overlaps(w.type, type)
                 w.at === at -> true
+                // Nothing but the body itself reaches its own local's storage, and it writes it as that local.
+                at is LocalSymbol -> false
                 w.at is FieldSymbol && at is FieldSymbol -> fieldsNest(w.at, w.type, at, type)
                 else -> overlaps(w.type, type)
             }
             there && (hasParam(type) || hasParam(w.type) || w.type == KType.Error || type in nested(w.type) || (!w.inside && w.type == type && reallocates(type)))
         }
     }
+
+    /**
+     * Whether effects [e] may move or free storage reached through a handle, `this`, a global or
+     * a call's result, wherever that storage is ([ViewSource] without a place): anything the
+     * analysis cannot see, or a write, anywhere but the body's own locals, of a type that moves
+     * a buffer when replaced or grown ([reallocates]) or that holds an object (replacing it may
+     * free what the view points into, and whatever its `finally` does is among the writes).
+     * The objects the handle itself reaches stay alive while it holds them, so a release that
+     * writes nothing (a local dropped, a construction) cannot free them.
+     */
+    private fun movesReached(e: Effects): Boolean =
+        e.any || e.writes.any { w -> w.at !is LocalSymbol && (w.type == KType.Error || hasParam(w.type) || reallocates(w.type) || ownsObjects(w.type)) }
 
     /** Whether replacing or growing a [t] may move the buffer a view into it points at: a `Str`, a resizable container, an `Arr` or struct holding one, a type parameter. */
     private fun reallocates(t: KType, seen: MutableSet<TypeSymbol> = identitySet()): Boolean = when (t) {
@@ -1053,6 +1417,9 @@ class CppClassLifetimes(private val program: TypedProgram) {
         /** The tracked parameters read after an effect that may reach them. */
         val paramHits: MutableSet<ParamSymbol> = Collections.newSetFromMap(IdentityHashMap())
 
+        /** The first effect that may reach each of [paramHits]. */
+        val firstHits = IdentityHashMap<ParamSymbol, ASTNode>()
+
         /** The first read of each tracked parameter after an effect that may free or move what it names ([invalidates]), with that effect. */
         val invalidHits = IdentityHashMap<ParamSymbol, Pair<ASTNode, ASTNode>>()
 
@@ -1062,8 +1429,18 @@ class CppClassLifetimes(private val program: TypedProgram) {
         /** The first effect that may free an object before a read of the receiver, when there is one. */
         var thisReleasedBy: ASTNode? = null
 
-        /** Each view local that may point into storage the body does not own, with that storage and how many events came before it was taken. */
-        private val viewLocals = IdentityHashMap<LocalSymbol, Pair<List<ViewSource>, Int>>()
+        /**
+         * Each local that holds a view, or can hold one ([holdsViews]: a view, a container or a
+         * struct of views, a `Ref` box of one), with the storage each view it holds may point
+         * into and how many events came before that view was taken.
+         */
+        private val viewLocals = IdentityHashMap<LocalSymbol, MutableList<Pair<ViewSource, Int>>>()
+
+        /** The view locals a lambda captures, with what each held then: the lambda may run at any later point of the body. */
+        private val captures = mutableListOf<Triple<LambdaExpr, LocalSymbol, List<Pair<ViewSource, Int>>>>()
+
+        /** The same for a lambda that runs only where the local it was given to is called ([calledInPlace]): checked at each such call. */
+        private val inPlaceCaptures = IdentityHashMap<LocalSymbol, MutableList<Triple<LambdaExpr, LocalSymbol, List<Pair<ViewSource, Int>>>>>()
 
         /** What [views] found: a view read, or handed to a call, while an effect may move or free what it points into. */
         val viewHits = mutableListOf<ViewHit>()
@@ -1075,8 +1452,15 @@ class CppClassLifetimes(private val program: TypedProgram) {
         /** The lambdas written as arguments of the call being walked, each with the effects its callee may run around it. */
         private val lambdaRuns = IdentityHashMap<LambdaExpr, Effects>()
 
+        /** The lambdas among those a runtime method runs while it works and keeps no more ([runsNow]): they capture nothing that outlives the call. */
+        private val runOnce: MutableSet<LambdaExpr> = Collections.newSetFromMap(IdentityHashMap())
+
+        /** How many lambdas the walk is inside, walked where a call runs them ([runLambda]). */
+        private var inLambda = 0
+
         fun run(statements: List<ASTNode>): Walker {
             statements.forEach(::node)
+            checkCaptures()
             return this
         }
 
@@ -1100,7 +1484,9 @@ class CppClassLifetimes(private val program: TypedProgram) {
             if (p !in tracked || !affects(now, p.type)) {
                 return
             }
-            paramHits.add(p)
+            if (paramHits.add(p)) {
+                events.firstOrNull { affects(it.first, p.type) }?.let { firstHits[p] = it.second }
+            }
             val read = at ?: p.decl ?: return
             if (p !in invalidHits && invalidates(now, p.type)) {
                 events.firstOrNull { invalidates(it.first, p.type) }?.let { invalidHits[p] = read to it.second }
@@ -1129,7 +1515,12 @@ class CppClassLifetimes(private val program: TypedProgram) {
         fun node(n: ASTNode) {
             when (n) {
                 // A lambda anywhere but a call's argument runs later: its effects are the Fx pool's, and it captures copies.
-                is LambdaExpr -> lambdaRuns[n]?.let { runLambda(n, it) }
+                is LambdaExpr -> {
+                    lambdaRuns[n]?.let { runLambda(n, it) }
+                    if (n !in runOnce) {
+                        capture(n)
+                    }
+                }
                 is FunctionCallExpr -> call(n)
                 is ObjectInitExpr -> {
                     children(n)
@@ -1137,12 +1528,17 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 }
                 is AssignmentExpr -> {
                     node(n.value)
+                    val place = model.place(n.target)
                     // A local written whole is not read (a view local given a new view is not a read of the old one).
-                    if (model.place(n.target) !is Place.Local) {
+                    if (place !is Place.Local) {
                         node(n.target)
                     }
-                    event(write(model.place(n.target), model.typeOrNull(n.target)), n)
-                    ((model.place(n.target) as? Place.Local)?.sym)?.let { takeView(it, n.value) }
+                    event(write(place, model.typeOrNull(n.target)), n)
+                    if (place is Place.Local) {
+                        takeView(place.sym, n.value)
+                    } else {
+                        storeView(place, n.value)
+                    }
                 }
                 is CompoundAssignmentExpr -> {
                     node(n.left)
@@ -1153,6 +1549,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
                     node(n.value)
                     node(n.target)
                     event(write(model.place(n.target), model.typeOrNull(n.target)), n)
+                    storeView(model.place(n.target), n.value)
                 }
                 is VariableDecl -> {
                     n.value?.let(::node)
@@ -1170,17 +1567,40 @@ class CppClassLifetimes(private val program: TypedProgram) {
                         event(release(), n)
                     }
                 }
-                is ForIterationStatement -> repeat(2) {
-                    node(n.forIterationExpr.target)
-                    n.body.forEach(::node)
-                }
+                is ForIterationStatement -> loop(n)
                 is WhileIterationStatement -> repeat(2) {
                     node(n.condition)
-                    n.statements.forEach(::node)
+                    block(n.statements)
                 }
                 is DoWhileIterationStatement -> repeat(2) {
-                    n.statements.forEach(::node)
+                    block(n.statements)
                     node(n.condition)
+                }
+                is IfSelectionStatement -> {
+                    node(n.expr)
+                    block(n.thenStatements)
+                    n.elseBranches.forEach { b ->
+                        when (b) {
+                            is ElseIfBranchStatement -> {
+                                node(b.condition)
+                                block(b.statements)
+                            }
+                            is ElseBranchStatement -> block(b.statements)
+                        }
+                    }
+                }
+                is IfExpr -> {
+                    node(n.condition)
+                    block(n.thenBranch)
+                    block(n.elseBranch)
+                }
+                is TryExpr -> {
+                    block(n.tryBlock)
+                    block(n.handlerBlock)
+                }
+                is ReturnStatement -> {
+                    children(n)
+                    returned(n.expr)
                 }
                 is ThisExpr -> useThis()
                 is IntrinsicExpr -> children(n)
@@ -1203,71 +1623,293 @@ class CppClassLifetimes(private val program: TypedProgram) {
             }
         }
 
-        /** [local] now holds [value]: a view of storage the body does not own is followed from here ([viewLocals]). */
-        private fun takeView(local: LocalSymbol, value: Expr) {
-            if (views == null || !pointsInto(local.type)) {
+        /**
+         * The statements of a block, then its end: C++ destroys each local the block declares
+         * (and [also], a loop's variable, at the end of each step), so a view of one, or of an
+         * object only its handle kept, dangles past it (`if c { x: Bag = makeBag(); v =
+         * x.items.view() }`, then `v.get(1)`: MSVC ASan, heap-use-after-free). Only a view
+         * check records the end.
+         */
+        private fun block(statements: List<Statement>, also: List<LocalSymbol> = emptyList()) {
+            statements.forEach(::node)
+            if (views == null) {
                 return
             }
-            val sources = viewSources(value)
+            val declared = statements.mapNotNull { s -> ((s as? VariableDecl) ?: (s.expr as? VariableDecl))?.let { model.declSymbol(it) as? LocalSymbol } } + also
+            declared.forEach { local -> event(Effects().also { it.drops.add(local) }, BlockEnd(local)) }
+        }
+
+        /**
+         * [local] now holds [value]: a view of storage the body does not own is followed from
+         * here ([viewLocals]). A box others may hold ([sharesViews]: a `Ref<View<T>>`) can be
+         * given a view by any of them, so what it holds may point anywhere from here on.
+         */
+        private fun takeView(local: LocalSymbol, value: Expr) {
+            if (views == null || !holdsViews(local.type)) {
+                return
+            }
+            val sources = viewSources(value).toMutableList()
+            if (sharesViews(local.type)) {
+                sources += ViewSource(null, local.type, value, localRoots(value), box = local.name) to events.size
+            }
             if (sources.isEmpty()) {
                 viewLocals.remove(local)
             } else {
-                viewLocals[local] = sources to events.size
+                viewLocals[local] = sources
             }
         }
 
-        /** The storage a view-valued [e] may point into that the body does not own: what it takes a view of in place, or the view local it reads. */
-        private fun viewSources(e: Expr): List<ViewSource> {
-            val keeps = views ?: return emptyList()
-            val out = mutableListOf<ViewSource>()
-            fun storage(x: Expr) {
-                val p = model.place(x) ?: return
-                val t = model.typeOrNull(x) ?: return
-                // A parameter copied at entry is a local copy the body never writes; anything else may move under the view.
-                val root = p.root()
-                if (ownsBuffer(t) && !(root is Place.Param && !root.sym.byRef && root.sym in keeps.keptParams)) {
-                    out += ViewSource(p, t, x)
+        /** [value] is stored into [place], inside a local that holds views (`vs[0] = v`, `r.value = v`): the local holds what it points into as well. */
+        private fun storeView(place: Place?, value: Expr) {
+            val local = (place?.root() as? Place.Local)?.sym ?: return
+            if (views != null && holdsViews(local.type)) {
+                addViews(local, viewSources(value))
+            }
+        }
+
+        private fun addViews(local: LocalSymbol, sources: List<Pair<ViewSource, Int>>) {
+            val held = viewLocals.getOrPut(local) { mutableListOf() }
+            sources.forEach { s -> if (held.none { it.first === s.first }) held += s }
+        }
+
+        /** The local [x] is, or lies in by value (`vs`, `vs[0]`, `p.views`), when it has one. */
+        private fun rootLocal(x: Expr): LocalSymbol? = (model.place(x)?.root() as? Place.Local)?.sym
+
+        /** The body's locals [x] reads: a view reached through one of their handles stays alive until that local is written whole. */
+        private fun localRoots(x: Expr): Set<LocalSymbol> {
+            val out = identitySet<LocalSymbol>()
+            AstTree.walk(x) { node ->
+                if (node is Identifier) {
+                    (model.symbolOf(node) as? LocalSymbol)?.let { if (reachesThroughHandle(it.type)) out.add(it) }
                 }
             }
+            return out
+        }
+
+        /**
+         * The storage [x] names in place, when a view into it can be taken there (it owns a
+         * buffer). A parameter copied at entry is a local copy the body never writes, unless the
+         * storage lies through a handle it holds; anything else may move under the view.
+         */
+        private fun storage(x: Expr): List<Pair<ViewSource, Int>> {
+            val keeps = views ?: return emptyList()
+            val p = model.place(x) ?: return emptyList()
+            val t = model.typeOrNull(x) ?: return emptyList()
+            val root = p.root()
+            if (!ownsBuffer(t) || (root is Place.Param && !root.sym.byRef && root.sym in keeps.keptParams && !throughReference(p))) {
+                return emptyList()
+            }
+            return listOf(ViewSource(p, t, x) to events.size)
+        }
+
+        /**
+         * What a view made from the operand [x] (a receiver or an argument of a call whose
+         * result can hold a view) may point into: [x]'s own storage, what [x] is or holds a view
+         * of, and, when [x] is or holds a handle (`b` of `viewOf(b)`, `b.all()`), anything
+         * reached through it.
+         */
+        private fun reach(x: Expr): List<Pair<ViewSource, Int>> {
+            val t = model.typeOrNull(x) ?: KType.Error
+            val out = mutableListOf<Pair<ViewSource, Int>>()
+            out += storage(x)
+            if (holdsViews(t) || model.coercion(x) is Coercion.ToView) {
+                out += viewSources(x)
+            }
+            if (reachesThroughHandle(t)) {
+                out += ViewSource(null, t, x, localRoots(x)) to events.size
+            }
+            return out
+        }
+
+        /**
+         * The storage a view-valued [e] may point into, each with how many events came before
+         * the view was taken: what it takes a view of in place, the views a local it reads holds,
+         * and for a call, what its receiver, its arguments, an implicit `this`, the Fx it runs
+         * and (for a Kira callee, when the program has a global that holds storage) the globals
+         * may lead to. A view read out of storage through a handle, a parameter or a global may
+         * point anywhere.
+         */
+        private fun viewSources(e: Expr): List<Pair<ViewSource, Int>> {
+            if (views == null) {
+                return emptyList()
+            }
+            val out = mutableListOf<Pair<ViewSource, Int>>()
+            val t = model.typeOrNull(e)
             if (model.coercion(e) is Coercion.ToView) {
-                storage(e)
+                out += storage(e)
             }
             val call = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr
+            val place = model.place(e)
             when {
-                e is Identifier -> (model.symbolOf(e) as? LocalSymbol)?.let { local -> viewLocals[local]?.first?.let(out::addAll) }
+                e is Identifier -> (model.symbolOf(e) as? LocalSymbol)?.let { local -> viewLocals[local]?.let(out::addAll) }
                 call != null -> model.call(call)?.let { rc ->
-                    if (pointsInto(model.typeOrNull(e) ?: rc.returnType)) {
-                        rc.receiver?.let { r ->
-                            storage(r)
-                            out += viewSources(r)
+                    val result = t ?: rc.returnType
+                    if (holdsViews(result)) {
+                        rc.receiver?.let { out += reach(it) }
+                        if (rc.implicitThis) {
+                            out += ViewSource(null, result, e) to events.size
                         }
-                        rc.args.forEach { a ->
-                            if (a is ArgBinding.Given && !a.byRef) {
-                                storage(a.expr)
-                                out += viewSources(a.expr)
-                            }
+                        rc.args.forEach { a -> if (a is ArgBinding.Given) out += reach(a.expr) }
+                        if (rc.kind == CallKind.FN_VALUE) {
+                            out += reach(call.name)
+                        }
+                        if (rc.kind != CallKind.MAGIC && globalsHoldStorage) {
+                            out += ViewSource(null, result, e) to events.size
                         }
                     }
                 }
                 e is ObjectInitExpr -> AstTree.children(e).filterIsInstance<Expr>().forEach { out += viewSources(it) }
+                // Each branch's value, the expression of its last statement; one the walk cannot find may be anything.
+                e is IfExpr || e is TryExpr -> {
+                    val branches = if (e is IfExpr) listOf(e.thenBranch, e.elseBranch) else (e as TryExpr).let { listOf(it.tryBlock, it.handlerBlock) }
+                    branches.forEach { b ->
+                        val value = b.lastOrNull()?.takeIf { it.javaClass == Statement::class.java }?.expr
+                        if (value != null) {
+                            out += viewSources(value)
+                        } else if (t != null && holdsViews(t)) {
+                            out += ViewSource(null, t, e, localRoots(e)) to events.size
+                        }
+                    }
+                }
+                t != null && holdsViews(t) && place != null -> {
+                    val local = (place.root() as? Place.Local)?.sym
+                    if (local != null && !throughReference(place)) {
+                        viewLocals[local]?.let(out::addAll)
+                    } else {
+                        out += ViewSource(null, t, e, localRoots(e)) to events.size
+                    }
+                }
+                // An if-expression, a tuple, an array literal: what any part holds.
+                t != null && holdsViews(t) && e !is LambdaExpr -> AstTree.children(e).filterIsInstance<Expr>().forEach { out += viewSources(it) }
                 else -> {}
             }
             return out
         }
 
+        /** The first event from [since] on, after each of [sources] was taken, that may move or free what it points into, with the source it moves. */
+        private fun firstMove(sources: List<Pair<ViewSource, Int>>, keeps: Keeps, since: Int = 0): Pair<ViewSource, ASTNode>? {
+            var best: Pair<ViewSource, ASTNode>? = null
+            var bestAt = events.size
+            for ((s, from) in sources) {
+                for (i in maxOf(from, since) until bestAt) {
+                    if (movesBuffer(events[i].first, s, keeps)) {
+                        best = s to events[i].second
+                        bestAt = i
+                        break
+                    }
+                }
+            }
+            return best
+        }
+
         /** A read of the view local [local] at [at]: an effect since the view was taken that may move or free what it points into is a hit. */
         private fun readView(local: LocalSymbol, at: ASTNode) {
             val keeps = views ?: return
-            val (sources, from) = viewLocals[local] ?: return
+            val sources = viewLocals[local] ?: return
             if (local in viewReported) {
                 return
             }
-            for (i in from until events.size) {
-                val (e, cause) = events[i]
-                val s = sources.firstOrNull { movesBuffer(e, it.place, it.type, keeps) } ?: continue
+            firstMove(sources, keeps)?.let { (s, cause) ->
                 viewReported.add(local)
-                viewHits += ViewHit(at, local.name, s.expr, cause, callee = null)
+                viewHits += ViewHit(at, local.name, s, cause, callee = null)
+            }
+        }
+
+        /**
+         * The body returns [value]: a view in it reached through a local's handle
+         * (`return x.items.view()` with `x: Bag` a local, `return x.all()`) points into an object
+         * the local may be the only owner of, which C++ frees as the function returns (g++
+         * printed freed heap bytes). W2.5's EscapePass refuses a view of a local leaving its
+         * function (D5); this does not rely on it for a class's storage.
+         */
+        private fun returned(value: Expr) {
+            // A lambda walked where it runs returns from itself, and its own walk checks what it returns.
+            if (views == null || inLambda > 0 || !holdsViews(model.typeOrNull(value) ?: KType.Error)) {
                 return
+            }
+            val s = viewSources(value).map { it.first }.firstOrNull { s ->
+                if (s.place == null) s.locals.isNotEmpty() else s.place.root() is Place.Local && throughReference(s.place)
+            } ?: return
+            viewHits += ViewHit(value, null, s, value, callee = null, kind = HitKind.RETURN)
+        }
+
+        /** The lambda [l] may run at any later point of the body: each view local it captures is checked against every effect after the view was taken ([checkCaptures]). */
+        private fun capture(l: LambdaExpr) {
+            if (views == null) {
+                return
+            }
+            val captured: MutableSet<LocalSymbol> = identitySet()
+            model.captures(l)?.forEach { c -> ((c as? Capture.Value)?.symbol as? LocalSymbol)?.let { captured.add(it) } }
+            l.def.body?.forEach { s -> AstTree.walk(s) { node -> if (node is Identifier) (model.symbolOf(node) as? LocalSymbol)?.let { captured.add(it) } } }
+            val runner = lambdaLocals.entries.firstOrNull { it.value === l }?.key?.takeIf { it in calledInPlace }
+            captured.forEach { local ->
+                viewLocals[local]?.let { held ->
+                    val c = Triple(l, local, held.toList())
+                    if (runner != null) inPlaceCaptures.getOrPut(runner) { mutableListOf() } += c else captures += c
+                }
+            }
+        }
+
+        /** The call [n] runs the lambda a local was given ([inPlaceCaptures]): each view it captured is read now. */
+        private fun runCaptured(n: FunctionCallExpr) {
+            val keeps = views ?: return
+            val local = (n.name as? Identifier)?.let { model.symbolOf(it) } as? LocalSymbol ?: return
+            inPlaceCaptures[local]?.forEach { (l, view, sources) ->
+                if (view !in viewReported) {
+                    firstMove(sources, keeps)?.let { (s, cause) ->
+                        viewReported.add(view)
+                        viewHits += ViewHit(l, view.name, s, cause, callee = null, kind = HitKind.CAPTURE)
+                    }
+                }
+            }
+        }
+
+        private fun checkCaptures() {
+            val keeps = views ?: return
+            for ((l, local, sources) in captures) {
+                if (local in viewReported) {
+                    continue
+                }
+                firstMove(sources, keeps)?.let { (s, cause) ->
+                    viewReported.add(local)
+                    viewHits += ViewHit(l, local.name, s, cause, callee = null, kind = HitKind.CAPTURE)
+                }
+            }
+        }
+
+        /**
+         * A range-for, walked twice so the next iteration sees what the last one did. Over a
+         * view (`for s in b.items.view()`, `for s in b.all()`), a body that may move or free what
+         * the view points into leaves the loop's pointers dangling ([HitKind.LOOP]); a loop
+         * variable that holds a view holds what the range's views point into.
+         */
+        private fun loop(n: ForIterationStatement) {
+            val target = n.forIterationExpr.target
+            val keeps = views
+            val t = model.typeOrNull(target)
+            val overView = keeps != null && (model.coercion(target) is Coercion.ToView || (t is KType.Nominal && (t.sym as? ClassSymbol)?.let { it.kind == ClassKind.MAGIC && it.name in VIEWS } == true))
+            var sources: List<Pair<ViewSource, Int>> = emptyList()
+            // The events of the body's walks: C++ evaluates the range once, so its own second walk is no effect under the loop.
+            val inBody = mutableListOf<Int>()
+            repeat(2) { i ->
+                node(target)
+                if (i == 0 && keeps != null) {
+                    if (overView) {
+                        sources = viewSources(target)
+                    }
+                    (model.loop(n)?.variable as? LocalSymbol)?.let { v ->
+                        if (holdsViews(v.type)) {
+                            viewLocals[v] = viewSources(target).toMutableList()
+                        }
+                    }
+                }
+                val start = events.size
+                block(n.body, listOfNotNull(model.loop(n)?.variable as? LocalSymbol))
+                (start until events.size).forEach { inBody += it }
+            }
+            if (keeps != null && overView) {
+                inBody.firstNotNullOfOrNull { i -> sources.firstOrNull { (s, _) -> movesBuffer(events[i].first, s, keeps) }?.let { it.first to events[i].second } }
+                    ?.let { (s, cause) -> viewHits += ViewHit(n, null, s, cause, callee = null, kind = HitKind.LOOP) }
             }
         }
 
@@ -1292,9 +1934,13 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 useThis()
             }
             node(n.name)
-            val callee = calleeEffects(rc)
+            val callee = calleeEffects(rc, n.name)
             val lambdaArgs = rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr as? LambdaExpr }
             lambdaArgs.forEach { lambdaRuns[it] = callee }
+            if (runsNow(rc)) {
+                runOnce.addAll(lambdaArgs)
+            }
+            val argStart = events.size
             n.positionalParameters.forEach(::node)
             n.namedParameters.forEach(::node)
             lambdaArgs.forEach { lambdaRuns.remove(it) }
@@ -1311,18 +1957,12 @@ class CppClassLifetimes(private val program: TypedProgram) {
                     e.addAll(write(model.place(a.expr), model.typeOrNull(a.expr)))
                 }
             }
-            // A view handed to the call points into its storage while the callee runs.
-            views?.let { keeps ->
-                rc.args.forEach { a ->
-                    if (a is ArgBinding.Given && !a.byRef && (model.coercion(a.expr) is Coercion.ToView || pointsInto(model.typeOrNull(a.expr) ?: KType.Error))) {
-                        val s = viewSources(a.expr).firstOrNull { movesBuffer(e, it.place, it.type, keeps) }
-                        if (s != null) {
-                            viewHits += ViewHit(a.expr, null, s.expr, n, callee = rc.fn?.name ?: KiraUnparser.text(n.name))
-                        }
-                    }
-                }
-            }
+            views?.let { keeps -> checkHanded(n, rc, e, argStart, keeps) }
+            views?.let { keepViews(n, rc) }
             event(e, n)
+            if (rc.kind == CallKind.FN_VALUE) {
+                runCaptured(n)
+            }
             // A mut argument is written through while the callee runs, so the object it lies in is in use until the call returns.
             rc.args.forEach { a ->
                 if (a is ArgBinding.Given && a.byRef) {
@@ -1340,6 +1980,81 @@ class CppClassLifetimes(private val program: TypedProgram) {
             }
         }
 
+        /**
+         * The views the call [n] reads, its receiver's and its arguments': one made before the
+         * arguments (a view local, a view receiver) that a later argument may move or free is
+         * read by the call where it pointed before (`v.get(b.growAndGet())`, `at(v, grow())`,
+         * [HitKind.SIBLING]); one the callee [e] may move or free while it runs is handed to it
+         * ([HitKind.HANDED]). A view the arguments make themselves is the statement part's to
+         * order: it reads such an operand after its siblings (D33).
+         */
+        private fun checkHanded(n: FunctionCallExpr, rc: ResolvedCall, e: Effects, argStart: Int, keeps: Keeps) {
+            val name = rc.fn?.name ?: KiraUnparser.text(n.name)
+            val used = mutableListOf<Expr>()
+            rc.receiver?.let { r -> if (holdsViews(model.typeOrNull(r) ?: KType.Error)) used += r }
+            rc.args.forEach { a ->
+                if (a is ArgBinding.Given && !a.byRef && (model.coercion(a.expr) is Coercion.ToView || holdsViews(model.typeOrNull(a.expr) ?: KType.Error))) {
+                    used += a.expr
+                }
+            }
+            for (x in used) {
+                val sources = viewSources(x)
+                val local = (x as? Identifier)?.let { model.symbolOf(it) as? LocalSymbol }
+                val early = firstMove(sources.filter { (_, from) -> from <= argStart }, keeps, since = argStart)
+                if (early != null) {
+                    if (local == null || viewReported.add(local)) {
+                        viewHits += ViewHit(x, local?.name, early.first, early.second, callee = name, kind = HitKind.SIBLING)
+                    }
+                    continue
+                }
+                sources.firstOrNull { (s, _) -> movesBuffer(e, s, keeps) }?.let { (s, _) ->
+                    viewHits += ViewHit(x, null, s, n, callee = name, kind = HitKind.HANDED)
+                }
+            }
+        }
+
+        /**
+         * A call that may store a view into a local that holds views: a runtime method's receiver
+         * (`vs.add(b.items.view())`), a `mut` argument (`point(mut v, b)`), or a box others may
+         * hold ([sharesViews]: `stash(xs, b, r)` with `r: Ref<View<Int32>>`). The local then
+         * holds what any operand may lead to. What a Kira callee stores there is followed into
+         * class storage: what its operands reach through a handle, `this`, or a place through a
+         * reference. A view it stores of a local or a global the caller then grows is W2.3's open
+         * decision (its OD-3: a view held across a growth), and the union it would need cannot
+         * tell a `mut` argument the callee replaces from one it keeps (`keep<View<Int32>>(mut h,
+         * gl, growL())` replaces `h.v`, and the evalorder golden reads it).
+         */
+        private fun keepViews(n: FunctionCallExpr, rc: ResolvedCall) {
+            val into: MutableSet<LocalSymbol> = identitySet()
+            rc.receiver?.let(::rootLocal)?.let { l -> if ((rc.fn?.isMutMethod == true && holdsViews(l.type)) || sharesViews(l.type)) into.add(l) }
+            rc.args.forEach { a ->
+                if (a is ArgBinding.Given) {
+                    rootLocal(a.expr)?.let { l -> if ((a.byRef && holdsViews(l.type)) || sharesViews(l.type)) into.add(l) }
+                }
+            }
+            if (into.isEmpty()) {
+                return
+            }
+            val stored = mutableListOf<Pair<ViewSource, Int>>()
+            rc.args.forEach { a -> if (a is ArgBinding.Given) stored += reach(a.expr) }
+            if (rc.kind != CallKind.MAGIC) {
+                rc.receiver?.let { stored += reach(it) }
+                if (rc.implicitThis) {
+                    stored += ViewSource(null, KType.Error, n) to events.size
+                }
+                stored.retainAll { (s, _) -> s.place == null || throughReference(s.place) }
+            }
+            into.forEach { addViews(it, stored) }
+        }
+
+        /** Whether a runtime method runs the lambdas it is handed while it works and keeps none (a container's `forEach`), where a system class's may keep one (a thread's body). */
+        private fun runsNow(rc: ResolvedCall): Boolean {
+            val fn = rc.fn ?: return false
+            val receiverType = rc.receiver?.let { model.typeOrNull(it) }
+            return rc.kind == CallKind.MAGIC && !isSystem(fn.owner) && !(receiverType != null && mentions(receiverType) { isSystem(it) }) &&
+                CppTypeSpeller.systemHeaderFor(fn.module.uri) == null
+        }
+
         /** A lambda handed to a call: it may run during the call, after what the callee does and after its own earlier runs. */
         private fun runLambda(l: LambdaExpr, callee: Effects) {
             val body = l.def.body ?: return
@@ -1348,12 +2063,15 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 s.addAll(callee)
                 summaries[body]?.let(s::addAll)
             }
+            inLambda += 1
             body.forEach(::node)
+            inLambda -= 1
             before.addAll(now)
             now = before
         }
 
-        fun calleeEffects(rc: ResolvedCall): Effects = when (rc.kind) {
+        /** What the call [rc] may run; [callee] is its callee expression (for a call through an `Fx` value, the value). */
+        fun calleeEffects(rc: ResolvedCall, callee: Expr? = null): Effects = when (rc.kind) {
             CallKind.PRINT, CallKind.EXTERN -> Effects()
             CallKind.MAGIC -> magic(rc)
             CallKind.FREE, CallKind.METHOD -> rc.fn?.body?.let { summaries[it] } ?: Effects()
@@ -1365,7 +2083,8 @@ class CppClassLifetimes(private val program: TypedProgram) {
                     methodsNamed[name].orEmpty().forEach { m -> summaries[m.body]?.let(e::addAll) }
                 }
             }
-            CallKind.FN_VALUE -> fxPool
+            // A local never reassigned that was given a lambda runs that lambda; any other Fx value, anything the pool may.
+            CallKind.FN_VALUE -> ((callee as? Identifier)?.let { model.symbolOf(it) } as? LocalSymbol)?.let { lambdaLocals[it] }?.def?.body?.let { summaries[it] } ?: fxPool
             else -> Effects.unknown()
         }
 
@@ -1487,5 +2206,8 @@ class CppClassLifetimes(private val program: TypedProgram) {
         private val BUFFER_MAGIC = setOf("StrBuf", "Arr", "List", "Map", "Set", "Stack", "Queue", "Deque")
 
         private fun <T> identitySet(): MutableSet<T> = Collections.newSetFromMap(IdentityHashMap())
+
+        /** The receiver of the method being analyzed, as a root of [viewRoots] beside its parameters. */
+        private val THIS = Any()
     }
 }

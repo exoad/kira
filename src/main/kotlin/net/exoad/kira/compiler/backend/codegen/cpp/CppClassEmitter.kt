@@ -15,6 +15,7 @@ import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.IndexKind
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Place
@@ -1279,6 +1280,19 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
     private fun construction(e: ObjectInitExpr, init: ResolvedInit, target: String): String {
         val fields = init.fields
+        // A heap object outlives the statement: a view it is given into a temporary would dangle in it.
+        fields.forEach { f ->
+            if (f is FieldInit.Given) {
+                facts.lifetimes.temporaryViewed(f.expr, f.field.type.substitute(init.substitution))?.let { temporary ->
+                    ctx.diag(
+                        f.expr,
+                        CppModuleEmitterFactory.UNSUPPORTED_CODE,
+                        "the ${f.field.name} of this ${init.type.display()} is given a view into ${KiraUnparser.text(temporary)}, a temporary that C++ destroys at the end of the statement, " +
+                            "but the object it is stored in outlives it: store ${KiraUnparser.text(temporary)} in a local first",
+                    )
+                }
+            }
+        }
         var end = fields.size
         while (end > 0 && fields[end - 1] is FieldInit.Default && fields[end - 1].field.default != null) {
             end -= 1
