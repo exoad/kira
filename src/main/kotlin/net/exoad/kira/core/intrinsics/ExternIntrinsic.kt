@@ -2,6 +2,8 @@ package net.exoad.kira.core.intrinsics
 
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.semantic.KiraRuntimeException
+import net.exoad.kira.compiler.analysis.semantic.SemanticScope
+import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
@@ -71,12 +73,69 @@ object ExternIntrinsic : CompilerIntrinsic(
         }
     }
 
+    /**
+     * Applied by the semantic pass with the declaration's scope entered ([KiraSymbolTable.where]):
+     * a module for a module-level declaration, a class for a member, a function for a local.
+     *
+     * Two rules hold whatever the target: a constant is a module-level declaration (a local
+     * `@_extern(cpp = "probe::LOCAL") loc: Int32 = 3` inside a body was accepted and then
+     * lowered as a plain local, the marker dropped, measured), and a method takes `@_extern`
+     * only inside an extern class or struct (elsewhere the marker would make a method with no
+     * body, and the C backend once harvested it as a free C function of that name).
+     *
+     * The C and JS backends lower `@_extern` on a free function only: they call its symbol.
+     * A class, a struct, a constant or a method is C++'s (design 7.2), and under `--target c`
+     * the constant `@_extern(c = "INT_MAX", header = "limits.h") pub IMAX: Int32;` was written
+     * as a new zero global `Int32 IMAX;` and the program printed 0 for it, `--target js` wrote
+     * `const IMAX;`, which node refuses, and both exited 0 (measured). Refused here, with the
+     * target named; `--target none` and the tests (mode NONE) take every target of 7.2.
+     */
     override fun apply(
         invocation: IntrinsicExpr,
         target: ASTNode,
         compilationUnit: CompilationUnit,
         context: SourceContext
     ): ASTNode {
+        val scope = compilationUnit.symbolTable.where()
+        val nameOf = { d: ASTNode ->
+            when (d) {
+                is FunctionDecl -> (d.name as? Identifier)?.value
+                is VariableDecl -> d.name.value
+                is ClassDecl -> (d.name.identifier as? Identifier)?.value
+                is StructDecl -> (d.name.identifier as? Identifier)?.value
+                is Identifier -> d.value
+                else -> null
+            } ?: "?"
+        }
+        if (target is VariableDecl && scope !is SemanticScope.Module && scope != SemanticScope.Global) {
+            throw KiraRuntimeException(
+                "@_extern names a module-level constant; '${nameOf(target)}' is declared inside a ${
+                    if (scope is SemanticScope.Class) "class or struct (a field is checked by its Kira name)" else "body (a local takes no marker)"
+                }"
+            )
+        }
+        if (target is FunctionDecl && scope is SemanticScope.Class && !isExternType(context, scope.name)) {
+            throw KiraRuntimeException(
+                "@_extern on the method '${nameOf(target)}': its class or struct '${scope.name}' must be extern itself " +
+                    "(@_extern(cpp = \"ns::Name\", header = \"name.hxx\") on the declaration)"
+            )
+        }
+        val mode = GeneratedProvider.outputMode
+        if (mode == GeneratedProvider.OutputTarget.C || mode == GeneratedProvider.OutputTarget.JS) {
+            val what = when {
+                target is FunctionDecl && scope is SemanticScope.Class -> "the method '${nameOf(target)}'"
+                target is FunctionDecl -> null
+                target is ClassDecl -> "the class '${nameOf(target)}'"
+                target is StructDecl -> "the struct '${nameOf(target)}'"
+                target is VariableDecl -> "the constant '${nameOf(target)}'"
+                else -> "'${nameOf(target)}'"
+            }
+            if (what != null) {
+                throw KiraRuntimeException(
+                    "@_extern on $what reaches C++ only (--target cpp, design 7.2): the ${mode.name} backend takes @_extern on a free function, whose symbol it calls"
+                )
+            }
+        }
         val kiraName = when (target) {
             is FunctionDecl -> (target.name as? Identifier)?.value
             is Identifier -> target.value
@@ -84,6 +143,19 @@ object ExternIntrinsic : CompilerIntrinsic(
         } ?: return NoExpr
         compilationUnit.registerExternFunction(kiraName, cSymbolOf(invocation) ?: kiraName)
         return NoExpr
+    }
+
+    /** Whether the class or struct named [typeName] in [context] carries `@_extern` itself. */
+    private fun isExternType(context: SourceContext, typeName: String): Boolean {
+        val marks = runCatching { context.astIntrinsicMarked }.getOrNull() ?: return false
+        return marks.any { (node, intrinsics) ->
+            val name = when (node) {
+                is ClassDecl -> (node.name.identifier as? Identifier)?.value
+                is StructDecl -> (node.name.identifier as? Identifier)?.value
+                else -> null
+            }
+            name == typeName && intrinsics.any { it.name == this.name }
+        }
     }
 
     /**

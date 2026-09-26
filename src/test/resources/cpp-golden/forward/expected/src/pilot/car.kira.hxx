@@ -10,7 +10,7 @@ KIRA_EXTERN_CHECK(std::declval<bibo::Car&>().arm(), bool, "Car.arm");
 KIRA_EXTERN_CHECK(std::declval<const bibo::Car&>().ok(), bool, "Car.ok");
 KIRA_EXTERN_CHECK(std::declval<const bibo::Car&>().drivable(), bool, "Car.drivable");
 KIRA_EXTERN_CHECK(std::declval<bibo::Car&>().scan(), bibo::Scan, "Car.scan");
-KIRA_EXTERN_CHECK((std::declval<bibo::Car&>().drive(std::declval<float>(), std::declval<float>()), 0), int, "Car.drive");
+KIRA_EXTERN_CHECK((std::declval<bibo::Car&>().drive(kira::ffi::arg<float>(), kira::ffi::arg<float>()), 0), int, "Car.drive");
 KIRA_EXTERN_CHECK(std::declval<bibo::Car&>().finish(), std::int32_t, "Car.finish");
 KIRA_EXTERN_CHECK(bibo::openCar(), kira::Rc<bibo::Car>, "openCar");
 #include "kira/macro_pop.hxx"

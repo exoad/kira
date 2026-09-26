@@ -35,7 +35,7 @@ class FfiGoldenHeaderTest {
             includes,
         )
         assertTrue("KIRA_EXTERN_CHECK(std::declval<const bibo::Car&>().ok(), bool, \"Car.ok\");" in lines, header)
-        assertTrue("KIRA_EXTERN_CHECK((std::declval<bibo::Car&>().drive(std::declval<float>(), std::declval<float>()), 0), int, \"Car.drive\");" in lines, header)
+        assertTrue("KIRA_EXTERN_CHECK((std::declval<bibo::Car&>().drive(kira::ffi::arg<float>(), kira::ffi::arg<float>()), 0), int, \"Car.drive\");" in lines, header)
         assertTrue("KIRA_EXTERN_CHECK(bibo::openCar(), kira::Rc<bibo::Car>, \"openCar\");" in lines, header)
         assertTrue(lines.none { it.contains("namespace bibo") }, "an extern module declares nothing of its own:\n$header")
     }

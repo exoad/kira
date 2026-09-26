@@ -24,20 +24,30 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * declarations. The C++ declarations already exist in the headers `header =` names; a second
  * copy would be the drift the memory note "comments that claim other files" warns about, so
  * the module's header includes the real headers, then `kira/ffi.hxx`, and states one
- * `KIRA_EXTERN_CHECK` per declared member: an unevaluated call whose result must convert to
- * the type Kira declared. Overloads, C++ default arguments and the argument proxies all
- * resolve in that call, and a wrong Kira signature fails with Kira's message on g++, clang
- * and MSVC (probes-S/externcheck.cxx).
+ * `KIRA_EXTERN_CHECK` per declared member: an unevaluated call whose result must match the
+ * type Kira declared. Overloads, C++ default arguments and the argument proxies all resolve
+ * in that call, and a wrong Kira signature fails with Kira's message on g++, clang and MSVC
+ * (probes-S/externcheck.cxx).
  *
- * The checks follow section 7.2 literally, at global scope: names as the marker spells them
+ * "Match" is kira/ffi.hxx's rule, recorded at the head of that file: a scalar exactly (the
+ * same size, signedness and kind, which is what `int` and `long` are on arm-none-eabi, where
+ * `std::int32_t` is `long`), at the return, at every by-value parameter and at every struct
+ * field; anything else when it converts. Section 7.2 wrote `is_convertible` for the return;
+ * that let a C++ `std::uint32_t count()` pass as `count: () Int32`, and since the call site
+ * keeps the C++ type, `count() - 1` was computed unsigned (measured: 4294967295 for Kira's
+ * -1, with -Wconversion -Wsign-conversion -Werror silent).
+ *
+ * The checks follow section 7.2 at global scope: names as the marker spells them
  * (`bibo::Car`, never `::bibo::Car`), a non-mut method through a `const` receiver, a `Void`
  * method as `(call, 0)` against `int`, a `Str` parameter as `kira::ffi::in(...)`, a `mut`
- * parameter as `kira::ffi::out(...)`, except a `mut p: Unsafe<T>`, which is the writable
- * `T*` itself (table 5.1: `Unsafe<T>` is `const T*` unless `mut`), passed by value with no
- * proxy: that is how a C `void fill(uint8_t*, size_t)` or ImGui's `InputText(char* buf, ...)`
- * is declared. A struct declared with fields also gets a layout twin of the same fields and a
- * `static_assert` on `sizeof`, and one `KIRA_EXTERN_FIELD` per field (the exact type, and
- * the offset the twin gives it, so a same-size drift or a reordered pair is caught).
+ * parameter as `kira::ffi::out(...)`, a by-value scalar parameter as `kira::ffi::arg<T>()`
+ * (7.2 wrote `std::declval<T>()`, which converts to any scalar parameter, the same hole as
+ * the return's), except a `mut p: Unsafe<T>`, which is the writable `T*` itself (table 5.1:
+ * `Unsafe<T>` is `const T*` unless `mut`), passed by value with no proxy: that is how a C
+ * `void fill(uint8_t*, size_t)` or ImGui's `InputText(char* buf, ...)` is declared. A struct
+ * declared with fields also gets a layout twin of the same fields and a `static_assert` on
+ * `sizeof`, and one `KIRA_EXTERN_FIELD` per field (the matching type, and the offset the twin
+ * gives it, so a same-size drift or a reordered pair is caught).
  *
  * An extern parameter takes no Kira default: the C++ header's own default fills a parameter
  * Kira leaves undeclared, and a Kira default would be a second, unchecked declaration of it
@@ -175,9 +185,11 @@ object CppExternEmitter : CppExternsPart {
 
     /**
      * `namespace ns::ffi_ { struct S { fields; }; }` and a `static_assert` that the C++ struct
-     * has the same size, then one [FIELD_CHECK] per field: the C++ member has exactly the
-     * Kira type (`is_same`; `is_convertible` let `int` pass for `Float32`) and the twin's
-     * offset (so two same-typed fields in the other order fail too). The twin is a flat
+     * has the same size, then one [FIELD_CHECK] per field: the C++ member matches the Kira
+     * type (a scalar of the same size, signedness and kind, or the same type; `is_convertible`
+     * let `int` pass for `Float32`, and `is_same` let no C `int` field pass on arm-none-eabi,
+     * where `std::int32_t` is `long`) and sits at the twin's offset (so two same-typed fields
+     * in the other order fail too). The twin is a flat
      * aggregate of the same fields in the same order, so it pads as the C++ one does; a sum
      * of sizes would not. A `mut` field of `Unsafe<T>` is `T*`, as a `mut` binding is.
      *
@@ -233,11 +245,16 @@ object CppExternEmitter : CppExternsPart {
      * One argument of a check: the proxy the call would pass, over a `std::declval` of the
      * Kira type. A `mut` `Unsafe<T>` is the bare `T*` (the speller's `MUT_PARAM` column),
      * never `out(...)`, whose `Out<const T*>` could bind only a `const T*&` or `const T**`.
+     * A by-value scalar is `kira::ffi::arg<T>()`, which converts to a scalar of T's size,
+     * signedness and kind and to nothing else (kira/ffi.hxx): `std::declval<T>()` converted
+     * to whatever the C++ parameter was, so a Kira `v: Int32` passed the check over a C++
+     * `std::uint8_t v` and the call then narrowed silently.
      */
     private fun checkArg(ctx: CppEmitContextImpl, p: ParamSymbol): String = when {
         isUnsafe(p.type) -> "std::declval<${checkType(ctx, p.type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM)}>()"
         p.byRef -> "kira::ffi::out(std::declval<${checkType(ctx, p.type, Pos.VALUE)}&>())"
         p.type == KType.Str -> "kira::ffi::in(std::declval<const kira::Str&>())"
+        p.type is KType.Scalar -> "kira::ffi::arg<${checkType(ctx, p.type, Pos.VALUE)}>()"
         else -> "std::declval<${checkType(ctx, p.type, Pos.PARAM)}>()"
     }
 

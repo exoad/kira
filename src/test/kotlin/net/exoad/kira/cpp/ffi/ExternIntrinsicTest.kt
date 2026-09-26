@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
+import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.types.TyperTestSupport
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -149,5 +150,92 @@ class ExternIntrinsicTest {
             """,
             "'@_extern' cannot be applied to EnumDecl",
         )
+    }
+
+    @Test
+    fun aConstantIsAModuleLevelDeclaration() {
+        // Measured before: a local `@_extern(cpp = "probe::LOCAL") loc: Int32 = 3` inside a body
+        // got no diagnostic, and the C++ emitter lowered it as a plain local, marker dropped.
+        assertRefused(
+            """
+            fx main: () Int32 {
+                @_extern(cpp = "probe::LOCAL") loc: Int32 = 3
+                return loc
+            }
+            """,
+            "@_extern names a module-level constant; 'loc' is declared inside a body",
+        )
+        assertRefused(
+            """
+            @_extern(cpp = "bibo::Pt", header = "car.hxx")
+            pub struct Pt {
+                @_extern(cpp = "X") pub x: Int32 = 0
+            }
+            """,
+            "@_extern names a module-level constant; 'x' is declared inside a class or struct",
+        )
+    }
+
+    @Test
+    fun aMethodTakesTheMarkerOnlyInsideAnExternClass() {
+        assertRefused(
+            """
+            pub class Counter {
+                @_extern(cpp = "VtxCount") pub fx count: () Int32;
+            }
+            """,
+            "@_extern on the method 'count': its class or struct 'Counter' must be extern itself",
+        )
+        // Inside an extern class or struct it names the C++ member (design 7.2).
+        assertEquals(
+            emptyList(),
+            semantic(
+                """
+                @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
+                pub class DrawList {
+                    @_extern(cpp = "VtxCount") pub fx count: () Int32;
+                }
+                @_extern(cpp = "bibo::Scan", header = "car.hxx")
+                pub struct Scan {
+                    @_extern(cpp = "Ahead") pub fx ahead: () Float32;
+                }
+                """
+            ),
+        )
+    }
+
+    /**
+     * Under `--target c` and `--target js` the backend lowers `@_extern` on a free function
+     * only. Measured before on the C backend: an extern constant became a new zero global and
+     * the program printed 0 for INT_MAX; an extern class's method became a free C extern of
+     * its name, dropping the body of the user's own `fx count`; JS wrote `const IMAX;`. The
+     * semantic pass refuses each at its declaration, naming the target, and exits 1 through
+     * the CLI's diagnostic count. `--target none` (and every test, mode NONE) takes them all.
+     */
+    @Test
+    fun theCAndJsTargetsTakeAFreeFunctionOnly() {
+        val cases = listOf(
+            "@_extern(c = \"INT_MAX\", header = \"limits.h\")\npub IMAX: Int32;" to "@_extern on the constant 'IMAX' reaches C++ only (--target cpp, design 7.2): the C backend takes @_extern on a free function",
+            "@_extern(\"INT_MAX\")\npub IMAX: Int32;" to "@_extern on the constant 'IMAX' reaches C++ only",
+            "@_extern(cpp = \"ImVec2\", header = \"imgui.h\")\npub struct Vec2 { pub x: Float32 = 0.0 }" to "@_extern on the struct 'Vec2' reaches C++ only",
+            "@_extern(cpp = \"bibo::Car\", header = \"car.hxx\")\npub class Car { pub fx ok: () Bool; }" to "@_extern on the class 'Car' reaches C++ only",
+            "@_opaque @_extern(cpp = \"ImDrawList\", header = \"imgui.h\")\npub class DrawList {\n    @_extern(cpp = \"VtxCount\") pub fx count: () Int32;\n}" to "@_extern on the method 'count' reaches C++ only",
+        )
+        val previous = GeneratedProvider.outputMode
+        try {
+            for (mode in listOf(GeneratedProvider.OutputTarget.C, GeneratedProvider.OutputTarget.JS)) {
+                GeneratedProvider.outputMode = mode
+                for ((body, message) in cases) {
+                    assertRefused(body, message.replace("the C backend", "the ${mode.name} backend"))
+                }
+                // A free function is what these backends lower: still accepted.
+                assertEquals(emptyList(), semantic("@_extern(\"fopen\")\npub fx openFile: (path: Str) Int32;"), mode.name)
+            }
+            GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.CPP
+            val everyTarget = cases.map { it.first }.filterNot { it.startsWith("@_extern(\"INT_MAX\")") }.joinToString("\n")
+            assertEquals(emptyList(), semantic(everyTarget), "cpp takes every target of 7.2")
+        } finally {
+            GeneratedProvider.outputMode = previous
+        }
     }
 }
