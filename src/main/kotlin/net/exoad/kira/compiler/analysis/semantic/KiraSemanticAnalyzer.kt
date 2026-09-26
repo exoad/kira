@@ -15,6 +15,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.NamedArguments
+import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.intrinsics.GlobalIntrinsic
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
@@ -700,6 +701,24 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         runIntrinsicsIfPresent(functionDecl)
         if (functionDecl.isStub()) {
             return
+        }
+        // 1.3.5: the pre-W2.9 free form (`fx @op_add: (a: T, b: T) T`) is deprecated on every
+        // target here (--target cpp refuses it outright, in w2-9-7-ops-typer); this is the
+        // warning for C and JS. Checked before entering the function's own scope, so `where()`
+        // still names the scope this declaration lives in: `Module` for a free operator,
+        // `Class` for a member one (classes and traits alike), which is never this form.
+        val declName = functionDecl.name
+        if (declName is IntrinsicExpr &&
+            OperatorIntrinsics.isFreeOperatorName(declName.intrinsicKey.name) &&
+            compilationUnit.symbolTable.where() is SemanticScope.Module
+        ) {
+            val (memberName, arity) = OperatorIntrinsics.freeToMember(declName.intrinsicKey.name) ?: ("_op_..._" to 1)
+            val signature = if (arity == 0) "() T" else "(other: T) T"
+            Diagnostics.Logging.warn(
+                "ops.free-form",
+                "the free @${declName.intrinsicKey.name} form is deprecated: declare " +
+                    "pub fx @$memberName: $signature in class T.",
+            )
         }
         val funcName = when (functionDecl.name) {
             is Identifier -> (functionDecl.name as Identifier).value

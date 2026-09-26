@@ -11,6 +11,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.IntrinsicRegistry
 import net.exoad.kira.core.Keywords
+import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.Symbols
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourcePosition
@@ -166,6 +167,18 @@ class KiraParser(private val context: SourceContext) {
             modifier.keys.toList().find { !it.wrappingContext.contains(scopes) }
         }
         if (r != null) {
+            // `final` (W2.9, 1.8) is a class modifier only; everywhere else gets its own
+            // diagnostic (`parse.final`) instead of the generic wrapping-context message,
+            // so `types.class.final` (SignatureResolver.classParents) has a parser-side twin.
+            if (r == Modifier.FINAL) {
+                Diagnostics.panic(
+                    "parse.final",
+                    "'final' can only modify a class; it cannot be applied to a ${scopes.name.lowercase().replace('_', ' ')}.",
+                    location = modifier?.get(r),
+                    selectorLength = "final".length,
+                    context = context
+                )
+            }
             Diagnostics.panic(
                 "KiraParser::expectModifiers",
                 buildString {
@@ -691,7 +704,16 @@ class KiraParser(private val context: SourceContext) {
 
                 at(Token.Type.S_DOT) -> {
                     advancePointer()
-                    val member = parseIdentifier()
+                    // `a.@_op_get_(i)` / `a.@op_add(b)` (1.3.2, [M5]): an operator intrinsic
+                    // (member or free) is a member name here, so it parses as a
+                    // MemberAccessExpr; the S_OPEN_PARENTHESIS branch below then wraps it as
+                    // a call, the same as `p.dist()`. Any other intrinsic after '.' falls
+                    // through to parseIdentifier's ordinary "expected an identifier" error.
+                    val member: Expr = if (at(Token.Type.INTRINSIC_IDENTIFIER) && OperatorIntrinsics.isOperatorName(peek().content)) {
+                        parseIntrinsicExpr()
+                    } else {
+                        parseIdentifier()
+                    }
                     expr = putOrigin(MemberAccessExpr(expr, member), here())
                 }
 

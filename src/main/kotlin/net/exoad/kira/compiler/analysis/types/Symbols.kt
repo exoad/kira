@@ -180,6 +180,8 @@ class ClassSymbol(
     var foreign: Foreign? = null,
     /** Some class in the program names this one as its superclass (so it is not `final`). */
     var isSubclassed: Boolean = false,
+    /** `final class C { ... }` (charter: "final forbids inheriting"; W2.9, 1.8). */
+    var isFinal: Boolean = false,
     /** Filled by EscapePass: `this` escapes a method, so the class derives `kira::Shared<C>`. */
     var thisEscapes: Boolean = false,
 ) : Symbol(), TypeSymbol {
@@ -296,8 +298,18 @@ class FnSymbol(
 ) : Symbol() {
     var isPub: Boolean = false
 
-    /** `fx @op_add: ...`: an operator overload; [name] is the intrinsic's name (`op_add`). */
+    /**
+     * An operator overload, member or free; [name] is the intrinsic's name (`_op_add_` or,
+     * pre-W2.9, `op_add`).
+     */
     var isOperator: Boolean = false
+
+    /**
+     * `fx @op_add: (a: T, b: T) T` at module level (1.3.5, C and JS only): [owner] is null.
+     * An operator declared in a class, a trait or a magic class (`owner != null`) is a member
+     * operator instead, and takes part in every member check (1.3.2) like any method.
+     */
+    var isFreeOperator: Boolean = false
     val markers: MutableList<Marker> = mutableListOf()
 
     /**

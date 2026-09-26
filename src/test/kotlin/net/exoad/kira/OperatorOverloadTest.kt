@@ -71,15 +71,25 @@ class OperatorOverloadTest {
     }
 
     @Test
-    fun tableNamesAllStartWithOpAndUseUnderscores() {
+    fun freeTableNamesAllStartWithOpAndUseUnderscores() {
         OperatorIntrinsics.all.forEach { intrinsic ->
             assertTrue(
                 intrinsic.name.startsWith("op_"),
-                "operator intrinsic must start with op_: ${intrinsic.name}"
+                "free operator intrinsic must start with op_: ${intrinsic.name}"
             )
             assertTrue(
                 intrinsic.name.count { it == '_' } >= 1,
-                "operator intrinsic must separate words with underscores: ${intrinsic.name}"
+                "free operator intrinsic must separate words with underscores: ${intrinsic.name}"
+            )
+        }
+    }
+
+    @Test
+    fun memberTableNamesAreUnderscoredOnBothEnds() {
+        OperatorIntrinsics.allMembers.forEach { intrinsic ->
+            assertTrue(
+                intrinsic.name.startsWith("_op_") && intrinsic.name.endsWith("_"),
+                "member operator intrinsic must be _op_<word>_: ${intrinsic.name}"
             )
         }
     }

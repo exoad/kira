@@ -42,5 +42,10 @@ object Keywords {
         "initially" to Token.Type.K_INITIALLY,
         "finally" to Token.Type.K_FINALLY,
         "override" to Token.Type.K_MODIFIER_OVERRIDE,
+        // charter: "final forbids inheriting" (spec, "use final modifier"); a class modifier
+        // only (W2.9, 1.8). Grepped 2026-09-26: no .kira file, Kira snippet in src/test/kotlin,
+        // or kira/ source used "final" as an identifier (only comments, and the C++ `final`
+        // specifier in kira/cpp/kira/*.hxx and CppNamesTest's escape("final"), not Kira source).
+        "final" to Token.Type.K_MODIFIER_FINAL,
     )
 }

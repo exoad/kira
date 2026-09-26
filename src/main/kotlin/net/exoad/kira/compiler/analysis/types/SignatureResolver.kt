@@ -207,7 +207,19 @@ internal class SignatureResolver(private val program: TypedProgram) {
                     "The superclass ${sym.name} must come first in ${c.name}'s parent list; the parents after it are traits.",
                     node,
                 )
-                sym is ClassSymbol -> c.superclass = t
+                sym is ClassSymbol -> {
+                    if (sym.isFinal) {
+                        // charter: "final forbids inheriting" (W2.9, 1.8). The parser's
+                        // `parse.final` refuses `final` anywhere but a class modifier; this is
+                        // its typer-side twin, for the class actually named as a parent.
+                        program.report(
+                            "types.class.final",
+                            "${c.name} cannot extend ${sym.name}: ${sym.name} is final.",
+                            node,
+                        )
+                    }
+                    c.superclass = t
+                }
                 else -> program.report(
                     "types.class.bad-parent",
                     "${c.name} can only inherit from a class or implement a trait; ${t.display()} is neither.",
@@ -424,7 +436,10 @@ internal class SignatureResolver(private val program: TypedProgram) {
             }
         }
         for (m in t.methods) {
-            if (m.isOperator || m.name == DeclarationCollector.ANONYMOUS) {
+            // A member operator (owner != null here, so isFreeOperator is always false) merges
+            // by name like any method (1.3.2): `Comparable<T>`'s own `@_op_lt_` replaces a
+            // parent trait's. The free form never reaches a trait's methods.
+            if (m.isFreeOperator || m.name == DeclarationCollector.ANONYMOUS) {
                 out.add(m)
                 continue
             }
@@ -499,17 +514,30 @@ internal class SignatureResolver(private val program: TypedProgram) {
         val implemented = traitClosure(c.traits, emptyMap()) + chain.flatMap { (sc, s) -> traitClosure(sc.traits, s) }
         val quiet = c.module.isStdlib
         for (m in c.methods) {
-            if (m.isOperator || m.name == DeclarationCollector.ANONYMOUS) {
+            // A member operator (owner != null here, so isFreeOperator is always false) takes
+            // part in override linking like any method (1.3.2): `override pub fx @_op_add_`
+            // links to its base, and `override` is required. The free form never reaches a
+            // class's own methods.
+            if (m.isFreeOperator || m.name == DeclarationCollector.ANONYMOUS) {
                 continue
             }
             val base = chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == m.name }?.let { it to s } }
             // Each trait's own methods, nearest trait first: the closure lists every ancestor
             // with the substitution that reaches it, so an inherited method is found at the
-            // trait that declares it, under that trait's own type arguments.
-            val viaTrait = if (base == null) {
-                implemented.firstNotNullOfOrNull { (t, s) -> t.methods.firstOrNull { it.name == m.name }?.let { it to s } }
-            } else {
-                null
+            // trait that declares it, under that trait's own type arguments. Computed even when
+            // a superclass already provides `m.name`, so the two can be compared below.
+            val viaTrait = implemented.firstNotNullOfOrNull { (t, s) -> t.methods.firstOrNull { it.name == m.name }?.let { it to s } }
+            if (!quiet && base != null && viaTrait != null && !sameSignature(base.first, base.second, viaTrait.first, viaTrait.second)) {
+                // Two inherited methods of one name with different signatures (1.3.2): a
+                // parent's `@_op_eq_(other: Base)` beside `Equatable<Leaf>`'s `(other: Leaf)`.
+                // `m` alone cannot satisfy both, so `c` must be told which one it means.
+                program.report(
+                    "types.member.conflict",
+                    "${c.name} inherits two different '${m.name}' methods: ${base.first.qualifiedName} from its superclass, " +
+                        "and ${viaTrait.first.qualifiedName} from a trait it implements. Declare '${m.name}' in ${c.name} " +
+                        "to say which one it means.",
+                    m.decl,
+                )
             }
             val target = base ?: viaTrait
             if (target != null) {
@@ -540,6 +568,28 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 )
             }
         }
+    }
+
+    /**
+     * True when [a] (reached under [aSub]) and [b] (reached under [bSub]) declare the same
+     * signature once both are read in the inheriting class's own context: same arity, same
+     * parameter types and `mut`-ness in order (own type parameters mapped positionally, as
+     * [checkOverride] does), and the same return type. Used to tell two inherited methods of
+     * one name apart (`types.member.conflict`) from two that happen to agree.
+     */
+    private fun sameSignature(a: FnSymbol, aSub: Map<TypeParamSymbol, KType>, b: FnSymbol, bSub: Map<TypeParamSymbol, KType>): Boolean {
+        if (a.typeParams.size != b.typeParams.size || a.params.size != b.params.size) {
+            return false
+        }
+        val ownMap = a.typeParams.zip(b.typeParams).associate { (x, y) -> x to KType.Param(y) }
+        for (i in a.params.indices) {
+            val at = a.params[i].type.substitute(aSub).substitute(ownMap)
+            val bt = b.params[i].type.substitute(bSub)
+            if (at != bt || a.params[i].byRef != b.params[i].byRef) {
+                return false
+            }
+        }
+        return a.ret.substitute(aSub).substitute(ownMap) == b.ret.substitute(bSub)
     }
 
     /**
