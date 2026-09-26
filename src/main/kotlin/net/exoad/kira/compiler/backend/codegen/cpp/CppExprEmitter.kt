@@ -1200,11 +1200,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 CppEx("$typeText{${inits.joinToString(", ")}}", CppPrec.POSTFIX)
             }
             givenFields.size == 1 && givenFields[0].field.name == "values" && cls.name in setOf("List", "Map", "Set") -> {
+                // A literal's elements are a braced list (`kira::Map<K, V>{...}` takes an
+                // initializer_list of entries, `kira::Set<T>{...}` one of values, and C++
+                // sequences a braced list left to right); a List also copies from a List
+                // value. kira::Map and kira::Set have no constructor from a List, so a Map or
+                // Set built from one is refused by name.
                 val values = givenFields[0].expr
-                if (values is ArrayLiteral && cls.name == "List") {
-                    CppEx("$typeText${bracedElements(values)}", CppPrec.POSTFIX)
-                } else {
-                    CppEx("$typeText(${emit(values, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
+                when {
+                    values is ArrayLiteral -> CppEx("$typeText${bracedElements(values)}", CppPrec.POSTFIX)
+                    cls.name == "List" -> CppEx("$typeText(${emit(values, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
+                    else -> unsupported(e, "constructing a ${cls.name} from a List value (write its elements as a literal)")
                 }
             }
             else -> unsupported(e, "constructing ${cls.name} with fields")

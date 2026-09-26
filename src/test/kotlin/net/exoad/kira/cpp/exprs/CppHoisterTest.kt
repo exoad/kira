@@ -248,6 +248,53 @@ class CppHoisterTest {
         pub fx nested: () Int32 {
             return sub(sub(next(), next()), next())
         }
+
+        pub struct Win {
+            pub v: View<Int32>
+            pub k: Size = 0
+        }
+
+        pub struct Wrap {
+            pub inner: Win
+            pub m: Maybe<Win> = null
+        }
+
+        fx mkWin: (v: View<Int32>, k: Size) Win {
+            return Win { v = v, k = k }
+        }
+
+        fx wrapOf: (v: View<Int32>, k: Size) Wrap {
+            return Wrap { inner = Win { v = v, k = k } }
+        }
+
+        pub fx structResultLends: () Win {
+            return mkWin(gl, nextSize())
+        }
+
+        pub fx constructionLends: () Win {
+            return Win { v = gl, k = nextSize() }
+        }
+
+        pub fx nestedStructResultLends: () Wrap {
+            return wrapOf(gl, nextSize())
+        }
+
+        pub struct Acc {
+            pub n: Int32 = 1
+
+            pub mut fx bump: () Int32 {
+                n = 2
+                return 10
+            }
+
+            pub mut fx viaThis: () Int32 {
+                return peek(this, bump())
+            }
+        }
+
+        fx peek: (a: Acc, k: Int32) Int32 {
+            return a.n + k
+        }
         """,
     )
 
@@ -377,6 +424,29 @@ class CppHoisterTest {
         // A mut global Arr lends a MutView (the typer's MutView lending), of the global itself.
         val global = body("lentFromGlobal")
         assertTrue(global.contains("return total(kira::mutView(garr).from(nextSize()));"), global)
+    }
+
+    @Test
+    fun aStructResultThatHoldsAViewLendsTooSoItsOperandsStayWhereTheyLive() {
+        // Win holds a View: a copy of gl in the lambda would be what w.v points into after
+        // the lambda's end (gcc printed garbage, MSVC's ASan a heap-use-after-free), so the
+        // call, the construction and a result nesting Win read gl in place.
+        val call = body("structResultLends")
+        assertTrue(call.contains("return mkWin(gl, nextSize());"), call)
+        assertFalse(call.contains("[&]"), call)
+        val construction = body("constructionLends")
+        assertTrue(construction.contains("return Win{.v = gl, .k = nextSize()};"), construction)
+        assertFalse(construction.contains("[&]"), construction)
+        val nested = body("nestedStructResultLends")
+        assertTrue(nested.contains("return wrapOf(gl, nextSize());"), nested)
+        assertFalse(nested.contains("[&]"), nested)
+    }
+
+    @Test
+    fun aStructsThisReadAsAValueBesideAMutFxOfItsOwnIsCopiedFirst() {
+        // `this` in a struct is the receiver C++ holds by reference, shared state bump() writes:
+        // D33 reads it before the sibling's effect, as it reads a field (viaField in r6).
+        assertTrue(text.contains("const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);"), text)
     }
 
     @Test

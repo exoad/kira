@@ -2,11 +2,13 @@ package net.exoad.kira.cpp
 
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
+import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleLayout
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleRef
 import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
+import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
@@ -64,7 +66,12 @@ class CppGoldenEmitTest {
         return nodes
     }
 
-    private fun check(case: CppGoldenCase) {
+    /**
+     * Emits [case] the CLI's way and compares every file with expected/. [tune] runs over
+     * the typed program between the typer and the emitter: a test that stands in for a rule
+     * pass not merged yet (W2.5's EscapePass) fills the model's table there.
+     */
+    internal fun check(case: CppGoldenCase, tune: (TypedProgram) -> Unit = {}) {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
         val manifest = ManifestLoader.loadFromPath(caseRoot.resolve("kira.yaml"))
         val issues = ManifestValidator.validate(manifest, caseRoot)
@@ -98,6 +105,7 @@ class CppGoldenEmitTest {
         emitter.prepare(layout, "dev")
         val runErrors = emitter.diagnostics.filter { it.isError }
         assertTrue(runErrors.isEmpty(), "${case.name}: the typer refused the case:\n${runErrors.joinToString("\n") { it.render() }}")
+        tune((emitter as TypedCppModuleEmitter).program)
 
         val expectedRoot = case.expectedDir.toPath().toAbsolutePath().normalize()
         val seen = HashSet<Path>()

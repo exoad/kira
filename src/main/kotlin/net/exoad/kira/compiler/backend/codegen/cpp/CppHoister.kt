@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
@@ -70,9 +71,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
  *   (`show(gs, changeS())` printed the new `gs`), so where it is not PURE it is copied like a
  *   value, its path ordered first (`const kira::Str t0_ = gs;`). The one exception is a call,
  *   construction or operator whose result [lends] a view (`tail(xs, nextSize())` returning
- *   `View<Int32>`): the view would point into the copy, which dies with the lambda, so there
- *   the place stays where it is and the call reads it as the effect left it. The decision is
- *   [lower]'s, from the result type it is given.
+ *   `View<Int32>`, `Win { v = gl, k = nextSize() }` whose field `v` is one): the view would
+ *   point into the copy, which dies with the lambda, so there the place stays where it is
+ *   and the call reads it as the effect left it. The decision is [lower]'s, from the result
+ *   type it is given.
  * - An operand's rank is `TypedModel.effects` (EffectsPass, W2.5). Where the model has no
  *   entry (before the merge, or for a node no pass visited), [rank] approximates the same
  *   three values: IMPURE for a call whose own entry is absent (absent means impure) unless
@@ -144,13 +146,39 @@ class CppHoister(private val lower: CppLowering) {
     }
 
     /**
-     * Whether a result of type [t] lends a view into an operand (a `View` or `MutView`, alone
-     * or inside a `Maybe`, a tuple or a `Result`): its operands are read where they live.
+     * Whether a result of type [t] can lend a view into an operand, so its operands are read
+     * where they live: a `View` or `MutView` itself, or one held anywhere inside the result (a
+     * type argument of a `Maybe`, a tuple, a `Result` or a container; a field of a struct or
+     * a class, at any depth, through the parent chain, with the class's type arguments
+     * substituted: `Win { v = gl, k = nextSize() }` lends `gl` through `Win.v`). What the
+     * emitter cannot see through is taken to lend, since a copy it lent from would die with the
+     * lambda (a use after free) where a read in place only loses D33's snapshot: a trait handle
+     * (its implementors are not enumerated here), a type parameter, an `Fx` value (its captures
+     * are opaque) and an `Unsafe`.
      */
-    fun lends(t: KType): Boolean {
-        val n = t as? KType.Nominal ?: return false
-        val name = CppBindingTable.magicName(n)
-        return name == "View" || name == "MutView" || n.typeArgs().any { lends(it) }
+    fun lends(t: KType): Boolean = lends(t, java.util.IdentityHashMap())
+
+    private fun lends(t: KType, seen: MutableMap<ClassSymbol, Boolean>): Boolean = when (t) {
+        is KType.Param, is KType.Fn -> true
+        is KType.Nominal -> {
+            val name = CppBindingTable.magicName(t)
+            when {
+                name == "View" || name == "MutView" || name == "Unsafe" -> true
+                t.typeArgs().any { lends(it, seen) } -> true
+                else -> when (val sym = t.sym) {
+                    is TraitSymbol -> true
+                    is ClassSymbol -> if (seen.put(sym, true) != null) {
+                        false
+                    } else {
+                        val substitution = sym.typeParams.zip(t.typeArgs()).toMap()
+                        sym.fields.any { lends(it.type.substitute(substitution), seen) } ||
+                            sym.superclass?.let { lends(it.substitute(substitution), seen) } == true
+                    }
+                    else -> false
+                }
+            }
+        }
+        else -> false
     }
 
     private fun leaves(ops: List<Operand>, copy: Boolean): List<Int> = ops.flatMap { op ->
@@ -239,6 +267,10 @@ class CppHoister(private val lower: CppLowering) {
                 is IntrinsicExpr -> if (node.intrinsicKey.name == "_trace_") return IMPURE
                 is ThrowExpr, is TryExpr, is AssignmentExpr, is CompoundAssignmentExpr, is PlaceAssignmentExpr -> return IMPURE
                 is Identifier -> if (readsShared(node)) best = READS
+                // A struct's `this` is the receiver C++ holds by reference: a read of it as a
+                // value (`peek(this, bump())`) is shared state a sibling `mut fx` changes. A
+                // class's `this` is a handle, whose identity no effect changes.
+                is ThisExpr -> if (lower.model.typeOrNull(node)?.let { lower.heldByReference(it) } == true) best = READS
                 is MemberAccessExpr -> {
                     // The member's own name is a field or method name, not a read of anything; a
                     // field through `this` or a reference is shared state, a local struct's is not.

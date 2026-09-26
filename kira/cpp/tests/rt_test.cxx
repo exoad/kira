@@ -558,6 +558,10 @@ namespace
       check(kira::list::clone(xs) == kira::List<std::int32_t>{40, 6, 70} && kira::view(xs).size() == 3, "List place and view");
       const kira::View<std::int32_t> fromList = xs;
       check(fromList[2] == 70 && kira::mutView(xs).size() == 3, "View from a List");
+      const std::array<std::int32_t, 3> fixed{1, 2, 3};
+      static_assert(kira::list::contains(std::array<std::int32_t, 2>{1, 2}, 2), "Arr<T, N>.contains is constexpr");
+      check(kira::list::contains(fixed, 2) && !kira::list::contains(fixed, 4), "Arr<T, N>.contains");
+      check(kira::list::clone(fixed) == kira::List<std::int32_t>{1, 2, 3}, "Arr<T, N>.clone is a List");
       kira::List<bool> flags{true, false};
       kira::at(flags, 1) = true;
       check(kira::at(flags, 1) && kira::list::get(flags, 0), "List<Bool> places");

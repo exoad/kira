@@ -1271,6 +1271,100 @@ class CppExprRowsTest {
                 """check(f2::mutReceiverBound() == 12, "D33: the receiver of a mut fx on an element is written in place, never copied");""",
             ),
         ),
+        row(
+            "f3",
+            """
+            mut gl: List<Int32> = List<Int32> { values = [11, 22, 33] }
+            mut idx: Size = 0
+
+            fx nextSize: () Size {
+                idx += 1
+                return idx
+            }
+
+            pub struct Win {
+                pub v: View<Int32>
+                pub k: Size = 0
+            }
+
+            fx mkWin: (v: View<Int32>, k: Size) Win {
+                return Win { v = v, k = k }
+            }
+
+            pub fx lentThroughCall: () Int32 {
+                idx = 0
+                w: Win = mkWin(gl, nextSize())
+                return w.v.get(0) * 100 + w.v.get(1) + (w.k as Int32)
+            }
+
+            pub fx lentThroughConstruction: () Int32 {
+                idx = 0
+                w: Win = Win { v = gl, k = nextSize() }
+                return w.v.get(2) * 10 + (w.k as Int32)
+            }
+
+            pub struct Acc {
+                pub n: Int32 = 1
+
+                pub mut fx bump: () Int32 {
+                    n = 2
+                    return 10
+                }
+
+                pub mut fx viaThis: () Int32 {
+                    return peek(this, bump())
+                }
+            }
+
+            fx peek: (a: Acc, k: Int32) Int32 {
+                return a.n + k
+            }
+
+            pub fx thisBeforeBump: () Int32 {
+                mut x: Acc = Acc { }
+                return x.viaThis()
+            }
+
+            pub fx fixedContains: () Bool {
+                a: Arr<Int32, 3> = [1, 2, 3]
+                return a.contains(2) && !a.contains(4)
+            }
+
+            pub fx fixedClone: () Size {
+                a: Arr<Int32, 3> = [1, 2, 3]
+                c: Arr<Int32> = a.clone()
+                return c.size()
+            }
+
+            pub fx mapLiteral: () Int32 {
+                m: Map<Str, Int32> = Map<Str, Int32> { values = [Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }] }
+                return (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
+            }
+
+            pub fx setLiteral: () Size {
+                s: Set<Int32> = Set<Int32> { values = [3, 4, 3] }
+                e: Map<Str, Int32> = Map<Str, Int32> { values = [] }
+                f: Set<Float32> = Set<Float32> { values = [1.5, 2.5] }
+                return s.size() * 100 + e.size() * 10 + f.size()
+            }
+            """,
+            listOf(
+                "const Win w = mkWin(gl, nextSize());",
+                "const Win w = Win{.v = gl, .k = nextSize()};",
+                "const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);",
+                "return kira::list::contains(a, 2) && !kira::list::contains(a, 4);",
+                "const kira::List<std::int32_t> c = kira::list::clone(a);",
+                "const kira::Map<kira::Str, std::int32_t> m = kira::Map<kira::Str, std::int32_t>{kira::Tuple2<kira::Str, std::int32_t>{.first = \"k\", .second = 1}, kira::Tuple2<kira::Str, std::int32_t>{.first = \"j\", .second = 2}};",
+                "const kira::Set<std::int32_t> s = kira::Set<std::int32_t>{3, 4, 3};",
+                "const kira::Map<kira::Str, std::int32_t> e = kira::Map<kira::Str, std::int32_t>{};",
+            ),
+            listOf(
+                """check(f3::lentThroughCall() == 1123 && f3::lentThroughConstruction() == 331, "D33: a struct result that holds a view lends, so its operands are read where they live, never from a copy that dies with the lambda");""",
+                """check(f3::thisBeforeBump() == 11, "D33: a struct's this beside a sibling mut fx is read before the effect");""",
+                """check(f3::fixedContains() && f3::fixedClone() == 3, "Arr<T, N>.contains and Arr<T, N>.clone bind over a std::array");""",
+                """check(f3::mapLiteral() == 22 && f3::setLiteral() == 202, "R9: a Map or Set literal is a braced list of entries or values (a Set keeps one of each), and an empty one is T{}");""",
+            ),
+        ),
     )
 
     private val tree by lazy { CppExprTestSupport.emit("rows", rows.map { it.module } + shapes) }
