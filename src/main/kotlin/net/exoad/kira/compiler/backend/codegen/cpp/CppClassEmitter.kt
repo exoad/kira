@@ -21,6 +21,7 @@ import net.exoad.kira.compiler.analysis.types.Prim
 import net.exoad.kira.compiler.analysis.types.ResolvedInit
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.analysis.types.TypeParamSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.TypedModel
@@ -90,6 +91,10 @@ import java.util.WeakHashMap
  *   overrides every same-named virtual of every base at once, so the whole family (the
  *   superclass method and each trait method it implements, and on through their bases and
  *   overriders) is decided together. Either way it is callable through a `const kira::Rc<C>&`.
+ *   An override's parameters are spelled as what it overrides spells them, under the base's
+ *   type arguments ([ClassLowering.overrideParams]): a generic base's `v: T` is `const T&`,
+ *   so its override at Int32 says `const std::int32_t&`, or it overrides nothing; two bases
+ *   whose spellings differ are refused, since no one signature overrides both.
  * - Bodies are out of line: in the `.kira.cxx`, or in the header for a template (a generic
  *   class, a generic method, a method with a non-escaping `Fx` parameter) and for a
  *   header-only module.
@@ -299,8 +304,10 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
                 fn.foreign != null -> ctx.unsupported(node, "the foreign method '${owner.name}.${fn.name}'")
                 fn.isConst -> ctx.unsupported(node, "@_const on the $what method '${owner.name}.${fn.name}' (a $what reference is never a literal type)")
                 fn.typeParams.isNotEmpty() && isVirtual(fn) -> ctx.unsupported(node, "the generic virtual method '${owner.name}.${fn.name}' (a C++ virtual cannot be a template)")
+                else -> refuseOverride(owner, fn)
             }
         }
+        facts.forwarders(owner).forEach { refuseForwarder(owner, it) }
     }
 
     // ---- constructor, destructor, fields -------------------------------------------------------------
@@ -397,7 +404,12 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return if (node != null && model.typeOf(node) != null) ctx.spell(node, Pos.RETURN) else ctx.spell(fn.ret, Pos.RETURN, fn.decl)
     }
 
-    private fun paramText(fn: FnSymbol, p: ParamSymbol, withDefault: Boolean, markUnused: Boolean): String {
+    /**
+     * One parameter, `[[maybe_unused]] const kira::Str& name = default`: its type from its
+     * own declaration (alias-aware), unless [type] is given, the spelling an override owes
+     * what it overrides ([overrideParams]).
+     */
+    private fun paramText(fn: FnSymbol, p: ParamSymbol, withDefault: Boolean, markUnused: Boolean, type: String? = null): String {
         val name = ctx.paramName(p)
         val unused = if (markUnused && !placement.bodyNames(fn, p)) "[[maybe_unused]] " else ""
         if (isTemplateFx(fn, p)) {
@@ -405,10 +417,116 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
         val pos = if (p.byRef) Pos.MUT_PARAM else Pos.PARAM
         val node = (p.decl as? FunctionDeclParameterExpr)?.typeSpecifier
-        val type = if (node != null && model.typeOf(node) != null) ctx.spell(node, pos) else ctx.spell(p.type, pos, p.decl ?: fn.decl)
+        val own = if (node != null && model.typeOf(node) != null) ctx.spell(node, pos) else ctx.spell(p.type, pos, p.decl ?: fn.decl)
         val default = if (withDefault && p.default != null) " = ${decls.initText(p.default, p.type)}" else ""
-        return "$unused$type $name$default"
+        return "$unused${type ?: own} $name$default"
     }
+
+    /** Every parameter of [fn], the override spellings applied where [fn] owes them. */
+    private fun paramsText(fn: FnSymbol, withDefault: Boolean, markUnused: Boolean): String {
+        val owed = overrideParams(fn)
+        return fn.params.mapIndexed { i, p -> paramText(fn, p, withDefault, markUnused, owed?.getOrNull(i)) }.joinToString(", ")
+    }
+
+    // ---- what an override owes what it overrides -------------------------------------------------------
+
+    /**
+     * How a parameter [p] of the declaration [d] is spelled in C++ under the type arguments
+     * [d]'s owner has there: as the owner spells it, the arguments substituted inside. A
+     * type parameter is never known to be by value, so `Source<T>` spells `v: T` as
+     * `const T&`, and at `Source<Int32>` that parameter is `const std::int32_t&`, not the
+     * `std::int32_t` a declaration written at Int32 spells on its own.
+     */
+    private fun paramTextAs(p: ParamSymbol, d: CppClassFacts.Declared): String {
+        val sub = d.via.sym.typeParams.zip(d.via.typeArgs()).toMap()
+        val t = p.type.substitute(sub)
+        val at = p.decl ?: d.method.decl
+        return when {
+            p.byRef -> ctx.spell(t, Pos.MUT_PARAM, at)
+            ctx.speller.byValue(p.type) -> ctx.spell(t, Pos.PARAM, at)
+            else -> "const ${ctx.spell(t, Pos.VALUE, at)}&"
+        }
+    }
+
+    /** [d]'s parameter list as C++ spells it there ([paramTextAs]), `(const std::int32_t&, kira::Str&)`. */
+    private fun signatureOf(d: CppClassFacts.Declared): String = "(${d.method.params.joinToString(", ") { paramTextAs(it, d) }})"
+
+    /**
+     * Two declarations an override or a forwarder would have to override at once whose
+     * parameter lists C++ spells differently, or null when every one agrees. A C++ override
+     * overrides every same-named virtual of every base, and ties to each only when the
+     * parameter types match exactly: `class C: Abs, Def<Int32>` meets `Abs.id(v: Int32)` as
+     * `std::int32_t` and `Def<T>.id(v: T)` as `const std::int32_t&`, so one signature
+     * overrides one and hides the other (gcc and MSVC run it with two virtuals untied,
+     * clang stops on it under `-Woverloaded-virtual`, measured), and a program that means
+     * one method is refused.
+     */
+    private fun disagreement(family: List<CppClassFacts.Declared>): Pair<CppClassFacts.Declared, CppClassFacts.Declared>? {
+        val first = family.firstOrNull() ?: return null
+        val sig = signatureOf(first)
+        val other = family.drop(1).firstOrNull { signatureOf(it) != sig } ?: return null
+        return first to other
+    }
+
+    /**
+     * The parameter spellings [fn] owes what it overrides, or null when it overrides nothing
+     * in C++ (a struct's method, a class method no base declares, a trait's first
+     * declaration) or when the declarations it overrides disagree ([refuseOverride] reports
+     * that). One entry per parameter: the text C++ needs ([paramTextAs] of the overridden
+     * declaration), or null where [fn]'s own spelling already has that shape, which keeps
+     * an alias's name. An override of a generic base's `v: T` at Int32 is thereby
+     * `const std::int32_t&`, as gcc, clang and MSVC require ("marked override, but does
+     * not override", C3668, and the class stays abstract; measured).
+     */
+    private fun overrideParams(fn: FnSymbol): List<String?>? {
+        val family = overriddenFamily(fn) ?: return null
+        if (family.isEmpty() || disagreement(family) != null) {
+            return null
+        }
+        val owed = family.first()
+        return fn.params.mapIndexed { i, p ->
+            val text = paramTextAs(owed.method.params[i], owed)
+            val own = paramTextAs(p, CppClassFacts.Declared(fn, identityOf(fn.owner as TypeSymbol)))
+            if (text == own) null else text
+        }
+    }
+
+    /** [owner] named by its own type parameters, `Source<T>`: the substitution under which its declarations are spelled as written. */
+    private fun identityOf(owner: TypeSymbol): KType.Nominal = KType.Nominal(owner, owner.typeParams.map { TypeArg.Ty(KType.Param(it)) })
+
+    /** What [fn] overrides in C++ ([CppClassFacts.overridden]), or null when it is no virtual or the arities differ (the typer's to refuse). */
+    private fun overriddenFamily(fn: FnSymbol): List<CppClassFacts.Declared>? {
+        val owner = fn.owner ?: return null
+        if (!isVirtual(fn)) {
+            return null
+        }
+        val family = facts.overridden(owner, fn.name)
+        return if (family.all { it.method.params.size == fn.params.size }) family else null
+    }
+
+    private fun refuseOverride(owner: TypeSymbol, fn: FnSymbol) {
+        val (a, b) = disagreement(overriddenFamily(fn).orEmpty()) ?: return
+        val node = fn.decl ?: owner.declNode() ?: return
+        ctx.unsupported(
+            node,
+            "${owner.name}.${fn.name} overriding both ${a.via.display()}.${fn.name}${signatureOf(a)} and ${b.via.display()}.${fn.name}${signatureOf(b)}, " +
+                "which C++ spells differently, so no one signature overrides both",
+        )
+    }
+
+    /** As [refuseOverride], for a forwarder [f] of [x]: its target and every declaration it overrides are one signature, or the name is refused. */
+    private fun refuseForwarder(x: TypeSymbol, f: CppClassFacts.Forwarder) {
+        val (a, b) = disagreement(forwarderFamily(f)) ?: return
+        val node = x.declNode() ?: return
+        ctx.unsupported(
+            node,
+            "${x.name} inheriting ${f.method.name} from both ${a.via.display()}${signatureOf(a)} and ${b.via.display()}${signatureOf(b)}, " +
+                "which C++ spells differently, so no one override ties them (override ${f.method.name} in ${x.name})",
+        )
+    }
+
+    /** The body a forwarder calls and every declaration it overrides: one C++ signature ([disagreement]). */
+    private fun forwarderFamily(f: CppClassFacts.Forwarder): List<CppClassFacts.Declared> = listOf(CppClassFacts.Declared(f.method, f.via)) + f.overridden
 
     /** The method's own template head: its type parameters, then one `F_p` per template `Fx` parameter. */
     private fun templateHead(fn: FnSymbol): List<String> {
@@ -430,7 +548,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val virtual = isVirtual(fn)
         val overrides = virtual && fn.overrides != null
         val specifier = if (virtual && !overrides) "virtual " else ""
-        val params = fn.params.joinToString(", ") { paramText(fn, it, withDefault = true, markUnused = false) }
+        val params = paramsText(fn, withDefault = true, markUnused = false)
         val constSuffix = constSuffix(fn)
         val overrideSuffix = if (overrides) " override" else ""
         val pure = if (virtual && fn.body == null) " = 0" else ""
@@ -442,12 +560,18 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     private fun forwarderSubstitution(f: CppClassFacts.Forwarder): Map<TypeParamSymbol, KType> =
         f.via.sym.typeParams.zip(f.via.typeArgs()).toMap()
 
+    /**
+     * The forwarder's parameters, spelled as its target spells them under the target's type
+     * arguments ([paramTextAs]), which every declaration it overrides spells the same way or
+     * the forwarder is refused ([refuseForwarder]): a generic sibling's `v: T` at Int32 is
+     * `const std::int32_t&`, and a by-value `std::int32_t` would override nothing of it.
+     */
     private fun forwarderParams(f: CppClassFacts.Forwarder, withDefault: Boolean): String {
         val sub = forwarderSubstitution(f)
+        val target = CppClassFacts.Declared(f.method, f.via)
         return f.method.params.mapIndexed { i, p ->
-            val type = p.type.substitute(sub)
-            val default = if (withDefault && p.default != null) " = ${decls.initText(p.default, type)}" else ""
-            "${ctx.spell(type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM, f.method.decl)} ${forwardedName(i)}$default"
+            val default = if (withDefault && p.default != null) " = ${decls.initText(p.default, p.type.substitute(sub))}" else ""
+            "${paramTextAs(p, target)} ${forwardedName(i)}$default"
         }.joinToString(", ")
     }
 
@@ -554,7 +678,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         fn.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
         ctx.parts.generics.templateHead(ctx, owner.typeParams)?.let { w.line(it) }
         templateHead(fn).forEach { w.line(it) }
-        val params = fn.params.joinToString(", ") { paramText(fn, it, withDefault = false, markUnused = true) }
+        val params = paramsText(fn, withDefault = false, markUnused = true)
         val constSuffix = constSuffix(fn)
         val head = "${inlineSpecifier(owner, inline, isTemplate(fn))}${returnText(fn)} ${qualifier(owner)}${ctx.names.escape(fn.name)}($params)$constSuffix"
         w.block(head) {
@@ -593,9 +717,11 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * `mut fx` on `this` without being `mut`, as a class's may).
      */
     fun structInherited(s: ClassSymbol): List<String> = structDefaults(s, report = true).map { m ->
-        val nodiscard = if (m.ret == KType.Void || m.ret == KType.Never) "" else "[[nodiscard]] "
-        val params = m.params.joinToString(", ") { paramText(m, it, withDefault = true, markUnused = false) }
-        "$nodiscard${returnText(m)} ${ctx.names.escape(m.name)}($params)${structConstSuffix(m)};"
+        ctx.deferringTo(m.module) {
+            val nodiscard = if (m.ret == KType.Void || m.ret == KType.Never) "" else "[[nodiscard]] "
+            val params = m.params.joinToString(", ") { paramText(m, it, withDefault = true, markUnused = false) }
+            "$nodiscard${returnText(m)} ${ctx.names.escape(m.name)}($params)${structConstSuffix(m)};"
+        }
     }
 
     private fun structConstSuffix(m: FnSymbol): String = if (m.isMutMethod || facts.traitBodyWrites(m)) "" else " const"
@@ -603,12 +729,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     /**
      * The trait default bodies the struct [s] takes as members: every one it inherits and
      * does not override, less those the trait's own lowering refuses ([isLowered]). Refused
-     * ([report], once, at the struct): one of a generic trait, since its body is typed under
-     * the trait's parameters, which the struct's copy would have to substitute, and the copy
-     * is spelled from the body as written; one from another module whose body names a
-     * declaration that module's `.kira.cxx` keeps to itself ([privateReferences]), since the
-     * copy is spelled in [s]'s module, where `::shapes::helper` names nothing; and a name two
-     * trait paths give different bodies to ([CppClassFacts.ambiguousDefaults]).
+     * ([report], once, at the struct): one whose owner is a generic trait (reached directly
+     * or through a trait that forwards to it), since its body is typed under the owner's
+     * parameters, which the struct's copy would have to substitute, and the copy is spelled
+     * from the body as written; one from another module whose body names a declaration
+     * that module's `.kira.cxx` keeps to itself ([privateReferences]), since the copy is
+     * spelled in [s]'s module, where `::shapes::helper` names nothing; and a name two trait
+     * paths give different bodies to ([CppClassFacts.ambiguousDefaults]).
      */
     private fun structDefaults(s: ClassSymbol, report: Boolean): List<FnSymbol> {
         if (report) {
@@ -620,12 +747,11 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             }
         }
         return facts.inheritedDefaults(s).mapNotNull { (m, via) ->
-            val trait = via.sym as TraitSymbol
             val at = s.decl ?: m.decl
             val hidden = if (m.module === s.module) emptyList() else privateReferences(m)
             when {
                 !isLowered(m) -> null
-                trait.typeParams.isNotEmpty() -> {
+                m.owner?.typeParams?.isNotEmpty() == true -> {
                     if (report && at != null) {
                         ctx.unsupported(at, "struct ${s.name} inheriting the default body of ${via.display()}.${m.name} from a generic trait (override ${m.name} in ${s.name})")
                     }
@@ -699,8 +825,14 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return out.keys.toList()
     }
 
-    /** `R Square::twice() const { ... }`: the trait's body, as a member of the struct (`Pair<T>::` and the template head for a generic struct). */
-    private fun inheritedDefinition(w: CppWriter, s: ClassSymbol, m: FnSymbol, inline: Boolean) {
+    /**
+     * `R Square::twice() const { ... }`: the trait's body, as a member of the struct
+     * (`Pair<T>::` and the template head for a generic struct). What the body refuses is
+     * refused where the body is written, by the trait's own module, which spells that body
+     * as the trait's member: the copy leaves those to it ([CppEmitContextImpl.deferringTo]),
+     * so a program reports one construct once, whichever module copies it.
+     */
+    private fun inheritedDefinition(w: CppWriter, s: ClassSymbol, m: FnSymbol, inline: Boolean) = ctx.deferringTo(m.module) {
         m.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
         ctx.parts.generics.templateHead(ctx, s.typeParams)?.let { w.line(it) }
         val params = m.params.joinToString(", ") { paramText(m, it, withDefault = false, markUnused = true) }
@@ -1352,7 +1484,7 @@ class CppClassFacts(private val program: TypedProgram) {
             }
         }
         // A forwarder overrides every base's declaration of its name at once, as an override does.
-        types.forEach { t -> forwarders(t as TypeSymbol).forEach { f -> f.overridden.forEach { unite(f.method, it) } } }
+        types.forEach { t -> forwarders(t as TypeSymbol).forEach { f -> f.overridden.forEach { unite(f.method, it.method) } } }
         val families = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
         methods.forEach { m -> families.getOrPut(familyRoot(m)) { mutableListOf() }.add(m) }
         var changed = true
@@ -1547,12 +1679,16 @@ class CppClassFacts(private val program: TypedProgram) {
         return sym is ClassSymbol && sym.kind == ClassKind.MAGIC && sym.name == "MutView"
     }
 
+    /** A method declaration and the type of its owner as some subtype names it (`Def<Int32>` for `Def<T>.id`), which fixes its type parameters. */
+    data class Declared(val method: FnSymbol, val via: KType.Nominal)
+
     /**
      * A method [via]'s declaration [method] a class or trait inherits from its bases and
      * forwards to, [overridden] being the other declarations of the name the forwarder
-     * overrides in C++ (a dominated one, a sibling's pure requirement).
+     * overrides in C++ (a dominated one, a sibling's pure requirement), each with its
+     * owner's type.
      */
-    data class Forwarder(val method: FnSymbol, val via: KType.Nominal, val overridden: List<FnSymbol>)
+    data class Forwarder(val method: FnSymbol, val via: KType.Nominal, val overridden: List<Declared>)
 
     /**
      * What a class, trait or struct inherits under one method name it does not declare
@@ -1566,7 +1702,7 @@ class CppClassFacts(private val program: TypedProgram) {
          * is above [method]'s), or a bodyless root requirement of a sibling base; empty when
          * the name comes one way, as most do.
          */
-        data class One(val method: FnSymbol, val via: KType.Nominal, val others: List<FnSymbol>) : Inherited
+        data class One(val method: FnSymbol, val via: KType.Nominal, val others: List<Declared>) : Inherited
 
         /** Two bodies, or a body beside a re-abstraction of the name: Kira's pick would be silent, and C++ has no final overrider. */
         data class Ambiguous(val method: FnSymbol, val owners: List<KType.Nominal>) : Inherited
@@ -1581,8 +1717,9 @@ class CppClassFacts(private val program: TypedProgram) {
      * owner, C++'s dominance: `class D: B, C` over `B: A`, `C: A` where B overrides `A.m`
      * keeps B's). Of what remains, one body is what the type inherits: a bodyless
      * declaration beside it is a root requirement (`trait Abs { fx f; }` next to
-     * `trait Def { fx f { ... } }`), which that body satisfies as the typer takes it, unless
-     * it re-abstracts a name some base gave a body (`C: A` redeclaring `A.m` bodyless), a
+     * `trait Def { fx f { ... } }`, or `trait Abs: Abs0 { override fx f; }` re-declaring
+     * Abs0's bodyless `f`), which that body satisfies as the typer takes it, unless it
+     * re-abstracts a name some base gave a body (`C: A` redeclaring `A.m` bodyless), a
      * deliberate conflict with the other path's body. Two bodies conflict.
      */
     private fun inherited(bases: List<KType.Nominal>, name: String): Inherited {
@@ -1598,16 +1735,32 @@ class CppClassFacts(private val program: TypedProgram) {
             bodies.size >= 2 -> Inherited.Ambiguous(bodies.keys.first(), bodies.values.toList())
             bodies.size == 1 && remaining.size == bodies.size + requirements.size -> {
                 val (method, via) = bodies.entries.single()
-                Inherited.One(method, via, found.keys.filter { it !== method })
+                Inherited.One(method, via, found.filterKeys { it !== method }.map { (fn, v) -> Declared(fn, v) })
             }
             bodies.size == 1 -> Inherited.Ambiguous(bodies.keys.single(), remaining.values.toList())
             else -> Inherited.None
         }
     }
 
-    /** A bodyless declaration that overrides nothing: a requirement any body of the name satisfies. */
+    /**
+     * A bodyless declaration of a name no base of its owner gives a body: a requirement any
+     * body of the name satisfies, whether it is the first declaration or re-declares another
+     * requirement bodyless. A bodyless declaration over a base's body re-abstracts it.
+     */
     private fun isRootRequirement(fn: FnSymbol): Boolean =
-        fn.body == null && (fn.owner as? Symbol)?.let { baseMethods(it, fn.name).isEmpty() } != false
+        fn.body == null && (fn.owner as? Symbol)?.let { o -> baseMethods(o, fn.name).all { it.body == null } } != false
+
+    /**
+     * The declarations of [name] an override in [x] overrides in C++: the nearest on each
+     * path up through [x]'s bases ([overriders]), each with its owner's type as [x] names it
+     * (`Source<Int32>` for `Source<T>.take` in `Five: Source<Int32>`). Empty when no base
+     * declares the name.
+     */
+    fun overridden(x: TypeSymbol, name: String): List<Declared> {
+        val found = LinkedHashMap<FnSymbol, KType.Nominal>()
+        directBases(x as Symbol).forEach { b -> overriders(b, name).forEach { (fn, via) -> found.putIfAbsent(fn, via) } }
+        return found.map { (fn, via) -> Declared(fn, via) }
+    }
 
     /** Whether [base] is a C++ base of [x], directly or indirectly. */
     private fun isBaseOf(base: TypeSymbol?, x: TypeSymbol?): Boolean =
@@ -1662,11 +1815,11 @@ class CppClassFacts(private val program: TypedProgram) {
      * trait requirement that superclass does not implement is left to [unconnectedTraitMethods].
      */
     private fun isForwardable(r: Inherited.One): Boolean {
-        if (r.others.any { it.owner !is TraitSymbol && !it.isVirtual }) {
+        if (r.others.any { it.method.owner !is TraitSymbol && !it.method.isVirtual }) {
             return false
         }
         val owner = r.method.owner
-        return owner is TraitSymbol || r.others.none { it.owner is TraitSymbol && !isBaseOf(it.owner, owner) }
+        return owner is TraitSymbol || r.others.none { it.method.owner is TraitSymbol && !isBaseOf(it.method.owner, owner) }
     }
 
     private fun methodsOf(t: Symbol): List<FnSymbol> = when (t) {
@@ -1675,13 +1828,19 @@ class CppClassFacts(private val program: TypedProgram) {
         else -> emptyList()
     }
 
-    /** The nearest declarations of [name] on each path up from [n] (inclusive), with their owners as [n]'s subtree names them. */
+    /**
+     * The nearest declarations of [name] on each path up from [n] (inclusive), each with
+     * the type of its owner as [n]'s subtree names it: a body found through a type that
+     * forwards to it is paired with the body's own owner (`Def<Int32>` for
+     * `Both: Abs, Def<Int32>`), never with the forwarding type, since what its type
+     * parameters stand for is what the owner's type says.
+     */
     private fun overriders(n: KType.Nominal, name: String): List<Pair<FnSymbol, KType.Nominal>> {
         val sym = n.sym as? Symbol ?: return emptyList()
         methodsOf(sym).firstOrNull { it.name == name }?.let { return listOf(it to n) }
-        // A type that forwards the method declares it in C++: below it nothing dominates.
-        forwarders(n.sym).firstOrNull { it.method.name == name }?.let { return listOf(it.method to n) }
         val sub = (n.sym.typeParams).zip(n.typeArgs()).toMap()
+        // A type that forwards the method declares it in C++: below it nothing dominates.
+        forwarders(n.sym).firstOrNull { it.method.name == name }?.let { return listOf(it.method to (it.via.substitute(sub) as KType.Nominal)) }
         return directBases(sym).flatMap { b -> overriders(b.substitute(sub) as KType.Nominal, name) }
     }
 

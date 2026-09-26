@@ -1646,7 +1646,8 @@ class CppClassShapeTest {
     fun aStructInheritingADefaultThatNamesAnotherModulesPrivateIsRefused() {
         // The copy is spelled in the struct's module, where ::shapes::helper names nothing:
         // helper and FACTOR live in shapes.kira.cxx's anonymous namespace. A default that
-        // names only pub declarations of its module is copied, qualified.
+        // names only pub declarations of its module (bumped) is copied, qualified: the
+        // refusals name only the three, and the next test reads the copy.
         val shapes = OopTestSupport.module(
             "test:shapes",
             """
@@ -1716,6 +1717,44 @@ class CppClassShapeTest {
     }
 
     @Test
+    fun aStructInAnotherModuleCopiesADefaultThatNamesOnlyPubDeclarationsQualified() {
+        // pubHelper is exported by shapes.kira.hxx: the copy in the struct's module names it
+        // through its namespace.
+        val shapes = OopTestSupport.module(
+            "test:shapes",
+            """
+            pub fx pubHelper: (v: Int32) Int32 {
+                return v
+            }
+
+            pub trait Shape {
+                pub fx area: () Int32;
+                pub fx bumped: () Int32 {
+                    return pubHelper(area())
+                }
+            }
+            """,
+        )
+        val main = OopTestSupport.module(
+            uri,
+            """
+            use "test:shapes"
+
+            pub struct Square: Shape {
+                pub side: Int32 = 4
+                override pub fx area: () Int32 {
+                    return side
+                }
+            }
+            """,
+        )
+        val e = OopTestSupport.emit(shapes, main)
+        assertEquals(emptyList(), e.errors(uri).map { it.message })
+        assertContains(e.header(uri), "      [[nodiscard]] std::int32_t bumped() const;")
+        assertContains(e.source(uri), "  std::int32_t Square::bumped() const\n  {\n      return ::shapes::pubHelper(area());\n  }")
+    }
+
+    @Test
     fun aDefaultBodyTheTraitsLoweringRefusesIsReportedOnceWithItsStructCopy() {
         // The struct's copy is spelled from the same body: the refusal at hello(this) is one.
         val messages = unsupported(
@@ -1738,5 +1777,323 @@ class CppClassShapeTest {
             """
         )
         assertEquals(listOf("this as a value in a default body of trait Named (a trait has no shared_from_this) is not lowered yet"), messages)
+    }
+
+    @Test
+    fun aDefaultBodyAnotherModulesTraitRefusesIsReportedByThatModuleAlone() {
+        // The struct's copy in test:main spells the same hello(this): the refusal is placed
+        // in shapes.kira, and shapes reports it; main reports nothing of it. Two modules,
+        // one construct, one diagnostic.
+        val shapes = OopTestSupport.module(
+            "test:shapes",
+            """
+            pub trait Named {
+                pub fx name: () Str;
+                pub fx greet: () Str {
+                    return hello(this)
+                }
+            }
+            pub fx hello: (n: Named) Str {
+                return n.name()
+            }
+            """,
+        )
+        val main = OopTestSupport.module(
+            uri,
+            """
+            use "test:shapes"
+
+            pub struct Cat: Named {
+                pub v: Int32 = 1
+                override pub fx name: () Str {
+                    return "cat"
+                }
+            }
+            """,
+        )
+        val e = OopTestSupport.emit(shapes, main)
+        val refusal = "this as a value in a default body of trait Named (a trait has no shared_from_this) is not lowered yet"
+        assertEquals(listOf(refusal), e.module("test:shapes").diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }.map { it.message })
+        assertEquals(emptyList(), e.module(uri).diagnostics.map { it.message })
+    }
+
+    // ---- what an override owes what it overrides ------------------------------------------------------
+
+    @Test
+    fun anOverrideOfAGenericBasesTypeParameterParameterIsSpelledAsTheBaseSpellsIt() {
+        // Source<T> spells v: T as const T&; an override at Int32 spelled std::int32_t
+        // overrides nothing (gcc: "marked override, but does not override"; MSVC C3668; the
+        // class stays abstract), so it says const std::int32_t&. A Bool and an enum likewise.
+        val (h, s) = both(
+            """
+            pub enum Mode {
+                A,
+                B
+            }
+            pub trait Source<T> {
+                pub fx take: (v: T) T;
+                pub fx keep: (mut v: T) Void;
+            }
+            pub class Five: Source<Int32> {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+                override pub fx keep: (mut v: Int32) Void {
+                    v = 1
+                }
+            }
+            pub class Flag: Source<Bool> {
+                override pub fx take: (v: Bool) Bool {
+                    return v
+                }
+                override pub fx keep: (mut v: Bool) Void {
+                    v = true
+                }
+            }
+            pub class Which: Source<Mode> {
+                override pub fx take: (v: Mode) Mode {
+                    return v
+                }
+                override pub fx keep: (mut v: Mode) Void {
+                    v = Mode.A
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] virtual T take(const T& v) const = 0;\n      virtual void keep(T& v) const = 0;",
+            "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n      void keep(std::int32_t& v) const override;",
+            "      [[nodiscard]] bool take(const bool& v) const override;\n      void keep(bool& v) const override;",
+            "      [[nodiscard]] Mode take(const Mode& v) const override;\n      void keep(Mode& v) const override;",
+        )
+        assertContains(
+            s,
+            "  std::int32_t Five::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
+            "  void Five::keep(std::int32_t& v) const\n  {\n      static_cast<void>(v = 1);\n  }",
+            "  bool Flag::take(const bool& v) const",
+            "  Mode Which::take(const Mode& v) const",
+        )
+    }
+
+    @Test
+    fun anOverrideOfAGenericSuperclassMethodIsSpelledAsTheSuperclassSpellsIt() {
+        // The class case fails the same way on gcc, clang and MSVC (measured): Base<T>.take
+        // is `std::int32_t take(const T& v)`, and IntBase's override follows it.
+        val (h, s) = both(
+            """
+            pub class Base<T> {
+                pub fx take: (v: T) Int32 {
+                    return 0
+                }
+            }
+            pub class IntBase: Base<Int32> {
+                override pub fx take: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] virtual std::int32_t take(const T& v) const;",
+            "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;",
+        )
+        assertContains(s, "  std::int32_t IntBase::take(const std::int32_t& v) const\n  {\n      return v;\n  }")
+    }
+
+    @Test
+    fun anOverrideWhoseOwnSpellingAlreadyMatchesKeepsIt() {
+        // A Str, a struct and a Maybe<T> are const& on both sides; a class template's own
+        // T is the base's T; an override of a non-generic base is spelled as written.
+        val (h, _) = both(
+            """
+            pub struct Pt {
+                pub x: Int32 = 1
+            }
+            pub trait Sink<T> {
+                pub fx put: (v: T) Int32;
+                pub fx maybe: (v: Maybe<T>) Int32;
+            }
+            pub class StrSink: Sink<Str> {
+                override pub fx put: (v: Str) Int32 {
+                    return 1
+                }
+                override pub fx maybe: (v: Maybe<Str>) Int32 {
+                    return 2
+                }
+            }
+            pub class PtSink: Sink<Pt> {
+                override pub fx put: (v: Pt) Int32 {
+                    return 3
+                }
+                override pub fx maybe: (v: Maybe<Pt>) Int32 {
+                    return 4
+                }
+            }
+            pub class AnySink<T>: Sink<T> {
+                override pub fx put: (v: T) Int32 {
+                    return 5
+                }
+                override pub fx maybe: (v: Maybe<T>) Int32 {
+                    return 6
+                }
+            }
+            pub trait Plain {
+                pub fx id: (v: Int32) Int32;
+            }
+            pub class Id: Plain {
+                override pub fx id: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] std::int32_t put(const kira::Str& v) const override;\n      [[nodiscard]] std::int32_t maybe(const kira::Maybe<kira::Str>& v) const override;",
+            "      [[nodiscard]] std::int32_t put(const Pt& v) const override;\n      [[nodiscard]] std::int32_t maybe(const kira::Maybe<Pt>& v) const override;",
+            "      [[nodiscard]] std::int32_t put(const T& v) const override;\n      [[nodiscard]] std::int32_t maybe(const kira::Maybe<T>& v) const override;",
+            "      [[nodiscard]] std::int32_t id(std::int32_t v) const override;",
+        )
+    }
+
+    @Test
+    fun anOverrideOfTwoBaseDeclarationsCppSpellsDifferentlyIsRefused() {
+        // Abs.id takes std::int32_t, Def<Int32>.id const std::int32_t&: one signature
+        // overrides one and hides the other, so the class's own override is refused.
+        val messages = unsupported(
+            """
+            pub trait Abs {
+                pub fx id: (v: Int32) Int32;
+            }
+            pub trait Def<T> {
+                pub fx id: (v: T) T {
+                    return v
+                }
+            }
+            pub class C: Abs, Def<Int32> {
+                override pub fx id: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            """
+        )
+        assertEquals(
+            listOf("C.id overriding both Abs.id(std::int32_t) and Def<Int32>.id(const std::int32_t&), which C++ spells differently, so no one signature overrides both is not lowered yet"),
+            messages,
+        )
+    }
+
+    @Test
+    fun aForwarderWhoseTargetAndRequirementCppSpellsDifferentlyIsRefused() {
+        // The forwarder overrides the sibling's requirement and calls the default: with a
+        // generic on either side the two are not one signature (clang stops on the hiding
+        // under -Woverloaded-virtual; with the requirement generic, C stays abstract).
+        val a = unsupported(
+            """
+            pub trait Abs {
+                pub fx id: (v: Int32) Int32;
+            }
+            pub trait Def<T> {
+                pub fx id: (v: T) T {
+                    return v
+                }
+            }
+            pub class C: Abs, Def<Int32> {
+            }
+            """
+        )
+        assertEquals(
+            listOf("C inheriting id from both Def<Int32>(const std::int32_t&) and Abs(std::int32_t), which C++ spells differently, so no one override ties them (override id in C) is not lowered yet"),
+            a,
+        )
+        val b = unsupported(
+            """
+            pub trait Abs<T> {
+                pub fx id: (v: T) T;
+            }
+            pub trait Def {
+                pub fx id: (v: Int32) Int32 {
+                    return v
+                }
+            }
+            pub class C: Abs<Int32>, Def {
+            }
+            pub struct S: Abs<Int32>, Def {
+                pub k: Int32 = 0
+            }
+            """
+        )
+        // The struct derives nothing in C++: its copy of Def.id is reached statically, whatever Abs<Int32> spells.
+        assertEquals(
+            listOf("C inheriting id from both Def(std::int32_t) and Abs<Int32>(const std::int32_t&), which C++ spells differently, so no one override ties them (override id in C) is not lowered yet"),
+            b,
+        )
+    }
+
+    @Test
+    fun aGenericTraitsDefaultReachedThroughAForwardingTraitIsRefusedForAStruct() {
+        // Both forwards id to Def<Int32>'s body; the struct's copy would spell `T id(const T&)`
+        // in a non-template struct ("T does not name a type", measured). The rule reads the
+        // body's owner, not the trait the struct names.
+        val messages = unsupported(
+            """
+            pub trait Abs {
+                pub fx id: (v: Int32) Int32;
+            }
+            pub trait Def<T> {
+                pub fx id: (v: T) T {
+                    return v
+                }
+            }
+            pub trait Both: Abs, Def<Int32> {
+            }
+            pub struct S: Both {
+                pub k: Int32 = 0
+            }
+            """
+        )
+        assertTrue(
+            messages.contains("struct S inheriting the default body of Def<Int32>.id from a generic trait (override id in S) is not lowered yet"),
+            messages.toString(),
+        )
+    }
+
+    @Test
+    fun aRequirementRedeclaredBodylessIsStillARequirementASiblingsDefaultSatisfies() {
+        // Abs re-declares Abs0's bodyless f bodyless: no base gave f a body, so nothing is
+        // re-abstracted, and Def's body is the one the struct takes and the class forwards to.
+        val program = """
+            pub trait Abs0 {
+                pub fx f: () Int32;
+            }
+            pub trait Abs: Abs0 {
+                override pub fx f: () Int32;
+            }
+            pub trait Def {
+                pub fx f: () Int32 {
+                    return 7
+                }
+            }
+            pub struct S: Abs, Def {
+                pub v: Int32 = 0
+            }
+            pub class C: Abs, Def {
+            }
+            pub fx make: () C {
+                return C {}
+            }
+        """
+        val e = emit(program)
+        assertEquals(emptyList(), e.errors(uri).map { it.message })
+        val h = e.header(uri)
+        val s = e.source(uri)
+        assertContains(
+            h,
+            "  struct S\n  {\n      std::int32_t v = 0;\n\n      [[nodiscard]] std::int32_t f() const;\n  };",
+            "      [[nodiscard]] std::int32_t f() const override;\n  };",
+        )
+        assertContains(s, "  std::int32_t S::f() const\n  {\n      return 7;\n  }", "  std::int32_t C::f() const\n  {\n      return Def::f();\n  }", "      return std::make_shared<C>();")
     }
 }

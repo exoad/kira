@@ -138,9 +138,11 @@ class CppClassCompileTest {
             }
         }
 
-        // A trait template with a default body, implemented at one instantiation.
+        // A trait template with a default body, implemented at one instantiation; take's
+        // parameter is a bare T, const T& in C++.
         pub trait Source<T> {
             pub fx get: () T;
+            pub fx take: (v: T) T;
             pub fx again: () T {
                 return get()
             }
@@ -150,6 +152,42 @@ class CppClassCompileTest {
             override pub fx get: () Int32 {
                 return 5
             }
+
+            override pub fx take: (v: Int32) Int32 {
+                return v
+            }
+        }
+
+        // The same requirement at Bool, and a generic class's method overridden at Int32:
+        // each override says const T& as its base does, or it overrides nothing.
+        pub class Flag: Source<Bool> {
+            override pub fx get: () Bool {
+                return true
+            }
+
+            override pub fx take: (v: Bool) Bool {
+                return v
+            }
+        }
+
+        pub class Base<T> {
+            pub fx take: (v: T) Int32 {
+                return 0
+            }
+        }
+
+        pub class IntBase: Base<Int32> {
+            override pub fx take: (v: Int32) Int32 {
+                return v
+            }
+        }
+
+        pub fx makeFlag: () Source<Bool> {
+            return Flag {}
+        }
+
+        pub fx makeIntBase: () Base<Int32> {
+            return IntBase {}
         }
 
         pub class Holder {
@@ -489,6 +527,9 @@ class CppClassCompileTest {
             check(cell->me() == cell && cell->value == 3, "this as a value in a class template");
             check(d->later()() == d && d->laterMut()() == d && cell->later()() == cell, "an escaping lambda's self is the object, in a subclass and a template");
             check(shapes::makeFive()->again() == 5, "a trait template's default body calls the instantiation's override");
+            check(shapes::makeFive()->take(4) == 4 && shapes::makeFlag()->take(true), "an override of a trait template's v: T at Int32 and at Bool overrides it");
+            const kira::Rc<shapes::Base<std::int32_t>> ib = shapes::makeIntBase();
+            check(ib->take(6) == 6 && std::make_shared<shapes::Base<std::int32_t>>()->take(6) == 0, "an override of a class template's v: T at Int32 overrides it");
             shapes::Holder h(d);
             check(h.getPet() == d && h.getSpare() == nullptr, "a stack-constructed class; Maybe<Class> is a nullable Rc");
             check(shapes::counter()->value == 7, "Ref<T> is an Rc of a Box");
@@ -547,7 +588,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("23 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("25 checks, 0 failed"), run.stdout)
             }
         }
     }

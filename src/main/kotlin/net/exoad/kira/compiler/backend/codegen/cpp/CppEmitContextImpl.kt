@@ -431,12 +431,41 @@ class CppEmitContextImpl(
         report(diagnosticAt(node, code, message, severity))
     }
 
+    /** The module whose diagnostics are being left to its own emission ([deferringTo]), if any. */
+    private var deferredTo: ModuleSymbol? = null
+
+    /**
+     * Runs [block] with every diagnostic placed in [other]'s file dropped, [other] being a
+     * module whose text this module is spelling again (a trait default body a struct of
+     * this module takes as a member, W2.4): [other]'s own emission spells that text too and
+     * reports what it refuses, at the same place, so the program reports one construct once
+     * rather than once per module that copies it. This module's own diagnostics (at its own
+     * declarations) are kept. A no-op when [other] is this module.
+     */
+    fun <T> deferringTo(other: ModuleSymbol, block: () -> T): T {
+        if (other === symbol) {
+            return block()
+        }
+        val before = deferredTo
+        deferredTo = other
+        try {
+            return block()
+        } finally {
+            deferredTo = before
+        }
+    }
+
     /**
      * Adds [d] to this module's [diagnostics], unless the same diagnostic (code, message and
      * place) is already there: one construct refused once, however many times its body is
-     * spelled (a trait default body, and the copy each struct takes of it).
+     * spelled (a trait default body, and the copy each struct takes of it); or unless it is
+     * placed in a module this one is [deferringTo].
      */
     fun report(d: CppDiagnostic) {
+        val other = deferredTo
+        if (other != null && d.file == other.source.file) {
+            return
+        }
         if (d !in reported) {
             reported += d
         }
