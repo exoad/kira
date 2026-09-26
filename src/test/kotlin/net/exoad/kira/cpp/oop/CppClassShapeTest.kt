@@ -429,8 +429,8 @@ class CppClassShapeTest {
                     pub fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                         return f(x)
                     }
-                    pub fx keep: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
-                        return k
+                    pub fx keep: (f: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
+                        return f
                     }
                 }
                 """,
@@ -445,12 +445,12 @@ class CppClassShapeTest {
         assertContains(
             h,
             "      template<typename F_f>\n        requires kira::Callable<F_f, std::int32_t, std::int32_t>\n      [[nodiscard]] std::int32_t apply(F_f&& f, std::int32_t x) const;\n",
-            // an escaping one (no EscapePass verdict) is a kira::Fn
-            "      [[nodiscard]] std::int32_t keep([[maybe_unused]] const kira::Fn<std::int32_t(std::int32_t)>& f) const;\n".replace("[[maybe_unused]] ", ""),
+            // an escaping one (returned, so EscapePass never clears it) is a kira::Fn
+            "      [[nodiscard]] kira::Fn<std::int32_t(std::int32_t)> keep(const kira::Fn<std::int32_t(std::int32_t)>& f) const;\n",
             "  template<typename F_f>\n    requires kira::Callable<F_f, std::int32_t, std::int32_t>\n  std::int32_t Counter::apply(F_f&& f, std::int32_t x) const\n  {\n",
         )
         assertLacks(s, "Counter::apply")
-        assertContains(s, "  std::int32_t Counter::keep([[maybe_unused]] const kira::Fn<std::int32_t(std::int32_t)>& f) const\n")
+        assertContains(s, "  kira::Fn<std::int32_t(std::int32_t)> Counter::keep(const kira::Fn<std::int32_t(std::int32_t)>& f) const\n")
     }
 
     @Test
