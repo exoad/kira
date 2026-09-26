@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# run.sh - the Kira C++ runtime test (rt_test.cxx) on every toolchain found.
+# run.sh - the Kira C++ runtime tests (rt_test.cxx, ffi_test.cxx) on every toolchain found.
 #
 #     bash kira/cpp/tests/run.sh
 #
 # Builds, each from a clean output (a stale binary never passes for a fresh one):
 #   gcc            g++ -std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion
 #                  -Wshadow -Wnon-virtual-dtor -Werror; runs it, the panic modes,
-#                  the exit-70 mode and the must-not-compile cases
+#                  the exit-70 mode and the must-not-compile cases; then ffi_test
+#                  (kira/ffi.hxx), whose KIRA_FFI_DRIFT build must fail with
+#                  Kira's "no longer matches its C++ header"
 #   clang          zig c++ (clang 20), -target x86_64-windows-gnu on Windows; the same
 #   zig-aarch64    zig c++ -target aarch64-linux-gnu.2.35 -c (the Orange Pi, the Jetson)
 #   musl           zig c++ -target x86_64-linux-musl -static, run under
@@ -50,6 +52,7 @@ p() { if [ "$windows" = 1 ]; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 
 inc=$(p "$root/kira/cpp")
 src=$(p "$here/rt_test.cxx")
+ffisrc=$(p "$here/ffi_test.cxx")
 
 have() { command -v "$1" > /dev/null 2>&1 || [ -x "$1" ]; }
 exe() { if [ "$windows" = 1 ]; then printf '%s.exe' "$1"; else printf '%s' "$1"; fi; }
@@ -110,6 +113,42 @@ check_negative() {
     done
 }
 
+# ffi_test (kira/ffi.hxx): builds and runs hosted, and the KIRA_FFI_DRIFT build, a
+# deliberately wrong extern signature, must not compile, and must fail with
+# Kira's "no longer matches its C++ header" message rather than any other error.
+# $1 names the toolchain; the rest is the compiler command with its flags.
+check_ffi() {
+    local name=$1
+    shift
+    local bin
+    bin=$(exe "$out/ffi_$name")
+    rm -f "$bin"
+    if "$@" -I "$inc" "$ffisrc" -o "$(p "$bin")" > "$out/ffi_$name.build.log" 2>&1 && [ -f "$bin" ]; then
+        "$bin" > "$out/ffi_$name.out" 2> "$out/ffi_$name.err"
+        local rc=$?
+        local last
+        last=$(lf "$out/ffi_$name.out" | grep -E '^[0-9]+ checks, [0-9]+ failed$' | tail -1)
+        if [ "$rc" = 0 ] && printf '%s' "$last" | grep -qE '^[0-9]+ checks, 0 failed$'; then
+            ok "$name: ffi_test runs: $last"
+        else
+            lf "$out/ffi_$name.out" | grep -E '^  FAIL' | head -20
+            fail "$name: ffi_test exited $rc (${last:-no summary line})"
+        fi
+    else
+        head -30 "$out/ffi_$name.build.log"
+        fail "$name: ffi_test does not build"
+    fi
+    rm -f "$out/ffi_$name.drift.o"
+    if "$@" -DKIRA_FFI_DRIFT=1 -I "$inc" -c "$ffisrc" -o "$(p "$out/ffi_$name.drift.o")" > "$out/ffi_$name.drift.log" 2>&1; then
+        fail "$name: KIRA_FFI_DRIFT=1 compiled: a wrong extern signature passed KIRA_EXTERN_CHECK"
+    elif grep -q 'no longer matches its C++ header' "$out/ffi_$name.drift.log"; then
+        ok "$name: KIRA_FFI_DRIFT=1 does not compile: $(grep -o "Kira's [A-Za-z.]* no longer matches its C++ header" "$out/ffi_$name.drift.log" | head -1)"
+    else
+        head -5 "$out/ffi_$name.drift.log"
+        fail "$name: KIRA_FFI_DRIFT=1 failed to compile for another reason"
+    fi
+}
+
 # No heap, exception or RTTI symbol in a freestanding object.
 check_symbols() {
     local name=$1 nm=$2 obj=$3
@@ -146,6 +185,16 @@ if have "$gxx"; then
         head -20 "$out/gcc.fs.log"
         fail "gcc: the freestanding profile does not compile"
     fi
+    check_ffi gcc "$gxx" "${WARN[@]}"
+    ffifs="$out/ffi_fs_gcc.o"
+    rm -f "$ffifs"
+    if "$gxx" "${WARN[@]}" -fno-exceptions -fno-rtti -DKIRA_PROFILE_FREESTANDING=1 -I "$inc" -c "$ffisrc" -o "$(p "$ffifs")" > "$out/gcc.ffi.fs.log" 2>&1; then
+        ok "gcc: ffi_test's freestanding slice (Out and the check) compiles on the host compiler"
+        check_symbols gcc nm "$ffifs"
+    else
+        head -20 "$out/gcc.ffi.fs.log"
+        fail "gcc: ffi_test's freestanding slice does not compile"
+    fi
 else
     missing gcc "$gxx"
 fi
@@ -167,6 +216,7 @@ if have "$zig"; then
         fail "clang: rt_test does not build"
     fi
     check_negative clang "$zig" c++ "${clangtarget[@]}" "${WARN[@]}" -I "$inc"
+    check_ffi clang "$zig" c++ "${clangtarget[@]}" "${WARN[@]}"
 
     obj="$out/rt_aarch64.o"
     rm -f "$obj"
@@ -175,6 +225,14 @@ if have "$zig"; then
     else
         head -30 "$out/aarch64.log"
         fail "zig-aarch64: rt_test does not compile"
+    fi
+    obj="$out/ffi_aarch64.o"
+    rm -f "$obj"
+    if "$zig" c++ -target aarch64-linux-gnu.2.35 "${WARN[@]}" -I "$inc" -c "$ffisrc" -o "$(p "$obj")" > "$out/ffi_aarch64.log" 2>&1 && [ -f "$obj" ]; then
+        ok "zig-aarch64: ffi_test compiles for aarch64-linux-gnu.2.35"
+    else
+        head -30 "$out/ffi_aarch64.log"
+        fail "zig-aarch64: ffi_test does not compile"
     fi
 
     musl="$out/rt_musl"
@@ -247,6 +305,17 @@ if have "$arm"; then
     else
         head -30 "$out/arm.log"
         fail "arm: the freestanding probe does not compile"
+    fi
+    obj="$out/ffi_arm.o"
+    rm -f "$obj"
+    if "$arm" -std=c++20 -mcpu=cortex-m33 -mthumb -Os -fno-exceptions -fno-rtti -DKIRA_PROFILE_FREESTANDING=1 \
+        -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off \
+        -I "$inc" -c "$ffisrc" -o "$(p "$obj")" > "$out/ffi_arm.log" 2>&1 && [ -f "$obj" ]; then
+        ok "arm: ffi_test's freestanding slice (Out and the check) compiles for cortex-m33"
+        check_symbols arm "$armnm" "$obj"
+    else
+        head -30 "$out/ffi_arm.log"
+        fail "arm: ffi_test's freestanding slice does not compile"
     fi
 else
     missing arm "$arm"

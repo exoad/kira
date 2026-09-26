@@ -1,0 +1,28 @@
+module "app:shape"
+
+// Kira's view of native/shape.hxx (a C++ class) and native/cshape.h (C functions).
+// An extern module emits drift checks against those headers, never a copy of them
+// (design 7.2); the C++ side stays C++.
+
+@_extern(cpp = "shape::Box", header = "shape.hxx")
+pub class Box {
+    pub fx width: () Int32;
+    pub fx height: () Int32;
+    pub fx area: () Int32;
+    pub mut fx grow: (by: Int32) Void;
+}
+
+// The seam: a 3-line C++ factory, since a Kira class value is a kira::Rc<Box>.
+@_extern(cpp = "shape::makeBox", header = "shape.hxx")
+pub fx makeBox: (w: Int32, h: Int32) Box;
+
+// C functions, callable from C++ as they are: a Str goes in as const char*, a mut
+// Int32 goes out as int32_t*.
+@_extern(cpp = "cshape_hypot_sq", header = "cshape.h")
+pub fx hypotSq: (a: Int32, b: Int32) Int32;
+
+@_extern(cpp = "cshape_len", header = "cshape.h")
+pub fx cLen: (s: Str) Size;
+
+@_extern(cpp = "cshape_count", header = "cshape.h")
+pub fx countTo: (mut out: Int32, n: Int32) Void;

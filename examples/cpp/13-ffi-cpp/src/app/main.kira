@@ -1,0 +1,18 @@
+module "app:main"
+
+use "app:shape"
+
+// A Kira program over a C++ class and three C functions, through extern.
+
+fx main: () Int32 {
+    box: Box = makeBox(3, 4)
+    trace(box.area())
+    box.grow(2)
+    trace(box.area())
+    trace(hypotSq(3, 4))
+    trace(cLen("kira-ffi"))
+    mut count: Int32 = 0
+    countTo(mut count, 7)
+    trace(count)
+    return 0
+}

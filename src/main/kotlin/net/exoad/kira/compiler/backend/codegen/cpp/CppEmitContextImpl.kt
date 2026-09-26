@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
+import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
@@ -12,6 +13,7 @@ import net.exoad.kira.compiler.analysis.types.ModuleGraph
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Prim
+import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeParamSymbol
@@ -132,15 +134,43 @@ interface CppGenericsPart {
 
 /** `@_extern` declarations (W2.6, design 7.2). */
 interface CppExternsPart {
-    /** The headers an extern declaration needs (`header = ...` files, then `kira/ffi.hxx`), once each. */
+    /**
+     * The headers an extern declaration needs: its `header = ...` files, once each. The
+     * declaration emitter writes them after the module includes; the part adds `kira/ffi.hxx`
+     * through [CppEmitContextImpl.includeInHeader] from [check], so it follows every one of them.
+     */
     fun includes(ctx: CppEmitContextImpl, sym: Symbol): List<String> = emptyList()
 
     /** The drift checks (`KIRA_EXTERN_CHECK`) for [sym], written at global scope after `kira/macro_push.hxx`. */
     fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter)
 
+    /**
+     * The C++ text of a call of [CallKind.EXTERN] (design 7.2): the C++ name, `kira::ffi::in`
+     * around a `Str` argument, `kira::ffi::out` around a `mut` one, a `CStr` argument from a
+     * `Str`, and `->` or `.` after [receiver] as the owner's kind says. The expression part
+     * (W2.3) spells [receiver] (null for a free function) and [args], one text per entry of
+     * [ResolvedCall.args] in parameter order up to the last one the call fills; a trailing
+     * default is the C++ header's own default argument and is not passed.
+     */
+    fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String
+
+    /** The C++ text an extern constant is read by: its C++ name (`::ImGuiWindowFlags_None`). */
+    fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String
+
     object Unsupported : CppExternsPart {
         override fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter) {
             sym.decl?.let { ctx.unsupported(it, "the extern declaration '${sym.name}'") }
+        }
+
+        override fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String {
+            val fn = call.fn
+            fn?.decl?.let { ctx.unsupported(it, "the extern call '${fn.name}'") }
+            return "/* extern ${fn?.name} */"
+        }
+
+        override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String {
+            sym.decl?.let { ctx.unsupported(it, "the extern constant '${sym.name}'") }
+            return "/* extern ${sym.name} */"
         }
     }
 }
@@ -189,7 +219,7 @@ data class CppEmitParts(
             classes = CppClassesPart.Unsupported,
             generics = CppGenericsPart.Plain,
             // W2.6 (FFI) registers on this line:
-            externs = CppExternsPart.Unsupported,
+            externs = CppExternEmitter,
         )
     }
 }
