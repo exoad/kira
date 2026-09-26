@@ -3,9 +3,19 @@ package net.exoad.kira.cpp.sys
 import net.exoad.kira.TestCompileSupport
 import net.exoad.kira.compiler.analysis.types.TypedModelDumper
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.types.TyperTestSupport
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
@@ -19,13 +29,17 @@ import kotlin.test.fail
 /**
  * The hosted system stdlib (W2.7): kira:time, kira:sync, kira:os and kira:test.
  *
- * Three things must hold:
+ * Five things must hold:
  *  1. each module parses and types under STRICT with no diagnostic, as part of
  *     the stdlib every program loads;
  *  2. every `@_magic` callable a module declares has a `cpp` binding in that
  *     module's own `.bind.yaml`, and that manifest names nothing else;
- *  3. a user program that names the modules' types and calls their functions
- *     types under STRICT without an error.
+ *  3. a user program whose signatures name the modules' types resolves under
+ *     STRICT without an error (its bodies are not typed at this gate: W2.1);
+ *  4. the structs and constants kira/cpp/kira/os.hxx writes by hand are the
+ *     ones kira/os.kira declares, field for field and value for value;
+ *  5. Thread's construction is spawn's two arguments, so `Thread { }` has no
+ *     lowering to fail in C++: it is a missing require field.
  */
 class SysDeclTest {
     private val modules = listOf("time", "sync", "os", "test")
@@ -74,8 +88,16 @@ class SysDeclTest {
         }
     }
 
+    /**
+     * What this proves is that every type, constant and function the program
+     * names resolves under STRICT, and that a program using the four modules
+     * reaches the typer with no diagnostic. Its bodies are not typed at this
+     * gate: no phase checks that `u.localPort() + d.port` is an Int32, so
+     * a wrong call in a body would pass here. W2.1 types bodies, and the
+     * cpp-golden/sys case (emit: pending) becomes the body-level proof then.
+     */
     @Test
-    fun aProgramUsingTheModulesTypesStrict() {
+    fun aProgramNamingTheModulesTypesResolvesStrict() {
         val program = TyperTestSupport.snippet(
             """
             use "kira:time"
@@ -116,7 +138,131 @@ class SysDeclTest {
         }
     }
 
+    /**
+     * os.bind.yaml binds no struct and no constant: kira/cpp/kira/os.hxx
+     * writes Datagram, Ready, POLL_* and SIGNAL_* by hand. This is what keeps
+     * the two files from drifting: every pub constant of kira/os.kira is an
+     * `inline constexpr` of the mapped C++ type and the same value in os.hxx,
+     * every struct has the same fields in the same order with the same
+     * defaults, and os.hxx defines no other constant or namespace-level struct.
+     */
+    @Test
+    fun osHxxMirrorsTheStructsAndConstantsOfOsKira() {
+        val decls = topLevelDeclsOf(File("kira/os.kira"))
+        val constants = decls.filterIsInstance<VariableDecl>().filter { Modifier.PUBLIC in it.modifiers }
+        val structs = decls.filterIsInstance<StructDecl>()
+        assertTrue(constants.size >= 5, "kira/os.kira declares ${constants.size} pub constants; POLL_* and SIGNAL_* alone are 5")
+        assertTrue(structs.size >= 2, "kira/os.kira declares ${structs.size} structs; Datagram and Ready alone are 2")
+        val hxx = File("kira/cpp/kira/os.hxx").readText()
+
+        val hxxConstants = Regex("""inline constexpr (\S+) (\w+) = ([^;]+);""").findAll(hxx)
+            .associate { it.groupValues[2] to (it.groupValues[1] to it.groupValues[3].trim()) }
+        constants.forEach { c ->
+            val name = c.name.value
+            val want = cppTypeOf(c.type) to literalText(c.value)
+            assertEquals(want, hxxConstants[name], "os.hxx's $name (type to value) against os.kira's")
+        }
+        assertEquals(constants.map { it.name.value }.sorted(), hxxConstants.keys.sorted(), "os.hxx's constants are exactly os.kira's")
+
+        // Namespace-level structs sit at the file's namespace indentation
+        // (two spaces); Poller's private Watch sits deeper and is not a Kira
+        // struct. Each field is one `type name = default;` line.
+        val hxxStructs = Regex("""^  struct (\w+)\s*\{([^}]*)\}""", RegexOption.MULTILINE).findAll(hxx).associate { m ->
+            m.groupValues[1] to Regex("""^\s*(\S+) (\w+) = ([^;]+);\s*$""", RegexOption.MULTILINE)
+                .findAll(m.groupValues[2])
+                .map { Triple(it.groupValues[1], it.groupValues[2], it.groupValues[3].trim()) }
+                .toList()
+        }
+        structs.forEach { s ->
+            val name = nameOf(s.name) ?: fail("a struct in os.kira without a plain name: ${s.name}")
+            val want = s.members.filterIsInstance<VariableDecl>().map { f ->
+                Triple(cppTypeOf(f.type), f.name.value, literalText(f.value))
+            }
+            assertTrue(want.isNotEmpty(), "os.kira's $name has no fields?")
+            assertEquals(want, hxxStructs[name], "os.hxx's struct $name (type, name, default per field) against os.kira's")
+        }
+        assertEquals(structs.mapNotNull { nameOf(it.name) }.sorted(), hxxStructs.keys.sorted(), "os.hxx's namespace-level structs are exactly os.kira's")
+    }
+
+    /**
+     * kira::sync::Thread has one constructor, (name, body), and it starts the
+     * thread. A Kira class construction lowers to make_shared<C>(fields in
+     * order), so Thread's require fields must be exactly spawn's parameters:
+     * then `Thread { name, body }` is spawn(name, body), and `Thread { }` is
+     * a missing require field for the typer, not a C++ error in the output.
+     */
+    @Test
+    fun threadIsConstructedWithSpawnsArguments() {
+        val decls = topLevelDeclsOf(File("kira/sync.kira"))
+        val thread = decls.filterIsInstance<ClassDecl>().firstOrNull { nameOf(it.name) == "Thread" }
+            ?: fail("kira/sync.kira declares no class Thread")
+        val spawn = decls.filterIsInstance<FunctionDecl>().firstOrNull { (it.name as? Identifier)?.value == "spawn" }
+            ?: fail("kira/sync.kira declares no fx spawn")
+        val fields = thread.members.filterIsInstance<VariableDecl>()
+        assertTrue(fields.isNotEmpty(), "Thread declares no field, so `Thread { }` would construct it")
+        fields.forEach { f ->
+            assertTrue(Modifier.REQUIRE in f.modifiers, "Thread.${f.name.value} must be a require field: a Thread has no default")
+            assertTrue(f.value == null, "Thread.${f.name.value} must have no default: a Thread has no default")
+        }
+        val fieldSignature = fields.map { it.name.value to typeText(it.type) }
+        val spawnSignature = spawn.def.parameters.map { it.name.value to typeText(it.typeSpecifier) }
+        assertEquals(spawnSignature, fieldSignature, "Thread's require fields against spawn's parameters")
+        assertEquals(listOf("name" to "Str", "body" to "Fx<Tuple0, Void>"), fieldSignature, "what kira::sync::Thread's constructor takes")
+    }
+
     // ---- helpers ------------------------------------------------------
+
+    /** The declarations at the top level of [file], parsed and nothing more. */
+    private fun topLevelDeclsOf(file: File): List<Decl> {
+        assertTrue(file.isFile, "$file is missing")
+        val result = TestCompileSupport.compileFile(file.path, runSemantic = false)
+        val source = result.compilationUnit.getSource(file.canonicalPath)
+            ?: fail("stdlib source ${file.path} was not registered")
+        return source.ast.statements.mapNotNull { (it as? Statement)?.expr as? Decl }
+    }
+
+    /** The C++ spelling os.hxx uses for a Kira scalar or Str: design 5.2. */
+    private fun cppTypeOf(type: Type): String = when (val name = nameOf(type)) {
+        "Int8" -> "std::int8_t"
+        "Int16" -> "std::int16_t"
+        "Int32" -> "std::int32_t"
+        "Int64" -> "std::int64_t"
+        "UInt8" -> "std::uint8_t"
+        "UInt16" -> "std::uint16_t"
+        "UInt32" -> "std::uint32_t"
+        "UInt64" -> "std::uint64_t"
+        "Size" -> "Size"
+        "Str" -> "Str"
+        "Bool" -> "bool"
+        "Float32" -> "float"
+        "Float64" -> "double"
+        else -> fail("no C++ spelling here for the Kira type $name: extend cppTypeOf")
+    }
+
+    /**
+     * A constant's or default's value as os.hxx spells it. The parser folds
+     * `-1` into the literal in one place and keeps the unary minus in
+     * another, so both shapes read as "-1".
+     */
+    private fun literalText(value: Expr?): String = when (value) {
+        is IntegerLiteral -> value.value.toString()
+        is StringLiteral -> "\"" + value.value + "\""
+        is UnaryExpr -> when (val inner = value.operand) {
+            is IntegerLiteral -> when (value.operator) {
+                UnaryOp.NEG -> "-" + inner.value.toString()
+                UnaryOp.POS -> inner.value.toString()
+                else -> fail("a default that is not a signed literal: $value")
+            }
+            else -> fail("a default that is not a literal: $value")
+        }
+        else -> fail("a default that is not a literal: $value")
+    }
+
+    /** `Name<Arg, ...>` as written in Kira. */
+    private fun typeText(type: Type): String {
+        val name = nameOf(type) ?: fail("a type without a plain name: $type")
+        return if (type.children.isEmpty()) name else name + "<" + type.children.joinToString(", ") { typeText(it) } + ">"
+    }
 
     private fun entriesOf(manifest: File): Map<String, Any?> {
         val loaded = Yaml().load<Any>(manifest.readText()) ?: return emptyMap()

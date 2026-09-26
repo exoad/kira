@@ -24,8 +24,10 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <utility>
 
 #if !defined(_WIN32)
 #include <fcntl.h>
@@ -102,6 +104,35 @@ namespace
       if(argc >= 3 && std::strcmp(argv[2], "sleep") == 0)
       {
           kira::time::sleepMs(10000);
+          return 0;
+      }
+      if(argc >= 3 && std::strcmp(argv[2], "selfjoin") == 0)
+      {
+          // A body that joins its own handle, through a Ref it captured:
+          // kira::panic (abort), not a wait for itself and not libstdc++'s
+          // EDEADLK out of std::terminate. The panic line goes to stderr,
+          // silenced here so it does not land in the suite's error output;
+          // on Windows abort() must not raise the error-reporting dialog.
+#if defined(_WIN32)
+          (void)_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+          FILE* sink = nullptr;
+          (void)freopen_s(&sink, "NUL", "w", stderr);
+#else
+          (void)std::freopen("/dev/null", "w", stderr);
+#endif
+          const kira::Rc<kira::Box<kira::Rc<kira::sync::Thread>>> holder = std::make_shared<kira::Box<kira::Rc<kira::sync::Thread>>>(nullptr);
+          const kira::Rc<kira::sync::Atomic<bool>> go = std::make_shared<kira::sync::Atomic<bool>>(false);
+          holder->value = kira::sync::spawn("self", [holder, go]()
+          {
+              while(!go->loadAcquire())
+              {
+                  kira::time::sleepMs(1);
+              }
+              holder->value->join();
+          });
+          go->storeRelease(true);
+          holder->value->join();
+          std::printf("the body joined itself and returned\n");
           return 0;
       }
 #if !defined(_WIN32)
@@ -343,6 +374,58 @@ namespace
           const kira::Maybe<Str> some = q->pop(0);
           t.check(kira::isSome(some) && kira::unwrap(some) == "x", "pop with timeout 0 takes what is there");
       }
+      {
+          // The body holds the last reference to its own Thread, through a
+          // Ref it captured (design 5.6): the drop runs on the worker itself,
+          // which cannot join itself. It detaches instead of dying in the
+          // destructor (libstdc++ throws EDEADLK there, so std::terminate).
+          // The guard resets the holder from inside the body's captures and
+          // records that the drop returned; a moved-from guard is inert, so
+          // the copies spawn makes on the way to the thread say nothing.
+          struct Guard
+          {
+              kira::Rc<kira::Box<kira::Rc<Thread>>> holder;
+              kira::Rc<Atomic<bool>> survived;
+              Guard(kira::Rc<kira::Box<kira::Rc<Thread>>> h, kira::Rc<Atomic<bool>> s)
+                  : holder(std::move(h)), survived(std::move(s))
+              {
+              }
+              Guard(Guard&& o) noexcept
+                  : holder(std::move(o.holder)), survived(std::move(o.survived))
+              {
+              }
+              Guard(const Guard&) = delete;
+              Guard& operator=(const Guard&) = delete;
+              Guard& operator=(Guard&&) = delete;
+              ~Guard()
+              {
+                  if(survived == nullptr)
+                  {
+                      return;
+                  }
+                  holder.reset();         // the last handle: ~Thread runs here, on the worker
+                  survived->store(true);  // reached only when that drop returned
+              }
+          };
+          const kira::Rc<Atomic<bool>> survived = std::make_shared<Atomic<bool>>(false);
+          const kira::Rc<Atomic<bool>> go = std::make_shared<Atomic<bool>>(false);
+          kira::Rc<kira::Box<kira::Rc<Thread>>> holder = std::make_shared<kira::Box<kira::Rc<Thread>>>(nullptr);
+          holder->value = kira::sync::spawn("self-owned", [guard = Guard(holder, survived), go]()
+          {
+              while(!go->loadAcquire())
+              {
+                  kira::time::sleepMs(1);
+              }
+          });
+          holder.reset();       // the body's capture is now the only handle
+          go->storeRelease(true);
+          const std::int64_t before = kira::time::monoNowMs();
+          while(!survived->load() && kira::time::monoNowMs() - before < 5000)
+          {
+              kira::time::sleepMs(1);
+          }
+          t.check(survived->load(), "a body dropping the last handle to its own Thread detaches instead of joining itself");
+      }
   }
 
   void udpChecks(Suite& t)
@@ -553,6 +636,16 @@ namespace
       t.check(kira::os::listDir(dir + "/nope").empty(), "listDir of a missing directory is empty");
       t.check(!kira::os::makeDirs(path), "makeDirs over a file fails");
       t.check(kira::os::freeBytes(dir) > 0, "freeBytes of the test directory is positive");
+      {
+          // A file names the filesystem holding it as well as a directory
+          // does, on both halves (GetDiskFreeSpaceEx alone refuses a file).
+          const std::int64_t ofDir = kira::os::freeBytes(dir);
+          const std::int64_t ofFile = kira::os::freeBytes(path);
+          const Str why = kira::os::lastError();
+          const std::int64_t gap = ofDir > ofFile ? ofDir - ofFile : ofFile - ofDir;
+          t.check(ofFile > 0 && why.empty(), "freeBytes of a file is the free space of the filesystem holding it");
+          t.check(gap < (1LL << 30), "and agrees with its directory to within 1 GiB (the disk is in use meanwhile)");
+      }
       t.check(kira::os::freeBytes(dir + "/nope") == -1, "freeBytes of a missing path is -1");
       {
           // Two threads replace the same file 200 times each: every write
@@ -620,6 +713,33 @@ namespace
       {
           const kira::Rc<Process> p = kira::os::spawnProcess(kira::List<Str>{self, "child", "exit", "3"});
           t.check(p != nullptr && p->wait() == 3, "a child that exits 3 reports 3");
+      }
+      {
+          // A body that joins its own handle panics (abort): the child ends
+          // with abort's code, 3 from the Windows CRT and 128 + SIGABRT on
+          // POSIX, and never prints the line after the join. Without the
+          // panic, libstdc++ would std::terminate on EDEADLK (the same code,
+          // for the wrong reason) and libc++ would return from the join and
+          // print the line.
+          const kira::Rc<Process> p = kira::os::spawnProcess(kira::List<Str>{self, "child", "selfjoin"});
+          Str out;
+          std::uint8_t piece[256];
+          for(;;)
+          {
+              const std::int64_t n = p == nullptr ? 0 : p->readStdout(kira::MutView<std::uint8_t>(piece, sizeof piece));
+              if(n <= 0)
+              {
+                  break;
+              }
+              out += textOf(piece, n);
+          }
+          const std::int32_t code = p == nullptr ? -1 : p->wait();
+#if defined(_WIN32)
+          const std::int32_t abortCode = 3;
+#else
+          const std::int32_t abortCode = 128 + SIGABRT;
+#endif
+          t.check(code == abortCode && out.empty(), "a body joining its own handle panics, and the join never returns");
       }
       {
           const kira::Rc<Process> p = kira::os::spawnProcess(kira::List<Str>{self, "child", "sleep"});
