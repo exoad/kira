@@ -390,12 +390,20 @@ namespace kira::ffi
   // in its class as `static const int N = 4;` with no definition outside it (the
   // pre-C++17 idiom, still everywhere in C++ headers) linked at -O2 and failed at
   // -O0 with 'undefined reference to Holder::N' on g++ and lld (measured).
-  template<class T, class V, std::enable_if_t<std::is_scalar_v<V>, int> = 0>
+  // The two overloads are told apart by V *after* the array-to-pointer and
+  // function-to-pointer decay a by-value parameter already applies: an array
+  // (`static const char NAME[] = "kira"`, a C string macro's type) or a function
+  // (an extern C++ function read as a Fn constant) is not itself a scalar, but
+  // decays to one, so guarding the forwarding overload on the un-decayed type
+  // made both overloads viable and every such read ambiguous on g++, clang and
+  // MSVC (measured: `declared<Str>("1.91.0")`, `declared<Fn<...>>(v7::twice)`).
+  // Deciding on the decayed type keeps every such read on the by-value overload.
+  template<class T, class V, std::enable_if_t<std::is_scalar_v<std::decay_t<V>>, int> = 0>
   [[nodiscard]] constexpr T declared(V v)
   {
       return Declared<T>::from(static_cast<V&&>(v));
   }
-  template<class T, class V, std::enable_if_t<!std::is_scalar_v<std::remove_cv_t<std::remove_reference_t<V>>>, int> = 0>
+  template<class T, class V, std::enable_if_t<!std::is_scalar_v<std::decay_t<V>>, int> = 0>
   [[nodiscard]] constexpr T declared(V&& v)
   {
       return Declared<T>::from(static_cast<V&&>(v));

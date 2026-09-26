@@ -140,6 +140,16 @@ namespace fake
   {
       return std::optional<const char*>(nullptr);
   }
+  // A C string macro's shape (`#define IMGUI_VERSION "1.91.0"`) and a
+  // char-array constant's (`static const char NAME[] = "kira"`): both are
+  // array lvalues, declared `pub ...: Str`, that hit this round's
+  // declared<T> regression (fake::Holder::N below, and the head of
+  // kira/ffi.hxx, have the mechanism).
+  static const char NAME[] = "kira";
+}
+#define FAKE_VERSION "1.91.0"
+namespace fake
+{
   // A struct-returning call, whose result is never named: the everyday ImGui shape
   // (GetContentRegionAvail().x), where the member access is on a temporary. field<T>
   // taking M& (round 5) refused to bind here at all (g++: cannot bind non-const lvalue
@@ -273,6 +283,16 @@ namespace fake
   void takeCRef(const std::int32_t&);
   int over(int);
   int over(float);
+  // The pre-C++17 in-class constant, still everywhere in C++ headers: no
+  // definition outside the class, so taking it by reference (odr-using it)
+  // links at -O2, where the reference is optimized away, and fails at -O0
+  // with 'undefined reference to Holder::N' on g++ and lld (round 5's bug;
+  // declared<T>'s scalar overload takes it by value instead, which is no
+  // odr-use).
+  struct Holder
+  {
+      static const int N = 4;
+  };
 }
 static_assert(!kira::ffi::result_matches_v<decltype(fake::countU()), std::int32_t>, "a uint32_t result is not an Int32");
 static_assert(!kira::ffi::result_matches_v<decltype(fake::isOk()), bool>, "an int result is not a Bool");
@@ -347,6 +367,12 @@ static_assert(!kira::ffi::result_matches_v<decltype(fake::onTickTakesU()), Tick>
 static_assert(!kira::ffi::result_matches_v<decltype(fake::onTick2()), Tick>, "a function of two parameters is not a Fn of one");
 static_assert(kira::ffi::result_matches_v<decltype(fake::rawTick()), Tick>, "a function pointer result is a Fn of its signature");
 static_assert(kira::ffi::result_matches_v<decltype(fake::tick), Tick>, "a function itself is a Fn of its signature");
+// This round's regression, the Fn side: `fake::tick` named directly (an extern
+// C++ function bound through a Kira Fn constant, `v7::twice`'s shape) is a
+// function lvalue, which decays to a function pointer, a scalar, for
+// declared<T>'s by-value overload, and was also un-decayed and non-scalar for
+// the forwarding one, so the read was ambiguous.
+static_assert(std::is_same_v<decltype(kira::ffi::declared<Tick>(fake::tick)), Tick>, "declared<Fn<(Int32) Int32>>(a plain C++ function) compiles, not ambiguous");
 static_assert(!kira::ffi::result_matches_v<decltype(fake::found()), Tick>, "an int result is not a Fn");
 static_assert(kira::ffi::result_matches_v<decltype(fake::onName()), kira::Fn<void(const kira::Str&)>>, "a function<void(const string&)> result is a Fn<(Str) Void>");
 static_assert(kira::ffi::result_matches_v<decltype(fake::onNameByValue()), kira::Fn<void(const kira::Str&)>>, "a function<void(string)> result is a Fn<(Str) Void> too: the parameter reads the same");
@@ -404,6 +430,15 @@ static_assert(std::is_same_v<decltype(kira::ffi::declared<fake::ModeInt>(std::de
 static_assert(std::is_same_v<decltype(kira::ffi::declared<char>(fake::letter())), char>, "declared<Char> of a char result is a char");
 static_assert(std::is_same_v<decltype(kira::ffi::declared<std::int32_t>(fake::LIMIT)), std::int32_t>, "declared<Int32> of a constexpr constant is a value");
 static_assert(kira::ffi::declared<std::int32_t>(fake::LIMIT) == 9, "and a constant expression");
+// This round's regression: an array or a function lvalue satisfies both of
+// declared<T>'s overload guards when they are told apart by the un-decayed
+// type (it decays to a pointer, a scalar, for the by-value overload, while
+// its own type, an array or a function type, is not a scalar for the
+// forwarding one), so every such read became ambiguous on g++, clang and
+// MSVC. Guarding both overloads on the decayed type keeps such a read on
+// the by-value overload, decaying exactly where an ordinary by-value
+// parameter already would.
+static_assert(std::is_same_v<decltype(kira::ffi::declared<std::int32_t>(fake::Holder::N)), std::int32_t>, "declared<Int32>(Holder::N) compiles: an in-class constant with no out-of-class definition");
 static_assert(std::is_same_v<decltype(kira::ffi::declared<kira::Maybe<std::int32_t>>(std::declval<std::optional<int>>())), kira::Maybe<std::int32_t>>, "declared<Maybe<Int32>> of an optional<int> is a Maybe<Int32>");
 static_assert(std::is_same_v<decltype(kira::ffi::field<float>(std::declval<fake::Vec2&>().x)), float&>, "field<Float32> of a float member is the member: an lvalue");
 static_assert(std::is_same_v<decltype(kira::ffi::field<float>(std::declval<const fake::Vec2&>().x)), const float&>, "field<Float32> of a const float member is the const lvalue");
@@ -525,6 +560,12 @@ int main()
     check(kira::ffi::declared<kira::Str>(fake::nameNull()).empty(), "declared<kira::Str>(nullptr) is the empty Str");
     check(kira::ffi::declared<kira::Maybe<kira::Str>>(fake::findNull()) == kira::Maybe<kira::Str>(kira::Str()), "declared<Maybe<Str>> of an optional holding nullptr is a Maybe of the empty Str");
     check(!kira::ffi::declared<kira::Maybe<kira::Str>>(std::optional<const char*>()).has_value(), "declared<Maybe<Str>> of an empty optional is empty");
+    // This round's regression: a C string macro and a char-array constant are
+    // array lvalues, ambiguous between declared<T>'s two overloads when they
+    // are told apart by the un-decayed type. Both must still read as Kira means.
+    check(kira::ffi::declared<kira::Str>(FAKE_VERSION) == "1.91.0", "declared<Str>(a C string macro) reads it, not ambiguous");
+    check(kira::ffi::declared<kira::Str>(fake::NAME) == "kira", "declared<Str>(a char-array constant) reads it, not ambiguous");
+    check(kira::ffi::declared<std::int32_t>(fake::Holder::N) == 4, "declared<Int32>(Holder::N) reads an in-class constant with no out-of-class definition, at -O0 included");
     // field<T>: the member itself when the type is the declared one, so a write goes through it.
     fake::Vec2 vec;
     kira::ffi::field<float>(vec.x) = 2.5f;
