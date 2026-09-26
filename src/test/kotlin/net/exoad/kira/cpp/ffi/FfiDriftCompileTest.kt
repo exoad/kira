@@ -97,7 +97,28 @@ class FfiDriftCompileTest {
             PtMode mode;
             int32_t n;
         };
+        uint32_t pt_count(void);
+        void pt_take(uint8_t v);
+        struct PtInt {
+            int x;
+            int y;
+        };
         #endif
+    """.trimIndent() + "\n"
+
+    /** Kira's view of `pt.h`'s scalar functions and its `int` struct: the declarations as given. */
+    private fun scalarModule(decls: String): String = """
+        $decls
+    """
+
+    /** A translation unit that includes the module's header and calls nothing: the header is the test. */
+    private fun headerOnlyMain(header: String): String = """
+        #include "$header"
+
+        int main()
+        {
+            return 0;
+        }
     """.trimIndent() + "\n"
 
     private val cfgMain = """
@@ -151,7 +172,48 @@ class FfiDriftCompileTest {
                 DynamicTest.dynamicTest("${tc.id}: the right struct, and a C header without a guard through c =, build") { ptClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a C enum field declared as the Int32 of its size builds") { enumFieldClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a C enum field declared as Int16 fails with Kira's message") { enumFieldSizeDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a uint32_t return declared Int32 fails with Kira's message") { returnSignednessDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a uint8_t parameter declared Int32 is no viable call") { parameterWidthDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a C int field declared Int32 builds") { cIntFieldClean(tc) },
             )
+        }
+    }
+
+    // ---- the scalar rule at the return and at a parameter (kira/ffi.hxx's head) ----------------
+
+    private fun compileScalar(tc: CppToolchain, name: String, decls: String): Pair<String, CppCompileSupport.CompileResult> {
+        val header = emitHeader("c:sc", scalarModule(decls), CppOptions(lineDirectives = false))
+        return header to compile(tc, name, mapOf("sc.kira.hxx" to header, "pt.h" to ptHeader, "main.cxx" to headerOnlyMain("sc.kira.hxx")), withCarDriver = false)
+    }
+
+    /** `std::uint32_t pt_count()` declared `() Int32`: is_convertible passed it, and Kira's `count() - 1` then printed 4294967295 (measured). */
+    private fun returnSignednessDrift(tc: CppToolchain) {
+        val (header, result) = compileScalar(tc, "return-sign", "@_extern(c = \"pt_count\", header = \"pt.h\")\npub fx ptCount: () Int32;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(pt_count(), std::int32_t, \"ptCount\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'ptCount: () Int32' against C's uint32_t pt_count() compiled (is_convertible would let it):\n${result.describe()}")
+        assertMessage(tc, result, "Kira's ptCount ${CppExternEmitter.DRIFT_MESSAGE}")
+    }
+
+    /**
+     * `void pt_take(uint8_t)` declared `(v: Int32)`: `std::declval<std::int32_t>()` converted to
+     * the uint8_t and the call narrowed silently; `kira::ffi::arg<std::int32_t>()` reaches no
+     * uint8_t parameter, so the call in the check is ill-formed. That is a compiler error at
+     * the check naming kira::ffi::Arg, not Kira's message: the expression fails before the
+     * static_assert sees a type (as a wrong parameter count did already).
+     */
+    private fun parameterWidthDrift(tc: CppToolchain) {
+        val (header, result) = compileScalar(tc, "param-width", "@_extern(c = \"pt_take\", header = \"pt.h\")\npub fx ptTake: (v: Int32) Void;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK((pt_take(kira::ffi::arg<std::int32_t>()), 0), int, \"ptTake\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'ptTake: (v: Int32)' against C's pt_take(uint8_t) compiled (declval would let it):\n${result.describe()}")
+        assertTrue(result.diagnostics.contains("Arg<"), "${tc.id}: the build failed, but not at the kira::ffi::Arg proxy:\n${result.describe()}")
+    }
+
+    /** `struct PtInt { int x; int y; }` declared with Int32 fields: int and std::int32_t are one scalar (on arm-none-eabi too, where is_same was not enough). */
+    private fun cIntFieldClean(tc: CppToolchain) {
+        val (header, result) = compileScalar(tc, "int-field", "@_extern(c = \"PtInt\", header = \"pt.h\")\npub struct PtI {\n    pub x: Int32 = 0\n    pub y: Int32 = 0\n}")
+        assertTrue(header.contains("KIRA_EXTERN_FIELD(PtInt, sc::ffi_::PtI, x, std::int32_t, \"PtI.x\");"), header)
+        if (!result.success) {
+            fail("${tc.id}: a C int field declared Int32 does not build:\n${result.describe()}")
         }
     }
 

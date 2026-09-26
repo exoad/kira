@@ -303,7 +303,11 @@ internal class CallResolver(private val c: PhaseC) {
             argsOnly(e, ctx, scope)
             return ret
         }
-        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, IdentityHashMap(), ctx, scope, strBufText = facts.isStrBuf(recv) && fn.name in setOf("set", "add"))
+        typeGiven(
+            e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, IdentityHashMap(), ctx, scope,
+            strBufText = facts.isStrBuf(recv) && fn.name in setOf("set", "add"),
+            externCallee = fn.foreign is Foreign.Extern,
+        )
         if (receiver != null && recv == KType.Str && isLiteralStrConstant(receiver)) {
             // R5: a literal Str constant is a `const char*` in C++; as a Str method's receiver it
             // is wrapped when the binding is member-style.
@@ -378,7 +382,7 @@ internal class CallResolver(private val c: PhaseC) {
         val sub: Map<TypeParamSymbol, KType> = ownTypeArgs(e, fn, fn.name, allowInfer = true) ?: infer(e, fn, bound, hint, pre, ctx, scope)
         val paramTypes = fn.params.map { it.type.substitute(sub) }
         val ret = fn.ret.substitute(sub)
-        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, pre, ctx, scope)
+        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, pre, ctx, scope, externCallee = kind == CallKind.EXTERN)
         model.calls[e] = ResolvedCall(kind, fn, null, false, fn.typeParams.map { sub[it] ?: KType.Error }, bound.args, bound.order, ret, sub)
         return ret
     }
@@ -592,7 +596,11 @@ internal class CallResolver(private val c: PhaseC) {
      * site `mut` and a mutable place of exactly its type, never a converted value. [pre] holds
      * arguments already typed (by inference). With [strBufText] an interpolation or a string
      * literal argument is text appended to a StrBuf: typed as the `View<Char>` it is read as, no
-     * Str is built (design section 10).
+     * Str is built (design section 10). With [externCallee] a `CStr` parameter takes a `Str`
+     * argument as itself (design 7.2: a literal passes through, a named Str becomes `.c_str()`,
+     * anything else a `kira::ffi::CStrBuf`; the C++ extern emitter spells which, from the
+     * argument's recorded `Str` type, so no coercion is recorded here). Only an extern function
+     * has a `CStr` parameter to fill; anywhere else a `Str` is no `CStr`.
      */
     private fun typeGiven(
         e: FunctionCallExpr,
@@ -604,6 +612,7 @@ internal class CallResolver(private val c: PhaseC) {
         ctx: BodyContext,
         scope: Scope,
         strBufText: Boolean = false,
+        externCallee: Boolean = false,
     ) {
         val siteMut = IdentityHashMap<Expr, Boolean>()
         e.positionalParameters.forEach { siteMut[it.value] = it.isMut }
@@ -632,6 +641,13 @@ internal class CallResolver(private val c: PhaseC) {
                 return@forEachIndexed
             }
             val known = pre[arg]
+            if (externCallee && facts.isMagic(expected, CSTR)) {
+                val t = known ?: c.exprs.synth(arg, ctx, scope)
+                if (t != KType.Str) {
+                    c.coercions.assign(arg, t, expected, what)
+                }
+                return@forEachIndexed
+            }
             if (known != null) {
                 c.coercions.assign(arg, known, expected, what)
             } else {
@@ -639,6 +655,9 @@ internal class CallResolver(private val c: PhaseC) {
             }
         }
     }
+
+    /** `CStr`, the FFI `const char*` (design 7.2, a magic class of the builtins). */
+    private val CSTR = "CStr"
 
     private fun mutArgument(arg: Expr, t: KType, expected: KType, isMut: Boolean, name: String, ctx: BodyContext) {
         if (!isMut) {

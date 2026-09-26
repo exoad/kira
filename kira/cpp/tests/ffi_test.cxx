@@ -128,11 +128,11 @@ namespace fake
 // ---- the checks an extern module would state (design 7.2, literally) --------------------
 KIRA_EXTERN_CHECK(std::declval<fake::Car&>().arm(), bool, "Car.arm");
 KIRA_EXTERN_CHECK(std::declval<const fake::Car&>().ok(), bool, "Car.ok");
-KIRA_EXTERN_CHECK((std::declval<fake::Car&>().drive(std::declval<float>(), std::declval<float>()), 0), int, "Car.drive");
+KIRA_EXTERN_CHECK((std::declval<fake::Car&>().drive(kira::ffi::arg<float>(), kira::ffi::arg<float>()), 0), int, "Car.drive");
 KIRA_EXTERN_CHECK(std::declval<fake::Car&>().finish(), std::int32_t, "Car.finish");
 KIRA_EXTERN_CHECK(fake::checkbox(std::declval<const char*>(), kira::ffi::out(std::declval<bool&>())), bool, "checkbox");
-KIRA_EXTERN_CHECK(fake::checkbox(std::declval<const char*>(), kira::ffi::out(std::declval<std::int32_t&>()), std::declval<std::int32_t>()), bool, "checkboxFlags");
-KIRA_EXTERN_CHECK((fake::fill(std::declval<std::uint8_t*>(), std::declval<std::size_t>()), 0), int, "fill");
+KIRA_EXTERN_CHECK(fake::checkbox(std::declval<const char*>(), kira::ffi::out(std::declval<std::int32_t&>()), kira::ffi::arg<std::int32_t>()), bool, "checkboxFlags");
+KIRA_EXTERN_CHECK((fake::fill(std::declval<std::uint8_t*>(), kira::ffi::arg<kira::Size>()), 0), int, "fill");
 // An extern struct with fields: the layout twin, sizeof, and the exact type and offset per field.
 namespace test::ffi_
 {
@@ -204,9 +204,72 @@ namespace test::swapped_
   };
 }
 static_assert(offsetof(fake::Vec2, y) != offsetof(test::swapped_::Vec2, y), "a swapped pair is caught by its offset");
+// The scalar rule (the head of kira/ffi.hxx): one scalar is the same type, or two arithmetic
+// types of the same size, signedness and kind. So a C header's `int x` is Kira's Int32 on
+// every target, arm-none-eabi included, where std::int32_t is long and is_same refused it
+// (measured: "Kira's CPt.x no longer matches" on arm-none-eabi-g++ 13 while host g++ passed);
+// a same-size unsigned, a float, or a bool is not.
+namespace fake
+{
+  struct CPt
+  {
+      int x;
+      unsigned int flags;
+  };
+}
+namespace test::ffi_
+{
+  struct CPt
+  {
+      std::int32_t x;
+      std::uint32_t flags;
+  };
+}
+static_assert(sizeof(fake::CPt) == sizeof(test::ffi_::CPt), "Kira's CPt no longer matches its C++ header");
+KIRA_EXTERN_FIELD(fake::CPt, test::ffi_::CPt, x, std::int32_t, "CPt.x");
+KIRA_EXTERN_FIELD(fake::CPt, test::ffi_::CPt, flags, std::uint32_t, "CPt.flags");
+static_assert(!kira::ffi::same_scalar_v<unsigned int, std::int32_t>, "an unsigned int is not an Int32");
+static_assert(!kira::ffi::same_scalar_v<float, std::int32_t>, "a float is not an Int32");
+static_assert(!kira::ffi::same_scalar_v<double, float>, "a double is not a Float32");
+static_assert(!kira::ffi::same_scalar_v<std::int64_t, std::int32_t>, "an Int64 is not an Int32");
+static_assert(!kira::ffi::same_scalar_v<bool, std::uint8_t>, "a bool is not a UInt8");
+static_assert(!kira::ffi::same_scalar_v<std::uint8_t, bool>, "a UInt8 is not a Bool");
+// The return is matched by the same rule: a C++ std::uint32_t is no Int32 (is_convertible
+// let it through, and Kira's `count() - 1` then computed unsigned: 4294967295, measured),
+// an int is no Bool, and a const reference or a constant is matched by its value's type.
+namespace fake
+{
+  std::uint32_t countU();
+  int isOk();
+  const std::int32_t& countRef();
+  inline constexpr std::int32_t LIMIT = 9;
+  void takeCRef(const std::int32_t&);
+  int over(int);
+  int over(float);
+}
+static_assert(!kira::ffi::result_matches_v<decltype(fake::countU()), std::int32_t>, "a uint32_t result is not an Int32");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::isOk()), bool>, "an int result is not a Bool");
+static_assert(!kira::ffi::result_matches_v<decltype(std::declval<fake::Car&>().finish()), std::int64_t>, "an int32_t result is not an Int64");
+static_assert(kira::ffi::result_matches_v<decltype(fake::countRef()), std::int32_t>, "a const int32_t& result is an Int32");
+static_assert(kira::ffi::result_matches_v<decltype(fake::LIMIT), std::int32_t>, "a constexpr int32_t is an Int32");
+static_assert(kira::ffi::result_matches_v<decltype(std::declval<fake::Cfg&>().mode), fake::ModeInt>, "an unscoped enum result is the integer of its size");
+static_assert(!kira::ffi::result_matches_v<fake::Scoped, std::int32_t>, "a scoped enum result is not an Int32");
+// A by-value scalar parameter is stated as arg<T>(), which converts to T's scalar and to no
+// other, so the check is viable only against the parameter the Kira value reaches unchanged:
+// a Kira Int32 against a C++ std::uint8_t (which declval<int32_t>() converted to, and the call
+// then narrowed silently) or a Float32 against a double is no viable call.
+KIRA_EXTERN_CHECK((fake::takeCRef(kira::ffi::arg<std::int32_t>()), 0), int, "takeCRef");
+KIRA_EXTERN_CHECK(fake::over(kira::ffi::arg<std::int32_t>()), std::int32_t, "over");
+KIRA_EXTERN_CHECK(fake::over(kira::ffi::arg<float>()), std::int32_t, "overF");
+static_assert(std::is_convertible_v<kira::ffi::Arg<std::int32_t>, int>, "arg<Int32> reaches an int parameter on every target this runs on");
+static_assert(std::is_convertible_v<kira::ffi::Arg<std::int32_t>, const std::int32_t&>, "arg<Int32> binds a const int32_t&");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<std::int32_t>, std::uint8_t>, "arg<Int32> does not reach a uint8_t parameter");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<std::int32_t>, std::uint32_t>, "arg<Int32> does not reach a uint32_t parameter");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<float>, double>, "arg<Float32> does not reach a double parameter");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<bool>, int>, "arg<Bool> does not reach an int parameter");
 #if KIRA_PROFILE_HOSTED
 KIRA_EXTERN_CHECK(fake::button(kira::ffi::in(std::declval<const kira::Str&>())), bool, "button");
-KIRA_EXTERN_CHECK(fake::sliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), std::declval<float>(), std::declval<float>()), bool, "sliderFloat");
+KIRA_EXTERN_CHECK(fake::sliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), kira::ffi::arg<float>(), kira::ffi::arg<float>()), bool, "sliderFloat");
 #endif
 #if defined(KIRA_FFI_DRIFT) && KIRA_FFI_DRIFT
 // A Kira `pub mut fx finish: () Str;` against C++'s `std::int32_t finish()`.

@@ -756,6 +756,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     /**
      * Pull @_opaque / @_extern from parser marks into CompilationUnit registries.
      * Semantic apply() may not run on all stub shapes; emit must still see them.
+     *
+     * An `@_extern` function is a C function only when it is a module-level declaration: the
+     * marks map holds every marked node, a method of an extern class included, and reading a
+     * method from it registered `count` as a free C extern, so a user's own `fx count` lost its
+     * body to `extern Int32 count(Void);` and the link failed (measured). The semantic pass
+     * refuses every other target of `@_extern` under `--target c` ([ExternIntrinsic.apply]);
+     * this backend reads the top-level statements only, whether or not that pass ran.
      */
     private fun harvestForeignMarks() {
         compilationUnit.allSources().forEach { source ->
@@ -773,14 +780,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                         else -> {}
                     }
                 }
-                if ("_extern" in names && node is FunctionDecl) {
-                    val kiraName = functionLikeName(node.name)
-                    if (compilationUnit.externCNameOrNull(kiraName) == null) {
-                        compilationUnit.registerExternFunction(kiraName, externCSymbolOf(source, node, kiraName))
-                    }
-                }
             }
-            // Also walk AST for class/function decls that carry marks only on nested nodes
+            // The module-level declarations: an @_opaque class, an @_extern function.
             source.ast.statements.forEach { stmt ->
                 val expr: Any? = when (stmt) {
                     is ClassDecl, is FunctionDecl -> stmt

@@ -14,6 +14,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
 import net.exoad.kira.cpp.decls.DeclTestSupport
+import net.exoad.kira.types.TyperTestSupport
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -62,9 +63,9 @@ class CppExternEmitterTest {
         )
         assertLines(
             h,
-            "KIRA_EXTERN_CHECK(ImGui::SliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), std::declval<float>(), std::declval<float>()), bool, \"sliderFloat\");",
+            "KIRA_EXTERN_CHECK(ImGui::SliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), kira::ffi::arg<float>(), kira::ffi::arg<float>()), bool, \"sliderFloat\");",
             "KIRA_EXTERN_CHECK((ImGui::Text(std::declval<const char*>()), 0), int, \"text\");",
-            "KIRA_EXTERN_CHECK(bare_c_name(std::declval<const std::uint8_t*>(), std::declval<kira::Size>()), std::int64_t, \"bare\");",
+            "KIRA_EXTERN_CHECK(bare_c_name(std::declval<const std::uint8_t*>(), kira::ffi::arg<kira::Size>()), std::int64_t, \"bare\");",
         )
         val includes = h.lines().filter { it.startsWith("#include") }
         assertEquals(listOf("#include \"kira/rt.hxx\"", "#include \"imgui.h\"", "#include \"kira/ffi.hxx\"", "#include \"kira/macro_push.hxx\"", "#include \"kira/macro_pop.hxx\""), includes)
@@ -89,9 +90,9 @@ class CppExternEmitterTest {
         )
         assertLines(
             h,
-            "KIRA_EXTERN_CHECK((fill_buf(std::declval<std::uint8_t*>(), std::declval<kira::Size>()), 0), int, \"fill\");",
-            "KIRA_EXTERN_CHECK(ImGui::InputText(kira::ffi::in(std::declval<const kira::Str&>()), std::declval<char*>(), std::declval<kira::Size>()), bool, \"inputText\");",
-            "KIRA_EXTERN_CHECK((read_buf(std::declval<const std::uint8_t*>(), std::declval<kira::Size>()), 0), int, \"read\");",
+            "KIRA_EXTERN_CHECK((fill_buf(std::declval<std::uint8_t*>(), kira::ffi::arg<kira::Size>()), 0), int, \"fill\");",
+            "KIRA_EXTERN_CHECK(ImGui::InputText(kira::ffi::in(std::declval<const kira::Str&>()), std::declval<char*>(), kira::ffi::arg<kira::Size>()), bool, \"inputText\");",
+            "KIRA_EXTERN_CHECK((read_buf(std::declval<const std::uint8_t*>(), kira::ffi::arg<kira::Size>()), 0), int, \"read\");",
         )
     }
 
@@ -117,7 +118,7 @@ class CppExternEmitterTest {
         )
         assertLines(
             h,
-            "KIRA_EXTERN_CHECK(c_only_fn(std::declval<std::int32_t>()), std::int32_t, \"cOnly\");",
+            "KIRA_EXTERN_CHECK(c_only_fn(kira::ffi::arg<std::int32_t>()), std::int32_t, \"cOnly\");",
             "KIRA_EXTERN_CHECK(c_len(kira::ffi::in(std::declval<const kira::Str&>())), kira::Size, \"cLen\");",
             "KIRA_EXTERN_CHECK(both::cpp(), std::int32_t, \"both\");",
         )
@@ -163,7 +164,7 @@ class CppExternEmitterTest {
             "KIRA_EXTERN_CHECK(std::declval<bibo::Car&>().arm(), bool, \"Car.arm\");",
             "KIRA_EXTERN_CHECK(std::declval<const bibo::Car&>().ok(), bool, \"Car.ok\");",
             "KIRA_EXTERN_CHECK(std::declval<bibo::Car&>().Finish(), std::int32_t, \"Car.finish\");",
-            "KIRA_EXTERN_CHECK((std::declval<ImDrawList&>().AddLine(std::declval<std::uint32_t>()), 0), int, \"DrawList.addLine\");",
+            "KIRA_EXTERN_CHECK((std::declval<ImDrawList&>().AddLine(kira::ffi::arg<std::uint32_t>()), 0), int, \"DrawList.addLine\");",
             "KIRA_EXTERN_CHECK(ImGui::GetWindowDrawList(), ImDrawList*, \"drawList\");",
             "KIRA_EXTERN_CHECK(bibo::openCar(), kira::Rc<bibo::Car>, \"openCar\");",
         )
@@ -399,12 +400,12 @@ class CppExternEmitterTest {
         // kira::ffi::CStrBuf(expr).c_str(). A Kira Str constant is `inline constexpr const
         // char*` (D12), already a CStr, so it passes through like the literal; a mut Str global
         // is a kira::Str; an extern Str constant is whatever C++ declared, so it takes the
-        // buffer.
+        // buffer. A CStr value (an extern CStr return) passes as itself.
         //
-        // The typer still refuses a Str where a CStr is expected (types.assign.mismatch,
-        // re-measured on cpp-backend under --target cpp; --target none runs no typer at all),
-        // so the Str-typed bindings are built by hand over the real model's nodes and types,
-        // and only the CStr-typed call goes through the typer.
+        // The typer takes a Str for a CStr parameter of an extern function and records the
+        // argument as the Str it is (CallResolver.typeGiven); it refused every one of these
+        // calls with types.assign.mismatch before (measured under --target cpp), so CStr was
+        // unreachable from Kira. Every call here goes through the typer.
         val c = callsOf(
             """
             @_extern(cpp = "ImGui::Text", header = "imgui.h")
@@ -424,32 +425,58 @@ class CppExternEmitterTest {
 
             fx show: (label: Str) Void {
                 text(version())
-                a: Str = "literal"
-                b: Str = label
-                c: Str = GREETING
-                d: Str = TITLE
-                e: Str = BANNER
-                f: Str = nameOf(1)
+                text("literal")
+                text(label)
+                text(GREETING)
+                text(TITLE)
+                text(BANNER)
+                text(nameOf(1))
             }
             """
         )
-        val textCall = c.of("text")
-        assertEquals("::ImGui::Text(::bibo::version())", CppExternEmitter.call(c.ctx, textCall, null, listOf("::bibo::version()")))
-
-        val strExprs = c.ctx.model.types.filterValues { it == KType.Str }.keys
+        val textCalls = c.ctx.model.calls.values.filter { it.fn?.name == "text" }
+        assertEquals(7, textCalls.size, "every text(...) call typed")
         fun given(text: String, pick: (Expr) -> Boolean): String {
-            val expr = strExprs.filter(pick).firstOrNull() ?: fail("no Str expression for $text in the model")
-            val call = textCall.copy(args = listOf(ArgBinding.Given(expr, false)))
+            val call = textCalls.firstOrNull { pick((it.args.single() as ArgBinding.Given).expr) } ?: fail("no text(...) call whose argument is $text")
             return CppExternEmitter.call(c.ctx, call, null, listOf(text))
         }
         fun named(name: String): (Expr) -> Boolean = { it is Identifier && it.value == name }
         fun calling(name: String): (Expr) -> Boolean = { it is FunctionCallExpr && (it.name as? Identifier)?.value == name }
+        assertEquals("::ImGui::Text(::bibo::version())", given("::bibo::version()", calling("version")))
         assertEquals("::ImGui::Text(\"literal\")", given("\"literal\"") { it is StringLiteral })
         assertEquals("::ImGui::Text(label.c_str())", given("label", named("label")))
         assertEquals("::ImGui::Text(::ext::GREETING)", given("::ext::GREETING", named("GREETING")))
         assertEquals("::ImGui::Text(::ext::TITLE.c_str())", given("::ext::TITLE", named("TITLE")))
         assertEquals("::ImGui::Text(kira::ffi::CStrBuf(::bibo::BANNER).c_str())", given("::bibo::BANNER", named("BANNER")))
         assertEquals("::ImGui::Text(kira::ffi::CStrBuf(::bibo::nameOf(1)).c_str())", given("::bibo::nameOf(1)", calling("nameOf")))
+        // The argument is recorded as the Str it is: no coercion, the emitter reads its type.
+        textCalls.forEach { call ->
+            val arg = (call.args.single() as ArgBinding.Given).expr
+            assertTrue(c.ctx.model.coercion(arg) == null, "no coercion at a CStr argument")
+            assertTrue(c.ctx.model.types[arg] == KType.Str || calling("version")(arg), "the argument keeps its Str type")
+        }
+    }
+
+    @Test
+    fun aStrIsNoCStrAnywhereElse() {
+        // Only an extern function has a CStr parameter to fill; the typer's rule is scoped to
+        // the extern callee, so a Kira function declared with CStr still refuses a Str.
+        val program = TyperTestSupport.snippet(
+            """
+            @_extern(cpp = "bibo::version", header = "car.hxx")
+            pub fx version: () CStr;
+
+            fx own: (s: CStr) Void { }
+
+            fx show: () Void {
+                own("literal")
+                own(version())
+            }
+            """
+        )
+        val messages = program.diagnostics.map { it.message }
+        assertEquals(1, messages.count { it.contains("expects CStr, but this is Str") }, messages.toString())
+        assertEquals(1, program.diagnostics.size, messages.toString())
     }
 
     /**

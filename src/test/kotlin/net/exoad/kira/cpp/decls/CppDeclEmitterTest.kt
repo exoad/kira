@@ -492,11 +492,13 @@ class CppDeclEmitterTest {
                 """,
             ),
             uri = "test:main",
+            // Every part at its refusing default, whichever parts the packages have registered since.
+            parts = CppEmitParts(),
         )
-        // The extern declaration is W2.6's part, registered: it lowers to a check, not a report.
         val messages = emitted.diagnostics.filter { it.code == "cpp.unsupported" }.map { it.message }
         assertEquals(
             listOf(
+                "the extern declaration 'openCar' is not lowered yet",
                 "the trait 'Shape' is not lowered yet",
                 "the class 'Node' is not lowered yet",
                 "the body of 'f' is not lowered yet",
