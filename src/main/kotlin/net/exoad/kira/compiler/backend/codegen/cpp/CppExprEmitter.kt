@@ -580,7 +580,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** [access] over [text], the receiver's C++ once it was spilled or bound (null: spelled here). */
     private fun accessWith(receiver: Expr, text: CppEx?, t: KType): String {
         if (receiver is ThisExpr) {
-            return "${receiverText(receiver)}->"
+            // A struct's `this` the hoister copied (`const Acc t0_ = *this;`) is a value.
+            return if (text == null || text === thisLeaf) "${receiverText(receiver)}->" else "${wrap(text, CppPrec.POSTFIX)}."
         }
         if (t is KType.Param) {
             return (if (text != null) paramReceiverText(wrap(text, CppPrec.ASSIGN)) else paramReceiver(receiver)) + "."
@@ -679,12 +680,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /**
      * [e] as an operand of a call, an operator or a construction that reads it: a place C++
      * holds by reference is a snapshot [CppHoister.Operand.Place] (D33 reads it before a
-     * sibling's effect, so the hoister copies it first, unless the result lends a view into
-     * it, where its path is applied in place), anything else a [CppHoister.Operand.Value] that
-     * [emit] spells.
+     * sibling's effect, so the hoister copies it first), unless the use is [lent] from (a view
+     * the callee takes into it can outlive the call: [CppHoister.lentArgument],
+     * [CppHoister.lentReceiver], [CppHoister.lends] for a field or target), where its path is
+     * applied in place; anything else is a [CppHoister.Operand.Value] that [emit] spells.
      */
-    fun operandOf(e: Expr, emit: () -> CppEx): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e, emit, snapshot = true) else CppHoister.Operand.Value(e, emit = emit)
+    fun operandOf(e: Expr, lent: Boolean = false, emit: () -> CppEx): CppHoister.Operand =
+        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e, emit, snapshot = !lent) else CppHoister.Operand.Value(e, emit = emit)
 
     /**
      * [e] as a step of a place's path (the container of an element, the struct a field is of):
@@ -735,7 +737,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * the end (`kira::at(s, t0_) = t1_`).
      */
     private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
-        val ops = listOf(placeOperand(target), operandOf(value) { coerced(value) })
+        // A target that can hold a view (`w.v = gl`, v a View) points into the value: never a copy.
+        val ops = listOf(placeOperand(target), operandOf(value, lent = hoister.lends(typeOf(target))) { coerced(value) })
         return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void) { (l, r) ->
             CppEx("${wrap(l, CppPrec.UNARY)} = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
         }
@@ -836,11 +839,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun binary(e: BinaryExpr): CppEx {
         val op = e.operator
-        if (model.opCall(e) != null) {
-            // An @op_* overload: C++ resolves the same operator to the same function.
+        val rc = model.opCall(e)
+        if (rc != null) {
+            // An @op_* overload: C++ resolves the same operator to the same function. A member
+            // overload takes the left operand as its receiver, a free one as its first argument.
             val sym = CPP_OPS[op] ?: return unsupported(e, "the operator overload ${op.name}")
+            val member = rc.receiver != null
+            val left = if (member) hoister.lentReceiver(rc, typeOf(e.leftExpr)) else hoister.lentArgument(rc, 0, typeOf(e.leftExpr))
+            val right = hoister.lentArgument(rc, if (member) 0 else 1, typeOf(e.rightExpr))
             return hoister.lower(
-                listOf(operand(e.leftExpr), operand(e.rightExpr)), typeOf(e),
+                listOf(operand(e.leftExpr, lent = left), operand(e.rightExpr, lent = right)), typeOf(e),
             ) { (l, r) -> CppEx("${wrap(l, precOf(op))} $sym ${wrap(r, precOf(op) + 1)}", precOf(op), sym) }
         }
         return when (op) {
@@ -853,10 +861,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
     }
 
-    /** An operand of an operator: its literal role follows the other side (R2). */
-    private fun operand(e: Expr, other: Expr? = null, role: CppLitRole? = null): CppHoister.Operand {
+    /** An operand of an operator: its literal role follows the other side (R2); [lent] as [operandOf] says. */
+    private fun operand(e: Expr, other: Expr? = null, role: CppLitRole? = null, lent: Boolean = false): CppHoister.Operand {
         val r = role ?: if (other != null && bareLiteral(e) != null && isLiteralOnly(other)) CppLitRole.TYPED else CppLitRole.OPERAND
-        return operandOf(e) { coerced(e, r) }
+        return operandOf(e, lent) { coerced(e, r) }
     }
 
     /** [child] as an operand of the C++ operator [parentOp] at [need], with the `-Wparentheses` rules. */
@@ -1098,7 +1106,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun arrayLiteral(e: ArrayLiteral): CppEx {
         val t = typeOf(e)
-        val elements = e.value.map { operandOf(it) { coerced(it) } }
+        // An array of views (`[gl, other]` as Arr<View<Int32>, 2>) points into its elements.
+        val lent = hoister.lends(t)
+        val elements = e.value.map { operandOf(it, lent) { coerced(it) } }
         return hoister.lower(elements, t) { texts ->
             CppEx("${ctx.spell(t, Pos.VALUE, e)}{${texts.joinToString(", ") { wrap(it, CppPrec.ASSIGN) }}}", CppPrec.POSTFIX)
         }
@@ -1122,7 +1132,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return classConstruction(e, ri, cls)
         }
         val given = ri.sourceOrder.map { ri.fields[it] as FieldInit.Given }
-        val ops = given.map { g -> operandOf(g.expr) { coerced(g.expr) } }
+        // A field that can hold a view (`Win { v = gl, k = nextSize() }`) points into its operand: never a copy.
+        val ops = given.map { g -> operandOf(g.expr, lent = hoister.lends(g.field.type.substitute(ri.substitution))) { coerced(g.expr) } }
         val byField = IdentityHashMap<FieldSymbol, Int>()
         given.forEachIndexed { i, g -> byField[g.field] = i }
         val typeText = if (model.typeOf(e.typeName) != null) ctx.spell(e.typeName, Pos.VALUE) else ctx.spell(t, Pos.VALUE, e)
@@ -1165,7 +1176,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val g = fields[i] as? FieldInit.Given ?: return@forEach
             if (i < end) {
                 position[g.field] = ops.size
-                ops += operandOf(g.expr) { coerced(g.expr, CppLitRole.TYPED) }
+                ops += operandOf(g.expr, lent = hoister.lends(g.field.type.substitute(ri.substitution))) { coerced(g.expr, CppLitRole.TYPED) }
             }
         }
         return hoister.lower(ops, t) { texts ->
@@ -1251,7 +1262,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         rc.sourceOrder.forEach { i ->
             val a = rc.args[i] as? ArgBinding.Given ?: return@forEach
             indexOf[i] = operands.size
-            operands += argumentOperand(a)
+            operands += argumentOperand(a, rc, i)
         }
         val slots = mutableListOf<Slot>()
         rc.args.forEachIndexed { i, a ->
@@ -1260,7 +1271,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                     val op = indexOf[i] ?: run {
                         // A written argument missing from sourceOrder: keep it, in parameter order.
                         indexOf[i] = operands.size
-                        operands += argumentOperand(a)
+                        operands += argumentOperand(a, rc, i)
                         indexOf[i]!!
                     }
                     slots += Slot.Given(op, i, a.byRef)
@@ -1276,33 +1287,62 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /**
      * A written argument: a `mut` one is a place (its path applied at the call, never copied:
-     * R19), any other an [operandOf].
+     * R19), any other an [operandOf], lent where the call [i] of [rc] may lend from it.
      */
-    private fun argumentOperand(a: ArgBinding.Given): CppHoister.Operand =
-        if (a.byRef) placeOperand(a.expr) else operandOf(a.expr) { coerced(a.expr) }
+    private fun argumentOperand(a: ArgBinding.Given, rc: ResolvedCall, i: Int): CppHoister.Operand =
+        if (a.byRef) placeOperand(a.expr) else operandOf(a.expr, lent = hoister.lentArgument(rc, i, typeOf(a.expr))) { coerced(a.expr) }
+
+    /** The text of a struct's `this` as a receiver the hoister may copy: [accessWith] knows this instance as the uncopied one. */
+    private val thisLeaf = CppEx("*this", CppPrec.UNARY)
 
     /**
      * The receiver of a call as an ordered operand (D33: Kira evaluates it before the
      * arguments; an IIFE that spills the arguments would otherwise run it after them), or null
-     * for `this`, whose identity is fixed. A place C++ holds by reference (a struct, a `Str`, a
-     * container, a type parameter: [heldByReference]) is a place operand: the one a `mut fx`
-     * writes or a lending method reads stays where it lives (the write lands there, the view
-     * points there), any other is a snapshot the hoister copies before a sibling's effect
-     * (D33), so `gm.get(k())` and `gl.get(k())` read the same way, whichever binding spells
-     * them. A handle (a class, a trait, a `Ref`), a view, a scalar, and any receiver that is
-     * no place (a call's result) is a value: what the call holds is a copy of it, a plain
-     * `T t0_` when a member-style binding calls a non-const method on it.
+     * for a class's `this`, whose identity is fixed. A place C++ holds by reference (a struct,
+     * a `Str`, a container, a type parameter: [heldByReference]; a struct's own `this` too) is
+     * a place operand: the one a `mut fx` writes or a lending method reads stays where it
+     * lives (the write lands there, the view points there), one the call may lend from
+     * ([CppHoister.lentReceiver]) likewise, any other is a snapshot the hoister copies before
+     * a sibling's effect (D33), so `gm.get(k())` and `gl.get(k())` read the same way, whichever
+     * binding spells them, and `this.plus(bump())` reads the same as `ga.plus(bumpA())`. A
+     * handle (a class, a trait, a `Ref`), a view, a scalar, and any receiver that is no place
+     * (a call's result) is a value: what the call holds is a copy of it, a plain `T t0_` when
+     * a member-style binding calls a non-const method on it. With no [rc] (a StrBuf's pieces)
+     * nothing is known of lending, and only a written receiver is safe from a copy.
      */
-    private fun receiverOperand(receiver: Expr, fn: FnSymbol?, memberStyle: Boolean, lending: Boolean, emit: () -> CppEx): CppHoister.Operand? {
+    private fun receiverOperand(receiver: Expr, rc: ResolvedCall?, fn: FnSymbol?, memberStyle: Boolean, lending: Boolean, emit: () -> CppEx): CppHoister.Operand? {
+        val writes = fn?.isMutMethod == true || lending
         if (receiver is ThisExpr) {
-            return null
+            val t = typeOf(receiver)
+            if (rc == null || rc.kind == CallKind.EXTERN || !heldByReference(t)) {
+                return null
+            }
+            return CppHoister.Operand.Place(receiver, emptyList(), snapshot = !writes && !hoister.lentReceiver(rc, t)) { thisLeaf }
         }
         val isPlace = isPlaceExpr(receiver)
-        val writes = fn?.isMutMethod == true || lending
         if (isPlace && heldByReference(typeOf(receiver))) {
-            return placeOperand(receiver, emit, snapshot = !writes)
+            return placeOperand(receiver, emit, snapshot = !writes && (rc == null || !hoister.lentReceiver(rc, typeOf(receiver))))
         }
         return CppHoister.Operand.Value(receiver, mutable = writes || (memberStyle && !isPlace)) { emit() }
+    }
+
+    /**
+     * The implicit `this` of a struct method called from a sibling (`plus(bump())`) as the
+     * receiver operand [receiverOperand] makes of an explicit one: a place with no expression
+     * of its own, read as shared state (a sibling `mut fx` changes it), copied before the
+     * effect unless the callee writes or lends from it. Null in a class (a handle).
+     */
+    private fun implicitThisOperand(rc: ResolvedCall, fn: FnSymbol): CppHoister.Operand? {
+        val owner = state.frame?.owner as? ClassSymbol ?: return null
+        if (!owner.isStruct) {
+            return null
+        }
+        val t = owner.selfType
+        if (!heldByReference(t)) {
+            return null
+        }
+        val snapshot = !fn.isMutMethod && !hoister.lentReceiver(rc, t)
+        return CppHoister.Operand.Place(null, emptyList(), snapshot, type = t, rank = CppHoister.READS) { thisLeaf }
     }
 
     private fun argList(slots: List<Slot>, texts: List<CppEx>): String = slots.joinToString(", ") { s ->
@@ -1325,11 +1365,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val name = ctx.names.escape(fn.name) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
         val receiver = rc.receiver
         // The receiver is an operand before the arguments (D33): spilled, it runs first.
-        val recvOp = receiver?.let { receiverOperand(it, fn, memberStyle = false, lending = false) { coerced(it) } }
+        val recvOp = when {
+            receiver != null -> receiverOperand(receiver, rc, fn, memberStyle = false, lending = false) { coerced(receiver) }
+            rc.implicitThis -> implicitThisOperand(rc, fn)
+            else -> null
+        }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
         return hoister.lower(ops, rc.returnType) { texts ->
             val callee = when {
                 receiver != null -> accessWith(receiver, if (recvOp != null) texts[0] else null, typeOf(receiver)) + name
+                recvOp != null && texts[0] !== thisLeaf -> "${wrap(texts[0], CppPrec.POSTFIX)}.$name"
                 state.frame?.receiverAccess == CppBodyState.ThisCapture.SELF -> "${selfPointer()}->$name"
                 else -> name
             }
@@ -1360,7 +1405,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val fn = rc.fn ?: return internal(e, "an extern call without its function")
         val (argOps, argSlots) = arguments(rc)
         val receiver = rc.receiver
-        val recvOp = receiver?.let { receiverOperand(it, fn, memberStyle = false, lending = false) { coerced(it) } }
+        val recvOp = receiver?.let { receiverOperand(it, rc, fn, memberStyle = false, lending = false) { coerced(it) } }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
         return hoister.lower(ops, rc.returnType) { texts ->
             val recv = when {
@@ -1510,7 +1555,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             CppBindingTable.magicName(rc.returnType) == "MutView"
         val ops = mutableListOf<CppHoister.Operand>()
         val receiverIndex = if (receiver != null) {
-            val op = receiverOperand(receiver, fn, memberStyle, lending) { receiverEx(receiver, memberStyle) }
+            val op = receiverOperand(receiver, rc, fn, memberStyle, lending) { receiverEx(receiver, memberStyle) }
                 ?: CppHoister.Operand.Value(null) { receiverEx(receiver, memberStyle) }
             ops += op
             0
@@ -1620,7 +1665,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * first, and the pieces are then one IIFE (the single element returned).
      */
     fun strBufPieces(receiver: Expr, fn: FnSymbol, text: InterpolatedStringLiteral): List<String> {
-        val op = receiverOperand(receiver, fn, memberStyle = true, lending = false) { receiverEx(receiver, true) }
+        val op = receiverOperand(receiver, null, fn, memberStyle = true, lending = false) { receiverEx(receiver, true) }
         if (op == null || hoister.rankOf(op) == CppHoister.PURE) {
             return strBufPiecesOn(if (op == null) receiverText(receiver) else wrap(hoister.text(op), CppPrec.POSTFIX), fn, text)
         }

@@ -140,12 +140,13 @@ class CppClosureEmitter : CppLambdaPart {
             return
         }
         val model = program.model
+        val escapes = CppEscapes(model)
         for (rc in model.calls.values) {
             val fn = rc.fn ?: continue
             rc.args.forEachIndexed { i, a ->
                 val lambda = (a as? ArgBinding.Given)?.expr as? LambdaExpr ?: return@forEachIndexed
                 val p = fn.params.getOrNull(i) ?: return@forEachIndexed
-                if (p.type is KType.Fn && !p.byRef && !model.fxEscapes(p)) {
+                if (p.type is KType.Fn && !p.byRef && !escapes.fxEscapes(p)) {
                     nonEscaping[lambda] = true
                 }
             }

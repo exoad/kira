@@ -13,7 +13,9 @@ namespace evalorder
     kira::List<std::int32_t> gl = kira::List<std::int32_t>{};
     kira::Map<std::int32_t, std::int32_t> gm = kira::Map<std::int32_t, std::int32_t>{};
     kira::Str gs = "a";
+    kira::List<std::int32_t> other = kira::List<std::int32_t>{1, 2, 3};
     Box gb = Box{.v = 1};
+    Acc ga = Acc{};
 
     [[nodiscard]] std::int32_t next();
     [[nodiscard]] kira::Size nextSize();
@@ -31,6 +33,9 @@ namespace evalorder
     [[nodiscard]] kira::View<std::int32_t> tail(const kira::List<std::int32_t>& xs, kira::Size at);
     [[nodiscard]] std::int32_t total(kira::View<std::int32_t> v);
     [[nodiscard]] std::int32_t sumTail(const kira::List<std::int32_t>& xs);
+    void fill(Win& w, const kira::List<std::int32_t>& xs, kira::Size k);
+    [[nodiscard]] kira::Fn<std::int32_t(std::int32_t)> adder(const kira::Str& s, std::int32_t k);
+    [[nodiscard]] std::int32_t bumpA();
 
     std::int32_t next()
     {
@@ -123,6 +128,27 @@ namespace evalorder
     std::int32_t sumTail(const kira::List<std::int32_t>& xs)
     {
         return total(tail(xs, nextSize()));
+    }
+
+    void fill(Win& w, const kira::List<std::int32_t>& xs, kira::Size k)
+    {
+        w.v = kira::view(xs).from(0);
+        w.k = k;
+    }
+
+    kira::Fn<std::int32_t(std::int32_t)> adder(const kira::Str& s, std::int32_t k)
+    {
+        const std::int32_t n{static_cast<std::int32_t>(kira::str::length(s))};
+        return [n, k](std::int32_t x) -> std::int32_t
+        {
+            return x + n + k;
+        };
+    }
+
+    std::int32_t bumpA()
+    {
+        ga.n = 2;
+        return 10;
     }
   }
 
@@ -335,6 +361,70 @@ namespace evalorder
       }();
       kira::trace(idx);
       kira::trace(kira::at(bufs, 1).size());
+      gl = kira::List<std::int32_t>{11, 22, 33};
+      idx = 0;
+      Win w = Win{.v = other, .k = 0};
+      w.attach(gl, nextSize());
+      kira::trace(w.v[0] * 100 + w.v[1]);
+      kira::trace(w.k);
+      Win w2 = Win{.v = other, .k = 0};
+      fill(w2, gl, nextSize());
+      kira::trace(w2.v[2] * 10 + static_cast<std::int32_t>(w2.k));
+      gs = "aaa";
+      const kira::Fn<std::int32_t(std::int32_t)> f = [&]() -> kira::Fn<std::int32_t(std::int32_t)>
+      {
+          const kira::Str t0_ = gs;
+          const std::int32_t t1_ = changeS();
+          return adder(t0_, t1_);
+      }();
+      kira::trace(f(0));
+      kira::trace([&]() -> std::int32_t
+      {
+          const Acc t0_ = ga;
+          const std::int32_t t1_ = bumpA();
+          return t0_.plus(t1_);
+      }());
+      Acc a = Acc{};
+      kira::trace(a.viaThis());
+      Acc b = Acc{};
+      kira::trace(b.viaImplicit());
+  }
+
+  void Win::attach(kira::View<std::int32_t> src, kira::Size k_p)
+  {
+      v = src;
+      this->k = k_p;
+  }
+
+  std::int32_t Acc::bump()
+  {
+      n = 2;
+      return 10;
+  }
+
+  std::int32_t Acc::plus(std::int32_t k) const
+  {
+      return n * 100 + k;
+  }
+
+  std::int32_t Acc::viaThis()
+  {
+      return [&]() -> std::int32_t
+      {
+          const Acc t0_ = *this;
+          const std::int32_t t1_ = bump();
+          return t0_.plus(t1_);
+      }();
+  }
+
+  std::int32_t Acc::viaImplicit()
+  {
+      return [&]() -> std::int32_t
+      {
+          const Acc t0_ = *this;
+          const std::int32_t t1_ = bump();
+          return t0_.plus(t1_);
+      }();
   }
 }
 #include "kira/macro_pop.hxx"

@@ -203,4 +203,80 @@ fx main: () Void {
     bufs[nextSize()].set("a${two}b")
     trace(idx)
     trace(bufs[1].size())
+    // A view the callee stores through a mut fx receiver (attach) or a mut argument (fill)
+    // points at the caller's list, never at a copy that dies with the lambda, though the
+    // result is Void: 11, 22 and 1, then 33 and 2.
+    gl = List<Int32> { values = [11, 22, 33] }
+    idx = 0
+    mut w: Win = Win { v = other, k = 0 }
+    w.attach(gl, nextSize())
+    trace(w.v.get(0) * 100 + w.v.get(1))
+    trace(w.k)
+    mut w2: Win = Win { v = other, k = 0 }
+    fill(mut w2, gl, nextSize())
+    trace(w2.v.get(2) * 10 + (w2.k as Int32))
+    // A Str beside an effect is read before it whatever the callee returns: adder makes an
+    // Fx of its own captures and no view, so it takes the "aaa" changeS() replaces: 3 + 1.
+    gs = "aaa"
+    f: Fx<Tuple1<Int32>, Int32> = adder(gs, changeS())
+    trace(f(0))
+    // A struct receiver beside a mut fx that writes it reads the same however it is named:
+    // the global, this, and an implicit this all give 110, never the 210 of the state after.
+    trace(ga.plus(bumpA()))
+    mut a: Acc = Acc { }
+    trace(a.viaThis())
+    mut b: Acc = Acc { }
+    trace(b.viaImplicit())
+}
+
+pub struct Win {
+    pub v: View<Int32>
+    pub k: Size = 0
+
+    pub mut fx attach: (src: View<Int32>, k: Size) Void {
+        v = src
+        this.k = k
+    }
+}
+
+mut other: List<Int32> = List<Int32> { values = [1, 2, 3] }
+
+fx fill: (mut w: Win, xs: List<Int32>, k: Size) Void {
+    w.v = xs.from(0)
+    w.k = k
+}
+
+fx adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
+    n: Int32 = s.length() as Int32
+    return fx (x: Int32) Int32 {
+        return x + n + k
+    }
+}
+
+pub struct Acc {
+    pub n: Int32 = 1
+
+    pub mut fx bump: () Int32 {
+        n = 2
+        return 10
+    }
+
+    pub fx plus: (k: Int32) Int32 {
+        return n * 100 + k
+    }
+
+    pub mut fx viaThis: () Int32 {
+        return this.plus(bump())
+    }
+
+    pub mut fx viaImplicit: () Int32 {
+        return plus(bump())
+    }
+}
+
+mut ga: Acc = Acc { }
+
+fx bumpA: () Int32 {
+    ga.n = 2
+    return 10
 }

@@ -5,6 +5,8 @@
 namespace evalorder
 {
   struct Box;
+  struct Win;
+  struct Acc;
 
   struct Box
   {
@@ -12,6 +14,24 @@ namespace evalorder
 
       [[nodiscard]] std::int32_t pair(std::int32_t a, std::int32_t b) const;
       void grow(std::int32_t a, std::int32_t b);
+  };
+
+  struct Win
+  {
+      kira::View<std::int32_t> v{};
+      kira::Size k = 0;
+
+      void attach(kira::View<std::int32_t> src, kira::Size k_p);
+  };
+
+  struct Acc
+  {
+      std::int32_t n = 1;
+
+      [[nodiscard]] std::int32_t bump();
+      [[nodiscard]] std::int32_t plus(std::int32_t k) const;
+      [[nodiscard]] std::int32_t viaThis();
+      [[nodiscard]] std::int32_t viaImplicit();
   };
 
   void main();

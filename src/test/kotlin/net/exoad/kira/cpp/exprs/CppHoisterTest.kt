@@ -2,6 +2,7 @@ package net.exoad.kira.cpp.exprs
 
 import net.exoad.kira.cpp.exprs.CppExprTestSupport.Module
 import org.junit.jupiter.api.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -13,8 +14,10 @@ import kotlin.test.assertTrue
  * binding marked `pure: true` is pure, a read of a `mut` global, a field or a by-reference
  * parameter is READS, and an operand holding neither is pure. A Str, struct or container
  * read beside an effect is copied first (D33 reads it before the effect; C++'s const& would
- * hand the callee the object as the effect left it), except where the call lends a view from
- * it, which would point into the copy.
+ * hand the callee the object as the effect left it), except where the call may lend a view
+ * from it, which would point into the copy: through its result, a `View` parameter, a `mut`
+ * argument or receiver, or anything else the callee writes. Without EscapePass (W2.5) the
+ * hoister decides that from the callee's body, conservatively (CppEscapes).
  */
 class CppHoisterTest {
     private val module = Module(
@@ -290,10 +293,132 @@ class CppHoisterTest {
             pub mut fx viaThis: () Int32 {
                 return peek(this, bump())
             }
+
+            pub fx plus: (k: Int32) Int32 {
+                return n * 100 + k
+            }
+
+            pub mut fx viaExplicit: () Int32 {
+                return this.plus(bump())
+            }
+
+            pub mut fx viaImplicit: () Int32 {
+                return plus(bump())
+            }
         }
 
         fx peek: (a: Acc, k: Int32) Int32 {
             return a.n + k
+        }
+
+        mut gacc: Acc = Acc { }
+
+        fx bumpAcc: () Int32 {
+            gacc.n = 2
+            return 10
+        }
+
+        pub fx namedBeside: () Int32 {
+            return gacc.plus(bumpAcc())
+        }
+
+        pub struct Sink {
+            pub v: View<Int32>
+            pub k: Size = 0
+
+            pub mut fx attach: (src: View<Int32>, k: Size) Void {
+                v = src
+                this.k = k
+            }
+        }
+
+        mut gview: Maybe<View<Int32>> = null
+
+        fx fillFrom: (mut w: Sink, xs: List<Int32>, k: Size) Void {
+            w.v = xs.from(0)
+            w.k = k
+        }
+
+        fx stashTail: (xs: List<Int32>, k: Int32) Void {
+            gview = xs.from(0)
+            ticks = k
+        }
+
+        fx viaStash: (xs: List<Int32>, k: Int32) Int32 {
+            stashTail(xs, k)
+            return k
+        }
+
+        fx adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
+            n: Int32 = s.length() as Int32
+            return fx (x: Int32) Int32 {
+                return x + n + k
+            }
+        }
+
+        fx viaPair: (s: Str, k: Int32) Str {
+            return pairS(s, k)
+        }
+
+        pub struct Bag {
+            pub items: List<Int32> = List<Int32> { }
+
+            pub fx head: (k: Size) View<Int32> {
+                return items.from(k)
+            }
+
+            pub fx firstPlus: (k: Int32) Int32 {
+                return items.get(0) + k
+            }
+        }
+
+        mut gbag: Bag = Bag { }
+
+        pub fx attachBeside: (mut w: Sink) Void {
+            w.attach(gl, nextSize())
+        }
+
+        pub fx fillBeside: (mut w: Sink) Void {
+            fillFrom(mut w, gl, nextSize())
+        }
+
+        pub fx stashBeside: () Void {
+            stashTail(gl, next())
+        }
+
+        pub fx viaStashBeside: () Int32 {
+            return viaStash(gl, next())
+        }
+
+        pub fx assignView: (mut sinks: Arr<Sink, 2>) Void {
+            sinks[nextSize()].v = gl
+        }
+
+        pub fx adderBeside: () Int32 {
+            f: Fx<Tuple1<Int32>, Int32> = adder(gs, changeS())
+            return f(0)
+        }
+
+        pub fx viaPairBeside: () Str {
+            return viaPair(gs, changeS())
+        }
+
+        pub fx bagLends: () Int32 {
+            return total(gbag.head(nextSize()))
+        }
+
+        pub fx bagReads: () Int32 {
+            return gbag.firstPlus(next())
+        }
+
+        fx eachOf: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
+            for x: Int32 in xs {
+                each(x)
+            }
+        }
+
+        fx handOn: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
+            eachOf(xs, each)
         }
         """,
     )
@@ -447,6 +572,69 @@ class CppHoisterTest {
         // `this` in a struct is the receiver C++ holds by reference, shared state bump() writes:
         // D33 reads it before the sibling's effect, as it reads a field (viaField in r6).
         assertTrue(text.contains("const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);"), text)
+    }
+
+    @Test
+    fun thisAsAReceiverReadsLikeANamedStructReceiver() {
+        // A named struct receiver beside a mut fx that writes it is copied first (D33), and so
+        // is `this`, explicit or implicit: `this.plus(bump())` and `plus(bump())` read the same
+        // as `gacc.plus(bumpAcc())`, never the state after the effect.
+        val named = body("namedBeside")
+        assertTrue(named.contains("const Acc t0_ = gacc;\n          const std::int32_t t1_ = bumpAcc();\n          return t0_.plus(t1_);"), named)
+        val copiedThis = "const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return t0_.plus(t1_);"
+        assertEquals(2, text.windowed(copiedThis.length).count { it == copiedThis }, "the explicit and the implicit this:\n$text")
+    }
+
+    @Test
+    fun anOperandTheCalleeCanLendFromIsNeverCopiedWhateverTheResult() {
+        // attach stores its View parameter in the receiver, fillFrom a view of its List
+        // parameter in a mut argument, stashTail one in a global: a copy of gl would be what
+        // the view points into after the lambda's end (gcc printed garbage, MSVC's ASan a
+        // heap-use-after-free), so gl stays where it lives, though the results are Void.
+        val attach = body("attachBeside")
+        assertTrue(attach.contains("w.attach(gl, nextSize());"), attach)
+        val fill = body("fillBeside")
+        assertTrue(fill.contains("fillFrom(w, gl, nextSize());"), fill)
+        val stash = body("stashBeside")
+        assertTrue(stash.contains("stashTail(gl, next());"), stash)
+        // Through a callee that hands the parameter on to one that lends: the same.
+        val via = body("viaStashBeside")
+        assertTrue(via.contains("return viaStash(gl, next());"), via)
+        assertFalse(via.contains("[&]"), via)
+        // An assignment whose target holds a view points into its value.
+        val assign = body("assignView")
+        assertTrue(assign.contains("kira::at(sinks, nextSize()).v = gl;"), assign)
+    }
+
+    @Test
+    fun anOperandTheCalleeCannotLendFromIsCopiedWhateverTheResult() {
+        // adder returns an Fx (its captures are its own: n and k, not s) and makes no view:
+        // D33 reads gs before changeS() writes it (f(0) is 4 for "aaa", not 2 for "b").
+        val adder = body("adderBeside")
+        assertTrue(adder.contains("const kira::Str t0_ = gs;\n          const std::int32_t t1_ = changeS();\n          return adder(t0_, t1_);"), adder)
+        // viaPair only hands s to pairS, which only interpolates it: still a copy.
+        val via = body("viaPairBeside")
+        assertTrue(via.contains("const kira::Str t0_ = gs;\n          const std::int32_t t1_ = changeS();\n          return viaPair(t0_, t1_);"), via)
+    }
+
+    @Test
+    fun aStructReceiverIsCopiedUnlessTheMethodCanLendFromIt() {
+        // Bag holds a List: head lends a view of it (read in place), firstPlus only reads an element (copied first).
+        val lends = body("bagLends")
+        assertTrue(lends.contains("return total(gbag.head(nextSize()));"), lends)
+        assertFalse(lends.contains("[&]"), lends)
+        val reads = body("bagReads")
+        assertTrue(reads.contains("const Bag t0_ = gbag;\n          const std::int32_t t1_ = next();\n          return t0_.firstPlus(t1_);"), reads)
+    }
+
+    @Test
+    fun anFxParameterOnlyCalledIsATemplateParameterAndOnePassedOnIsNot() {
+        // Without EscapePass (W2.5), an Fx parameter the body only calls is known not to
+        // escape (design 5.6: a template parameter); one handed to another function is not
+        // seen through, so it is escaping (a kira::Fn).
+        // Both are module-private, so they are declared in the source's own namespace.
+        assertTrue(text.contains("template<typename F_each>\n      requires kira::Callable<F_each, void, std::int32_t>\n    void eachOf(const kira::List<std::int32_t>& xs, F_each&& each);"), text)
+        assertTrue(text.contains("void handOn(const kira::List<std::int32_t>& xs, const kira::Fn<void(std::int32_t)>& each);"), text)
     }
 
     @Test
