@@ -85,8 +85,10 @@ import java.util.WeakHashMap
  *   unless it is `mut` or it writes its receiver ([CppClassFacts.isConstMethod]): the typer
  *   lets a plain `fx` of a class write a `mut` field and call a `mut fx` on itself (a class
  *   is a reference, D29: `thisMutable` holds in every class method), so `const` has to come
- *   from the body, not the modifier, or no compiler takes the method. Either way it is
- *   callable through a `const kira::Rc<C>&`.
+ *   from the body, not the modifier, or no compiler takes the method. A C++ `override`
+ *   overrides every same-named virtual of every base at once, so the whole family (the
+ *   superclass method and each trait method it implements, and on through their bases and
+ *   overriders) is decided together. Either way it is callable through a `const kira::Rc<C>&`.
  * - Bodies are out of line: in the `.kira.cxx`, or in the header for a template (a generic
  *   class, a generic method, a method with a non-escaping `Fx` parameter) and for a
  *   header-only module.
@@ -107,7 +109,9 @@ import java.util.WeakHashMap
  * by dominance declares a forwarding override ([CppClassFacts.forwarders]), and one that
  * inherits two different overriders is refused. A virtual cannot be a template, so an `Fx`
  * parameter of a virtual method is always `kira::Fn`. A struct implementing a trait never
- * derives it in C++ (static dispatch through a generic bound, D1); boxing one into a trait
+ * derives it in C++ (static dispatch through a generic bound, D1): each trait default body
+ * it inherits becomes a member of the struct, declared in its body ([structInherited]) and
+ * defined with its other methods ([ClassLowering.members]); boxing a struct into a trait
  * value is refused ([upcast], D43).
  */
 class CppClassEmitter : CppClassesPart {
@@ -136,6 +140,13 @@ class CppClassEmitter : CppClassesPart {
 
     override fun selfCapture(ctx: CppEmitContextImpl, owner: ClassSymbol, method: FnSymbol, at: ASTNode): String =
         lowering(ctx).selfCapture(owner, method, at)
+
+    override fun isConstMethod(ctx: CppEmitContextImpl, method: FnSymbol): Boolean = facts(ctx).isConstMethod(method)
+
+    override fun selfReceiver(ctx: CppEmitContextImpl, owner: ClassSymbol, method: FnSymbol): String =
+        lowering(ctx).selfReceiver(owner, method)
+
+    override fun structInherited(ctx: CppEmitContextImpl, s: ClassSymbol): List<String> = lowering(ctx).structInherited(s)
 
     override fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String = lowering(ctx).construct(e)
 
@@ -508,7 +519,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         fun wanted(fn: FnSymbol): Boolean = fn.body != null && isLowered(fn) && (!split || inline == isTemplate(fn))
         val blocks = mutableListOf<CppWriter.() -> Unit>()
         when (sym) {
-            is ClassSymbol -> {
+            // A struct's own methods are the declaration emitter's; the trait default bodies it
+            // inherits are members of its own here (structInherited), never templates.
+            is ClassSymbol -> if (sym.isStruct) {
+                if (!split || !inline) {
+                    structDefaults(sym, report = false).forEach { fn -> blocks += { inheritedDefinition(this, sym, fn, inline) } }
+                }
+            } else {
                 if (!split || !inline) {
                     constructorDefinition(sym, inline)?.let { blocks += it }
                     destructorDefinition(sym, inline)?.let { blocks += it }
@@ -561,6 +578,57 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
                 line(head)
                 block("$MEMBER_INDENT: ${inits.joinToString(", ")}", body = body)
             }
+        }
+    }
+
+    // ---- a struct's inherited trait defaults (static dispatch, D1) -----------------------------------------
+
+    /**
+     * The prototypes of the trait default bodies the struct [s] inherits, for its body: a
+     * plain member, `[[nodiscard]] R name(params = defaults) const;`, never virtual, since
+     * the struct derives no trait in C++ and is reached only by static dispatch (a generic
+     * bound, or a direct call). It is `const` unless the trait declares it `mut` or its
+     * body writes the receiver ([CppClassFacts.traitBodyWrites]: a trait's body may call a
+     * `mut fx` on `this` without being `mut`, as a class's may).
+     */
+    fun structInherited(s: ClassSymbol): List<String> = structDefaults(s, report = true).map { m ->
+        val nodiscard = if (m.ret == KType.Void || m.ret == KType.Never) "" else "[[nodiscard]] "
+        val params = m.params.joinToString(", ") { paramText(m, it, withDefault = true, markUnused = false) }
+        "$nodiscard${returnText(m)} ${ctx.names.escape(m.name)}($params)${structConstSuffix(m)};"
+    }
+
+    private fun structConstSuffix(m: FnSymbol): String = if (m.isMutMethod || facts.traitBodyWrites(m)) "" else " const"
+
+    /**
+     * The trait default bodies the struct [s] takes as members: every one it inherits and
+     * does not override, less those the trait's own lowering refuses ([isLowered]). One of a
+     * generic trait is refused ([report]): its body is typed under the trait's parameters,
+     * which the struct's copy would have to substitute, and the copy is spelled from the
+     * body as written.
+     */
+    private fun structDefaults(s: ClassSymbol, report: Boolean): List<FnSymbol> =
+        facts.inheritedDefaults(s).mapNotNull { (m, via) ->
+            val trait = via.sym as TraitSymbol
+            when {
+                !isLowered(m) -> null
+                trait.typeParams.isNotEmpty() -> {
+                    if (report) {
+                        ctx.unsupported(s.decl ?: m.decl ?: return@mapNotNull null, "struct ${s.name} inheriting the default body of ${via.display()}.${m.name} from a generic trait (override ${m.name} in ${s.name})")
+                    }
+                    null
+                }
+                else -> m
+            }
+        }
+
+    /** `R Square::twice() const { ... }`: the trait's body, as a member of the struct (`Pair<T>::` and the template head for a generic struct). */
+    private fun inheritedDefinition(w: CppWriter, s: ClassSymbol, m: FnSymbol, inline: Boolean) {
+        m.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
+        ctx.parts.generics.templateHead(ctx, s.typeParams)?.let { w.line(it) }
+        val params = m.params.joinToString(", ") { paramText(m, it, withDefault = false, markUnused = true) }
+        val head = "${inlineSpecifier(s, inline, template = false)}${returnText(m)} ${qualifier(s)}${ctx.names.escape(m.name)}($params)${structConstSuffix(m)}"
+        w.block(head) {
+            ctx.body(m, m.body ?: emptyList(), this)
         }
     }
 
@@ -626,9 +694,11 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     /**
      * The initializer of `self` in `[self = ...]` for a lambda that escapes [method] of
      * [owner] (design 5.6): `shared_from_this()`, a `shared_ptr` to the chain's root (`const`
-     * in a non-`mut` method), as the closures golden spells it and W2.3's closure part
-     * captures it; [thisValue] casts it to the class. In a class template it is
-     * `this->shared_from_this()`, since the `kira::Shared` base may be dependent there.
+     * in a `const` method, [CppClassFacts.isConstMethod], the fact the closure part reads
+     * through `CppClassesPart.isConstMethod`), as the closures golden spells it and W2.3's
+     * closure part captures it; [thisValue] casts it to the class and [selfReceiver] spells
+     * it as a receiver. In a class template it is `this->shared_from_this()`, since the
+     * `kira::Shared` base may be dependent there.
      */
     @Suppress("UNUSED_PARAMETER")
     fun selfCapture(owner: ClassSymbol, method: FnSymbol, at: ASTNode): String {
@@ -637,6 +707,23 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             ctx.diag(at, CppModuleEmitterFactory.INTERNAL_CODE, "a lambda captures shared_from_this() in ${owner.name}, but its root class ${root.cls.name} derives no kira::Shared")
         }
         return sharedFromThis(owner)
+    }
+
+    /**
+     * The captured `self` as the object of `->` inside a lambda that escapes [method] of
+     * [owner]: `self` itself in the chain's root, else cast down to [owner]
+     * (`std::static_pointer_cast<Sub>(self)`), `const Sub` only in a `const` method: a
+     * plain `fx` whose lambda writes a field or calls a method that writes is not one
+     * ([CppClassFacts.isConstMethod]), and `self` is then a `shared_ptr<Root>`, not
+     * `<const Root>`, so the cast has to say so or the write is refused.
+     */
+    fun selfReceiver(owner: ClassSymbol, method: FnSymbol): String {
+        val root = facts.chain(owner).first().cls
+        if (root === owner) {
+            return CppClassEmitter.SELF
+        }
+        val constant = if (facts.isConstMethod(method)) "const " else ""
+        return "std::static_pointer_cast<$constant${ctx.speller.bareClass(owner.selfType)}>(${CppClassEmitter.SELF})"
     }
 
     /** `shared_from_this()`, qualified in a class template, where the `kira::Shared` base may be dependent and unqualified lookup never looks. */
@@ -705,7 +792,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             }
             texts[i] = when (val f = fields[i]) {
                 is FieldInit.Given -> argument(f.expr)
-                is FieldInit.Default -> f.field.default?.let { typedLiteral(it, decls.initText(it, types[i]), types[i].prim) } ?: "${ctx.spell(types[i], Pos.VALUE, e)}{}"
+                is FieldInit.Default -> f.field.default?.let { skippedDefault(it, types[i], e) } ?: "${ctx.spell(types[i], Pos.VALUE, e)}{}"
             }
         }
         val call = "std::make_shared<$target>(${texts.joinToString(", ")})"
@@ -719,11 +806,28 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * A construction argument. `make_shared` forwards it to the constructor through a
      * deduced template parameter, so an integer literal of a width C++ gives no literal of
      * its own is spelled `T{lit}` (R2), and MSVC `/W4 /WX` never sees an `int` narrowed
-     * inside the standard library (C4244). A skipped middle default goes through the same
-     * [typedLiteral], since the declaration emitter's default text is the bare literal the
-     * typed constructor parameter takes as a default argument.
+     * inside the standard library (C4244).
      */
     private fun argument(e: Expr): String = typedLiteral(e, ctx.expr(e), model.typeOrNull(e)?.prim)
+
+    /**
+     * A skipped middle default, filled in as an argument. The declaration emitter's text is
+     * what the typed constructor parameter takes as a default argument, where the type is
+     * known: a bare braced list for an `Arr` literal (`{1, 2, 3, 4}`), a bare integer
+     * literal. Through `make_shared`'s forwarding parameter neither says its type, and a
+     * braced list deduces nothing at all (no compiler takes it, measured: gcc 13, clang 20,
+     * MSVC 14.44), so the list gets its type in front (`std::array<std::uint8_t, 4>{1, 2, 3,
+     * 4}`, as a given literal is spelled) and a literal goes through [typedLiteral] as a
+     * given argument does. Everything else the declaration emitter spells is typed already
+     * (`"x"`, `1.5f`, `Kind::OK`, `kira::none`, `kira::List<T>{}`, a constant's name).
+     */
+    private fun skippedDefault(default: Expr, type: KType, at: ASTNode): String {
+        val text = decls.initText(default, type)
+        if (text.startsWith("{")) {
+            return "${ctx.spell(type, Pos.VALUE, at)}$text"
+        }
+        return typedLiteral(default, text, type.prim)
+    }
 
     /** [text], the C++ of [e], as `T{text}` when [e] is an integer literal and [prim] narrower than `int`. */
     private fun typedLiteral(e: Expr, text: String, prim: Prim?): String {
@@ -778,6 +882,8 @@ class CppClassFacts(private val program: TypedProgram) {
     private val initializerUses = IdentityHashMap<ClassSymbol, MutableList<ASTNode>>()
     private val traitUses = IdentityHashMap<TraitSymbol, MutableList<ASTNode>>()
     private val nonConst: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
+    private val traitWriters: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
+    private val familyParent = IdentityHashMap<FnSymbol, FnSymbol>()
     private val thisCalls = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
     private val initializerCalls = IdentityHashMap<ClassSymbol, MutableList<Pair<FunctionCallExpr, FnSymbol>>>()
     private val pathMemo = IdentityHashMap<Symbol, Map<TraitSymbol, Int>>()
@@ -1132,7 +1238,15 @@ class CppClassFacts(private val program: TypedProgram) {
      * to a fixed point, every method whose body writes the receiver (a write, a `mut`
      * argument, or a call to a method already known to write) and every method of a family
      * one of those belongs to. A struct method never takes part: the typer already needs
-     * `mut` on it to write, and a struct implements a trait by static dispatch (D1).
+     * `mut` on it to write, and a struct implements a trait by static dispatch (D1); the
+     * trait default bodies it takes as members follow [traitBodyWrites].
+     *
+     * A family is what C++ ties together: an `override` in a class or trait overrides every
+     * same-named virtual of every base, direct or indirect, at once (`class C: A, B` with
+     * `id` in both traits; `class Dog: Animal, Tagged` where `Dog.tag` overrides `Animal.tag`
+     * and implements `Tagged.tag`), so the families are the connected components of "same
+     * name in a base" over every class and trait of the program, and the typer's own single
+     * [FnSymbol.overrides] link besides. A family with one member is the method alone.
      */
     private fun deriveConstness() {
         val methods = types.flatMap { t ->
@@ -1143,13 +1257,20 @@ class CppClassFacts(private val program: TypedProgram) {
             }
         }
         methods.filter { it.isMutMethod }.forEach { nonConst.add(it) }
+        methods.forEach { m ->
+            m.overrides?.let { unite(m, it) }
+            val owner = m.owner as? Symbol
+            if (owner != null && !m.isOperator && m.name != DeclarationCollector.ANONYMOUS) {
+                baseMethods(owner, m.name).forEach { unite(m, it) }
+            }
+        }
         val families = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
         methods.forEach { m -> families.getOrPut(familyRoot(m)) { mutableListOf() }.add(m) }
         var changed = true
         while (changed) {
             changed = false
             methods.forEach { m ->
-                if (m !in nonConst && m.body != null && writesReceiver(m)) {
+                if (m !in nonConst && m.body != null && writesReceiver(m, nonConst)) {
                     nonConst.add(m)
                     changed = true
                 }
@@ -1160,26 +1281,108 @@ class CppClassFacts(private val program: TypedProgram) {
                 }
             }
         }
+        deriveTraitWrites()
     }
 
-    /** The topmost method [fn] overrides, transitively; [fn] itself when it overrides nothing. */
+    /** [familyParent] is the union-find over the override families: a method's representative, itself until [unite] joins it. */
     private fun familyRoot(fn: FnSymbol): FnSymbol {
         var f = fn
-        val seen: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
         while (true) {
-            val up = f.overrides ?: return f
-            if (!seen.add(up)) {
-                return f
-            }
-            f = up
+            f = familyParent[f] ?: return f
         }
     }
 
-    private fun writesReceiver(m: FnSymbol): Boolean {
+    private fun unite(a: FnSymbol, b: FnSymbol) {
+        val ra = familyRoot(a)
+        val rb = familyRoot(b)
+        if (ra !== rb) {
+            familyParent[ra] = rb
+        }
+    }
+
+    /** Every C++ base of [x], direct and indirect: its Kira superclass chain and every trait any of them derives. */
+    private fun allBases(x: Symbol): List<Symbol> {
+        val out = mutableListOf<Symbol>()
+        val seen: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
+        fun visit(s: Symbol) {
+            directBases(s).forEach { n ->
+                val b = n.sym as? Symbol ?: return@forEach
+                if (seen.add(b)) {
+                    out.add(b)
+                    visit(b)
+                }
+            }
+        }
+        visit(x)
+        return out
+    }
+
+    /** The methods named [name] that the C++ bases of [x] declare: the virtuals an override of [name] in [x] overrides. */
+    private fun baseMethods(x: Symbol, name: String): List<FnSymbol> =
+        allBases(x).flatMap { b -> methodsOf(b).filter { it.name == name && !it.isOperator } }
+
+    /**
+     * The trait methods whose default body writes the receiver: every `mut fx` of a trait,
+     * then to a fixed point every default body that writes ([writesReceiver], a call to one
+     * of these included). Decided on the trait bodies alone, apart from the class families
+     * ([nonConst]): a struct's copy of a default body ([inheritedDefaults]) is `const` by
+     * what that body does, not by what some class's override of it does.
+     */
+    private fun deriveTraitWrites() {
+        val methods = types.filterIsInstance<TraitSymbol>().flatMap { it.methods }
+        methods.filter { it.isMutMethod }.forEach { traitWriters.add(it) }
+        var changed = true
+        while (changed) {
+            changed = false
+            methods.forEach { m ->
+                if (m !in traitWriters && m.body != null && writesReceiver(m, traitWriters)) {
+                    traitWriters.add(m)
+                    changed = true
+                }
+            }
+        }
+    }
+
+    /** Whether the default body of the trait method [m] writes its receiver (a `mut fx` counts), so a struct's copy of it cannot be `const`. */
+    fun traitBodyWrites(m: FnSymbol): Boolean = m in traitWriters
+
+    /** A trait method with a default body the struct inherits, and the trait type (as the struct names it) that declares it. */
+    data class InheritedDefault(val method: FnSymbol, val via: KType.Nominal)
+
+    /**
+     * The trait default bodies the struct [s] takes as members (static dispatch, D1): for
+     * each method name, the nearest declaration over the traits [s] implements, depth first
+     * as the typer resolves an override, when that declaration has a body and [s] declares
+     * no method of the name. A nearer bodyless declaration re-abstracts the name, so a
+     * default above it is not inherited.
+     */
+    fun inheritedDefaults(s: ClassSymbol): List<InheritedDefault> {
+        val own = s.methods.map { it.name }.toSet()
+        val decided = HashSet<String>(own)
+        val out = mutableListOf<InheritedDefault>()
+        val seen: MutableSet<TraitSymbol> = Collections.newSetFromMap(IdentityHashMap())
+        fun visit(n: KType.Nominal) {
+            val t = n.sym as? TraitSymbol ?: return
+            if (!seen.add(t)) {
+                return
+            }
+            t.methods.forEach { m ->
+                if (!m.isOperator && m.name != DeclarationCollector.ANONYMOUS && decided.add(m.name) && m.body != null) {
+                    out += InheritedDefault(m, n)
+                }
+            }
+            val sub = t.typeParams.zip(n.typeArgs()).toMap()
+            t.parents.forEach { p -> visit(p.substitute(sub) as KType.Nominal) }
+        }
+        s.traits.forEach(::visit)
+        return out
+    }
+
+    private fun writesReceiver(m: FnSymbol, known: Set<FnSymbol>): Boolean {
         var found = false
         m.body?.forEach { s ->
             AstTree.walk(s) { node ->
-                if (!found && writesReceiverAt(node)) {
+                if (!found && writesReceiverAt(node, known)) {
                     found = true
                 }
             }
@@ -1188,28 +1391,28 @@ class CppClassFacts(private val program: TypedProgram) {
     }
 
     /** An assignment to a place inside the object, or a call that writes one ([callWritesReceiver]). */
-    private fun writesReceiverAt(node: ASTNode): Boolean = when (node) {
+    private fun writesReceiverAt(node: ASTNode, known: Set<FnSymbol>): Boolean = when (node) {
         is AssignmentExpr -> insideThis(model.place(node.target))
         is CompoundAssignmentExpr -> insideThis(model.place(node.left))
         is PlaceAssignmentExpr -> insideThis(model.place(node.target))
-        is FunctionCallExpr -> callWritesReceiver(node)
+        is FunctionCallExpr -> callWritesReceiver(node, known)
         else -> false
     }
 
     /**
      * A call needs a non-`const` `this` when it passes a place inside the object as a `mut`
-     * argument; when it is a `mut fx` (or a method found to write) on `this` itself; or when
+     * argument; when it is a `mut fx` (or a method [known] to write) on `this` itself; or when
      * it is one on a struct or container the object holds by value, or lends a `MutView` of
      * one. A call on a field that is a reference (a class, a `Ref`) goes through the pointer
      * and leaves `this` alone.
      */
-    private fun callWritesReceiver(e: FunctionCallExpr): Boolean {
+    private fun callWritesReceiver(e: FunctionCallExpr, known: Set<FnSymbol>): Boolean {
         val call = model.call(e) ?: return false
         if (call.args.any { a -> a is ArgBinding.Given && a.byRef && insideThis(model.place(a.expr)) }) {
             return true
         }
         val fn = call.fn ?: return false
-        val mutates = fn.isMutMethod || fn in nonConst
+        val mutates = fn.isMutMethod || fn in known
         if (call.implicitThis || call.receiver is ThisExpr) {
             return mutates
         }

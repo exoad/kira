@@ -248,6 +248,165 @@ class CppClassCompileTest {
         pub fx makeCounter: () Counter {
             return Counter {}
         }
+
+        // A skipped middle default of an Arr type: make_shared deduces nothing from a bare
+        // braced list, so the filled-in default carries its type, in a subclass's construction too.
+        pub class Frame {
+            pub mut buf: Arr<UInt8, 4> = [1, 2, 3, 4]
+            require pub id: Int32
+        }
+
+        pub class Stamped: Frame {
+            require pub stamp: Int32
+        }
+
+        pub fx makeFrame: () Frame {
+            return Frame { id = 7 }
+        }
+
+        pub fx makeStamped: () Stamped {
+            return Stamped { id = 8, stamp = 9 }
+        }
+
+        // One override of a method two traits declare, writing its receiver: both pure virtuals lose const.
+        pub trait Left {
+            pub fx hit: () Int32;
+        }
+
+        pub trait Right {
+            pub fx hit: () Int32;
+        }
+
+        pub class Target: Left, Right {
+            mut hits: Int32 = 0
+
+            override pub fx hit: () Int32 {
+                hits += 1
+                return hits
+            }
+        }
+
+        pub fx makeTarget: () Target {
+            return Target {}
+        }
+
+        pub fx hitLeft: (l: Left) Int32 {
+            return l.hit()
+        }
+
+        pub fx hitRight: (r: Right) Int32 {
+            return r.hit()
+        }
+
+        // One override of a superclass method that also implements a trait's, writing: the trait's follows.
+        pub trait Stamper {
+            pub fx stamp: () Int32;
+        }
+
+        pub class Plain {
+            pub mut count: Int32 = 0
+
+            pub fx stamp: () Int32 {
+                return 1
+            }
+        }
+
+        pub class Counting: Plain, Stamper {
+            override pub fx stamp: () Int32 {
+                count += 1
+                return count
+            }
+        }
+
+        pub fx makeCounting: () Counting {
+            return Counting {}
+        }
+
+        pub fx stampVia: (s: Stamper) Int32 {
+            return s.stamp()
+        }
+
+        pub fx stampPlain: (p: Plain) Int32 {
+            return p.stamp()
+        }
+
+        // A struct takes a trait's default body as its own member: static dispatch through a bound and directly.
+        pub trait Shape {
+            pub fx area: () Int32;
+            pub fx same: () Int32 {
+                return area()
+            }
+            pub mut fx grow: () Void;
+            pub fx growOnce: () Void {
+                grow()
+            }
+        }
+
+        pub struct Square: Shape {
+            pub side: Int32 = 3
+
+            override pub fx area: () Int32 {
+                return side
+            }
+
+            override pub mut fx grow: () Void {
+                side = 5
+            }
+        }
+
+        pub fx sameOf<T: Shape>: (s: T) Int32 {
+            return s.same()
+        }
+
+        pub fx squareSame: (q: Square) Int32 {
+            return sameOf<Square>(q)
+        }
+
+        pub fx squareDirect: (q: Square) Int32 {
+            return q.same()
+        }
+
+        // A subclass's escaping lambda that writes a field and calls a mut fx: the captured
+        // self is cast down without const, as the method itself is not const.
+        pub class Lower {
+            mut n: Int32 = 0
+
+            pub fx get: () Int32 {
+                return n
+            }
+        }
+
+        pub class Upper: Lower {
+            mut k: Int32 = 0
+
+            pub mut fx reset: () Void {
+                k = 100
+            }
+
+            pub fx later: () Fx<Tuple0, Int32> {
+                return fx() Int32 {
+                    k += 1
+                    return k
+                }
+            }
+
+            pub fx laterReset: () Fx<Tuple0, Int32> {
+                return fx() Int32 {
+                    reset()
+                    return k
+                }
+            }
+
+            pub fx peek: () Fx<Tuple0, Int32> {
+                return fx() Int32 {
+                    return k
+                }
+            }
+        }
+
+        pub fx makeUpper: () Upper {
+            return Upper {}
+        }
     """
 
     private val driver = """
@@ -305,6 +464,19 @@ class CppClassCompileTest {
                 shapes::Dog stacked("stacked");
                 check(stacked.sound() == "woof", "C++ may construct a Kira class on the stack (D11)");
             }
+            const kira::Rc<shapes::Frame> frame = shapes::makeFrame();
+            const kira::Rc<shapes::Stamped> stamped = shapes::makeStamped();
+            check(frame->buf[2] == 3 && frame->id == 7 && stamped->buf[3] == 4 && stamped->id == 8 && stamped->stamp == 9, "a skipped middle default of an Arr type is filled in, typed");
+            const kira::Rc<shapes::Target> target = shapes::makeTarget();
+            check(shapes::hitLeft(target) == 1 && shapes::hitRight(target) == 2 && target->hit() == 3, "one writing override of a method two traits declare");
+            const kira::Rc<shapes::Counting> counting = shapes::makeCounting();
+            check(shapes::stampVia(counting) == 1 && shapes::stampPlain(counting) == 2 && counting->count == 2, "one writing override of a superclass method that implements a trait's");
+            const shapes::Square square{};
+            shapes::Square growing{};
+            growing.growOnce();
+            check(shapes::squareSame(square) == 3 && shapes::squareDirect(square) == 3 && square.same() == 3 && growing.area() == 5, "a struct takes a trait's default body as its own member");
+            const kira::Rc<shapes::Upper> upper = shapes::makeUpper();
+            check(upper->later()() == 1 && upper->later()() == 2 && upper->laterReset()() == 100 && upper->peek()() == 100, "a subclass's escaping lambda writes through the captured self");
             std::printf("%d checks, %d failed\n", checks, failures);
             return failures == 0 ? 0 : 1;
         }
@@ -335,7 +507,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("17 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("22 checks, 0 failed"), run.stdout)
             }
         }
     }

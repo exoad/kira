@@ -487,7 +487,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 out += positionOf(fn.decl) to render { definition(this, fn, p, owner = s) }
             }
         }
-        (orderedTraits() + orderedClasses()).forEach { t ->
+        // A struct is asked too: the classes part defines the trait default bodies it inherits
+        // (CppClassesPart.structInherited), which its own methods above never list.
+        (orderedTraits() + orderedClasses() + structs).forEach { t ->
             val p = placement.type(t)
             // An exported class of a source module keeps its template members in the header
             // (design 5.5: bodies go in the .kira.cxx, except templates), so the classes part
@@ -718,10 +720,13 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             w.block("struct ${ctx.names.escape(s.name)}", ";") {
                 s.fields.forEach { f -> line(field(f)) }
                 val methods = s.methods.filter { !ctx.isMagic(it) }
-                if (methods.isNotEmpty() || equality) {
+                // The trait default bodies the struct inherits are its own members (static dispatch, design 5.5).
+                val inherited = parts.classes.structInherited(ctx, s)
+                if (methods.isNotEmpty() || inherited.isNotEmpty() || equality) {
                     blank()
                 }
                 methods.forEach { fn -> prototype(fn, owner = s).forEach { line(it) } }
+                inherited.forEach { line(it) }
                 if (equality) {
                     line("bool operator==(const ${ctx.names.escape(s.name)}&) const = default;")
                 }

@@ -92,7 +92,7 @@ interface CppLambdaPart {
     }
 }
 
-/** Classes and traits (W2.4, design 5.5). Structs are the declaration emitter's. */
+/** Classes and traits (W2.4, design 5.5). Structs are the declaration emitter's, but for the trait default bodies one inherits ([structInherited]). */
 interface CppClassesPart {
     /**
      * Section 8 of the header (or the source's anonymous namespace for a private one): the
@@ -129,6 +129,42 @@ interface CppClassesPart {
         return "shared_from_this()"
     }
 
+    /**
+     * Whether [method] of a class or trait is `const` in C++: the one fact every spelling of
+     * the receiver follows (the method's head, `this` as a value, the captured `self`). The
+     * default reads the modifier; the classes part decides from the body and the override
+     * family, since the typer lets a plain `fx` of a class write its receiver (D29).
+     */
+    fun isConstMethod(ctx: CppEmitContextImpl, method: FnSymbol): Boolean = !method.isMutMethod
+
+    /**
+     * The receiver inside a lambda that captured `[self = ...]` ([selfCapture]) in [method]
+     * of [owner], as the object of `->`: `self`, a `shared_ptr` to the chain's root, cast
+     * down to [owner] when the root is another class (`std::static_pointer_cast<Sub>(self)`,
+     * `<const Sub>` in a `const` method, [isConstMethod]), so `self->k` reaches a subclass's
+     * field and `self->reset()` a method that writes.
+     */
+    fun selfReceiver(ctx: CppEmitContextImpl, owner: ClassSymbol, method: FnSymbol): String {
+        var root: ClassSymbol = owner
+        val seen = java.util.Collections.newSetFromMap(IdentityHashMap<ClassSymbol, Boolean>())
+        while (seen.add(root)) {
+            root = root.superclass?.sym as? ClassSymbol ?: break
+        }
+        if (root === owner) {
+            return "self"
+        }
+        val constant = if (isConstMethod(ctx, method)) "const " else ""
+        return "std::static_pointer_cast<$constant${ctx.speller.bareClass(owner.selfType)}>(self)"
+    }
+
+    /**
+     * The prototypes the body of the struct [s] holds for the trait methods it inherits with a
+     * default body (design 5.5: a struct implementing a trait gets static dispatch only, so
+     * each such body has to be a member of the struct); their definitions come through
+     * [defineMembers] for the struct. Empty when it inherits none.
+     */
+    fun structInherited(ctx: CppEmitContextImpl, s: ClassSymbol): List<String> = emptyList()
+
     /** A class construction `C { ... }` (R9): `std::make_shared<C>(arguments in constructor order)`. */
     fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String {
         ctx.unsupported(e, "the construction of a class")
@@ -153,6 +189,13 @@ interface CppClassesPart {
 
         override fun defineMembers(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter, inline: Boolean) {
             // Reported once, by define().
+        }
+
+        override fun structInherited(ctx: CppEmitContextImpl, s: ClassSymbol): List<String> {
+            if (s.traits.isNotEmpty()) {
+                s.decl?.let { ctx.unsupported(it, "the trait methods struct '${s.name}' inherits") }
+            }
+            return emptyList()
         }
     }
 }

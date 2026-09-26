@@ -93,6 +93,13 @@ object OopTestSupport {
      * classes part's own entry points wherever `this` is a value or a class is constructed.
      */
     object FakeExprEmitter : CppExprPart {
+        /** The class and method of the escaping lambda being emitted, whose implicit receiver is the captured `self`. */
+        private var selfFrame: Pair<ClassSymbol, FnSymbol>? = null
+
+        /** Inside an escaping lambda: the classes part's `self` receiver (W2.3's selfPointer is to call the same); else `this`. */
+        private fun receiver(ctx: CppEmitContextImpl): String =
+            selfFrame?.let { (owner, method) -> ctx.parts.classes.selfReceiver(ctx, owner, method) } ?: "this"
+
         override fun emit(ctx: CppEmitContextImpl, e: Expr, parentPrec: Int): String {
             val model = ctx.model
             return when (e) {
@@ -107,7 +114,9 @@ object OopTestSupport {
                 is IntrinsicExpr -> "<IntrinsicExpr>"
                 is Identifier -> when (val sym = model.symbolOf(e)) {
                     is ParamSymbol -> ctx.paramName(sym)
-                    is LocalSymbol, is FieldSymbol -> ctx.names.escape(e.value)
+                    is LocalSymbol -> ctx.names.escape(e.value)
+                    // An implicit field inside an escaping lambda goes through the captured self.
+                    is FieldSymbol -> if (selfFrame != null) "${receiver(ctx)}->${ctx.names.escape(e.value)}" else ctx.names.escape(e.value)
                     // true, false and null are kira:core's @_magic globals: never ::kira::core::null.
                     is GlobalSymbol -> when {
                         !ctx.isMagic(sym) -> ctx.qualified(sym)
@@ -119,7 +128,7 @@ object OopTestSupport {
                 is MemberAccessExpr -> {
                     val member = (e.member as? Identifier)?.value ?: "<member>"
                     if (e.origin is ThisExpr) {
-                        return "this->$member"
+                        return "${receiver(ctx)}->$member"
                     }
                     val origin = ctx.expr(e.origin)
                     val generic = ctx.parts.generics.receiver(ctx, e.origin, origin)
@@ -155,10 +164,18 @@ object OopTestSupport {
             } else {
                 ""
             }
-            val body = e.def.body.orEmpty().joinToString(" ") { s ->
-                if (s is ReturnStatement) "return ${ctx.expr(s.expr)};" else "static_cast<void>(${ctx.expr(s.expr)});"
+            val before = selfFrame
+            if (capture.isNotEmpty()) {
+                selfFrame = owner!! to owner.methods.first { m -> m.body.orEmpty().any { s -> contains(s, e) } }
             }
-            return "[$capture]($params) -> $ret { $body }"
+            try {
+                val body = e.def.body.orEmpty().joinToString(" ") { s ->
+                    if (s is ReturnStatement) "return ${ctx.expr(s.expr)};" else "static_cast<void>(${ctx.expr(s.expr)});"
+                }
+                return "[$capture]($params) -> $ret { $body }"
+            } finally {
+                selfFrame = before
+            }
         }
 
         private fun contains(root: ASTNode, target: ASTNode): Boolean {
@@ -185,11 +202,13 @@ object OopTestSupport {
                     val name = fn?.name ?: "<fn>"
                     when {
                         generic != null -> "$generic.$name$typeArgs($args)"
-                        receiver is ThisExpr -> "this->$name$typeArgs($args)"
+                        receiver is ThisExpr -> "${receiver(ctx)}->$name$typeArgs($args)"
                         isReference(ctx.model.typeOrNull(receiver)) -> "$text->$name$typeArgs($args)"
                         else -> "$text.$name$typeArgs($args)"
                     }
                 }
+                // An implicit-this call inside an escaping lambda goes through the captured self.
+                fn != null && fn.owner != null && selfFrame != null -> "${receiver(ctx)}->${fn.name}$typeArgs($args)"
                 fn != null && fn.owner != null -> "${fn.name}$typeArgs($args)"
                 fn != null -> "${ctx.qualified(fn)}$typeArgs($args)"
                 else -> "${(e.name as? Identifier)?.value ?: "<callee>"}($args)"

@@ -1180,4 +1180,334 @@ class CppClassShapeTest {
         CppEmitParts().classes.thisValue(ctx, net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr())
         assertEquals(2, ctx.diagnostics.count { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }, ctx.diagnostics.toString())
     }
+
+    // ---- the receiver in an escaping lambda, and the const fact behind it -----------------------------
+
+    @Test
+    fun theSelfReceiverCastsDownToTheSubclassAndFollowsTheDerivedConst() {
+        // W2.3's selfPointer decides const from the modifier; the part gives it the derived fact
+        // (a plain fx whose lambda writes is not const) and the receiver spelled from it.
+        val e = emit(
+            """
+            pub class Base {
+                mut n: Int32 = 0
+                pub fx get: () Int32 { return n }
+            }
+            pub class Sub: Base {
+                mut k: Int32 = 0
+                pub mut fx reset: () Void { k = 100 }
+                pub fx later: () Fx<Tuple0, Int32> {
+                    return fx() Int32 {
+                        k += 1
+                        return k
+                    }
+                }
+                pub fx laterReset: () Fx<Tuple0, Int32> {
+                    return fx() Int32 {
+                        reset()
+                        return k
+                    }
+                }
+                pub fx peek: () Fx<Tuple0, Int32> {
+                    return fx() Int32 { return k }
+                }
+                pub fx me: () Sub { return this }
+            }
+            """
+        )
+        val m = e.program.modules.single { it.uri == uri }
+        val base = m.members["Base"] as ClassSymbol
+        val sub = m.members["Sub"] as ClassSymbol
+        val ctx = CppEmitContextImpl(e.program, CppOptions(lineDirectives = false), m.source, e.layout, m, "dev", OopTestSupport.parts())
+        val part = OopTestSupport.parts().classes
+        fun method(c: ClassSymbol, name: String) = c.methods.single { it.name == name }
+        assertEquals(false, part.isConstMethod(ctx, method(sub, "later")))
+        assertEquals(false, part.isConstMethod(ctx, method(sub, "laterReset")))
+        assertEquals(false, part.isConstMethod(ctx, method(sub, "reset")))
+        assertEquals(true, part.isConstMethod(ctx, method(sub, "peek")))
+        assertEquals(true, part.isConstMethod(ctx, method(base, "get")))
+        assertEquals("std::static_pointer_cast<Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "later")))
+        assertEquals("std::static_pointer_cast<Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "laterReset")))
+        assertEquals("std::static_pointer_cast<const Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "peek")))
+        assertEquals("self", part.selfReceiver(ctx, base, method(base, "get")))
+        // the default (no classes part) reads the modifier, as W2.3 does on its own
+        val plain = CppEmitParts().classes
+        assertEquals(true, plain.isConstMethod(ctx, method(sub, "later")))
+        assertEquals("std::static_pointer_cast<const Sub>(self)", plain.selfReceiver(ctx, sub, method(sub, "later")))
+        assertEquals("std::static_pointer_cast<Sub>(self)", plain.selfReceiver(ctx, sub, method(sub, "reset")))
+        assertEquals("self", plain.selfReceiver(ctx, base, method(base, "get")))
+        // the fake closure emitter spells the writes through it, as the real one is to
+        val s = e.source(uri)
+        assertContains(
+            s,
+            "  kira::Fn<std::int32_t()> Sub::later()\n  {\n      return [self = shared_from_this()]() -> std::int32_t { static_cast<void>(std::static_pointer_cast<Sub>(self)->k += 1); return std::static_pointer_cast<Sub>(self)->k; };",
+            "  kira::Fn<std::int32_t()> Sub::laterReset()\n  {\n      return [self = shared_from_this()]() -> std::int32_t { static_cast<void>(std::static_pointer_cast<Sub>(self)->reset()); return std::static_pointer_cast<Sub>(self)->k; };",
+            "  kira::Fn<std::int32_t()> Sub::peek() const\n  {\n      return [self = shared_from_this()]() -> std::int32_t { return std::static_pointer_cast<const Sub>(self)->k; };",
+        )
+    }
+
+    // ---- const across an override family with more than one base ------------------------------------
+
+    @Test
+    fun aMethodTwoTraitsDeclareLosesConstInBothWhenTheOverrideWrites() {
+        // C++ takes C::id() as the override of A::id and B::id at once, so both pure virtuals
+        // follow the writing body; the typer links only one (FnSymbol.overrides).
+        val (h, s) = both(
+            """
+            pub trait A {
+                pub fx id: () Int32;
+            }
+            pub trait B {
+                pub fx id: () Int32;
+            }
+            pub class C: A, B {
+                mut n: Int32 = 0
+                override pub fx id: () Int32 {
+                    n += 1
+                    return n
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "  class A\n  {\n  public:\n      virtual ~A() = default;\n      [[nodiscard]] virtual std::int32_t id() = 0;\n  };",
+            "  class B\n  {\n  public:\n      virtual ~B() = default;\n      [[nodiscard]] virtual std::int32_t id() = 0;\n  };",
+            "      [[nodiscard]] std::int32_t id() override;",
+        )
+        assertContains(s, "  std::int32_t C::id()\n  {")
+        assertLacks(h, "id() const")
+    }
+
+    @Test
+    fun aMethodThatOverridesASuperclassAndImplementsATraitDecidesConstForBoth() {
+        // Dog.tag overrides Animal.tag (the typer's link) and implements Tagged.tag (the C++ override):
+        // Tagged's pure virtual follows the family too, or Dog is abstract.
+        val h = header(
+            """
+            pub trait Tagged {
+                pub fx tag: () Int32;
+            }
+            pub class Animal {
+                pub mut n: Int32 = 0
+                pub fx tag: () Int32 {
+                    return 1
+                }
+            }
+            pub class Dog: Animal, Tagged {
+                override pub fx tag: () Int32 {
+                    n += 1
+                    return n
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] virtual std::int32_t tag() = 0;",
+            "      [[nodiscard]] virtual std::int32_t tag();",
+            "      [[nodiscard]] std::int32_t tag() override;",
+        )
+        assertLacks(h, "tag() const")
+    }
+
+    @Test
+    fun aFamilyReachesThroughATraitsParentAndAnUnwritingSiblingStaysConst() {
+        // Base.m implements P.m through T: P; a writing override in Sub takes the whole chain
+        // with it, while an unrelated trait method of another name keeps const.
+        val h = header(
+            """
+            pub trait P {
+                pub fx m: () Int32;
+                pub fx other: () Int32;
+            }
+            pub trait T: P {
+            }
+            pub class Base: T {
+                pub mut n: Int32 = 0
+                override pub fx m: () Int32 { return n }
+                override pub fx other: () Int32 { return n }
+            }
+            pub class Sub: Base {
+                override pub fx m: () Int32 {
+                    n += 1
+                    return n
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] virtual std::int32_t m() = 0;",
+            "      [[nodiscard]] virtual std::int32_t other() const = 0;",
+            "      [[nodiscard]] std::int32_t m() override;",
+            "      [[nodiscard]] std::int32_t other() const override;",
+        )
+        assertLacks(h, "m() const")
+    }
+
+    // ---- a struct's inherited trait defaults --------------------------------------------------------
+
+    @Test
+    fun aStructTakesATraitsDefaultBodyAsItsOwnMember() {
+        // Static dispatch (D1): `q.twice()` and `kira::deref(s).twice()` under a generic bound
+        // need a member of the struct, so the default body is one, const as its body allows.
+        val (h, s) = both(
+            """
+            pub trait Shape {
+                pub fx area: () Int32;
+                pub fx twice: () Int32 {
+                    return area()
+                }
+                pub mut fx grow: () Void;
+                pub fx growTwice: () Void {
+                    grow()
+                }
+                pub mut fx reset: () Void {
+                    grow()
+                }
+            }
+            pub struct Square: Shape {
+                pub side: Int32 = 3
+                override pub fx area: () Int32 {
+                    return side
+                }
+                override pub mut fx grow: () Void {
+                    side = 4
+                }
+            }
+            pub fx twiceOf<T: Shape>: (s: T) Int32 {
+                return s.twice()
+            }
+            """
+        )
+        assertContains(
+            h,
+            "  struct Square\n  {\n      std::int32_t side = 3;\n\n      [[nodiscard]] std::int32_t area() const;\n      void grow();\n      [[nodiscard]] std::int32_t twice() const;\n      void growTwice();\n      void reset();\n  };",
+            "      [[nodiscard]] virtual std::int32_t twice() const;",
+        )
+        assertContains(
+            s,
+            "  std::int32_t Square::twice() const\n  {\n      return area();\n  }",
+            "  void Square::growTwice()\n  {\n      static_cast<void>(grow());\n  }",
+            "  void Square::reset()\n  {\n      static_cast<void>(grow());\n  }",
+            "  std::int32_t Shape::twice() const\n  {\n      return area();\n  }",
+        )
+    }
+
+    @Test
+    fun aStructInheritsTheNearestDefaultAndNotOneANearerTraitReabstracts() {
+        val (h, s) = both(
+            """
+            pub trait P {
+                pub fx a: () Int32 { return 1 }
+                pub fx b: () Int32 { return 2 }
+                pub fx c: () Int32 { return 3 }
+            }
+            pub trait T: P {
+                override pub fx a: () Int32 { return 10 }
+                override pub fx b: () Int32;
+            }
+            pub struct S: T {
+                pub x: Int32 = 0
+                override pub fx b: () Int32 { return 20 }
+            }
+            """
+        )
+        assertContains(h, "  struct S\n  {\n      std::int32_t x = 0;\n\n      [[nodiscard]] std::int32_t b() const;\n      [[nodiscard]] std::int32_t a() const;\n      [[nodiscard]] std::int32_t c() const;\n  };")
+        assertContains(s, "  std::int32_t S::a() const\n  {\n      return 10;\n  }", "  std::int32_t S::c() const\n  {\n      return 3;\n  }")
+        assertLacks(s, "S::b() const\n  {\n      return 2;")
+    }
+
+    @Test
+    fun aGenericStructDefinesItsInheritedDefaultInTheHeader() {
+        val h = header(
+            """
+            pub trait Shape {
+                pub fx area: () Int32;
+                pub fx twice: () Int32 { return area() }
+            }
+            pub struct Box<T>: Shape {
+                pub value: T
+                pub side: Int32 = 1
+                override pub fx area: () Int32 { return side }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] std::int32_t area() const;\n      [[nodiscard]] std::int32_t twice() const;\n  };",
+            "  template<typename T>\n  std::int32_t Box<T>::twice() const\n  {\n      return area();\n  }",
+        )
+    }
+
+    @Test
+    fun aStructInheritingAGenericTraitsDefaultIsRefused() {
+        val messages = unsupported(
+            """
+            pub trait Source<T> {
+                pub fx get: () T;
+                pub fx again: () T { return get() }
+            }
+            pub struct Five: Source<Int32> {
+                pub v: Int32 = 5
+                override pub fx get: () Int32 { return v }
+            }
+            """
+        )
+        assertEquals(listOf("struct Five inheriting the default body of Source<Int32>.again from a generic trait (override again in Five) is not lowered yet"), messages)
+    }
+
+    @Test
+    fun theDefaultClassesPartRefusesAStructsInheritedDefaults() {
+        val e = OopTestSupport.emit(
+            OopTestSupport.module(
+                uri,
+                """
+                pub trait Shape {
+                    pub fx area: () Int32;
+                    pub fx twice: () Int32 { return area() }
+                }
+                pub struct Square: Shape {
+                    pub side: Int32 = 3
+                    override pub fx area: () Int32 { return side }
+                }
+                """,
+            ),
+            parts = CppEmitParts(stmts = OopTestSupport.FakeStmtEmitter, exprs = OopTestSupport.FakeExprEmitter),
+        )
+        val messages = e.module(uri).diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }.map { it.message }
+        assertTrue("the trait methods struct 'Square' inherits is not lowered yet" in messages, messages.toString())
+    }
+
+    // ---- a skipped default of a braced type ------------------------------------------------------------
+
+    @Test
+    fun aSkippedMiddleDefaultOfAnArrTypeCarriesItsType() {
+        // make_shared deduces nothing from a bare braced list (no compiler takes it), so the
+        // filled-in default is the typed literal a given one is; a subclass's construction
+        // meets the same default in its base.
+        val s = emit(
+            """
+            pub class Frame {
+                pub mut buf: Arr<UInt8, 4> = [1, 2, 3, 4]
+                require pub id: Int32
+            }
+            pub class Tagged: Frame {
+                require pub tag: Int32
+            }
+            pub fx frame: () Frame {
+                return Frame { id = 7 }
+            }
+            pub fx tagged: () Tagged {
+                return Tagged { id = 7, tag = 9 }
+            }
+            """
+        ).source(uri)
+        assertContains(
+            s,
+            "      return std::make_shared<Frame>(std::array<std::uint8_t, 4>{1, 2, 3, 4}, 7);",
+            "      return std::make_shared<Tagged>(std::array<std::uint8_t, 4>{1, 2, 3, 4}, 7, 9);",
+        )
+    }
 }
