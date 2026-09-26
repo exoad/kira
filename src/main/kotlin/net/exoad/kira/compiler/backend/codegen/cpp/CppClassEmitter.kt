@@ -424,18 +424,22 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         if (isTemplateFx(fn, p)) {
             return "$unused${ctx.speller.templateParamName(p)}&& $name"
         }
-        val pos = if (p.byRef) Pos.MUT_PARAM else Pos.PARAM
-        val node = (p.decl as? FunctionDeclParameterExpr)?.typeSpecifier
-        val own = if (node != null && model.typeOf(node) != null) ctx.spell(node, pos) else ctx.spell(p.type, pos, p.decl ?: fn.decl)
         val default = if (withDefault && p.default != null) " = ${decls.initText(p.default, p.type)}" else ""
-        return "$unused${type ?: own} $name$default"
+        return "$unused${type ?: ownParam(fn, p)} $name$default"
     }
 
-    /** Every parameter of [fn], the override spellings applied where [fn] owes them; those [asReference] named `v_` ([referenceName]). */
-    private fun paramsText(fn: FnSymbol, withDefault: Boolean, markUnused: Boolean, asReference: List<ParamSymbol> = emptyList()): String {
+    /** [p]'s type as [fn]'s own declaration spells it in the parameter column (alias-aware): `std::int32_t`, `const kira::Str&`, `Handle*`. */
+    private fun ownParam(fn: FnSymbol, p: ParamSymbol): String {
+        val pos = if (p.byRef) Pos.MUT_PARAM else Pos.PARAM
+        val node = (p.decl as? FunctionDeclParameterExpr)?.typeSpecifier
+        return if (node != null && model.typeOf(node) != null) ctx.spell(node, pos) else ctx.spell(p.type, pos, p.decl ?: fn.decl)
+    }
+
+    /** Every parameter of [fn], the override spellings applied where [fn] owes them; one in [references] named as it says ([copiedParams]). */
+    private fun paramsText(fn: FnSymbol, withDefault: Boolean, markUnused: Boolean, references: List<Pair<ParamSymbol, String>> = emptyList()): String {
         val owed = overrideParams(fn)
         return fn.params.mapIndexed { i, p ->
-            val name = if (asReference.any { it === p }) referenceName(p) else ctx.paramName(p)
+            val name = references.firstOrNull { it.first === p }?.second ?: ctx.paramName(p)
             paramText(fn, p, withDefault, markUnused, owed?.getOrNull(i), name)
         }.joinToString(", ")
     }
@@ -453,14 +457,39 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * ([disagreement]; [refuseOverride] reports that), so [d] is spelled as written.
      */
     private fun owedBy(d: CppClassFacts.Declared): List<CppClassFacts.Declared>? {
-        val family = overriddenFamily(d.method) ?: return null
-        if (family.isEmpty()) {
+        if (d in owedMemo) {
+            return owedMemo[d]
+        }
+        // Asked again while it is being answered only through a cyclic hierarchy, which the typer refuses.
+        if (!owedAnswering.add(d)) {
             return null
         }
-        val sub = substitutionOf(d)
-        val seen = family.map { CppClassFacts.Declared(it.method, it.via.substitute(sub) as KType.Nominal) }
-        return if (disagreement(seen) == null) seen else null
+        try {
+            val family = overriddenFamily(d.method)
+            val owed = if (family.isNullOrEmpty()) {
+                null
+            } else {
+                val sub = substitutionOf(d)
+                val seen = family.map { CppClassFacts.Declared(it.method, it.via.substitute(sub) as KType.Nominal) }
+                if (disagreement(seen) == null) seen else null
+            }
+            owedMemo[d] = owed
+            return owed
+        } finally {
+            owedAnswering.remove(d)
+        }
     }
+
+    /**
+     * [owedBy]'s answers. Each one asks [disagreement] of the family above it, which asks
+     * [rootOf] of every member, which asks [owedBy] again one level up: unremembered, that
+     * is exponential in the depth of an override chain (a 3-parameter override at each of
+     * 10 levels took 40 s to emit, 14 did not finish in 9 minutes; measured), remembered it
+     * is one answer per declaration.
+     */
+    private val owedMemo = HashMap<CppClassFacts.Declared, List<CppClassFacts.Declared>?>()
+    private val owedAnswering = HashSet<CppClassFacts.Declared>()
+    private val rootMemo = HashMap<CppClassFacts.Declared, CppClassFacts.Declared>()
 
     /**
      * The declaration whose spelling C++ gives [d]: the one at the root of what [d]
@@ -472,11 +501,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * `std::int32_t` (gcc "marked override, but does not override" on Leaf, measured).
      */
     private fun rootOf(d: CppClassFacts.Declared): CppClassFacts.Declared {
+        rootMemo[d]?.let { return it }
         var cur = d
         val visited: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
         while (visited.add(cur.method)) {
-            cur = owedBy(cur)?.first() ?: return cur
+            cur = owedBy(cur)?.first() ?: break
         }
+        rootMemo[d] = cur
         return cur
     }
 
@@ -561,7 +592,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * The parameters of [fn] that an override takes by `const&` where its own declaration
      * takes them by value ([overrideParams] against [writtenParam]): a scalar, a `Bool`, an
      * enum, a view, a pointer. Each is copied into a local of the parameter's own name at the
-     * top of the definition ([valueCopies]), so the body reads the value the caller passed,
+     * top of the definition ([valueCopy]), so the body reads the value the caller passed,
      * as Kira's declaration says, where the reference would alias the argument's place: a
      * class's plain `fx` may write a field (D29), and `f.take(g.n)` with `take` writing `n`
      * before it returns `v` gave 101 for the 1 Kira and the JS backend give (measured on
@@ -573,15 +604,26 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return fn.params.filterIndexed { i, p -> owed[i] != null && !p.byRef && ctx.speller.byValue(p.type) && placement.bodyNames(fn, p) }
     }
 
-    /** The reference parameter's name in a definition that copies it ([copiedParams]): `v_`, never a Kira name. */
-    private fun referenceName(p: ParamSymbol): String = "${ctx.paramName(p)}_"
+    /**
+     * The name of each copied parameter's reference in the definition being written
+     * ([copiedParams]): `vRef_` for `v`, a name of the classes part's own ([bodyName]).
+     * `v_` was the `t0_` of the statement part's first D33 temporary for a parameter named
+     * `t0`, and the `ex_` of its catch variable for one named `ex`, either of which then
+     * shadowed the parameter (g++ -Werror=shadow, measured); for a synthesized `x_p0_` it
+     * was the reserved `x_p0__`.
+     */
+    private fun referenceNames(fn: FnSymbol): List<Pair<ParamSymbol, String>> =
+        copiedParams(fn).map { p -> p to bodyName(ctx.paramName(p), "Ref") }
 
-    /** `const std::int32_t v = v_;` for each copied parameter of [fn], the type its own declaration spells (alias-aware). */
-    private fun valueCopies(fn: FnSymbol): List<String> = copiedParams(fn).map { p ->
-        val node = (p.decl as? FunctionDeclParameterExpr)?.typeSpecifier
-        val type = if (node != null && model.typeOf(node) != null) ctx.spell(node, Pos.VALUE) else ctx.spell(p.type, Pos.VALUE, p.decl ?: fn.decl)
-        "const $type ${ctx.paramName(p)} = ${referenceName(p)};"
-    }
+    /**
+     * `const std::int32_t v = vRef_;`: the local that copies the reference [reference] of [p],
+     * of the type [fn]'s own declaration gives the parameter (alias-aware), which is a value
+     * type ([copiedParams]); a pointer (`Unsafe<X>`, `CStr`, an opaque class) keeps its own
+     * `const` where the pointee's is, `const std::int32_t* const v`, `Handle* const v`,
+     * never `const const std::int32_t*` or a `const Handle*` the handle's callee refuses.
+     */
+    private fun valueCopy(fn: FnSymbol, p: ParamSymbol, reference: String): String =
+        "${constLocal(ownParam(fn, p))} ${ctx.paramName(p)} = $reference;"
 
     /** [owner] named by its own type parameters, `Source<T>`: the substitution under which its declarations are spelled as written. */
     private fun identityOf(owner: TypeSymbol): KType.Nominal = KType.Nominal(owner, owner.typeParams.map { TypeArg.Ty(KType.Param(it)) })
@@ -771,18 +813,19 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
     /**
      * `R Owner::name(params) const { ... }`. A parameter the override takes by reference
-     * where its own declaration takes it by value is named `v_` here and copied into `v`
-     * before the body ([valueCopies]), so the body sees the value, as written.
+     * where its own declaration takes it by value is named `vRef_` here ([referenceNames]) and
+     * copied into `v` before the body ([valueCopy]), so the body sees the value, as written.
      */
     private fun methodDefinition(w: CppWriter, owner: TypeSymbol, fn: FnSymbol, inline: Boolean) {
         fn.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
         ctx.parts.generics.templateHead(ctx, owner.typeParams)?.let { w.line(it) }
         templateHead(fn).forEach { w.line(it) }
-        val params = paramsText(fn, withDefault = false, markUnused = true, asReference = copiedParams(fn))
+        val references = referenceNames(fn)
+        val params = paramsText(fn, withDefault = false, markUnused = true, references = references)
         val constSuffix = constSuffix(fn)
         val head = "${inlineSpecifier(owner, inline, isTemplate(fn))}${returnText(fn)} ${qualifier(owner)}${ctx.names.escape(fn.name)}($params)$constSuffix"
         w.block(head) {
-            valueCopies(fn).forEach { line(it) }
+            references.forEach { (p, reference) -> line(valueCopy(fn, p, reference)) }
             ctx.body(fn, fn.body ?: emptyList(), this)
         }
     }
@@ -1095,8 +1138,11 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val spilled = mutableListOf<String>()
         if (impure.size >= 2) {
             init.sourceOrder.filter { it in impure }.forEach { i ->
-                val temp = ctx.fresh("t")
-                spilled += "const ${ctx.spell(types[i], Pos.VALUE, e)} $temp = ${argument((fields[i] as FieldInit.Given).expr)};"
+                // `t0_Arg_`, never the `t0_` of a spilled call around the construction ([bodyName]).
+                val temp = bodyName(ctx.fresh("t"), "Arg")
+                // The field's own column: a `mut` field's Unsafe<X> is the `X*` its constructor parameter takes, not `const X*`.
+                val column = if (fields[i].field.isMut) Pos.MUT_VALUE else Pos.FIELD
+                spilled += "${constLocal(ctx.spell(types[i], column, e))} $temp = ${argument((fields[i] as FieldInit.Given).expr)};"
                 texts[i] = temp
             }
         }
@@ -1106,7 +1152,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             }
             texts[i] = when (val f = fields[i]) {
                 is FieldInit.Given -> argument(f.expr)
-                is FieldInit.Default -> f.field.default?.let { skippedDefault(it, types[i], e) } ?: "${ctx.spell(types[i], Pos.VALUE, e)}{}"
+                is FieldInit.Default -> f.field.default?.let { skippedDefault(it, types[i], e) } ?: valueInitialized(ctx.spell(types[i], if (f.field.isMut) Pos.MUT_VALUE else Pos.FIELD, e))
             }
         }
         val call = "std::make_shared<$target>(${texts.joinToString(", ")})"
@@ -1143,6 +1189,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return typedLiteral(default, text, type.prim)
     }
 
+    /**
+     * A value-initialized [type] as an argument (D38): `T{}`, or for a pointer spelling
+     * `static_cast<const std::int32_t*>(nullptr)`, since `const std::int32_t*{}` and
+     * `Handle*{}` are no expression (a functional cast takes one simple type name).
+     */
+    private fun valueInitialized(type: String): String = if (type.endsWith("*")) "static_cast<$type>(nullptr)" else "$type{}"
+
     /** [text], the C++ of [e], as `T{text}` when [e] is an integer literal and [prim] narrower than `int`. */
     private fun typedLiteral(e: Expr, text: String, prim: Prim?): String {
         val literal = e is IntegerLiteral || (e is UnaryExpr && e.operator == UnaryOp.NEG && e.operand is IntegerLiteral)
@@ -1157,6 +1210,35 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     }
 
     companion object {
+        /**
+         * [type] as the type of a `const` local: `const std::int32_t`, `const kira::Str`, and
+         * for a pointer the pointer itself const, `const std::int32_t* const`, `Handle* const`,
+         * `const char* const`. A `const` in front of a pointer spelling would say
+         * `const const std::int32_t*` for an `Unsafe<Int32>` (gcc "duplicate 'const'", clang
+         * -Wduplicate-decl-specifier, MSVC C4114) and `const Handle*` for an opaque handle,
+         * which no function taking the handle accepts (measured).
+         */
+        fun constLocal(type: String): String = if (type.endsWith("*")) "$type const" else "const $type"
+
+        /**
+         * A name the classes part declares inside a body, [base] then [mark] then `_`: a
+         * copied parameter's reference (`vRef_`) and a construction's D33 temporaries
+         * (`t0_Arg_`). [mark] starts with an uppercase letter, which no name the statement
+         * part or [CppNames.fresh] synthesizes has (both lowercase every stem), and the name
+         * has an underscore beside a lowercase letter, which no Kira name has (the lexer
+         * allows an underscore only in UPPER_SNAKE_CASE). The statement part draws its
+         * temporaries from a pool of its own that never sees the context's [CppNames], so a
+         * lowercase name of ours could be one of its names: a construction's `t0_` inside a
+         * spilled call's `t0_` shadowed it, as did a reference `t0_` for a parameter `t0`
+         * (g++ -Werror=shadow, measured). A name of this shape can neither shadow nor be
+         * shadowed by anything the body spells around it, and [base] (a parameter's C++
+         * name, or a name [CppNames.fresh] never repeats) keeps two of them apart.
+         */
+        fun bodyName(base: String, mark: String): String {
+            require(mark.firstOrNull()?.isUpperCase() == true && mark.drop(1).all { it.isLowerCase() }) { "a body name's mark is Capitalized: '$mark'" }
+            return "$base${mark}_"
+        }
+
         /** A class member's indent inside `public:` / `private:`, and a mem-initializer's under its constructor. */
         const val MEMBER_INDENT = "    "
         const val ANONYMOUS = DeclarationCollector.ANONYMOUS

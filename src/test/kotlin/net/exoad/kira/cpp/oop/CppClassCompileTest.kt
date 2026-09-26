@@ -564,13 +564,118 @@ class CppClassCompileTest {
                 return side
             }
         }
+
+        // Overrides of a generic v: T at a pointer (`X* const&`), each copying v as the
+        // pointer its own declaration takes; the driver defines the bodyless functions.
+        pub @_opaque class Handle
+
+        pub fx peek: (p: Unsafe<Int32>) Int32;
+        pub fx len: (s: CStr) Int32;
+        pub fx useIt: (h: Handle) Int32;
+        pub fx cell: () Unsafe<Int32>;
+        pub fx open: () Handle;
+
+        pub trait Sink<T> {
+            pub fx put: (v: T) Int32;
+        }
+
+        pub class PSink: Sink<Unsafe<Int32>> {
+            override pub fx put: (v: Unsafe<Int32>) Int32 {
+                return peek(v)
+            }
+        }
+
+        pub class CSink: Sink<CStr> {
+            override pub fx put: (v: CStr) Int32 {
+                return len(v)
+            }
+        }
+
+        pub class HSink: Sink<Handle> {
+            override pub fx put: (v: Handle) Int32 {
+                return useIt(v)
+            }
+        }
+
+        pub fx makePSink: () Sink<Unsafe<Int32>> {
+            return PSink {}
+        }
+
+        pub fx makeCSink: () Sink<CStr> {
+            return CSink {}
+        }
+
+        pub fx makeHSink: () Sink<Handle> {
+            return HSink {}
+        }
+
+        // A construction's D33 temporaries of pointer type, and pointer fields value-initialized.
+        pub class PtrHolder {
+            require pub p: Unsafe<Int32>
+            require pub h: Handle
+        }
+
+        pub class Loose {
+            pub p: Unsafe<Int32>
+            pub h: Handle
+            require pub n: Int32
+        }
+
+        pub fx makePtrHolder: () PtrHolder {
+            return PtrHolder { h = open(), p = cell() }
+        }
+
+        pub fx makeLoose: () Loose {
+            return Loose { n = 1 }
+        }
     """
 
     private val driver = """
         #include "src/oop/shapes.kira.hxx"
 
         #include <cstdio>
+        #include <cstring>
         #include <memory>
+
+        namespace shapes
+        {
+          class Handle
+          {
+          public:
+              std::int32_t n = 9;
+          };
+        }
+
+        namespace
+        {
+          std::int32_t cellValue = 5;
+          shapes::Handle theHandle;
+        }
+
+        std::int32_t shapes::peek(const std::int32_t* p)
+        {
+            return *p;
+        }
+
+        std::int32_t shapes::len(const char* s)
+        {
+            return static_cast<std::int32_t>(std::strlen(s));
+        }
+
+        std::int32_t shapes::useIt(Handle* h)
+        {
+            return h->n;
+        }
+
+        const std::int32_t* shapes::cell()
+        {
+            return &cellValue;
+        }
+
+        shapes::Handle* shapes::open()
+        {
+            return &theHandle;
+        }
 
         namespace
         {
@@ -651,6 +756,11 @@ class CppClassCompileTest {
             check(alias->take(alias->n) == 1 && alias->n == 100, "an override taken by const& reads the value it was passed, not the field it writes");
             const shapes::Tile tile{};
             check(tile.scaled(2) == 2 && tile.unit() == 3, "a trait default's parameter named as the copying struct's field");
+            const std::int32_t seven = 7;
+            check(shapes::makePSink()->put(&seven) == 7 && shapes::makeCSink()->put("abcd") == 4 && shapes::makeHSink()->put(shapes::open()) == 9, "an override at a pointer copies it as the pointer it takes: Unsafe, CStr, an opaque handle");
+            const kira::Rc<shapes::PtrHolder> held = shapes::makePtrHolder();
+            const kira::Rc<shapes::Loose> loose = shapes::makeLoose();
+            check(held->p == shapes::cell() && held->h == shapes::open() && loose->p == nullptr && loose->h == nullptr && loose->n == 1, "a construction spills pointers into const pointers and value-initializes a skipped one");
             std::printf("%d checks, %d failed\n", checks, failures);
             return failures == 0 ? 0 : 1;
         }
@@ -681,7 +791,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("30 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("32 checks, 0 failed"), run.stdout)
             }
         }
     }

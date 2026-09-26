@@ -5,15 +5,20 @@ import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.backend.codegen.cpp.ClassLowering
 import net.exoad.kira.compiler.backend.codegen.cpp.CppClassEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitContextImpl
 import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitParts
 import net.exoad.kira.compiler.backend.codegen.cpp.CppGenericsEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
+import net.exoad.kira.compiler.backend.codegen.cpp.CppNames
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
+import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.function.ThrowingSupplier
+import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -1003,7 +1008,7 @@ class CppClassShapeTest {
             }
             """
         ).source(uri)
-        assertContains(s, "      return [&]() -> kira::Rc<Pair> { const std::int32_t t0_ = second(); const std::int32_t t1_ = first(); return std::make_shared<Pair>(t1_, t0_); }();")
+        assertContains(s, "      return [&]() -> kira::Rc<Pair> { const std::int32_t t0_Arg_ = second(); const std::int32_t t1_Arg_ = first(); return std::make_shared<Pair>(t1_Arg_, t0_Arg_); }();")
     }
 
     @Test
@@ -1867,15 +1872,15 @@ class CppClassShapeTest {
             "      [[nodiscard]] bool take(const bool& v) const override;\n      void keep(bool& v) const override;",
             "      [[nodiscard]] Mode take(const Mode& v) const override;\n      void keep(Mode& v) const override;",
         )
-        // The definition takes the reference as v_ and copies it into v: the body reads the
+        // The definition takes the reference as vRef_ and copies it into v: the body reads the
         // value the caller passed, never the argument's place (a class's plain fx may write a
         // field, D29, and f.take(g.n) with take writing n returned the written n; measured).
         assertContains(
             s,
-            "  std::int32_t Five::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }",
+            "  std::int32_t Five::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }",
             "  void Five::keep(std::int32_t& v) const\n  {\n      static_cast<void>(v = 1);\n  }",
-            "  bool Flag::take(const bool& v_) const\n  {\n      const bool v = v_;\n      return v;\n  }",
-            "  Mode Which::take(const Mode& v_) const\n  {\n      const Mode v = v_;\n      return v;\n  }",
+            "  bool Flag::take(const bool& vRef_) const\n  {\n      const bool v = vRef_;\n      return v;\n  }",
+            "  Mode Which::take(const Mode& vRef_) const\n  {\n      const Mode v = vRef_;\n      return v;\n  }",
         )
     }
 
@@ -1904,7 +1909,7 @@ class CppClassShapeTest {
         assertContains(h, "      [[nodiscard]] Count take(const std::int32_t& v, const std::int32_t& w) const override;\n      [[nodiscard]] kira::Str name(const kira::Str& s) const override;")
         assertContains(
             s,
-            "  Count Five::take(const std::int32_t& v_, [[maybe_unused]] const std::int32_t& w) const\n  {\n      const Count v = v_;\n      return v;\n  }",
+            "  Count Five::take(const std::int32_t& vRef_, [[maybe_unused]] const std::int32_t& w) const\n  {\n      const Count v = vRef_;\n      return v;\n  }",
             "  kira::Str Five::name(const kira::Str& s) const\n  {\n      return s;\n  }",
         )
     }
@@ -1952,8 +1957,8 @@ class CppClassShapeTest {
         )
         assertContains(
             s,
-            "  std::int32_t Leaf::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }",
-            "  std::int32_t Narrow::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }",
+            "  std::int32_t Leaf::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }",
+            "  std::int32_t Narrow::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }",
         )
     }
 
@@ -2100,7 +2105,7 @@ class CppClassShapeTest {
             "      [[nodiscard]] virtual std::int32_t take(const T& v) const;",
             "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;",
         )
-        assertContains(s, "  std::int32_t IntBase::take(const std::int32_t& v_) const\n  {\n      const std::int32_t v = v_;\n      return v;\n  }")
+        assertContains(s, "  std::int32_t IntBase::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }")
     }
 
     @Test
@@ -2296,5 +2301,139 @@ class CppClassShapeTest {
             "      [[nodiscard]] std::int32_t f() const override;\n  };",
         )
         assertContains(s, "  std::int32_t S::f() const\n  {\n      return 7;\n  }", "  std::int32_t C::f() const\n  {\n      return Def::f();\n  }", "      return std::make_shared<C>();")
+    }
+
+    @Test
+    fun anOverrideCopiesAPointerWithThePointeesConstWhereItWas() {
+        // Sink<T>'s v: T is const T&, which at a pointer is `X* const&` (the const binds to
+        // T). The copy is the parameter as its own declaration spells it, made const as a
+        // pointer is: `const const std::int32_t* v` was a duplicate const (gcc, clang,
+        // MSVC C4114) and `const Handle* v` a handle useIt(Handle*) refused (measured).
+        val (h, s) = both(
+            """
+            pub @_opaque class Handle
+            pub fx peek: (p: Unsafe<Int32>) Int32;
+            pub fx len: (s: CStr) Int32;
+            pub fx useIt: (h: Handle) Int32;
+            pub trait Sink<T> {
+                pub fx put: (v: T) Int32;
+            }
+            pub class PSink: Sink<Unsafe<Int32>> {
+                override pub fx put: (v: Unsafe<Int32>) Int32 {
+                    return peek(v)
+                }
+            }
+            pub class CSink: Sink<CStr> {
+                override pub fx put: (v: CStr) Int32 {
+                    return len(v)
+                }
+            }
+            pub class HSink: Sink<Handle> {
+                override pub fx put: (v: Handle) Int32 {
+                    return useIt(v)
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "  class PSink final : public Sink<const std::int32_t*>\n",
+            "      [[nodiscard]] std::int32_t put(const std::int32_t* const& v) const override;",
+            "  class CSink final : public Sink<const char*>\n",
+            "      [[nodiscard]] std::int32_t put(const char* const& v) const override;",
+            "  class HSink final : public Sink<Handle*>\n",
+            "      [[nodiscard]] std::int32_t put(Handle* const& v) const override;",
+        )
+        assertContains(
+            s,
+            "  std::int32_t PSink::put(const std::int32_t* const& vRef_) const\n  {\n      const std::int32_t* const v = vRef_;\n      return peek(v);\n  }",
+            "  std::int32_t CSink::put(const char* const& vRef_) const\n  {\n      const char* const v = vRef_;\n      return len(v);\n  }",
+            "  std::int32_t HSink::put(Handle* const& vRef_) const\n  {\n      Handle* const v = vRef_;\n      return useIt(v);\n  }",
+        )
+        assertLacks(s, "const const", "const Handle*")
+    }
+
+    @Test
+    fun aCopiedParametersReferenceIsANameNoOtherPartSpells() {
+        // The statement part's temporaries are t0_, t1_ and its catch variable ex_, from a pool
+        // that never sees the context's names: a reference named `<param>_` was t0_ for a
+        // parameter t0 and shadowed the body's first D33 temporary (g++ -Werror=shadow,
+        // measured). A body name has an uppercase mark, which no synthesized name has.
+        val s = emit(
+            """
+            pub trait Src<T> {
+                pub fx take: (t0: T, ex: T) Int32;
+            }
+            pub class C: Src<Int32> {
+                override pub fx take: (t0: Int32, ex: Int32) Int32 {
+                    return t0
+                }
+            }
+            """
+        ).source(uri)
+        assertContains(s, "  std::int32_t C::take(const std::int32_t& t0Ref_, [[maybe_unused]] const std::int32_t& ex) const\n  {\n      const std::int32_t t0 = t0Ref_;\n      return t0;\n  }")
+        assertLacks(s, "t0_", "ex_")
+        listOf(ClassLowering.bodyName("v", "Ref"), ClassLowering.bodyName("t0_", "Arg"), ClassLowering.bodyName("x_p0_", "Ref")).forEach { name ->
+            assertTrue(!CppNames.isSynthesized(name) && name.contains('_') && name.any { it.isLowerCase() } && !name.contains("__"), name)
+        }
+    }
+
+    @Test
+    fun aDeepOverrideChainIsEmittedWithoutRepeatingItsQuestions() {
+        // Each override asks what the family above it spells, which asks the same of each
+        // member one level up: unremembered that was exponential in the depth (a 3-parameter
+        // override at each of 10 levels took 40 s to emit, 14 did not finish in 9 minutes;
+        // measured). 14 levels now emit in well under a second; the ceiling is generous.
+        val levels = 14
+        val program = buildString {
+            append("pub trait Source<T> {\n    pub fx f: (a: T, b: T, c: T) T;\n}\n")
+            for (i in 1..levels) {
+                val parent = if (i == 1) "Source<Int32>" else "L${i - 1}"
+                append("pub class L$i: $parent {\n    override pub fx f: (a: Int32, b: Int32, c: Int32) Int32 {\n        return a\n    }\n}\n")
+            }
+        }
+        val (h, s) = assertTimeoutPreemptively(Duration.ofSeconds(60), ThrowingSupplier { both(program) })
+        assertContains(
+            h,
+            "  class L$levels final : public L${levels - 1}\n",
+            "      [[nodiscard]] std::int32_t f(const std::int32_t& a, const std::int32_t& b, const std::int32_t& c) const override;",
+        )
+        assertContains(s, "  std::int32_t L$levels::f(const std::int32_t& aRef_, [[maybe_unused]] const std::int32_t& b, [[maybe_unused]] const std::int32_t& c) const\n  {\n      const std::int32_t a = aRef_;\n      return a;\n  }")
+    }
+
+    @Test
+    fun aConstructionSpillsAndFillsPointersInTheirOwnColumn() {
+        // D33's temporaries are const locals of the field's own column, a pointer's const on
+        // the pointer (`const const std::int32_t*` was a duplicate const), and a skipped
+        // field without a default is value-initialized as a pointer can be: `Handle*{}` is no
+        // expression. The temporaries carry the classes part's mark, never a statement
+        // part's t0_ (a construction spilled inside a spilled call shadowed it; measured).
+        val s = emit(
+            """
+            pub @_opaque class Handle
+            pub fx cell: () Unsafe<Int32>;
+            pub fx open: () Handle;
+            pub class Holder {
+                require pub p: Unsafe<Int32>
+                require pub h: Handle
+            }
+            pub class Loose {
+                pub p: Unsafe<Int32>
+                pub h: Handle
+                require pub n: Int32
+            }
+            pub fx make: () Holder {
+                return Holder { h = open(), p = cell() }
+            }
+            pub fx loose: () Loose {
+                return Loose { n = 1 }
+            }
+            """
+        ).source(uri)
+        assertContains(
+            s,
+            "      return [&]() -> kira::Rc<Holder> { Handle* const t0_Arg_ = open(); const std::int32_t* const t1_Arg_ = cell(); return std::make_shared<Holder>(t1_Arg_, t0_Arg_); }();",
+            "      return std::make_shared<Loose>(static_cast<const std::int32_t*>(nullptr), static_cast<Handle*>(nullptr), 1);",
+        )
     }
 }
