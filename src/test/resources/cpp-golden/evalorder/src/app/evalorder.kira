@@ -1,0 +1,39 @@
+module "app:evalorder"
+
+// D33: Kira evaluates a call's arguments and an operator's operands left to right.
+// C++ leaves both unsequenced (gcc and clang disagree on x86-64, measured in the
+// design's probes-B/evalorder), so the emitter spills them into typed temporaries
+// whenever two or more of them are impure (R19). Every line below would print
+// something else on some compiler if it did not.
+
+mut ticks: Int32 = 0
+
+fx next: () Int32 {
+    ticks += 1
+    return ticks
+}
+
+fx sub: (a: Int32, b: Int32) Int32 {
+    return a - b
+}
+
+fx store: (mut into: Int32, tens: Int32, ones: Int32) Void {
+    into = tens * 10 + ones
+}
+
+fx main: () Void {
+    // The design's probe: 1 - 2.
+    trace(sub(next(), next()))
+    // An operator's operands: 3 - 4.
+    trace(next() - next())
+    // Nested: (5 - 6) - 7.
+    trace(sub(sub(next(), next()), next()))
+    // A mut argument is a place and stays one; its siblings are spilled: 8, 9.
+    mut slot: Int32 = 0
+    store(mut slot, next(), next())
+    trace(slot)
+    // Interpolation holes are the arguments of kira::cat: 10, then 11.
+    trace("${next()}/${next()}")
+    // One impure operand needs nothing: 12 - 100.
+    trace(sub(next(), 100))
+}
