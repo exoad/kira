@@ -282,6 +282,99 @@ class OperatorMemberCollectTest {
     }
 
     @Test
+    fun twoTraitsOfOneNameWithDifferentSignaturesConflict() {
+        // w2-9-1-parse round 2, significant issue #2: `reportConflictIfAny` used to compare only
+        // `fromChain` (a superclass) against the *first* trait found, so two traits that disagree
+        // and no superclass at all (`base == null`) returned before ever comparing them. Brief
+        // step 4 requires this regardless of a superclass: "two inherited methods of one name
+        // with different signatures are types.member.conflict... never first-found."
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait DefA {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait DefB {
+                    pub fx m: (x: Int32) Int32 { return x }
+                }
+                pub class Both: DefA, DefB {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun twoTraitsOfOneOperatorNameWithDifferentSignaturesConflict() {
+        // Same shape, operators included, and with the class itself overriding the name (the
+        // measured case: DefA/DefB's `@_op_eq_` disagree, and `Leaf3`'s own override matches only
+        // one of them). The conflict must still fire; it is not silenced just because the class
+        // resolves which base it overrides.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait EqA {
+                    pub fx @_op_eq_: (other: Int32) Bool;
+                }
+                pub trait EqB {
+                    pub fx @_op_eq_: (other: Str) Bool;
+                }
+                pub class Leaf3: EqA, EqB {
+                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun aSingleTraitOperatorMismatchIsStillTypesOverrideSignature() {
+        // Contrast for the test above: with only EqB implemented (no second trait to disagree
+        // with), the class's override is checked against EqB alone and its signature disagrees --
+        // `types.override.signature`, not `types.member.conflict`. Pins that the fix above did
+        // not turn every override mismatch into a conflict.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait EqB {
+                    pub fx @_op_eq_: (other: Str) Bool;
+                }
+                pub class Only: EqB {
+                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.override.signature")
+        assertFalse(program.diagnostics.any { it.code == "types.member.conflict" }, render(program))
+    }
+
+    @Test
+    fun aTraitOverridingItsOwnParentTraitIsNotATraitVsTraitConflict() {
+        // The fix must exclude a trait method that overrides a parent trait's method (the
+        // flatten/traitOverrides case, brief significant issue #2's last sentence): `Mid`
+        // overrides `Base0`'s `m`, and `Leaf` implements only `Mid` (whose own closure includes
+        // `Base0`). That must never register as two independent trait roots disagreeing.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait Base0 {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait Mid: Base0 {
+                    pub fx m: (x: Int32) Int32 { return x }
+                }
+                pub class Leaf: Mid {
+                }
+                """
+            )
+        }
+        assertFalse(program.diagnostics.any { it.code == "types.member.conflict" }, render(program))
+    }
+
+    @Test
     fun finalClassExtendedIsTypesClassFinal() {
         val program = phasesAAndB {
             snippet(

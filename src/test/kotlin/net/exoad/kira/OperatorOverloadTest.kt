@@ -193,6 +193,35 @@ class OperatorOverloadTest {
     }
 
     @Test
+    fun aModuleLevelMemberFormStubFailsTheSemanticPassOnCAndJS() {
+        // w2-9-1-parse round 2, significant issue #1: the test above uses a *body*, and
+        // `KiraSemanticAnalyzer.visitFunctionDecl` used to return on `functionDecl.isStub()`
+        // before ever reaching the ops.member-scope pump, so a body-less module-level
+        // `@_op_add_` (a plain declaration, no `{ ... }`) passed this pass clean on both C and
+        // JS. `kira --target c`/`--target js` exited 0 with 'Done' and no diagnostic; the C
+        // output called `op_add(a, b)` (gcc: implicit declaration of function 'op_add') and the
+        // JS threw `ReferenceError: op_add is not defined`. The stub must fail here exactly like
+        // the version with a body.
+        val badStubModule = """
+            pub class V2 {
+                pub x: Float32 = 0.0
+            }
+            pub fx @_op_add_: (a: V2, b: V2) V2;
+        """
+        val result = TestCompileSupport.compileSnippet(
+            source = wrap(badStubModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        val semantics = assertNotNull(result.semanticResults)
+        assertTrue(!semantics.isHealthy, "a body-less module-level @_op_add_ must fail the semantic pass too")
+        assertTrue(
+            semantics.diagnostics.any { it.message.contains("_op_add_") },
+            "expected a diagnostic naming '_op_add_', got: ${semantics.diagnostics.map { it.message }}"
+        )
+    }
+
+    @Test
     fun overloadedOperatorsCompileAndRun() {
         val cCompiler = TestCompileSupport.findCCompiler()
         assumeTrue(cCompiler != null, "needs a C compiler")

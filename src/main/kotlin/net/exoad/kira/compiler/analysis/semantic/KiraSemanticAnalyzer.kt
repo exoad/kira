@@ -699,14 +699,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
         // Allow intrinsics to act on functions (e.g., make them global) before entering their scope
         runIntrinsicsIfPresent(functionDecl)
-        if (functionDecl.isStub()) {
-            return
-        }
         // 1.3.5: the pre-W2.9 free form (`fx @op_add: (a: T, b: T) T`) is deprecated on every
         // target here (--target cpp refuses it outright, in w2-9-7-ops-typer); this is the
         // warning for C and JS. Checked before entering the function's own scope, so `where()`
         // still names the scope this declaration lives in: `Module` for a free operator,
-        // `Class` for a member one (classes and traits alike), which is never this form.
+        // `Class` for a member one (classes and traits alike), which is never this form. This
+        // runs even for a body-less declaration (`functionDecl.isStub()`): a module-level
+        // member-form operator with no body still passed the old ordering (the isStub() return
+        // ran first) clean, and C/JS emit then called a function that does not exist under that
+        // name (a C link error or a JS ReferenceError). So the stub return below must come
+        // after this check, not before it.
         val declName = functionDecl.name
         if (declName is IntrinsicExpr && compilationUnit.symbolTable.where() is SemanticScope.Module) {
             val opName = declName.intrinsicKey.name
@@ -735,6 +737,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     selectorLength = opName.length + 1,
                 )
             }
+        }
+        if (functionDecl.isStub()) {
+            return
         }
         val funcName = when (functionDecl.name) {
             is Identifier -> (functionDecl.name as Identifier).value

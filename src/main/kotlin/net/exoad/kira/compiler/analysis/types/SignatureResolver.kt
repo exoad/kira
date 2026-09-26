@@ -512,6 +512,11 @@ internal class SignatureResolver(private val program: TypedProgram) {
             n = sc.superclass
         }
         val implemented = traitClosure(c.traits, emptyMap()) + chain.flatMap { (sc, s) -> traitClosure(sc.traits, s) }
+        // Every trait [c] or its superclass chain names directly (`class C: A, B`, or a
+        // superclass's own `class Base: X`), each with the substitution that reaches it: the
+        // roots `fromTraits` compares against each other for `types.member.conflict` (1.3.2).
+        val traitRoots = c.traits.map { it to emptyMap<TypeParamSymbol, KType>() } +
+            chain.flatMap { (sc, s) -> sc.traits.map { it to s } }
         val quiet = c.module.isStdlib
         val ownNames = c.methods.mapTo(HashSet()) { it.name }
         for (m in c.methods) {
@@ -523,15 +528,16 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 continue
             }
             val base = fromChain(m.name, chain)
-            // Each trait's own methods, nearest trait first: the closure lists every ancestor
-            // with the substitution that reaches it, so an inherited method is found at the
-            // trait that declares it, under that trait's own type arguments. Computed even when
-            // a superclass already provides `m.name`, so the two can be compared below.
-            val viaTrait = fromTraits(m.name, implemented)
+            // One candidate per implemented trait root (1.3.2): a trait extending another and
+            // overriding this name contributes only its own declaration, never the ancestor it
+            // replaces, so two roots sharing an un-overridden ancestor's method compare equal
+            // instead of conflicting. Computed even when a superclass already provides `m.name`,
+            // so the two can be compared below.
+            val viaTraits = fromTraits(m.name, traitRoots)
             if (!quiet) {
-                reportConflictIfAny(c, m.name, m.decl, base, viaTrait)
+                reportConflictIfAny(c, m.name, m.decl, base, viaTraits)
             }
-            val target = base ?: viaTrait
+            val target = base ?: viaTraits.firstOrNull()
             if (target != null) {
                 m.overrides = target.first
                 if (!c.isStruct) {
@@ -571,7 +577,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
         val inheritedNames = (chain.flatMap { (sc, _) -> sc.methods.map { it.name } } + implemented.flatMap { (t, _) -> t.methods.map { it.name } })
             .filterTo(LinkedHashSet()) { it != DeclarationCollector.ANONYMOUS && it !in ownNames }
         for (name in inheritedNames) {
-            reportConflictIfAny(c, name, c.decl, fromChain(name, chain), fromTraits(name, implemented))
+            reportConflictIfAny(c, name, c.decl, fromChain(name, chain), fromTraits(name, traitRoots))
         }
     }
 
@@ -582,36 +588,65 @@ internal class SignatureResolver(private val program: TypedProgram) {
     ): Pair<FnSymbol, Map<TypeParamSymbol, KType>>? =
         chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == name }?.let { it to s } }
 
-    /** The nearest implemented trait (closure order) that declares [name], with its substitution. */
+    /**
+     * One candidate per trait root in [roots] that declares [name] anywhere in its own ancestry,
+     * with the substitution that reaches it. A root's own closure is walked nearest-first (a
+     * trait extending another and overriding [name] is found before the ancestor it overrides),
+     * so each root contributes at most its most-derived declaration -- never both -- and two
+     * roots that only share an un-overridden ancestor's declaration surface the *same* `FnSymbol`
+     * twice rather than a false conflict. Used by `reportConflictIfAny` to compare every
+     * independent root against the others and against a superclass (1.3.2, "never first-found"):
+     * unlike a single "nearest" pick, this keeps every root a class implements directly (or
+     * inherits via its superclass chain) in play, so two unrelated traits that disagree on one
+     * name are both seen instead of the first one silently winning.
+     */
     private fun fromTraits(
         name: String,
-        implemented: List<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>>,
-    ): Pair<FnSymbol, Map<TypeParamSymbol, KType>>? =
-        implemented.firstNotNullOfOrNull { (t, s) -> t.methods.firstOrNull { it.name == name }?.let { it to s } }
+        roots: List<Pair<KType.Nominal, Map<TypeParamSymbol, KType>>>,
+    ): List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>> =
+        roots.mapNotNull { (root, s) ->
+            traitClosure(listOf(root), s).firstNotNullOfOrNull { (t, ts) ->
+                t.methods.firstOrNull { it.name == name }?.let { it to ts }
+            }
+        }
 
     /**
-     * `types.member.conflict` (1.3.2): [base] (from a superclass) and [viaTrait] (from an
-     * implemented trait) name the same method but disagree on signature, and nothing at [anchor]
-     * (a declared member, or the class itself when it declares no member of that name) says
-     * which one is meant.
+     * `types.member.conflict` (1.3.2): two of [base] (from a superclass) and [viaTraits] (one per
+     * implemented trait root) name the same method but disagree on signature, and nothing at
+     * [anchor] (a declared member, or the class itself when it declares no member of that name)
+     * says which one is meant. Every pair is compared -- not just a superclass against the first
+     * trait -- so two traits that disagree with each other, and neither disagrees with a
+     * superclass (or there is none), still conflict.
      */
     private fun reportConflictIfAny(
         c: ClassSymbol,
         name: String,
         anchor: ASTNode?,
         base: Pair<FnSymbol, Map<TypeParamSymbol, KType>>?,
-        viaTrait: Pair<FnSymbol, Map<TypeParamSymbol, KType>>?,
+        viaTraits: List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>>,
     ) {
-        if (base == null || viaTrait == null || sameSignature(base.first, base.second, viaTrait.first, viaTrait.second)) {
-            return
+        val candidates = buildList {
+            base?.let { add(it to true) }
+            viaTraits.forEach { add(it to false) }
         }
-        program.report(
-            "types.member.conflict",
-            "${c.name} inherits two different '$name' methods: ${base.first.qualifiedName} from its superclass, " +
-                "and ${viaTrait.first.qualifiedName} from a trait it implements. Declare '$name' in ${c.name} " +
-                "to say which one it means.",
-            anchor,
-        )
+        for (i in candidates.indices) {
+            for (j in i + 1 until candidates.size) {
+                val (a, aIsSuper) = candidates[i]
+                val (b, _) = candidates[j]
+                if (sameSignature(a.first, a.second, b.first, b.second)) {
+                    continue
+                }
+                program.report(
+                    "types.member.conflict",
+                    "${c.name} inherits two different '$name' methods: ${a.first.qualifiedName} from " +
+                        "${if (aIsSuper) "its superclass" else "a trait it implements"}, and " +
+                        "${b.first.qualifiedName} from a trait it implements. Declare '$name' in ${c.name} " +
+                        "to say which one it means.",
+                    anchor,
+                )
+                return
+            }
+        }
     }
 
     /**
