@@ -463,6 +463,19 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 checkOverride(m, inherited.first, inherited.second, t.name)
             }
         }
+        // A trait that names two parents itself inherits their disagreement (1.3.2): `trait T: A,
+        // B {}`, with `A` and `B` disagreeing on one name and `T` declaring neither, must not wait
+        // for some later class to surface it. `t.parents` are this trait's own roots, exactly as
+        // `c.traits` are a class's; `fromTraits` already keeps every most-derived declaration a
+        // root's own closure disagrees on.
+        val ownNames = t.methods.mapTo(HashSet()) { it.name }
+        val parentRoots = t.parents.map { it to emptyMap<TypeParamSymbol, KType>() }
+        val parentNames = traitClosure(t.parents, emptyMap())
+            .flatMap { (pt, _) -> pt.methods.map { it.name } }
+            .filterTo(LinkedHashSet()) { it != DeclarationCollector.ANONYMOUS && it !in ownNames }
+        for (name in parentNames) {
+            reportConflictIfAny(t, name, t.decl, null, fromTraits(name, parentRoots))
+        }
     }
 
     // ---- 7. overrides ----------------------------------------------------------------------
@@ -484,6 +497,30 @@ internal class SignatureResolver(private val program: TypedProgram) {
             t.parents.forEach { visit(it, s) }
         }
         roots.forEach { visit(it, sub) }
+        return out
+    }
+
+    /**
+     * Every trait [t] extends, directly or transitively -- structural ancestry only, no
+     * substitution, since [fromTraits] only asks "is this declaration overridden by a
+     * more-derived one in the same root's closure", never a typed question. Used to drop a
+     * declaration from [fromTraits]'s frontier when some other declarer in the same closure
+     * extends it (and so replaces it), while keeping two declarers that are unrelated (a fork).
+     */
+    private fun traitAncestors(t: TraitSymbol): Set<TraitSymbol> {
+        val out = mutableSetOf<TraitSymbol>()
+        val seen = IdentityHashMap<TraitSymbol, Boolean>()
+        fun visit(x: TraitSymbol) {
+            if (seen.put(x, true) != null) {
+                return
+            }
+            for (p in x.parents) {
+                val pt = p.sym as? TraitSymbol ?: continue
+                out.add(pt)
+                visit(pt)
+            }
+        }
+        visit(t)
         return out
     }
 
@@ -589,37 +626,56 @@ internal class SignatureResolver(private val program: TypedProgram) {
         chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == name }?.let { it to s } }
 
     /**
-     * One candidate per trait root in [roots] that declares [name] anywhere in its own ancestry,
-     * with the substitution that reaches it. A root's own closure is walked nearest-first (a
-     * trait extending another and overriding [name] is found before the ancestor it overrides),
-     * so each root contributes at most its most-derived declaration -- never both -- and two
-     * roots that only share an un-overridden ancestor's declaration surface the *same* `FnSymbol`
-     * twice rather than a false conflict. Used by `reportConflictIfAny` to compare every
-     * independent root against the others and against a superclass (1.3.2, "never first-found"):
-     * unlike a single "nearest" pick, this keeps every root a class implements directly (or
-     * inherits via its superclass chain) in play, so two unrelated traits that disagree on one
-     * name are both seen instead of the first one silently winning.
+     * Every most-derived candidate for [name] within one trait root's own closure: the
+     * declarations of [name] in [root]'s closure, minus any declarer some *other* declarer in
+     * that same closure extends (transitively) -- that declarer's own declaration replaces the
+     * ancestor's for anything reaching it only through the more-derived one. Two declarers
+     * neither of which extends the other (a fork, `trait T: A, B {}` with neither `A: B` nor
+     * `B: A`) both survive, so the caller sees the disagreement instead of the first-found
+     * declaration silently winning (round 2 of this package's bug: `T` wrapping `A` and `B` gave
+     * only `A`'s declaration, so `class C: T {}` never saw `B`'s).
+     */
+    private fun frontierDeclarers(
+        root: KType.Nominal,
+        sub: Map<TypeParamSymbol, KType>,
+        name: String,
+    ): List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>> {
+        val declarers = traitClosure(listOf(root), sub).mapNotNull { (t, ts) ->
+            t.methods.firstOrNull { it.name == name }?.let { Triple(t, it, ts) }
+        }
+        return declarers
+            .filter { (t, _, _) -> declarers.none { (t2, _, _) -> t2 !== t && t in traitAncestors(t2) } }
+            .map { (_, m, ts) -> m to ts }
+    }
+
+    /**
+     * One candidate per declaration [name] resolves to across [roots], one root per trait a
+     * class or trait names directly (`class C: A, B` gives two roots; `class C: T` where
+     * `T: A, B` gives one, `T`, whose own closure may itself fork into several candidates --
+     * see [frontierDeclarers]). Used by `reportConflictIfAny` to compare every independent
+     * candidate against the others and against a superclass (1.3.2, "never first-found"): two
+     * traits that disagree on one name are both seen, however many roots or how much nesting
+     * separates them from the class, instead of the first one silently winning.
      */
     private fun fromTraits(
         name: String,
         roots: List<Pair<KType.Nominal, Map<TypeParamSymbol, KType>>>,
     ): List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>> =
-        roots.mapNotNull { (root, s) ->
-            traitClosure(listOf(root), s).firstNotNullOfOrNull { (t, ts) ->
-                t.methods.firstOrNull { it.name == name }?.let { it to ts }
-            }
-        }
+        roots.flatMap { (root, s) -> frontierDeclarers(root, s, name) }
 
     /**
-     * `types.member.conflict` (1.3.2): two of [base] (from a superclass) and [viaTraits] (one per
-     * implemented trait root) name the same method but disagree on signature, and nothing at
-     * [anchor] (a declared member, or the class itself when it declares no member of that name)
-     * says which one is meant. Every pair is compared -- not just a superclass against the first
+     * `types.member.conflict` (1.3.2): two of [base] (from a superclass; always null for a
+     * trait's own check, since a trait has none) and [viaTraits] (from [fromTraits], one entry
+     * per candidate) name the same method but disagree on signature, and nothing at [anchor] (a
+     * declared member, the class or trait itself when it declares no member of that name) says
+     * which one is meant. Every pair is compared -- not just a superclass against the first
      * trait -- so two traits that disagree with each other, and neither disagrees with a
-     * superclass (or there is none), still conflict.
+     * superclass (or there is none), still conflict, and [owner] is [ClassSymbol] or
+     * [TraitSymbol]: a trait that names two disagreeing parents inherits the same conflict
+     * (`traitOverrides`), not only the classes that later implement it.
      */
     private fun reportConflictIfAny(
-        c: ClassSymbol,
+        owner: Symbol,
         name: String,
         anchor: ASTNode?,
         base: Pair<FnSymbol, Map<TypeParamSymbol, KType>>?,
@@ -638,9 +694,9 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 }
                 program.report(
                     "types.member.conflict",
-                    "${c.name} inherits two different '$name' methods: ${a.first.qualifiedName} from " +
+                    "${owner.name} inherits two different '$name' methods: ${a.first.qualifiedName} from " +
                         "${if (aIsSuper) "its superclass" else "a trait it implements"}, and " +
-                        "${b.first.qualifiedName} from a trait it implements. Declare '$name' in ${c.name} " +
+                        "${b.first.qualifiedName} from a trait it implements. Declare '$name' in ${owner.name} " +
                         "to say which one it means.",
                     anchor,
                 )

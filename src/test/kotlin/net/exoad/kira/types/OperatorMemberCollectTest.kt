@@ -375,6 +375,80 @@ class OperatorMemberCollectTest {
     }
 
     @Test
+    fun aTraitWrappingTwoDisagreeingTraitsStillConflictsThroughTheWrapper() {
+        // w2-9-1-parse round 3, significant issue #1: `fromTraits` used to take `traitClosure`'s
+        // *first* match per root (`firstNotNullOfOrNull`), so a trait root that itself forks into
+        // two disagreeing parents (`T: A, B` here) contributed only `A`'s declaration. A class
+        // naming `A` and `B` directly already conflicted; wrapping them in a third trait must not
+        // remove the diagnostic (brief step 4, 20-revision 1.3.2: "never first-found").
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait A {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait B {
+                    pub fx m: (x: Int32) Int32 { return x }
+                }
+                pub trait T: A, B {
+                }
+                pub class C: T {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun aTraitNamingTwoDisagreeingParentsConflictsOnItsOwnDeclaration() {
+        // Same shape as above, but asks about `T` itself, never implemented by any class: `T`
+        // inherits `A` and `B`'s disagreement the moment it names both parents, so it must not
+        // wait for a class like the test above to surface the conflict.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait A {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait B {
+                    pub fx m: (x: Int32) Int32 { return x }
+                }
+                pub trait T: A, B {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun anOperatorWrappedInAThirdTraitStillConflictsThroughTheWrapper() {
+        // The measured operator case from the brief: `EqA` and `EqB` disagree on `@_op_eq_`,
+        // `EqBoth` wraps both with no declaration of its own, and `Leaf`'s own override matches
+        // only `EqA`. Before the fix, wrapping removed the diagnostic `twoTraitsOfOneOperatorName-
+        // WithDifferentSignaturesConflict` (above) pins for the unwrapped shape.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait EqA {
+                    pub fx @_op_eq_: (other: Int32) Bool;
+                }
+                pub trait EqB {
+                    pub fx @_op_eq_: (other: Str) Bool;
+                }
+                pub trait EqBoth: EqA, EqB {
+                }
+                pub class Leaf: EqBoth {
+                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
     fun finalClassExtendedIsTypesClassFinal() {
         val program = phasesAAndB {
             snippet(
