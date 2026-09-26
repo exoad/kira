@@ -2,6 +2,7 @@ package net.exoad.kira.cpp.ffi
 
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -14,6 +15,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppExternEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
+import net.exoad.kira.compiler.backend.codegen.cpp.Pos
 import net.exoad.kira.cpp.decls.DeclTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import org.junit.jupiter.api.Test
@@ -659,5 +661,78 @@ class CppExternEmitterTest {
         val header = CppWriter.normalize(emitted.header)
         assertLines(header, "KIRA_EXTERN_CHECK(C_LIMIT, std::int32_t, \"C_LIMIT\");")
         assertTrue("::C_LIMIT" !in header, "the check is spelled as the read is:\n$header")
+    }
+
+    /**
+     * A struct or an opaque class marked `c =` is spelled by its C name wherever the type
+     * appears (a check's result or parameter, a signature, a body), exactly as its sizeof and
+     * field checks name it: the type speller reads the marker through [CppExternEmitter.cppName].
+     * Read through `cpp =` alone, `@_extern(c = "cnt_state") pub struct CntState` was spelled
+     * `CntState` in the check of `cnt_get()` and `File*` for `fopen`'s result, and the header
+     * failed with 'CntState was not declared' (measured, g++ 13.2): the normal case for C,
+     * where the C name is snake_case and the Kira name is not. A C struct its header never
+     * typedefs is named with its keyword, and the global `::` goes after it.
+     */
+    @Test
+    fun aCTypeIsSpelledByItsCNameWhereverTheTypeAppears() {
+        val (emitted, ctx) = emit(
+            """
+            @_extern(c = "cnt_state", header = "cnt.h")
+            pub struct CntState {
+                pub n: Int32 = 0
+            }
+
+            @_extern(c = "cnt_get", header = "cnt.h")
+            pub fx cntGet: () CntState;
+
+            @_extern(c = "cnt_put", header = "cnt.h")
+            pub fx cntPut: (mut s: CntState) Void;
+
+            @_extern(c = "struct raw_pt", header = "cnt.h")
+            pub struct RawPt {
+                pub x: Int32 = 0
+            }
+
+            @_extern(c = "raw_origin", header = "cnt.h")
+            pub fx rawOrigin: () RawPt;
+
+            @_opaque @_extern(c = "FILE", header = "stdio.h")
+            pub class File {
+            }
+
+            @_extern(c = "fopen", header = "stdio.h")
+            pub fx fopen: (path: CStr, mode: CStr) File;
+            """
+        )
+        val errors = emitted.diagnostics.filter { it.isError }
+        assertTrue(errors.isEmpty(), "errors:\n" + errors.joinToString("\n") { it.render() })
+        val header = CppWriter.normalize(emitted.header)
+        assertLines(
+            header,
+            "static_assert(sizeof(cnt_state) == sizeof(ext::ffi_::CntState), \"Kira's CntState no longer matches its C++ header\");",
+            "KIRA_EXTERN_FIELD(cnt_state, ext::ffi_::CntState, n, std::int32_t, \"CntState.n\");",
+            "KIRA_EXTERN_CHECK(cnt_get(), cnt_state, \"cntGet\");",
+            "KIRA_EXTERN_CHECK((cnt_put(kira::ffi::out(std::declval<cnt_state&>())), 0), int, \"cntPut\");",
+            "static_assert(sizeof(struct raw_pt) == sizeof(ext::ffi_::RawPt), \"Kira's RawPt no longer matches its C++ header\");",
+            "KIRA_EXTERN_CHECK(raw_origin(), struct raw_pt, \"rawOrigin\");",
+            "KIRA_EXTERN_CHECK(fopen(std::declval<const char*>(), std::declval<const char*>()), FILE*, \"fopen\");",
+        )
+        // A plain "CntState," or "RawPt," substring check also matches the twin's own
+        // sizeof/field-check message text ("Kira's CntState no longer matches..."), which
+        // names the Kira type on purpose; the regression this guards is the check or field
+        // macro's *type argument* reading the Kira name instead of the C one.
+        assertTrue(
+            "KIRA_EXTERN_CHECK(cnt_get(), CntState, \"cntGet\");" !in header &&
+                "KIRA_EXTERN_CHECK(raw_origin(), RawPt, \"rawOrigin\");" !in header &&
+                "File*" !in header,
+            "the Kira name never stands for the C type:\n$header",
+        )
+        fun fn(name: String): FnSymbol = ctx.symbol.members[name] as FnSymbol
+        assertEquals("::cnt_state", ctx.spell(fn("cntGet").ret, Pos.RETURN))
+        assertEquals("::cnt_state&", ctx.spell(fn("cntPut").params.single().type, Pos.MUT_PARAM))
+        assertEquals("struct ::raw_pt", ctx.spell(fn("rawOrigin").ret, Pos.VALUE))
+        assertEquals("::FILE*", ctx.spell(fn("fopen").ret, Pos.RETURN))
+        assertEquals("::cnt_get", CppExternEmitter.globalName(fn("cntGet")))
+        assertEquals("struct ::raw_pt", CppExternEmitter.globalName(ctx.symbol.members["RawPt"] as ClassSymbol))
     }
 }

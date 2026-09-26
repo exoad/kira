@@ -138,10 +138,25 @@ object CppExternEmitter : CppExternsPart {
         return ExternIntrinsic.C in params && ExternIntrinsic.CPP !in params && POSITIONAL !in params
     }
 
-    /** [cppName] as an expression names it from anywhere: with a leading `::`. */
+    /**
+     * [cppName] as an expression or a type names it from anywhere: with a leading `::`. A C
+     * struct a header never typedefs is named with its keyword (`c = "struct cnt_state"`),
+     * and the `::` goes after it: `struct ::cnt_state` is the elaborated type, `::struct` is
+     * nothing.
+     */
     fun globalName(sym: Symbol): String = global(cppName(sym))
 
-    private fun global(name: String): String = if (name.startsWith("::")) name else "::$name"
+    private fun global(name: String): String {
+        if (name.startsWith("::")) {
+            return name
+        }
+        val keyword = ELABORATED.firstOrNull { name.startsWith("$it ") } ?: return "::$name"
+        val rest = name.removePrefix("$keyword ").trimStart()
+        return if (rest.startsWith("::")) "$keyword $rest" else "$keyword ::$rest"
+    }
+
+    /** The keywords a C type may be named with when its header declares no typedef. */
+    private val ELABORATED = listOf("struct", "union", "enum")
 
     /** The `header =` of [sym]'s marker, or null. */
     fun headerOf(sym: Symbol): String? = externOf(sym)?.params?.get(ExternIntrinsic.HEADER)

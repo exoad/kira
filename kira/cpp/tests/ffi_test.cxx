@@ -140,6 +140,16 @@ namespace fake
   {
       return std::optional<const char*>(nullptr);
   }
+  // A struct-returning call, whose result is never named: the everyday ImGui shape
+  // (GetContentRegionAvail().x), where the member access is on a temporary. field<T>
+  // taking M& (round 5) refused to bind here at all (g++: cannot bind non-const lvalue
+  // reference of type float& to an rvalue; clang: no matching function for call to
+  // field; MSVC: rc 2, measured), which the round-4 lowering did not hit since it kept
+  // the call's own type. field<T> must take the member's value category as it comes.
+  Vec2 mk()
+  {
+      return Vec2{3.5f, 7.5f};
+  }
 }
 
 // ---- the checks an extern module would state (design 7.2, literally) --------------------
@@ -400,6 +410,13 @@ static_assert(std::is_same_v<decltype(kira::ffi::field<float>(std::declval<const
 static_assert(std::is_same_v<decltype(kira::ffi::field<fake::ModeInt>(std::declval<fake::Cfg&>().mode)), fake::ModeInt>, "field<T> of an enum member is the integer, by value");
 static_assert(std::is_same_v<decltype(kira::ffi::field<std::int32_t>(std::declval<fake::CPt&>().x)), std::int32_t>
               || std::is_same_v<decltype(kira::ffi::field<std::int32_t>(std::declval<fake::CPt&>().x)), std::int32_t&>, "field<Int32> of a C int member is an Int32 on every target (the lvalue where int is int32_t)");
+// field<T> of a member reached through a temporary (fake::mk(), never named): a value,
+// not a reference to a part of the temporary, which is what the emitter writes for a
+// struct-returning call's field read (kira::ffi::field<T>(kira::ffi::declared<S>(call()).x)),
+// the everyday ImGui shape (GetContentRegionAvail().x). field<T> taking M& refused to
+// bind this at all (round 5's regression, measured on g++, clang and MSVC).
+static_assert(std::is_same_v<decltype(kira::ffi::field<float>(kira::ffi::declared<fake::Vec2>(fake::mk()).x)), float>, "field<Float32> of a temporary struct's member is a value, never a reference into it");
+static_assert(std::is_same_v<decltype(kira::ffi::field<float>(fake::mk().x)), float>, "field<Float32> of a plain temporary's member is a value the same way");
 #if KIRA_PROFILE_HOSTED
 // A Fn's parameters match in the direction the argument flows (the head of kira/ffi.hxx):
 // Kira calls a C++ callable with Kira's values, so a `std::function<void(const std::string&)>`
@@ -516,6 +533,11 @@ int main()
     check(n == 12, "out(field<Int32>(n)) still binds the member");
     fake::Cfg cfg{fake::MODE_ON, 3};
     check(kira::ffi::field<fake::ModeInt>(cfg.mode) == 1, "field<T>(cfg.mode) reads the enum member as its integer");
+    // field<T> of a member reached through a never-named temporary: builds and reads its
+    // value (round 5 built nothing at all here; the compiler refused it, no runtime check
+    // was possible).
+    check(kira::ffi::field<float>(kira::ffi::declared<fake::Vec2>(fake::mk()).x) == 3.5f, "field<Float32> of a temporary struct's member reads its value");
+    check(kira::ffi::field<float>(fake::mk().x) == 3.5f, "field<Float32> of a plain temporary's member reads its value the same way");
 
     // ---- C++ default arguments fill what Kira left out ---------------------------
     fake::calls = 0;

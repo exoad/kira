@@ -125,8 +125,35 @@ class FfiDriftCompileTest {
             int x;
             int y;
         };
+        struct PtCfg pt_cfg_get(void);
+        void pt_cfg_put(struct PtCfg* c);
         #endif
     """.trimIndent() + "\n"
+
+    /**
+     * Kira's view of `PtCfg` beside the two C functions that return and take it: the C name
+     * (`PtCfg`) differs from the Kira one (`Cfg`), the normal case for C (design 7.3's
+     * snake_case-C, PascalCase-Kira example), so a result's check, a `mut` parameter's check
+     * and the struct's own sizeof/field checks must all spell it the same way. `cfgModule`
+     * declares the same pair of names but never as a function's return or parameter type,
+     * which is exactly the gap that hid the drift (round 5's verdict): the sizeof/field
+     * checks read the C name straight off the marker (`CppExternEmitter.cppName`), while a
+     * result or a `mut` parameter's check went through the type speller, which read only
+     * `cpp =` and the Kira name.
+     */
+    private val cfgCallModule = """
+        @_extern(c = "PtCfg", header = "pt.h")
+        pub struct Cfg {
+            pub mode: Int32 = 0
+            pub n: Int32 = 0
+        }
+
+        @_extern(c = "pt_cfg_get", header = "pt.h")
+        pub fx cfgGet: () Cfg;
+
+        @_extern(c = "pt_cfg_put", header = "pt.h")
+        pub fx cfgPut: (mut c: Cfg) Void;
+    """
 
     /** Kira's view of `pt.h`'s scalar functions and its `int` struct: the declarations as given. */
     private fun scalarModule(decls: String): String = """
@@ -224,6 +251,7 @@ class FfiDriftCompileTest {
                 DynamicTest.dynamicTest("${tc.id}: the right struct, and a C header without a guard through c =, build") { ptClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a C enum field declared as the Int32 of its size builds") { enumFieldClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a C enum field declared as Int16 fails with Kira's message") { enumFieldSizeDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a struct's C name is spelled the same in its functions' checks and its own sizeof/field checks") { cCallSpellingClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a uint32_t return declared Int32 fails with Kira's message") { returnSignednessDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a uint8_t parameter declared Int32 is no viable call") { parameterWidthDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a C int field declared Int32 builds") { cIntFieldClean(tc) },
@@ -661,6 +689,33 @@ class FfiDriftCompileTest {
         assertTrue(header.contains("namespace cfg::ffi_ { struct Cfg { std::int16_t mode; std::int32_t n; }; }"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'mode: Int16' against a 4-byte C enum compiled (sizeof passes by padding):\n${result.describe()}")
         assertMessage(tc, result, "Kira's Cfg.mode ${CppExternEmitter.DRIFT_MESSAGE}")
+    }
+
+    /**
+     * `PtCfg`, declared `Cfg` through `c =`, beside `pt_cfg_get`/`pt_cfg_put`: the check's
+     * result type, the `mut` parameter's check, and the struct's own sizeof/field checks
+     * must all read `PtCfg`, never the Kira name `Cfg`. Read through `cpp =` alone
+     * (CppTypeSpeller.externName's bug, disclosed pre-existing), the result and parameter
+     * checks spelled `Cfg`, which the real header never declares, and g++ failed with
+     * "'Cfg' was not declared" instead of building.
+     */
+    private fun cCallSpellingClean(tc: CppToolchain) {
+        val header = emitHeader("c:cfgcall", cfgCallModule, CppOptions(lineDirectives = false))
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(pt_cfg_get(), PtCfg, \"cfgGet\");"), header)
+        assertTrue(header.contains("KIRA_EXTERN_CHECK((pt_cfg_put(kira::ffi::out(std::declval<PtCfg&>())), 0), int, \"cfgPut\");"), header)
+        assertTrue(
+            "KIRA_EXTERN_CHECK(pt_cfg_get(), Cfg, \"cfgGet\");" !in header &&
+                "std::declval<Cfg&>()" !in header,
+            "the Kira name 'Cfg' must never stand for 'PtCfg' in a check:\n$header",
+        )
+        val result = compile(
+            tc, "cfgcall-clean",
+            mapOf("cfgcall.kira.hxx" to header, "pt.h" to ptHeader, "main.cxx" to headerOnlyMain("cfgcall.kira.hxx")),
+            withCarDriver = false,
+        )
+        if (!result.success) {
+            fail("${tc.id}: PtCfg's C name does not build consistently across its result, mut parameter and sizeof/field checks:\n${result.describe()}")
+        }
     }
 
     private fun assertMessage(tc: CppToolchain, result: CppCompileSupport.CompileResult, wanted: String) {

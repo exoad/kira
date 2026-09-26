@@ -90,10 +90,14 @@
 // Str (ImGui's GetClipboardText returns NULL for an empty clipboard, and
 // std::string's constructor from null is a logic_error on libstdc++ and a
 // segfault on libc++, measured) and that a Maybe is converted value by value.
-// field<T>(m) is the member itself, an lvalue, when its C++ type is T (so
-// `r.x = v` and `out(r.x)` still name it), and the converted value otherwise;
-// such a field (a C `int` on arm-none-eabi, an enum) is written through an
-// extern function, as C++ would not convert an integer back to an enum.
+// field<T>(m) is the member itself, an lvalue, when its C++ type is T and the
+// struct is an lvalue (so `r.x = v` and `out(r.x)` still name it), and the value
+// otherwise: moved out of a temporary's member (`avail().x`, the ImGui shape) or
+// converted from a same-size twin; such a twin field (a C `int` on
+// arm-none-eabi, an enum) is written through an extern function, as C++ would
+// not convert an integer back to an enum. declared<T> takes a scalar by value,
+// so that reading an in-class `static const int N = 4;` with no definition is
+// no odr-use (by reference it failed to link at -O0, measured).
 // A returned or field drift fails the static_assert with Kira's message. A
 // by-value scalar, Maybe or Fn parameter is stated as `kira::ffi::arg<T>()`, a
 // proxy that converts to what matches T and to nothing else, so a Kira `v:
@@ -380,27 +384,42 @@ namespace kira::ffi
       }
   };
 #endif
-  template<class T, class V>
+  // A scalar (an arithmetic type, an enum, a pointer) is taken by value: the
+  // lvalue-to-rvalue conversion happens at the call, which is the one read of a
+  // constant that is no odr-use. Taken by reference, an extern constant declared
+  // in its class as `static const int N = 4;` with no definition outside it (the
+  // pre-C++17 idiom, still everywhere in C++ headers) linked at -O2 and failed at
+  // -O0 with 'undefined reference to Holder::N' on g++ and lld (measured).
+  template<class T, class V, std::enable_if_t<std::is_scalar_v<V>, int> = 0>
+  [[nodiscard]] constexpr T declared(V v)
+  {
+      return Declared<T>::from(static_cast<V&&>(v));
+  }
+  template<class T, class V, std::enable_if_t<!std::is_scalar_v<std::remove_cv_t<std::remove_reference_t<V>>>, int> = 0>
   [[nodiscard]] constexpr T declared(V&& v)
   {
       return Declared<T>::from(static_cast<V&&>(v));
   }
 
   // A field read of an extern struct as the type Kira declared: the member itself,
-  // an lvalue, when its C++ type is T (cv aside), so that `r.x = v` and `out(r.x)`
-  // still name it; the converted value otherwise (a C `int` field read as Int32 on
-  // arm-none-eabi, an unscoped enum field read as its integer), which the field
-  // check proved loses nothing. Such a field is written through an extern function.
+  // an lvalue, when its C++ type is T (cv aside) and the struct is an lvalue, so
+  // that `r.x = v` and `out(r.x)` still name it; the value otherwise: moved out of
+  // a member of a temporary (`declared<Vec2>(avail()).x`, the everyday ImGui shape
+  // GetContentRegionAvail().x, whose member is an xvalue; taken as `M&` the read did
+  // not compile on g++, clang or MSVC, measured), and converted where the C++ type
+  // is a same-size twin (a C `int` field read as Int32 on arm-none-eabi, an unscoped
+  // enum field read as its integer), which the field check proved loses nothing.
+  // Such a twin field is written through an extern function.
   template<class T, class M>
-  [[nodiscard]] constexpr decltype(auto) field(M& m) noexcept
+  [[nodiscard]] constexpr decltype(auto) field(M&& m) noexcept(std::is_lvalue_reference_v<M> || std::is_nothrow_constructible_v<T, M&&>)
   {
-      if constexpr(std::is_same_v<std::remove_cv_t<M>, T>)
+      if constexpr(std::is_same_v<std::remove_cv_t<std::remove_reference_t<M>>, T> && std::is_lvalue_reference_v<M>)
       {
           return (m);
       }
       else
       {
-          return static_cast<T>(m);
+          return static_cast<T>(static_cast<M&&>(m));
       }
   }
 }
