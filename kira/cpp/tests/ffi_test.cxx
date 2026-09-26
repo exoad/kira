@@ -4,8 +4,12 @@
 // same with MSVC.
 //
 // One file, three builds:
-//   hosted            the proxies and the checks; prints bibo's check format
-//   freestanding      -DKIRA_PROFILE_FREESTANDING=1 -c: Out and the macro only
+//   hosted            the proxies and the checks; prints bibo's check format.
+//                     Every runtime check exercises a proxy or a call; the
+//                     compile-time facts (the checks at file scope, the
+//                     static_asserts) have no counted line, since a compiled
+//                     program is their pass
+//   freestanding      -DKIRA_PROFILE_FREESTANDING=1 -c: Out and the macros only
 //                     (there is no Str on the Pico), for the symbol check
 //   KIRA_FFI_DRIFT    -DKIRA_FFI_DRIFT=1: a deliberately wrong Kira signature
 //                     stated as a check, which must NOT compile, and must fail
@@ -110,6 +114,15 @@ namespace fake
   {
       *seen = v;
   }
+
+  // A writable buffer: Kira's `mut p: Unsafe<UInt8>` is this uint8_t* itself (table 5.1).
+  void fill(std::uint8_t* p, std::size_t n)
+  {
+      for(std::size_t i = 0; i < n; ++i)
+      {
+          p[i] = static_cast<std::uint8_t>(i);
+      }
+  }
 }
 
 // ---- the checks an extern module would state (design 7.2, literally) --------------------
@@ -119,6 +132,31 @@ KIRA_EXTERN_CHECK((std::declval<fake::Car&>().drive(std::declval<float>(), std::
 KIRA_EXTERN_CHECK(std::declval<fake::Car&>().finish(), std::int32_t, "Car.finish");
 KIRA_EXTERN_CHECK(fake::checkbox(std::declval<const char*>(), kira::ffi::out(std::declval<bool&>())), bool, "checkbox");
 KIRA_EXTERN_CHECK(fake::checkbox(std::declval<const char*>(), kira::ffi::out(std::declval<std::int32_t&>()), std::declval<std::int32_t>()), bool, "checkboxFlags");
+KIRA_EXTERN_CHECK((fake::fill(std::declval<std::uint8_t*>(), std::declval<std::size_t>()), 0), int, "fill");
+// An extern struct with fields: the layout twin, sizeof, and the exact type and offset per field.
+namespace test::ffi_
+{
+  struct Vec2
+  {
+      float x;
+      float y;
+  };
+}
+static_assert(sizeof(fake::Vec2) == sizeof(test::ffi_::Vec2), "Kira's Vec2 no longer matches its C++ header");
+KIRA_EXTERN_FIELD(fake::Vec2, test::ffi_::Vec2, x, float, "Vec2.x");
+KIRA_EXTERN_FIELD(fake::Vec2, test::ffi_::Vec2, y, float, "Vec2.y");
+// What the field check refuses that is_convertible would not: the same size, a converting type;
+// and the same types, the other order.
+static_assert(!std::is_same_v<decltype(std::declval<fake::Vec2&>().x), int>, "a float field is not an int field");
+namespace test::swapped_
+{
+  struct Vec2
+  {
+      float y;
+      float x;
+  };
+}
+static_assert(offsetof(fake::Vec2, y) != offsetof(test::swapped_::Vec2, y), "a swapped pair is caught by its offset");
 #if KIRA_PROFILE_HOSTED
 KIRA_EXTERN_CHECK(fake::button(kira::ffi::in(std::declval<const kira::Str&>())), bool, "button");
 KIRA_EXTERN_CHECK(fake::sliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), std::declval<float>(), std::declval<float>()), bool, "sliderFloat");
@@ -182,7 +220,12 @@ int main()
     check(seen == 11, "out(x) binds to const T&");
     static_assert(!std::is_convertible_v<kira::ffi::Out<std::int32_t>, std::int32_t>,
                   "out(x) must not convert to a T by value, which would copy and write nothing");
-    check(true, "out(x) never converts to a T by value (static_assert)");
+
+    // ---- a mut Unsafe<T> is the T* itself: no proxy, and the callee writes through it ------
+    std::uint8_t bytes[4] = {9, 9, 9, 9};
+    std::uint8_t* p = bytes;
+    fake::fill(p, 4);
+    check(bytes[0] == 0 && bytes[3] == 3, "a mut Unsafe<UInt8> is the uint8_t* itself: fill wrote through it");
 
     // ---- in(s): const char*, std::string_view, const std::string& ------------------
     const kira::Str s = "kira-ffi";
@@ -214,9 +257,9 @@ int main()
           "checkbox(in(s), out(int), value) picked the int* overload");
     check(fake::calls == 4, "every call reached its C++ function once");
 
-    // ---- the checks above compiled: overloads, defaults, const receivers --------------
-    check(true, "KIRA_EXTERN_CHECK states overloads, default arguments and const receivers");
-
+    // The checks at file scope are the compile-time half: KIRA_EXTERN_CHECK states overloads,
+    // default arguments, const receivers and a T* parameter; KIRA_EXTERN_FIELD a struct's
+    // fields. That this program compiled is their pass; a wrong one is the KIRA_FFI_DRIFT build.
     std::printf("\n%d checks, %d failed\n", checks, failures);
     return failures;
 }

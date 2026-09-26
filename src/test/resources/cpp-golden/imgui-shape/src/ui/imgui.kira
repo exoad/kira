@@ -40,6 +40,11 @@ pub fx checkbox: (label: Str, mut v: Bool) Bool;
 @_extern(cpp = "ImGui::Checkbox", header = "imgui.h")
 pub fx checkboxFlags: (label: Str, mut flags: Int32, value: Int32) Bool;
 
+// InputText(label, char* buf, size_t buf_size, flags = 0): a mut Unsafe<Char> is the
+// writable char* itself (table 5.1), passed by value with no proxy.
+@_extern(cpp = "ImGui::InputText", header = "imgui.h")
+pub fx inputText: (label: Str, mut buf: Unsafe<Char>, size: Size) Bool;
+
 @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h")
 pub fx getWindowDrawList: () DrawList;
 

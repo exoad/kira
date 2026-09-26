@@ -6,8 +6,8 @@
 #include "kira/macro_push.hxx"
 namespace imgui::ffi_ { struct Vec2 { float x; float y; }; }
 static_assert(sizeof(ImVec2) == sizeof(imgui::ffi_::Vec2), "Kira's Vec2 no longer matches its C++ header");
-KIRA_EXTERN_CHECK(std::declval<ImVec2&>().x, float, "Vec2.x");
-KIRA_EXTERN_CHECK(std::declval<ImVec2&>().y, float, "Vec2.y");
+KIRA_EXTERN_FIELD(ImVec2, imgui::ffi_::Vec2, x, float, "Vec2.x");
+KIRA_EXTERN_FIELD(ImVec2, imgui::ffi_::Vec2, y, float, "Vec2.y");
 KIRA_EXTERN_CHECK((std::declval<ImDrawList&>().AddLine(std::declval<const ImVec2&>(), std::declval<const ImVec2&>(), std::declval<std::uint32_t>()), 0), int, "DrawList.addLine");
 KIRA_EXTERN_CHECK((std::declval<ImDrawList&>().AddRectFilled(std::declval<const ImVec2&>(), std::declval<const ImVec2&>(), std::declval<std::uint32_t>()), 0), int, "DrawList.addRectFilled");
 KIRA_EXTERN_CHECK(std::declval<const ImDrawList&>().VtxCount(), std::int32_t, "DrawList.vertexCount");
@@ -17,6 +17,7 @@ KIRA_EXTERN_CHECK(ImGui::SliderFloat(kira::ffi::in(std::declval<const kira::Str&
 KIRA_EXTERN_CHECK(ImGui::SliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), std::declval<float>(), std::declval<float>(), std::declval<const char*>(), std::declval<std::int32_t>()), bool, "sliderFloatFmt");
 KIRA_EXTERN_CHECK(ImGui::Checkbox(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<bool&>())), bool, "checkbox");
 KIRA_EXTERN_CHECK(ImGui::Checkbox(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<std::int32_t&>()), std::declval<std::int32_t>()), bool, "checkboxFlags");
+KIRA_EXTERN_CHECK(ImGui::InputText(kira::ffi::in(std::declval<const kira::Str&>()), std::declval<char*>(), std::declval<kira::Size>()), bool, "inputText");
 KIRA_EXTERN_CHECK(ImGui::GetWindowDrawList(), ImDrawList*, "getWindowDrawList");
 KIRA_EXTERN_CHECK(ImGuiWindowFlags_None, std::int32_t, "WINDOW_FLAGS_NONE");
 KIRA_EXTERN_CHECK(ImGuiWindowFlags_NoTitleBar, std::int32_t, "WINDOW_FLAGS_NO_TITLE_BAR");

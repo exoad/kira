@@ -2,15 +2,18 @@
 
 `src/app/shape.kira` is Kira's view of `native/shape.hxx` (a C++ class, `shape::Box`,
 and the 3-line seam `makeBox` that hands Kira a `kira::Rc<Box>`) and of `native/cshape.h`
-(three C functions). It declares, it never defines: the generated `shape.kira.hxx`
-includes the real headers and states one `KIRA_EXTERN_CHECK` per member, so a C++
-signature that drifts from the Kira one fails the C++ build with
-`Kira's Box.area no longer matches its C++ header` (design 7.2).
+(three C functions, named with `c =`). It declares, it never defines: the generated
+`shape.kira.hxx` includes the real headers (`cshape.h` inside `extern "C" { }`, design
+7.3) and states one `KIRA_EXTERN_CHECK` per member, so a C++ signature that drifts from
+the Kira one fails the C++ build with `Kira's Box.area no longer matches its C++ header`
+(design 7.2).
 
 At a call, a `Str` goes in as `kira::ffi::in(s)` (which converts to `const char*`,
 `std::string_view` or `const std::string&`, whichever the callee takes) and a `mut`
-argument goes out as `kira::ffi::out(x)` (`T&` or `T*`). `main.kira` calls a method on
-the class, a C function taking a string, and one writing through a pointer.
+argument goes out as `kira::ffi::out(x)` (`T&` or `T*`); a `mut p: Unsafe<T>` is the
+writable `T*` itself. An extern parameter takes no Kira default: leave a parameter out
+and the C++ header's own default fills it. `main.kira` calls a method on the class, a C
+function taking a string, and one writing through a pointer.
 
 ```bash
 ./gradlew installDist

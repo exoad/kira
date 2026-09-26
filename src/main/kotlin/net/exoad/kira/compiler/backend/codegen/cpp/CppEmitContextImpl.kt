@@ -141,16 +141,26 @@ interface CppExternsPart {
      */
     fun includes(ctx: CppEmitContextImpl, sym: Symbol): List<String> = emptyList()
 
+    /**
+     * The headers an extern declaration reaches with C linkage (`@_extern(c = "sym", header =
+     * "lib.h")` with no `cpp =`, design 7.3), once each. The declaration emitter writes them
+     * after [includes], inside one `extern "C" { }` block: a C header with its own
+     * `__cplusplus` guard tolerates it, one without needs it.
+     */
+    fun cIncludes(ctx: CppEmitContextImpl, sym: Symbol): List<String> = emptyList()
+
     /** The drift checks (`KIRA_EXTERN_CHECK`) for [sym], written at global scope after `kira/macro_push.hxx`. */
     fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter)
 
     /**
      * The C++ text of a call of [CallKind.EXTERN] (design 7.2): the C++ name, `kira::ffi::in`
-     * around a `Str` argument, `kira::ffi::out` around a `mut` one, a `CStr` argument from a
-     * `Str`, and `->` or `.` after [receiver] as the owner's kind says. The expression part
-     * (W2.3) spells [receiver] (null for a free function) and [args], one text per entry of
-     * [ResolvedCall.args] in parameter order up to the last one the call fills; a trailing
-     * default is the C++ header's own default argument and is not passed.
+     * around a `Str` argument, `kira::ffi::out` around a `mut` one (a `mut` `Unsafe<T>` is the
+     * `T*` itself), a `CStr` argument from a `Str`, and `->` or `.` after [receiver] as the
+     * owner's kind says. The expression part (W2.3) spells [receiver] (null for a free
+     * function) and [args], one text per entry of [ResolvedCall.args] in parameter order. An
+     * extern parameter has no Kira default ([check] refuses the declaration), so every entry
+     * is a given argument and every declared parameter is passed; the C++ header's own
+     * default arguments fill the parameters the Kira declaration leaves out.
      */
     fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String
 
