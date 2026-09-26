@@ -637,45 +637,93 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     }
 
     /** `origin.f` for field [f]. */
-    fun field(origin: Expr, f: FieldSymbol): CppEx {
+    fun field(origin: Expr, f: FieldSymbol): CppEx = fieldWith(origin, null, f)
+
+    /** [field] over [text], the origin's C++ once it was ordered as a place's part (null: spelled here). */
+    private fun fieldWith(origin: Expr, text: CppEx?, f: FieldSymbol): CppEx {
         val t = typeOf(origin)
         val name = ctx.names.escape(f.name)
         when (CppBindingTable.magicName(t)) {
             "Maybe" -> if (f.name == "value") {
                 // D40: `m.value` is `m.unwrap()`.
-                return CppEx("kira::unwrap(${emit(origin, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
+                val m = if (text != null) wrap(text, CppPrec.ASSIGN) else emit(origin, CppPrec.ASSIGN)
+                return CppEx("kira::unwrap($m)", CppPrec.POSTFIX)
             }
-            "Result" -> return CppEx("${receiverText(origin)}.${if (f.name == "error") "unwrapErr" else "unwrap"}()", CppPrec.POSTFIX)
+            "Result" -> {
+                val r = if (text != null) wrap(text, CppPrec.POSTFIX) else receiverText(origin)
+                return CppEx("$r.${if (f.name == "error") "unwrapErr" else "unwrap"}()", CppPrec.POSTFIX)
+            }
         }
-        return CppEx(access(origin, t) + name, CppPrec.POSTFIX)
+        return CppEx(accessWith(origin, text, t) + name, CppPrec.POSTFIX)
     }
 
     // ---- places (5.4) -----------------------------------------------------------------------
 
-    /** An assignment target: a variable, a field or an element, spelled as the lvalue C++ writes (`kira::at(p, 30)`, `m[k]`). */
-    fun place(target: Expr): String = when (target) {
-        is ArrayIndexExpr -> {
-            val ct = typeOf(target.originExpr)
-            if (CppBindingTable.magicName(ct) == "Map") {
-                "${emit(target.originExpr, CppPrec.POSTFIX)}[${emit(target.indexExpr, CppPrec.NONE)}]"
-            } else {
-                "kira::at(${emit(target.originExpr, CppPrec.ASSIGN)}, ${emit(target.indexExpr, CppPrec.ASSIGN)})"
-            }
-        }
-        else -> emit(target, CppPrec.UNARY)
+    /**
+     * Whether C++ holds a value of type [t] by reference where Kira reads it (design 5.1: a
+     * `const&` parameter): a `Str`, a struct, a container, a `Maybe`, a tuple, an `Fx` value,
+     * a type parameter. A scalar, a `Char`, a `Bool`, an enum, a view, an `Unsafe` and a class
+     * or trait handle are held by value, and a copy of one is the value itself.
+     */
+    fun heldByReference(t: KType): Boolean = when (t) {
+        KType.Str, is KType.Param, is KType.Fn -> true
+        is KType.Nominal -> t.sym !is EnumSymbol && !isPointerLike(t) && !isView(t)
+        else -> false
     }
 
-    /** The target of an assignment as a place operand: located in order, never copied (R19). */
-    private fun placeOperand(target: Expr): CppHoister.Operand =
-        CppHoister.Operand(target, place = true, mutable = true) { CppEx(place(target), CppPrec.UNARY) }
+    fun isView(t: KType): Boolean = CppBindingTable.magicName(t).let { it == "View" || it == "MutView" }
+
+    /** Whether [e] names a place the typer recorded: a variable, a field or an element of one (TypedModel.places). */
+    fun isPlaceExpr(e: Expr): Boolean = model.place(e) != null
+
+    /**
+     * [e] as an operand of a call, an operator or a construction: a place C++ holds by
+     * reference is a [CppHoister.Operand.Place] (its path applied where the operand is used,
+     * never copied), anything else a [CppHoister.Operand.Value] that [emit] spells.
+     */
+    fun operandOf(e: Expr, emit: () -> CppEx): CppHoister.Operand =
+        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e, emit) else CppHoister.Operand.Value(e, emit = emit)
+
+    /**
+     * [target] as a place operand: an element is `kira::at(c, i)` (`c[i]` on a Map, `kira::str::at`
+     * on a Str) over its container and index as parts, a field of a value place is `.f` over
+     * the place, a field through a handle is `->f` over the handle as a value; a variable, `this`
+     * and a field of `this` have no parts and [leaf] spells them. The path is applied at the end,
+     * over the parts as they were ordered (R19, D33).
+     */
+    fun placeOperand(target: Expr, leaf: () -> CppEx = { coerced(target) }): CppHoister.Operand = when {
+        target is ArrayIndexExpr -> {
+            val origin = target.originExpr
+            val ct = typeOf(origin)
+            val container = operandOf(origin) { coerced(origin) }
+            val index = CppHoister.Operand.Value(target.indexExpr) { coerced(target.indexExpr, CppLitRole.PLAIN) }
+            val map = CppBindingTable.magicName(ct) == "Map"
+            val at = if (ct == KType.Str) "kira::str::at" else "kira::at"
+            CppHoister.Operand.Place(target, listOf(container, index)) { (c, i) ->
+                if (map) {
+                    CppEx("${wrap(c, CppPrec.POSTFIX)}[${wrap(i, CppPrec.NONE)}]", CppPrec.POSTFIX)
+                } else {
+                    CppEx("$at(${wrap(c, CppPrec.ASSIGN)}, ${wrap(i, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
+                }
+            }
+        }
+        target is MemberAccessExpr && target.origin !is ThisExpr && model.member(target) is MemberRef.Field -> {
+            val f = (model.member(target) as MemberRef.Field).field
+            val origin = target.origin
+            val through = operandOf(origin) { coerced(origin) }
+            CppHoister.Operand.Place(target, listOf(through)) { (o) -> fieldWith(origin, o, f) }
+        }
+        else -> CppHoister.Operand.Place(target, emptyList()) { leaf() }
+    }
 
     /**
      * `place = value`. C++ runs the right side first, Kira locates the target first (D33): when
      * the value has an effect and locating the target reads anything, or the other way round,
-     * the target is bound by reference and the value copied, in order, inside an IIFE.
+     * the target's parts and the value are ordered inside an IIFE, and the path is written at
+     * the end (`kira::at(s, t0_) = t1_`).
      */
     private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
-        val ops = listOf(placeOperand(target), CppHoister.Operand(value) { coerced(value) })
+        val ops = listOf(placeOperand(target), operandOf(value) { coerced(value) })
         return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void) { (l, r) ->
             CppEx("${wrap(l, CppPrec.UNARY)} = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
         }
@@ -686,9 +734,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * widened: a division by what is not a nonzero constant is `x = kira::div(x, y)` (R11), a
      * shift by what is not a constant below the width `x = kira::shl(x, n)` (R12), a UInt16
      * product `x = static_cast<std::uint16_t>(static_cast<unsigned>(x) * y)` (D8). A rewrite
-     * names the target twice, so a target whose location holds a call is bound by reference
-     * first (`std::int32_t& r0_ = kira::at(p, nextSize());`), and D33 orders the target's
-     * reads before an impure value: the old value is copied, then the value, then the write.
+     * names the target twice, so a target whose path holds a call has that part computed once
+     * first (`const kira::Size t0_ = nextSize();` then `kira::at(p, t0_)` twice), and D33
+     * orders the target's reads before an impure value: the old value is copied, then the
+     * value, then the write.
      */
     private fun compound(target: Expr, op: BinaryOp, value: Expr, node: Expr): CppEx {
         val t = typeOf(target)
@@ -714,26 +763,22 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         } else {
             CppEx("${l.text} $sym ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, sym)
         }
-        val located = hoister.placeRank(target)
+        val targetOp = placeOperand(target)
+        val valueOp = CppHoister.Operand.Value(value) { rhs() }
+        val located = hoister.rankOf(targetOp)
         val read = hoister.rank(target)
         val given = hoister.rank(value)
-        // A rewrite names the target twice; a call in its location must run once.
+        // A rewrite names the target twice; a call in its path must run once.
         val force = rewritten && located == CppHoister.IMPURE
         // D33: the target is located and read before the value runs, and the value before the write.
         val ordered = (read == CppHoister.IMPURE || given == CppHoister.IMPURE) && read != CppHoister.PURE && given != CppHoister.PURE
-        if (!force && !ordered) {
-            return text(CppEx(place(target), CppPrec.UNARY), rhs())
+        if (!force && !ordered && !hoister.needsSpill(listOf(targetOp, valueOp))) {
+            return text(hoister.text(targetOp), rhs())
         }
         return state.block {
             val lines = mutableListOf<String>()
             val spelled = ctx.spell(t, Pos.VALUE, target)
-            val l = if (located != CppHoister.PURE) {
-                val name = state.fresh("r")
-                lines += "$spelled& $name = ${place(target)};"
-                CppEx(name, CppPrec.PRIMARY)
-            } else {
-                CppEx(place(target), CppPrec.UNARY)
-            }
+            val l = hoister.ordered(targetOp, lines)
             // The value's effect may change what the target holds: Kira read it first.
             val old = if (read != CppHoister.PURE && given == CppHoister.IMPURE) {
                 val name = state.fresh("t")
@@ -742,13 +787,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             } else {
                 l
             }
-            val r = if (given != CppHoister.PURE) {
-                val name = state.fresh("t")
-                lines += "const ${ctx.spell(typeOf(value), Pos.VALUE, value)} $name = ${wrap(rhs(), CppPrec.ASSIGN)};"
-                CppEx(name, CppPrec.PRIMARY)
-            } else {
-                rhs()
-            }
+            val r = hoister.ordered(valueOp, lines)
             lines += if (old === l) "${text(l, r).text};" else "${l.text} = ${applyOp(op, t, old, r, value).text};"
             hoister.iife(KType.Void, lines)
         }
@@ -805,7 +844,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** An operand of an operator: its literal role follows the other side (R2). */
     private fun operand(e: Expr, other: Expr? = null, role: CppLitRole? = null): CppHoister.Operand {
         val r = role ?: if (other != null && bareLiteral(e) != null && isLiteralOnly(other)) CppLitRole.TYPED else CppLitRole.OPERAND
-        return CppHoister.Operand(e) { coerced(e, r) }
+        return operandOf(e) { coerced(e, r) }
     }
 
     /** [child] as an operand of the C++ operator [parentOp] at [need], with the `-Wparentheses` rules. */
@@ -899,7 +938,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             // literal on the left carries the width (R2): `std::int64_t{1} << 40`, never `1 << 40`.
             return applyOp(e.operator, t, coerced(e.leftExpr, CppLitRole.WIDTH), raw(e.rightExpr, CppLitRole.SHIFT_COUNT), e.rightExpr)
         }
-        val count = CppHoister.Operand(e.rightExpr) { coerced(e.rightExpr) }
+        val count = operandOf(e.rightExpr) { coerced(e.rightExpr) }
         return hoister.lower(listOf(operand(e.leftExpr, role = CppLitRole.DEDUCED), count), t) { (l, n) ->
             applyOp(e.operator, t, l, n, e.rightExpr)
         }
@@ -1022,8 +1061,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val operands = e.parts.map { part ->
             when (part) {
-                is InterpolationPart.Text -> CppHoister.Operand(null) { CppEx(CppDeclEmitter.cppString(part.text), CppPrec.PRIMARY) }
-                is InterpolationPart.Hole -> CppHoister.Operand(part.expr) { coerced(part.expr) }
+                is InterpolationPart.Text -> CppHoister.Operand.Value(null) { CppEx(CppDeclEmitter.cppString(part.text), CppPrec.PRIMARY) }
+                is InterpolationPart.Hole -> operandOf(part.expr) { coerced(part.expr) }
             }
         }
         return hoister.lower(operands, KType.Str) { texts ->
@@ -1031,27 +1070,23 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
     }
 
-    /** R15: `s[i]` is `kira::str::at(s, i)` on a Str and `kira::at(a, i)` on an Arr, List or view: checked. */
+    /**
+     * R15: `s[i]` is `kira::str::at(s, i)` on a Str and `kira::at(a, i)` on an Arr, List or
+     * view: checked. Read as a value: the element's path over its ordered parts ([placeOperand]),
+     * so `grid[nextSize()][nextSize()]` orders its two calls and copies no row.
+     */
     private fun index(e: ArrayIndexExpr): CppEx {
-        val ct = typeOf(e.originExpr)
-        val f = when {
-            ct == KType.Str -> "kira::str::at"
-            CppBindingTable.magicName(ct) == "Map" -> return unsupported(e, "reading a Map with m[k] (read it with m.get(k))")
-            else -> "kira::at"
+        if (CppBindingTable.magicName(typeOf(e.originExpr)) == "Map") {
+            return unsupported(e, "reading a Map with m[k] (read it with m.get(k))")
         }
-        val container = CppHoister.Operand(e.originExpr, place = isPlaceExpr(e.originExpr), mutable = false) { coerced(e.originExpr) }
-        return hoister.lower(listOf(container, operand(e.indexExpr, role = CppLitRole.PLAIN)), typeOf(e)) { (c, i) ->
-            CppEx("$f(${wrap(c, CppPrec.ASSIGN)}, ${wrap(i, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
-        }
+        return hoister.lower(listOf(placeOperand(e)), typeOf(e)) { (element) -> element }
     }
-
-    fun isPlaceExpr(e: Expr): Boolean = model.place(e) != null
 
     // ---- literals of containers, construction (R9) ---------------------------------------------
 
     private fun arrayLiteral(e: ArrayLiteral): CppEx {
         val t = typeOf(e)
-        val elements = e.value.map { CppHoister.Operand(it) { coerced(it) } }
+        val elements = e.value.map { operandOf(it) { coerced(it) } }
         return hoister.lower(elements, t) { texts ->
             CppEx("${ctx.spell(t, Pos.VALUE, e)}{${texts.joinToString(", ") { wrap(it, CppPrec.ASSIGN) }}}", CppPrec.POSTFIX)
         }
@@ -1075,7 +1110,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return classConstruction(e, ri, cls)
         }
         val given = ri.sourceOrder.map { ri.fields[it] as FieldInit.Given }
-        val ops = given.map { g -> CppHoister.Operand(g.expr) { coerced(g.expr) } }
+        val ops = given.map { g -> operandOf(g.expr) { coerced(g.expr) } }
         val byField = IdentityHashMap<FieldSymbol, Int>()
         given.forEachIndexed { i, g -> byField[g.field] = i }
         val typeText = if (model.typeOf(e.typeName) != null) ctx.spell(e.typeName, Pos.VALUE) else ctx.spell(t, Pos.VALUE, e)
@@ -1118,7 +1153,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val g = fields[i] as? FieldInit.Given ?: return@forEach
             if (i < end) {
                 position[g.field] = ops.size
-                ops += CppHoister.Operand(g.expr) { coerced(g.expr, CppLitRole.TYPED) }
+                ops += operandOf(g.expr) { coerced(g.expr, CppLitRole.TYPED) }
             }
         }
         return hoister.lower(ops, t) { texts ->
@@ -1193,24 +1228,23 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * parameter order. A `mut` argument is a place: located in order, never copied (R19); a trailing
      * default is left to C++'s default argument (R6).
      */
-    private fun arguments(rc: ResolvedCall, role: (Int) -> CppLitRole = { CppLitRole.PLAIN }, wrap: (Int, Expr, CppEx) -> CppEx = { _, _, ex -> ex }): Pair<List<CppHoister.Operand>, List<Slot>> {
+    private fun arguments(rc: ResolvedCall): Pair<List<CppHoister.Operand>, List<Slot>> {
         val operands = mutableListOf<CppHoister.Operand>()
-        val operandOf = HashMap<Int, Int>()
+        val indexOf = HashMap<Int, Int>()
         rc.sourceOrder.forEach { i ->
             val a = rc.args[i] as? ArgBinding.Given ?: return@forEach
-            operandOf[i] = operands.size
-            val e = a.expr
-            operands += argumentOperand(a) { wrap(i, e, coerced(e, role(i))) }
+            indexOf[i] = operands.size
+            operands += argumentOperand(a)
         }
         val slots = mutableListOf<Slot>()
         rc.args.forEachIndexed { i, a ->
             when (a) {
                 is ArgBinding.Given -> {
-                    val op = operandOf[i] ?: run {
+                    val op = indexOf[i] ?: run {
                         // A written argument missing from sourceOrder: keep it, in parameter order.
-                        operandOf[i] = operands.size
-                        operands += argumentOperand(a) { wrap(i, a.expr, coerced(a.expr, role(i))) }
-                        operandOf[i]!!
+                        indexOf[i] = operands.size
+                        operands += argumentOperand(a)
+                        indexOf[i]!!
                     }
                     slots += Slot.Given(op, i, a.byRef)
                 }
@@ -1223,29 +1257,34 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         return operands to slots
     }
 
-    /** A written argument: a `mut` one is a place (located in order, bound `T&`), any other a value. */
-    private fun argumentOperand(a: ArgBinding.Given, emit: () -> CppEx): CppHoister.Operand =
-        CppHoister.Operand(a.expr, place = a.byRef, mutable = a.byRef, emit)
+    /**
+     * A written argument: a `mut` one is a place (its path applied at the call, never copied:
+     * R19), any other an [operandOf].
+     */
+    private fun argumentOperand(a: ArgBinding.Given): CppHoister.Operand =
+        if (a.byRef) placeOperand(a.expr) else operandOf(a.expr) { coerced(a.expr) }
 
     /**
      * The receiver of a call as an ordered operand (D33: Kira evaluates it before the
      * arguments; an IIFE that spills the arguments would otherwise run it after them), or null
-     * for `this`, whose identity is fixed. A reference (a class, a trait, a `Ref`) is read as
-     * a value: the reference is what the call holds. A struct (or a type parameter) read by a
-     * non-`mut` method is a value too (Kira reads it first, C++ would read the caller's
-     * storage after the arguments); one a `mut` method, a lending or a member-style binding
-     * writes through is a place, bound by reference, and so is a value place a member-style
-     * binding reads through, which C++ calls on the object itself.
+     * for `this`, whose identity is fixed. A place C++ holds by reference (a struct, a `Str`, a
+     * container, a type parameter: [heldByReference]) is a place operand, whichever method or
+     * binding reads or writes it: the call runs on the object itself, so `gm.get(k())` and
+     * `gl.get(k())` read the same way, a `mut fx` writes the place, and a lending read lends
+     * from the caller's storage. A handle (a class, a trait, a `Ref`), a view, a scalar, and any
+     * receiver that is no place (a call's result) is a value: what the call holds is a copy of
+     * it, a plain `T t0_` when a member-style binding calls a non-const method on it.
      */
     private fun receiverOperand(receiver: Expr, fn: FnSymbol?, memberStyle: Boolean, lending: Boolean, emit: () -> CppEx): CppHoister.Operand? {
         if (receiver is ThisExpr) {
             return null
         }
-        val t = typeOf(receiver)
-        val writes = fn?.isMutMethod == true || lending
         val isPlace = isPlaceExpr(receiver)
-        val place = isPlace && !isPointerLike(t) && (writes || memberStyle)
-        return CppHoister.Operand(receiver, place = place, mutable = writes || (memberStyle && !isPlace)) { emit() }
+        if (isPlace && heldByReference(typeOf(receiver))) {
+            return placeOperand(receiver, emit)
+        }
+        val writes = fn?.isMutMethod == true || lending
+        return CppHoister.Operand.Value(receiver, mutable = writes || (memberStyle && !isPlace)) { emit() }
     }
 
     private fun argList(slots: List<Slot>, texts: List<CppEx>): String = slots.joinToString(", ") { s ->
@@ -1290,7 +1329,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     private fun fnValueCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val (argOps, argSlots) = arguments(rc)
         // The callee is evaluated first (D33); as an operand it is spilled with the arguments.
-        val calleeOp = CppHoister.Operand(e.name) { coerced(e.name) }
+        val calleeOp = operandOf(e.name) { coerced(e.name) }
         val (ops, slots) = withReceiver(calleeOp, argOps, argSlots)
         return hoister.lower(ops, rc.returnType) { texts -> CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
@@ -1454,7 +1493,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val ops = mutableListOf<CppHoister.Operand>()
         val receiverIndex = if (receiver != null) {
             val op = receiverOperand(receiver, fn, memberStyle, lending) { receiverEx(receiver, memberStyle) }
-                ?: CppHoister.Operand(null) { receiverEx(receiver, memberStyle) }
+                ?: CppHoister.Operand.Value(null) { receiverEx(receiver, memberStyle) }
             ops += op
             0
         } else {

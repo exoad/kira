@@ -82,6 +82,9 @@ if [[ ${#CPP_LEGS[@]} -gt 0 ]]; then
   fi
 fi
 CPP_RUNTIME_INC="$ROOT/kira/cpp"
+# kira/os.cxx in the emitted runtime tree uses WinSock, so a MinGW or MSYS c++ links it.
+CPP_LIBS=()
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) CPP_LIBS=(-lws2_32) ;; esac
 cpp_legs_run=0
 
 C_PRELUDE_REF="$ROOT/examples/prelude.reference.c"
@@ -218,7 +221,7 @@ for dir in "${DIRS[@]}"; do
       if [[ ${#cpp_sources[@]} -eq 0 ]]; then
         echo "  kira (cpp) emitted no .cxx under $WORK/cpp (is the example's kira.yaml layout tree?)" >&2; exit 1
       fi
-      "$CXX_BIN" -std=c++20 -O2 -I "$CPP_RUNTIME_INC" -I "$WORK/cpp" -o "$WORK/app-cpp" "${cpp_sources[@]}" 2>"$WORK/cxx.err" || {
+      "$CXX_BIN" -std=c++20 -O2 -I "$CPP_RUNTIME_INC" -I "$WORK/cpp" -o "$WORK/app-cpp" "${cpp_sources[@]}" ${CPP_LIBS[@]+"${CPP_LIBS[@]}"} 2>"$WORK/cxx.err" || {
         echo "  c++ failed:" >&2; cat "$WORK/cxx.err" >&2; exit 1;
       }
       "$WORK/app-cpp" | tr -d '\r' > "$WORK/actual-cpp.txt"

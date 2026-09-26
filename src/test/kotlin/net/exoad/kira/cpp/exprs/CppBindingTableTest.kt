@@ -78,9 +78,9 @@ class CppBindingTableTest {
     }
 
     @Test
-    fun aSystemHeaderIncludeIsHandedOnAsItsQuotedName() {
-        assertEquals("cmath", CppBindingTable.includeName("<cmath>"))
-        assertEquals("kira/os.hxx", CppBindingTable.includeName("kira/os.hxx"))
+    fun aSystemHeaderIncludeKeepsItsAngleBrackets() {
+        assertEquals("<cmath>", CppBindingTable.includeName("<cmath>"))
+        assertEquals("kira/os.hxx", CppBindingTable.includeName(" kira/os.hxx "))
     }
 
     @Test

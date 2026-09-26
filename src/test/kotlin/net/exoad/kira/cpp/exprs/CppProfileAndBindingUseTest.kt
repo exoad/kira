@@ -111,9 +111,9 @@ class CppProfileAndBindingUseTest {
         val lib = Module("inc:lib", "pub fx root: (x: Float64) Float64 {\n    return sqrt(x)\n}")
         val app = Module("inc:app", "pub fx root2: (x: Float64) Float64 {\n    return sqrt(x)\n}")
         val tree = CppExprTestSupport.emit("includes", listOf(lib, app), CppOptions(lineDirectives = false, headerOnly = listOf("inc:lib")))
-        assertTrue(tree.header(lib).contains("#include \"cmath\"\n"), "header-placed code includes in the header:\n${tree.header(lib)}")
+        assertTrue(tree.header(lib).contains("#include <cmath>\n"), "header-placed code includes in the header, a system header in angle brackets:\n${tree.header(lib)}")
         assertTrue(!tree.header(app).contains("cmath"), "source-placed code does not:\n${tree.header(app)}")
-        assertTrue(tree.source(app).contains("#include \"cmath\"\n"), "it includes in the source:\n${tree.source(app)}")
+        assertTrue(tree.source(app).contains("#include <cmath>\n"), "it includes in the source:\n${tree.source(app)}")
     }
 
     @Test

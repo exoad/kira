@@ -46,16 +46,26 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
  * }()
  * ```
  *
- * - A value operand ([Operand.place] false) that is not PURE is copied into a typed temporary
- *   (`const T t0_`, never `auto`, which would keep a `kira::at` reference): an impure one so
- *   it runs in order, a [READS] one so it is read before a later sibling's effect (`sub(ticks,
- *   next())`, `"${ticks}:${next()}"`).
- * - A place operand (a `mut` argument, an assignment's target, the receiver a `mut fx` or a
- *   member-style binding writes through) is never copied (the judges' B5 flaw: a place copied
- *   into a temporary is written in the copy). Its identity is computed in order instead,
- *   bound by reference (`std::int32_t& r0_ = kira::at(q, nextSize());`) when the
- *   sub-expressions that locate it are not PURE ([placeRank]); a plain variable's identity
- *   never changes, so it stays where it is.
+ * An operand is one of two kinds, and the kind decides what "in order" means for it:
+ *
+ * - A [Operand.Value] is what C++ holds by value: a scalar, a `Char`, a `Bool`, an enum, a
+ *   view, a class or trait handle, or any fresh result (a call, a construction, an operator).
+ *   When it is not PURE it is copied into a typed temporary (`const T t0_`, never `auto`,
+ *   which would keep a `kira::at` reference): an impure one so it runs in order, a [READS] one
+ *   so it is read before a later sibling's effect (`sub(ticks, next())`, `"${ticks}:${next()}"`).
+ * - A [Operand.Place] is a location C++ reaches through a path: a variable, a field of it, an
+ *   element of it. Its [Operand.Place.parts] are the values along the path (an index, the
+ *   handle or view a step goes through), each an operand in its own right; they are ordered
+ *   like any value, and the path is applied to them at the end, where the call or assignment
+ *   uses it (`kira::at(q, t0_)` for `q[nextSize()]`). A place is never copied and never held
+ *   by reference across a sibling's effect: a copy would be written instead of the place (the
+ *   judges' B5 flaw) or lent from by a view the call returns (a use after free at the end of
+ *   the lambda); a reference held while a sibling reallocates the container would dangle. A
+ *   variable's own identity never changes, so a plain place has no parts and stays where it
+ *   is. Every `mut` argument, assignment target and receiver a method writes is a place, and
+ *   so is any value C++ passes by `const&` (a `Str`, a struct, a container, a type parameter:
+ *   design 5.1) whenever it is read at a place: the call reads the object itself, as every
+ *   unspilled call already does, and a view it lends points at the caller's storage.
  * - An operand's rank is `TypedModel.effects` (EffectsPass, W2.5). Where the model has no
  *   entry (before the merge, or for a node no pass visited), [rank] approximates the same
  *   three values: IMPURE for a call whose own entry is absent (absent means impure) unless
@@ -63,75 +73,96 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
  *   for an assignment, a `throw`, a `try` or a trace; READS for a read of a `mut` global, a
  *   parameter passed by reference (`mut`, or a struct, `Str`, container or class the design
  *   passes by `const&`), a field, or an element of a view; PURE otherwise. A lambda's body is
- *   not evaluated where the lambda is written, so it does not count.
+ *   not evaluated where the lambda is written, so it does not count. A place's rank is the
+ *   highest of its parts' (PURE when it has none): how its location is found, not what it
+ *   holds.
+ * - Whether to spill is decided over the leaves: every value operand, and every value part
+ *   of a place, at any depth (`grid[nextSize()][nextSize()] = 5` holds two impure leaves in
+ *   one place and must order them).
  * - A temporary's name is reserved before its initializer is written, so a nested spill in the
  *   initializer never declares the same name inside it (`-Wshadow`).
  */
 class CppHoister(private val lower: CppLowering) {
-    /**
-     * One operand, in source order. [expr] is null for a piece that is no expression (an
-     * interpolation's text). A [place] is bound by reference when it must be ordered, a value
-     * is copied; [mutable] drops the `const` (a `mut` argument's `T&`, a receiver a method
-     * writes).
-     */
-    class Operand(val expr: Expr?, val place: Boolean, val mutable: Boolean, val emit: () -> CppEx) {
-        /** A value operand, copied into a `const` temporary when it must be ordered. */
-        constructor(expr: Expr?, emit: () -> CppEx) : this(expr, place = false, mutable = false, emit)
+    /** One operand, in source order. [expr] is null for a piece that is no expression (an interpolation's text). */
+    sealed class Operand(val expr: Expr?) {
+        /**
+         * A value: copied into a typed temporary when it must be ordered (`const`, or a plain
+         * `T t0_` when [mutable]: a receiver a member-style binding calls a non-const method on).
+         */
+        class Value(expr: Expr?, val mutable: Boolean = false, val emit: () -> CppEx) : Operand(expr)
+
+        /**
+         * A place: [parts] are the values along its path, in source order, and [build] applies
+         * the path to their texts. A place with no parts is a variable, `this` or a field of
+         * `this`: [build] spells it and nothing is ordered.
+         */
+        class Place(expr: Expr, val parts: List<Operand>, val build: (List<CppEx>) -> CppEx) : Operand(expr)
     }
 
     /**
      * [build] over the operands' texts, spilling them first when D33 needs it, or when [force]
-     * says a non-PURE place among them must be located exactly once (a compound assignment
-     * that names its target twice). [result] types the IIFE.
+     * says the parts of a place among them must be computed exactly once (a compound
+     * assignment that names its target twice). [result] types the IIFE.
      */
     fun lower(ops: List<Operand>, result: KType, force: Boolean = false, build: (List<CppEx>) -> CppEx): CppEx {
         if (!force && !needsSpill(ops)) {
-            return build(ops.map { it.emit() })
+            return build(ops.map { text(it) })
         }
         return spill(ops, result, build)
     }
 
-    /** Whether one operand is [IMPURE] and another is not [PURE] (design R19, D33; `Effect`). */
+    /** The text of [op] where nothing needs ordering: a value as written, a place as its path over its parts' texts. */
+    fun text(op: Operand): CppEx = when (op) {
+        is Operand.Value -> op.emit()
+        is Operand.Place -> op.build(op.parts.map { text(it) })
+    }
+
+    /** Whether one leaf is [IMPURE] and another is not [PURE] (design R19, D33; `Effect`). */
     fun needsSpill(ops: List<Operand>): Boolean {
-        if (ops.size < 2) {
-            return false
-        }
-        val ranks = ops.map { rankOf(it) }
+        val ranks = leaves(ops)
         return ranks.any { it == IMPURE } && ranks.count { it != PURE } >= 2
     }
 
-    /** The rank of [op]: how its place is located for a place operand, its evaluation for a value. */
-    fun rankOf(op: Operand): Int {
-        val e = op.expr ?: return PURE
-        return if (op.place) placeRank(e) else rank(e)
+    /** The rank of [op]: a value's evaluation, or the highest of a place's parts. */
+    fun rankOf(op: Operand): Int = when (op) {
+        is Operand.Value -> op.expr?.let { rank(it) } ?: PURE
+        is Operand.Place -> op.parts.maxOfOrNull { rankOf(it) } ?: PURE
     }
 
-    private fun spill(ops: List<Operand>, result: KType, build: (List<CppEx>) -> CppEx): CppEx {
-        val state = lower.state
-        val ctx = lower.ctx
-        return state.block {
-            val lines = mutableListOf<String>()
-            val texts = ops.map { op ->
-                val e = op.expr
-                val t = e?.let { lower.model.typeOrNull(it) }
-                if (e == null || rankOf(op) == PURE || t == null || t == KType.Void || t == KType.Never) {
-                    op.emit()
-                } else if (op.place) {
-                    val name = state.fresh("r")
-                    val init = op.emit()
-                    lines += "${if (op.mutable) "" else "const "}${ctx.spell(t, Pos.VALUE, e)}& $name = ${lower.wrap(init, CppPrec.ASSIGN)};"
-                    CppEx(name, CppPrec.PRIMARY)
-                } else {
-                    val name = state.fresh("t")
-                    val init = op.emit()
-                    lines += "${if (op.mutable) "" else "const "}${ctx.spell(t, Pos.VALUE, e)} $name = ${lower.wrap(init, CppPrec.ASSIGN)};"
-                    CppEx(name, CppPrec.PRIMARY)
-                }
+    private fun leaves(ops: List<Operand>): List<Int> = ops.flatMap { op ->
+        when (op) {
+            is Operand.Value -> listOf(rankOf(op))
+            is Operand.Place -> leaves(op.parts)
+        }
+    }
+
+    private fun spill(ops: List<Operand>, result: KType, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
+        val lines = mutableListOf<String>()
+        val texts = ops.map { ordered(it, lines) }
+        val final = build(texts)
+        val void = result == KType.Void || result == KType.Never
+        lines += if (void) "${final.text};" else "return ${final.text};"
+        iife(result, lines)
+    }
+
+    /**
+     * The text of [op] once its evaluation is ordered, the declarations that order it appended
+     * to [lines]: a value that is not PURE is copied into a typed temporary, a place is its path
+     * over its ordered parts. Called inside a [CppBodyState.block] that an [iife] closes.
+     */
+    fun ordered(op: Operand, lines: MutableList<String>): CppEx = when (op) {
+        is Operand.Place -> op.build(op.parts.map { ordered(it, lines) })
+        is Operand.Value -> {
+            val e = op.expr
+            val t = e?.let { lower.model.typeOrNull(it) }
+            if (e == null || rank(e) == PURE || t == null || t == KType.Void || t == KType.Never) {
+                op.emit()
+            } else {
+                val name = lower.state.fresh("t")
+                val init = op.emit()
+                lines += "${if (op.mutable) "" else "const "}${lower.ctx.spell(t, Pos.VALUE, e)} $name = ${lower.wrap(init, CppPrec.ASSIGN)};"
+                CppEx(name, CppPrec.PRIMARY)
             }
-            val final = build(texts)
-            val void = result == KType.Void || result == KType.Never
-            lines += if (void) "${final.text};" else "return ${final.text};"
-            iife(result, lines)
         }
     }
 
@@ -146,27 +177,6 @@ class CppHoister(private val lower: CppLowering) {
     fun rank(e: Expr): Int {
         lower.model.effects[e]?.let { return rankOf(it) }
         return scan(e)
-    }
-
-    /**
-     * The rank of locating the place [e]: a variable, `this` or a field of a value place has a
-     * fixed identity (PURE); a field through a reference depends on the reference's value; an
-     * element on its index and on its container (the container's value when it is a view or a
-     * reference, its identity when it is a value).
-     */
-    fun placeRank(e: Expr): Int = when (e) {
-        is Identifier -> if (e is IntrinsicExpr) rank(e) else PURE
-        is ThisExpr -> PURE
-        is MemberAccessExpr -> when (lower.model.member(e)) {
-            is MemberRef.Field -> if (lower.isPointerLike(lower.typeOf(e.origin))) rank(e.origin) else placeRank(e.origin)
-            else -> rank(e)
-        }
-        is ArrayIndexExpr -> {
-            val ct = lower.model.typeOrNull(e.originExpr)
-            val container = if (ct != null && (lower.isPointerLike(ct) || isView(ct))) rank(e.originExpr) else placeRank(e.originExpr)
-            maxOf(container, rank(e.indexExpr))
-        }
-        else -> rank(e)
     }
 
     private fun rankOf(effect: Effect): Int = when (effect) {

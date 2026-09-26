@@ -33,9 +33,9 @@ import java.util.WeakHashMap
  * receiver's type) ([expand]).
  *
  * **Includes** go to the header when the code that uses them is header-placed, else to the
- * source ([use]). `CppDeclEmitter` writes every include it is handed as `#include "..."`, so a
- * system header the manifest spells `<cmath>` is handed on as `cmath`, which a quoted include
- * finds through its fallback to the system search on gcc, clang and MSVC.
+ * source ([use]). A system header the manifest spells `<cmath>` is handed on with its angle
+ * brackets, and `CppDeclEmitter` writes it `#include <cmath>`; any other name is a path,
+ * written quoted.
  */
 class CppBindingTable : CppBindingsPart {
     private val entries = LinkedHashMap<String, CppBinding>()
@@ -302,14 +302,11 @@ class CppBindingTable : CppBindingsPart {
         }
 
         /**
-         * An include a manifest names, as [CppEmitContext.includeInHeader] takes it: `<cmath>`
-         * becomes `cmath` (the declaration emitter quotes every include, and a quoted include of
-         * a system header falls back to the system search), anything else is kept.
+         * An include a manifest names, as [CppEmitContext.includeInHeader] takes it: a system
+         * header keeps its angle brackets (`<cmath>` is written `#include <cmath>`), a path is
+         * written quoted.
          */
-        fun includeName(include: String): String {
-            val t = include.trim()
-            return if (t.startsWith("<") && t.endsWith(">")) t.substring(1, t.length - 1) else t
-        }
+        fun includeName(include: String): String = include.trim()
     }
 }
 

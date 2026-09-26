@@ -6,12 +6,18 @@ module "app:evalorder"
 // design's probes-B/evalorder) and runs the right side of `=` first, so the emitter spills
 // them into typed temporaries, in order, whenever one has an effect and another is not
 // pure (R19): a call is copied, a read of shared state is copied before the effect runs,
-// and a place (a mut argument, an assignment's target, the receiver a mut fx writes) is
-// bound by reference, never copied. Every line below would print something else on some
-// compiler if it did not.
+// and a place (a mut argument, an assignment's target, the receiver a mut fx writes, a
+// struct, Str or container read where it lives) is never copied and never held by
+// reference: the values along its path (each index) are ordered like any other, and the
+// path is applied where the call or assignment uses it. Every line below would print
+// something else on some compiler, or read freed memory, if it did not.
 
 mut ticks: Int32 = 0
 mut idx: Size = 0
+mut row: Size = 1
+mut garr: Arr<Int32, 4> = [10, 20, 30, 40]
+mut gl: List<Int32> = List<Int32> { }
+mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
 
 fx next: () Int32 {
     ticks += 1
@@ -46,6 +52,32 @@ pub struct Box {
 fx makeBox: () Box {
     ticks += 1
     return Box { v = ticks }
+}
+
+fx pushed: () Size {
+    gl.add(7)
+    return gl.size() - 1
+}
+
+fx putKey: () Int32 {
+    gm.put(1, 42)
+    return 1
+}
+
+fx tail: (xs: List<Int32>, at: Size) View<Int32> {
+    return xs.from(at)
+}
+
+fx total: (v: View<Int32>) Int32 {
+    mut s: Int32 = 0
+    for x: Int32 in v {
+        s += x
+    }
+    return s
+}
+
+fx sumTail: (xs: List<Int32>) Int32 {
+    return total(tail(xs, nextSize()))
 }
 
 fx main: () Void {
@@ -84,9 +116,38 @@ fx main: () Void {
     slots[nextSize()] /= two
     trace(slots[3])
     trace(idx)
-    // The receiver of a mut fx is bound by reference, never copied: box 0 takes 36 and 37.
+    // The receiver of a mut fx is the element itself, never a copy: box 0 takes 36 and 37.
     mut boxes: Arr<Box, 1> = [Box { }]
     idx = 0
     boxes[nextSize() - 1].grow(next(), next())
     trace(boxes[0].v)
+    // A nested element place orders both indexes and writes the element itself, never a
+    // copy of the row: grid[1][2] takes 5, then 6.
+    mut grid: Arr<Arr<Int32, 3>, 3> = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    idx = 0
+    grid[nextSize()][nextSize()] = 5
+    trace(grid[1][2] * 10 + grid[2][1])
+    idx = 0
+    grid[nextSize()][nextSize()] += 1
+    trace(grid[1][2] * 10 + grid[2][1])
+    // A mut argument two elements deep, its row a read of shared state: grid[1][1] takes 38 and 39.
+    idx = 0
+    store(mut grid[row][nextSize()], next(), next())
+    trace(grid[1][1])
+    // The receiver of a mut fx two elements deep is that element: cell [1][2] takes 40 and 41.
+    mut cells: Arr<Arr<Box, 3>, 3> = [[Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }]]
+    idx = 0
+    cells[nextSize()][nextSize()].grow(next(), next())
+    trace(cells[1][2].v)
+    // A view lent from a List parameter beside an effect points at the caller's list, not
+    // at a copy that dies with the lambda: 2 + 3 + 4.
+    idx = 0
+    trace(sumTail(List<Int32> { values = [1, 2, 3, 4] }))
+    // A view lent from a global: 20 + 30 + 40.
+    idx = 0
+    trace(total(garr.from(nextSize())))
+    // A Map and a List receiver beside an effect are read the same way, in place: 42, then 7.
+    trace(gm.get(putKey()).unwrapOr(-1))
+    gl.add(1)
+    trace(gl.get(pushed()))
 }

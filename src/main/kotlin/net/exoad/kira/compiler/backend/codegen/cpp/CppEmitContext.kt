@@ -15,10 +15,10 @@ interface CppEmitContext {
     val names: CppNames
     val layout: CppModuleLayout
 
-    /** Adds `#include "<header>"` to the module's header, once. */
+    /** Adds `#include "header"` to the module's header, once (`#include <header>` when the name keeps its angle brackets). */
     fun includeInHeader(header: String)
 
-    /** Adds `#include "<header>"` to the module's source, once. */
+    /** Adds `#include "header"` to the module's source, once (`#include <header>` when the name keeps its angle brackets). */
     fun includeInSource(header: String)
 
     /** Reports `code` (`cpp.unsupported`, `cpp.macro-name`, ...) at `node`. */

@@ -1,0 +1,25 @@
+# The examples regenerate.sh also runs through the C++ backend, one name per
+# line. The leg emits with `kira --target cpp`, builds every .cxx with
+# $CXX -std=c++20 -O2 against kira/cpp, and diffs the binary's stdout against
+# the example's expected.txt and against what the C and JS legs printed.
+#
+# Parity rule (design D42): a program traces the same text on every backend.
+# `trace` prints a Bool as 1/0 and a float as C's %g on C, JS and C++ alike.
+# kira::trace prints a Char as the character and a UInt32 as an unsigned
+# value; the C prelude prints a Char as its code and a UInt32 at or above
+# 2^31 as a negative %d, and `--target c` and `--target js` refuse a Char
+# literal outright. D42 decides for the C++ spelling, so an example that
+# traces a Char or such a UInt32 is not listed here until the C prelude
+# prints them the same way: its expected.txt cannot hold both legs' text.
+#
+# An example is listed once its C++ stdout equals its expected.txt on gcc,
+# clang and MSVC. Not listed yet: 04-classes and 05-enums-generics need a
+# class lowered (cpp.unsupported until W2.4); 07-conway and 08-traits use a
+# type of another module that is not `pub` (types.type.not-visible under the
+# C++ target's strict types; 07 also indexes with an Int32, types.index.size);
+# 02-functions, 03-control-flow and 06-collections call a function of another
+# module that is not `pub`, which the C++ backend places in the module's
+# anonymous namespace, so the C++ does not compile (the call is the
+# visibility rules' to refuse).
+01-hello
+09-stdlib
