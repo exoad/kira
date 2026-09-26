@@ -1,0 +1,161 @@
+module "fixture:body.more"
+
+// Further refusals of phase C, one per line, each with its exact code.
+
+pub enum Kind: Int32 {
+    KIND_A = 0,
+    KIND_B = 1
+}
+
+pub struct Point {
+    pub x: Int32 = 0
+}
+
+pub trait Shape {
+    pub fx area: () Int32;
+}
+
+pub struct Square: Shape {
+    pub side: Int32 = 1
+
+    override pub fx area: () Int32 {
+        return side * side
+    }
+}
+
+pub class Pet {
+    require pub name: Str
+}
+
+fx pair: (a: Int32, b: Int32) Int32 {
+    return a + b
+}
+
+fx setTo: (mut out: Int32, v: Int32) Void {
+    out = v
+}
+
+fx give: () Int32 {
+    return 1
+}
+
+fx compute: () Int32 {
+    return 2
+}
+
+pub COUNT: Int32 = compute()               // @error types.const.not-constant
+
+fx defaulted: (x: Int32 = compute()) Void { // @error types.default.not-constant
+}
+
+@_static_assert(1 == 2, "never")           // @error types.static-assert.failed
+
+pub fx more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, k: Kind, p: Pet) Int32 {
+    c: Char = s[i]                         // @error types.index.size
+    for x: Int64 in xs {                   // @error types.for.element
+        trace(x)
+    }
+    two: Int32 = pair(1)                   // @error types.call.missing-arg
+    three: Int32 = pair(1, 2, 3)           // @error types.call.arity
+    again: Int32 = pair(1, a = 2, b = 3)   // @error types.call.duplicate-arg
+    notMut: Int32 = pair(mut i, 2)         // @error types.call.mut-unexpected
+    frozen: Int32 = 0
+    setTo(mut frozen, 1)                   // @error types.call.mut-immutable
+    mut wide: Int64 = 0
+    setTo(mut wide, 1)                     // @error types.call.mut-type
+    flag: Bool = i as Bool                 // @error types.cast.invalid
+    base: Int64 = k as Int64               // @error types.cast.invalid
+    nope: Int32 = missing                  // @error types.name.unknown
+    field: Int32 = p.age                   // @error types.member.unknown
+    q: Pet = Pet { }                       // @error types.init.missing-required
+    r: Point = Point { z = 1 }             // @error types.init.unknown-field
+    view: View<UInt8> = [1, 2]             // @error types.assign.mismatch
+    shape: Shape = Square { }              // @error types.assign.struct-to-trait
+    trace(p)                               // @error types.print.not-showable
+    text: Str = "pet=${p}"                 // @error types.interp.not-showable
+    for ch: Char in s {                    // @error types.for.not-iterable
+        trace(ch)
+    }
+    for n: Str in 0..3 {                   // @error types.for.range-type ; @error types.assign.mismatch ; @error types.assign.mismatch
+        trace(n)
+    }
+    arr: Arr<UInt8, 2> = [1, 2, 3]         // @error types.const.arr-size
+    m: Map<Str, Int32> = Map<Str, Int32> { }
+    got: Int32 = m["k"]                    // @error types.index.map-read
+    bits: UInt32 = bitCast<UInt32>(1.5)    // @error types.bitcast.size
+    e: Maybe<Kind> = enumOf<Pet>(1)        // @error types.enumof.type
+    f: Fx<Tuple1<Int32>, Int32> = fx(x: Int64) Int32 { return 1 } // @error types.lambda.mismatch
+    this.x = 1                             // @error types.this.outside
+    lit: UInt32 = -1                       // @error types.literal.range
+    fl: Int32 = 1.5                        // @error types.literal.float-to-int
+    str: Str = 5                           // @error types.assign.mismatch
+    ch2: Char = 'a' + 'b'                  // @error types.op.mismatch
+    neg: Bool = !i                         // @error types.op.mismatch
+    fm: Float64 = 1.5 % 2.0                // @error types.op.mismatch
+    sh: Bool = s < s                       // @error types.op.mismatch
+    give()                                 // no error: a discarded value is the emitter's static_cast<void>
+    return                                 // @error types.return.missing
+}
+
+pub fx voidReturn: () Void {
+    return 5                               // @error types.return.value
+}
+
+pub fx generic: () Void {
+    x: Int32 = sqrt(2)                     // @error types.call.bound
+}
+
+PRIVATE_LIMIT: Int32 = 4
+pub MSG: Str = "m"
+
+pub fx exposed: (x: Int32 = PRIVATE_LIMIT) Void { // @error types.default.private
+}
+
+@_static_assert(give() == 1, "a call")    // @error types.static-assert.not-constant
+@_static_assert(true, MSG)                 // @error types.static-assert.message
+
+fx ident<T>: (v: T) T {
+    return v
+}
+
+fx makeArr: () Arr<UInt8, 2> {
+    return [1, 2]
+}
+
+pub fx yetMore: (i: Int32, s: Str, xs: List<Int32>, f: Fx<Tuple1<Int32>, Int32>) Void {
+    v: Int32 = if i > 0 { x: Int32 = 1 } else { 2 } // @error types.if.branch-value
+    give = give                            // @error types.assign.not-place
+    dup: Int32 = 1
+    dup: Int32 = 2                         // @error types.local.duplicate
+    v2: View<UInt8> = makeArr()            // @error types.view.temporary
+    bad: Int32 = i[0]                      // @error types.index.not-indexable
+    n: Size = xs.size()(1)                 // @error types.call.not-callable
+    len: Size = s.length                   // @error types.member.method-value
+    t: Int32 = Kind                        // @error types.name.type-as-value
+    nothing()                              // @error types.call.unknown
+    try {
+        trace(1)
+    } on e: Int32 {                        // @error types.try.type
+        trace(e)
+    }
+    r: Int32 = 0..3                        // @error types.range.position
+    v3: View<UInt8> = View<UInt8> { }      // @error types.init.not-constructible
+    pt: Point = Point { 1, 2 }             // @error types.init.arity
+    pt2: Point = Point { 1, x = 2 }        // @error types.init.duplicate
+    y: Int32 = f(x = 1)                    // @error types.call.fn-value-named
+    h: Fx<Tuple1<Int32>, Int32> = ident    // @error types.fn.generic-value
+    trace(1, 2)                            // @error types.call.print-args
+    e2: Maybe<Kind> = enumOf<Kind>("x")    // @error types.enumof.raw
+    b2: Int32 = bitCast<Bool>(i)           // @error types.bitcast.type
+    p2: Int32 = pair<Int32>(1, 2)          // @error types.call.type-args
+    k2: Kind = Kind.make()                 // @error types.call.static
+    big: Int8 = 100 + 100                  // @error types.const.overflow
+    z: Int32 = 1 / 0                       // @error types.const.div-by-zero
+    count: Int32 = 1
+    count(2)                               // @error types.call.shadowed
+    ok: Kind = Kind.KIND_C                 // @error types.enum.unknown-entry
+}
+
+pub fx outside: () Void {
+    break                                  // @error types.loop.outside
+}

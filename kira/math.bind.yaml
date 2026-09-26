@@ -14,7 +14,10 @@
 # The `cpp` sub-map is the C++ backend's binding (design section 7.4); the C
 # loader reads only `symbol` and `includes`, so it never sees it. `min` and
 # `max` are parenthesized against the Windows `min` / `max` macros. The
-# Float32 overloads (@_infer) arrive with the typer, not here.
+# functions are `<T: FloatNum>` with @_infer (D20), and each cpp expr serves
+# both instantiations: std::sqrt, std::fabs and the rest overload float and
+# double, and std::min/std::max deduce T from two arguments of one type, which
+# the typer guarantees. The C symbols and includes are unchanged.
 sqrt: { symbol: sqrt, includes: [math.h], cpp: { expr: "std::sqrt({0})", includes: ["<cmath>"], pure: true } }
 pow: { symbol: pow, includes: [math.h], cpp: { expr: "std::pow({0}, {1})", includes: ["<cmath>"], pure: true } }
 floor: { symbol: floor, includes: [math.h], cpp: { expr: "std::floor({0})", includes: ["<cmath>"], pure: true } }

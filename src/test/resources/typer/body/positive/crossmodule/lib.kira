@@ -1,0 +1,20 @@
+module "fixture:body.xlib"
+
+pub SCALE: Int32 = 100
+
+pub enum Unit: Int32 {
+    UNIT_MM = 0,
+    UNIT_CM = 1
+}
+
+pub fx percent: (part: Int32, whole: Int32 = SCALE) Int32 {
+    return part * SCALE / whole            // @type Int32 const=100:Int32 @ SCALE
+}
+
+pub class Meter {
+    require pub reading: Int32
+
+    pub fx half: () Int32 {
+        return reading / 2                 // @type Int32
+    }
+}

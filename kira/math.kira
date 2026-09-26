@@ -7,18 +7,23 @@ module "kira:math"
 // non-magic functions at the bottom are the stdlib written in Kira itself:
 // they have real bodies compiled like user code, built on top of the magic
 // surface (clamp/lerp are min/max in disguise).
+//
+// Each magic function takes a Float32 or a Float64 and returns the same type
+// (D20): `@_infer` lets a call leave out `<T>`, which the typer takes from the
+// arguments, so `sin(x)` with `x: Float32` is Float32 math, as bibo's C++ is.
+// This is the only type-argument inference Kira has, and only the stdlib uses it.
 
-pub @_magic fx sqrt: (value: Float64) Float64;
-pub @_magic fx pow: (base: Float64, exponent: Float64) Float64;
-pub @_magic fx floor: (value: Float64) Float64;
-pub @_magic fx ceil: (value: Float64) Float64;
-pub @_magic fx round: (value: Float64) Float64;
-pub @_magic fx sin: (value: Float64) Float64;
-pub @_magic fx cos: (value: Float64) Float64;
-pub @_magic fx tan: (value: Float64) Float64;
-pub @_magic fx abs: (value: Float64) Float64;
-pub @_magic fx min: (a: Float64, b: Float64) Float64;
-pub @_magic fx max: (a: Float64, b: Float64) Float64;
+pub @_magic @_infer fx sqrt<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx pow<T: FloatNum>: (base: T, exponent: T) T;
+pub @_magic @_infer fx floor<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx ceil<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx round<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx sin<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx cos<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx tan<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx abs<T: FloatNum>: (value: T) T;
+pub @_magic @_infer fx min<T: FloatNum>: (a: T, b: T) T;
+pub @_magic @_infer fx max<T: FloatNum>: (a: T, b: T) T;
 
 pub fx clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
     return max(lo, min(value, hi))

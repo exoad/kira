@@ -1,0 +1,380 @@
+proto.kira:12:15  0  Int32  const=0:Int32
+proto.kira:13:16  1  Int32  const=1:Int32
+proto.kira:14:17  2  Int32  const=2:Int32
+proto.kira:16:18  3  Int32  const=3:Int32
+proto.kira:17:18  4  Int32  const=4:Int32
+proto.kira:22:22  Kind.KIND_EMPTY  Kind  member=Enum(Kind.KIND_EMPTY)  const=Kind.KIND_EMPTY
+proto.kira:22:22  Kind  ?  sym=pilot:proto.Kind
+proto.kira:23:22  ""  Str  const=""
+proto.kira:24:21  ""  Str  const=""
+proto.kira:25:21  ""  Str  const=""
+proto.kira:29:12  c == ' ' || c == '\t'  Bool
+proto.kira:29:12  c == ' '  Bool
+proto.kira:29:12  c  Char  place=Param(c)  sym=pilot:proto.isSpace(c)
+proto.kira:29:17  ' '  Char  const=' '
+proto.kira:29:24  c == '\t'  Bool
+proto.kira:29:24  c  Char  place=Param(c)  sym=pilot:proto.isSpace(c)
+proto.kira:29:29  '\t'  Char  const='\t'
+proto.kira:34:20  from  Size  place=Param(from)  sym=pilot:proto.wordAt(from)
+proto.kira:35:11  at < s.length() && isSpace(s[at])  Bool
+proto.kira:35:11  at < s.length()  Bool
+proto.kira:35:11  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:35:16  s.length()  Size  call=MAGIC(Str.length)
+proto.kira:35:16  s  Str  place=Param(s)  sym=pilot:proto.wordAt(s)
+proto.kira:35:30  isSpace(s[at])  Bool  call=FREE(isSpace)
+proto.kira:35:30  isSpace  ?  sym=pilot:proto.isSpace
+proto.kira:35:38  s[at]  Char  place=Index(Param(s), STR)
+proto.kira:35:38  s  Str  place=Param(s)  sym=pilot:proto.wordAt(s)
+proto.kira:35:40  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:36:9  at += 1  Void
+proto.kira:36:9  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:36:15  1  Size  const=1:Size
+proto.kira:38:5  begin = at  Void
+proto.kira:38:5  begin  Size  place=Param(begin)  sym=pilot:proto.wordAt(begin)
+proto.kira:38:13  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:39:11  at < s.length() && !isSpace(s[at])  Bool
+proto.kira:39:11  at < s.length()  Bool
+proto.kira:39:11  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:39:16  s.length()  Size  call=MAGIC(Str.length)
+proto.kira:39:16  s  Str  place=Param(s)  sym=pilot:proto.wordAt(s)
+proto.kira:39:30  !isSpace(s[at])  Bool
+proto.kira:39:31  isSpace(s[at])  Bool  call=FREE(isSpace)
+proto.kira:39:31  isSpace  ?  sym=pilot:proto.isSpace
+proto.kira:39:39  s[at]  Char  place=Index(Param(s), STR)
+proto.kira:39:39  s  Str  place=Param(s)  sym=pilot:proto.wordAt(s)
+proto.kira:39:41  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:40:9  at += 1  Void
+proto.kira:40:9  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:40:15  1  Size  const=1:Size
+proto.kira:42:5  end = at  Void
+proto.kira:42:5  end  Size  place=Param(end)  sym=pilot:proto.wordAt(end)
+proto.kira:42:11  at  Size  place=Local(at)  sym=pilot:proto.wordAt::at
+proto.kira:46:20  from  Size  place=Param(from)  sym=pilot:proto.tailFrom(from)
+proto.kira:47:11  at < s.length() && isSpace(s[at])  Bool
+proto.kira:47:11  at < s.length()  Bool
+proto.kira:47:11  at  Size  place=Local(at)  sym=pilot:proto.tailFrom::at
+proto.kira:47:16  s.length()  Size  call=MAGIC(Str.length)
+proto.kira:47:16  s  Str  place=Param(s)  sym=pilot:proto.tailFrom(s)
+proto.kira:47:30  isSpace(s[at])  Bool  call=FREE(isSpace)
+proto.kira:47:30  isSpace  ?  sym=pilot:proto.isSpace
+proto.kira:47:38  s[at]  Char  place=Index(Param(s), STR)
+proto.kira:47:38  s  Str  place=Param(s)  sym=pilot:proto.tailFrom(s)
+proto.kira:47:40  at  Size  place=Local(at)  sym=pilot:proto.tailFrom::at
+proto.kira:48:9  at += 1  Void
+proto.kira:48:9  at  Size  place=Local(at)  sym=pilot:proto.tailFrom::at
+proto.kira:48:15  1  Size  const=1:Size
+proto.kira:50:12  if at < s.length() { s.substring(at, s.length()) } else { "" }  Str
+proto.kira:50:15  at < s.length()  Bool
+proto.kira:50:15  at  Size  place=Local(at)  sym=pilot:proto.tailFrom::at
+proto.kira:50:20  s.length()  Size  call=MAGIC(Str.length)
+proto.kira:50:20  s  Str  place=Param(s)  sym=pilot:proto.tailFrom(s)
+proto.kira:50:33  s.substring(at, s.length())  Str  call=MAGIC(Str.substring)
+proto.kira:50:33  s  Str  place=Param(s)  sym=pilot:proto.tailFrom(s)
+proto.kira:50:45  at  Size  place=Local(at)  sym=pilot:proto.tailFrom::at
+proto.kira:50:49  s.length()  Size  call=MAGIC(Str.length)
+proto.kira:50:49  s  Str  place=Param(s)  sym=pilot:proto.tailFrom(s)
+proto.kira:50:70  ""  Str  const=""
+proto.kira:54:19  s.length()  Size  call=MAGIC(Str.length)
+proto.kira:54:19  s  Str  place=Param(s)  sym=pilot:proto.trimEnd(s)
+proto.kira:55:11  n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isSpace(s[n - 1]))  Bool
+proto.kira:55:11  n > 0  Bool
+proto.kira:55:11  n  Size  place=Local(n)  sym=pilot:proto.trimEnd::n
+proto.kira:55:15  0  Size  const=0:Size
+proto.kira:55:20  s[n - 1] == '\r' || s[n - 1] == '\n' || isSpace(s[n - 1])  Bool
+proto.kira:55:21  s[n - 1] == '\r' || s[n - 1] == '\n'  Bool
+proto.kira:55:21  s[n - 1] == '\r'  Bool
+proto.kira:55:21  s[n - 1]  Char  place=Index(Param(s), STR)
+proto.kira:55:21  s  Str  place=Param(s)  sym=pilot:proto.trimEnd(s)
+proto.kira:55:23  n - 1  Size
+proto.kira:55:23  n  Size  place=Local(n)  sym=pilot:proto.trimEnd::n
+proto.kira:55:27  1  Size  const=1:Size
+proto.kira:55:33  '\r'  Char  const='\r'
+proto.kira:55:41  s[n - 1] == '\n'  Bool
+proto.kira:55:41  s[n - 1]  Char  place=Index(Param(s), STR)
+proto.kira:55:41  s  Str  place=Param(s)  sym=pilot:proto.trimEnd(s)
+proto.kira:55:43  n - 1  Size
+proto.kira:55:43  n  Size  place=Local(n)  sym=pilot:proto.trimEnd::n
+proto.kira:55:47  1  Size  const=1:Size
+proto.kira:55:53  '\n'  Char  const='\n'
+proto.kira:55:61  isSpace(s[n - 1])  Bool  call=FREE(isSpace)
+proto.kira:55:61  isSpace  ?  sym=pilot:proto.isSpace
+proto.kira:55:69  s[n - 1]  Char  place=Index(Param(s), STR)
+proto.kira:55:69  s  Str  place=Param(s)  sym=pilot:proto.trimEnd(s)
+proto.kira:55:71  n - 1  Size
+proto.kira:55:71  n  Size  place=Local(n)  sym=pilot:proto.trimEnd::n
+proto.kira:55:75  1  Size  const=1:Size
+proto.kira:56:9  n -= 1  Void
+proto.kira:56:9  n  Size  place=Local(n)  sym=pilot:proto.trimEnd::n
+proto.kira:56:14  1  Size  const=1:Size
+proto.kira:58:12  s.substring(0, n)  Str  call=MAGIC(Str.substring)
+proto.kira:58:12  s  Str  place=Param(s)  sym=pilot:proto.trimEnd(s)
+proto.kira:58:24  0  Size  const=0:Size
+proto.kira:58:27  n  Size  place=Local(n)  sym=pilot:proto.trimEnd::n
+proto.kira:63:22  Reply { line = trimEnd(line) }  Reply
+proto.kira:63:37  trimEnd(line)  Str  call=FREE(trimEnd)
+proto.kira:63:37  trimEnd  ?  sym=pilot:proto.trimEnd
+proto.kira:63:45  line  Str  place=Param(line)  sym=pilot:proto.read(line)
+proto.kira:64:19  0  Size  const=0:Size
+proto.kira:65:19  0  Size  const=0:Size
+proto.kira:66:5  wordAt(out.line, 0, mut b, mut e)  Void  call=FREE(wordAt)
+proto.kira:66:5  wordAt  ?  sym=pilot:proto.wordAt
+proto.kira:66:12  out.line  Str  member=Field(Reply.line: Str)  place=Field(Local(out).line)
+proto.kira:66:12  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:66:22  0  Size  const=0:Size
+proto.kira:66:29  b  Size  place=Local(b)  sym=pilot:proto.read::b
+proto.kira:66:36  e  Size  place=Local(e)  sym=pilot:proto.read::e
+proto.kira:67:8  b >= e  Bool
+proto.kira:67:8  b  Size  place=Local(b)  sym=pilot:proto.read::b
+proto.kira:67:13  e  Size  place=Local(e)  sym=pilot:proto.read::e
+proto.kira:68:9  out.kind = Kind.KIND_EMPTY  Void
+proto.kira:68:9  out.kind  Kind  member=Field(Reply.kind: Kind)  place=Field(Local(out).kind)
+proto.kira:68:9  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:68:20  Kind.KIND_EMPTY  Kind  member=Enum(Kind.KIND_EMPTY)  const=Kind.KIND_EMPTY
+proto.kira:68:20  Kind  ?  sym=pilot:proto.Kind
+proto.kira:69:16  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:71:17  out.line.substring(b, e)  Str  call=MAGIC(Str.substring)
+proto.kira:71:17  out.line  Str  member=Field(Reply.line: Str)  place=Field(Local(out).line)
+proto.kira:71:17  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:71:36  b  Size  place=Local(b)  sym=pilot:proto.read::b
+proto.kira:71:39  e  Size  place=Local(e)  sym=pilot:proto.read::e
+proto.kira:72:8  head == "ERR"  Bool
+proto.kira:72:8  head  Str  place=Local(head)  sym=pilot:proto.read::head
+proto.kira:72:16  "ERR"  Str  const="ERR"
+proto.kira:73:9  out.kind = Kind.KIND_ERR  Void
+proto.kira:73:9  out.kind  Kind  member=Field(Reply.kind: Kind)  place=Field(Local(out).kind)
+proto.kira:73:9  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:73:20  Kind.KIND_ERR  Kind  member=Enum(Kind.KIND_ERR)  const=Kind.KIND_ERR
+proto.kira:73:20  Kind  ?  sym=pilot:proto.Kind
+proto.kira:74:9  out.rest = tailFrom(out.line, e)  Void
+proto.kira:74:9  out.rest  Str  member=Field(Reply.rest: Str)  place=Field(Local(out).rest)
+proto.kira:74:9  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:74:20  tailFrom(out.line, e)  Str  call=FREE(tailFrom)
+proto.kira:74:20  tailFrom  ?  sym=pilot:proto.tailFrom
+proto.kira:74:29  out.line  Str  member=Field(Reply.line: Str)  place=Field(Local(out).line)
+proto.kira:74:29  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:74:39  e  Size  place=Local(e)  sym=pilot:proto.read::e
+proto.kira:75:16  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:77:8  head == "OK" || head == "INFO"  Bool
+proto.kira:77:8  head == "OK"  Bool
+proto.kira:77:8  head  Str  place=Local(head)  sym=pilot:proto.read::head
+proto.kira:77:16  "OK"  Str  const="OK"
+proto.kira:77:24  head == "INFO"  Bool
+proto.kira:77:24  head  Str  place=Local(head)  sym=pilot:proto.read::head
+proto.kira:77:32  "INFO"  Str  const="INFO"
+proto.kira:78:9  out.kind = if head == "OK" { Kind.KIND_OK } else { Kind.KIND_INFO }  Void
+proto.kira:78:9  out.kind  Kind  member=Field(Reply.kind: Kind)  place=Field(Local(out).kind)
+proto.kira:78:9  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:78:20  if head == "OK" { Kind.KIND_OK } else { Kind.KIND_INFO }  Kind
+proto.kira:78:23  head == "OK"  Bool
+proto.kira:78:23  head  Str  place=Local(head)  sym=pilot:proto.read::head
+proto.kira:78:31  "OK"  Str  const="OK"
+proto.kira:78:38  Kind.KIND_OK  Kind  member=Enum(Kind.KIND_OK)  const=Kind.KIND_OK
+proto.kira:78:38  Kind  ?  sym=pilot:proto.Kind
+proto.kira:78:60  Kind.KIND_INFO  Kind  member=Enum(Kind.KIND_INFO)  const=Kind.KIND_INFO
+proto.kira:78:60  Kind  ?  sym=pilot:proto.Kind
+proto.kira:79:24  0  Size  const=0:Size
+proto.kira:80:24  0  Size  const=0:Size
+proto.kira:81:9  wordAt(out.line, e, mut tb, mut te)  Void  call=FREE(wordAt)
+proto.kira:81:9  wordAt  ?  sym=pilot:proto.wordAt
+proto.kira:81:16  out.line  Str  member=Field(Reply.line: Str)  place=Field(Local(out).line)
+proto.kira:81:16  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:81:26  e  Size  place=Local(e)  sym=pilot:proto.read::e
+proto.kira:81:33  tb  Size  place=Local(tb)  sym=pilot:proto.read::tb
+proto.kira:81:41  te  Size  place=Local(te)  sym=pilot:proto.read::te
+proto.kira:82:12  tb < te  Bool
+proto.kira:82:12  tb  Size  place=Local(tb)  sym=pilot:proto.read::tb
+proto.kira:82:17  te  Size  place=Local(te)  sym=pilot:proto.read::te
+proto.kira:83:13  out.topic = out.line.substring(tb, te)  Void
+proto.kira:83:13  out.topic  Str  member=Field(Reply.topic: Str)  place=Field(Local(out).topic)
+proto.kira:83:13  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:83:25  out.line.substring(tb, te)  Str  call=MAGIC(Str.substring)
+proto.kira:83:25  out.line  Str  member=Field(Reply.line: Str)  place=Field(Local(out).line)
+proto.kira:83:25  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:83:44  tb  Size  place=Local(tb)  sym=pilot:proto.read::tb
+proto.kira:83:48  te  Size  place=Local(te)  sym=pilot:proto.read::te
+proto.kira:84:13  out.rest = tailFrom(out.line, te)  Void
+proto.kira:84:13  out.rest  Str  member=Field(Reply.rest: Str)  place=Field(Local(out).rest)
+proto.kira:84:13  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:84:24  tailFrom(out.line, te)  Str  call=FREE(tailFrom)
+proto.kira:84:24  tailFrom  ?  sym=pilot:proto.tailFrom
+proto.kira:84:33  out.line  Str  member=Field(Reply.line: Str)  place=Field(Local(out).line)
+proto.kira:84:33  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:84:43  te  Size  place=Local(te)  sym=pilot:proto.read::te
+proto.kira:86:16  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:88:5  out.kind = Kind.KIND_OTHER  Void
+proto.kira:88:5  out.kind  Kind  member=Field(Reply.kind: Kind)  place=Field(Local(out).kind)
+proto.kira:88:5  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:88:16  Kind.KIND_OTHER  Kind  member=Enum(Kind.KIND_OTHER)  const=Kind.KIND_OTHER
+proto.kira:88:16  Kind  ?  sym=pilot:proto.Kind
+proto.kira:89:5  out.rest = out.line  Void
+proto.kira:89:5  out.rest  Str  member=Field(Reply.rest: Str)  place=Field(Local(out).rest)
+proto.kira:89:5  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:89:16  out.line  Str  member=Field(Reply.line: Str)  place=Field(Local(out).line)
+proto.kira:89:16  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:90:12  out  Reply  place=Local(out)  sym=pilot:proto.read::out
+proto.kira:96:8  key.isEmpty()  Bool  call=MAGIC(Str.isEmpty)
+proto.kira:96:8  key  Str  place=Param(key)  sym=pilot:proto.field(key)
+proto.kira:97:16  false  Bool  const=false  sym=kira:core.false
+proto.kira:99:18  key.length()  Size  call=MAGIC(Str.length)
+proto.kira:99:18  key  Str  place=Param(key)  sym=pilot:proto.field(key)
+proto.kira:100:19  0  Size  const=0:Size
+proto.kira:101:11  i + klen <= text.length()  Bool
+proto.kira:101:11  i + klen  Size
+proto.kira:101:11  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:101:15  klen  Size  place=Local(klen)  sym=pilot:proto.field::klen
+proto.kira:101:23  text.length()  Size  call=MAGIC(Str.length)
+proto.kira:101:23  text  Str  place=Param(text)  sym=pilot:proto.field(text)
+proto.kira:102:26  i == 0 || isSpace(text[i - 1])  Bool
+proto.kira:102:26  i == 0  Bool
+proto.kira:102:26  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:102:31  0  Size  const=0:Size
+proto.kira:102:36  isSpace(text[i - 1])  Bool  call=FREE(isSpace)
+proto.kira:102:36  isSpace  ?  sym=pilot:proto.isSpace
+proto.kira:102:44  text[i - 1]  Char  place=Index(Param(text), STR)
+proto.kira:102:44  text  Str  place=Param(text)  sym=pilot:proto.field(text)
+proto.kira:102:49  i - 1  Size
+proto.kira:102:49  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:102:53  1  Size  const=1:Size
+proto.kira:103:12  boundary && text.substring(i, i + klen) == key  Bool
+proto.kira:103:12  boundary  Bool  place=Local(boundary)  sym=pilot:proto.field::boundary
+proto.kira:103:24  text.substring(i, i + klen) == key  Bool
+proto.kira:103:24  text.substring(i, i + klen)  Str  call=MAGIC(Str.substring)
+proto.kira:103:24  text  Str  place=Param(text)  sym=pilot:proto.field(text)
+proto.kira:103:39  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:103:42  i + klen  Size
+proto.kira:103:42  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:103:46  klen  Size  place=Local(klen)  sym=pilot:proto.field::klen
+proto.kira:103:55  key  Str  place=Param(key)  sym=pilot:proto.field(key)
+proto.kira:104:28  i + klen  Size
+proto.kira:104:28  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:104:32  klen  Size  place=Local(klen)  sym=pilot:proto.field::klen
+proto.kira:105:19  to < text.length() && !isSpace(text[to])  Bool
+proto.kira:105:19  to < text.length()  Bool
+proto.kira:105:19  to  Size  place=Local(to)  sym=pilot:proto.field::to
+proto.kira:105:24  text.length()  Size  call=MAGIC(Str.length)
+proto.kira:105:24  text  Str  place=Param(text)  sym=pilot:proto.field(text)
+proto.kira:105:41  !isSpace(text[to])  Bool
+proto.kira:105:42  isSpace(text[to])  Bool  call=FREE(isSpace)
+proto.kira:105:42  isSpace  ?  sym=pilot:proto.isSpace
+proto.kira:105:50  text[to]  Char  place=Index(Param(text), STR)
+proto.kira:105:50  text  Str  place=Param(text)  sym=pilot:proto.field(text)
+proto.kira:105:55  to  Size  place=Local(to)  sym=pilot:proto.field::to
+proto.kira:106:17  to += 1  Void
+proto.kira:106:17  to  Size  place=Local(to)  sym=pilot:proto.field::to
+proto.kira:106:23  1  Size  const=1:Size
+proto.kira:108:13  out = text.substring(i + klen, to)  Void
+proto.kira:108:13  out  Str  place=Param(out)  sym=pilot:proto.field(out)
+proto.kira:108:19  text.substring(i + klen, to)  Str  call=MAGIC(Str.substring)
+proto.kira:108:19  text  Str  place=Param(text)  sym=pilot:proto.field(text)
+proto.kira:108:34  i + klen  Size
+proto.kira:108:34  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:108:38  klen  Size  place=Local(klen)  sym=pilot:proto.field::klen
+proto.kira:108:44  to  Size  place=Local(to)  sym=pilot:proto.field::to
+proto.kira:109:20  true  Bool  const=true  sym=kira:core.true
+proto.kira:111:9  i += 1  Void
+proto.kira:111:9  i  Size  place=Local(i)  sym=pilot:proto.field::i
+proto.kira:111:14  1  Size  const=1:Size
+proto.kira:113:12  false  Bool  const=false  sym=kira:core.false
+proto.kira:118:20  ""  Str  const=""
+proto.kira:119:8  !field(text, key, mut raw)  Bool
+proto.kira:119:9  field(text, key, mut raw)  Bool  call=FREE(field)
+proto.kira:119:9  field  ?  sym=pilot:proto.field
+proto.kira:119:15  text  Str  place=Param(text)  sym=pilot:proto.fieldInt(text)
+proto.kira:119:21  key  Str  place=Param(key)  sym=pilot:proto.fieldInt(key)
+proto.kira:119:30  raw  Str  place=Local(raw)  sym=pilot:proto.fieldInt::raw
+proto.kira:120:16  false  Bool  const=false  sym=kira:core.false
+proto.kira:122:23  raw.toInt64()  Maybe<Int64>  call=MAGIC(Str.toInt64)
+proto.kira:122:23  raw  Str  place=Local(raw)  sym=pilot:proto.fieldInt::raw
+proto.kira:123:8  v.isNone()  Bool  call=MAGIC(Maybe.isNone)
+proto.kira:123:8  v  Maybe<Int64>  place=Local(v)  sym=pilot:proto.fieldInt::v
+proto.kira:124:16  false  Bool  const=false  sym=kira:core.false
+proto.kira:126:5  out = v.unwrap() as Int32  Void
+proto.kira:126:5  out  Int32  place=Param(out)  sym=pilot:proto.fieldInt(out)
+proto.kira:126:11  v.unwrap() as Int32  Int32  conv=INT_WRAP
+proto.kira:126:11  v.unwrap()  Int64  call=MAGIC(Maybe.unwrap)
+proto.kira:126:11  v  Maybe<Int64>  place=Local(v)  sym=pilot:proto.fieldInt::v
+proto.kira:127:12  true  Bool  const=true  sym=kira:core.true
+proto.kira:131:20  ""  Str  const=""
+proto.kira:132:8  !field(text, key, mut raw)  Bool
+proto.kira:132:9  field(text, key, mut raw)  Bool  call=FREE(field)
+proto.kira:132:9  field  ?  sym=pilot:proto.field
+proto.kira:132:15  text  Str  place=Param(text)  sym=pilot:proto.fieldFloat(text)
+proto.kira:132:21  key  Str  place=Param(key)  sym=pilot:proto.fieldFloat(key)
+proto.kira:132:30  raw  Str  place=Local(raw)  sym=pilot:proto.fieldFloat::raw
+proto.kira:133:16  false  Bool  const=false  sym=kira:core.false
+proto.kira:135:25  raw.toFloat64()  Maybe<Float64>  call=MAGIC(Str.toFloat64)
+proto.kira:135:25  raw  Str  place=Local(raw)  sym=pilot:proto.fieldFloat::raw
+proto.kira:136:8  v.isNone()  Bool  call=MAGIC(Maybe.isNone)
+proto.kira:136:8  v  Maybe<Float64>  place=Local(v)  sym=pilot:proto.fieldFloat::v
+proto.kira:137:16  false  Bool  const=false  sym=kira:core.false
+proto.kira:139:5  out = v.unwrap() as Float32  Void
+proto.kira:139:5  out  Float32  place=Param(out)  sym=pilot:proto.fieldFloat(out)
+proto.kira:139:11  v.unwrap() as Float32  Float32  conv=FLOAT_RESIZE
+proto.kira:139:11  v.unwrap()  Float64  call=MAGIC(Maybe.unwrap)
+proto.kira:139:11  v  Maybe<Float64>  place=Local(v)  sym=pilot:proto.fieldFloat::v
+proto.kira:140:12  true  Bool  const=true  sym=kira:core.true
+proto.kira:146:17  value < 0.0  Bool
+proto.kira:146:17  value  Float32  place=Param(value)  sym=pilot:proto.fixed3(value)
+proto.kira:146:25  0.0  Float32  const=0.0:Float32
+proto.kira:147:18  if neg { -value } else { value }  Float32
+proto.kira:147:21  neg  Bool  place=Local(neg)  sym=pilot:proto.fixed3::neg
+proto.kira:147:27  -value  Float32
+proto.kira:147:28  value  Float32  place=Param(value)  sym=pilot:proto.fixed3(value)
+proto.kira:147:43  value  Float32  place=Param(value)  sym=pilot:proto.fixed3(value)
+proto.kira:148:21  v * 1000.0 + 0.5 as Int32  Int32  conv=FLOAT_TO_INT_SAT
+proto.kira:148:22  v * 1000.0 + 0.5  Float32
+proto.kira:148:22  v * 1000.0  Float32
+proto.kira:148:22  v  Float32  place=Local(v)  sym=pilot:proto.fixed3::v
+proto.kira:148:26  1000.0  Float32  const=1000.0:Float32
+proto.kira:148:35  0.5  Float32  const=0.5:Float32
+proto.kira:149:20  scaled / 1000  Int32
+proto.kira:149:20  scaled  Int32  place=Local(scaled)  sym=pilot:proto.fixed3::scaled
+proto.kira:149:29  1000  Int32  const=1000:Int32
+proto.kira:150:19  scaled % 1000  Int32
+proto.kira:150:19  scaled  Int32  place=Local(scaled)  sym=pilot:proto.fixed3::scaled
+proto.kira:150:28  1000  Int32  const=1000:Int32
+proto.kira:151:17  if neg { "-" } else { "" }  Str
+proto.kira:151:20  neg  Bool  place=Local(neg)  sym=pilot:proto.fixed3::neg
+proto.kira:151:26  "-"  Str  const="-"
+proto.kira:151:39  ""  Str  const=""
+proto.kira:152:12  "${sign}${whole}.${(frac as Str).padStart(3, '0')}"  Str
+proto.kira:152:15  sign  Str  place=Local(sign)  sym=pilot:proto.fixed3::sign
+proto.kira:152:22  whole  Int32  place=Local(whole)  sym=pilot:proto.fixed3::whole
+proto.kira:152:31  (frac as Str).padStart(3, '0')  Str  call=MAGIC(Str.padStart)
+proto.kira:152:32  frac as Str  Str  conv=TO_STR
+proto.kira:152:32  frac  Int32  place=Local(frac)  sym=pilot:proto.fixed3::frac
+proto.kira:152:54  3  Size  const=3:Size
+proto.kira:152:57  '0'  Char  const='0'
+proto.kira:157:22  fraction  Float32  place=Param(fraction)  sym=pilot:proto.steer(fraction)
+proto.kira:158:8  f < -1.0  Bool
+proto.kira:158:8  f  Float32  place=Local(f)  sym=pilot:proto.steer::f
+proto.kira:158:12  -1.0  Float32  const=-1.0:Float32
+proto.kira:158:13  1.0  Float32
+proto.kira:159:9  f = -1.0  Void
+proto.kira:159:9  f  Float32  place=Local(f)  sym=pilot:proto.steer::f
+proto.kira:159:13  -1.0  Float32  const=-1.0:Float32
+proto.kira:159:14  1.0  Float32
+proto.kira:161:8  f > 1.0  Bool
+proto.kira:161:8  f  Float32  place=Local(f)  sym=pilot:proto.steer::f
+proto.kira:161:12  1.0  Float32  const=1.0:Float32
+proto.kira:162:9  f = 1.0  Void
+proto.kira:162:9  f  Float32  place=Local(f)  sym=pilot:proto.steer::f
+proto.kira:162:13  1.0  Float32  const=1.0:Float32
+proto.kira:164:12  "STEER ${fixed3(f)}"  Str
+proto.kira:164:21  fixed3(f)  Str  call=FREE(fixed3)
+proto.kira:164:21  fixed3  ?  sym=pilot:proto.fixed3
+proto.kira:164:28  f  Float32  place=Local(f)  sym=pilot:proto.steer::f
+proto.kira:168:12  "ESC ${us}"  Str
+proto.kira:168:19  us  Int32  place=Param(us)  sym=pilot:proto.escUs(us)
+proto.kira:172:12  "STOP"  Str  const="STOP"
+proto.kira:176:41  ""  Str  const=""
+proto.kira:177:8  verb.isEmpty()  Bool  call=MAGIC(Str.isEmpty)
+proto.kira:177:8  verb  Str  place=Param(verb)  sym=pilot:proto.command(verb)
+proto.kira:178:16  ""  Str  const=""
+proto.kira:180:12  if args.isEmpty() { verb } else { "${verb} ${args}" }  Str
+proto.kira:180:15  args.isEmpty()  Bool  call=MAGIC(Str.isEmpty)
+proto.kira:180:15  args  Str  place=Param(args)  sym=pilot:proto.command(args)
+proto.kira:180:32  verb  Str  place=Param(verb)  sym=pilot:proto.command(verb)
+proto.kira:180:46  "${verb} ${args}"  Str
+proto.kira:180:49  verb  Str  place=Param(verb)  sym=pilot:proto.command(verb)
+proto.kira:180:57  args  Str  place=Param(args)  sym=pilot:proto.command(args)

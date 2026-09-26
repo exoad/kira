@@ -1,0 +1,37 @@
+module "fixture:body.conversions"
+
+// `as` (design 5.3, R13), bitCast (R20) and enumOf (D25).
+
+pub enum Kind: Int32 {
+    KIND_A = 0,
+    KIND_B = 1
+}
+
+pub fx conversions: (i: Int32, l: Int64, f: Float32, d: Float64, c: Char, u: UInt8, k: Kind, b: Bool) Void {
+    w: Int32 = l as Int32                  // @type Int32 conv=INT_WRAP
+    z: Size = i as Size                    // @type Size conv=INT_WRAP
+    x: Float64 = i as Float64              // @type Float64 conv=INT_TO_FLOAT
+    y: Int32 = d as Int32                  // @type Int32 conv=FLOAT_TO_INT_SAT
+    r: Float32 = d as Float32              // @type Float32 conv=FLOAT_RESIZE
+    wide: Float64 = f as Float64           // @type Float64 conv=FLOAT_RESIZE
+    o: UInt8 = c as UInt8                  // @type UInt8 conv=CHAR_TO_INT
+    h: Char = u as Char                    // @type Char conv=INT_TO_CHAR
+    e: Int32 = k as Int32                  // @type Int32 conv=ENUM_TO_BASE
+    s1: Str = i as Str                     // @type Str conv=TO_STR
+    s2: Str = b as Str                     // @type Str conv=TO_STR
+    s3: Str = c as Str                     // @type Str conv=TO_STR
+    s4: Str = k as Str                     // @type Str conv=TO_STR
+    s5: Str = d as Str                     // @type Str conv=TO_STR
+    folded: Int32 = (300 as UInt8) as Int32 // @type Int32 conv=INT_WRAP const=44:Int32
+    sat: Int32 = 3.9 as Int32              // @type Int32 conv=FLOAT_TO_INT_SAT const=3:Int32
+    code: Int32 = 'A' as Int32             // @type Int32 conv=CHAR_TO_INT const=65:Int32
+    base: Int32 = Kind.KIND_B as Int32     // @type Int32 conv=ENUM_TO_BASE const=1:Int32
+    bits: UInt32 = bitCast<UInt32>(f)      // @type UInt32 call=MAGIC(bitCast)
+    back: Float32 = bitCast<Float32>(bits) // @type Float32 call=MAGIC(bitCast)
+    dbits: UInt64 = bitCast<UInt64>(d)     // @type UInt64 call=MAGIC(bitCast)
+    signed: Int8 = bitCast<Int8>(u)        // @type Int8 call=MAGIC(bitCast)
+    mk: Maybe<Kind> = enumOf<Kind>(1)      // @type Maybe<Kind> call=MAGIC(enumOf)
+    raw: Int32 = 1                         // @type Int32
+    mk2: Maybe<Kind> = enumOf<Kind>(raw)   // @type Maybe<Kind> call=MAGIC(enumOf)
+    lit: Maybe<Kind> = enumOf<Kind>(0)     // @type Int32 const=0:Int32 @ 0
+}

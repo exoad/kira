@@ -420,7 +420,8 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun aLiteralOutOfRangeDoesNotFoldAndIsLeftToPhaseC() {
-        val p = snippet("X: UInt8 = 256")
+        // Phases A and B alone: phase C's literal check reports it (TyperBodyNegativeTest).
+        val p = TyperTestSupport.phasesAAndB { snippet("X: UInt8 = 256") }
         val x = p.workspaceModules.single().members["X"] as GlobalSymbol
         assertNull(x.constValue)
         assertTrue(p.diagnostics.isEmpty(), "W2.1's literal checks report it: ${TyperTestSupport.render(p)}")

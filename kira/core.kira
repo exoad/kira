@@ -77,8 +77,13 @@ pub @_magic class UInt32: Num
 pub @_magic class UInt64: Num
 pub @_magic class Size: Num
 
-pub @_magic class Float32: Num
-pub @_magic class Float64: Num
+// The bound of kira:math's float functions (D20): `sin<T: FloatNum>` takes a
+// Float32 or a Float64 and returns the same type, inferred from the argument.
+// It adds no methods: a float's methods are still Num's.
+pub @_magic class FloatNum: Num
+
+pub @_magic class Float32: FloatNum
+pub @_magic class Float64: FloatNum
 
 // An 8-bit code unit. `==`, `!=` and the relational operators compare it
 // (relational as unsigned, so every target agrees); nothing arithmetic
@@ -92,3 +97,26 @@ pub alias Float as Float32
 // special-cases the call: `T` is always the explicit type argument and the
 // argument must have `T`'s width.
 pub @_magic fx bitCast<T>: (value: Any) T;
+
+// The entry of the integer enum `E` whose value is `raw`, or none (D25): an
+// enum has no methods, so this is the free intrinsic. The typer special-cases
+// the call: `E` is the explicit type argument and `raw` is an integer.
+pub @_magic fx enumOf<E>: (raw: Any) Maybe<E>;
+
+// A fixed-capacity text buffer, `StrBuf<N>` (design section 10): N chars and no
+// heap, so a freestanding module builds text in one. The typer takes exactly one
+// constant argument, the capacity. Appends past N are dropped. `add` and `set`
+// take a view of text; an interpolation passed to them (`buf.set("servo=${s}")`)
+// never becomes a Str: it is appended piece by piece, `set` clearing first.
+pub @_magic class StrBuf {
+    pub fx size: () Size;
+    pub fx isEmpty: () Bool;
+    pub fx view: () View<Char>;
+    pub mut fx clear: () Void;
+    pub mut fx add: (text: View<Char>) Void;
+    pub mut fx addChar: (c: Char) Void;
+    pub mut fx addInt: (value: Int64) Void;
+    pub mut fx addUInt: (value: UInt64) Void;
+    pub mut fx addFixed: (value: Float64, places: Int32) Void;
+    pub mut fx set: (text: View<Char>) Void;
+}

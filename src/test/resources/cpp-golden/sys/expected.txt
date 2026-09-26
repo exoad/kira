@@ -1,0 +1,8 @@
+
+sys - spawn, Mutex.lock and kira:test
+
+  ok    1000 increments from a worker, counted under the mutex
+  ok    and the count reads back as text
+
+2 checks, 0 failed
+

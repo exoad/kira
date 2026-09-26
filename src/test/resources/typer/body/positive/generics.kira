@@ -1,0 +1,192 @@
+module "fixture:body.generics"
+
+// Receivers of a type parameter (design 5.5): the members of T's bounds are reachable on a T
+// value, dispatched statically through the bound (a trait bound is a TRAIT call, `Num` a MAGIC
+// one whose `Num` results are T again). A List takes an array literal from its context (spec),
+// a magic call whose C++ binding is constexpr is a constant, and a `mut fx` on a class
+// reference or on a lambda's own local is no write to a capture.
+
+pub trait Shape {
+    pub fx area: () Float64;
+    pub fx describe: () Str {
+        return "shape"
+    }
+}
+
+pub struct Square: Shape {
+    pub side: Float64 = 2.0
+
+    override pub fx area: () Float64 {
+        return side * side
+    }
+}
+
+pub class Named {
+    require pub name: Str
+    pub mut hits: Int32 = 0
+
+    pub mut fx hit: () Void {
+        hits += 1
+    }
+}
+
+pub class Tagged: Named {
+    pub tag: Int32 = 0
+}
+
+pub fx areaOf<T: Shape>: (s: T) Float64 {
+    return s.area()                        // @type Float64 call=TRAIT(Shape.area)
+}
+
+pub fx describe<T: Shape>: (s: T) Str {
+    return s.describe()                    // @type Str call=TRAIT(Shape.describe)
+}
+
+pub fx magnitude<T: Num>: (x: T) T {
+    return x.abs()                         // @type T call=MAGIC(Num.abs)
+}
+
+pub fx widen<T: Num>: (x: T) Int64 {
+    return x.toInt64()                     // @type Int64 call=MAGIC(Num.toInt64)
+}
+
+pub fx same<T: Num>: (a: T, b: T) Bool {
+    return a.equals(b)                     // @type Bool call=MAGIC(Equatable.equals)
+}
+
+pub fx nameOf<T: Named>: (n: T) Str {
+    return n.name                          // @type Str member=Field(Named.name: Str)
+}
+
+pub fx touch<T: Named>: (n: T) Int32 {
+    n.hit()                                // @type Void call=METHOD(Named.hit)
+    return n.hits                          // @type Int32 member=Field(Named.hits: Int32)
+}
+
+pub fx uses: () Float64 {
+    sq: Square = Square { }                // @type Square
+    a: Float64 = areaOf<Square>(sq)        // @type Float64 call=FREE(areaOf)
+    m: Int32 = magnitude<Int32>(-4)        // @type Int32 call=FREE(magnitude)
+    t: Tagged = Tagged { "t" }             // @type Tagged
+    h: Int32 = touch<Tagged>(t)            // @type Int32 call=FREE(touch)
+    return a
+}
+
+pub fx lists: () Int32 {
+    xs: List<Int32> = [1, 2, 3]            // @type List<Int32> @ [1, 2, 3]
+    ys: List<Float32> = [1.0, 2.5]         // @type List<Float32> @ [1.0, 2.5]
+    zs: List<Str> = ["a"]                  // @type List<Str> @ ["a"]
+    return xs.get(0)                       // @type Int32 call=MAGIC(List.get)
+}
+
+pub NEG: Int32 = -3
+pub POS: Int32 = NEG.abs()                 // @type Int32 call=MAGIC(Num.abs)
+pub HALF: Float32 = 0.5
+pub BITS: UInt32 = bitCast<UInt32>(HALF)   // @type UInt32 call=MAGIC(bitCast)
+pub mut LEVEL: Int32 = POS * 2             // @type Int32
+
+// A constant of a literal type (Arr<T, N> is a std::array) is constexpr, and its constexpr
+// magic calls are constants; a global of a run-time type (Arr<T> is a std::vector, a struct
+// holding a List) is built from literals in no order (D49), and is read at run time only.
+pub FIXED: Arr<Int32, 3> = [1, 2, 3]       // @type Arr<Int32, 3>
+pub FN: Size = FIXED.size()                // @type Size call=MAGIC(Arr.size)
+pub F0: Int32 = FIXED.get(0)               // @type Int32 call=MAGIC(Arr.get)
+pub F1: Int32 = FIXED[1]                   // @type Int32
+pub FV: View<Int32> = FIXED.view()         // @type View<Int32> call=MAGIC(Arr.view)
+pub FVN: Size = FV.size()                  // @type Size call=MAGIC(View.size)
+pub DYN: Arr<Int32> = [POS, 2, 3]          // @type Arr<Int32>
+pub mut STATE: List<Int32> = [F0, F1]      // @type List<Int32>
+
+pub struct Bag {
+    pub items: List<Int32> = []
+    pub n: Int32 = 1
+}
+
+pub BAG: Bag = Bag { n = F0 }              // @type Bag
+@_static_assert(FIXED.size() == 3, "three")
+@_static_assert(FV.size() == FN, "same")
+
+// A mut global of a run-time type starts from an empty container either way (D49).
+pub mut YS: List<Int32> = List<Int32> { }  // @type List<Int32>
+pub mut AGES: Map<Str, Int32> = Map<Str, Int32> { } // @type Map<Str, Int32>
+
+// A generic struct instance is a literal type when its arguments make its fields so: Box<Int32>
+// is `inline constexpr`, and its field is a constant operand.
+pub struct Box<T> {
+    pub v: T
+}
+
+pub BX: Box<Int32> = Box<Int32> { 1 }      // @type Box<Int32>
+pub BV: Int32 = BX.v                       // @type Int32
+pub BB: Box<Box<Int32>> = Box<Box<Int32>> { BX } // @type Box<Box<Int32>>
+pub BBV: Int32 = BB.v.v                    // @type Int32
+@_static_assert(BX.v == 1, "one")
+@_static_assert(BB.v.v == BV, "same")
+
+// A defaulted field whose default is a constant expression keeps the construction constant,
+// and a struct met twice on separate branches is a literal type both times.
+pub struct Sized {
+    pub n: Size = FIXED.size()
+    pub k: Int32 = F0
+}
+
+pub struct Pair {
+    pub a: Sized = Sized { }
+    pub b: Sized = Sized { }
+}
+
+pub SZ: Sized = Sized { }                  // @type Sized
+pub PR: Pair = Pair { }                    // @type Pair
+pub PRN: Size = PR.b.n                     // @type Size
+@_static_assert(SZ.n == 3, "sized")
+@_static_assert(PR.a.k == F0, "pair")
+
+// A @_const call that leaves a parameter to its literal default is a constant expression.
+pub @_const fx addTo: (a: Int32, b: Int32 = 2) Int32 {
+    return a + b
+}
+
+pub AK: Int32 = addTo(1)                   // @type Int32 call=FREE(addTo)
+@_static_assert(addTo(1) == 3, "defaulted")
+
+// A @_const operator overload is a constexpr call: constant on constant operands.
+pub struct V2 {
+    pub x: Int32 = 0
+}
+
+pub @_const fx @op_sub: (a: V2, b: V2) V2 {
+    return V2 { a.x - b.x }
+}
+
+pub VA: V2 = V2 { 3 }
+pub VD: V2 = VA - VA                       // @type V2
+pub VDX: Int32 = (VA - VA).x               // @type Int32
+@_static_assert((VA - VA).x == 0, "sub")
+
+pub fx hitter<T: Named>: (n: T) Fx<Tuple0, Void> {
+    return fx() Void {                     // @type Fx<Tuple0, Void>
+        n.hit()                            // @type Void call=METHOD(Named.hit)
+    }
+}
+
+pub fx sharedWrites: (counter: Named) Fx<Tuple0, Void> {
+    return fx() Void {                     // @type Fx<Tuple0, Void>
+        counter.hit()                      // @type Void call=METHOD(Named.hit)
+        mut own: List<Int32> = List<Int32> { }
+        own.add(1)                         // @type Void call=MAGIC(List.add)
+    }
+}
+
+pub class Tally {
+    pub mut n: Int32 = 0
+
+    pub mut fx bump: () Void {
+        n += 1
+    }
+
+    pub fx bumper: () Fx<Tuple0, Void> {
+        return fx() Void {
+            bump()                         // @type Void call=METHOD(Tally.bump)
+        }
+    }
+}

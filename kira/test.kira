@@ -1,0 +1,25 @@
+module "kira:test"
+
+// bibo's check format, so a Kira test prints exactly what its C++ tests
+// print and the same scripts read both (design 5.10; the runtime is
+// kira/cpp/kira/test.hxx). Constructing a Suite prints the header:
+//
+//     <newline>
+//     <title>
+//     <blank line>
+//
+// each check prints `  ok    <what>` or `  FAIL  <what>`, a failed checkStr
+// adds `        got  "<got>"` and `        want "<want>"`, and finish prints
+//
+//     <newline>
+//     <N> checks, <M> failed
+//     <blank line>
+//
+// and returns 1 when any check failed, else 0: the process exit code.
+pub @_magic class Suite {
+    require title: Str
+
+    pub mut fx check: (ok: Bool, what: Str) Void;
+    pub mut fx checkStr: (got: Str, want: Str, what: Str) Void;
+    pub fx finish: () Int32;
+}

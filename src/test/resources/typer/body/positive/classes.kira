@@ -1,0 +1,108 @@
+module "fixture:body.classes"
+
+// Classes, structs, traits and generics (design 5.5): construction (R9), member access (R4),
+// the implicit receiver, `this`, upcasts, virtual and trait dispatch, identity and memberwise
+// equality (R16).
+
+pub trait Speaker {
+    pub fx speak: () Str;
+    pub fx loud: () Str {
+        return speak() + "!"               // @type Str call=TRAIT(Speaker.speak) @ speak()
+    }
+}
+
+pub class Animal {
+    require pub name: Str
+    pub mut age: Int32 = 0
+
+    pub fx describe: () Str {
+        return name                        // @type Str place=Field(This(Animal).name) sym=Animal.name
+    }
+
+    pub fx sound: () Str {
+        return "..."                       // @type Str
+    }
+
+    pub mut fx birthday: () Void {
+        age += 1                           // @type Int32 place=Field(This(Animal).age) @ age
+    }
+}
+
+pub class Dog: Animal, Speaker {
+    pub mut tricks: Int32 = 0
+
+    override pub fx sound: () Str {
+        return "woof"                      // @type Str
+    }
+
+    override pub fx speak: () Str {
+        return sound()                     // @type Str call=VIRTUAL(Dog.sound)
+    }
+
+    pub fx me: () Dog {
+        return this                        // @type Dog place=This(Dog)
+    }
+
+    pub fx next: () Int32 {
+        return this.tricks + 1             // @type Int32 member=Field(Dog.tricks: Int32) @ this.tricks
+    }
+
+    pub fx greet: () Str {
+        return "${name} (${age})"          // @type Str place=Field(This(Dog).name) @ name
+    }
+}
+
+pub struct Point {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+
+    pub fx sum: () Int32 {
+        return x + y                       // @type Int32
+    }
+
+    pub mut fx shift: (dx: Int32) Void {
+        x += dx                            // @type Int32 place=Field(This(Point).x) @ x
+    }
+}
+
+pub class Box<T> {
+    require pub value: T
+
+    pub fx get: () T {
+        return value                       // @type T
+    }
+}
+
+pub enum Kind: Int32 {
+    KIND_A = 0,
+    KIND_B = 1
+}
+
+pub fx classes: () Void {
+    d: Dog = Dog { "Rex" }                 // @type Dog
+    d2: Dog = Dog { name = "Bo", tricks = 2 } // @type Dog
+    a: Animal = d                          // @type Dog coerce=Upcast(Dog -> Animal)
+    s: Speaker = d                         // @type Dog coerce=Upcast(Dog -> Speaker)
+    n: Str = d.name                        // @type Str member=Field(Animal.name: Str)
+    t: Str = s.speak()                     // @type Str call=TRAIT(Speaker.speak)
+    lt: Str = s.loud()                     // @type Str call=TRAIT(Speaker.loud)
+    u: Str = a.sound()                     // @type Str call=VIRTUAL(Animal.sound)
+    v: Str = a.describe()                  // @type Str call=METHOD(Animal.describe)
+    w: Str = d.speak()                     // @type Str call=VIRTUAL(Dog.speak)
+    mut p: Point = Point { 1, 2 }          // @type Point
+    q: Point = Point { y = 5 }             // @type Point
+    total: Int32 = p.sum()                 // @type Int32 call=METHOD(Point.sum)
+    p.shift(3)                             // @type Void call=METHOD(Point.shift)
+    p.x = 7                                // @type Int32 member=Field(Point.x: Int32) place=Field(Local(p).x) @ p.x
+    b: Box<Int32> = Box<Int32> { value = 5 } // @type Box<Int32>
+    got: Int32 = b.get()                   // @type Int32 call=METHOD(Box.get)
+    bv: Int32 = b.value                    // @type Int32 member=Field(Box.value: Int32)
+    k: Kind = Kind.KIND_B                  // @type Kind member=Enum(Kind.KIND_B) const=Kind.KIND_B
+    same: Bool = d == a                    // @type Dog coerce=Upcast(Dog -> Animal) @ d
+    pts: Bool = p == q                     // @type Bool
+    kinds: Bool = k != Kind.KIND_A         // @type Bool
+    ma: Maybe<Animal> = d                  // @type Dog coerce=WrapSome(Animal)
+    d.birthday()                           // @type Void call=METHOD(Animal.birthday)
+    words: Tuple2<Str, Int32> = Tuple2<Str, Int32> { "a", 1 } // @type Tuple2<Str, Int32>
+    first: Str = words.first               // @type Str member=Field(Tuple2.first: Str)
+}

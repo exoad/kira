@@ -1,0 +1,186 @@
+module "kira:os"
+
+// The operating system, hosted only: sockets, serial ports, files,
+// processes, signals, the environment. The runtime is kira/cpp/kira/os.hxx
+// with os.cxx, which has a Win32 half (Winsock, COM ports) and a POSIX half;
+// under KIRA_PROFILE_FREESTANDING the whole file is empty.
+//
+// Errors are values, never exceptions: a Maybe that is none, a Bool that is
+// false, or an Int64 that is -1. The reason is in lastError(), per thread,
+// as text for a log line.
+//
+// Hosts are numeric IPv4 ("127.0.0.1", "0.0.0.0"): the car's devices have
+// addresses, not names, and a static musl binary resolves no names anyway.
+
+// Why the last call on this thread failed, or "" when it did not: every
+// call that can fail clears it first, so a quiet socket (none, "") and a
+// failed one (none, "recvfrom: ...") stay apart. close() and the handle
+// getters leave it alone, so a dropped object does not erase the reason.
+pub @_magic fx lastError: () Str;
+
+// --- networking ------------------------------------------------------------
+
+// Bits for Poller.add and Ready.events.
+pub POLL_READ: Int32 = 1
+pub POLL_WRITE: Int32 = 2
+// Set by the poller only: the peer hung up or the handle is in error.
+pub POLL_ERROR: Int32 = 4
+
+// What recvFrom read: the byte count (into the caller's view) and where
+// the datagram came from.
+pub struct Datagram {
+    pub size: Size = 0
+    pub host: Str = ""
+    pub port: Int32 = 0
+}
+
+// One handle Poller.wait found ready, and why (POLL_* bits).
+pub struct Ready {
+    pub handle: Int64 = -1
+    pub events: Int32 = 0
+}
+
+// A non-blocking UDP socket.
+pub @_magic class UdpSocket {
+    // Binds to host:port; port 0 takes a free one, read back with localPort.
+    pub mut fx bind: (host: Str, port: Int32) Bool;
+    pub fx localPort: () Int32;
+    // Bytes sent, or -1.
+    pub fx sendTo: (data: View<UInt8>, host: Str, port: Int32) Int64;
+    // The next datagram, or none when there is none yet (or on error: see
+    // lastError). A datagram longer than `into` is truncated to it.
+    pub fx recvFrom: (into: MutView<UInt8>) Maybe<Datagram>;
+    // For Poller.add.
+    pub fx handle: () Int64;
+    pub mut fx close: () Void;
+}
+
+// A TCP listening socket, non-blocking: accept() returns none when no
+// connection is waiting, so poll its handle for POLL_READ first.
+pub @_magic class TcpListener {
+    // Listens on every interface; port 0 takes a free one (see localPort).
+    pub mut fx listen: (port: Int32) Bool;
+    pub fx localPort: () Int32;
+    // The next waiting connection, blocking for reads and writes, or none.
+    pub fx accept: () Maybe<TcpStream>;
+    pub fx handle: () Int64;
+    pub mut fx close: () Void;
+}
+
+// One TCP connection: from accept(), or connect() on a fresh one. Reads
+// and writes block, so poll the handle for POLL_READ before a read that must
+// not wait.
+pub @_magic class TcpStream {
+    pub mut fx connect: (host: Str, port: Int32) Bool;
+    // Bytes read; 0 when the peer closed; -1 on error.
+    pub fx read: (into: MutView<UInt8>) Int64;
+    // Bytes written (all of them, or -1): a short write is retried inside.
+    pub fx write: (data: View<UInt8>) Int64;
+    pub fx isOpen: () Bool;
+    pub fx handle: () Int64;
+    pub mut fx close: () Void;
+}
+
+// poll(2) (WSAPoll on Windows) over socket handles. Serial and process
+// handles are not pollable on Windows; those reads carry their own timeout.
+pub @_magic class Poller {
+    // Watches `handle` for the POLL_* bits in `events`; adding a handle
+    // again replaces its events.
+    pub mut fx add: (handle: Int64, events: Int32) Void;
+    pub mut fx remove: (handle: Int64) Void;
+    // The handles that are ready, after waiting up to timeoutMs (negative:
+    // without limit, zero: a poll). Empty on timeout, and empty on error
+    // (see lastError), including the EINTR of a signal.
+    pub fx wait: (timeoutMs: Int64) List<Ready>;
+}
+
+// --- serial ----------------------------------------------------------------
+
+// A serial port as raw 8N1, no flow control: termios, or a Win32 COM port.
+pub @_magic class Serial {
+    // `path` is /dev/ttyUSB0 or COM3; `baud` a standard rate the port
+    // accepts (50 to 4000000 on termios, 1200 for a Pico's bootloader
+    // touch among them; any rate the driver takes on Windows).
+    pub mut fx open: (path: Str, baud: Int32) Bool;
+    // Bytes read, waiting up to timeoutMs for the first one: 0 when the wait
+    // ran out, -1 on error.
+    pub fx read: (into: MutView<UInt8>, timeoutMs: Int64) Int64;
+    pub fx write: (data: View<UInt8>) Int64;
+    pub fx isOpen: () Bool;
+    // The descriptor (POSIX only, pollable); -1 on Windows.
+    pub fx handle: () Int64;
+    pub mut fx close: () Void;
+}
+
+// --- files -----------------------------------------------------------------
+
+pub @_magic fx readFile: (path: Str) Maybe<List<UInt8>>;
+pub @_magic fx readText: (path: Str) Maybe<Str>;
+// Writes to a temporary file beside `path`, flushes it to disk, and renames
+// it over `path`: a reader sees the old file or the new one, never a torn
+// one.
+pub @_magic fx writeFileAtomic: (path: Str, bytes: View<UInt8>) Bool;
+// The entries of a directory, without . and .., sorted by name. Empty, with
+// lastError set, for a directory that cannot be opened or whose listing
+// fails part-way: never a partial list passed off as the whole.
+pub @_magic fx listDir: (path: Str) List<Str>;
+pub @_magic fx exists: (path: Str) Bool;
+// Creates every missing directory on the path; true when it exists after.
+pub @_magic fx makeDirs: (path: Str) Bool;
+// Bytes free to this process on the filesystem holding `path`, a file or a
+// directory, on both halves; -1 when `path` does not exist.
+pub @_magic fx freeBytes: (path: Str) Int64;
+
+// --- processes -------------------------------------------------------------
+
+// A child process whose stdout is a pipe this side reads. Dropping the last
+// reference to a Process that is still running kills it and reaps it: a
+// child never outlives the handle that started it.
+pub @_magic class Process {
+    // Bytes read from the child's stdout, blocking until some arrive: 0 at
+    // the end of the pipe, -1 on error.
+    pub fx readStdout: (into: MutView<UInt8>) Int64;
+    // Ends the child at once (SIGKILL, TerminateProcess): no cleanup runs.
+    pub fx kill: () Void;
+    // Waits for the child to end and returns its exit code; 128 + the
+    // signal number when a signal ended it (137 after kill(), on both
+    // halves), -1 when nothing can be learned. A second wait returns the
+    // same code.
+    pub mut fx wait: () Int32;
+    pub fx isRunning: () Bool;
+    // The read end of the stdout pipe (POSIX only, pollable); -1 on Windows.
+    pub fx stdoutHandle: () Int64;
+}
+
+// Starts argv[0] with the rest as its arguments, searching PATH; none when
+// it could not start (a missing program included, on both halves: see
+// lastError). The child gets stdin, stderr and its stdout pipe and nothing
+// else. On Windows those three are the child's whole handle list; on POSIX
+// every other descriptor is closed in the child before it starts, whoever
+// opened it (kira:os, C++ code, an FFI call, with close-on-exec or
+// without). A child that outlives this process holds none of its sockets,
+// files or ports.
+pub @_magic fx spawnProcess: (argv: List<Str>) Maybe<Process>;
+
+// --- signals, environment, exit --------------------------------------------
+
+// Signal numbers common to POSIX and the C runtime on Windows.
+pub SIGNAL_INT: Int32 = 2
+pub SIGNAL_TERM: Int32 = 15
+
+// Installs a handler for `sig` that only sets `flag` to true, so it is
+// async-signal-safe and a loop can poll the flag. On POSIX the handler
+// does not restart interrupted calls: a blocked Poller.wait, TcpStream.read,
+// Serial.read or Process.readStdout returns (-1 or an empty list, with
+// lastError naming the interruption) and the loop sees the flag.
+// Process.wait, Mutex.waitUntil and BlockingQueue.pop do not return early:
+// they resume until the child ends, the predicate holds or the timeout
+// runs out, so a loop that must see the flag polls with a timeout. Safe to
+// call from several threads at once. False when the signal cannot be
+// caught.
+pub @_magic fx onSignal: (sig: Int32, flag: Atomic<Bool>) Bool;
+
+pub @_magic fx env: (name: Str) Maybe<Str>;
+
+// Flushes stdio and ends the process with `code`.
+pub @_magic fx exit: (code: Int32) Never;

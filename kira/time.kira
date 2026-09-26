@@ -1,0 +1,19 @@
+module "kira:time"
+
+// Clocks and sleep, hosted only (design section 6: kira/cpp/kira/time.hxx).
+//
+// The monotonic clock is the one a program measures with: it never jumps.
+// The wall clock exists only for a stamp another process will compare, such
+// as a recorder's file name; it moves when the system time is set.
+
+// Nanoseconds and milliseconds on the steady clock, from an unspecified
+// origin: only differences mean anything.
+pub @_magic fx monoNowNs: () Int64;
+pub @_magic fx monoNowMs: () Int64;
+
+// Nanoseconds since the Unix epoch on the system clock.
+pub @_magic fx wallNowNs: () Int64;
+
+// Blocks the calling thread for at least `ms` milliseconds; a value of zero
+// or less returns at once.
+pub @_magic fx sleepMs: (ms: Int64) Void;

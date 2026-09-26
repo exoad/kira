@@ -53,7 +53,7 @@ interface RulePass {
  * the rules. See design section 3.
  */
 object KiraTyper {
-    internal var bodyTyper: BodyTyper = BodyTyper.NONE
+    internal var bodyTyper: BodyTyper = KiraBodyTyper
 
     internal val rulePasses: MutableList<RulePass> = mutableListOf()
 

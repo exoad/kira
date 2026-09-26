@@ -1,0 +1,101 @@
+module "fixture:body.statements"
+
+// Statements (design 5.4): locals, loops (TyperBodyModelTest checks each LoopPlan),
+// if-expressions (R18), assignments to places, throw and try.
+
+pub struct Cell {
+    pub v: Int32 = 0
+}
+
+pub fx loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map<Str, Int32>, set: Set<Int32>) Int32 {
+    mut total: Int32 = 0
+    for i: Size in 0..4 {                  // @type Size const=0:Size @ 0
+        total += 1
+    }
+    for x: Int32 in xs {                   // @type List<Int32> place=Param(xs) @ xs
+        total += x                         // @type Int32 place=Local(x) @ x
+    }
+    for b: UInt8 in arr {
+        total += b as Int32                // @type Int32 conv=INT_WRAP @ b as Int32
+    }
+    for c: Char in view {
+        if c == ' ' {                      // @type Bool
+            break
+        }
+    }
+    for e: Tuple2<Str, Int32> in names {
+        total += e.second                  // @type Int32 member=Field(Tuple2.second: Int32) @ e.second
+    }
+    for s: Int32 in set {
+        continue
+    }
+    for k: Int32 in 0..total {             // @type Int32 place=Local(total) @ total
+        total -= 1
+    }
+    mut j: Int32 = 0
+    while j < 3 {                          // @type Bool
+        j += 1
+    }
+    do {
+        j -= 1
+    } while j > 0                          // @type Bool
+    return total
+}
+
+pub fx ifs: (a: Int32, neg: Bool) Str {
+    v: Int32 = if neg { -a } else { a }    // @type Int32
+    w: Int8 = if a > 0 { 1 } else { -1 }   // @type Int8
+    one: Int8 = if a > 0 { 1 } else { 0 }  // @type Int8 const=1:Int8 @ 1
+    label: Str = if a == 0 { "zero" } else if a > 0 { "pos" } else { "neg" } // @type Str
+    longer: Int32 = if neg {
+        t: Int32 = a * 2
+        t + 1
+    } else {
+        0
+    }
+    return label                           // @type Str
+}
+
+pub fx places: () Int32 {
+    mut c: Cell = Cell { }
+    c.v = 3                                // @type Int32 place=Field(Local(c).v) @ c.v
+    c.v += 1                               // @type Void
+    mut xs: List<Int32> = List<Int32> { }
+    xs.add(1)
+    xs[0] = 5                              // @type Int32 place=Index(Local(xs), LIST) @ xs[0]
+    mut fixed: Arr<Int32, 2> = [1, 2]      // @type Arr<Int32, 2>
+    fixed[1] = fixed[0]                    // @type Int32 place=Index(Local(fixed), ARR) @ fixed[1]
+    mut m: Map<Str, Int32> = Map<Str, Int32> { }
+    m["k"] = 30                            // @type Int32 place=Index(Local(m), MAP) @ m["k"]
+    mut n: Int32 = 0
+    n = 4                                  // @type Void
+    n *= 2                                 // @type Int32 place=Local(n) @ n
+    return c.v + n                         // @type Int32
+}
+
+pub fx throwing: (ok: Bool) Int32 {
+    if !ok {
+        throw "bad"                        // @type Never @ throw "bad"
+    }
+    try {
+        trace(1)
+    } on e: Str {
+        trace(e)                           // @type Str place=Local(e) @ e
+    }
+    return 1
+}
+
+pub fx legacyLoop: (n: Int32) Int32 {
+    mut t: Int32 = 0
+    for mut i: 0..n {                      // @warn types.for.legacy ; @type Int32 const=0:Int32 @ 0
+        t += i                             // @type Int32 place=Local(i) @ i
+    }
+    return t
+}
+
+pub fx early: (x: Int32) Void {
+    if x > 0 {
+        return
+    }
+    trace(x)                               // @type Void call=PRINT
+}

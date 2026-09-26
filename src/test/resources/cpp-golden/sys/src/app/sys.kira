@@ -1,0 +1,30 @@
+module "app:sys"
+
+use "kira:sync"
+use "kira:test"
+
+// spawn, Mutex.lock (D24's Mutex.with) and kira:test together: a worker
+// thread counts N increments under the mutex, and the main thread reads the
+// count back through the same lock and reports it in bibo's check format.
+
+pub N: Int32 = 1000
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "sys - spawn, Mutex.lock and kira:test" }
+    total: Mutex<Int32> = Mutex<Int32> { value = 0 }
+    worker: Thread = spawn("adder", fx() Void {
+        for i: Int32 in 0..N {
+            total.lock(fx(mut v: Int32) Void {
+                v += 1
+            })
+        }
+    })
+    worker.join()
+    seen: Ref<Int32> = Ref<Int32> { value = 0 }
+    total.lock(fx(mut v: Int32) Void {
+        seen.value = v
+    })
+    t.check(seen.value == N, "1000 increments from a worker, counted under the mutex")
+    t.checkStr("${seen.value}", "1000", "and the count reads back as text")
+    return t.finish()
+}

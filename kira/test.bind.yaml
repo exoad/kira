@@ -1,0 +1,14 @@
+# Magic binding manifest for kira:test (C++ backend only).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips
+# it. Suite is a Kira class, so `{self}` is a kira::Rc<kira::test::Suite>
+# (design 5.1) and each member is reached with `->`. Nothing is pure: every
+# call prints.
+#
+# Runtime: kira/cpp/kira/test.hxx defines kira::test::Suite(const Str& title)
+# with check(bool, const Str&), checkStr(const Str&, const Str&, const Str&)
+# and finish() -> std::int32_t.
+
+Suite.check:    { cpp: { expr: "{self}->check({0}, {1})", includes: ["kira/test.hxx"] } }
+Suite.checkStr: { cpp: { expr: "{self}->checkStr({0}, {1}, {2})", includes: ["kira/test.hxx"] } }
+Suite.finish:   { cpp: { expr: "{self}->finish()", includes: ["kira/test.hxx"] } }
