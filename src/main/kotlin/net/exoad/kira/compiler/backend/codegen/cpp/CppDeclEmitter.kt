@@ -206,8 +206,21 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         includes.add(runtimeInclude())
         includes.addAll(moduleHeaders)
         externs.forEach { includes.addAll(parts.externs.includes(ctx, it)) }
-        includes.addAll(ctx.headerIncludes)
+        // A C header reached through `c =` (design 7.3) is included with C linkage, after the
+        // C++ ones and before what the parts added (kira/ffi.hxx), which ctx.headerIncludes holds.
+        val cIncludes = LinkedHashSet<String>()
+        externs.forEach { cIncludes.addAll(parts.externs.cIncludes(ctx, it)) }
+        cIncludes.removeAll(includes)
+        val tail = LinkedHashSet(ctx.headerIncludes)
+        tail.removeAll(includes)
+        tail.removeAll(cIncludes)
         includes.forEach { sb.append("#include \"").append(it).append("\"\n") }
+        if (cIncludes.isNotEmpty()) {
+            sb.append("extern \"C\" {\n")
+            cIncludes.forEach { sb.append("#include \"").append(it).append("\"\n") }
+            sb.append("}\n")
+        }
+        tail.forEach { sb.append("#include \"").append(it).append("\"\n") }
         sb.append("#include \"$MACRO_PUSH\"\n")
         if (externChecks.isNotEmpty()) {
             sb.append(externChecks)

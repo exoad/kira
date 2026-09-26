@@ -70,6 +70,22 @@ namespace ImGui
       return true;
   }
 
+  bool InputText(const char* label, char* buf, std::size_t buf_size, int flags)
+  {
+      lastLabel = label;
+      lastFlags = flags;
+      // Writes through the buffer Kira handed over as a char*.
+      const char* text = "ok";
+      std::size_t n = 0;
+      while(text[n] != '\0' && n + 1 < buf_size)
+      {
+          buf[n] = text[n];
+          ++n;
+      }
+      buf[n] = '\0';
+      return true;
+  }
+
   void Text(const char* fmt, ...)
   {
       va_list args;
@@ -130,6 +146,12 @@ int main()
     int flags = ImGuiWindowFlags_None;
     check(ImGui::Checkbox(kira::ffi::in(label), kira::ffi::out(flags), ImGuiWindowFlags_NoResize) && flags == 2 && checkboxOverload == 2,
           "Checkbox(in(label), out(int), value) picked the int* overload");
+
+    // A `mut buf: Unsafe<Char>` local is a char*: the call passes it as it is.
+    char storage[8] = "";
+    char* buf = storage;
+    check(ImGui::InputText(kira::ffi::in(label), buf, sizeof storage) && std::strcmp(storage, "ok") == 0 && lastFlags == 0,
+          "InputText(in(label), buf, size) wrote through the mut Unsafe<Char> and took ImGui's default flags");
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 a(1.0f, 2.0f);

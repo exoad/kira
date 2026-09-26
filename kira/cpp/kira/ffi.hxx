@@ -18,6 +18,12 @@
 // with "Kira's Car.ok no longer matches its C++ header" on g++, clang and MSVC
 // (probes-S/externcheck.cxx, measured).
 //
+// An extern struct declared with fields gets a layout twin (the same fields, in
+// Kira's order, under ns::ffi_) and, per field, KIRA_EXTERN_FIELD: the C++ member
+// has exactly the type Kira declared (is_same, since a same-size drift such as
+// int against float converts silently) and sits at the twin's offset (so a
+// reordered pair of same-typed fields is caught too); sizeof is compared once.
+//
 // The proxies (7.2, A):
 //   kira::ffi::in(s)    a Str argument: converts to const char*, std::string_view
 //                       or const std::string&, whichever the callee declares
@@ -25,14 +31,20 @@
 //                       value, which would copy and write nothing (a deleted
 //                       conversion makes that ambiguous, so it does not compile)
 //   kira::ffi::CStrBuf  a CStr made from a Str that is neither a literal nor a
-//                       name; its c_str() lives to the end of the full-expression
+//                       Str constant nor a named Str; its c_str() lives to the
+//                       end of the full-expression
 //
-// Freestanding: Out and the macro only. There is no Str on the Pico, so a
+// A `mut p: Unsafe<T>` parameter takes no proxy: it is the writable T* itself,
+// passed by value (table 5.1: Unsafe<T> is const T* unless mut), which is how a
+// fread-style buffer or ImGui's InputText(char* buf, ...) is reached.
+//
+// Freestanding: Out and the macros only. There is no Str on the Pico, so a
 // freestanding extern module passes CStr, scalars and Unsafe<T>.
 #pragma once
 
 #include "kira/core.hxx"
 
+#include <cstddef>
 #include <type_traits>
 #include <utility>
 
@@ -43,6 +55,13 @@
 
 #define KIRA_EXTERN_CHECK(expr, R, what) \
     static_assert(std::is_convertible_v<decltype(expr), R>, "Kira's " what " no longer matches its C++ header")
+
+// S is the C++ struct, Twin Kira's layout twin, field the member both declare, T
+// the type Kira declared. decltype of an unparenthesized member access is the
+// member's declared type, so is_same compares the declaration, not a value.
+#define KIRA_EXTERN_FIELD(S, Twin, field, T, what)                                                          \
+    static_assert(std::is_same_v<decltype(std::declval<S&>().field), T>, "Kira's " what " no longer matches its C++ header"); \
+    static_assert(offsetof(S, field) == offsetof(Twin, field), "Kira's " what " no longer matches its C++ header (it is not at that offset)")
 
 namespace kira::ffi
 {

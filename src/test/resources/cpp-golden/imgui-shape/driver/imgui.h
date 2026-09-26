@@ -5,6 +5,7 @@
 // defines them, recording every call.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 struct ImVec2
@@ -48,6 +49,7 @@ namespace ImGui
   bool SliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", int flags = 0);
   bool Checkbox(const char* label, bool* v);
   bool Checkbox(const char* label, int* flags, int flags_value);
+  bool InputText(const char* label, char* buf, std::size_t buf_size, int flags = 0);
   void Text(const char* fmt, ...);
   ImDrawList* GetWindowDrawList();
 }

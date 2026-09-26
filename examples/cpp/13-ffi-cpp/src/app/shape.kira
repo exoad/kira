@@ -16,13 +16,14 @@ pub class Box {
 @_extern(cpp = "shape::makeBox", header = "shape.hxx")
 pub fx makeBox: (w: Int32, h: Int32) Box;
 
-// C functions, callable from C++ as they are: a Str goes in as const char*, a mut
-// Int32 goes out as int32_t*.
-@_extern(cpp = "cshape_hypot_sq", header = "cshape.h")
+// C functions (design 7.3): `c =` names the C symbol, and the C++ backend includes
+// cshape.h inside extern "C" { }, which cshape.h's own guard tolerates and a header
+// without one needs. A Str goes in as const char*, a mut Int32 goes out as int32_t*.
+@_extern(c = "cshape_hypot_sq", header = "cshape.h")
 pub fx hypotSq: (a: Int32, b: Int32) Int32;
 
-@_extern(cpp = "cshape_len", header = "cshape.h")
+@_extern(c = "cshape_len", header = "cshape.h")
 pub fx cLen: (s: Str) Size;
 
-@_extern(cpp = "cshape_count", header = "cshape.h")
+@_extern(c = "cshape_count", header = "cshape.h")
 pub fx countTo: (mut out: Int32, n: Int32) Void;
