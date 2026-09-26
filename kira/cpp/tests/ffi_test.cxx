@@ -131,6 +131,15 @@ namespace fake
       static char buf[] = {'a', 'b', 'c', 0};
       return buf;
   }
+  // A const char* result that is null (ImGui's GetClipboardText on an empty clipboard).
+  const char* nameNull()
+  {
+      return nullptr;
+  }
+  std::optional<const char*> findNull()
+  {
+      return std::optional<const char*>(nullptr);
+  }
 }
 
 // ---- the checks an extern module would state (design 7.2, literally) --------------------
@@ -353,6 +362,62 @@ static_assert(!kira::ffi::result_matches_v<decltype(fake::openRaw()), kira::Rc<f
 static_assert(kira::ffi::result_matches_v<decltype(fake::nameRef()), kira::Str>, "a const string& result is a Str");
 static_assert(kira::ffi::result_matches_v<decltype(fake::nameC()), kira::Str>, "a const char* result is a Str");
 #endif
+// char is only Char (the head of kira/ffi.hxx): a `char letter()` declared Int8 passed as a
+// scalar of its size and signedness, and trace(letter()) printed A where the same value held
+// in an Int8 printed 65 (measured, g++ 13.2 and zig clang 20). signed char and unsigned char
+// are the fixed-width Int8 and UInt8, distinct types from char on every target.
+namespace fake
+{
+  char letter();
+  std::int8_t code();
+  unsigned char byte();
+}
+static_assert(kira::ffi::same_scalar_v<char, char>, "a char is a Char");
+static_assert(!kira::ffi::same_scalar_v<char, std::int8_t>, "a char is not an Int8");
+static_assert(!kira::ffi::same_scalar_v<char, std::uint8_t>, "a char is not a UInt8");
+static_assert(!kira::ffi::same_scalar_v<std::int8_t, char>, "an Int8 is not a Char");
+static_assert(!kira::ffi::same_scalar_v<std::uint8_t, char>, "a UInt8 is not a Char");
+static_assert(kira::ffi::same_scalar_v<signed char, std::int8_t>, "a signed char is an Int8");
+static_assert(kira::ffi::same_scalar_v<unsigned char, std::uint8_t>, "an unsigned char is a UInt8");
+static_assert(!kira::ffi::same_scalar_v<char16_t, std::uint16_t>, "a char16_t is not a UInt16: a character type is only itself");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::letter()), std::int8_t>, "a char result is not an Int8");
+static_assert(kira::ffi::result_matches_v<decltype(fake::letter()), char>, "a char result is a Char");
+static_assert(!kira::ffi::result_matches_v<decltype(fake::code()), char>, "an int8_t result is not a Char");
+static_assert(kira::ffi::result_matches_v<decltype(fake::byte()), std::uint8_t>, "an unsigned char result is a UInt8");
+// What Kira then reads (the head of kira/ffi.hxx): declared<T> makes a result or a constant
+// the declared type, since the scalar rule proves a same-size twin and no more: an `int` on
+// arm-none-eabi, a `long` on Windows and an unscoped enum all passed as Int32 and then failed
+// to compile in kira::div and kira::cat (measured). field<T> does the same for a field read,
+// and is the member itself, an lvalue, when the C++ type is the declared one.
+static_assert(std::is_same_v<decltype(kira::ffi::declared<std::int32_t>(fake::isOk())), std::int32_t>, "declared<Int32> of an int result is an int32_t");
+static_assert(std::is_same_v<decltype(kira::ffi::declared<fake::ModeInt>(std::declval<fake::Mode>())), fake::ModeInt>, "declared<T> of an enum result is the integer of its size");
+static_assert(std::is_same_v<decltype(kira::ffi::declared<char>(fake::letter())), char>, "declared<Char> of a char result is a char");
+static_assert(std::is_same_v<decltype(kira::ffi::declared<std::int32_t>(fake::LIMIT)), std::int32_t>, "declared<Int32> of a constexpr constant is a value");
+static_assert(kira::ffi::declared<std::int32_t>(fake::LIMIT) == 9, "and a constant expression");
+static_assert(std::is_same_v<decltype(kira::ffi::declared<kira::Maybe<std::int32_t>>(std::declval<std::optional<int>>())), kira::Maybe<std::int32_t>>, "declared<Maybe<Int32>> of an optional<int> is a Maybe<Int32>");
+static_assert(std::is_same_v<decltype(kira::ffi::field<float>(std::declval<fake::Vec2&>().x)), float&>, "field<Float32> of a float member is the member: an lvalue");
+static_assert(std::is_same_v<decltype(kira::ffi::field<float>(std::declval<const fake::Vec2&>().x)), const float&>, "field<Float32> of a const float member is the const lvalue");
+static_assert(std::is_same_v<decltype(kira::ffi::field<fake::ModeInt>(std::declval<fake::Cfg&>().mode)), fake::ModeInt>, "field<T> of an enum member is the integer, by value");
+static_assert(std::is_same_v<decltype(kira::ffi::field<std::int32_t>(std::declval<fake::CPt&>().x)), std::int32_t>
+              || std::is_same_v<decltype(kira::ffi::field<std::int32_t>(std::declval<fake::CPt&>().x)), std::int32_t&>, "field<Int32> of a C int member is an Int32 on every target (the lvalue where int is int32_t)");
+#if KIRA_PROFILE_HOSTED
+// A Fn's parameters match in the direction the argument flows (the head of kira/ffi.hxx):
+// Kira calls a C++ callable with Kira's values, so a `std::function<void(const std::string&)>`
+// is a Fn<(CStr) Void> and a `std::function<void(const char*)>` is no Fn<(Str) Void>; matched
+// the other way round the second passed and the std::function conversion the emitter writes
+// then failed in libstdc++'s constructor (measured, g++ 13.2). A Fn Kira passes out is called
+// by C++ with C++ values, the same rule from the other side.
+namespace fake
+{
+  std::function<void(const char*)> onC();
+  void setC(std::function<void(const char*)>);
+}
+static_assert(!kira::ffi::result_matches_v<decltype(fake::onC()), kira::Fn<void(const kira::Str&)>>, "a function<void(const char*)> result is not a Fn<(Str) Void>: Kira would call it with a Str");
+static_assert(kira::ffi::result_matches_v<decltype(fake::onName()), kira::Fn<void(const char*)>>, "a function<void(const string&)> result is a Fn<(CStr) Void>: the const char* reaches the string");
+static_assert(std::is_convertible_v<kira::ffi::Arg<kira::Fn<void(const kira::Str&)>>, std::function<void(const char*)>>, "arg<Fn<(Str) Void>> reaches a function<void(const char*)> parameter: C++ calls it with a const char*, which reaches the Str");
+static_assert(!std::is_convertible_v<kira::ffi::Arg<kira::Fn<void(const char*)>>, std::function<void(const kira::Str&)>>, "arg<Fn<(CStr) Void>> does not reach a function<void(const string&)> parameter: a Str reaches no const char*");
+KIRA_EXTERN_CHECK((fake::setC(kira::ffi::arg<kira::Fn<void(const kira::Str&)>>()), 0), int, "setC");
+#endif
 #if defined(KIRA_FFI_DRIFT) && KIRA_FFI_DRIFT
 // A Kira `pub mut fx finish: () Str;` against C++'s `std::int32_t finish()`.
 KIRA_EXTERN_CHECK(std::declval<fake::Car&>().finish(), const char*, "Car.finish");
@@ -436,7 +501,21 @@ int main()
     // g++, clang and MSVC, -Werror silent). The emitter writes the static_cast.
     constexpr const char* ABC = "abc";
     check(!(fake::nameStatic() == ABC), "a const char* result kept as the call's type compares as a pointer (the bug)");
-    check(static_cast<kira::Str>(fake::nameStatic()) == ABC, "static_cast<kira::Str>(name()) == ABC compares the text, as Kira means");
+    check(kira::ffi::declared<kira::Str>(fake::nameStatic()) == ABC, "declared<kira::Str>(name()) == ABC compares the text, as Kira means");
+    // A null const char* declared Str is the empty Str: ImGui's GetClipboardText returns NULL
+    // for an empty clipboard, and std::string's constructor from null is a logic_error on
+    // libstdc++ and a segfault on libc++ (measured).
+    check(kira::ffi::declared<kira::Str>(fake::nameNull()).empty(), "declared<kira::Str>(nullptr) is the empty Str");
+    check(kira::ffi::declared<kira::Maybe<kira::Str>>(fake::findNull()) == kira::Maybe<kira::Str>(kira::Str()), "declared<Maybe<Str>> of an optional holding nullptr is a Maybe of the empty Str");
+    check(!kira::ffi::declared<kira::Maybe<kira::Str>>(std::optional<const char*>()).has_value(), "declared<Maybe<Str>> of an empty optional is empty");
+    // field<T>: the member itself when the type is the declared one, so a write goes through it.
+    fake::Vec2 vec;
+    kira::ffi::field<float>(vec.x) = 2.5f;
+    check(vec.x == 2.5f, "field<float>(vec.x) = v writes the member");
+    fake::addRef(kira::ffi::out(kira::ffi::field<std::int32_t>(n)));
+    check(n == 12, "out(field<Int32>(n)) still binds the member");
+    fake::Cfg cfg{fake::MODE_ON, 3};
+    check(kira::ffi::field<fake::ModeInt>(cfg.mode) == 1, "field<T>(cfg.mode) reads the enum member as its integer");
 
     // ---- C++ default arguments fill what Kira left out ---------------------------
     fake::calls = 0;

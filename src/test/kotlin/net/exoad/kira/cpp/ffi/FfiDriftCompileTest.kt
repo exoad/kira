@@ -1,5 +1,6 @@
 package net.exoad.kira.cpp.ffi
 
+import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.backend.codegen.cpp.CppExternEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
@@ -41,7 +42,18 @@ import kotlin.test.fail
  *   each through is_convertible, and the same rule one level down refuses them; the right
  *   ones build.
  * - a C++ `const char* name()` declared `Str`: the call the emitter writes compares by
- *   value against a Kira Str constant, and the program says so by exiting 0.
+ *   value against a Kira Str constant, and the program says so by exiting 0; and one
+ *   returning nullptr is the empty Str, not a crash.
+ * - a `char letter()` declared `Int8` and a `std::int8_t code()` declared `Char`: char is
+ *   only Char, so both fail with Kira's message (a char kept as the call's type printed A
+ *   where an Int8 prints 65, measured).
+ * - a C enum result declared `Int32`, and a C enum field declared `Int32`: the call and the
+ *   field read the emitter writes are std::int32_t, since the check accepts a same-size
+ *   twin (an enum, a C `int` on arm-none-eabi, a `long` on Windows) and Kira's own
+ *   operations do not; a field whose C++ type is the declared one stays the member itself.
+ * - a `std::function<void(const char*)>` declared `Fx<Tuple1<Str>, Void>` fails with Kira's
+ *   message, and a `std::function<void(const std::string&)>` declared `Fx<Tuple1<CStr>, Void>`
+ *   builds and is called: a Fn's parameters match in the direction the argument flows.
  */
 class FfiDriftCompileTest {
     private val driver = File("src/test/resources/cpp-golden/forward/driver")
@@ -108,6 +120,7 @@ class FfiDriftCompileTest {
         };
         uint32_t pt_count(void);
         void pt_take(uint8_t v);
+        PtMode pt_mode(void);
         struct PtInt {
             int x;
             int y;
@@ -130,6 +143,7 @@ class FfiDriftCompileTest {
         #include <cstdint>
         #include <functional>
         #include <optional>
+        #include <string>
         namespace probe {
             inline std::optional<std::uint32_t> find_u() { return 0u; }
             inline std::optional<std::int32_t> find_i() { return 0; }
@@ -140,6 +154,12 @@ class FfiDriftCompileTest {
             inline std::function<void(std::int32_t)> on_i() { return [](std::int32_t) {}; }
             inline void set_i(std::function<void(std::int32_t)>) {}
             inline const char* name() { static char buf[] = "abc"; return buf; }
+            inline const char* none() { return nullptr; }
+            inline char letter() { return 'A'; }
+            inline std::int8_t code() { return 66; }
+            inline std::size_t said = 0;
+            inline std::function<void(const char*)> on_c() { return [](const char*) {}; }
+            inline std::function<void(const std::string&)> on_s() { return [](const std::string& s) { said = s.size(); }; }
         }
     """.trimIndent() + "\n"
 
@@ -212,8 +232,202 @@ class FfiDriftCompileTest {
                 DynamicTest.dynamicTest("${tc.id}: a function<void(unsigned)> return declared Fx<Tuple1<Int32>, Void> fails with Kira's message") { fnReturnDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: the right Maybe and Fn declarations build") { maybeAndFnClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a const char* result declared Str compares by value at the call") { strResultIsConvertedAtTheCall(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a null const char* result declared Str is the empty Str at the call") { nullStrResultIsEmpty(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a char result declared Int8 fails with Kira's message") { charResultDeclaredInt8Drift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: an int8_t result declared Char fails with Kira's message") { int8ResultDeclaredCharDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a C enum result declared Int32 is an int32_t at the call") { scalarResultIsTheDeclaredType(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a field read of an extern struct is the declared type, and the member itself where the types agree") { fieldReadIsTheDeclaredType(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a function<void(const char*)> return declared Fx<Tuple1<Str>, Void> fails with Kira's message") { fnParameterDirectionDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a function<void(const string&)> return declared Fx<Tuple1<CStr>, Void> builds and is called") { fnParameterDirectionClean(tc) },
             )
         }
+    }
+
+    // ---- what Kira then reads: declared<T> and field<T> (kira/ffi.hxx's head) ----------------------
+
+    /** The text [CppExternEmitter.call] writes for the one call of [name] in [decls], and the emitted header. */
+    private fun callText(uri: String, decls: String, name: String): Pair<String, String> {
+        val (emitted, ctx) = DeclTestSupport.emitWith(DeclTestSupport.module(uri, decls), uri = uri, options = CppOptions(lineDirectives = false))
+        val errors = emitted.diagnostics.filter { it.isError && !it.message.contains("is not lowered yet") }
+        assertTrue(errors.isEmpty(), "errors:\n" + errors.joinToString("\n") { it.render() })
+        val call = ctx.model.calls.values.firstOrNull { it.fn?.name == name } ?: fail("no call of $name() in the model")
+        return CppExternEmitter.call(ctx, call, null, emptyList()) to CppWriter.normalize(emitted.header)
+    }
+
+    private fun runProbe(tc: CppToolchain, name: String, files: Map<String, String>, what: String) {
+        org.junit.jupiter.api.Assumptions.assumeTrue(CppToolchains.isEnabled(tc), "toolchain '${tc.id}' is disabled by KIRA_TOOLCHAINS")
+        val located = CppToolchains.requireOrSkip(tc)
+        val result = compile(tc, name, files, withCarDriver = false)
+        if (!result.success) {
+            fail("${tc.id}: $what does not build:\n${result.describe()}")
+        }
+        val exe = result.exe ?: fail("${tc.id}: reported success without an executable")
+        val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
+        assertTrue(!run.timedOut, "${tc.id}: the program timed out")
+        assertEquals(0, run.exitCode, "${tc.id}: $what: the program exited ${run.exitCode}\nstderr:\n${run.stderr}")
+    }
+
+    /**
+     * `const char* none()` returning nullptr, declared `Str`: `static_cast<kira::Str>(nullptr)`
+     * was a std::logic_error on libstdc++ (rc 3) and a segfault on libc++ (rc 139), measured,
+     * and ImGui's GetClipboardText returns NULL for an empty clipboard. declared<Str> makes it
+     * the empty Str; the program exits 0 only then.
+     */
+    private fun nullStrResultIsEmpty(tc: CppToolchain) {
+        val (text, header) = callText(
+            "c:sc",
+            """
+            @_extern(cpp = "probe::none", header = "probe.hxx")
+            pub fx none: () Str;
+
+            fx run: () Str {
+                return none()
+            }
+            """.trimIndent(),
+            "none",
+        )
+        assertEquals("kira::ffi::declared<kira::Str>(::probe::none())", text)
+        val main = """
+            #include "sc.kira.hxx"
+
+            int main()
+            {
+                return $text.empty() ? 0 : 1;
+            }
+        """.trimIndent() + "\n"
+        runProbe(tc, "null-str", mapOf("sc.kira.hxx" to header, "probe.hxx" to probeHeader, "main.cxx" to main), "a null const char* declared Str")
+    }
+
+    /** `char letter()` declared `() Int8`: a scalar of Int8's size and (on x86) signedness, and trace(letter()) printed A where an Int8 prints 65 (measured). char is only Char. */
+    private fun charResultDeclaredInt8Drift(tc: CppToolchain) {
+        val (header, result) = compileProbe(tc, "char-int8", "@_extern(cpp = \"probe::letter\", header = \"probe.hxx\")\npub fx letter: () Int8;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::letter(), std::int8_t, \"letter\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'letter: () Int8' against C++'s char letter() compiled (a scalar of the size would let it):\n${result.describe()}")
+        assertMessage(tc, result, "Kira's letter ${CppExternEmitter.DRIFT_MESSAGE}")
+    }
+
+    /** `std::int8_t code()` declared `() Char`: the same rule from the other side (trace(code()) printed 66 where a Char prints B, measured). */
+    private fun int8ResultDeclaredCharDrift(tc: CppToolchain) {
+        val (header, result) = compileProbe(tc, "int8-char", "@_extern(cpp = \"probe::code\", header = \"probe.hxx\")\npub fx code: () Char;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::code(), char, \"code\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'code: () Char' against C++'s std::int8_t code() compiled:\n${result.describe()}")
+        assertMessage(tc, result, "Kira's code ${CppExternEmitter.DRIFT_MESSAGE}")
+    }
+
+    /**
+     * A C `PtMode pt_mode(void)` (an unscoped enum) declared `() Int32`: the check accepts the
+     * enum of Int32's size, and the call left as C++'s type then failed inside kira::cat
+     * (`'nameOf' was not declared`, measured), as a `long` on Windows and an `int` on
+     * arm-none-eabi failed in kira::div. The call is `declared<std::int32_t>`, and the
+     * program proves its type is std::int32_t and its value the enum's.
+     */
+    private fun scalarResultIsTheDeclaredType(tc: CppToolchain) {
+        val (text, header) = callText(
+            "c:sc",
+            """
+            @_extern(c = "pt_mode", header = "pt.h")
+            pub fx ptMode: () Int32;
+
+            fx run: () Int32 {
+                return ptMode()
+            }
+            """.trimIndent(),
+            "ptMode",
+        )
+        assertEquals("kira::ffi::declared<std::int32_t>(::pt_mode())", text)
+        val main = """
+            #include "sc.kira.hxx"
+
+            #include <type_traits>
+
+            extern "C" PtMode pt_mode(void)
+            {
+                return PT_ON;
+            }
+
+            int main()
+            {
+                static_assert(std::is_same_v<decltype($text), std::int32_t>, "the call is the declared type");
+                const std::int32_t v = $text;
+                return v == 1 ? 0 : 1;
+            }
+        """.trimIndent() + "\n"
+        runProbe(tc, "enum-result", mapOf("sc.kira.hxx" to header, "pt.h" to ptHeader, "main.cxx" to main), "a C enum result declared Int32")
+    }
+
+    /**
+     * `PtCfg { PtMode mode; int32_t n; }` declared with two Int32 fields: the read of `mode`
+     * the expression part hands to [CppExternEmitter.field] is a std::int32_t (a `char c`
+     * declared Int8 printed C where an Int8 prints 67 before char became only Char, and an
+     * enum member breaks kira::cat as a result does), and the read of `n`, whose C++ type is
+     * the declared one, is the member itself: an lvalue a write goes through.
+     */
+    private fun fieldReadIsTheDeclaredType(tc: CppToolchain) {
+        val uri = "c:cfg"
+        val (emitted, ctx) = DeclTestSupport.emitWith(DeclTestSupport.module(uri, cfgModule("Int32")), uri = uri, options = CppOptions(lineDirectives = false))
+        val cfg = ctx.symbol.members["Cfg"] as ClassSymbol
+        val mode = CppExternEmitter.field(ctx, cfg.fields.first { it.name == "mode" }, "c.mode")
+        val n = CppExternEmitter.field(ctx, cfg.fields.first { it.name == "n" }, "c.n")
+        assertEquals("kira::ffi::field<std::int32_t>(c.mode)", mode)
+        assertEquals("kira::ffi::field<std::int32_t>(c.n)", n)
+        val main = """
+            #include "cfg.kira.hxx"
+
+            #include <type_traits>
+
+            int main()
+            {
+                PtCfg c{PT_ON, 3};
+                static_assert(std::is_same_v<decltype($mode), std::int32_t>, "an enum member reads as the declared integer");
+                static_assert(std::is_same_v<decltype($n), std::int32_t&>, "a member of the declared type is the member itself");
+                $n = 4;
+                const std::int32_t m = $mode;
+                return m == 1 && c.n == 4 ? 0 : 1;
+            }
+        """.trimIndent() + "\n"
+        runProbe(tc, "field-read", mapOf("cfg.kira.hxx" to CppWriter.normalize(emitted.header), "pt.h" to ptHeader, "main.cxx" to main), "a field read of an extern struct")
+    }
+
+    /**
+     * `std::function<void(const char*)> on_c()` declared `() Fx<Tuple1<Str>, Void>`: Kira
+     * would call it with a Str, which reaches no const char*. Matched parameter by parameter
+     * in the wrong direction it passed the check, and the conversion the emitter writes then
+     * failed inside libstdc++'s std::function constructor instead of with Kira's message
+     * (measured, g++ 13.2).
+     */
+    private fun fnParameterDirectionDrift(tc: CppToolchain) {
+        val (header, result) = compileProbe(tc, "fn-direction", "@_extern(cpp = \"probe::on_c\", header = \"probe.hxx\")\npub fx onC: () Fx<Tuple1<Str>, Void>;")
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::on_c(), kira::Fn<void(const kira::Str&)>, \"onC\");"), header)
+        assertTrue(!result.success, "${tc.id}: Kira's 'onC: () Fx<Tuple1<Str>, Void>' against C++'s std::function<void(const char*)> compiled:\n${result.describe()}")
+        assertMessage(tc, result, "Kira's onC ${CppExternEmitter.DRIFT_MESSAGE}")
+    }
+
+    /** `std::function<void(const std::string&)> on_s()` declared `() Fx<Tuple1<CStr>, Void>`: the const char* Kira passes reaches the string. The wrong direction refused it. */
+    private fun fnParameterDirectionClean(tc: CppToolchain) {
+        val (text, header) = callText(
+            "c:sc",
+            """
+            @_extern(cpp = "probe::on_s", header = "probe.hxx")
+            pub fx onS: () Fx<Tuple1<CStr>, Void>;
+
+            fx run: () Fx<Tuple1<CStr>, Void> {
+                return onS()
+            }
+            """.trimIndent(),
+            "onS",
+        )
+        assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::on_s(), kira::Fn<void(const char*)>, \"onS\");"), header)
+        assertEquals("kira::ffi::declared<kira::Fn<void(const char*)>>(::probe::on_s())", text)
+        val main = """
+            #include "sc.kira.hxx"
+
+            int main()
+            {
+                $text("abcd");
+                return probe::said == 4 ? 0 : 1;
+            }
+        """.trimIndent() + "\n"
+        runProbe(tc, "fn-direction-clean", mapOf("sc.kira.hxx" to header, "probe.hxx" to probeHeader, "main.cxx" to main), "a function<void(const string&)> declared Fx<Tuple1<CStr>, Void>")
     }
 
     // ---- Maybe and Fn: the same rule one level down (kira/ffi.hxx's head) ----------------------
@@ -290,7 +504,7 @@ class FfiDriftCompileTest {
         assertTrue(errors.isEmpty(), "errors:\n" + errors.joinToString("\n") { it.render() })
         val call = ctx.model.calls.values.firstOrNull { it.fn?.name == "name" } ?: fail("no call of name() in the model")
         val text = CppExternEmitter.call(ctx, call, null, emptyList())
-        assertEquals("static_cast<kira::Str>(::probe::name())", text)
+        assertEquals("kira::ffi::declared<kira::Str>(::probe::name())", text)
         val main = """
             #include "sc.kira.hxx"
 

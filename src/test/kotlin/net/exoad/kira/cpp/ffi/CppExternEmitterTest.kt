@@ -1,6 +1,7 @@
 package net.exoad.kira.cpp.ffi
 
 import net.exoad.kira.compiler.analysis.types.ArgBinding
+import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -381,18 +382,18 @@ class CppExternEmitterTest {
             }
             """
         )
-        // A class handle and a struct reach Kira as the declared type (a unique_ptr or a Scan& would
-        // pass the check); a scalar, a Void and a pointer are what C++ gave.
-        assertEquals("static_cast<kira::Rc<::bibo::Car>>(::bibo::openCar())", c.text("openCar", null))
-        assertEquals("static_cast<::bibo::Scan>(::bibo::scanOf(car))", c.text("scanOf", null, "car"))
-        assertEquals("car->arm()", c.text("arm", "car"))
+        // A class handle, a struct and a scalar reach Kira as the declared type (a unique_ptr, a
+        // Scan& or a C `int` would pass the check); a Void and a pointer are what C++ gave.
+        assertEquals("kira::ffi::declared<kira::Rc<::bibo::Car>>(::bibo::openCar())", c.text("openCar", null))
+        assertEquals("kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car))", c.text("scanOf", null, "car"))
+        assertEquals("kira::ffi::declared<bool>(car->arm())", c.text("arm", "car"))
         assertEquals("car->Drive(0.1f, 0.0f)", c.text("drive", "car", "0.1f", "0.0f"))
-        assertEquals("static_cast<::bibo::Scan>(::bibo::scanOf(car)).ahead()", c.text("ahead", "static_cast<::bibo::Scan>(::bibo::scanOf(car))"))
-        assertEquals("::ImGui::SliderFloat(kira::ffi::in(\"throttle\"), kira::ffi::out(v), 0.0f, 1.0f)", c.text("sliderFloat", null, "\"throttle\"", "v", "0.0f", "1.0f"))
+        assertEquals("kira::ffi::declared<float>(kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car)).ahead())", c.text("ahead", "kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car))"))
+        assertEquals("kira::ffi::declared<bool>(::ImGui::SliderFloat(kira::ffi::in(\"throttle\"), kira::ffi::out(v), 0.0f, 1.0f))", c.text("sliderFloat", null, "\"throttle\"", "v", "0.0f", "1.0f"))
         assertEquals("::ImGui::GetWindowDrawList()->AddLine(7u)", c.text("addLine", "::ImGui::GetWindowDrawList()", "7u"))
-        assertEquals("::c_hypot(3, 4)", c.text("hypot", null, "3", "4"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::c_hypot(3, 4))", c.text("hypot", null, "3", "4"))
         // A C name (7.3) and a mut Unsafe<T>, which is the T* itself: no out(...) around it.
-        assertEquals("::c_only_fn(1)", c.text("cOnly", null, "1"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::c_only_fn(1))", c.text("cOnly", null, "1"))
         assertEquals("::fill_buf(buf, 4u)", c.text("fill", null, "buf", "4u"))
         assertEquals("::alloc_buf(4u)", c.text("allocBuf", null, "4u"))
         assertTrue(c.ctx.model.calls.values.filter { it.fn?.name == "arm" }.all { CppExternEmitter.isExternCall(it) })
@@ -402,10 +403,14 @@ class CppExternEmitterTest {
      * The check lets a `const char* name()` pass as `name: () Str` (7.2: a const char*
      * converts to a Str), and the call kept C++'s type: `name() == ABC`, with ABC a Kira Str
      * constant (D12: `inline constexpr const char*`), compared two pointers and printed 0 for
-     * Kira's 1, on g++ 13, zig clang 20 and MSVC /W4 /WX with no warning (measured). So a
-     * result that is not a scalar (proved exact), not Void and not a pointer (only a
-     * qualification could differ) is `static_cast` to the declared type at the call, and an
-     * extern constant's read the same.
+     * Kira's 1, on g++ 13, zig clang 20 and MSVC /W4 /WX with no warning (measured). A scalar
+     * kept C++'s type too: the check proves a scalar of the same size, signedness and kind,
+     * and a `long wide()` declared Int32 then failed to compile in `kira::div(long,
+     * int32_t&)` (measured, g++ 13.2 and zig clang 20; a C `int` on arm-none-eabi the same).
+     * So a result that is not Void and not a pointer (only a qualification could differ) is
+     * `kira::ffi::declared<T>` at the call, and an extern constant's read the same; a field
+     * read of an extern struct is `kira::ffi::field<T>`, which keeps the lvalue when the
+     * member has the declared type.
      */
     @Test
     fun aResultAndAConstantReachKiraAsTheDeclaredType() {
@@ -441,15 +446,52 @@ class CppExternEmitterTest {
             }
             """
         )
-        assertEquals("static_cast<kira::Str>(::probe::name())", c.text("name", null))
-        assertEquals("static_cast<kira::Maybe<std::int32_t>>(::probe::find())", c.text("find", null))
+        assertEquals("kira::ffi::declared<kira::Str>(::probe::name())", c.text("name", null))
+        assertEquals("kira::ffi::declared<kira::Maybe<std::int32_t>>(::probe::find())", c.text("find", null))
         assertEquals("::probe::version()", c.text("version", null))
-        assertEquals("::probe::count()", c.text("count", null))
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::count())", c.text("count", null))
         assertEquals("::probe::buffer()", c.text("buffer", null))
         val version = c.ctx.symbol.members["VERSION"] as GlobalSymbol
         val limit = c.ctx.symbol.members["LIMIT"] as GlobalSymbol
-        assertEquals("static_cast<kira::Str>(probe::VERSION)", CppExternEmitter.constant(c.ctx, version))
-        assertEquals("probe::LIMIT", CppExternEmitter.constant(c.ctx, limit))
+        assertEquals("kira::ffi::declared<kira::Str>(probe::VERSION)", CppExternEmitter.constant(c.ctx, version))
+        assertEquals("kira::ffi::declared<std::int32_t>(probe::LIMIT)", CppExternEmitter.constant(c.ctx, limit))
+    }
+
+    /**
+     * A field read of an extern struct is a boundary crossing like a result: the field check
+     * accepts a same-size twin of the declared type (a C `int` on arm-none-eabi, an unscoped
+     * enum; and, before char became only Char, a `char c` declared Int8 printed C where an
+     * Int8 prints 67, measured). The expression part hands the read's text to [CppExternEmitter.field],
+     * which wraps a scalar or class-typed field of an extern struct and leaves a pointer field
+     * and every field of a Kira type alone.
+     */
+    @Test
+    fun aFieldReadOfAnExternStructReachesKiraAsTheDeclaredType() {
+        val (_, ctx) = emit(
+            """
+            @_extern(cpp = "probe::Rec", header = "probe.hxx")
+            pub struct Rec {
+                pub c: Int8 = 0
+                pub mode: Int32 = 0
+                pub x: Float32 = 0.0
+                require pub mut buf: Unsafe<UInt8>
+            }
+
+            pub struct Own {
+                pub n: Int32 = 0
+            }
+            """
+        )
+        val rec = ctx.symbol.members["Rec"] as ClassSymbol
+        val own = ctx.symbol.members["Own"] as ClassSymbol
+        fun fieldOf(cls: ClassSymbol, name: String) = cls.fields.first { it.name == name }
+        assertTrue(CppExternEmitter.isExternField(fieldOf(rec, "c")))
+        assertTrue(!CppExternEmitter.isExternField(fieldOf(own, "n")))
+        assertEquals("kira::ffi::field<std::int8_t>(r.c)", CppExternEmitter.field(ctx, fieldOf(rec, "c"), "r.c"))
+        assertEquals("kira::ffi::field<std::int32_t>(r.mode)", CppExternEmitter.field(ctx, fieldOf(rec, "mode"), "r.mode"))
+        assertEquals("kira::ffi::field<float>(p->x)", CppExternEmitter.field(ctx, fieldOf(rec, "x"), "p->x"))
+        assertEquals("r.buf", CppExternEmitter.field(ctx, fieldOf(rec, "buf"), "r.buf"))
+        assertEquals("o.n", CppExternEmitter.field(ctx, fieldOf(own, "n"), "o.n"))
     }
 
     /**
@@ -609,11 +651,11 @@ class CppExternEmitterTest {
         val limit = ctx.symbol.members["LIMIT"] as GlobalSymbol
         val cLimit = ctx.symbol.members["C_LIMIT"] as GlobalSymbol
         val cVersion = ctx.symbol.members["C_VERSION"] as GlobalSymbol
-        assertEquals("ImGuiWindowFlags_NoTitleBar", CppExternEmitter.constant(ctx, noTitle))
-        assertEquals("::bibo::LIMIT", CppExternEmitter.constant(ctx, limit))
-        assertEquals("C_LIMIT", CppExternEmitter.constant(ctx, cLimit))
+        assertEquals("kira::ffi::declared<std::int32_t>(ImGuiWindowFlags_NoTitleBar)", CppExternEmitter.constant(ctx, noTitle))
+        assertEquals("kira::ffi::declared<std::int32_t>(::bibo::LIMIT)", CppExternEmitter.constant(ctx, limit))
+        assertEquals("kira::ffi::declared<std::int32_t>(C_LIMIT)", CppExternEmitter.constant(ctx, cLimit))
         // A Str constant is a kira::Str made from whatever the macro or object is (a `#define C_VERSION "1.2"`).
-        assertEquals("static_cast<kira::Str>(C_VERSION)", CppExternEmitter.constant(ctx, cVersion))
+        assertEquals("kira::ffi::declared<kira::Str>(C_VERSION)", CppExternEmitter.constant(ctx, cVersion))
         val header = CppWriter.normalize(emitted.header)
         assertLines(header, "KIRA_EXTERN_CHECK(C_LIMIT, std::int32_t, \"C_LIMIT\");")
         assertTrue("::C_LIMIT" !in header, "the check is spelled as the read is:\n$header")

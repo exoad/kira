@@ -5,6 +5,7 @@ import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
+import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
@@ -166,6 +167,18 @@ interface CppExternsPart {
 
     /** The C++ text an extern constant is read by: its C++ name as the marker spells it (`ImGuiWindowFlags_None`; a macro takes no `::`). */
     fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String
+
+    /**
+     * The read of field [f], spelled [text] by the expression part (`r.c`, `p->x`), as the
+     * type Kira declared. A field of an extern struct is a boundary crossing like a result:
+     * its C++ type may be a same-size twin of the declared one (a C `int` on arm-none-eabi,
+     * an unscoped enum), which the field check accepts and Kira's own operations do not. The
+     * expression part (W2.3) hands every field read here from its `field(origin, f)`; a
+     * field of a Kira type, of a pointer type, or on a build without the extern part comes
+     * back unchanged. The text it returns is an lvalue whenever the C++ member has the
+     * declared type, so an assignment target or a `mut` argument goes through it too.
+     */
+    fun field(ctx: CppEmitContextImpl, f: FieldSymbol, text: String): String = text
 
     object Unsupported : CppExternsPart {
         override fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter) {

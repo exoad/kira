@@ -30,32 +30,70 @@
 //     signedness and the same kind (integral or floating). That is the one
 //     tolerance the fixed-width typedefs need: on arm-none-eabi std::int32_t
 //     is long, and a C header's `int` is the same value there, while `unsigned`,
-//     `float` or `bool` against Int32 is a drift (bool is only bool: a 1-byte
-//     unsigned integer is not it, and a C `int is_ok()` is declared Int32);
+//     `float` or `bool` against Int32 is a drift. bool is only bool (a 1-byte
+//     unsigned integer is not it, and a C `int is_ok()` is declared Int32), and
+//     char is only Char: it is Kira's Char and no Int8 or UInt8, though it has
+//     their size and one of their signednesses (which one depends on the
+//     target: signed on x86, unsigned on ARM). Left as a scalar of its size, a
+//     C++ `char letter()` declared `() Int8` passed, and `trace(letter())`
+//     printed A where the same value held in an Int8 printed 65 (measured);
+//     wchar_t, char8_t, char16_t and char32_t are characters the same way, each
+//     only itself;
 //   - a struct field or a returned value may also be an unscoped enum of the
 //     integer's size (a C `enum Mode mode;`, declared `mode: Int32`), since an
 //     extern enum is not a Kira declaration; the size is the target ABI's
 //     (4 bytes on the hosts, 1 on arm-none-eabi with its short enums, measured).
 // A Maybe<T> (std::optional) matches an optional whose value matches by this
 // same rule, and a Fn (std::function) a std::function, a function pointer or a
-// function of the same arity whose return and parameters match by it (a
-// parameter also agrees on being a mutable reference or not; a callable of any
-// other kind, a lambda say, is a seam). The two are stated on their own because
-// their converting constructors are the is_convertible hole one level down:
-// std::optional converts from any optional whose value converts, so a C++
-// `std::optional<std::uint32_t> find()` passed as `find: () Maybe<Int32>` and
-// `find().unwrap() - 1` printed 4294967295, and a `Maybe<Int32>` reached a
-// `std::optional<std::uint8_t>` parameter as 44 for 300; std::function takes
-// any callable with a compatible signature (measured, g++ 13, zig clang 20 and
-// MSVC /W4 /WX, every one under its strict warnings, silent).
+// function of the same arity whose return and parameters match by it, each in
+// the direction the value flows: the return as a result does (the callee's
+// return reaches the caller's declared type), a parameter the other way round
+// (the caller's argument reaches the callee's parameter: Kira calls a C++
+// callable with its own values, and C++ calls a Kira Fn with C++ values), so a
+// C++ `std::function<void(const std::string&)>` is a Kira `Fn<(CStr) Void>`
+// and a `std::function<void(const char*)>` is no `Fn<(Str) Void>`, which is
+// exactly what std::function's own constructor accepts and refuses (matched
+// the wrong way round, the second passed and the conversion then failed in
+// libstdc++'s constructor, measured). A parameter also agrees on being a
+// mutable reference or not; a callable of any other kind, a lambda say, is a
+// seam. The two are stated on their own because their converting constructors
+// are the is_convertible hole one level down: std::optional converts from any
+// optional whose value converts, so a C++ `std::optional<std::uint32_t> find()`
+// passed as `find: () Maybe<Int32>` and `find().unwrap() - 1` printed
+// 4294967295, and a `Maybe<Int32>` reached a `std::optional<std::uint8_t>`
+// parameter as 44 for 300; std::function takes any callable with a compatible
+// signature (measured, g++ 13, zig clang 20 and MSVC /W4 /WX, every one under
+// its strict warnings, silent).
 // Anything else (a class handle, a Str, a pointer, a struct) matches when it
 // converts: a `std::unique_ptr<Car>` to `kira::Rc<Car>` (a raw `Car*` does
 // not: shared_ptr's constructor from it is explicit, and adopting one is a
 // seam's decision), a `const char*` to `kira::Str`, a `const std::string&` to
-// `kira::Str`. The generated call then converts the result to the declared
-// type (`static_cast<kira::Str>(probe::name())`), since a `const char*` kept
-// as the call's type compared as a pointer where Kira compares a Str by value
-// (measured: `name() == ABC` printed 0 for Kira's 1, with -Werror silent).
+// `kira::Str`.
+//
+// WHAT KIRA THEN READS. The check proves a C++ value may stand for the declared
+// type; the generated code then makes it that type, since Kira's own operations
+// (kira::div, kira::cat, trace, min and max) are written for the declared type
+// and no other. Every extern result and every extern constant is
+// `kira::ffi::declared<T>(...)`, and every field read of an extern struct
+// `kira::ffi::field<T>(...)`, unless T is Void or a pointer (an `Unsafe<T>`, a
+// `CStr`, an opaque handle: the check lets only a qualification differ, and a
+// pointer's operations are the same either way). Left as the C++ type, a
+// `const char*` result declared Str compared as a pointer where Kira compares
+// a Str by value (measured: `name() == ABC` printed 0 for Kira's 1, with
+// -Werror silent); a `long wide()` declared Int32 on Windows, and a C `int
+// cnt_read(void)` declared Int32 on arm-none-eabi (the declaration this file
+// tells W3.x to write), both passed the check and `wide() / d` then failed to
+// compile in kira::div(long, int32_t&) (measured, g++ 13.2, zig clang 20 and
+// arm-none-eabi-g++ 13.3); an unscoped enum result declared Int32 failed the
+// same way inside kira::cat. declared<T> is static_cast<T>, which the check
+// proved loses nothing, except that a null pointer declared Str is the empty
+// Str (ImGui's GetClipboardText returns NULL for an empty clipboard, and
+// std::string's constructor from null is a logic_error on libstdc++ and a
+// segfault on libc++, measured) and that a Maybe is converted value by value.
+// field<T>(m) is the member itself, an lvalue, when its C++ type is T (so
+// `r.x = v` and `out(r.x)` still name it), and the converted value otherwise;
+// such a field (a C `int` on arm-none-eabi, an enum) is written through an
+// extern function, as C++ would not convert an integer back to an enum.
 // A returned or field drift fails the static_assert with Kira's message. A
 // by-value scalar, Maybe or Fn parameter is stated as `kira::ffi::arg<T>()`, a
 // proxy that converts to what matches T and to nothing else, so a Kira `v:
@@ -99,8 +137,8 @@
 // fread-style buffer or ImGui's InputText(char* buf, ...) is reached. A pointer
 // converts as C++ converts it (a uint8_t* reaches a void* parameter).
 //
-// Freestanding: Out, arg and the macros only. There is no Str on the Pico, so a
-// freestanding extern module passes CStr, scalars and Unsafe<T>.
+// Freestanding: Out, arg, declared, field and the macros only. There is no Str
+// on the Pico, so a freestanding extern module passes CStr, scalars and Unsafe<T>.
 #pragma once
 
 #include "kira/core.hxx"
@@ -128,14 +166,26 @@ namespace kira::ffi
   {
   };
 
+  // A character type: only itself (the head of this file). char is Kira's Char
+  // and no Int8 or UInt8, though it has their size and, per target, one of their
+  // signednesses; signed char (std::int8_t) and unsigned char (std::uint8_t) are
+  // the integers, and distinct types from char on every target.
+  template<class T>
+  inline constexpr bool is_character_v = std::is_same_v<T, char> || std::is_same_v<T, wchar_t> || std::is_same_v<T, char16_t> || std::is_same_v<T, char32_t>
+#if defined(__cpp_char8_t)
+                                         || std::is_same_v<T, char8_t>
+#endif
+      ;
+
   // A and B are one scalar on this target: the same type, or two arithmetic types
   // of the same size, signedness and kind (see the head of this file). bool is
-  // only bool.
+  // only bool, and a character type only itself.
   template<class A, class B>
   inline constexpr bool same_scalar_v = std::disjunction<
       std::is_same<A, B>,
       std::conjunction<std::is_arithmetic<A>,
                        std::is_arithmetic<B>,
+                       std::bool_constant<!is_character_v<A> && !is_character_v<B>>,
                        std::bool_constant<std::is_same_v<A, bool> == std::is_same_v<B, bool>>,
                        std::bool_constant<std::is_integral_v<A> == std::is_integral_v<B>>,
                        std::bool_constant<std::is_signed_v<A> == std::is_signed_v<B>>,
@@ -182,16 +232,24 @@ namespace kira::ffi
 
 #if KIRA_PROFILE_HOSTED
   // Fn: a std::function, a function pointer or a function type of the same arity
-  // whose return and parameters match. A parameter's reference and const are
-  // stripped before matching, and the two agree on being a mutable lvalue
-  // reference (a `mut` parameter) or not; a return matches as a result does,
-  // and void only void.
+  // whose return and parameters match. A return matches as a result does (From's
+  // return reaches To's), and void only void. A parameter flows the other way:
+  // whoever holds a To calls it with To's parameter types, and the call reaches
+  // From's callable, so To's parameter must match From's (Matches<B, A> below,
+  // with A From's parameter and B To's), which is the argument std::function's
+  // own constructor requires. Matched as Matches<A, B>, a C++
+  // `std::function<void(const char*)>` passed as a `Fn<void(const kira::Str&)>`
+  // and the conversion the emitter writes then failed inside libstdc++'s
+  // constructor, while a `std::function<void(const std::string&)>` was refused
+  // as a `Fn<void(const char*)>` though it converts (measured, g++ 13.2). A
+  // parameter's reference and const are stripped before matching, and the two
+  // agree on being a mutable lvalue reference (a `mut` parameter) or not.
   template<class A>
   inline constexpr bool is_mutable_ref_v = std::is_lvalue_reference_v<A> && !std::is_const_v<std::remove_reference_t<A>>;
   template<class A, class B>
   struct FnParamMatches
       : std::conjunction<std::bool_constant<is_mutable_ref_v<A> == is_mutable_ref_v<B>>,
-                         Matches<std::remove_cv_t<std::remove_reference_t<A>>, std::remove_cv_t<std::remove_reference_t<B>>>>
+                         Matches<std::remove_cv_t<std::remove_reference_t<B>>, std::remove_cv_t<std::remove_reference_t<A>>>>
   {
   };
   template<class A, class B>
@@ -275,6 +333,75 @@ namespace kira::ffi
   [[nodiscard]] constexpr Arg<T> arg() noexcept
   {
       return Arg<T>{};
+  }
+
+  // What an extern result or an extern constant reaches Kira as (the head of this
+  // file): the declared type T, by static_cast, which the check proved loses
+  // nothing; a Maybe value by value, so that its null-pointer case is the Str's;
+  // and (hosted) a Str from a null pointer as the empty Str, where std::string's
+  // constructor is a logic_error on libstdc++ and a segfault on libc++ (measured).
+  template<class T>
+  struct Declared
+  {
+      template<class V>
+      [[nodiscard]] static constexpr T from(V&& v)
+      {
+          return static_cast<T>(static_cast<V&&>(v));
+      }
+  };
+  template<class U>
+  struct Declared<std::optional<U>>
+  {
+      template<class V>
+      [[nodiscard]] static constexpr std::optional<U> from(V&& v)
+      {
+          if(!v)
+          {
+              return std::nullopt;
+          }
+          return std::optional<U>(Declared<U>::from(*static_cast<V&&>(v)));
+      }
+  };
+#if KIRA_PROFILE_HOSTED
+  template<>
+  struct Declared<std::string>
+  {
+      template<class V>
+      [[nodiscard]] static std::string from(V&& v)
+      {
+          if constexpr(std::is_pointer_v<std::remove_cv_t<std::remove_reference_t<V>>>)
+          {
+              return v != nullptr ? std::string(v) : std::string();
+          }
+          else
+          {
+              return static_cast<std::string>(static_cast<V&&>(v));
+          }
+      }
+  };
+#endif
+  template<class T, class V>
+  [[nodiscard]] constexpr T declared(V&& v)
+  {
+      return Declared<T>::from(static_cast<V&&>(v));
+  }
+
+  // A field read of an extern struct as the type Kira declared: the member itself,
+  // an lvalue, when its C++ type is T (cv aside), so that `r.x = v` and `out(r.x)`
+  // still name it; the converted value otherwise (a C `int` field read as Int32 on
+  // arm-none-eabi, an unscoped enum field read as its integer), which the field
+  // check proved loses nothing. Such a field is written through an extern function.
+  template<class T, class M>
+  [[nodiscard]] constexpr decltype(auto) field(M& m) noexcept
+  {
+      if constexpr(std::is_same_v<std::remove_cv_t<M>, T>)
+      {
+          return (m);
+      }
+      else
+      {
+          return static_cast<T>(m);
+      }
   }
 }
 

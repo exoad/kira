@@ -13,19 +13,19 @@ namespace forward
 
   std::int32_t main()
   {
-      const kira::Rc<::bibo::Car> car = static_cast<kira::Rc<::bibo::Car>>(::bibo::openCar());
-      if(!car->arm())
+      const kira::Rc<::bibo::Car> car = kira::ffi::declared<kira::Rc<::bibo::Car>>(::bibo::openCar());
+      if(!kira::ffi::declared<bool>(car->arm()))
       {
-          return car->finish();
+          return kira::ffi::declared<std::int32_t>(car->finish());
       }
       bool blocked{true};
-      while(car->ok())
+      while(kira::ffi::declared<bool>(car->ok()))
       {
-          if(!car->drivable() && !car->arm())
+          if(!kira::ffi::declared<bool>(car->drivable()) && !kira::ffi::declared<bool>(car->arm()))
           {
               continue;
           }
-          const float ahead{static_cast<::bibo::Scan>(car->scan()).ahead()};
+          const float ahead{kira::ffi::declared<float>(kira::ffi::declared<::bibo::Scan>(car->scan()).ahead())};
           if(ahead < STOP_AT_M)
           {
               blocked = true;
@@ -36,7 +36,7 @@ namespace forward
           }
           car->drive(blocked ? 0.0f : CREEP, 0.0f);
       }
-      return car->finish();
+      return kira::ffi::declared<std::int32_t>(car->finish());
   }
 }
 #include "kira/macro_pop.hxx"

@@ -53,12 +53,21 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * is caught).
  *
  * What the check lets through is then made the declared type at the use: a call's result
- * and a constant's read are `static_cast<T>(...)` unless T is a scalar (proved exact by the
- * check), `Void`, or a pointer (`Unsafe<T>`, `CStr`, an opaque handle: the check lets only a
- * qualification differ). A C++ `const char* name()` declared `name: () Str` passes its
- * check, and left as the call's own type `name() == ABC` compared two pointers where Kira
- * compares a Str by value (measured: 0 for Kira's 1, on g++, clang and MSVC with -Werror
- * silent); `static_cast<kira::Str>(::probe::name()) == ABC` compares the text.
+ * and a constant's read are `kira::ffi::declared<T>(...)`, and a field read of an extern
+ * struct `kira::ffi::field<T>(...)`, unless T is `Void` or a pointer (`Unsafe<T>`, `CStr`,
+ * an opaque handle: the check lets only a qualification differ, and a pointer's operations
+ * are the same either way). A scalar is converted too: the check proves the C++ type is a
+ * scalar of the same size, signedness and kind, not the declared type itself, and Kira's
+ * own operations are written for the declared type. A C++ `const char* name()` declared
+ * `name: () Str` passes its check, and left as the call's own type `name() == ABC` compared
+ * two pointers where Kira compares a Str by value (measured: 0 for Kira's 1, on g++, clang
+ * and MSVC with -Werror silent); a `long wide()` declared `Int32` (Windows) and a C `int
+ * cnt_read(void)` declared `Int32` on arm-none-eabi both passed, and `wide() / d` then
+ * failed to compile in `kira::div(long, int32_t&)` (measured, g++ 13.2, zig clang 20 and
+ * arm-none-eabi-g++ 13.3); a C enum result declared `Int32` failed the same way inside
+ * `kira::cat`. Converted, `wide() / d` divides two `std::int32_t`. What each conversion
+ * does with a null `const char*` and with a field whose C++ type is the declared one is
+ * kira/ffi.hxx's (the empty Str; the member itself, an lvalue).
  *
  * An extern parameter takes no Kira default: the C++ header's own default fills a parameter
  * Kira leaves undeclared, and a Kira default would be a second, unchecked declaration of it
@@ -321,19 +330,41 @@ object CppExternEmitter : CppExternsPart {
 
     /**
      * [text], a C++ value the check proved matches the Kira type [t], as that type: itself
-     * when [t] is `Void`, a scalar (the check is exact there) or a pointer (`Unsafe<T>`,
-     * `CStr`, an opaque handle: only a qualification could differ, and a pointer's operations
-     * are the same either way); `static_cast<T>(text)` otherwise, since what is_convertible
-     * let through is not yet the declared type. A `const char*` result declared `Str` is the
-     * case that bit: `name() == ABC` compared pointers (measured, 0 for Kira's 1), and a
-     * `std::optional<const char*>` declared `Maybe<Str>` would do the same one level down.
-     * A result of the declared type itself is a prvalue and the cast is elided.
+     * when [t] is `Void` or a pointer (`Unsafe<T>`, `CStr`, an opaque handle: only a
+     * qualification could differ, and a pointer's operations are the same either way);
+     * `kira::ffi::declared<T>(text)` otherwise, since what the check let through is not yet
+     * the declared type. A `const char*` result declared `Str` is the case that bit first:
+     * `name() == ABC` compared pointers (measured, 0 for Kira's 1); a `char letter()`
+     * declared `Int8` printed A where an Int8 prints 65 (now refused by the check, since char
+     * is only Char); a `long wide()` declared `Int32` passed the check and `wide() / d` then
+     * failed to compile in `kira::div(long, int32_t&)` (measured), as did a C `int` on
+     * arm-none-eabi and a C enum in `kira::cat`. A result of the declared type itself costs
+     * one move.
      */
     private fun declared(ctx: CppEmitContextImpl, t: KType, text: String): String =
-        if (keepsCppType(t)) text else "static_cast<${ctx.spell(t, Pos.VALUE)}>($text)"
+        if (keepsCppType(t)) text else "kira::ffi::declared<${ctx.spell(t, Pos.VALUE)}>($text)"
 
     private fun keepsCppType(t: KType): Boolean =
-        t == KType.Void || t == KType.Never || t is KType.Scalar || isUnsafe(t) || isCStr(t) || isOpaque(t)
+        t == KType.Void || t == KType.Never || isUnsafe(t) || isCStr(t) || isOpaque(t)
+
+    /**
+     * A field read of an extern struct as the declared type ([CppExternsPart.field]):
+     * `kira::ffi::field<T>(text)`, which is the member itself when its C++ type is T and the
+     * converted value otherwise (a `char c` declared `Int8` printed C where an Int8 prints 67,
+     * measured; char is now only Char, and a C `int` on arm-none-eabi or an enum member is
+     * still a same-size twin the field check accepts). A field of a Kira type, or a pointer
+     * field, is the text as given.
+     */
+    override fun field(ctx: CppEmitContextImpl, f: FieldSymbol, text: String): String {
+        val owner = f.owner as? ClassSymbol ?: return text
+        if (externOf(owner) == null || keepsCppType(f.type)) {
+            return text
+        }
+        return "kira::ffi::field<${ctx.spell(f.type, if (f.isMut) Pos.MUT_VALUE else Pos.FIELD)}>($text)"
+    }
+
+    /** Whether [f] is a field of an extern struct: a read of it is a boundary crossing ([field]). */
+    fun isExternField(f: FieldSymbol): Boolean = (f.owner as? ClassSymbol)?.let { externOf(it) } != null
 
     /** `->` for a class or an opaque handle (an `Rc` or a pointer), `.` for a struct (a value). */
     private fun accessor(owner: TypeSymbol): String = when {
