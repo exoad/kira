@@ -1,0 +1,4 @@
+toolchains: [msvc]
+profile: hosted
+defines: []
+emit: required

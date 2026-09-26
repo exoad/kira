@@ -159,9 +159,10 @@ data class CppBackendResult(
 
 /**
  * `kira --target cpp`: one header (and at most one source) per workspace
- * module, the Kira-written stdlib modules header-only under
- * `<runtimeDir>/kira/std/`, the runtime copied beside them with `VERSION`,
- * and `kira.gen.manifest` at the project root.
+ * module, the Kira-written stdlib modules the workspace reaches (see
+ * [emitModules]) header-only under `<runtimeDir>/kira/std/`, the runtime
+ * copied beside them with `VERSION`, and `kira.gen.manifest` at the project
+ * root.
  *
  * Everything is planned in memory first. If any emitter or layout error
  * exists, nothing is written. Otherwise, in write mode, only files whose
@@ -262,13 +263,13 @@ object KiraCppBackend {
             log("--out ${options.outDir}: tree layout, runtime and ${CppGenManifest.FILE_NAME} under it")
         }
 
-        // 2. Emit every module in memory.
+        // 2. Emit every module in memory: the workspace, then the stdlib modules it reaches.
         val planned = mutableListOf<CppPlannedFile>()
         if (diagnostics.none { it.isError }) {
             val emitter = emitterFactory(unit, options)
+            emitter.prepare(layout, version)
             diagnostics += emitter.diagnostics
-            sources.forEach { (ref, source) ->
-                val emitted = emitter.emit(source)
+            emitModules(emitter, sources).forEach { (ref, source, emitted) ->
                 diagnostics += emitted.diagnostics
                 if (emitted.hasErrors) {
                     return@forEach
@@ -391,6 +392,47 @@ object KiraCppBackend {
             )
             CppBackendResult(0, diagnostics, planned, written.map { it.path }, removable)
         }
+    }
+
+    /** One module's emission: which module, its source, and what came out. */
+    data class EmittedSource(val ref: CppModuleRef, val source: SourceContext, val emitted: EmittedModule)
+
+    /**
+     * Emits the workspace modules of [sources] (in the given order), then the Kira-written
+     * stdlib modules (`kira:*`) their headers include, transitively through
+     * [EmittedModule.uses], by URI. A stdlib module nothing reaches is not emitted: its
+     * bodies are not the project's, and a project that never names `kira:math` has no
+     * `kira/std/math.kira.hxx`. A system module (`kira:os`, `kira:sync`, `kira:test`,
+     * `kira:time`) is never emitted: its runtime header is its whole C++ face, the
+     * hand-written structs and constants included ([CppTypeSpeller.SYSTEM_MODULE_HEADERS]),
+     * and headers include that. CppGoldenEmitTest runs the same path.
+     */
+    fun emitModules(emitter: CppModuleEmitter, sources: List<Pair<CppModuleRef, SourceContext>>): List<EmittedSource> {
+        val byUri = sources.associateBy { it.first.uri }
+        val out = mutableListOf<EmittedSource>()
+        val reached = sortedSetOf<String>()
+        val queued = HashSet<String>()
+        fun reach(uses: List<String>) {
+            uses.forEach { uri ->
+                if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX) && CppTypeSpeller.systemHeaderFor(uri) == null && queued.add(uri)) {
+                    reached.add(uri)
+                }
+            }
+        }
+        sources.filter { !it.first.uri.startsWith(CppOptions.STDLIB_URI_PREFIX) }.forEach { (ref, source) ->
+            val emitted = emitter.emit(source)
+            out += EmittedSource(ref, source, emitted)
+            reach(emitted.uses)
+        }
+        while (reached.isNotEmpty()) {
+            val uri = reached.first()
+            reached.remove(uri)
+            val (ref, source) = byUri[uri] ?: continue
+            val emitted = emitter.emit(source)
+            out += EmittedSource(ref, source, emitted)
+            reach(emitted.uses)
+        }
+        return out
     }
 
     /**

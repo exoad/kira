@@ -22,8 +22,9 @@ data class CppModuleFiles(val header: Path, val source: Path?)
  * A module's namespace is the last URI segment unless `build.cpp.namespaces`
  * names it, exactly or by glob (`firmware:pilot.src.bibowire.*`); an exact key
  * wins over a glob, a longer glob over a shorter one. A derived segment that
- * is a C++ keyword or an object-like macro (D35) is escaped the way names
- * are (`new` gives `new_`, `errno` gives `errno_`).
+ * is a C++ keyword, an object-like macro (D35) or a global the C library or
+ * the program declares (`main`, `exit`, `time`) is escaped the way names are
+ * (`new` gives `new_`, `errno` gives `errno_`, `app:main` gives `main_`).
  * [checkCollisions] rejects a namespace that is not valid C++ and the reserved
  * ones: `std`, and `kira` for anything but a stdlib module (the runtime's).
  */
@@ -95,11 +96,28 @@ class CppModuleLayout(
         segments.firstOrNull { it.startsWith("__") || (it.length > 1 && it[0] == '_' && it[1].isUpperCase()) }?.let {
             return "'$namespace' uses '$it', a name C++ reserves for its implementation"
         }
+        if (CppNames.isCGlobal(segments.first())) {
+            return "'$namespace' would open namespace ${segments.first()} at global scope beside the C library's " +
+                "${segments.first()} (or the program's int main), which C++ rejects as a redeclaration"
+        }
+        // Any segment, not the first alone: inside `namespace bibo::std`, and inside `bibo`
+        // once that header is included, `std::int32_t` resolves to the nested namespace
+        // (measured: gcc "'int32_t' in namespace 'bibo::std' does not name a type", clang
+        // "no type named 'Str' in namespace 'bibo::kira'"), so every generated declaration
+        // in the enclosing namespace breaks.
         if (segments.first() == "std") {
             return "'$namespace' would add to namespace std, which C++ forbids"
         }
+        if (segments.any { it == "std" }) {
+            return "'$namespace' nests a namespace named std, which would hide the C++ standard library's std:: " +
+                "from every declaration in ${segments.takeWhile { it != "std" }.joinToString("::")}"
+        }
         if (segments.first() == STDLIB_NAMESPACE && !uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
             return "'$namespace' is the runtime's namespace; only kira: modules live in $STDLIB_NAMESPACE::"
+        }
+        if (segments.any { it == STDLIB_NAMESPACE } && !uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
+            return "'$namespace' nests a namespace named $STDLIB_NAMESPACE, which would hide the runtime's $STDLIB_NAMESPACE:: " +
+                "from every declaration in ${segments.takeWhile { it != STDLIB_NAMESPACE }.joinToString("::")}"
         }
         return null
     }
@@ -233,7 +251,8 @@ class CppModuleLayout(
         fun namespaceOf(namespaces: Map<String, String>, uri: String): String {
             SourceGlob.lookupUri(namespaces, uri)?.let { return it }
             if (uri.startsWith(CppOptions.STDLIB_URI_PREFIX)) {
-                return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeNamespaceSegment(it) }
+                // Design 4.3: `kira:time` is `kira::time`. Nested under kira:: a segment meets no C library global.
+                return uriSegments(uri).joinToString("::", prefix = "$STDLIB_NAMESPACE::") { CppNames.escapeNestedSegment(it) }
             }
             return CppNames.escapeNamespaceSegment(uriSegments(uri).last())
         }
