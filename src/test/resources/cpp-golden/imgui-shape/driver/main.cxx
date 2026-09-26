@@ -163,7 +163,10 @@ int main()
     check(dl->VtxCount() == 6, "dl->VtxCount() is const and counts both");
 
     check(sizeof(imgui::ffi_::Vec2) == sizeof(ImVec2), "Vec2's layout twin has ImVec2's size");
-    check(::ImGuiWindowFlags_NoTitleBar == 1 && ::ImGuiWindowFlags_None == 0, "the flag constants read by their C++ names");
+    // A constant is read as the marker spells it, with no `::` added: IM_COL32_WHITE is a
+    // macro, and `::IM_COL32_WHITE` would not compile.
+    check(ImGuiWindowFlags_NoTitleBar == 1 && ImGuiWindowFlags_None == 0 && IM_COL32_WHITE == 0xFFFFFFFFu,
+          "the flag constants and the IM_COL32 macro read by their C++ names");
 
     std::printf("\n%d checks, %d failed\n", checks, failures);
     return failures;

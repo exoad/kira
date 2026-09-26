@@ -46,10 +46,18 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * A declaration that names its symbol with `c =` alone (design 7.3) reaches a C header: the
  * name is the C one, and the header is included inside `extern "C" { }`, which a header
  * with its own `__cplusplus` guard tolerates (nested linkage specifications are a no-op)
- * and a header without one needs.
+ * and a header without one needs. The wrap has one known edge: a C header that reaches a
+ * C++ standard header from inside it fails on libc++ (`<complex.h>` is `<complex>` there,
+ * and its templates must have C++ linkage; g++ and MSVC accept it, measured). Such a
+ * header carries its own guard, so its symbols are declared with `cpp =`, which includes
+ * the header unwrapped.
  *
- * At a call, [call] spells the C++ name and the proxies (the expression part hands over the
- * spelled receiver and arguments); an extern constant is read by its C++ name ([constant]).
+ * At a call, [call] spells the C++ name with a leading `::` and the proxies (the expression
+ * part hands over the spelled receiver and arguments). An extern constant is read by its
+ * C++ name exactly as the marker spells it, with no `::` added ([constant]): a C constant
+ * reached through `c =` is usually an object-like macro (`#define LIMIT 42`, and ImGui's
+ * `IM_COL32_*` are too), `::LIMIT` expands to `::42`, and the check already proves the
+ * unqualified spelling, so the read uses the spelling the check proved.
  */
 object CppExternEmitter : CppExternsPart {
     /** The runtime header the proxies and the check macros live in. */
@@ -332,7 +340,12 @@ object CppExternEmitter : CppExternsPart {
         return sym.kind == ClassKind.MAGIC && sym.name == name
     }
 
-    override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String = globalName(sym)
+    /**
+     * The read of an extern constant: [cppName], never [globalName]. A macro cannot take a
+     * `::`, and [globalCheck] stated the check over this same spelling; a marker that wants
+     * the global one writes it (`cpp = "::bibo::LIMIT"`), and it passes through unchanged.
+     */
+    override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String = cppName(sym)
 
     /** Whether [call] is one the expression part must hand to [CppExternEmitter.call]: its callee is extern. */
     fun isExternCall(call: ResolvedCall): Boolean = call.fn?.foreign is Foreign.Extern

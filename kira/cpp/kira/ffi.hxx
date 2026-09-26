@@ -23,6 +23,16 @@
 // has exactly the type Kira declared (is_same, since a same-size drift such as
 // int against float converts silently) and sits at the twin's offset (so a
 // reordered pair of same-typed fields is caught too); sizeof is compared once.
+// One exception to is_same: a C struct's enum field (`enum Mode mode;`), which
+// Kira declares as the integer of the enum's size (`mode: Int32`), since an
+// extern enum is not a Kira declaration. An unscoped enum converts to that
+// integer, so a read is exact; a size gate keeps a 1-byte or 8-byte enum from
+// passing as Int32 (that would be the layout drift the twin exists to catch).
+// The size is the target ABI's: a C enum with no fixed type is 4 bytes on the
+// hosts and 1 byte on arm-none-eabi (AAPCS short enums; measured, ffi_test), so
+// the Pico's declaration of the same header says UInt8 where the host's says
+// Int32. A scoped enum converts to nothing and is refused. Kira writes such a
+// field through an extern function, as C++ would not convert the integer back.
 //
 // The proxies (7.2, A):
 //   kira::ffi::in(s)    a Str argument: converts to const char*, std::string_view
@@ -56,11 +66,22 @@
 #define KIRA_EXTERN_CHECK(expr, R, what) \
     static_assert(std::is_convertible_v<decltype(expr), R>, "Kira's " what " no longer matches its C++ header")
 
+namespace kira::ffi
+{
+  // The C++ member type M is what Kira declared as T when it is T, or when it is
+  // an unscoped enum of T's size that converts to the integer T (a C enum field
+  // read as Int32; see the head of this file). Anything else is a drift.
+  template<class M, class T>
+  inline constexpr bool field_matches_v =
+      std::is_same_v<M, T>
+      || (std::is_enum_v<M> && std::is_integral_v<T> && std::is_convertible_v<M, T> && sizeof(M) == sizeof(T));
+}
+
 // S is the C++ struct, Twin Kira's layout twin, field the member both declare, T
 // the type Kira declared. decltype of an unparenthesized member access is the
-// member's declared type, so is_same compares the declaration, not a value.
+// member's declared type, so field_matches_v compares the declaration, not a value.
 #define KIRA_EXTERN_FIELD(S, Twin, field, T, what)                                                          \
-    static_assert(std::is_same_v<decltype(std::declval<S&>().field), T>, "Kira's " what " no longer matches its C++ header"); \
+    static_assert(kira::ffi::field_matches_v<decltype(std::declval<S&>().field), T>, "Kira's " what " no longer matches its C++ header"); \
     static_assert(offsetof(S, field) == offsetof(Twin, field), "Kira's " what " no longer matches its C++ header (it is not at that offset)")
 
 namespace kira::ffi

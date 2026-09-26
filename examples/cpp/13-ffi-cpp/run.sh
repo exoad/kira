@@ -7,7 +7,18 @@
 # directory; the C functions are compiled as C, the rest as C++20, and the
 # program's stdout is diffed against expected.txt. $CC and $CXX override the
 # compilers (the first of cc/gcc/clang and c++/g++/clang++ on PATH otherwise).
+#
+# The generated tree holds the whole runtime, kira/os.cxx included, and that
+# file is Winsock on Windows and pthreads on Linux glibc (kira/os.hxx says so):
+# a MinGW or zig windows-gnu link needs -lws2_32 (MSVC takes ws2_32.lib from a
+# pragma), and a Linux link -pthread, as kira/cpp/tests/goldens.sh passes them.
 set -euo pipefail
+
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) hostlink=(-lws2_32) ;;
+    Linux) hostlink=(-pthread) ;;
+    *) hostlink=() ;;
+esac
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../../.." && pwd)"
@@ -53,7 +64,7 @@ if [[ ${#sources[@]} -eq 0 ]]; then
 fi
 "$cc_bin" -std=c17 -O2 -Wall -Wextra -Werror -c "$here/native/cshape.c" -o "$work/cshape.o"
 "$cxx_bin" -std=c++20 -O2 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Werror -ffp-contract=off \
-    -I "$work/gen" -I "$here/native" "${sources[@]}" "$work/cshape.o" -o "$work/app"
+    -I "$work/gen" -I "$here/native" "${sources[@]}" "$work/cshape.o" "${hostlink[@]}" -o "$work/app"
 "$work/app" | tr -d '\r' > "$work/actual.txt"
 if diff -u "$here/expected.txt" "$work/actual.txt"; then
     echo "13-ffi-cpp: ok"

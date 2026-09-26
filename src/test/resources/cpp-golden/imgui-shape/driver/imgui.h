@@ -1,12 +1,16 @@
 // A slice of Dear ImGui's imgui.h for the imgui-shape golden: the shapes Kira's
 // extern declarations must survive, under ImGui's own names. A value struct with
 // constructors, an opaque draw list, a default argument, an overloaded name,
-// varargs (which Kira never declares) and an unscoped enum of flags. main.cxx
-// defines them, recording every call.
+// varargs (which Kira never declares), an unscoped enum of flags and a macro
+// constant (IM_COL32_WHITE, as imgui.h defines it). main.cxx defines them,
+// recording every call.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+
+#define IM_COL32(R, G, B, A) (((ImU32)(A) << 24) | ((ImU32)(B) << 16) | ((ImU32)(G) << 8) | ((ImU32)(R) << 0))
+#define IM_COL32_WHITE IM_COL32(255, 255, 255, 255)
 
 struct ImVec2
 {

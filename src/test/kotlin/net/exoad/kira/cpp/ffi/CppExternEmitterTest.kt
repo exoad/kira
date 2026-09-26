@@ -452,9 +452,15 @@ class CppExternEmitterTest {
         assertEquals("::ImGui::Text(kira::ffi::CStrBuf(::bibo::nameOf(1)).c_str())", given("::bibo::nameOf(1)", calling("nameOf")))
     }
 
+    /**
+     * The read is the marker's spelling, never `::` + it: a C constant through `c =` is
+     * usually a macro (`#define C_LIMIT 42`; limits.h's are), `::C_LIMIT` is `::42`, and the
+     * check the header states is spelled without `::` too, so the read uses what the check
+     * proved. A marker that wants the global scope writes it and keeps it.
+     */
     @Test
-    fun anExternConstantReadsByItsCppName() {
-        val (_, ctx) = emit(
+    fun anExternConstantReadsByItsCppNameAsTheMarkerSpellsIt() {
+        val (emitted, ctx) = emit(
             """
             @_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h")
             pub NO_TITLE_BAR: Int32;
@@ -469,8 +475,11 @@ class CppExternEmitterTest {
         val noTitle = ctx.symbol.members["NO_TITLE_BAR"] as GlobalSymbol
         val limit = ctx.symbol.members["LIMIT"] as GlobalSymbol
         val cLimit = ctx.symbol.members["C_LIMIT"] as GlobalSymbol
-        assertEquals("::ImGuiWindowFlags_NoTitleBar", CppExternEmitter.constant(ctx, noTitle))
+        assertEquals("ImGuiWindowFlags_NoTitleBar", CppExternEmitter.constant(ctx, noTitle))
         assertEquals("::bibo::LIMIT", CppExternEmitter.constant(ctx, limit))
-        assertEquals("::C_LIMIT", CppExternEmitter.constant(ctx, cLimit))
+        assertEquals("C_LIMIT", CppExternEmitter.constant(ctx, cLimit))
+        val header = CppWriter.normalize(emitted.header)
+        assertLines(header, "KIRA_EXTERN_CHECK(C_LIMIT, std::int32_t, \"C_LIMIT\");")
+        assertTrue("::C_LIMIT" !in header, "the check is spelled as the read is:\n$header")
     }
 }

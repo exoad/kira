@@ -8,6 +8,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* A C constant is a macro; Kira reads it by this name, with no scope in front. */
+#define CSHAPE_LIMIT 42
+
 #ifdef __cplusplus
 extern "C" {
 #endif
