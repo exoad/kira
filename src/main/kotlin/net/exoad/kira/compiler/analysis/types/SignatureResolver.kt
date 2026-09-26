@@ -513,6 +513,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
         }
         val implemented = traitClosure(c.traits, emptyMap()) + chain.flatMap { (sc, s) -> traitClosure(sc.traits, s) }
         val quiet = c.module.isStdlib
+        val ownNames = c.methods.mapTo(HashSet()) { it.name }
         for (m in c.methods) {
             // A member operator (owner != null here, so isFreeOperator is always false) takes
             // part in override linking like any method (1.3.2): `override pub fx @_op_add_`
@@ -521,23 +522,14 @@ internal class SignatureResolver(private val program: TypedProgram) {
             if (m.isFreeOperator || m.name == DeclarationCollector.ANONYMOUS) {
                 continue
             }
-            val base = chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == m.name }?.let { it to s } }
+            val base = fromChain(m.name, chain)
             // Each trait's own methods, nearest trait first: the closure lists every ancestor
             // with the substitution that reaches it, so an inherited method is found at the
             // trait that declares it, under that trait's own type arguments. Computed even when
             // a superclass already provides `m.name`, so the two can be compared below.
-            val viaTrait = implemented.firstNotNullOfOrNull { (t, s) -> t.methods.firstOrNull { it.name == m.name }?.let { it to s } }
-            if (!quiet && base != null && viaTrait != null && !sameSignature(base.first, base.second, viaTrait.first, viaTrait.second)) {
-                // Two inherited methods of one name with different signatures (1.3.2): a
-                // parent's `@_op_eq_(other: Base)` beside `Equatable<Leaf>`'s `(other: Leaf)`.
-                // `m` alone cannot satisfy both, so `c` must be told which one it means.
-                program.report(
-                    "types.member.conflict",
-                    "${c.name} inherits two different '${m.name}' methods: ${base.first.qualifiedName} from its superclass, " +
-                        "and ${viaTrait.first.qualifiedName} from a trait it implements. Declare '${m.name}' in ${c.name} " +
-                        "to say which one it means.",
-                    m.decl,
-                )
+            val viaTrait = fromTraits(m.name, implemented)
+            if (!quiet) {
+                reportConflictIfAny(c, m.name, m.decl, base, viaTrait)
             }
             val target = base ?: viaTrait
             if (target != null) {
@@ -568,6 +560,58 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 )
             }
         }
+        if (quiet) {
+            return
+        }
+        // Two inherited methods of one name with different signatures are `types.member.conflict`
+        // whether or not `c` redeclares that name (1.3.2, the spec's own example: `Leaf` declares
+        // nothing, yet `Base`'s `@_op_eq_(other: Base)` and `Eq<Leaf>`'s `(other: Leaf)` disagree).
+        // The loop above only ever looks at `c.methods`, so a name `c` never declares itself would
+        // otherwise never be checked. `sameSignature` never sees a null on either side here.
+        val inheritedNames = (chain.flatMap { (sc, _) -> sc.methods.map { it.name } } + implemented.flatMap { (t, _) -> t.methods.map { it.name } })
+            .filterTo(LinkedHashSet()) { it != DeclarationCollector.ANONYMOUS && it !in ownNames }
+        for (name in inheritedNames) {
+            reportConflictIfAny(c, name, c.decl, fromChain(name, chain), fromTraits(name, implemented))
+        }
+    }
+
+    /** The nearest superclass in [chain] that declares [name], with its substitution. */
+    private fun fromChain(
+        name: String,
+        chain: List<Pair<ClassSymbol, Map<TypeParamSymbol, KType>>>,
+    ): Pair<FnSymbol, Map<TypeParamSymbol, KType>>? =
+        chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == name }?.let { it to s } }
+
+    /** The nearest implemented trait (closure order) that declares [name], with its substitution. */
+    private fun fromTraits(
+        name: String,
+        implemented: List<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>>,
+    ): Pair<FnSymbol, Map<TypeParamSymbol, KType>>? =
+        implemented.firstNotNullOfOrNull { (t, s) -> t.methods.firstOrNull { it.name == name }?.let { it to s } }
+
+    /**
+     * `types.member.conflict` (1.3.2): [base] (from a superclass) and [viaTrait] (from an
+     * implemented trait) name the same method but disagree on signature, and nothing at [anchor]
+     * (a declared member, or the class itself when it declares no member of that name) says
+     * which one is meant.
+     */
+    private fun reportConflictIfAny(
+        c: ClassSymbol,
+        name: String,
+        anchor: ASTNode?,
+        base: Pair<FnSymbol, Map<TypeParamSymbol, KType>>?,
+        viaTrait: Pair<FnSymbol, Map<TypeParamSymbol, KType>>?,
+    ) {
+        if (base == null || viaTrait == null || sameSignature(base.first, base.second, viaTrait.first, viaTrait.second)) {
+            return
+        }
+        program.report(
+            "types.member.conflict",
+            "${c.name} inherits two different '$name' methods: ${base.first.qualifiedName} from its superclass, " +
+                "and ${viaTrait.first.qualifiedName} from a trait it implements. Declare '$name' in ${c.name} " +
+                "to say which one it means.",
+            anchor,
+        )
     }
 
     /**

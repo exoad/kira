@@ -708,17 +708,33 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // still names the scope this declaration lives in: `Module` for a free operator,
         // `Class` for a member one (classes and traits alike), which is never this form.
         val declName = functionDecl.name
-        if (declName is IntrinsicExpr &&
-            OperatorIntrinsics.isFreeOperatorName(declName.intrinsicKey.name) &&
-            compilationUnit.symbolTable.where() is SemanticScope.Module
-        ) {
-            val (memberName, arity) = OperatorIntrinsics.freeToMember(declName.intrinsicKey.name) ?: ("_op_..._" to 1)
-            val signature = if (arity == 0) "() T" else "(other: T) T"
-            Diagnostics.Logging.warn(
-                "ops.free-form",
-                "the free @${declName.intrinsicKey.name} form is deprecated: declare " +
-                    "pub fx @$memberName: $signature in class T.",
-            )
+        if (declName is IntrinsicExpr && compilationUnit.symbolTable.where() is SemanticScope.Module) {
+            val opName = declName.intrinsicKey.name
+            if (OperatorIntrinsics.isFreeOperatorName(opName)) {
+                val (memberName, arity) = OperatorIntrinsics.freeToMember(opName) ?: ("_op_..._" to 1)
+                val signature = if (arity == 0) "() T" else "(other: T) T"
+                Diagnostics.Logging.warn(
+                    "ops.free-form",
+                    "the free @$opName form is deprecated: declare " +
+                        "pub fx @$memberName: $signature in class T.",
+                )
+            } else if (OperatorIntrinsics.isMemberOperatorName(opName)) {
+                // `@_op_add_` (1.3.1's *member* spelling) names a method, not the deprecated
+                // free form above. Neither backend's free-operator lowering ever emits this
+                // spelling for `a + a` -- it always calls the free name (`OperatorIntrinsics
+                // .binaryName`/`unaryName`, e.g. `op_add`) -- so a module-level declaration under
+                // the member spelling would otherwise pass this whole pass clean and then call a
+                // function that does not exist under that name on either target (a C link error
+                // or a JS ReferenceError). This is refused, not merely warned: `pump` fails the
+                // semantic pass, so `Main.kt` skips backend emit instead of producing that.
+                pump(
+                    "'@$opName' is a method (1.3.1): declare it inside a class, as " +
+                        "'pub fx @$opName: (other: T) T' in class T. It cannot be declared at " +
+                        "module level.",
+                    context.astOrigins[declName] ?: SourcePosition.UNKNOWN,
+                    selectorLength = opName.length + 1,
+                )
+            }
         }
         val funcName = when (functionDecl.name) {
             is Identifier -> (functionDecl.name as Identifier).value

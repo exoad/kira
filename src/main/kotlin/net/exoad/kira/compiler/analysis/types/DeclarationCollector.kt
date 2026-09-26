@@ -19,6 +19,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParam
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
+import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.source.SourceContext
 
 /**
@@ -216,6 +217,21 @@ internal class DeclarationCollector(
         // declared in a class, a trait or a magic class (owner != null) is a member operator,
         // which takes part in every member check (1.3.2) like any other method.
         fn.isFreeOperator = isOperator && owner == null
+        if (fn.isFreeOperator && OperatorIntrinsics.isMemberOperatorName(name)) {
+            // `@_op_add_` (1.3.1's member spelling) names a method, not the deprecated free
+            // form (`@op_add`, 1.3.5): the free-form lowering on C and JS always emits the free
+            // spelling (`OperatorIntrinsics.binaryName`/`unaryName`), never whatever name the
+            // declaration used, so a module-level `@_op_add_` would otherwise parse, collect and
+            // pass every check here while `a + a` calls a function that does not exist under
+            // that name on either backend (`op_add` undefined). Refused at the one point both
+            // forms are told apart, before that silent mismatch can reach codegen.
+            program.report(
+                "ops.member-scope",
+                "'@$name' is a method (1.3.1): declare it inside a class, e.g. 'pub fx @$name: " +
+                    "(other: T) T' in class T. It cannot be declared at module level.",
+                decl,
+            )
+        }
         fn.markers.addAll(markers)
         typeParams.forEach { it.owner = fn }
         params.forEach { it.fn = fn }

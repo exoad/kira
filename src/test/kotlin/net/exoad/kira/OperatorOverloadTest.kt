@@ -165,6 +165,34 @@ class OperatorOverloadTest {
     }
 
     @Test
+    fun aModuleLevelMemberFormNameFailsTheSemanticPassOnCAndJS() {
+        // w2-9-1-parse significant issue #1: `--target c` and `--target js` run
+        // `KiraSemanticAnalyzer`, never `KiraTyper`/`DeclarationCollector`. A module-level
+        // `@_op_add_` (the *member* spelling) must fail here too, or `Main.kt`'s "backend emit
+        // only after a clean semantic pass" gate never trips and the C/JS emitters run anyway,
+        // each calling a function named `op_add` that this declaration never defines.
+        val badModule = """
+            pub class V2 {
+                pub x: Float32 = 0.0
+            }
+            pub fx @_op_add_: (a: V2, b: V2) V2 {
+                return V2 { a.x + b.x }
+            }
+        """
+        val result = TestCompileSupport.compileSnippet(
+            source = wrap(badModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        val semantics = assertNotNull(result.semanticResults)
+        assertTrue(!semantics.isHealthy, "a module-level @_op_add_ must fail the semantic pass, not silently pass")
+        assertTrue(
+            semantics.diagnostics.any { it.message.contains("_op_add_") },
+            "expected a diagnostic naming '_op_add_', got: ${semantics.diagnostics.map { it.message }}"
+        )
+    }
+
+    @Test
     fun overloadedOperatorsCompileAndRun() {
         val cCompiler = TestCompileSupport.findCCompiler()
         assumeTrue(cCompiler != null, "needs a C compiler")

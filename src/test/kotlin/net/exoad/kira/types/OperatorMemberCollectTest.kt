@@ -175,6 +175,113 @@ class OperatorMemberCollectTest {
     }
 
     @Test
+    fun aModuleLevelMemberFormNameIsRefused() {
+        // 1.3.1/1.3.5: `@_op_add_` is the *member* spelling. Declared at module level (owner ==
+        // null) it would otherwise become a "free operator" under a name neither backend's
+        // free-operator lowering ever emits (`OperatorIntrinsics.binaryName` always spells
+        // `op_add`), so `a + a` would call a function that does not exist. This must be refused,
+        // not silently accepted.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub class V2 {
+                    pub x: Float32 = 0.0
+                }
+                pub fx @_op_add_: (a: V2, b: V2) V2 {
+                    return V2 { a.x + b.x }
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "ops.member-scope")
+        assertTrue(program.hasErrors, render(program))
+    }
+
+    @Test
+    fun aModuleLevelFreeFormNameIsStillJustFreeOperator() {
+        // The pre-W2.9 free form (`@op_add`, no leading/trailing underscore) is not the member
+        // spelling, so it must not trip the new module-level refusal above.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub class Point {
+                    require pub x: Int32
+                }
+                pub fx @op_add: (a: Point, b: Point) Point {
+                    return Point { a.x + b.x }
+                }
+                """
+            )
+        }
+        assertFalse(program.diagnostics.any { it.code == "ops.member-scope" }, render(program))
+    }
+
+    @Test
+    fun twoInheritedOperatorsOfOneNameConflictEvenWhenLeafDeclaresNeither() {
+        // The spec's own example (1.3.2, brief step 4): a superclass's `@_op_eq_(other: Base)`
+        // beside a trait's `@_op_eq_(other: Leaf)`, with Leaf declaring nothing at all. The
+        // conflict must still be found, never first-found, even though no `Leaf.methods` entry
+        // exists to anchor the per-method check.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub class Base {
+                    pub fx @_op_eq_: (other: Base) Bool { return true }
+                }
+                pub trait Eq<T> {
+                    pub fx @_op_eq_: (other: T) Bool
+                }
+                pub class Leaf: Base, Eq<Leaf> {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun twoInheritedOrdinaryMethodsOfOneNameConflictEvenWhenLeafDeclaresNeither() {
+        // Same shape as above, with an ordinary method rather than an operator: the check must
+        // not be operator-specific.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub class Base {
+                    pub fx name: () Str { return "base" }
+                }
+                pub trait Named {
+                    pub fx name: (n: Int32) Str
+                }
+                pub class Leaf: Base, Named {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun twoInheritedMethodsOfOneNameAgreeingIsNoConflict() {
+        // Same shape, but the superclass and the trait declare the *same* signature: no
+        // diagnostic, so the new whole-class pass does not over-trigger.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub class Base {
+                    pub fx @_op_eq_: (other: Base) Bool { return true }
+                }
+                pub trait Eq<T> {
+                    pub fx @_op_eq_: (other: T) Bool
+                }
+                pub class Leaf: Base, Eq<Base> {
+                }
+                """
+            )
+        }
+        assertFalse(program.diagnostics.any { it.code == "types.member.conflict" }, render(program))
+    }
+
+    @Test
     fun finalClassExtendedIsTypesClassFinal() {
         val program = phasesAAndB {
             snippet(

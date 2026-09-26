@@ -204,4 +204,12 @@ object OperatorIntrinsics {
      * (1.3.5).
      */
     fun isFreeOperatorName(name: String): Boolean = name in freeNames
+
+    /**
+     * True when [name] is a member form name ([memberName], [GET] or [SET]), never the pre-W2.9
+     * free form. Used by `DeclarationCollector.function` to refuse a module-level declaration
+     * spelled with the member form (`@_op_add_`), which would otherwise silently become a "free
+     * operator" under a name neither backend's free-operator lowering ever emits (1.3.1, 1.3.5).
+     */
+    fun isMemberOperatorName(name: String): Boolean = name in memberNames
 }
