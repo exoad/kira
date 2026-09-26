@@ -1510,4 +1510,233 @@ class CppClassShapeTest {
             "      return std::make_shared<Tagged>(std::array<std::uint8_t, 4>{1, 2, 3, 4}, 7, 9);",
         )
     }
+
+    // ---- one name from two traits at once ------------------------------------------------------------
+
+    private val siblings = """
+        pub trait Abs {
+            pub fx f: () Int32;
+        }
+        pub trait Def {
+            pub fx f: () Int32 {
+                return 7
+            }
+        }
+    """
+
+    @Test
+    fun aSiblingTraitsDefaultSatisfiesAnothersRequirementInAStruct() {
+        // Abs and Def are unrelated: Abs.f is a requirement, Def.f the one body of the name,
+        // so the struct takes Def's as its member (the typer resolves s.f() to it).
+        val (h, s) = both(
+            siblings + """
+            pub struct S: Abs, Def {
+                pub v: Int32 = 0
+            }
+            pub fx viaAbs<T: Abs>: (s: T) Int32 {
+                return s.f()
+            }
+            """
+        )
+        assertContains(h, "  struct S\n  {\n      std::int32_t v = 0;\n\n      [[nodiscard]] std::int32_t f() const;\n  };")
+        assertContains(s, "  std::int32_t S::f() const\n  {\n      return 7;\n  }")
+    }
+
+    @Test
+    fun aSiblingTraitsDefaultSatisfiesAnothersRequirementInAClassByAForwarder() {
+        // C++ ties Abs::f and Def::f to nothing: C would stay abstract and c.f() ambiguous.
+        // C declares f, overriding both at once, and forwards to Def's body; the two are then
+        // one const family, so a mut requirement takes the const off the default it ties to.
+        val (h, s) = both(
+            siblings + """
+            pub trait MutAbs {
+                pub mut fx g: () Int32;
+            }
+            pub trait MutDef {
+                pub fx g: () Int32 {
+                    return 8
+                }
+            }
+            pub class C: Abs, Def, MutAbs, MutDef {
+            }
+            pub fx make: () C {
+                return C {}
+            }
+            """
+        )
+        assertContains(
+            h,
+            "  class C final : public Abs, public Def, public MutAbs, public MutDef\n  {\n  public:\n      C() = default;\n      C(const C&) = delete;\n      C& operator=(const C&) = delete;\n      [[nodiscard]] std::int32_t f() const override;\n      [[nodiscard]] std::int32_t g() override;\n  };",
+            "  class MutDef\n  {\n  public:\n      virtual ~MutDef() = default;\n      [[nodiscard]] virtual std::int32_t g();\n  };",
+        )
+        assertContains(
+            s,
+            "  std::int32_t C::f() const\n  {\n      return Def::f();\n  }",
+            "  std::int32_t C::g()\n  {\n      return MutDef::g();\n  }",
+            "      return std::make_shared<C>();",
+        )
+    }
+
+    @Test
+    fun twoSiblingDefaultsForOneNameAreRefusedInAClassAndAStruct() {
+        val messages = unsupported(
+            """
+            pub trait One {
+                pub fx f: () Int32 { return 1 }
+            }
+            pub trait Two {
+                pub fx f: () Int32 { return 2 }
+            }
+            pub class C: One, Two {
+            }
+            pub struct S: One, Two {
+                pub v: Int32 = 0
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("C inheriting f from both One and Two (C++ needs one final overrider") }, messages.toString())
+        assertTrue(messages.any { it.startsWith("struct S inheriting f from both One and Two (two default bodies") }, messages.toString())
+    }
+
+    @Test
+    fun aStructReachingOneDefaultThroughTwoOverridingPathsIsRefused() {
+        // The class of this shape is refused (aDiamondWithTwoOverridersIsRefused); a struct's
+        // copy would silently take the first path's body.
+        val messages = unsupported(
+            """
+            pub trait A {
+                pub fx f: () Int32 { return 1 }
+            }
+            pub trait B: A {
+                override pub fx f: () Int32 { return 2 }
+            }
+            pub trait C: A {
+                override pub fx f: () Int32 { return 3 }
+            }
+            pub struct S: B, C {
+                pub v: Int32 = 0
+            }
+            """
+        )
+        assertEquals(listOf("struct S inheriting f from both B and C (two default bodies, and the pick would be silent: override f in S) is not lowered yet"), messages)
+    }
+
+    @Test
+    fun constructingAClassWhoseBaseReabstractsAnInheritedDefaultIsRefused() {
+        // B redeclares A.m without a body: C++ holds C abstract, whatever A's body says.
+        val messages = unsupported(
+            """
+            pub trait A {
+                pub fx m: () Int32 { return 1 }
+            }
+            pub trait B: A {
+                override pub fx m: () Int32;
+            }
+            pub class C: B {
+            }
+            pub fx make: () C {
+                return C {}
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("constructing C, which leaves B.m without a body") }, messages.toString())
+    }
+
+    @Test
+    fun aStructInheritingADefaultThatNamesAnotherModulesPrivateIsRefused() {
+        // The copy is spelled in the struct's module, where ::shapes::helper names nothing:
+        // helper and FACTOR live in shapes.kira.cxx's anonymous namespace. A default that
+        // names only pub declarations of its module is copied, qualified.
+        val shapes = OopTestSupport.module(
+            "test:shapes",
+            """
+            FACTOR: Int32 = 3
+
+            alias Len as Int32
+
+            fx helper: (v: Int32) Int32 {
+                return v
+            }
+
+            pub fx pubHelper: (v: Int32) Int32 {
+                return v
+            }
+
+            pub trait Shape {
+                pub fx area: () Int32;
+                pub fx scaled: () Int32 {
+                    return helper(area())
+                }
+                pub fx factor: () Int32 {
+                    return FACTOR
+                }
+                pub fx len: () Int32 {
+                    return 1 as Len
+                }
+                pub fx bumped: () Int32 {
+                    return pubHelper(area())
+                }
+            }
+
+            pub struct Local: Shape {
+                pub side: Int32 = 2
+                override pub fx area: () Int32 {
+                    return side
+                }
+            }
+            """,
+        )
+        val main = OopTestSupport.module(
+            uri,
+            """
+            use "test:shapes"
+
+            pub struct Square: Shape {
+                pub side: Int32 = 4
+                override pub fx area: () Int32 {
+                    return side
+                }
+            }
+            """,
+        )
+        val e = OopTestSupport.emit(shapes, main)
+        val messages = e.module(uri).diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }.map { it.message }
+        assertEquals(
+            listOf(
+                "struct Square inheriting the default body of Shape.scaled from module test:shapes, which names 'helper', private to that module (override scaled in Square, or make it pub) is not lowered yet",
+                "struct Square inheriting the default body of Shape.factor from module test:shapes, which names 'FACTOR', private to that module (override factor in Square, or make it pub) is not lowered yet",
+                "struct Square inheriting the default body of Shape.len from module test:shapes, which names 'Len', private to that module (override len in Square, or make it pub) is not lowered yet",
+            ),
+            messages,
+        )
+        // The struct of the trait's own module takes all four.
+        val local = e.source("test:shapes")
+        assertContains(local, "  std::int32_t Local::scaled() const\n  {\n      return helper(area());\n  }", "  std::int32_t Local::factor() const\n  {\n      return FACTOR;\n  }")
+        assertEquals(emptyList(), e.errors("test:shapes").map { it.message })
+    }
+
+    @Test
+    fun aDefaultBodyTheTraitsLoweringRefusesIsReportedOnceWithItsStructCopy() {
+        // The struct's copy is spelled from the same body: the refusal at hello(this) is one.
+        val messages = unsupported(
+            """
+            pub trait Named {
+                pub fx name: () Str;
+                pub fx greet: () Str {
+                    return hello(this)
+                }
+            }
+            pub fx hello: (n: Named) Str {
+                return n.name()
+            }
+            pub struct Cat: Named {
+                pub v: Int32 = 1
+                override pub fx name: () Str {
+                    return "cat"
+                }
+            }
+            """
+        )
+        assertEquals(listOf("this as a value in a default body of trait Named (a trait has no shared_from_this) is not lowered yet"), messages)
+    }
 }

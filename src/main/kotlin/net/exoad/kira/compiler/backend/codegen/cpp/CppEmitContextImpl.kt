@@ -431,9 +431,15 @@ class CppEmitContextImpl(
         report(diagnosticAt(node, code, message, severity))
     }
 
-    /** Adds [d] to this module's [diagnostics]. */
+    /**
+     * Adds [d] to this module's [diagnostics], unless the same diagnostic (code, message and
+     * place) is already there: one construct refused once, however many times its body is
+     * spelled (a trait default body, and the copy each struct takes of it).
+     */
     fun report(d: CppDiagnostic) {
-        reported += d
+        if (d !in reported) {
+            reported += d
+        }
     }
 
     /** A diagnostic placed at [node] (its file and line), not yet reported. */

@@ -33,6 +33,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
@@ -601,25 +602,102 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
     /**
      * The trait default bodies the struct [s] takes as members: every one it inherits and
-     * does not override, less those the trait's own lowering refuses ([isLowered]). One of a
-     * generic trait is refused ([report]): its body is typed under the trait's parameters,
-     * which the struct's copy would have to substitute, and the copy is spelled from the
-     * body as written.
+     * does not override, less those the trait's own lowering refuses ([isLowered]). Refused
+     * ([report], once, at the struct): one of a generic trait, since its body is typed under
+     * the trait's parameters, which the struct's copy would have to substitute, and the copy
+     * is spelled from the body as written; one from another module whose body names a
+     * declaration that module's `.kira.cxx` keeps to itself ([privateReferences]), since the
+     * copy is spelled in [s]'s module, where `::shapes::helper` names nothing; and a name two
+     * trait paths give different bodies to ([CppClassFacts.ambiguousDefaults]).
      */
-    private fun structDefaults(s: ClassSymbol, report: Boolean): List<FnSymbol> =
-        facts.inheritedDefaults(s).mapNotNull { (m, via) ->
+    private fun structDefaults(s: ClassSymbol, report: Boolean): List<FnSymbol> {
+        if (report) {
+            facts.ambiguousDefaults(s).forEach { (method, owners) ->
+                ctx.unsupported(
+                    s.decl ?: return@forEach,
+                    "struct ${s.name} inheriting ${method.name} from both ${owners.joinToString(" and ") { it.sym.name }} (two default bodies, and the pick would be silent: override ${method.name} in ${s.name})",
+                )
+            }
+        }
+        return facts.inheritedDefaults(s).mapNotNull { (m, via) ->
             val trait = via.sym as TraitSymbol
+            val at = s.decl ?: m.decl
+            val hidden = if (m.module === s.module) emptyList() else privateReferences(m)
             when {
                 !isLowered(m) -> null
                 trait.typeParams.isNotEmpty() -> {
-                    if (report) {
-                        ctx.unsupported(s.decl ?: m.decl ?: return@mapNotNull null, "struct ${s.name} inheriting the default body of ${via.display()}.${m.name} from a generic trait (override ${m.name} in ${s.name})")
+                    if (report && at != null) {
+                        ctx.unsupported(at, "struct ${s.name} inheriting the default body of ${via.display()}.${m.name} from a generic trait (override ${m.name} in ${s.name})")
+                    }
+                    null
+                }
+                hidden.isNotEmpty() -> {
+                    if (report && at != null) {
+                        val names = hidden.joinToString(", ") { "'${it.name}'" }
+                        ctx.unsupported(
+                            at,
+                            "struct ${s.name} inheriting the default body of ${via.display()}.${m.name} from module ${m.module.uri}, which names $names, private to that module " +
+                                "(override ${m.name} in ${s.name}, or make ${if (hidden.size == 1) "it" else "them"} pub)",
+                        )
                     }
                     null
                 }
                 else -> m
             }
         }
+    }
+
+    /**
+     * The module-level declarations of [m]'s own module that [m]'s body names and that
+     * module's `.kira.cxx` keeps in its anonymous namespace: not `pub`, and not hoisted into
+     * the header's `impl_` (a header-only module, or one a template needs). A copy of the
+     * body spelled in another module cannot reach them. A function, a constant or module
+     * state, a type: what the body calls, reads, constructs or spells as a type; a member
+     * of a type is reached through the type, so it is not one.
+     */
+    private fun privateReferences(m: FnSymbol): List<Symbol> {
+        val home = m.module
+        val homePlacement = ctx.placementOf(home)
+        val out = LinkedHashMap<Symbol, Unit>()
+        fun note(sym: Symbol?) {
+            if (sym == null || sym.module !== home || home.declarations.none { it === sym }) {
+                return
+            }
+            if (homePlacement.isExported(sym) || homePlacement.inImpl(sym)) {
+                return
+            }
+            out.putIfAbsent(sym, Unit)
+        }
+        fun noteType(t: KType?) {
+            when (t) {
+                is KType.Nominal -> {
+                    note(t.sym as? Symbol)
+                    t.typeArgs().forEach(::noteType)
+                }
+                is KType.Fn -> {
+                    t.params.forEach { noteType(it.type) }
+                    noteType(t.ret)
+                }
+                else -> {}
+            }
+        }
+        m.body?.forEach { s ->
+            AstTree.walk(s) { node ->
+                when (node) {
+                    is Identifier -> note(model.symbolOf(node))
+                    is FunctionCallExpr -> note(model.call(node)?.fn)
+                    is ObjectInitExpr -> note(model.init(node)?.cls)
+                    // A Type spelled through an alias is spelled by the alias's name (CppTypeSpeller.text).
+                    is Type -> {
+                        note(model.aliasRefs[node])
+                        noteType(model.typeOf(node))
+                    }
+                    else -> {}
+                }
+            }
+        }
+        return out.keys.toList()
+    }
 
     /** `R Square::twice() const { ... }`: the trait's body, as a member of the struct (`Pair<T>::` and the template head for a generic struct). */
     private fun inheritedDefinition(w: CppWriter, s: ClassSymbol, m: FnSymbol, inline: Boolean) {
@@ -889,6 +967,8 @@ class CppClassFacts(private val program: TypedProgram) {
     private val pathMemo = IdentityHashMap<Symbol, Map<TraitSymbol, Int>>()
     private val pathVisiting: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
     private val dominanceMemo = IdentityHashMap<TypeSymbol, Pair<List<Forwarder>, List<Pair<FnSymbol, List<KType.Nominal>>>>>()
+    private val dominanceVisiting: MutableSet<TypeSymbol> = Collections.newSetFromMap(IdentityHashMap())
+    private val structMemo = IdentityHashMap<ClassSymbol, Pair<List<InheritedDefault>, List<Pair<FnSymbol, List<KType.Nominal>>>>>()
 
     /** Every class, struct and trait the program defines itself (no `@_magic`, `@_opaque` or `@_extern` one). */
     private val types: List<Symbol> = program.modules.flatMap { it.declarations }.filter { sym ->
@@ -1033,24 +1113,31 @@ class CppClassFacts(private val program: TypedProgram) {
     private fun hasVirtualDestructor(c: ClassSymbol): Boolean = baseHasVirtualDestructor(c) || ownsVirtualDestructor(c)
 
     /**
-     * The first method [c] leaves without a body (its own bodyless one, a superclass's, or a
-     * trait method no class of the chain implements and no trait gives a default), with the
-     * type that declares it; null when C++ can construct [c].
+     * The first method [c] leaves without a body, with the type that declares it; null when
+     * C++ can construct [c]. For each method name over [c]'s chain and traits, the nearest
+     * declarations on each path up from [c] itself ([overriders]: its own, a forwarder's
+     * target, a superclass's, a trait's), less those another candidate overrides; a
+     * bodyless one among them is missing, unless it is a root requirement some other
+     * candidate's body satisfies (`class C: Abs, Def`, whose forwarder ties them; a
+     * superclass method beside an unrelated trait's requirement, which
+     * [unconnectedTraitMethods] refuses). A body that some nearer declaration re-abstracts
+     * satisfies nothing: C++ holds the class abstract.
      */
     fun missingImplementation(c: ClassSymbol): Pair<TypeSymbol, FnSymbol>? {
-        val implemented = HashSet<String>()
-        val required = LinkedHashMap<String, Pair<TypeSymbol, FnSymbol>>()
+        val names = LinkedHashSet<String>()
         for (link in chain(c)) {
-            for (t in traitClosure(link.cls.traits)) {
-                t.methods.forEach { m ->
-                    if (m.body != null) implemented.add(m.name) else required.putIfAbsent(m.name, t to m)
-                }
-            }
-            link.cls.methods.forEach { m ->
-                if (m.body != null) implemented.add(m.name) else required.putIfAbsent(m.name, link.cls to m)
+            traitClosure(link.cls.traits).forEach { t -> t.methods.forEach { names.add(it.name) } }
+            link.cls.methods.forEach { names.add(it.name) }
+        }
+        for (name in names) {
+            val found = overriders(c.selfType, name)
+            val remaining = found.filter { (fn, _) -> found.none { (o, _) -> o !== fn && isBaseOf(fn.owner, o.owner) } }
+            val satisfied = remaining.any { (fn, _) -> fn.body != null }
+            remaining.firstOrNull { (fn, _) -> fn.body == null && !(satisfied && isRootRequirement(fn)) }?.let { (fn, via) ->
+                return (fn.owner ?: via.sym) to fn
             }
         }
-        return required.entries.firstOrNull { it.key !in implemented }?.value
+        return null
     }
 
     /**
@@ -1264,6 +1351,8 @@ class CppClassFacts(private val program: TypedProgram) {
                 baseMethods(owner, m.name).forEach { unite(m, it) }
             }
         }
+        // A forwarder overrides every base's declaration of its name at once, as an override does.
+        types.forEach { t -> forwarders(t as TypeSymbol).forEach { f -> f.overridden.forEach { unite(f.method, it) } } }
         val families = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
         methods.forEach { m -> families.getOrPut(familyRoot(m)) { mutableListOf() }.add(m) }
         var changed = true
@@ -1351,31 +1440,31 @@ class CppClassFacts(private val program: TypedProgram) {
 
     /**
      * The trait default bodies the struct [s] takes as members (static dispatch, D1): for
-     * each method name, the nearest declaration over the traits [s] implements, depth first
-     * as the typer resolves an override, when that declaration has a body and [s] declares
-     * no method of the name. A nearer bodyless declaration re-abstracts the name, so a
-     * default above it is not inherited.
+     * each method name over the traits [s] implements that [s] declares no method of, the
+     * one body that reaches it ([inherited]): the nearest on its path, a sibling trait's
+     * beside another's bodyless requirement. A nearer bodyless declaration re-abstracts the
+     * name, so a default above it is not inherited; two bodies, or a body beside a
+     * re-abstraction, are [ambiguousDefaults].
      */
-    fun inheritedDefaults(s: ClassSymbol): List<InheritedDefault> {
+    fun inheritedDefaults(s: ClassSymbol): List<InheritedDefault> = structResolution(s).first
+
+    /** Method names two of [s]'s trait paths give different bodies to, which [s] does not override: Kira's pick would be silent. */
+    fun ambiguousDefaults(s: ClassSymbol): List<Pair<FnSymbol, List<KType.Nominal>>> = structResolution(s).second
+
+    private fun structResolution(s: ClassSymbol): Pair<List<InheritedDefault>, List<Pair<FnSymbol, List<KType.Nominal>>>> = structMemo.getOrPut(s) {
         val own = s.methods.map { it.name }.toSet()
-        val decided = HashSet<String>(own)
-        val out = mutableListOf<InheritedDefault>()
-        val seen: MutableSet<TraitSymbol> = Collections.newSetFromMap(IdentityHashMap())
-        fun visit(n: KType.Nominal) {
-            val t = n.sym as? TraitSymbol ?: return
-            if (!seen.add(t)) {
-                return
+        val bases = s.traits.filter { it.sym is TraitSymbol }
+        val names = traitClosure(bases).flatMap { it.methods }.filter { !it.isOperator && it.name != DeclarationCollector.ANONYMOUS }.map { it.name }.distinct()
+        val taken = mutableListOf<InheritedDefault>()
+        val ambiguous = mutableListOf<Pair<FnSymbol, List<KType.Nominal>>>()
+        names.filter { it !in own }.forEach { name ->
+            when (val r = inherited(bases, name)) {
+                is Inherited.One -> taken += InheritedDefault(r.method, r.via)
+                is Inherited.Ambiguous -> ambiguous += r.method to r.owners
+                Inherited.None -> {}
             }
-            t.methods.forEach { m ->
-                if (!m.isOperator && m.name != DeclarationCollector.ANONYMOUS && decided.add(m.name) && m.body != null) {
-                    out += InheritedDefault(m, n)
-                }
-            }
-            val sub = t.typeParams.zip(n.typeArgs()).toMap()
-            t.parents.forEach { p -> visit(p.substitute(sub) as KType.Nominal) }
         }
-        s.traits.forEach(::visit)
-        return out
+        taken.toList() to ambiguous.toList()
     }
 
     private fun writesReceiver(m: FnSymbol, known: Set<FnSymbol>): Boolean {
@@ -1458,40 +1547,126 @@ class CppClassFacts(private val program: TypedProgram) {
         return sym is ClassSymbol && sym.kind == ClassKind.MAGIC && sym.name == "MutView"
     }
 
-    /** A method [via]'s declaration [method] a class or trait inherits by dominance, and forwards to. */
-    data class Forwarder(val method: FnSymbol, val via: KType.Nominal)
+    /**
+     * A method [via]'s declaration [method] a class or trait inherits from its bases and
+     * forwards to, [overridden] being the other declarations of the name the forwarder
+     * overrides in C++ (a dominated one, a sibling's pure requirement).
+     */
+    data class Forwarder(val method: FnSymbol, val via: KType.Nominal, val overridden: List<FnSymbol>)
 
     /**
-     * The methods [x] inherits by dominance in a diamond: a trait method that one path to the
-     * virtual base overrides and another does not (`class D: B, C` over `B: A`, `C: A`, where
-     * B overrides `A.m`; or `class Dog: Animal, Tagged` where Animal and Tagged both reach
-     * Named and Animal implements `id`). C++ takes B's `m`, but MSVC warns C4250 ("inherits
-     * via dominance", measured, an error under /W4 /WX), so [x] declares `m` and forwards it
-     * to B's. Only a declaration with a body is forwarded to; a pure one leaves [x] to
-     * implement it.
+     * What a class, trait or struct inherits under one method name it does not declare
+     * itself, from the nearest declarations of the name on each path up through its bases
+     * ([inherited]).
+     */
+    private sealed interface Inherited {
+        /**
+         * One body reaches the name: [method], as [via] names its owner. [others] are the
+         * other nearest declarations, which that body stands for: one it overrides (its owner
+         * is above [method]'s), or a bodyless root requirement of a sibling base; empty when
+         * the name comes one way, as most do.
+         */
+        data class One(val method: FnSymbol, val via: KType.Nominal, val others: List<FnSymbol>) : Inherited
+
+        /** Two bodies, or a body beside a re-abstraction of the name: Kira's pick would be silent, and C++ has no final overrider. */
+        data class Ambiguous(val method: FnSymbol, val owners: List<KType.Nominal>) : Inherited
+
+        /** Nothing declares the name, or no body reaches it (every nearest declaration is bodyless). */
+        data object None : Inherited
+    }
+
+    /**
+     * The nearest declarations of [name] on each path up from [bases] ([overriders]), with
+     * one that another candidate overrides dropped (its owner is a base of that candidate's
+     * owner, C++'s dominance: `class D: B, C` over `B: A`, `C: A` where B overrides `A.m`
+     * keeps B's). Of what remains, one body is what the type inherits: a bodyless
+     * declaration beside it is a root requirement (`trait Abs { fx f; }` next to
+     * `trait Def { fx f { ... } }`), which that body satisfies as the typer takes it, unless
+     * it re-abstracts a name some base gave a body (`C: A` redeclaring `A.m` bodyless), a
+     * deliberate conflict with the other path's body. Two bodies conflict.
+     */
+    private fun inherited(bases: List<KType.Nominal>, name: String): Inherited {
+        val found = LinkedHashMap<FnSymbol, KType.Nominal>()
+        bases.forEach { b -> overriders(b, name).forEach { (fn, via) -> found.putIfAbsent(fn, via) } }
+        if (found.isEmpty()) {
+            return Inherited.None
+        }
+        val remaining = found.filterKeys { fn -> found.keys.none { o -> o !== fn && isBaseOf(fn.owner, o.owner) } }
+        val bodies = remaining.filterKeys { it.body != null }
+        val requirements = remaining.keys.filter { isRootRequirement(it) }
+        return when {
+            bodies.size >= 2 -> Inherited.Ambiguous(bodies.keys.first(), bodies.values.toList())
+            bodies.size == 1 && remaining.size == bodies.size + requirements.size -> {
+                val (method, via) = bodies.entries.single()
+                Inherited.One(method, via, found.keys.filter { it !== method })
+            }
+            bodies.size == 1 -> Inherited.Ambiguous(bodies.keys.single(), remaining.values.toList())
+            else -> Inherited.None
+        }
+    }
+
+    /** A bodyless declaration that overrides nothing: a requirement any body of the name satisfies. */
+    private fun isRootRequirement(fn: FnSymbol): Boolean =
+        fn.body == null && (fn.owner as? Symbol)?.let { baseMethods(it, fn.name).isEmpty() } != false
+
+    /** Whether [base] is a C++ base of [x], directly or indirectly. */
+    private fun isBaseOf(base: TypeSymbol?, x: TypeSymbol?): Boolean =
+        base != null && (x as? Symbol)?.let { allBases(it).any { b -> b === base } } == true
+
+    /**
+     * The methods [x] inherits from two or more of its bases at once and declares, forwarding
+     * to the one body ([inherited]): a trait method that one path to a virtual base overrides
+     * and another does not (`class D: B, C` over `B: A`, `C: A`, where B overrides `A.m`; or
+     * `class Dog: Animal, Tagged` where Animal and Tagged both reach Named and Animal
+     * implements `id`), which C++ takes by dominance but MSVC warns about (C4250, measured, an
+     * error under /W4 /WX); and a trait's default beside a sibling trait's bodyless
+     * declaration of the same name (`class C: Abs, Def`), two virtuals C++ ties to nothing,
+     * so C stays abstract and `c.f()` is ambiguous. Either way [x] declares `m` and forwards
+     * it to the body's owner; the forwarder overrides every base's `m` at once, so the
+     * [Forwarder.overridden] are one `const` family with it ([deriveConstness]). A
+     * superclass's own method beside an unrelated trait's requirement is not forwarded to:
+     * [unconnectedTraitMethods] refuses it.
      */
     fun forwarders(x: TypeSymbol): List<Forwarder> = dominance(x).first
 
-    /** Trait methods [x] reaches with two different overriders and does not override: C++ has no final overrider for them. */
+    /** Method names [x] reaches with two bodies, or a body beside a re-abstraction, and does not declare: no final overrider. */
     fun ambiguousOverriders(x: TypeSymbol): List<Pair<FnSymbol, List<KType.Nominal>>> = dominance(x).second
 
-    private fun dominance(x: TypeSymbol): Pair<List<Forwarder>, List<Pair<FnSymbol, List<KType.Nominal>>>> = dominanceMemo.getOrPut(x) {
+    private fun dominance(x: TypeSymbol): Pair<List<Forwarder>, List<Pair<FnSymbol, List<KType.Nominal>>>> {
+        dominanceMemo[x]?.let { return it }
+        if (!dominanceVisiting.add(x)) {
+            return emptyList<Forwarder>() to emptyList()
+        }
         val forwarders = mutableListOf<Forwarder>()
         val ambiguous = mutableListOf<Pair<FnSymbol, List<KType.Nominal>>>()
         val own = methodsOf(x as Symbol).map { it.name }.toSet()
-        paths(x).filter { it.value >= 2 }.keys.forEach { v ->
-            v.methods.filter { !it.isOperator && it.name !in own }.forEach { m ->
-                val found = LinkedHashMap<FnSymbol, KType.Nominal>()
-                directBases(x).forEach { b -> overriders(b, m.name).forEach { (fn, via) -> found.putIfAbsent(fn, via) } }
-                val others = found.filterKeys { it !== m }
-                when {
-                    others.size >= 2 -> ambiguous += m to others.values.toList()
-                    others.size == 1 && found.size > 1 && others.keys.single().body != null ->
-                        forwarders += Forwarder(others.keys.single(), others.values.single())
+        val names = allBases(x).flatMap { methodsOf(it) }.filter { !it.isOperator && it.name != DeclarationCollector.ANONYMOUS }.map { it.name }.distinct()
+        names.filter { it !in own }.forEach { name ->
+            when (val r = inherited(directBases(x), name)) {
+                is Inherited.One -> if (r.others.isNotEmpty() && isForwardable(r)) {
+                    forwarders += Forwarder(r.method, r.via, r.others)
                 }
+                is Inherited.Ambiguous -> ambiguous += r.method to r.owners
+                Inherited.None -> {}
             }
         }
-        forwarders.toList() to ambiguous.toList()
+        dominanceVisiting.remove(x)
+        val out = forwarders.toList() to ambiguous.toList()
+        dominanceMemo[x] = out
+        return out
+    }
+
+    /**
+     * A forwarder overrides every other declaration of the name, so each must be a virtual: a
+     * trait's, or a class method the program overrides. A superclass's own body beside a
+     * trait requirement that superclass does not implement is left to [unconnectedTraitMethods].
+     */
+    private fun isForwardable(r: Inherited.One): Boolean {
+        if (r.others.any { it.owner !is TraitSymbol && !it.isVirtual }) {
+            return false
+        }
+        val owner = r.method.owner
+        return owner is TraitSymbol || r.others.none { it.owner is TraitSymbol && !isBaseOf(it.owner, owner) }
     }
 
     private fun methodsOf(t: Symbol): List<FnSymbol> = when (t) {

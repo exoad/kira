@@ -407,6 +407,42 @@ class CppClassCompileTest {
         pub fx makeUpper: () Upper {
             return Upper {}
         }
+
+        // One name from two unrelated traits, a requirement beside a default: the struct takes
+        // the default as its member, the class declares a forwarder to it (C++ would hold the
+        // class abstract and the call ambiguous).
+        pub trait Abs {
+            pub fx f: () Int32;
+        }
+
+        pub trait Def {
+            pub fx f: () Int32 {
+                return 7
+            }
+        }
+
+        pub struct Sib: Abs, Def {
+            pub v: Int32 = 0
+        }
+
+        pub class SibClass: Abs, Def {
+        }
+
+        pub fx viaAbs: (a: Abs) Int32 {
+            return a.f()
+        }
+
+        pub fx viaAbsBound<T: Abs>: (s: T) Int32 {
+            return s.f()
+        }
+
+        pub fx sibBound: (s: Sib) Int32 {
+            return viaAbsBound<Sib>(s)
+        }
+
+        pub fx makeSib: () SibClass {
+            return SibClass {}
+        }
     """
 
     private val driver = """
@@ -477,6 +513,10 @@ class CppClassCompileTest {
             check(shapes::squareSame(square) == 3 && shapes::squareDirect(square) == 3 && square.same() == 3 && growing.area() == 5, "a struct takes a trait's default body as its own member");
             const kira::Rc<shapes::Upper> upper = shapes::makeUpper();
             check(upper->later()() == 1 && upper->later()() == 2 && upper->laterReset()() == 100 && upper->peek()() == 100, "a subclass's escaping lambda writes through the captured self");
+            const shapes::Sib sib{};
+            const kira::Rc<shapes::SibClass> sibClass = shapes::makeSib();
+            const kira::Rc<shapes::Abs> sibAbs = sibClass;
+            check(sib.f() == 7 && shapes::sibBound(sib) == 7 && sibClass->f() == 7 && shapes::viaAbs(sibClass) == 7 && sibAbs->f() == 7, "a sibling trait's default satisfies another's requirement: a struct member, a class forwarder");
             std::printf("%d checks, %d failed\n", checks, failures);
             return failures == 0 ? 0 : 1;
         }
@@ -507,7 +547,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("22 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("23 checks, 0 failed"), run.stdout)
             }
         }
     }
