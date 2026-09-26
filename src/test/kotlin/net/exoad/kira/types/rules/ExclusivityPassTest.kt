@@ -961,6 +961,63 @@ class ExclusivityPassTest {
     }
 
     @Test
+    fun aFieldReadThroughAMagicCallsReferenceLivesAsLongAsThatReferences() {
+        // Convergence round 1, issue 1 (still open after round 5): lifetimeOf.placesOf followed a receiver only
+        // when the receiver ITSELF was a magic call, so a field one step further out (`ks.get(0).child`, the
+        // emitter's `kira::at(ks,0)->child`) got no lifetime touch at all: g++ prints the child's value after
+        // rebindList frees it. A field access has no place of its own here, so the walk must keep going into its
+        // origin exactly as it does for a magic call's own receiver: the field lives exactly as long as the
+        // reference it was read through.
+        val p = snippet(
+            """
+            pub class K {
+                pub mut n: Int32 = 0
+                pub fx plus: (v: Int32) Int32 {
+                    return n + v
+                }
+            }
+            pub class Node {
+                pub mut child: K = K {}
+            }
+            pub struct Holder {
+                pub mut k: K = K {}
+            }
+            pub fx rebindList: (mut ks: List<Node>) Int32 {
+                ks = List<Node> {}
+                return 1
+            }
+            pub fx rebindM: (mut m: Maybe<Node>) Int32 {
+                m = Node {}
+                return 1
+            }
+            pub fx rebindHs: (mut hs: List<Holder>) Int32 {
+                hs = List<Holder> {}
+                return 1
+            }
+            pub fx g1: () Int32 {
+                mut ks: List<Node> = List<Node> {}
+                ks.add(Node {})
+                return ks.get(0 as Size).child.plus(rebindList(mut ks))
+            }
+            pub fx g2: () Int32 {
+                mut m: Maybe<Node> = Node {}
+                return m.unwrap().child.plus(rebindM(mut m))
+            }
+            pub fx g3: () Int32 {
+                mut hs: List<Holder> = List<Holder> {}
+                hs.add(Holder {})
+                return hs.get(0 as Size).k.plus(rebindHs(mut hs))
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("'mut ks' writes 'ks' while one operand of 'plus' is evaluated, and 'ks.get(0 as Size).child' is the receiver") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'mut m' writes 'm' while one operand of 'plus' is evaluated, and 'm.unwrap().child' is the receiver") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'mut hs' writes 'hs' while one operand of 'plus' is evaluated, and 'hs.get(0 as Size).k' is the receiver") }, messages.joinToString("\n"))
+    }
+
+    @Test
     fun aHiddenWriteIsThisRulesAgainstAnOperandTheEmitterCannotCopyAndTheEmittersAgainstAnArgument() {
         // Round 5, issue 7: a write hidden in a callee (bumpG writes G) beside an argument or an operator's
         // operand that reads G is READS beside IMPURE, which the emitter copies into temporaries in source order

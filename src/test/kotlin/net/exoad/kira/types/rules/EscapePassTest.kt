@@ -1091,6 +1091,45 @@ class EscapePassTest {
     }
 
     @Test
+    fun aGenericParameterInstantiatedAsAValueTypeCopiesRatherThanBorrows() {
+        // Convergence round 1 regression: issue 5's fix (mayBorrow treats every T as borrowing, since T's
+        // declaration is analysed once and could be a view) must not survive past the call site. Once a call
+        // substitutes T with a value type (Int32) or a value-semantics magic type (Str, stored by value rather
+        // than viewed), the parameter it is bound to at THIS call (`xs: List<Int32>`, `c: Cell<Int32>`) cannot
+        // hold a view, so pushing or setting a temporary into it is an ordinary copy, not a dangling borrow.
+        val p = snippet(
+            """
+            pub fx pushG<T>: (mut xs: List<T>, x: T) Void {
+                xs.add(x)
+            }
+            pub struct Cell<T> {
+                pub mut v: Maybe<T> = null
+                pub mut fx set: (x: T) Void {
+                    v = x
+                }
+            }
+            pub fx a1: () Void {
+                mut xs: List<Int32> = List<Int32> {}
+                pushG<Int32>(mut xs, 1 + 2)
+            }
+            pub fx a2: (a: Str) Void {
+                mut ys: List<Str> = List<Str> {}
+                pushG<Str>(mut ys, a + "x")
+            }
+            pub fx a3: () Void {
+                mut c: Cell<Int32> = Cell<Int32> {}
+                c.set(1 + 2)
+            }
+            pub fx a4: (a: Str) Void {
+                mut cs: Cell<Str> = Cell<Str> {}
+                cs.set(a + "x")
+            }
+            """,
+        )
+        expectClean(p)
+    }
+
+    @Test
     fun aClosureCapturingAViewOfALocalEscapesInsideAClassObjectToo() {
         // Round 5, issue 6: a class may hold an Fx (only a view is refused at a class's declaration), so a class
         // object built or filled in this body holds the closure's captures as a struct does: returned straight, or

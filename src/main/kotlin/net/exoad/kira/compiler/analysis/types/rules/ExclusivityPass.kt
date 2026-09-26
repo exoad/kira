@@ -18,6 +18,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
@@ -467,17 +468,28 @@ internal class ExclusivityPass : RulePass {
          * method may return a reference into its receiver (`m.unwrap()` is
          * `kira::unwrap(const std::shared_ptr<U>&)`, which returns that `const&`; `ks.get(0)`
          * is `kira::at`, a reference into the list), so its lifetime is its receiver's, through
-         * any chain of them. None when there is no place underneath.
+         * any chain of them. A field read off such a reference (`ks.get(0).child`) has no place
+         * of its own (the emitter writes `kira::at(ks,0)->child`, a raw pointer indirection with
+         * no lifetime the C++ type system tracks), so it lives exactly as long as the reference
+         * it is read through: the walk continues into the field access's own origin the same
+         * way. None when there is no place underneath.
          */
         private fun lifetimeOf(recv: Expr): List<Touch> {
             val text = KiraUnparser.text(recv)
             fun placesOf(e: Expr): List<Place> {
-                r.placeOf(e)?.let { return aliases.expand(it) }
+                // Phase C records a field access as Place.Field(receiver, sym) even when the receiver has
+                // no place of its own (a call result), with a null receiver precisely to say so (Place.kt):
+                // that Field aliases nothing, by identity, so it is no better than having no place at all
+                // here and must not stop this walk short.
+                r.placeOf(e)?.takeUnless { it is Place.Field && it.receiver == null }?.let { return aliases.expand(it) }
                 if (e is FunctionCallExpr) {
                     val rc = model.calls[e] ?: return emptyList()
                     if (rc.kind == CallKind.MAGIC && rc.receiver != null) {
                         return placesOf(rc.receiver)
                     }
+                }
+                if (e is MemberAccessExpr) {
+                    return placesOf(e.origin)
                 }
                 return emptyList()
             }

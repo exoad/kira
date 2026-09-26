@@ -772,11 +772,22 @@ internal class EscapePass : RulePass {
                     val intos = mutableListOf<Into>()
                     if (param in kept) {
                         intos.add(Into.Beyond)
-                    } else if (param in inThis) {
+                    } else if (param in inThis && (rc.receiver == null || r.mayBorrow(model.types[rc.receiver]))) {
+                        // lends.keptInThis(fn) is a fact about the callee's declaration, analysed once with
+                        // its type parameters unresolved (a generic T is conservatively assumed to borrow).
+                        // At this call, the receiver's own type is already substituted (`Cell<Int32>`, not
+                        // `Cell<T>`), so it is that concrete type, not the declaration's, that says whether
+                        // storing into the receiver can hold a view at all.
                         intos.add(Into.Receiver)
                     }
                     for (target in lends.keptInParam(fn, param)) {
                         val bound = (rc.args.getOrNull(fn.params.indexOf(target)) as? ArgBinding.Given)?.expr
+                        // Same reasoning as above, for the argument bound to the `mut` parameter the callee
+                        // keeps this value in: `pushG<Int32>(mut xs, 1 + 2)` instantiates `xs: List<T>` as
+                        // `List<Int32>`, which cannot hold a view no matter what pushG's declaration assumes.
+                        if (bound != null && !r.mayBorrow(model.types[bound])) {
+                            continue
+                        }
                         intos.add(Into.Param(bound?.let { r.placeOf(it) }, bound?.let { KiraUnparser.text(it) } ?: target.name))
                     }
                     if (intos.isEmpty()) {
