@@ -419,6 +419,100 @@ class CppClassShapeTest {
     }
 
     @Test
+    fun aMethodThatWritesItsReceiverIsNotConstEvenWithoutMut() {
+        // The typer lets a plain fx of a class write a mut field and call a mut fx on itself
+        // (thisMutable holds in every class method, D29); a const method that did would
+        // compile nowhere, so const comes from the body, and a whole override family agrees.
+        val (h, s) = both(
+            """
+            pub struct Tally {
+                pub n: Int32 = 0
+                pub mut fx tick: () Void {
+                    n += 1
+                }
+            }
+            pub trait Poker {
+                pub fx poke: () Void;
+                pub fx nudge: () Void {
+                    poke()
+                }
+            }
+            pub class Pet {
+                pub mut fed: Int32 = 0
+                pub mut fx feed: () Void {
+                    fed += 1
+                }
+            }
+            pub fx grab: (mut v: Int32) Void {
+                v = 7
+            }
+            pub class Counter: Poker {
+                mut n: Int32 = 0
+                mut tally: Tally = Tally {}
+                require pet: Pet
+                pub fx bump: () Int32 {
+                    n += 1
+                    return n
+                }
+                pub mut fx reset: () Void {
+                    n = 0
+                }
+                pub fx again: () Int32 {
+                    reset()
+                    return n
+                }
+                pub fx viaThis: () Void {
+                    this.n = 3
+                }
+                pub fx tick: () Int32 {
+                    tally.tick()
+                    return tally.n
+                }
+                pub fx take: () Int32 {
+                    grab(mut n)
+                    return n
+                }
+                pub fx laterBump: () Fx<Tuple0, Int32> {
+                    return fx() Int32 {
+                        n += 1
+                        return n
+                    }
+                }
+                pub fx me: () Counter {
+                    n += 1
+                    return this
+                }
+                override pub fx poke: () Void {
+                    n = 9
+                }
+                pub fx peek: () Int32 {
+                    return n
+                }
+                pub fx feedPet: () Void {
+                    pet.feed()
+                }
+                pub fx petFed: () Int32 {
+                    return pet.fed
+                }
+            }
+            """
+        )
+        assertContains(
+            h,
+            "      [[nodiscard]] std::int32_t bump();\n      void reset();\n      [[nodiscard]] std::int32_t again();\n      void viaThis();\n" +
+                "      [[nodiscard]] std::int32_t tick();\n      [[nodiscard]] std::int32_t take();\n      [[nodiscard]] kira::Fn<std::int32_t()> laterBump();\n" +
+                "      [[nodiscard]] kira::Rc<Counter> me();\n      void poke() override;\n      [[nodiscard]] std::int32_t peek() const;\n" +
+                // a mut fx on a field that is a class runs through the pointer: this stays const
+                "      void feedPet() const;\n      [[nodiscard]] std::int32_t petFed() const;\n",
+            // the trait's family follows its writing implementer, its default body too
+            "      virtual void poke() = 0;\n      virtual void nudge();\n",
+        )
+        assertContains(s, "  std::int32_t Counter::bump()\n", "  void Poker::nudge()\n", "  void Counter::feedPet() const\n")
+        // this as a value in a non-const method needs no const_pointer_cast
+        assertContains(s, "      return shared_from_this();")
+    }
+
+    @Test
     fun aClassMethodWithANonEscapingFxIsATemplateDefinedInTheHeader() {
         val e = OopTestSupport.emit(
             OopTestSupport.module(
@@ -785,6 +879,49 @@ class CppClassShapeTest {
         assertTrue(messages.any { it.contains("this captured or used as a value in an initially or finally block of Node") }, messages.toString())
     }
 
+    @Test
+    fun aCallFromInitiallyToAMethodASubclassOverridesIsRefused() {
+        // A C++ constructor runs the class's own version; the spec's init block (Kotlin) would
+        // run the override. Reached through the class's own methods too.
+        val program = """
+            pub class Base {
+                require pub name: Str
+                mut seen: Int32 = 0
+                initially {
+                    setup()
+                }
+                finally {
+                    greet()
+                }
+                pub fx greet: () Str {
+                    return name
+                }
+                pub fx setup: () Void {
+                    seen = 1
+                    greet()
+                }
+            }
+            """
+        val messages = unsupported(
+            program + """
+            pub class Leaf: Base {
+                override pub fx greet: () Str {
+                    return "leaf"
+                }
+            }
+            """
+        )
+        assertTrue(
+            messages.any { it.startsWith("the call to setup in an initially or finally block of Base, which reaches Base.greet: Leaf overrides it") },
+            messages.toString(),
+        )
+        assertTrue(messages.any { it.startsWith("the call to greet in an initially or finally block of Base: Leaf overrides it") }, messages.toString())
+        // no subclass overrides greet: the calls dispatch the same on both sides
+        val (h, s) = both(program)
+        assertContains(h, "      Base(kira::Str name_, std::int32_t seen_ = 0);", "      ~Base();", "      void setup();")
+        assertContains(s, "      static_cast<void>(setup());", "      static_cast<void>(greet());")
+    }
+
     // ---- construction ------------------------------------------------------------------------------
 
     @Test
@@ -807,6 +944,41 @@ class CppClassShapeTest {
         ).source(uri)
         // a skipped middle default is filled in; the trailing one is left to the C++ default
         assertContains(s, "      return std::make_shared<Band>(10, 5, 30);", "      return std::make_shared<Band>(1, 2, 3, 4);")
+    }
+
+    @Test
+    fun aSkippedMiddleDefaultOfANarrowTypeCarriesItsType() {
+        // make_shared deduces a bare 5 as int, and MSVC /W4 /WX stops on the narrowing inside
+        // the STL (C4244): the filled-in default is typed exactly as a given literal is.
+        val s = emit(
+            """
+            pub class Band {
+                require pub lo: Int32
+                pub mid: UInt8 = 5
+                require pub hi: Int32
+            }
+            pub class Base {
+                require pub name: Str
+                pub level: Int8 = -1
+                pub wide: Int32 = 0
+            }
+            pub class Leaf: Base {
+                require pub small: UInt8
+                pub tail: Int64 = 3
+            }
+            pub fx band: () Band {
+                return Band { lo = 1, hi = 2 }
+            }
+            pub fx leaf: () Leaf {
+                return Leaf { name = "x", small = 200 }
+            }
+            """
+        ).source(uri)
+        assertContains(
+            s,
+            "      return std::make_shared<Band>(1, std::uint8_t{5}, 2);",
+            "      return std::make_shared<Leaf>(\"x\", std::int8_t{-1}, 0, std::uint8_t{200});",
+        )
     }
 
     @Test
@@ -1001,6 +1173,8 @@ class CppClassShapeTest {
         val node = IntegerLiteral(1)
         assertEquals("<std::int32_t, kira::Str>", CppGenericsEmitter.typeArguments(ctx, node, listOf(KType.INT32, KType.Str)))
         assertEquals("", CppGenericsEmitter.typeArguments(ctx, node, emptyList()))
+        // the contract: null for any receiver that is not a type parameter, one the model never typed included
+        assertEquals(null, CppGenericsEmitter.receiver(ctx, node, "x"))
         // the default generics part (Plain) and classes part (Unsupported) fail loudly
         CppEmitParts().generics.typeArguments(ctx, node, listOf(KType.INT32))
         CppEmitParts().classes.thisValue(ctx, net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr())

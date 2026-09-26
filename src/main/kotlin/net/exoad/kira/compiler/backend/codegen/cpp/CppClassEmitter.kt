@@ -12,9 +12,11 @@ import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
+import net.exoad.kira.compiler.analysis.types.IndexKind
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
+import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.Prim
 import net.exoad.kira.compiler.analysis.types.ResolvedInit
 import net.exoad.kira.compiler.analysis.types.Symbol
@@ -32,6 +34,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallNamedParameterExpr
@@ -40,6 +44,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -76,11 +81,20 @@ import java.util.WeakHashMap
  *   and move what is not a scalar; `initially` is its body. No field and no `initially`:
  *   `C() = default;`.
  * - `final` unless the program subclasses it. A method is virtual only when the program
- *   overrides it or a trait declares it; one that overrides says `override`; a non-`mut`
- *   one is `const` (D29: still callable through a `const kira::Rc<C>&`).
+ *   overrides it or a trait declares it; one that overrides says `override`; it is `const`
+ *   unless it is `mut` or it writes its receiver ([CppClassFacts.isConstMethod]): the typer
+ *   lets a plain `fx` of a class write a `mut` field and call a `mut fx` on itself (a class
+ *   is a reference, D29: `thisMutable` holds in every class method), so `const` has to come
+ *   from the body, not the modifier, or no compiler takes the method. Either way it is
+ *   callable through a `const kira::Rc<C>&`.
  * - Bodies are out of line: in the `.kira.cxx`, or in the header for a template (a generic
  *   class, a generic method, a method with a non-escaping `Fx` parameter) and for a
  *   header-only module.
+ * - `initially` is the constructor's body and `finally` the destructor's, so a call in
+ *   either dispatches to the class's own method, never to a subclass's override (C++), where
+ *   the spec's Kotlin `init` would reach the override. A call from there, directly or
+ *   through the class's own methods, to a method some subclass overrides is refused rather
+ *   than lowered to the other meaning ([CppClassFacts.initializerDispatches]).
  * - `this` as a value is `shared_from_this()` ([thisValue]); the root of the class's
  *   superclass chain then derives `kira::Shared<Root>`, since `make_shared` wires exactly
  *   one `enable_shared_from_this` base (D11).
@@ -158,6 +172,9 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     /** Virtual in C++: a trait method, or a class method the program overrides or that overrides. */
     private fun isVirtual(fn: FnSymbol): Boolean = fn.owner is TraitSymbol || fn.isVirtual
 
+    /** `const` in C++: not `mut`, and neither it nor any method of its override family writes the receiver. */
+    private fun constSuffix(fn: FnSymbol): String = if (facts.isConstMethod(fn)) " const" else ""
+
     /** An `Fx` parameter spelled as a template parameter: non-escaping (EscapePass), on a method that is not virtual. */
     private fun isTemplateFx(fn: FnSymbol, p: ParamSymbol): Boolean = !isVirtual(fn) && placement.isNonEscapingFx(p)
 
@@ -232,6 +249,14 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
         facts.initializerThisUses(c).forEach { node ->
             ctx.unsupported(node, "this captured or used as a value in an initially or finally block of ${c.name} (C++ has no shared_ptr to an object under construction or destruction)")
+        }
+        facts.initializerDispatches(c).forEach { d ->
+            val reached = if (d.callee === d.overridden) "" else ", which reaches ${d.overridden.owner?.name}.${d.overridden.name}"
+            ctx.unsupported(
+                d.site,
+                "the call to ${d.callee.name} in an initially or finally block of ${c.name}$reached: ${d.overrider.name} overrides it, " +
+                    "and a C++ constructor or destructor runs ${c.name}'s own ${d.overridden.name}, where the spec's init block would run ${d.overrider.name}'s",
+            )
         }
         facts.unconnectedTraitMethods(c).forEach { (trait, method, via) ->
             ctx.unsupported(
@@ -394,7 +419,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val overrides = virtual && fn.overrides != null
         val specifier = if (virtual && !overrides) "virtual " else ""
         val params = fn.params.joinToString(", ") { paramText(fn, it, withDefault = true, markUnused = false) }
-        val constSuffix = if (fn.isMutMethod) "" else " const"
+        val constSuffix = constSuffix(fn)
         val overrideSuffix = if (overrides) " override" else ""
         val pure = if (virtual && fn.body == null) " = 0" else ""
         return templateHead(fn) + "$nodiscard$specifier${returnText(fn)} ${ctx.names.escape(fn.name)}($params)$constSuffix$overrideSuffix$pure;"
@@ -421,7 +446,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val m = f.method
         val ret = m.ret.substitute(forwarderSubstitution(f))
         val nodiscard = if (ret == KType.Void || ret == KType.Never) "" else "[[nodiscard]] "
-        val constSuffix = if (m.isMutMethod) "" else " const"
+        val constSuffix = constSuffix(m)
         return "$nodiscard${ctx.spell(ret, Pos.RETURN, m.decl)} ${ctx.names.escape(m.name)}(${forwarderParams(f, withDefault = true)})$constSuffix override;"
     }
 
@@ -429,7 +454,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val m = f.method
         val ret = m.ret.substitute(forwarderSubstitution(f))
         ctx.parts.generics.templateHead(ctx, owner.typeParams)?.let { w.line(it) }
-        val constSuffix = if (m.isMutMethod) "" else " const"
+        val constSuffix = constSuffix(m)
         val head = "${inlineSpecifier(owner, inline, template = false)}${ctx.spell(ret, Pos.RETURN, m.decl)} ${qualifier(owner)}${ctx.names.escape(m.name)}(${forwarderParams(f, withDefault = false)})$constSuffix"
         val call = "${ctx.speller.bareClass(f.via)}::${ctx.names.escape(m.name)}(${m.params.indices.joinToString(", ") { forwardedName(it) }})"
         w.block(head) {
@@ -512,7 +537,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         ctx.parts.generics.templateHead(ctx, owner.typeParams)?.let { w.line(it) }
         templateHead(fn).forEach { w.line(it) }
         val params = fn.params.joinToString(", ") { paramText(fn, it, withDefault = false, markUnused = true) }
-        val constSuffix = if (fn.isMutMethod) "" else " const"
+        val constSuffix = constSuffix(fn)
         val head = "${inlineSpecifier(owner, inline, isTemplate(fn))}${returnText(fn)} ${qualifier(owner)}${ctx.names.escape(fn.name)}($params)$constSuffix"
         w.block(head) {
             ctx.body(fn, fn.body ?: emptyList(), this)
@@ -556,9 +581,10 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * `this` as a value. In a struct method `*this` (inside a `[*this]` lambda, the copy).
      * In a class method the object's own `kira::Rc<C>`, from `shared_from_this()`: the
      * `enable_shared_from_this` base is the chain's root, so a subclass casts down to itself
-     * (`static_pointer_cast`), and a non-`mut` method sees a `const` object, whose
-     * `shared_from_this()` is `shared_ptr<const Root>` (`const_pointer_cast`: a class is a
-     * reference, and D29 lets a `mut fx` run through any reference). Inside a lambda that
+     * (`static_pointer_cast`), and a `const` method ([CppClassFacts.isConstMethod]) sees a
+     * `const` object, whose `shared_from_this()` is `shared_ptr<const Root>`
+     * (`const_pointer_cast`: a class is a reference, and D29 lets a `mut fx` run through any
+     * reference). Inside a lambda that
      * escapes the method the same casts apply to the captured `self` ([selfCapture]), which is
      * that `shared_from_this()`.
      */
@@ -587,7 +613,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             return "/* this */"
         }
         val self = ctx.speller.bareClass(owner.selfType)
-        val constant = !fn.isMutMethod
+        val constant = facts.isConstMethod(fn)
         val source = if (site.inEscapingLambda) CppClassEmitter.SELF else sharedFromThis(owner)
         return when {
             root.cls === owner && !constant -> source
@@ -679,7 +705,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             }
             texts[i] = when (val f = fields[i]) {
                 is FieldInit.Given -> argument(f.expr)
-                is FieldInit.Default -> f.field.default?.let { decls.initText(it, types[i]) } ?: "${ctx.spell(types[i], Pos.VALUE, e)}{}"
+                is FieldInit.Default -> f.field.default?.let { typedLiteral(it, decls.initText(it, types[i]), types[i].prim) } ?: "${ctx.spell(types[i], Pos.VALUE, e)}{}"
             }
         }
         val call = "std::make_shared<$target>(${texts.joinToString(", ")})"
@@ -693,12 +719,15 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * A construction argument. `make_shared` forwards it to the constructor through a
      * deduced template parameter, so an integer literal of a width C++ gives no literal of
      * its own is spelled `T{lit}` (R2), and MSVC `/W4 /WX` never sees an `int` narrowed
-     * inside the standard library (C4244).
+     * inside the standard library (C4244). A skipped middle default goes through the same
+     * [typedLiteral], since the declaration emitter's default text is the bare literal the
+     * typed constructor parameter takes as a default argument.
      */
-    private fun argument(e: Expr): String {
-        val text = ctx.expr(e)
+    private fun argument(e: Expr): String = typedLiteral(e, ctx.expr(e), model.typeOrNull(e)?.prim)
+
+    /** [text], the C++ of [e], as `T{text}` when [e] is an integer literal and [prim] narrower than `int`. */
+    private fun typedLiteral(e: Expr, text: String, prim: Prim?): String {
         val literal = e is IntegerLiteral || (e is UnaryExpr && e.operator == UnaryOp.NEG && e.operand is IntegerLiteral)
-        val prim = model.typeOrNull(e)?.prim
         if (!literal || prim == null || !prim.isInteger || prim == Prim.INT32 || prim == Prim.UINT32) {
             return text
         }
@@ -748,6 +777,9 @@ class CppClassFacts(private val program: TypedProgram) {
     private val virtualBases: MutableSet<TraitSymbol> = Collections.newSetFromMap(IdentityHashMap())
     private val initializerUses = IdentityHashMap<ClassSymbol, MutableList<ASTNode>>()
     private val traitUses = IdentityHashMap<TraitSymbol, MutableList<ASTNode>>()
+    private val nonConst: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
+    private val thisCalls = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
+    private val initializerCalls = IdentityHashMap<ClassSymbol, MutableList<Pair<FunctionCallExpr, FnSymbol>>>()
     private val pathMemo = IdentityHashMap<Symbol, Map<TraitSymbol, Int>>()
     private val pathVisiting: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
     private val dominanceMemo = IdentityHashMap<TypeSymbol, Pair<List<Forwarder>, List<Pair<FnSymbol, List<KType.Nominal>>>>>()
@@ -771,11 +803,70 @@ class CppClassFacts(private val program: TypedProgram) {
             }
         }
         findDiamonds()
+        deriveConstness()
     }
 
     // ---- queries ---------------------------------------------------------------------------------------
 
     fun site(e: ThisExpr): ThisSite? = sites[e]
+
+    /**
+     * Whether the class or trait method is `const` in C++: not a `mut fx`, and neither it nor
+     * any method of its override family (what it overrides, what overrides it, transitively)
+     * writes the receiver. The typer lets any class method write a `mut` field of the class,
+     * pass one as a `mut` argument, and call a `mut fx` on itself or on a struct or container
+     * held by value (`thisMutable` holds in every class method, D29), so the modifier alone
+     * cannot decide `const`; a `const` method that did any of that compiles nowhere. A family
+     * is decided together because an override cannot differ from its base in `const`.
+     */
+    fun isConstMethod(fn: FnSymbol): Boolean = fn !in nonConst
+
+    /** One call in `initially` or `finally` that C++ would dispatch differently from the spec's init block. */
+    data class InitializerDispatch(val site: FunctionCallExpr, val callee: FnSymbol, val overridden: FnSymbol, val overrider: ClassSymbol)
+
+    /**
+     * The calls in [c]'s `initially` or `finally` that reach, directly or through [c]'s own
+     * methods called on `this`, a method some subclass of [c] overrides: a C++ constructor or
+     * destructor runs [c]'s version, where the spec (Kotlin's init block) would run the
+     * override. One entry per call site, for the first such method it reaches.
+     */
+    fun initializerDispatches(c: ClassSymbol): List<InitializerDispatch> {
+        val out = mutableListOf<InitializerDispatch>()
+        for ((site, callee) in initializerCalls[c].orEmpty()) {
+            val seen: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
+            val queue = ArrayDeque(listOf(callee))
+            while (queue.isNotEmpty()) {
+                val m = queue.removeFirst()
+                if (!seen.add(m)) {
+                    continue
+                }
+                val overrider = overriderBelow(c, m)
+                if (overrider != null) {
+                    out += InitializerDispatch(site, callee, m, overrider)
+                    break
+                }
+                thisCalls[m].orEmpty().forEach { queue.add(it) }
+            }
+        }
+        return out
+    }
+
+    /** A class strictly below [c] in the program whose own method overrides [m] (directly or through further overrides). */
+    private fun overriderBelow(c: ClassSymbol, m: FnSymbol): ClassSymbol? = types.firstOrNull { d ->
+        d is ClassSymbol && d !== c && d.kind == ClassKind.CLASS && chain(d).any { it.cls === c } && d.methods.any { g -> overrides(g, m) }
+    } as ClassSymbol?
+
+    private fun overrides(g: FnSymbol, m: FnSymbol): Boolean {
+        var f = g.overrides
+        val seen: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
+        while (f != null && seen.add(f)) {
+            if (f === m) {
+                return true
+            }
+            f = f.overrides
+        }
+        return false
+    }
 
     /** Whether some body names the field (reads or writes it); a mem-initializer does not count. */
     fun isReferenced(f: FieldSymbol): Boolean = f in referenced
@@ -969,6 +1060,15 @@ class CppClassFacts(private val program: TypedProgram) {
             is Identifier -> if (node !is IntrinsicExpr) {
                 (model.symbolOf(node) as? FieldSymbol)?.let { referenced.add(it) }
             }
+            is FunctionCallExpr -> model.call(node)?.let { call ->
+                val callee = call.fn
+                if (callee?.owner != null && (call.implicitThis || call.receiver is ThisExpr)) {
+                    when {
+                        fn != null -> thisCalls.getOrPut(fn) { mutableListOf() }.add(callee)
+                        owner is ClassSymbol -> initializerCalls.getOrPut(owner) { mutableListOf() }.add(node to callee)
+                    }
+                }
+            }
             else -> {}
         }
         val skipped: ASTNode? = when (node) {
@@ -1025,6 +1125,136 @@ class CppClassFacts(private val program: TypedProgram) {
         types.forEach { t -> paths(t).forEach { (trait, n) -> if (n >= 2) virtualBases.add(trait) } }
     }
 
+    // ---- const ------------------------------------------------------------------------------------------
+
+    /**
+     * Which class and trait methods are not `const` ([isConstMethod]): every `mut fx`, then,
+     * to a fixed point, every method whose body writes the receiver (a write, a `mut`
+     * argument, or a call to a method already known to write) and every method of a family
+     * one of those belongs to. A struct method never takes part: the typer already needs
+     * `mut` on it to write, and a struct implements a trait by static dispatch (D1).
+     */
+    private fun deriveConstness() {
+        val methods = types.flatMap { t ->
+            when {
+                t is ClassSymbol && t.kind == ClassKind.CLASS -> t.methods
+                t is TraitSymbol -> t.methods
+                else -> emptyList()
+            }
+        }
+        methods.filter { it.isMutMethod }.forEach { nonConst.add(it) }
+        val families = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
+        methods.forEach { m -> families.getOrPut(familyRoot(m)) { mutableListOf() }.add(m) }
+        var changed = true
+        while (changed) {
+            changed = false
+            methods.forEach { m ->
+                if (m !in nonConst && m.body != null && writesReceiver(m)) {
+                    nonConst.add(m)
+                    changed = true
+                }
+            }
+            families.values.forEach { family ->
+                if (family.any { it in nonConst }) {
+                    family.forEach { if (nonConst.add(it)) changed = true }
+                }
+            }
+        }
+    }
+
+    /** The topmost method [fn] overrides, transitively; [fn] itself when it overrides nothing. */
+    private fun familyRoot(fn: FnSymbol): FnSymbol {
+        var f = fn
+        val seen: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
+        while (true) {
+            val up = f.overrides ?: return f
+            if (!seen.add(up)) {
+                return f
+            }
+            f = up
+        }
+    }
+
+    private fun writesReceiver(m: FnSymbol): Boolean {
+        var found = false
+        m.body?.forEach { s ->
+            AstTree.walk(s) { node ->
+                if (!found && writesReceiverAt(node)) {
+                    found = true
+                }
+            }
+        }
+        return found
+    }
+
+    /** An assignment to a place inside the object, or a call that writes one ([callWritesReceiver]). */
+    private fun writesReceiverAt(node: ASTNode): Boolean = when (node) {
+        is AssignmentExpr -> insideThis(model.place(node.target))
+        is CompoundAssignmentExpr -> insideThis(model.place(node.left))
+        is PlaceAssignmentExpr -> insideThis(model.place(node.target))
+        is FunctionCallExpr -> callWritesReceiver(node)
+        else -> false
+    }
+
+    /**
+     * A call needs a non-`const` `this` when it passes a place inside the object as a `mut`
+     * argument; when it is a `mut fx` (or a method found to write) on `this` itself; or when
+     * it is one on a struct or container the object holds by value, or lends a `MutView` of
+     * one. A call on a field that is a reference (a class, a `Ref`) goes through the pointer
+     * and leaves `this` alone.
+     */
+    private fun callWritesReceiver(e: FunctionCallExpr): Boolean {
+        val call = model.call(e) ?: return false
+        if (call.args.any { a -> a is ArgBinding.Given && a.byRef && insideThis(model.place(a.expr)) }) {
+            return true
+        }
+        val fn = call.fn ?: return false
+        val mutates = fn.isMutMethod || fn in nonConst
+        if (call.implicitThis || call.receiver is ThisExpr) {
+            return mutates
+        }
+        val receiver = call.receiver ?: return false
+        val place = model.place(receiver) ?: return false
+        if (!insideThis(place) || isReferenceType(model.typeOrNull(receiver))) {
+            return false
+        }
+        return mutates || isMutView(call.returnType)
+    }
+
+    /**
+     * Whether writing [p] writes into the object `this` is: the receiver itself, one of its
+     * own fields, and on from there through fields of structs and elements of containers held
+     * by value, but never through a reference (a field of a class, a `Ref`, a `MutView`,
+     * which a `const` object hands out unchanged).
+     */
+    private fun insideThis(p: Place?): Boolean = when (p) {
+        null -> false
+        is Place.This -> true
+        is Place.Field -> when {
+            p.receiver is Place.This -> true
+            p.receiver == null -> false
+            isReferenceOwner(p.sym.owner) -> false
+            else -> insideThis(p.receiver)
+        }
+        is Place.Index -> p.kind != IndexKind.MUT_VIEW && p.kind != IndexKind.VIEW && p.kind != IndexKind.STR && insideThis(p.container)
+        else -> false
+    }
+
+    /** A type whose members are reached through a pointer: a class, an opaque class, a trait, `Ref`, `Weak`, `Unsafe`. */
+    private fun isReferenceOwner(sym: Any?): Boolean = when (sym) {
+        is TraitSymbol -> true
+        is ClassSymbol -> sym.kind == ClassKind.CLASS || sym.kind == ClassKind.OPAQUE || (sym.kind == ClassKind.MAGIC && sym.name in REFERENCE_MAGIC)
+        else -> false
+    }
+
+    /** As [isReferenceOwner], for a receiver's type; a type parameter counts as a value (a struct instantiation needs the non-`const` `this`). */
+    private fun isReferenceType(t: KType?): Boolean = isReferenceOwner((t as? KType.Nominal)?.sym)
+
+    private fun isMutView(t: KType): Boolean {
+        val sym = (t as? KType.Nominal)?.sym
+        return sym is ClassSymbol && sym.kind == ClassKind.MAGIC && sym.name == "MutView"
+    }
+
     /** A method [via]'s declaration [method] a class or trait inherits by dominance, and forwards to. */
     data class Forwarder(val method: FnSymbol, val via: KType.Nominal)
 
@@ -1078,6 +1308,9 @@ class CppClassFacts(private val program: TypedProgram) {
     }
 
     companion object {
+        /** The `@_magic` classes that are references in C++ (`kira::Rc`, `kira::Weak`, a pointer), as the typer's TypeFacts.isReference names them. */
+        private val REFERENCE_MAGIC = setOf("Ref", "Weak", "Unsafe")
+
         /** The class or trait a class-like type names: itself, or the inner type of a `Maybe`. */
         fun referent(t: KType): TypeSymbol? {
             val n = t as? KType.Nominal ?: return null

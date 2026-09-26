@@ -37,8 +37,9 @@ object CppGenericsEmitter : CppGenericsPart {
         return typeArgs.joinToString(", ", prefix = "<", postfix = ">") { ctx.spell(it, Pos.TEMPLATE_ARG, at) }
     }
 
+    /** Null for any receiver that is not a type parameter, an untyped one included: the contract of [CppGenericsPart.receiver]. */
     override fun receiver(ctx: CppEmitContextImpl, receiver: Expr, text: String): String? {
-        if (ctx.model.require(receiver) !is KType.Param) {
+        if (ctx.model.typeOrNull(receiver) !is KType.Param) {
             return null
         }
         return "kira::deref($text)"

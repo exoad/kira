@@ -38,6 +38,9 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
@@ -66,9 +69,9 @@ import kotlin.test.fail
  * generics parts beside them:
  *
  * - [FakeExprEmitter] spells what these tests' bodies hold, the little that class code
- *   needs: literals, names, a member access through a class or `this`, a call, and hands
- *   `this` as a value and a class construction to the classes part, exactly where W2.3's
- *   emitter is to call it.
+ *   needs: literals, names, a member access through a class or `this`, a call, an
+ *   assignment, and hands `this` as a value and a class construction to the classes part,
+ *   exactly where W2.3's emitter is to call it.
  * - [FakeStmtEmitter] writes `return e;` and `e;` statements, so a small program runs.
  */
 object OopTestSupport {
@@ -128,6 +131,10 @@ object OopTestSupport {
                 }
                 is FunctionCallExpr -> call(ctx, e)
                 is LambdaExpr -> lambda(ctx, e)
+                // The writes a class method may hold (the derived const rule): `n = 0`, `n += 1`, `this.n = 0`.
+                is AssignmentExpr -> "${ctx.expr(e.target)} = ${ctx.expr(e.value)}"
+                is CompoundAssignmentExpr -> "${ctx.expr(e.left)} ${e.operator.symbol.joinToString("") { it.rep.toString() }}= ${ctx.expr(e.right)}"
+                is PlaceAssignmentExpr -> "${ctx.expr(e.target)} ${e.operator?.symbol?.joinToString("") { it.rep.toString() } ?: ""}= ${ctx.expr(e.value)}"
                 else -> "<${e.javaClass.simpleName}>"
             }
         }

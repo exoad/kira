@@ -15,9 +15,10 @@ import kotlin.test.assertTrue
  * the aarch64 cross build, and a C++ driver runs them: virtual dispatch through a base and a
  * trait, a trait default body, a diamond of traits, `this` as a value (the chain root's
  * `kira::Shared`), a generic class and a generic bound, `Maybe<Class>`, `Ref<T>`, a stack-
- * constructed class and a destructor from `finally`. The bodies are W2.4's fakes
- * ([OopTestSupport.FakeStmtEmitter]), so the Kira bodies here only return values; the
- * shapes around them are the real classes part.
+ * constructed class, a destructor from `finally`, a skipped middle default of a narrow
+ * type, and plain methods that write their receiver (not `const`). The bodies are W2.4's
+ * fakes ([OopTestSupport.FakeStmtEmitter]), so the Kira bodies here only return values and
+ * assign; the shapes around them are the real classes part.
  */
 class CppClassCompileTest {
     private val uri = "oop:shapes"
@@ -199,6 +200,54 @@ class CppClassCompileTest {
         pub fx counter: () Ref<Int32> {
             return Ref<Int32> { value = 7 }
         }
+
+        // A skipped middle default of a narrow type: typed, or MSVC /W4 /WX sees an int
+        // narrowed inside make_shared (C4244).
+        pub class Band {
+            require pub lo: Int32
+            pub mid: UInt8 = 5
+            require pub hi: Int32
+        }
+
+        pub fx makeBand: () Band {
+            return Band { lo = 1, hi = 2 }
+        }
+
+        // Plain fx methods that write the receiver (the typer allows it, D29): not const.
+        pub fx grab: (mut v: Int32) Void {
+            v = 7
+        }
+
+        pub class Counter {
+            mut n: Int32 = 0
+
+            pub fx bump: () Int32 {
+                n += 1
+                return n
+            }
+
+            pub mut fx reset: () Void {
+                n = 0
+            }
+
+            pub fx again: () Int32 {
+                reset()
+                return n
+            }
+
+            pub fx take: () Int32 {
+                grab(mut n)
+                return n
+            }
+
+            pub fx peek: () Int32 {
+                return n
+            }
+        }
+
+        pub fx makeCounter: () Counter {
+            return Counter {}
+        }
     """
 
     private val driver = """
@@ -248,6 +297,10 @@ class CppClassCompileTest {
             shapes::Holder h(d);
             check(h.getPet() == d && h.getSpare() == nullptr, "a stack-constructed class; Maybe<Class> is a nullable Rc");
             check(shapes::counter()->value == 7, "Ref<T> is an Rc of a Box");
+            const kira::Rc<shapes::Band> band = shapes::makeBand();
+            check(band->lo == 1 && band->mid == 5 && band->hi == 2, "a skipped middle default of a narrow type is filled in, typed");
+            const kira::Rc<shapes::Counter> c = shapes::makeCounter();
+            check(c->bump() == 1 && c->bump() == 2 && c->again() == 0 && c->take() == 7 && c->peek() == 7, "a plain fx that writes its receiver is callable through a const Rc");
             {
                 shapes::Dog stacked("stacked");
                 check(stacked.sound() == "woof", "C++ may construct a Kira class on the stack (D11)");
@@ -282,7 +335,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("15 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("17 checks, 0 failed"), run.stdout)
             }
         }
     }
