@@ -316,10 +316,53 @@ class CppStmtEmitter : CppStmtPart {
     fun ifExprLambda(ctx: CppEmitContextImpl, e: IfExpr, t: KType): String {
         val lower = CppLowering.of(ctx)
         val state = lower.state
+        escapingJump(e)?.let { jump ->
+            // Inside the IIFE a return would leave the lambda, not the function, and a break or
+            // continue would have no loop: refused rather than lowered to something else.
+            ctx.unsupported(jump, "a ${jumpName(jump)} inside a branch of an if-expression that is not a ternary (its branches become a C++ lambda)")
+        }
         val capture = if (state.inBody) "[&]" else "[]"
         val ret = ctx.spell(t, Pos.RETURN, e)
         val lines = state.block { ifChain(ctx, e) }
         return "$capture() -> $ret\n{\n${CppHoister.indent(lines)}\n}()"
+    }
+
+    /**
+     * A `return` anywhere in [e]'s branches, or a `break` or `continue` outside a loop the
+     * branches hold themselves: a jump out of the if-expression (not into a nested lambda, whose
+     * own return is its own).
+     */
+    private fun escapingJump(e: IfExpr): Statement? {
+        fun scan(statements: List<Statement>, inLoop: Boolean): Statement? {
+            for (s in statements) {
+                val found: Statement? = when (s) {
+                    is ReturnStatement -> s
+                    is BreakStatement, is ContinueStatement -> if (inLoop) null else s
+                    is WhileIterationStatement -> scan(s.statements, true)
+                    is DoWhileIterationStatement -> scan(s.statements, true)
+                    is ForIterationStatement -> scan(s.body, true)
+                    is IfSelectionStatement -> scan(s.thenStatements, inLoop) ?: s.elseBranches.firstNotNullOfOrNull { b ->
+                        when (b) {
+                            is ElseIfBranchStatement -> scan(b.statements, inLoop)
+                            is ElseBranchStatement -> scan(b.statements, inLoop)
+                        }
+                    }
+                    else -> (s.expr as? TryExpr)?.let { scan(it.tryBlock, inLoop) ?: scan(it.handlerBlock, inLoop) }
+                        ?: (s.expr as? IfExpr)?.let { scan(it.thenBranch, inLoop) ?: scan(it.elseBranch, inLoop) }
+                }
+                if (found != null) {
+                    return found
+                }
+            }
+            return null
+        }
+        return scan(e.thenBranch, false) ?: scan(e.elseBranch, false)
+    }
+
+    private fun jumpName(s: Statement): String = when (s) {
+        is ReturnStatement -> "return"
+        is BreakStatement -> "break"
+        else -> "continue"
     }
 
     private fun ifChain(ctx: CppEmitContextImpl, e: IfExpr): List<String> {

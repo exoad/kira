@@ -171,10 +171,11 @@ class KiraCppBackendTest {
         val result = p.run(check = false, factory = CppModuleEmitterFactory::create)
         assertEquals(0, result.exitCode, p.reportLines.joinToString("\n"))
         assertTrue(result.diagnostics.none { it.isError }, result.diagnostics.joinToString("\n") { it.render() })
+        // lineDirectives is on by default (design 4.5): each statement points back at its line.
         val source = Files.readString(p.root.resolve("src/pilot/proto.kira.cxx")).replace("\r\n", "\n")
-        assertTrue(source.contains("  kira::Str command(const kira::Str& verb)\n  {\n      return verb;\n  }\n"), source)
+        assertTrue(source.contains("  kira::Str command(const kira::Str& verb)\n  {\n      #line 4 \"src/pilot/proto.kira\"\n      return verb;\n  }\n"), source)
         val header = Files.readString(p.root.resolve("lib/text.kira.hxx")).replace("\r\n", "\n")
-        assertTrue(header.contains("  inline bool isSpace(std::int32_t c)\n  {\n      return c == 32;\n  }\n"), header)
+        assertTrue(header.contains("  inline bool isSpace(std::int32_t c)\n  {\n      #line 4 \"lib/text.kira\"\n      return c == 32;\n  }\n"), header)
         val check = p.run(check = true, factory = CppModuleEmitterFactory::create)
         assertEquals(0, check.exitCode, p.outLines.joinToString("\n"))
     }

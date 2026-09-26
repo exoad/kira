@@ -648,12 +648,15 @@ class CppExprRowsTest {
             pub fx constEq: () Bool {
                 return A == "abc"
             }
+
+            @_static_assert(A == "abc", "A is abc")
             """,
             listOf(
                 "bool operator==(const P2&) const = default;",
                 "return a == b;",
                 "return l == Light::LIGHT_GREEN;",
                 "return std::string_view(A) == \"abc\";",
+                "static_assert(std::string_view(A) == \"abc\", \"A is abc\");",
             ),
             listOf(
                 """check(r16::samePoint(r16::P2{.x = 1, .y = 2}, r16::P2{.x = 1, .y = 2}) && !r16::samePoint(r16::P2{.x = 1, .y = 2}, r16::P2{}), "R16: struct == is memberwise");""",
@@ -994,6 +997,32 @@ class CppExprRowsTest {
                 """check(kira::unwrap(m1::small()) == 200, "5.7: a narrow literal into a Maybe is T{lit}");""",
                 """check(m1::locals() == 8, "5.7: Maybe locals, and m.value is unwrap (D40)");""",
             ),
+        ),
+        row(
+            "d39",
+            """
+            pub fx half: (n: Int32) Result<Int32, Str> {
+                if n % 2 != 0 {
+                    return Result.error("odd")
+                }
+                return Result.success(n / 2)
+            }
+
+            pub fx halved: (n: Int32) Int32 {
+                r: Result<Int32, Str> = half(n)
+                if r.isOk() {
+                    return r.unwrap()
+                }
+                return -1
+            }
+            """,
+            listOf(
+                "return kira::Result<std::int32_t, kira::Str>::error(\"odd\");",
+                "return kira::Result<std::int32_t, kira::Str>::success(n / 2);",
+                "if(r.isOk())",
+                "return r.unwrap();",
+            ),
+            listOf("""check(d39::halved(4) == 2 && d39::halved(3) == -1, "D39: Result.success and Result.error are kira::Result's factories");"""),
         ),
         row(
             "b1",
