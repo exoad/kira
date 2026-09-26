@@ -497,8 +497,7 @@ class CppDeclEmitterTest {
         assertEquals(
             listOf(
                 "the extern declaration 'openCar' is not lowered yet",
-                "the trait 'Shape' is not lowered yet",
-                "the class 'Node' is not lowered yet",
+                // W2.4's classes part is registered: the trait and the class are lowered.
                 "the body of 'f' is not lowered yet",
             ),
             messages,

@@ -2,6 +2,7 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -23,6 +24,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.source.SourceContext
@@ -100,9 +103,36 @@ interface CppClassesPart {
     /**
      * The out-of-line members of [sym] (constructor, destructor, methods, trait default
      * bodies), each an Allman definition with a blank line between them. [inline] when they
-     * go into a header (a header-only module, a template).
+     * go into a header (a header-only module, a template). An exported class of a source
+     * module is asked for its header and for its source; only its template members go in
+     * the header.
      */
     fun defineMembers(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter, inline: Boolean)
+
+    /**
+     * `this` used as a value (design 5.5, D11): `*this` in a struct method, the class's
+     * `kira::Rc` from `shared_from_this()` in a class method (the class then derives
+     * `kira::Shared`). `this.f` is a member access, never this.
+     */
+    fun thisValue(ctx: CppEmitContextImpl, e: ThisExpr): String {
+        ctx.unsupported(e, "this as a value")
+        return "/* this */"
+    }
+
+    /** A class construction `C { ... }` (R9): `std::make_shared<C>(arguments in constructor order)`. */
+    fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String {
+        ctx.unsupported(e, "the construction of a class")
+        return "/* construction */"
+    }
+
+    /**
+     * [text], the C++ of [e], under the upcast [c] (a class to its superclass or a trait): a
+     * `kira::Rc` converts implicitly. A struct boxed into a trait value is refused (D43).
+     */
+    fun upcast(ctx: CppEmitContextImpl, e: Expr, c: Coercion.Upcast, text: String): String {
+        ctx.unsupported(e, "an upcast")
+        return text
+    }
 
     object Unsupported : CppClassesPart {
         override fun define(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter) {
@@ -125,6 +155,27 @@ interface CppGenericsPart {
             return null
         }
         return params.joinToString(", ", prefix = "template<", postfix = ">") { "typename ${ctx.names.escape(it.name)}" }
+    }
+
+    /** A generic call's explicit type arguments, `<std::int32_t>` (`id<std::int32_t>(7)`), or "" for none. */
+    fun typeArguments(ctx: CppEmitContextImpl, at: ASTNode, typeArgs: List<KType>): String {
+        if (typeArgs.isEmpty()) {
+            return ""
+        }
+        ctx.unsupported(at, "explicit type arguments")
+        return "</* type arguments */>"
+    }
+
+    /**
+     * The receiver of a member access on [receiver] (spelled [text]) when its type is a type
+     * parameter: `kira::deref(x)`, so `.m()` reaches a value and a class alike (design 5.5,
+     * [S1]). Null for any other receiver, whose access form R4 decides.
+     */
+    fun receiver(ctx: CppEmitContextImpl, receiver: Expr, text: String): String? {
+        if (ctx.model.typeOrNull(receiver) is KType.Param) {
+            ctx.unsupported(receiver, "a member access on a type parameter")
+        }
+        return null
     }
 
     object Plain : CppGenericsPart
@@ -186,8 +237,8 @@ data class CppEmitParts(
             lambdas = CppLambdaPart.Unsupported,
             bindings = CppBindingsPart.Unsupported,
             // W2.4 (classes, traits, generics) registers on these two lines:
-            classes = CppClassesPart.Unsupported,
-            generics = CppGenericsPart.Plain,
+            classes = CppClassEmitter(),
+            generics = CppGenericsEmitter,
             // W2.6 (FFI) registers on this line:
             externs = CppExternsPart.Unsupported,
         )
@@ -470,10 +521,17 @@ class CppEmitContextImpl(
 
     private fun shadows(p: ParamSymbol): Boolean {
         when (val owner = p.fn?.owner) {
-            is ClassSymbol -> if (owner.fields.any { it.name == p.name } || owner.methods.any { it.name == p.name }) {
+            // A struct derives nothing in C++ (its traits are static dispatch, D1): its own members.
+            is ClassSymbol -> if (owner.isStruct) {
+                if (owner.fields.any { it.name == p.name } || owner.methods.any { it.name == p.name }) {
+                    return true
+                }
+            } else if (p.name in memberNames(owner)) {
+                // g++ -Wshadow names a base's members too, private ones included ("shadows a
+                // member of 'B'" for a field of B's superclass, measured): the whole class scope.
                 return true
             }
-            is TraitSymbol -> if (owner.methods.any { it.name == p.name }) {
+            is TraitSymbol -> if (p.name in memberNames(owner)) {
                 return true
             }
             else -> {}

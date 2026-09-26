@@ -489,13 +489,17 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         (orderedTraits() + orderedClasses()).forEach { t ->
             val p = placement.type(t)
-            if (p.def != home) {
+            // An exported class of a source module keeps its template members in the header
+            // (design 5.5: bodies go in the .kira.cxx, except templates), so the classes part
+            // is asked for the header as well and writes only those there.
+            val templatesInHeader = home == Home.HEADER && p.decl == Home.HEADER && p.def == Home.SOURCE
+            if (p.def != home && !templatesInHeader) {
                 return@forEach
             }
             if (exported != null && placement.isExported(t) != exported) {
                 return@forEach
             }
-            val text = render { ctx.inScopeOf(t) { parts.classes.defineMembers(ctx, t, this, inline = p.inlineDefinition) } }
+            val text = render { ctx.inScopeOf(t) { parts.classes.defineMembers(ctx, t, this, inline = home != Home.SOURCE) } }
             if (text.isNotEmpty()) {
                 out += positionOf(t.decl) to text
             }
