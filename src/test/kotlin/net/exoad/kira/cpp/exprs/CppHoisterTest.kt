@@ -533,6 +533,82 @@ class CppHoisterTest {
             g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
             return g(twice, 5)
         }
+
+        mut gll: List<List<Int32>> = List<List<Int32>> { }
+        mut gls: List<Int32> = List<Int32> { }
+        mut gv3: List<Int32> = List<Int32> { values = [1, 2, 3] }
+
+        fx growGll: () Int32 {
+            gll.add(List<Int32> { values = [1] })
+            return 7
+        }
+
+        fx growGls: () Int32 {
+            gls.add(5)
+            return 7
+        }
+
+        fx setG3: () Int32 {
+            gv3.set(0, 9)
+            return 1
+        }
+
+        fx viewPlus: (v: View<Int32>, k: Int32) Int32 {
+            return total(v) + k
+        }
+
+        fx pokeAll: (ms: List<MutView<Int32>>) Int32 {
+            ms.get(0).set(0, 9)
+            return 1
+        }
+
+        pub fx boundReceiverBeside: () Void {
+            gll[0].add(growGll())
+        }
+
+        pub fx boundArgumentBeside: () Void {
+            put(mut gls[0], growGls(), 1)
+        }
+
+        pub fx boundArrElement: () Void {
+            put(mut garr[0], next(), 1)
+        }
+
+        pub fx boundLocalList: () Void {
+            mut ll: List<Int32> = List<Int32> { values = [1] }
+            put(mut ll[0], next(), 1)
+        }
+
+        pub fx viewReadBeside: () Int32 {
+            v: View<Int32> = gv3.view()
+            return sub(v.get(0), setG3())
+        }
+
+        pub fx closureWritesThroughAMutView: () Int32 {
+            mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            mv: MutView<Int32> = xs.from(0)
+            pk: Fx<Tuple0, Int32> = fx () Int32 {
+                mv.set(0, 9)
+                return 1
+            }
+            return sub(xs[0], pk())
+        }
+
+        pub fx listOfMutViewsWrites: () Int32 {
+            mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            mut ms: List<MutView<Int32>> = List<MutView<Int32>> { }
+            ms.add(xs.from(0))
+            return sub(xs[0], pokeAll(ms))
+        }
+
+        pub fx arrViewBeside: () Int32 {
+            return viewPlus(garr.view(), growGls())
+        }
+
+        pub fx literalView: () Size {
+            v: View<Char> = "abc".view()
+            return v.size()
+        }
         """,
     )
 
@@ -866,5 +942,191 @@ class CppHoisterTest {
         // A template is no value a kira::Fn holds: applyTo, only calling f, would otherwise be one.
         assertTrue(text.contains("std::int32_t applyTo(const kira::Fn<std::int32_t(std::int32_t)>& f, std::int32_t n);"), text)
         assertTrue(body("functionAsValue").contains("= applyTo;"), body("functionAsValue"))
+    }
+
+    @Test
+    fun aBoundPlaceInAListIsLocatedAfterASiblingThatMayMoveTheList() {
+        // C++17 sequences a call's object expression before its arguments, and leaves a mut
+        // argument's binding unsequenced against the others: `kira::at(gll, 0)` bound first
+        // pointed into the storage growGll() freed (gcc, clang and MSVC pushed into it; MSVC's
+        // ASan reported a heap-use-after-free). The sibling runs first, and the path after it.
+        val receiver = body("boundReceiverBeside")
+        assertTrue(receiver.contains("const std::int32_t t0_ = growGll();\n          kira::at(gll, 0).push_back(t0_);"), receiver)
+        val argument = body("boundArgumentBeside")
+        assertTrue(argument.contains("const std::int32_t t0_ = growGls();\n          put(kira::at(gls, 0), t0_, 1);"), argument)
+        // An Arr's elements never move, and a local List no sibling reaches is not moved: nothing to order.
+        assertTrue(body("boundArrElement").contains("put(kira::at(garr, 0), next(), 1);"), body("boundArrElement"))
+        assertTrue(body("boundLocalList").contains("put(kira::at(ll, 0), next(), 1);"), body("boundLocalList"))
+    }
+
+    @Test
+    fun aPureReadThroughAViewIsReadBeforeASiblingsWrite() {
+        // v is a local, but the storage behind it is gv3, which setG3() writes: v.get(0) is a
+        // read of shared state, like v[0] (gcc and MSVC printed 8, clang 0; Kira gives 0).
+        val b = body("viewReadBeside")
+        assertTrue(b.contains("const std::int32_t t0_ = v[0];\n          const std::int32_t t1_ = setG3();\n          return sub(t0_, t1_);"), b)
+    }
+
+    @Test
+    fun aLocalAMutViewWasLentFromIsReadBeforeAnySiblingsCall() {
+        // A MutView of xs captured by a closure, or held in a List, writes xs from wherever it
+        // went: xs[0] is read first (gcc and MSVC printed 8, clang 0; Kira gives 0).
+        val closure = body("closureWritesThroughAMutView")
+        assertTrue(closure.contains("const std::int32_t t0_ = kira::at(xs, 0);\n          const std::int32_t t1_ = pk();\n          return sub(t0_, t1_);"), closure)
+        val list = body("listOfMutViewsWrites")
+        assertTrue(list.contains("const std::int32_t t0_ = kira::at(xs, 0);\n          const std::int32_t t1_ = pokeAll(ms);\n          return sub(t0_, t1_);"), list)
+    }
+
+    @Test
+    fun aViewOfAStrLiteralIsAViewOfStaticStorage() {
+        // kira::str::view("abc") viewed a temporary kira::Str, which died with the statement;
+        // kira::lit is the literal's own storage, as the implicit conversion spells it.
+        val b = body("literalView")
+        assertTrue(b.contains("const kira::View<char> v = kira::lit(\"abc\");"), b)
+    }
+
+    @Test
+    fun aViewOfAnArrMayBeMadeBeforeASiblingsEffect() {
+        // An Arr keeps its storage where the variable is: D33's copy is safe.
+        val b = body("arrViewBeside")
+        assertTrue(b.contains("const kira::MutView<std::int32_t> t0_ = kira::mutView(garr);\n          const std::int32_t t1_ = growGls();\n          return viewPlus(t0_, t1_);"), b)
+    }
+
+    private val refusing = """
+        mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        mut idx: Size = 0
+        mut sbs: List<StrBuf<8>> = List<StrBuf<8>> { }
+
+        fx nextSize: () Size {
+            idx += 1
+            return idx
+        }
+
+        fx growL: () Int32 {
+            gl.add(4)
+            return 7
+        }
+
+        fx growSbs: () Int32 {
+            sbs.add(StrBuf<8> { })
+            return 1
+        }
+
+        fx makeList: () List<Int32> {
+            return List<Int32> { values = [10, 20, 30] }
+        }
+
+        fx tail: (xs: List<Int32>, at: Size) View<Int32> {
+            return xs.from(at)
+        }
+
+        fx pick: (v: View<Int32>, k: Size) View<Int32> {
+            return v
+        }
+
+        fx total: (v: View<Int32>) Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in v {
+                s += x
+            }
+            return s
+        }
+
+        fx viewPlus: (v: View<Int32>, k: Int32) Int32 {
+            return total(v) + k
+        }
+
+        pub fx lentFreshArgument: () Int32 {
+            return total(tail(makeList(), nextSize()))
+        }
+
+        pub fx lentFreshReceiver: () Int32 {
+            return total(makeList().from(nextSize()))
+        }
+
+        pub fx temporaryViewCopied: () Int32 {
+            return total(pick(tail(makeList(), 1), nextSize()))
+        }
+
+        pub fx movableViewBeforeAGrowth: () Int32 {
+            return viewPlus(gl.view(), growL())
+        }
+
+        pub fx localKeepsATemporaryView: () Int32 {
+            v: View<Int32> = makeList().view()
+            return total(v)
+        }
+
+        pub fx returnsATemporaryView: () View<Int32> {
+            return tail(makeList(), 2)
+        }
+
+        pub fx loopsOverATemporaryView: () Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in tail(makeList(), 0) {
+                s += x
+            }
+            return s
+        }
+
+        pub fx assignsATemporaryView: () Size {
+            mut v: View<Int32> = gl.view()
+            v = makeList().from(1)
+            return v.size()
+        }
+
+        pub fx containerKeepsATemporaryView: () Size {
+            mut vs: List<View<Int32>> = List<View<Int32>> { }
+            vs.add(tail(makeList(), 3))
+            return vs.size()
+        }
+
+        pub fx branchReturnsItsLocalsView: (c: Bool) Size {
+            v: View<Int32> = if c {
+                l: List<Int32> = makeList()
+                l.view()
+            } else {
+                gl.view()
+            }
+            return v.size()
+        }
+
+        pub fx strBufElementBesideAGrowth: () Void {
+            sbs[0].set("a${'$'}{growSbs()}")
+        }
+
+        pub fx safeInOneStatement: () Int32 {
+            return total(tail(makeList(), 1))
+        }
+    """.trimIndent()
+
+    @Test
+    fun aViewTheLoweringWouldLeaveDanglingIsRefusedWithWhatToWriteInstead() {
+        // The convergence policy: never a use after free. Each of these compiled before and
+        // read freed memory on some compiler (gcc printed 1651771218 for lentFreshArgument
+        // where clang gave the sum; MSVC's ASan reported a heap-use-after-free).
+        val emitted = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:bad", refusing))
+        val lines = "module \"vl:bad\"\n\n$refusing\n".lines()
+        fun line(snippet: String): Int = lines.indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
+        val found = emitted.diagnostics("vl:bad")
+            .filter { it.code == net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.VIEW_LIFETIME_CODE }
+            .map { (it.position?.lineNumber ?: -1) to it.message }
+        val expected = listOf(
+            line("return total(tail(makeList(), nextSize()))") to "a view the call may keep into the result of 'makeList', a temporary",
+            line("return total(makeList().from(nextSize()))") to "a view the call may keep into the result of 'makeList', a temporary",
+            line("return total(pick(tail(makeList(), 1), nextSize()))") to "this value holds a view into the result of 'makeList', a temporary, which would not outlive the lambda",
+            line("return viewPlus(gl.view(), growL())") to "this view into 'gl' would be made before the call behind the result of 'growL' runs (D33)",
+            line("v: View<Int32> = makeList().view()") to "but the local 'v' outlives it: store the result of 'makeList' in a local first",
+            line("return tail(makeList(), 2)") to "but the returned value outlives it",
+            line("for x: Int32 in tail(makeList(), 0)") to "but the loop outlives it",
+            line("v = makeList().from(1)") to "but the assignment outlives it",
+            line("vs.add(tail(makeList(), 3))") to "'add' may keep a view into the result of 'makeList', a temporary, past the call",
+            line("l.view()") to "this value may hold a view into 'l', a local of the branch",
+            line("sbs[0].set(") to "this hole's effect may move the container the StrBuf is an element of",
+        )
+        assertEquals(expected.size, found.size, "one refusal per unsafe shape, and none for safeInOneStatement:\n" + found.joinToString("\n"))
+        expected.forEach { (at, text) ->
+            assertTrue(found.any { (l, m) -> l == at && m.contains(text) }, "line $at: '$text' in:\n" + found.joinToString("\n"))
+        }
     }
 }

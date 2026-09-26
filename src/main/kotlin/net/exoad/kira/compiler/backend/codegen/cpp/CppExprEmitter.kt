@@ -698,13 +698,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * the callee takes into it can outlive the call: [CppHoister.lentArgument],
      * [CppHoister.lentReceiver], [CppHoister.lends] for a field or target), where it is never
      * copied and its path is applied after every sibling; anything else is a
-     * [CppHoister.Operand.Value] that [emit] spells.
+     * [CppHoister.Operand.Value] that [emit] spells, marked lent when it is a fresh value that
+     * owns storage (a call's result, a construction, a `Str` constant C++ makes a `kira::Str`
+     * of), which the hoister refuses to order where the result could carry a view into it
+     * ([CppHoister.Operand.Value.lent]).
      */
     fun operandOf(e: Expr, lent: Boolean = false, emit: () -> CppEx): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e))) {
+        if (isPlaceExpr(e) && heldByReference(typeOf(e)) && !(lent && isCharPtr(e))) {
             placeOperand(e, emit, if (lent) CppHoister.PlaceMode.LENT else CppHoister.PlaceMode.SNAPSHOT)
         } else {
-            CppHoister.Operand.Value(e, emit = emit)
+            CppHoister.Operand.Value(e, lent = lent && CppLending.borrowable(typeOf(e)) && model.coercion(e) !is Coercion.ToView, emit = emit)
         }
 
     /**
@@ -756,6 +759,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * the end (`kira::at(s, t0_) = t1_`).
      */
     private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
+        // A view into a temporary would dangle in the target once the statement ends.
+        hoister.refuseTemporaryView(value, "the assignment")
         // A target that can hold a view (`w.v = gl`, v a View) points into the value: never a copy.
         val ops = listOf(placeOperand(target), operandOf(value, lent = hoister.lends(typeOf(target))) { coerced(value) })
         return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void) { (l, r) ->
@@ -1307,11 +1312,19 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     }
 
     /**
-     * A written argument: a `mut` one is a place (its path applied at the call, never copied:
-     * R19), any other an [operandOf], lent where the call [i] of [rc] may lend from it.
+     * A written argument: a `mut` one is a bound place (its path applied at the call, never
+     * copied: R19; C++ may bind the reference before a sibling runs, so a sibling that may move
+     * its container is ordered first), any other an [operandOf], lent where the call [i] of
+     * [rc] may lend from it. A temporary the callee may keep a view into past the call is
+     * refused ([CppHoister.refuseKeptTemporary]).
      */
-    private fun argumentOperand(a: ArgBinding.Given, rc: ResolvedCall, i: Int): CppHoister.Operand =
-        if (a.byRef) placeOperand(a.expr) else operandOf(a.expr, lent = hoister.lentArgument(rc, i, a.expr)) { coerced(a.expr) }
+    private fun argumentOperand(a: ArgBinding.Given, rc: ResolvedCall, i: Int): CppHoister.Operand {
+        if (a.byRef) {
+            return placeOperand(a.expr, mode = CppHoister.PlaceMode.BOUND)
+        }
+        hoister.refuseKeptTemporary(rc, i, a.expr)
+        return operandOf(a.expr, lent = hoister.lentArgument(rc, i, a.expr)) { coerced(a.expr) }
+    }
 
     /** The text of a struct's `this` as a receiver the hoister may copy: [accessWith] knows this instance as the uncopied one. */
     private val thisLeaf = CppEx("*this", CppPrec.UNARY)
@@ -1341,17 +1354,22 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             return CppHoister.Operand.Place(receiver, emptyList(), receiverMode(rc, fn, lending, t)) { thisLeaf }
         }
+        val t = typeOf(receiver)
         val isPlace = isPlaceExpr(receiver)
-        if (isPlace && heldByReference(typeOf(receiver))) {
-            return placeOperand(receiver, emit, receiverMode(rc, fn, lending, typeOf(receiver)))
+        val lent = lending || (rc != null && fn?.isMutMethod != true && hoister.lentReceiver(rc, t))
+        if (isPlace && heldByReference(t) && !(lent && isCharPtr(receiver))) {
+            return placeOperand(receiver, emit, receiverMode(rc, fn, lending, t))
         }
-        return CppHoister.Operand.Value(receiver, mutable = writes || (memberStyle && !isPlace)) { emit() }
+        // A fresh receiver the call lends from (`makeList().from(k)`): the hoister refuses to order it where the result could carry the view.
+        val fresh = lent && CppLending.borrowable(t)
+        return CppHoister.Operand.Value(receiver, mutable = writes || (memberStyle && !isPlace), lent = fresh) { emit() }
     }
 
-    /** How a receiver place of type [t] is ordered ([receiverOperand]): lent, written, or a snapshot. */
+    /** How a receiver place of type [t] is ordered ([receiverOperand]): lent, written through a bound reference, or a snapshot. */
     private fun receiverMode(rc: ResolvedCall?, fn: FnSymbol?, lending: Boolean, t: KType): CppHoister.PlaceMode = when {
         lending -> CppHoister.PlaceMode.LENT
-        fn?.isMutMethod == true || rc == null -> CppHoister.PlaceMode.PATH
+        fn?.isMutMethod == true -> CppHoister.PlaceMode.BOUND
+        rc == null -> CppHoister.PlaceMode.PATH
         hoister.lentReceiver(rc, t) -> CppHoister.PlaceMode.LENT
         else -> CppHoister.PlaceMode.SNAPSHOT
     }
@@ -1566,6 +1584,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return unsupported(e, "the magic call '${fn.qualifiedName}' (no cpp binding under ${CppBindingTable.keysFor(fn, recvType, program)})")
         }
         val (_, binding) = found
+        if (isLiteralView(rc)) {
+            // `"abc".view()` views the literal's static storage, as the implicit conversion does
+            // (kira::lit): kira::str::view("abc") would view a temporary kira::Str.
+            return CppEx("kira::lit(${CppDeclEmitter.cppString((receiver as StringLiteral).value)})", CppPrec.POSTFIX)
+        }
         val strBufText = isStrBufText(fn, recvType) && rc.args.firstOrNull().let { it is ArgBinding.Given && it.expr is InterpolatedStringLiteral }
         if (strBufText && receiver != null) {
             val pieces = strBufPieces(receiver, fn, (rc.args.first() as ArgBinding.Given).expr as InterpolatedStringLiteral)
@@ -1615,6 +1638,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             bindingEx(text)
         }
     }
+
+    /** Whether [rc] is `Str.view` on a string literal: a view of static storage (`kira::lit`), no temporary. */
+    fun isLiteralView(rc: ResolvedCall): Boolean =
+        rc.kind == CallKind.MAGIC && rc.fn?.name == "view" && rc.receiver is StringLiteral && rc.args.isEmpty() &&
+            model.typeOrNull(rc.receiver) == KType.Str
 
     /**
      * A magic call's receiver: the value itself, except a literal Str constant (a `const char*`)
@@ -1695,6 +1723,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      */
     fun strBufPieces(receiver: Expr, fn: FnSymbol, text: InterpolatedStringLiteral): List<String> {
         val op = receiverOperand(receiver, null, fn, memberStyle = true, lending = false) { receiverEx(receiver, true) }
+        // Each piece is `recv.addInt(hole)`: C++ binds recv before the hole runs, so a hole
+        // whose effect may move the container recv is an element of would be appended into
+        // freed storage. Refused, as nothing orders a hole before its own piece's receiver.
+        val holes = text.parts.filterIsInstance<InterpolationPart.Hole>()
+        val written = hoister.writtenBy(holes.map { h -> CppHoister.Operand.Value(h.expr) { CppEx("", CppPrec.PRIMARY) } })
+        if (op != null && hoister.stepRank(op, written) != CppHoister.PURE) {
+            holes.firstOrNull { hoister.rank(it.expr, written) == CppHoister.IMPURE }?.let { hole ->
+                hoister.refuse(hole.expr, "this hole's effect may move the container the StrBuf is an element of, which C++ has already located for the append: store the hole's value in a local first")
+            }
+        }
         if (op == null || hoister.rankOf(op) == CppHoister.PURE) {
             return strBufPiecesOn(if (op == null) receiverText(receiver) else wrap(hoister.text(op), CppPrec.POSTFIX), fn, text)
         }

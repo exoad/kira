@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.Effect
+import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
@@ -28,14 +29,19 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -109,34 +115,57 @@ import java.util.IdentityHashMap
  *   a stdlib binding lends only through its result and its view parameters (its C++ is
  *   known), a user function through what [CppEscapes]'s scan of its body says (and escapes
  *   wherever `EscapePass`, W2.5, says so too).
- * - A written place ([PlaceMode.PATH]: a `mut` argument, an assignment's target, the receiver
- *   a `mut fx` writes) is bound by reference and read by the callee, never at the call: its
- *   parts are its only leaves.
- * - An operand's rank is `TypedModel.effects` (EffectsPass, W2.5). Where the model has no
- *   entry (before the merge, or for a node no pass visited), [rank] approximates the same
- *   three values: IMPURE for a call whose own entry is absent (absent means impure) unless
- *   the callee is a stdlib binding marked `pure: true` or a function EffectsPass proved pure,
- *   for an assignment, a `throw`, a `try` or a trace; READS for a read of a `mut` global, a
- *   parameter passed by reference (`mut`, or a struct, `Str`, container or class the design
- *   passes by `const&`), a field, or an element of a view; PURE otherwise. A lambda's body is
- *   not evaluated where the lambda is written, so it does not count. A place's rank is the
- *   highest of its parts' (PURE when it has none): how its location is found, not what it
- *   holds.
+ * - A written place is read by the callee, never at the call. An assignment's target
+ *   ([PlaceMode.PATH]) is written after its value runs (C++17 sequences the right side of `=`
+ *   first): its parts are its only leaves. A `mut` argument or the receiver a `mut fx` writes
+ *   ([PlaceMode.BOUND]) is a reference C++ may bind before a sibling runs, so each element
+ *   step through a container that reallocates (a `List`, a `Map`) is a leaf too, at the rank
+ *   of reading that container: a sibling that may grow it is spilled first and the path is
+ *   applied after it (`gll[0].add(growGll())` pushed into freed storage on every compiler).
+ * - An operand's rank: IMPURE where `TypedModel.effects` (EffectsPass, W2.5) says so; else
+ *   [scan]'s answer, since the model's PURE says the evaluation has no effect, not that it
+ *   reads nothing a sibling writes. The scan: IMPURE for a call whose own entry is absent
+ *   (absent means impure) unless the callee is a stdlib binding marked `pure: true` or a
+ *   function EffectsPass proved pure, for an assignment, a `throw`, a `try` or a trace; READS
+ *   for a read of a `mut` global, a parameter passed by reference (`mut`, or a struct, `Str`,
+ *   container or class the design passes by `const&`), a field, an element of a view, a pure
+ *   call that reads through a view or a handle (`v.get(0)`, `readU16Le(pkt, 0)`), or a local
+ *   some `MutView` is lent from anywhere (a closure or a container may write through it);
+ *   PURE otherwise. Taking a view reads no element. A lambda's body is not evaluated where the
+ *   lambda is written, so it does not count. A place's rank is the highest of its parts'
+ *   (PURE when it has none): how its location is found, not what it holds.
  * - A local no sibling can reach is PURE, except where a sibling writes it: through a `mut`
  *   argument, as the receiver of a `mut fx`, as the source of a `MutView`, or as an
  *   assignment's target. Among such operands ([writtenBy]) a read of it is READS, so it is
  *   read before the write (`sub(x, inc(mut x))` printed 14 on gcc and 4 on clang).
  * - Whether to spill is decided over the leaves: every value operand, every snapshot or lent
- *   place, and every value part of a written place, at any depth (`grid[nextSize()][nextSize()]
- *   = 5` holds two impure leaves in one place and must order them).
+ *   place, every value part of a written place, at any depth (`grid[nextSize()][nextSize()]
+ *   = 5` holds two impure leaves in one place and must order them), and a bound place's steps.
+ * - A spill that would leave a view dangling is refused (`cpp.view-lifetime`, [checkViews]):
+ *   a fresh operand the call lends from, a value holding a view into a temporary, and a view
+ *   into moving storage made before a later operand's effect. So is a view into a temporary
+ *   kept past its statement ([refuseTemporaryView], [refuseKeptTemporary]).
  * - A temporary's name is reserved before its initializer is written, so a nested spill in the
  *   initializer never declares the same name inside it (`-Wshadow`).
  */
 class CppHoister(private val lower: CppLowering) {
     /** How a [Operand.Place] is ordered among its siblings (the class KDoc). */
     enum class PlaceMode {
-        /** Written, or only located: bound by reference, never read at the call; its parts are its leaves. */
+        /**
+         * Written after its siblings ran (an assignment's target: C++17 runs the right side of
+         * `=` and `op=` first), or only located: never read at the call; its parts are its leaves.
+         */
         PATH,
+
+        /**
+         * Written through a reference C++ may bind before a sibling runs (a `mut` argument,
+         * whose binding is unsequenced against the other arguments, or the receiver a `mut fx`
+         * writes, the object expression sequenced before the arguments): its parts are its
+         * leaves, and so is each element step through storage that reallocates (a `List`, a
+         * `Map`), at the rank of reading that container, so a sibling that may move it is spilled
+         * first and the path is applied after it (`gll[0].add(growGll())` pushed into freed storage).
+         */
+        BOUND,
 
         /** Read as a value the call cannot lend from: copied into a typed temporary, its path first, before a sibling's effect. */
         SNAPSHOT,
@@ -150,8 +179,12 @@ class CppHoister(private val lower: CppLowering) {
         /**
          * A value: copied into a typed temporary when it must be ordered (`const`, or a plain
          * `T t0_` when [mutable]: a receiver a member-style binding calls a non-const method on).
+         * [lent] marks a fresh value that owns storage (a call's result, a construction, an
+         * interpolated `Str`, a `Str` constant C++ converts to a `kira::Str`) which the call may
+         * keep a view into: it cannot be ordered against a sibling, since the view would point
+         * into a temporary of the ordering lambda, and [lower] refuses the call ([checkViews]).
          */
-        class Value(expr: Expr?, val mutable: Boolean = false, val emit: () -> CppEx) : Operand(expr)
+        class Value(expr: Expr?, val mutable: Boolean = false, val lent: Boolean = false, val emit: () -> CppEx) : Operand(expr)
 
         /**
          * A place: [parts] are the values along its path, in source order, and [build] applies
@@ -216,12 +249,37 @@ class CppHoister(private val lower: CppLowering) {
             is Operand.Value -> listOf(rankOf(op, written))
             is Operand.Place -> when (op.mode) {
                 PlaceMode.PATH -> leaves(op.parts, written)
+                PlaceMode.BOUND -> leaves(op.parts, written) + stepRanks(op, written)
                 PlaceMode.SNAPSHOT, PlaceMode.LENT -> listOf(readRank(op, written))
             }
         }
     }
 
+    /**
+     * The rank of reading each container the place [op] steps into an element of, where that
+     * container reallocates its elements (a `List`, a `Map`: [CppLending.reallocates]): a
+     * reference bound to the element dangles once a sibling moves it. An `Arr`'s elements never
+     * move, and a local no sibling reaches is PURE.
+     */
+    private fun stepRanks(op: Operand.Place, written: Set<Symbol>): List<Int> {
+        val out = mutableListOf<Int>()
+        fun walk(p: Operand.Place) {
+            val e = p.expr
+            if (e is ArrayIndexExpr && lower.model.typeOrNull(e.originExpr)?.let { CppLending.reallocates(it) } == true) {
+                out += rank(e.originExpr, written)
+            }
+            p.parts.forEach { if (it is Operand.Place) walk(it) }
+        }
+        walk(op)
+        return out
+    }
+
+    /** The highest of [stepRanks] of [op] (PURE for a value or a place with no such step). */
+    fun stepRank(op: Operand, written: Set<Symbol> = emptySet()): Int =
+        (op as? Operand.Place)?.let { stepRanks(it, written).maxOrNull() } ?: PURE
+
     private fun spill(ops: List<Operand>, result: KType, written: Set<Symbol>, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
+        checkViews(ops, result, written)
         val lines = mutableListOf<String>()
         val texts = ops.map { ordered(it, lines, written) }
         val final = build(texts)
@@ -274,6 +332,291 @@ class CppHoister(private val lower: CppLowering) {
         return CppEx("$capture() -> $ret\n{\n${indent(lines)}\n}()", CppPrec.POSTFIX)
     }
 
+    // ---- views the ordering could leave dangling -----------------------------------------------
+
+    /** One step of a spill in evaluation order: a value (copied when not PURE) or the read of a snapshot or lent place. */
+    private class Step(val op: Operand, val rank: Int)
+
+    private fun steps(ops: List<Operand>, written: Set<Symbol>, out: MutableList<Step>) {
+        ops.forEach { op ->
+            when (op) {
+                is Operand.Value -> out += Step(op, rankOf(op, written))
+                is Operand.Place -> {
+                    steps(op.parts, written, out)
+                    when (op.mode) {
+                        PlaceMode.SNAPSHOT, PlaceMode.LENT -> out += Step(op, readRank(op, written))
+                        PlaceMode.BOUND -> stepRanks(op, written).forEach { out += Step(op, it) }
+                        PlaceMode.PATH -> {}
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Refuses, before [spill] writes it, an ordering that would leave a view dangling (the
+     * convergence policy: never a use after free). Each of these is memory-safe only in one
+     * full expression, which the spill's lambda splits into several:
+     *
+     * - a fresh operand that owns storage ([Operand.Value.lent]: `tail(makeList(), nextSize())`)
+     *   the call may lend from, where its result can hold a view: the view the lambda returns
+     *   would point into the lambda's own temporary (a view the callee keeps elsewhere is
+     *   [refuseKeptTemporary]'s, spilled or not; one it only uses during the call is safe);
+     * - a value holding a view into a temporary it makes (`tail(makeList(), 1)` as an operand
+     *   of `pick`): copied, the temporary dies with the declaration; returned out of the lambda
+     *   (a [result] that can hold a view), with its statement;
+     * - a value holding a view into storage a later operand's effect may move (a `List`, a
+     *   `Str`, anything behind a handle: [CppLending.moves]), copied before that effect
+     *   (`total(gl.view(), grow())`): made after it instead, it would be D33's order broken.
+     *
+     * The message names what to write instead: the temporary, or the later operand, in a local first.
+     */
+    private fun checkViews(ops: List<Operand>, result: KType, written: Set<Symbol>) {
+        val order = mutableListOf<Step>()
+        steps(ops, written, order)
+        order.forEachIndexed { i, step ->
+            val op = step.op as? Operand.Value ?: return@forEachIndexed
+            val e = op.expr ?: return@forEachIndexed
+            if (op.lent && CppLending.lends(result)) {
+                refuse(e, "a view the call may keep into ${describe(e)}, a temporary, would point into a temporary of the lambda that orders the call's operands (D33): store ${describe(e)} in a local first")
+                return@forEachIndexed
+            }
+            val t = lower.model.typeOrNull(e) ?: return@forEachIndexed
+            if (!CppLending.lends(t)) {
+                return@forEachIndexed
+            }
+            val from = sources(e)
+            val temporary = from.firstOrNull { it is Source.Temporary }
+            if (temporary != null && (step.rank != PURE || CppLending.lends(result))) {
+                refuse(e, "this value holds a view into ${describe(temporary.expr)}, a temporary, which would not outlive the lambda that orders the call's operands (D33): store ${describe(temporary.expr)} in a local first")
+                return@forEachIndexed
+            }
+            val moving = from.firstOrNull { it is Source.Place && CppLending.moves(it.type) }
+            val later = order.drop(i + 1).firstOrNull { it.rank == IMPURE }
+            if (step.rank != PURE && moving != null && later != null) {
+                val x = later.op.expr
+                val run = when {
+                    x is FunctionCallExpr || (x is MemberAccessExpr && x.member is FunctionCallExpr) -> "the call behind ${describe(x)}"
+                    x != null -> describe(x)
+                    else -> "a later operand"
+                }
+                val store = x?.let { describe(it) } ?: "that operand"
+                refuse(e, "this view into ${describe(moving.expr)} would be made before $run runs (D33), which may move the storage the view points into: store $store in a local first")
+            }
+        }
+    }
+
+    /** Where a value that can hold a view may point: a place's storage, or a temporary made while it is evaluated. */
+    sealed class Source(val expr: Expr) {
+        /** The storage of the place [expr], of type [type] (a container, a `Str`, a struct, a handle's object). */
+        class Place(expr: Expr, val type: KType) : Source(expr)
+
+        /** A fresh value [expr] (a call's result, a construction, a `Str` constant made a `kira::Str`) that dies with its full expression. */
+        class Temporary(expr: Expr) : Source(expr)
+    }
+
+    /**
+     * What the value of [e] may hold a view into, conservatively: nothing when its type holds no
+     * view or it is a place (a view held in a variable points wherever it was made, a fact of
+     * its own statement); for a call whose result can hold one, every operand that owns or
+     * reaches storage (a container, a `Str`, a struct, a class or trait handle, a type
+     * parameter: the callee may derive the view from any), and every view it is handed; for a
+     * construction or an array literal, what each view-holding field or element holds; for an
+     * if-expression, what either branch holds. A `List` or `Arr` place converted to a `View` is
+     * a view into that place.
+     */
+    fun sources(e: Expr): List<Source> {
+        val out = mutableListOf<Source>()
+        collectSources(e, out, IdentityHashMap())
+        return out
+    }
+
+    private fun collectSources(e: Expr, out: MutableList<Source>, seen: IdentityHashMap<Expr, Boolean>) {
+        if (seen.put(e, true) != null) {
+            return
+        }
+        val model = lower.model
+        val c = model.coercion(e)
+        if (c is Coercion.ToView) {
+            when {
+                // A literal is kira::lit, a view of static storage.
+                c.from == KType.Str -> {}
+                CppLending.isView(c.from) -> valueSources(e, out, seen)
+                else -> out += owner(e, c.from)
+            }
+            return
+        }
+        valueSources(e, out, seen)
+    }
+
+    private fun valueSources(e: Expr, out: MutableList<Source>, seen: IdentityHashMap<Expr, Boolean>) {
+        val model = lower.model
+        val t = model.typeOrNull(e) ?: return
+        if (!CppLending.lends(t) || (lower.isPlaceExpr(e) && !lower.isCharPtr(e))) {
+            return
+        }
+        when (e) {
+            is FunctionCallExpr -> model.call(e)?.let { callSources(it, e, out, seen) }
+            is MemberAccessExpr -> {
+                val call = e.member as? FunctionCallExpr
+                val rc = call?.let { model.call(it) }
+                when {
+                    rc != null -> callSources(rc, call, out, seen)
+                    // A view field of a fresh value points where the value's field did.
+                    model.member(e) is MemberRef.Field -> collectSources(e.origin, out, seen)
+                }
+            }
+            is ArrayIndexExpr -> collectSources(e.originExpr, out, seen)
+            is ObjectInitExpr -> model.init(e)?.let { ri ->
+                ri.fields.forEach { f ->
+                    if (f is FieldInit.Given && CppLending.lends(f.field.type.substitute(ri.substitution))) {
+                        collectSources(f.expr, out, seen)
+                    }
+                }
+            }
+            is ArrayLiteral -> e.value.forEach { collectSources(it, out, seen) }
+            is IfExpr -> listOfNotNull(lower.branchValue(e.thenBranch), lower.branchValue(e.elseBranch)).forEach { collectSources(it, out, seen) }
+            else -> model.opCall(e)?.let { callSources(it, e, out, seen) }
+        }
+    }
+
+    private fun callSources(rc: ResolvedCall, node: Expr, out: MutableList<Source>, seen: IdentityHashMap<Expr, Boolean>) {
+        if (lower.isLiteralView(rc)) {
+            // `"abc".view()` is kira::lit: static storage.
+            return
+        }
+        val model = lower.model
+        fun operand(x: Expr) {
+            if (model.coercion(x) is Coercion.ToView) {
+                collectSources(x, out, seen)
+                return
+            }
+            val xt = model.typeOrNull(x) ?: return
+            if (CppLending.lends(xt)) {
+                collectSources(x, out, seen)
+            } else if (CppLending.borrowable(xt) || lower.isPointerLike(xt)) {
+                out += owner(x, xt)
+            }
+        }
+        rc.receiver?.let { operand(it) }
+        if (rc.receiver == null && rc.implicitThis) {
+            // The implicit receiver (a struct's *this, a class's object): storage, never a temporary.
+            lower.state.frame?.owner?.let { owner -> (owner as? ClassSymbol)?.let { out += Source.Place(node, it.selfType) } }
+        }
+        rc.args.forEach { a -> if (a is ArgBinding.Given) operand(a.expr) }
+    }
+
+    /** [x], of type [t], as what a view may point into: a place's storage, or a temporary. */
+    private fun owner(x: Expr, t: KType): Source =
+        if (lower.isPlaceExpr(x) && !lower.isCharPtr(x)) Source.Place(x, t) else Source.Temporary(x)
+
+    /** Whether [sources] of [e] hold a temporary: a view into it outlives the full expression that made it. */
+    fun holdsTemporary(e: Expr): Source? = sources(e).firstOrNull { it is Source.Temporary }
+
+    /**
+     * Refuses [value] where it is kept past its full expression ([sink]: "the local 'v'", "the
+     * returned value", "the loop") when it holds a view into a temporary (`v: View<Int32> =
+     * makeList().view()`, `return tail(makeList(), 1)`, `for x in tail(makeList(), 1)`): C++
+     * destroys the temporary at the end of the full expression. True when it refused.
+     */
+    fun refuseTemporaryView(value: Expr, sink: String): Boolean {
+        if (!holdsViews(value)) {
+            return false
+        }
+        val temporary = holdsTemporary(value) ?: return false
+        refuse(value, "this value holds a view into ${describe(temporary.expr)}, a temporary that C++ destroys at the end of the statement, but $sink outlives it: store ${describe(temporary.expr)} in a local first")
+        return true
+    }
+
+    /**
+     * Refuses the value [value] of an if-expression's branch (its C++ is a lambda's `return`)
+     * when it holds a view into a local of that branch ([locals]), which the lambda destroys as
+     * it returns: `if c { l: List<Int32> = make(); l.view() } else { ... }`.
+     */
+    fun refuseBranchLocalView(value: Expr, locals: Set<Symbol>): Boolean {
+        if (locals.isEmpty() || !holdsViews(value)) {
+            return false
+        }
+        val self = if (lower.isPlaceExpr(value)) rootSymbol(value) else null
+        val local = self?.takeIf { it in locals }?.let { value }
+            ?: sources(value).firstOrNull { it is Source.Place && rootSymbol(it.expr)?.let { r -> r in locals } == true }?.expr
+            ?: return false
+        refuse(value, "this value may hold a view into ${describe(local)}, a local of the branch, which is destroyed as the if-expression's value leaves it: declare it before the if-expression")
+        return true
+    }
+
+    /** Whether the value of [e] is, or can hold, a view (its type, or a `List`/`Arr` place converted to a `View`). */
+    private fun holdsViews(e: Expr): Boolean =
+        lower.model.typeOrNull(e)?.let { CppLending.lends(it) } == true || lower.model.coercion(e) is Coercion.ToView
+
+    /**
+     * Refuses the argument [arg] (parameter [i] of [rc]) when it is, or holds a view into, a
+     * temporary the callee may keep a view into past the call ([keepsArgument]):
+     * `ms.add(makeList().view())`, `stash(makeList())` storing `xs.from(0)` in a global.
+     */
+    fun refuseKeptTemporary(rc: ResolvedCall, i: Int, arg: Expr) {
+        val t = lower.model.typeOrNull(arg) ?: return
+        val fresh = CppLending.borrowable(t) && lower.model.coercion(arg) !is Coercion.ToView && (!lower.isPlaceExpr(arg) || lower.isCharPtr(arg)) && lentArgument(rc, i, arg)
+        val temporary = if (fresh) arg else if (CppLending.lends(t)) holdsTemporary(arg)?.expr else null
+        if (temporary == null || !keepsArgument(rc, i, arg)) {
+            return
+        }
+        val callee = rc.fn?.name?.let { "'$it'" } ?: "the callee"
+        refuse(arg, "$callee may keep a view into ${describe(temporary)}, a temporary, past the call, and C++ destroys it at the end of the statement: store ${describe(temporary)} in a local first")
+    }
+
+    /**
+     * Whether the call [rc] may keep a view its argument [arg] (parameter [i]) is, or can be
+     * lent from, past the call, where the caller's storage outlives the statement: in a
+     * container of views it is a method of (a stdlib binding), wherever the body of a user
+     * function stores it ([CppEscapes]), and, for a callee not seen through (virtual, trait, an
+     * `Fx` value), in a `mut` argument that can hold a view. A view kept in a class field or a
+     * global outlives any caller's storage, a temporary's or a local's alike: that is
+     * EscapePass's rule (design 3.4), not a fact of the temporary. An extern takes a `Str`
+     * through `kira::ffi::in`, for the call.
+     */
+    fun keepsArgument(rc: ResolvedCall, i: Int, arg: Expr): Boolean {
+        val t = lower.model.typeOrNull(arg) ?: return true
+        val asView = CppLending.lends(t) || lower.model.coercion(arg) is Coercion.ToView
+        return when (rc.kind) {
+            CallKind.PRINT, CallKind.EXTERN -> false
+            CallKind.MAGIC -> rc.receiver?.let { lower.model.typeOrNull(it) }?.let { CppLending.lends(it) } == true
+            CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> {
+                val fn = rc.fn
+                val p = fn?.params?.getOrNull(i)
+                fn == null || p == null || escapes.viewStored(fn, p, asView)
+            }
+            CallKind.VIRTUAL, CallKind.TRAIT, CallKind.FN_VALUE -> rc.args.any { a ->
+                a is ArgBinding.Given && a.byRef && lower.model.typeOrNull(a.expr)?.let { CppLending.lends(it) } != false
+            }
+        }
+    }
+
+    /** The nodes already refused, so one construct is reported once. */
+    private val refused: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
+
+    /** Reports `cpp.view-lifetime` at [node] (once per node). */
+    fun refuse(node: ASTNode, message: String) {
+        if (refused.add(node)) {
+            lower.ctx.diag(node, VIEW_LIFETIME_CODE, message)
+        }
+    }
+
+    /** A short name for [e] in a message: what kind of value it is. */
+    fun describe(e: Expr): String = when (e) {
+        is FunctionCallExpr -> lower.model.call(e)?.fn?.name?.let { "the result of '$it'" } ?: "a call's result"
+        is MemberAccessExpr -> (e.member as? FunctionCallExpr)?.let { describe(it) }
+            ?: (lower.model.member(e) as? MemberRef.Field)?.let { "'${it.field.name}'" } ?: "this value"
+        is ObjectInitExpr -> "the construction"
+        is ArrayLiteral -> "the array literal"
+        is InterpolatedStringLiteral -> "the interpolated Str"
+        is StringLiteral -> "the Str literal"
+        is ThisExpr -> "this"
+        is Identifier -> if (lower.isCharPtr(e)) "the Str constant '${e.value}'" else "'${e.value}'"
+        is IfExpr -> "the if-expression"
+        else -> "this value"
+    }
+
     // ---- lending: which places a call may keep a view into -------------------------------------
 
     /**
@@ -324,11 +667,13 @@ class CppHoister(private val lower: CppLowering) {
     fun lends(t: KType): Boolean = CppLending.lends(t)
 
     /**
-     * [PURE], [READS] or [IMPURE] for evaluating [e]: the model's answer, else [scan]'s
-     * approximation; a PURE read of a local a sibling writes ([written]) is READS.
+     * [PURE], [READS] or [IMPURE] for evaluating [e]: IMPURE where the model says so, else
+     * [scan]'s answer (a model's PURE says the evaluation has no effect, which is not that it
+     * reads nothing a sibling changes: EffectsPass calls a function that reads a global pure);
+     * a PURE read of a local a sibling writes ([written]) is READS.
      */
     fun rank(e: Expr, written: Set<Symbol> = emptySet()): Int {
-        val base = lower.model.effects[e]?.let { rankOf(it) } ?: scan(e)
+        val base = if (lower.model.effects[e] == Effect.IMPURE) IMPURE else scan(e)
         return if (base == PURE && written.isNotEmpty() && readsAny(e, written)) READS else base
     }
 
@@ -486,30 +831,46 @@ class CppHoister(private val lower: CppLowering) {
         else -> READS
     }
 
-    /** The approximation of `Effect` for [root] where the model has no entry (the class KDoc). */
+    /**
+     * The rank of [root] (the class KDoc): IMPURE at a call the model or the binding table does
+     * not call pure, an assignment, a `throw`, a `try` or a trace; READS at a read of state a
+     * sibling's effect could change, which includes a pure call that reads through a view or a
+     * handle it is given (`v.get(0)`, `readU16Le(pkt, 0)`: the storage behind it is shared,
+     * though the name is a local) and a local some `MutView` was lent from ([mutViewRoots]:
+     * any call may write through that view, wherever it went). Taking a view (the receiver of
+     * a pure call whose result is one, `p.from(4)`) reads no element.
+     */
     private fun scan(root: Expr): Int {
         var best = PURE
         val stack = ArrayDeque<ASTNode>()
         stack.addLast(root)
         val seen = IdentityHashMap<ASTNode, Boolean>()
+        val addressOnly: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
         while (stack.isNotEmpty()) {
             val node = stack.removeLast()
             if (seen.put(node, true) != null) {
                 continue
             }
-            if (node !== root && node is Expr) {
-                lower.model.effects[node]?.let {
-                    best = maxOf(best, rankOf(it))
-                    if (best == IMPURE) return IMPURE
-                    continue
-                }
+            // The model's IMPURE is the answer; its PURE says only that there is no effect, and
+            // the reads below are still looked for.
+            if (node !== root && node is Expr && lower.model.effects[node] == Effect.IMPURE) {
+                return IMPURE
             }
             when (node) {
                 is LambdaExpr -> continue
-                is FunctionCallExpr -> if (!isPureCall(node)) return IMPURE
+                is FunctionCallExpr -> {
+                    if (!isPureCall(node)) return IMPURE
+                    lower.model.call(node)?.let { rc ->
+                        if (CppLending.lends(rc.returnType)) {
+                            rc.receiver?.let { addressOnly += it }
+                        } else if (readsThrough(rc)) {
+                            best = maxOf(best, READS)
+                        }
+                    }
+                }
                 is IntrinsicExpr -> if (node.intrinsicKey.name == "_trace_") return IMPURE
                 is ThrowExpr, is TryExpr, is AssignmentExpr, is CompoundAssignmentExpr, is PlaceAssignmentExpr -> return IMPURE
-                is Identifier -> if (readsShared(node)) best = READS
+                is Identifier -> if (readsShared(node) || (node !in addressOnly && lower.model.symbolOf(node)?.let { it in mutViewRoots } == true)) best = READS
                 // A struct's `this` is the receiver C++ holds by reference: a read of it as a
                 // value (`peek(this, bump())`) is shared state a sibling `mut fx` changes. A
                 // class's `this` is a handle, whose identity no effect changes.
@@ -526,12 +887,46 @@ class CppHoister(private val lower: CppLowering) {
                     continue
                 }
                 is ArrayIndexExpr -> if (lower.model.typeOrNull(node.originExpr)?.let { CppLending.isView(it) } == true) best = READS
-                is Expr -> lower.model.opCalls[node]?.fn?.let { if (lower.model.effect(it) != Effect.PURE) return IMPURE }
+                is Expr -> lower.model.opCalls[node]?.let { rc ->
+                    rc.fn?.let { if (lower.model.effect(it) != Effect.PURE) return IMPURE }
+                    if (!CppLending.lends(rc.returnType) && readsThrough(rc)) best = maxOf(best, READS)
+                }
                 else -> {}
             }
             AstTree.children(node).forEach { stack.addLast(it) }
         }
         return best
+    }
+
+    /**
+     * Whether the pure call [rc] reads through a view or a handle among its operands, or a value
+     * holding one (`v.get(0)`, `readU16Le(pkt, 0)`, a pure method on a class, a struct with a
+     * view field): what it reads is storage a sibling may write, whatever variable holds the view.
+     */
+    private fun readsThrough(rc: ResolvedCall): Boolean {
+        val operands = listOfNotNull(rc.receiver) + rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }
+        return operands.any { x ->
+            val t = lower.model.typeOrNull(x) ?: return@any false
+            val converted = lower.model.coercion(x) as? Coercion.ToView
+            CppLending.lends(t) || lower.isPointerLike(t) || (converted != null && CppLending.isView(converted.from))
+        }
+    }
+
+    /**
+     * Every variable a `MutView` is lent from anywhere in the program (`xs` for `mv: MutView<Int32>
+     * = xs.from(0)`): a write through that view may come from any call that reaches it (a
+     * closure that captured it, a `List<MutView>` or a struct holding it), so a read of the
+     * variable is READS, like a read of a `mut` global. A `LocalSymbol` is one declaration, so
+     * the set is exact per variable.
+     */
+    private val mutViewRoots: Set<Symbol> by lazy {
+        val out: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
+        lower.model.calls.values.forEach { rc ->
+            if (CppBindingTable.magicName(rc.returnType) == "MutView") {
+                rc.receiver?.let { r -> rootSymbol(r)?.let { out += it } }
+            }
+        }
+        out
     }
 
     /** Whether the name [id] reads state a sibling's effect could change (`Effect.READS`). */
@@ -564,6 +959,13 @@ class CppHoister(private val lower: CppLowering) {
         const val PURE = 0
         const val READS = 1
         const val IMPURE = 2
+
+        /**
+         * A construct refused because the C++ it would lower to could leave a view pointing at
+         * freed storage (the convergence policy: refuse, never emit a use after free). The
+         * message says what to write instead.
+         */
+        const val VIEW_LIFETIME_CODE = "cpp.view-lifetime"
 
         /** What a `MutView` can be lent from. */
         private val BUFFERS = setOf("Arr", "List", "MutView")
@@ -655,6 +1057,53 @@ object CppLending {
         else -> false
     }
 
+    /**
+     * Whether a container of type [t] moves its elements when it grows or is rebuilt, so a
+     * reference bound to one of them dangles after a sibling's effect: a `List`, a `Map`, a
+     * `Set`, a `Stack`, a `Queue`, a `Deque`, a `Str`, or a type parameter (unknown). An
+     * `Arr` keeps its elements in place, and so does a `StrBuf`; a view owns no elements.
+     */
+    fun reallocates(t: KType): Boolean = when (t) {
+        KType.Str, is KType.Param -> true
+        is KType.Nominal -> magicName(t) in REALLOCATING
+        else -> false
+    }
+
+    /**
+     * Whether storage a view into a value of type [t] points at can move or be freed while the
+     * value's variable lives (a sibling that grows or reassigns it): a [reallocates] container,
+     * an `Arr` or other container of such, a struct with such a field at any depth, a class or
+     * trait handle (its object's fields are not seen here), a type parameter. An `Arr` of
+     * scalars and a `StrBuf` keep their storage where the variable is.
+     */
+    fun moves(t: KType): Boolean = moves(t, IdentityHashMap())
+
+    private fun moves(t: KType, seen: MutableMap<ClassSymbol, Boolean>): Boolean = when (t) {
+        KType.Str, is KType.Param -> true
+        is KType.Nominal -> when (val sym = t.sym) {
+            is TraitSymbol -> true
+            is ClassSymbol -> when (sym.kind) {
+                ClassKind.CLASS, ClassKind.OPAQUE -> true
+                ClassKind.STRUCT -> if (seen.put(sym, true) != null) {
+                    false
+                } else {
+                    val substitution = sym.typeParams.zip(t.typeArgs()).toMap()
+                    sym.fields.any { moves(it.type.substitute(substitution), seen) } ||
+                        sym.superclass?.let { moves(it.substitute(substitution), seen) } == true
+                }
+                ClassKind.MAGIC -> when (sym.name) {
+                    in REALLOCATING, "Ref", "Weak" -> true
+                    "View", "MutView", "Unsafe", "Fx", "StrBuf" -> false
+                    else -> t.typeArgs().any { moves(it, seen) }
+                }
+            }
+            else -> false
+        }
+        else -> false
+    }
+
+    private val REALLOCATING = setOf("List", "Map", "Set", "Stack", "Queue", "Deque")
+
     private fun magicName(t: KType): String? = CppBindingTable.magicName(t)
 }
 
@@ -718,6 +1167,9 @@ class CppEscapes(private val model: TypedModel, private val heldByReference: (KT
      * outlive a call; [asView] when the parameter holds that view itself (the class KDoc).
      */
     fun viewEscapes(fn: FnSymbol, p: ParamSymbol?, asView: Boolean): Boolean = fate(fn, p, asView).escapes
+
+    /** Whether a view into the operand fed to [p] of [fn] may be kept past the call (stored, not only returned). */
+    fun viewStored(fn: FnSymbol, p: ParamSymbol?, asView: Boolean): Boolean = fate(fn, p, asView).stored
 
     private fun fate(fn: FnSymbol, p: ParamSymbol?, asView: Boolean): Fate {
         if (p != null && model.viewEscapes[p] == true) {

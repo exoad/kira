@@ -13,6 +13,9 @@ namespace evalorder
     kira::List<std::int32_t> gl = kira::List<std::int32_t>{};
     kira::Map<std::int32_t, std::int32_t> gm = kira::Map<std::int32_t, std::int32_t>{};
     kira::Str gs = "a";
+    kira::List<kira::List<std::int32_t>> gll = kira::List<kira::List<std::int32_t>>{};
+    kira::List<std::int32_t> gls = kira::List<std::int32_t>{};
+    kira::List<std::int32_t> gv = kira::List<std::int32_t>{1, 2, 3};
     kira::List<std::int32_t> other = kira::List<std::int32_t>{1, 2, 3};
     Box gb = Box{.v = 1};
     Acc ga = Acc{};
@@ -33,6 +36,10 @@ namespace evalorder
     [[nodiscard]] kira::View<std::int32_t> tail(const kira::List<std::int32_t>& xs, kira::Size at);
     [[nodiscard]] std::int32_t total(kira::View<std::int32_t> v);
     [[nodiscard]] std::int32_t sumTail(const kira::List<std::int32_t>& xs);
+    [[nodiscard]] std::int32_t growGll();
+    [[nodiscard]] std::int32_t growGls();
+    [[nodiscard]] std::int32_t setGv();
+    [[nodiscard]] std::int32_t pokeAll(const kira::List<kira::MutView<std::int32_t>>& ms);
     [[nodiscard]] std::int32_t inc(std::int32_t& v);
     [[nodiscard]] kira::Size pushTo(kira::List<std::int32_t>& into);
     [[nodiscard]] kira::Size lenOf(const kira::List<std::int32_t>& items, kira::Size k);
@@ -141,6 +148,40 @@ namespace evalorder
             const kira::Size t0_ = nextSize();
             return tail(xs, t0_);
         }());
+    }
+
+    std::int32_t growGll()
+    {
+        std::int32_t i{0};
+        while(i < 64)
+        {
+            gll.push_back(kira::List<std::int32_t>{i});
+            i += 1;
+        }
+        return 7;
+    }
+
+    std::int32_t growGls()
+    {
+        std::int32_t i{0};
+        while(i < 64)
+        {
+            gls.push_back(i);
+            i += 1;
+        }
+        return 7;
+    }
+
+    std::int32_t setGv()
+    {
+        kira::at(gv, 0) = 9;
+        return 1;
+    }
+
+    std::int32_t pokeAll(const kira::List<kira::MutView<std::int32_t>>& ms)
+    {
+        kira::at(ms, 0)[0] = 9;
+        return 1;
     }
 
     std::int32_t inc(std::int32_t& v)
@@ -518,6 +559,52 @@ namespace evalorder
       kira::trace(h.v.size());
       const kira::Fn<std::int32_t(const kira::Fn<std::int32_t(std::int32_t)>&, std::int32_t)> g = applyTo;
       kira::trace(g(twice, 5));
+      gll.push_back(kira::List<std::int32_t>{1});
+      [&]() -> void
+      {
+          const std::int32_t t0_ = growGll();
+          kira::at(gll, 0).push_back(t0_);
+      }();
+      kira::trace(kira::at(gll, 0).size());
+      kira::trace(kira::at(kira::at(gll, 0), 1));
+      kira::trace(gll.size());
+      gls.push_back(100);
+      [&]() -> void
+      {
+          const std::int32_t t0_ = growGls();
+          store(kira::at(gls, 0), t0_, 1);
+      }();
+      kira::trace(kira::at(gls, 0));
+      kira::trace(gls.size());
+      const kira::View<std::int32_t> v = kira::mutView(gv);
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = v[0];
+          const std::int32_t t1_ = setGv();
+          return sub(t0_, t1_);
+      }());
+      kira::List<std::int32_t> ws = kira::List<std::int32_t>{1, 2, 3};
+      const kira::MutView<std::int32_t> mv = kira::mutView(ws).from(0);
+      const kira::Fn<std::int32_t()> pk = [mv]() -> std::int32_t
+      {
+          mv[0] = 9;
+          return 1;
+      };
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(ws, 0);
+          const std::int32_t t1_ = pk();
+          return sub(t0_, t1_);
+      }());
+      kira::at(ws, 0) = 1;
+      kira::List<kira::MutView<std::int32_t>> ms = kira::List<kira::MutView<std::int32_t>>{};
+      ms.push_back(kira::mutView(ws).from(0));
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(ws, 0);
+          const std::int32_t t1_ = pokeAll(ms);
+          return sub(t0_, t1_);
+      }());
   }
 
   void Win::attach(kira::View<std::int32_t> src, kira::Size k_p)

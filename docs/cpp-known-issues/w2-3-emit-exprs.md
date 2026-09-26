@@ -17,11 +17,48 @@ template parameter (`g: Fx<...> = applyTo` did not compile on any compiler); the
 grow())` after the effect; and a local read beside a sibling that writes it through a `mut`
 argument or a `MutView` (`sub(x, inc(mut x))` printed 14 on gcc and 4 on clang).
 
+Fixed in convergence round 2, and so not listed below (each is in `CppHoisterTest`, and the
+ones that compile run in the evalorder golden on gcc, clang and msvc, ASan-clean on MSVC):
+
+- **A view into a temporary is refused wherever it would outlive its full expression**
+  (`cpp.view-lifetime`, with what to write instead: "store the result of 'makeList' in a local
+  first"). This covers a fresh operand a call lends from inside the lambda that orders the
+  call's operands (`trace(total(tail(makeList(), nextSize())))` printed 1651771218 on gcc, and
+  MSVC's ASan reported a heap-use-after-free), with the same for `makeList().from(nextSize())`,
+  a construction holding a call, `gl.toArr()` and an interpolated `Str`. It covers a value
+  holding such a view copied into the lambda (`pick(tail(makeList(), 1), nextSize())`). It
+  also covers a local, a `return`, an assignment and a `for` range that keep one
+  (`v: View<Int32> = makeList().view()` compiled and read freed memory), a callee that stores
+  one (`vs.add(tail(makeList(), 3))`), and an if-expression branch whose value views a local of
+  that branch. `"x".view()` is no longer such a view: it is `kira::lit("x")`, which views the
+  literal's static storage, as the implicit conversion already did. Before, it was
+  `kira::str::view("x")`, which views a temporary `kira::Str`.
+- **An explicit view made before a later operand's effect that may move its storage is
+  refused.** `total(gl.view(), grow())` copied `kira::mutView(gl)` into the lambda before
+  `grow()` reallocated `gl`, which is a heap-use-after-free. A view of an `Arr` or a `StrBuf`,
+  whose storage never moves, is still copied first, as D33 says.
+- **A bound place is located after a sibling that may move its container** (`PlaceMode.BOUND`:
+  a `mut` argument, the receiver a `mut fx` writes). `gll[0].add(growGll())` and
+  `store(mut gls[0], growGls())` bound `kira::at(...)` before the growth. All three compilers
+  wrote into freed storage, and MSVC's ASan reported it. The element steps through a
+  `List`/`Map` are now leaves, so the sibling is spilled first. A `StrBuf` element of such a
+  container beside an interpolation hole that may grow it is refused, because each piece
+  binds its receiver before its own hole.
+- **A pure read through a view or a handle is READS** (`sub(v.get(0), setG())`,
+  `readU16Le(pkt, 0)` beside `pump()`: gcc and MSVC printed 8, clang 0). The model's PURE
+  now means only "no effect", and the scan still looks for reads under it (EffectsPass calls
+  a function that reads a global pure).
+- **A local some `MutView` is lent from is shared state.** A closure that captured the view,
+  a `List<MutView>` and a struct holding it could all write it from a sibling, so
+  `sub(xs[0], pk())` printed 8 on gcc and MSVC and 0 on clang. Taking a view of the local is
+  still no read (`writeU32(p.from(20), crc32(...))` in `unilidar` is unchanged).
+
 ## Open decisions
 
 These are questions about the language that only the user can settle. The current behaviour
-is documented and pinned by the evalorder golden. None of them is a memory-safety question:
-each behaviour below is safe.
+is documented, and the evalorder golden pins the behaviour of OD-1 and OD-2. OD-1 and OD-2
+are memory-safe. OD-3 is not: it is a memory-safety hole in the language rules, and the
+emitter cannot close it alone.
 
 ### OD-1. A stdlib receiver beside an effect is read before it
 
@@ -62,6 +99,44 @@ each behaviour below is safe.
   precise. Until EffectsPass merges, every user call is impure, so (b) would also refuse
   `w.attach(gl, nextSize())`, which is fine today. A lent operand no sibling can reach (a
   local) is unaffected either way.
+- **An explicit view is not deferred.** `total(gl.view(), grow())` is refused instead (round 2,
+  above): the view is an expression with operands of its own (`gl.from(gidx)` reads `gidx`),
+  so it cannot be moved after its siblings without breaking D33 for those operands. The
+  message asks for the later operand in a local first. Under choice (b) the implicit
+  conversion (`total(gl, grow())`) would be refused the same way.
+
+### OD-3. A view held across a statement that grows what it views dangles
+
+- **What.** D5 lets a `View` of a `List` or a `Str` live in a local, but no rule stops the
+  viewed container from growing, or being reassigned, while the view lives:
+  `v: View<Int32> = gl.view()`, then `k: Int32 = growL()`, then `trace(total(v) + k)`. No
+  evaluation order is involved: each statement is one full expression. `kira::View` is a
+  pointer and a length, so after `growL()` reallocates `gl`, `v` points at freed storage.
+  gcc printed -2039998058 where clang printed 13, and MSVC's `/fsanitize=address` reports
+  heap-use-after-free. The same happens through a `View` parameter, since the callee may grow
+  the caller's `List` through a global. It also happens to a `mut` parameter or a struct's
+  `this` bound to a `List` element, when the callee grows that `List` through a global before
+  it writes: `storeAfterGrowth(mut gls[0], 7)`, whose body calls `growGls()` and then does
+  `into = v`. There gcc segfaulted and MSVC's ASan reported a heap-use-after-free. In C++ each
+  of these is a reference, and D37 says nothing about the storage behind it.
+- **Where.** It is a language rule, not an emitter one. Design 3.4's `EscapePass` refuses only
+  a view returned from a local or stored in a class field. `ExclusivityPass` refuses
+  overlapping `mut` arguments and a loop that mutates what it iterates. Neither covers a
+  live view or reference across a growth that the callee reaches through a global.
+- **Reproduce.** The scratchpad probes `w23r2/e5` (the three lines above, with `growL` pushing
+  64 elements onto `gl`) and `w23r2/e8` (`storeAfterGrowth`). Both were measured on gcc and
+  zig c++, and under MSVC ASan.
+- **The choice.** (a) A borrow rule in ExclusivityPass: while a view of a place, or a `mut`
+  parameter or `this` bound to it, is live, no write may move the place's storage. That
+  covers a growth, a reassignment, a `mut` argument, and a call that may reach the place
+  through a global. It covers every case above, but it is flow-sensitive and needs
+  EffectsPass's write sets. (b) Views only of storage that never moves (`Arr`, `StrBuf`, `Str`
+  literals), with a `List` or `Str` copied to an `Arr` first. That is simple, but it refuses
+  today's views of a `List` or a `Str` (the `text` golden slices a `Str` parameter), and it
+  leaves the `mut` parameter case open. (c) A counted view that keeps its storage alive (a
+  `std::shared_ptr` to the buffer). That is safe, but it costs a count per view and cannot
+  be done freestanding. Until the user decides, this package's emitter refuses every case it
+  can see within one statement (round 2, above). Across statements it cannot see the case.
 
 ## Known issues
 
@@ -159,7 +234,7 @@ each behaviour below is safe.
   - the plumbing tests `CppCliTest.kt`, `KiraCppBackendTest.kt` and
     `decls/CppDeclEmitterTest.kt`.
 
-  This round adds none. `CppExprEmitter.functionValue` reads W2.2's existing
+  Convergence rounds 1 and 2 add none. `CppExprEmitter.functionValue` reads W2.2's existing
   `ctx.placementOf(...).isNonEscapingFx`.
 - **Why it can wait.** Each change is small and covered by tests. The merger routes them to
   their owners.
@@ -171,3 +246,49 @@ each behaviour below is safe.
   is deep-copied into the IIFE (D33).
 - **Why it can wait.** It is a cost, not a correctness issue. When EffectsPass merges, its
   `PURE` entries remove every copy whose sibling cannot write.
+
+### KI-9. Until EscapePass merges, a view of a local can leave its function (pending on W2.5)
+
+- **What.** This branch accepts two shapes that dangle, and emits them:
+  - an escaping closure that captures a view of a local. `v: View<Int32> = xs.view()` then
+    `return fx () Int32 { return v.get(0) }` becomes `return [v]() ...` after `xs` has died,
+    and gcc printed -511830624;
+  - a direct `return xs.view()` of a local.
+- **Where.** W2.5's `EscapePass` (design 3.4: "a View must not be returned when derived from a
+  local"). It refuses both, and its test for the closure case is
+  `aClosureCapturingAViewOfALocalEscapes...`. The C++ emitter adds no second copy of that
+  rule, because a view held in a local points wherever it was made, which only the pass's
+  flow analysis knows.
+- **Reproduce.** The verifier's probes `verify-w23c1/c1` (the closure) and `c2`
+  (`fx bad: () View<Int32> { xs: ...; return xs.view() }`). Both emit, build and run, reading
+  freed memory.
+- **Why it can wait.** It depends on another package (policy item 5). The rule is written
+  and tested on W2.5's branch, and the merge brings it in ahead of the emitter. Within one
+  statement this emitter already refuses a view into a *temporary* that a `return` keeps
+  (`return tail(makeList(), 1)`), since no pass sees that one.
+
+### KI-10. The round-2 view rules are conservative in known ways
+
+- **What.** The rules that close the round-2 memory-safety issues are sound but coarse.
+  Each item below costs a refusal the program did not need, or a spill:
+  - a call whose result can hold a view is taken to point into every operand that owns or
+    reaches storage. `pick(v, makeList())` in a local is refused, although `pick` returns `v`;
+  - an if-expression branch whose value is a view *variable* declared in that branch is
+    refused, although the variable may view outer storage;
+  - a local that a `MutView` is lent from anywhere in the program is shared state in every
+    expression that reads it. A read of it beside any user call is spilled, even where no
+    sibling can reach the view;
+  - a pure call given a view is READS even where it reads only the length (`v.size()`), which
+    no sibling can change;
+  - a virtual, trait or `Fx`-value callee handed a temporary that owns storage is taken to
+    keep a view only through a `mut` argument that can hold one. Storing the view in a global
+    is EscapePass's case (a local's storage dies too), not a temporary's.
+- **Where.** `CppHoister.sources`, `refuseBranchLocalView`, `mutViewRoots`, `readsThrough`
+  and `keepsArgument`.
+- **Reproduce.** `CppHoisterTest.aViewTheLoweringWouldLeaveDanglingIsRefusedWithWhatToWriteInstead`
+  pins each refusal. The golden cases' `expected/` files are unchanged by these rules (none of
+  `proto`, `unilidar`, `hall`, `text`, `strings`, `numerics` moved a byte).
+- **Why it can wait.** None of them costs memory safety or evaluation order. A refused
+  program has a one-line rewrite, which the message names: a temporary or an operand stored
+  in a local first. EffectsPass's `PURE` entries and a provenance fact from EscapePass would
+  make each item precise.

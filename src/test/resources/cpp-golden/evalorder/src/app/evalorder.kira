@@ -261,6 +261,69 @@ fx main: () Void {
     // A function used as a value takes its Fx parameter as a kira::Fn, never a template: 10.
     g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
     trace(g(twice, 5))
+    // The receiver of a mut fx and a mut argument at an element of a List are located after
+    // a sibling that grows the List: C++ bound the element first and wrote into the storage the
+    // growth freed. gll[0] ends [1, 7] beside 64 more rows, and gls[0] takes 71 beside 64 more.
+    gll.add(List<Int32> { values = [1] })
+    gll[0].add(growGll())
+    trace(gll[0].size())
+    trace(gll[0].get(1))
+    trace(gll.size())
+    gls.add(100)
+    store(mut gls[0], growGls(), 1)
+    trace(gls.get(0))
+    trace(gls.size())
+    // A read through a view is a read of the storage behind it, made before a sibling writes
+    // that storage (gcc and MSVC printed 8): 1 - 1.
+    v: View<Int32> = gv.view()
+    trace(sub(v.get(0), setGv()))
+    // A MutView a closure captured, or a List holds, writes what it was lent from: a read of
+    // that local is made before any sibling's call (gcc and MSVC printed 8): 1 - 1, twice.
+    mut ws: List<Int32> = List<Int32> { values = [1, 2, 3] }
+    mv: MutView<Int32> = ws.from(0)
+    pk: Fx<Tuple0, Int32> = fx () Int32 {
+        mv.set(0, 9)
+        return 1
+    }
+    trace(sub(ws[0], pk()))
+    ws.set(0, 1)
+    mut ms: List<MutView<Int32>> = List<MutView<Int32>> { }
+    ms.add(ws.from(0))
+    trace(sub(ws[0], pokeAll(ms)))
+}
+
+mut gll: List<List<Int32>> = List<List<Int32>> { }
+mut gls: List<Int32> = List<Int32> { }
+mut gv: List<Int32> = List<Int32> { values = [1, 2, 3] }
+
+// Appends past any capacity gll had: its rows move.
+fx growGll: () Int32 {
+    mut i: Int32 = 0
+    while i < 64 {
+        gll.add(List<Int32> { values = [i] })
+        i += 1
+    }
+    return 7
+}
+
+// Appends past any capacity gls had: its storage moves.
+fx growGls: () Int32 {
+    mut i: Int32 = 0
+    while i < 64 {
+        gls.add(i)
+        i += 1
+    }
+    return 7
+}
+
+fx setGv: () Int32 {
+    gv.set(0, 9)
+    return 1
+}
+
+fx pokeAll: (ms: List<MutView<Int32>>) Int32 {
+    ms.get(0).set(0, 9)
+    return 1
 }
 
 fx inc: (mut v: Int32) Int32 {

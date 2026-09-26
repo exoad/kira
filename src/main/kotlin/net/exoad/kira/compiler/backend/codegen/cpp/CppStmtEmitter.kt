@@ -138,7 +138,9 @@ class CppStmtEmitter : CppStmtPart {
         if (e === NoExpr) {
             return listOf("return;")
         }
-        return listOf("return ${CppLowering.of(ctx).emit(e, CppPrec.NONE)};")
+        val lower = CppLowering.of(ctx)
+        lower.hoister.refuseTemporaryView(e, "the returned value")
+        return listOf("return ${lower.emit(e, CppPrec.NONE)};")
     }
 
     private fun ifStatement(ctx: CppEmitContextImpl, s: IfSelectionStatement): List<String> {
@@ -185,6 +187,9 @@ class CppStmtEmitter : CppStmtPart {
                     }
                 }
                 else -> {
+                    // `for(x : range)` binds the range to a reference, which keeps the outermost
+                    // temporary alive and no other: a view into one dies before the first step.
+                    lower.hoister.refuseTemporaryView(fe.target, "the loop")
                     val unused = if (isRead(ctx, variable)) "" else "[[maybe_unused]] "
                     val decl = when {
                         (variable as? LocalSymbol)?.isMut == true -> "$typeText $name"
@@ -263,6 +268,7 @@ class CppStmtEmitter : CppStmtPart {
             else -> "const $spelled $name"
         }
         val init = decl.value ?: return "$unused$declarator{};"
+        lower.hoister.refuseTemporaryView(init, "the local '${decl.name.value}'")
         val scalar = t is KType.Scalar || (t is KType.Nominal && t.sym is EnumSymbol)
         return when {
             scalar -> "$unused$declarator{${lower.emit(init, CppPrec.ASSIGN)}};"
@@ -392,11 +398,30 @@ class CppStmtEmitter : CppStmtPart {
             val tail = when {
                 last == null -> emptyList()
                 value == null || value is ThrowExpr || ctx.model.typeOrNull(value) == KType.Never -> render(ctx, last)
-                else -> listOf("return ${lower.emit(value, CppPrec.NONE)};")
+                else -> {
+                    // The value leaves the lambda: a view into a temporary or a local of the branch would dangle.
+                    if (!lower.hoister.refuseTemporaryView(value, "the if-expression's value")) {
+                        lower.hoister.refuseBranchLocalView(value, declaredIn(ctx, statements.dropLast(1)))
+                    }
+                    listOf("return ${lower.emit(value, CppPrec.NONE)};")
+                }
             }
             body + tail
         }
         return listOf("{") + inner.flatMap { it.split('\n') }.map { if (it.isEmpty()) it else "    $it" } + "}"
+    }
+
+    /** The locals [statements] declare, at any depth (a branch's own variables; one inside a lambda is never named outside it). */
+    private fun declaredIn(ctx: CppEmitContextImpl, statements: List<Statement>): Set<Symbol> {
+        val out: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
+        statements.forEach { st ->
+            AstTree.walk(st) { node ->
+                if (node is VariableDecl) {
+                    ctx.model.declSymbol(node)?.let { out += it }
+                }
+            }
+        }
+        return out
     }
 
     // ---- names -----------------------------------------------------------------------------------
