@@ -2553,7 +2553,7 @@ user3: User = User {
 
 **Copying with Changes (`copy`):**
 
-An immutable class that no class extends has a method `copy`, with one named parameter per field, inherited fields first. Each defaults to the receiver's value of that field, so an argument left out keeps it:
+An immutable class that no class extends, other than a built-in one, has a method `copy`, with one named parameter per field, inherited fields first. Each defaults to the receiver's value of that field, so an argument left out keeps it:
 
 ```kira
 p: Point = Point { 1.0, 2.0 }
@@ -2563,7 +2563,7 @@ q: Point = p.copy(y = 5.0)  // Point { 1.0, 5.0 }
 -   A private field is a parameter of `copy` only inside the class
 -   `copy` is construction: the class's `initially` runs again
 -   The receiver is evaluated first and once, then the arguments left to right
--   A class may not declare its own `copy`. A mutable class has none, and `copy` on a class that another class extends is an error, since it would drop the subclass's fields
+-   A class may not declare its own `copy`. A mutable class and a built-in class, the tuples included, have none, and `copy` on a class that another class extends is an error, since it would drop the subclass's fields
 
 **Construction and `initially`:**
 
