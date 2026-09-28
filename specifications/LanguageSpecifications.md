@@ -2247,6 +2247,8 @@ fx processStr: (value: Str) Void { }
 fx process<T>: (value: T) Void { }
 ```
 
+Methods follow the same rule, and operators are methods: a class has at most one method of each name, so it declares one `@_op_add_`, and its `+` takes one type on the right.
+
 ### Function Reference
 
 Since functions are treated as first class citizens, there is no special operator like `::` that is used to get the direct value of a function under a certain container.
