@@ -594,6 +594,28 @@ b.add(3)  // a is still [1, 2]
 -   `Int32`: 32-bit signed integer (range: -2,147,483,648 to 2,147,483,647)
 -   `Int64`: 64-bit signed integer (range: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807)
 
+**Unsigned Integer Types:**
+
+-   `UInt8`, `UInt16`, `UInt32`, `UInt64`: unsigned integers of 8, 16, 32 and 64 bits. Unsigned arithmetic wraps.
+-   `Size`: the unsigned integer as wide as a pointer on the target. `length()` and `size()` return a `Size`, and a `Size` mixes with no other integer type: `i < s.length()` needs `i: Size`.
+
+**Character Type:**
+
+-   `Char`: an 8-bit code unit, written `'c'`. `s[i]` on a `Str` is a `Char`. Characters compare (as unsigned code units, so every target agrees) but have no arithmetic; convert with `as`.
+
+**Numbers Are Classes:**
+
+Each number type is a class of `kira:core`, and declares its operators through the traits `Num<T>` (arithmetic, comparison, `abs`), `IntNum<T>` (adding `%`, the bitwise operators and the shifts) and `FloatNum<T>`:
+
+```kira
+pub @_magic class Int32: IntNum<Int32>
+pub @_magic class Size: IntNum<Size>
+pub @_magic class Float64: FloatNum<Float64>
+pub @_magic class Char: Comparable<Char>, Hashable
+```
+
+So `a + b` on two `Int32` values calls `Int32`'s `@_op_add_`, exactly as it calls a user class's, and a generic function bounded by `Num<T>` can use the operators. Every number is a `Num` of itself: both operands and the result have the receiver's own type.
+
 **Floating Point Types:**
 
 -   `Float32`: IEEE 754 single-precision floating point
