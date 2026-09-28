@@ -109,8 +109,15 @@ fx total: (v: View<Int32>) Int32 {
     return s
 }
 
+fx tailAt: (at: Size, xs: View<Int32>) View<Int32> {
+    return xs.from(at)
+}
+
+// The index runs before the view of xs is formed: xs is a const& parameter, a shared place,
+// and decision 4b (read literally) refuses an impure call in its view's span, which
+// total(tail(xs, nextSize())) has.
 fx sumTail: (xs: List<Int32>) Int32 {
-    return total(tail(xs, nextSize()))
+    return total(tailAt(nextSize(), xs))
 }
 
 fx main: () Void {

@@ -1,6 +1,15 @@
 package net.exoad.kira.cpp.exprs
 
+import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.analysis.types.Effect
+import net.exoad.kira.compiler.analysis.types.KiraTyper
+import net.exoad.kira.compiler.analysis.types.TyperMode
+import net.exoad.kira.compiler.analysis.types.TyperOptions
+import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitParts
+import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
+import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
+import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.cpp.exprs.CppExprTestSupport.Module
 import net.exoad.kira.cpp.support.CppToolchain
 import org.junit.jupiter.api.DynamicNode
@@ -110,8 +119,12 @@ class CppHoisterTest {
             boxes[nextSize()][nextSize()].grow(1, 2)
         }
 
+        fx tailAt: (at: Size, xs: View<Int32>) View<Int32> {
+            return xs.from(at)
+        }
+
         pub fx lentFromParameter: (xs: List<Int32>) Int32 {
-            return total(tail(xs, nextSize()))
+            return total(tailAt(nextSize(), xs))
         }
 
         pub fx lentFromGlobal: () Int32 {
@@ -354,7 +367,7 @@ class CppHoisterTest {
             return 1
         }
 
-        fx countOf: (v: View<Int32>, k: Size) Size {
+        fx countAfter: (k: Size, v: View<Int32>) Size {
             return v.size()
         }
 
@@ -398,7 +411,7 @@ class CppHoisterTest {
         }
 
         pub fx viewKeptNowhere: () Size {
-            return countOf(gl, nextSize())
+            return countAfter(nextSize(), gl)
         }
 
         pub fx genericKeepsAList: (mut h: Holder<List<Int32>>) Void {
@@ -429,7 +442,7 @@ class CppHoisterTest {
             return 1
         }
 
-        fx viewPlus: (v: View<Int32>, k: Int32) Int32 {
+        fx plusView: (k: Int32, v: View<Int32>) Int32 {
             return total(v) + k
         }
 
@@ -459,7 +472,7 @@ class CppHoisterTest {
         }
 
         pub fx arrViewBeside: () Int32 {
-            return viewPlus(garr.view(), growGls())
+            return plusView(growGls(), garr.view())
         }
 
         pub fx literalView: () Size {
@@ -589,11 +602,14 @@ class CppHoisterTest {
     @Test
     fun aPlaceAViewIsFormedOfIsNeverCopiedAndTheViewIsMadeWhereTheCallUsesIt() {
         // E1: a List parameter converted to a View is a place C++ holds by const&: it is never
-        // copied, and the view tail() returns points at the caller's list. tail's call has an
-        // effect of its own, so it is copied after its operands into a kira::View, in the
-        // lambda total's call opens (E3): no lambda returns a view.
+        // copied, and the view tailAt() returns points at the caller's list. tailAt's call has
+        // an effect of its own, so it is copied after its operands into a kira::View, in the
+        // lambda total's call opens (E3): no lambda returns a view. Each impure sibling here
+        // runs before the view is formed: decision 4b, read literally, refuses a view of a
+        // shared place (a const& parameter, a mut global) with an impure call in its span, so
+        // `total(tail(xs, nextSize()))` and `countOf(gl, nextSize())` are ViewPass's to refuse.
         val param = body("lentFromParameter")
-        assertTrue(param.contains("const kira::Size t0_ = nextSize();\n          const kira::View<std::int32_t> t1_ = tail(xs, t0_);\n          return total(t1_);"), param)
+        assertTrue(param.contains("const kira::Size t0_ = nextSize();\n          const kira::View<std::int32_t> t1_ = tailAt(t0_, xs);\n          return total(t1_);"), param)
         assertFalse(param.contains("= xs;"), param)
         assertFalse(param.contains("-> kira::View"), param)
         // A mut global Arr lends a MutView (the typer's MutView lending), of the global itself,
@@ -603,11 +619,11 @@ class CppHoisterTest {
         assertTrue(global.contains("const kira::Size t0_ = nextSize();\n          return total(kira::mutView(garr).from(t0_));"), global)
         // A List converted to a View is the list itself, whatever the callee does with it.
         val converted = body("viewKeptNowhere")
-        assertTrue(converted.contains("const kira::Size t0_ = nextSize();\n          return countOf(gl, t0_);"), converted)
+        assertTrue(converted.contains("const kira::Size t0_ = nextSize();\n          return countAfter(t0_, gl);"), converted)
         assertFalse(converted.contains("const kira::List<std::int32_t> t"), converted)
-        // So is an Arr's explicit view beside a sibling that grows another list.
+        // So is an Arr's explicit view after a sibling that grows another list.
         val arr = body("arrViewBeside")
-        assertTrue(arr.contains("const std::int32_t t0_ = growGls();\n          return viewPlus(kira::mutView(garr), t0_);"), arr)
+        assertTrue(arr.contains("const std::int32_t t0_ = growGls();\n          return plusView(t0_, kira::mutView(garr));"), arr)
     }
 
     @Test
@@ -831,11 +847,6 @@ class CppHoisterTest {
             return v
         }
 
-        fx setFirst: () Int32 {
-            gl[0] = 50
-            return 0
-        }
-
         pub fx ownerSpilled: () Int32 {
             ticks = 0
             return minus(makeList().view(), next())
@@ -869,7 +880,7 @@ class CppHoisterTest {
 
         pub fx convertedRefStorage: () Int32 {
             idx = 0
-            return total(tail(makeRef().value, nextSize()))
+            return plusSize(nextSize(), tail(makeRef().value, 1))
         }
 
         pub fx pureOwnerKept: () Int32 {
@@ -881,9 +892,58 @@ class CppHoisterTest {
             return total(makeList().view())
         }
 
+        fx setAt: (mut e: Int32) Int32 {
+            e = 50
+            return 0
+        }
+
         pub fx elementWriteSeen: () Int32 {
-            gl[0] = 1
-            return minus(gl, setFirst())
+            mut ls: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            return minus(ls, setAt(mut ls[0]))
+        }
+
+        fx churn: () Int32 {
+            ticks += 1
+            mut junk: List<Int32> = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }
+            junk.add(7)
+            return ticks
+        }
+
+        pub struct Wrap {
+            pub r: Ref<List<Int32>>
+
+            pub fx items: () View<Int32> {
+                return r.value.view()
+            }
+        }
+
+        fx sum2: (v: View<Int32>, k: Int32) Int32 {
+            return total(v) + k
+        }
+
+        pub fx positionalOwner: () Int32 {
+            ticks = 0
+            return sum2(Wrap { Ref<List<Int32>> { [100, 200, 300, 400, 500, 600, 700, 800] } }.items(), churn())
+        }
+
+        pub fx namedOwner: () Int32 {
+            ticks = 0
+            return sum2(Wrap { r = Ref<List<Int32>> { value = List<Int32> { values = [100, 200, 300, 400, 500, 600, 700, 800] } } }.items(), churn())
+        }
+
+        pub struct Stamp {
+            pub a: Int32 = 0
+            pub k: Int32 = stamp()
+        }
+
+        pub fx stamp: () Int32 {
+            ticks += 1
+            return ticks
+        }
+
+        pub fx impureDefault: () Int32 {
+            ticks = 10
+            return ticks * 100 + Stamp { a = 1 }.k
         }
         """,
     )
@@ -926,8 +986,24 @@ class CppHoisterTest {
         assertTrue(bodyIn(source, "convertedRefStorage").contains("= makeRef();"), bodyIn(source, "convertedRefStorage"))
         // With nothing to order, the view of a temporary lives to the end of the full expression.
         assertTrue(bodyIn(source, "inOneStatement").contains("return total(kira::view(makeList()));"), bodyIn(source, "inOneStatement"))
-        // E1: a List converted to a View is never copied, so a sibling's write of an element is seen.
-        assertTrue(bodyIn(source, "elementWriteSeen").contains("const std::int32_t t0_ = setFirst();\n          return minus(gl, t0_);"), bodyIn(source, "elementWriteSeen"))
+        // E1: a List converted to a View is never copied, so a sibling's write of an element is
+        // seen. The list is a local (private, design 30 3.3): a view of a shared place with an
+        // impure call in its span is refused by decision 4b read literally, as `minus(gl,
+        // setFirst())` with gl a mut global now is.
+        assertTrue(bodyIn(source, "elementWriteSeen").contains("const std::int32_t t0_ = setAt(kira::at(ls, 0));\n          return minus(ls, t0_);"), bodyIn(source, "elementWriteSeen"))
+        // E2's owner is the fresh value itself, whatever it holds: a struct holding the only Ref
+        // to the list its items() views is named before the view is, positional or named (round
+        // 1's p2: `const kira::View<std::int32_t> t0_ = Wrap{...}.items();` printed 823559285 on
+        // gcc where Kira gives 3601, MSVC's ASan a heap-use-after-free).
+        val wrapOwner = "const kira::View<std::int32_t> t1_ = t0_.items();\n          const std::int32_t t2_ = churn();\n          return sum2(t1_, t2_);"
+        listOf("positionalOwner", "namedOwner").forEach { fn ->
+            val b = bodyIn(source, fn)
+            assertTrue(b.contains("const Wrap t0_ = Wrap{.r = std::make_shared<kira::Box<kira::List<std::int32_t>>>(") && b.contains(wrapOwner), "$fn:\n$b")
+        }
+        // A construction whose left-out default has an effect is IMPURE: the read of ticks is
+        // made before stamp() runs in Stamp's default member initializer.
+        val stamped = bodyIn(source, "impureDefault")
+        assertTrue(stamped.contains("const std::int32_t t0_ = ticks * 100;\n          const std::int32_t t1_ = Stamp{.a = 1}.k;"), stamped)
         // No lambda anywhere returns a view.
         assertFalse(source.contains("-> kira::View"), source)
         assertFalse(source.contains("-> kira::MutView"), source)
@@ -948,18 +1024,87 @@ class CppHoisterTest {
                         "views::chainOfChains() == 9000" to "E3: a view of a view of a temporary",
                         "views::refOwnerSpilled() == 91" to "a place a fresh Ref owns",
                         "views::maybeOwnerSpilled() == 91" to "a place a fresh Maybe owns",
-                        "views::convertedRefStorage() == 90" to "a converted place a fresh Ref owns",
+                        "views::convertedRefStorage() == 91" to "a converted place a fresh Ref owns",
                         "views::pureOwnerKept() == 13" to "E2: an owner with no effect is named before its view is",
                         "views::inOneStatement() == 10000" to "a view of a temporary in one full expression",
-                        "views::elementWriteSeen() == 55" to "E1: the view is of gl, so setFirst's write is seen",
+                        "views::elementWriteSeen() == 55" to "E1: the view is of ls, so setAt's write of ls[0] is seen",
+                        "views::positionalOwner() == 3601" to "E2: a positional struct holding the only Ref is the owner",
+                        "views::namedOwner() == 3601" to "E2: a named struct holding the only Ref is the owner",
+                        "views::impureDefault() == 1011" to "a construction's impure default runs after the read before it",
                     ).forEach { (cond, what) -> append("    check($cond, \"$what\");\n") }
                     append("    std::printf(\"\\n%d checks, %d failed\\n\", checks, failures);\n")
                     append("    return failures == 0 ? 0 : 1;\n}\n")
                 }
                 val stdout = CppExprTestSupport.compileAndRun(viewsTree, driver, tc) ?: return@dynamicTest
-                assertTrue(stdout.contains("\n10 checks, 0 failed\n"), "${tc.id}:\n$stdout")
+                assertTrue(stdout.contains("\n13 checks, 0 failed\n"), "${tc.id}:\n$stdout")
             }
         }
+
+    // ---- what no effects table can make pure (decision 4b, read literally) ------------------------
+
+    private val optimistic = Module(
+        "hoist:optimistic",
+        """
+        mut ticks: Int32 = 0
+
+        fx next: () Int32 {
+            ticks += 1
+            return ticks
+        }
+
+        fx sub: (a: Int32, b: Int32) Int32 {
+            return a - b
+        }
+
+        fx zero: (m: MutView<Int32>) Int32 {
+            m[0] = 9
+            return 0
+        }
+
+        pub fx trustedPure: () Int32 {
+            return sub(ticks, next())
+        }
+
+        pub fx throughAnFx: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+            return sub(ticks, f(1))
+        }
+
+        pub fx handedAMutView: () Int32 {
+            mut p: Arr<Int32, 4> = [1, 2, 3, 4]
+            return sub(p[0], zero(p.from(0)))
+        }
+        """,
+    )
+
+    /**
+     * The real typer, then an effects table that calls every call and every callee PURE, as an
+     * EffectsPass that proved too much would: what the hoister ranks IMPURE anyway is what no
+     * table may make pure.
+     */
+    private fun everythingPure(unit: CompilationUnit, options: CppOptions): CppModuleEmitter {
+        val program = KiraTyper.run(unit, TyperMode.STRICT, TyperOptions(options.freestanding, options.headerOnly, options.namespaces))
+        assertFalse(program.hasErrors, program.diagnostics.joinToString("\n"))
+        val m = program.model
+        (m.calls.values + m.opCalls.values).forEach { rc -> rc.fn?.let { m.fnEffects[it] = Effect.PURE } }
+        m.calls.keys.forEach { m.effects[it] = Effect.PURE }
+        m.opCalls.keys.forEach { m.effects[it] = Effect.PURE }
+        return TypedCppModuleEmitter(program, options, program.diagnostics.map { CppModuleEmitterFactory.convert(it) }, CppEmitParts.standard())
+    }
+
+    @Test
+    fun anFxCallAndACallHandedAMutViewAreImpureWhateverTheEffectsTableSays() {
+        val tree = CppExprTestSupport.emit("hoister-optimistic", listOf(optimistic), emitterFactory = ::everythingPure)
+        val source = tree.source(optimistic)
+        // The control: a statically dispatched call with a body is taken at the table's word.
+        assertTrue(bodyIn(source, "trustedPure").contains("return impl_::sub(impl_::ticks, next());"), bodyIn(source, "trustedPure"))
+        // An Fx value may run any body: ticks is read before it runs (a template, in the header).
+        val header = tree.header(optimistic)
+        assertTrue(header.contains("const std::int32_t t0_ = impl_::ticks;\n          const std::int32_t t1_ = f(1);\n          return impl_::sub(t0_, t1_);"), header)
+        // A MutView handed to a callee is a write to the place it is formed of: p[0] is read
+        // before zero writes it through the view (left unordered, gcc and MSVC printed 8).
+        val mv = bodyIn(source, "handedAMutView")
+        assertTrue(mv.contains("const std::int32_t t0_ = kira::at(p, 0);\n          const std::int32_t t1_ = zero(kira::mutView(p).from(0));\n          return impl_::sub(t0_, t1_);"), mv)
+    }
 
     // ---- what the emitter refuses: the rule's backstops, and one order D33 cannot give -------------
 
@@ -1121,9 +1266,11 @@ class CppHoisterTest {
         // heap-use-after-free under MSVC's ASan before (gcc -1921638536, -348905752,
         // -1077665518, 321003290, 218111996, 1756766494 where Kira gives 1360): a view kept in a
         // Maybe<MutView<Int32>> global or a List<MutView<T>> is a type no program may write
-        // (rules.view.type). The if-expression beside an effect is one the rule allows and the
-        // emitter does not lower yet (cpp.unsupported), and so is the StrBuf hole, an order D33
-        // needs that no lowering gives. The safe* functions still compile.
+        // (rules.view.type). The if-expression beside an effect views a temporary in a branch
+        // D33 must order (KI-13): its owner cannot be spilled unconditionally, so it stays
+        // cpp.unsupported, never a use after free, and is left to ViewPass to refuse as it
+        // refuses a RANGE with a TEMP origin. The StrBuf hole is an order D33 needs that no
+        // lowering gives. The safe* functions still compile.
         val emitted = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:bad", refusing))
         // (The local and its initializer are two constructs on one line: two reports.)
         val lines = "module \"vl:bad\"\n\n$refusing\n".lines()

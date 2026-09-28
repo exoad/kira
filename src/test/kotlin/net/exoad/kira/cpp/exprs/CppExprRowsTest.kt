@@ -1286,6 +1286,10 @@ class CppExprRowsTest {
                 return v.from(k)
             }
 
+            fx tailAtV: (k: Size, v: View<Int32>) View<Int32> {
+                return v.from(k)
+            }
+
             fx sumV: (v: View<Int32>) Int32 {
                 mut s: Int32 = 0
                 for x: Int32 in v {
@@ -1296,7 +1300,7 @@ class CppExprRowsTest {
 
             pub fx viewOfAPlace: () Int32 {
                 idx = 0
-                return sumV(tailV(gl, nextSize()))
+                return sumV(tailAtV(nextSize(), gl))
             }
 
             pub fx viewOfATemporary: () Int32 {
@@ -1352,7 +1356,9 @@ class CppExprRowsTest {
             listOf(
                 // A place a view is formed of is never copied (E1), and a view call with an effect
                 // is a kira::View temporary of its root's lambda (E3), its owner spilled first (E2).
-                "const kira::Size t0_ = nextSize();\n          const kira::View<std::int32_t> t1_ = tailV(gl, t0_);\n          return sumV(t1_);",
+                // The impure sibling runs before the view of the mut global gl is formed: in its
+                // span, decision 4b read literally refuses it (`tailV(gl, nextSize())`).
+                "const kira::Size t0_ = nextSize();\n          const kira::View<std::int32_t> t1_ = tailAtV(t0_, gl);\n          return sumV(t1_);",
                 "const kira::List<std::int32_t> t0_ = kira::List<std::int32_t>{5, 6, 7};\n          const kira::Size t1_ = nextSize();\n          const kira::View<std::int32_t> t2_ = tailV(kira::view(t0_), t1_);",
                 "const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);",
                 "return kira::list::contains(a, 2) && !kira::list::contains(a, 4);",

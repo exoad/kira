@@ -2,6 +2,7 @@ package net.exoad.kira.cpp.exprs
 
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBackendResult
+import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
@@ -57,7 +58,12 @@ object CppExprTestSupport {
     }
 
     /** Writes [modules] under `build/tmp/cpp-exprs/<name>` and runs the backend over them. */
-    fun emit(name: String, modules: List<Module>, options: CppOptions = CppOptions(lineDirectives = false)): Tree {
+    fun emit(
+        name: String,
+        modules: List<Module>,
+        options: CppOptions = CppOptions(lineDirectives = false),
+        emitterFactory: (CompilationUnit, CppOptions) -> CppModuleEmitter = CppModuleEmitterFactory::create,
+    ): Tree {
         val root = Path.of("build/tmp/cpp-exprs").resolve(name).toAbsolutePath().normalize()
         root.toFile().deleteRecursively()
         Files.createDirectories(root)
@@ -77,7 +83,7 @@ object CppExprTestSupport {
         val report = mutableListOf<String>()
         val result = KiraCppBackend.run(
             unit, manifest, check = false, projectRoot = root,
-            emitterFactory = CppModuleEmitterFactory::create,
+            emitterFactory = emitterFactory,
             version = "dev",
             stdlibCppDir = Path.of("kira/cpp").toAbsolutePath().normalize(),
             log = { }, report = { report += it }, out = { },

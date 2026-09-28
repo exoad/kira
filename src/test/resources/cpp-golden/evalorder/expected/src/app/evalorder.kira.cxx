@@ -34,6 +34,7 @@ namespace evalorder
     [[nodiscard]] std::int32_t firstL(const kira::List<std::int32_t>& xs, std::int32_t k);
     [[nodiscard]] kira::View<std::int32_t> tail(kira::View<std::int32_t> xs, kira::Size at);
     [[nodiscard]] std::int32_t total(kira::View<std::int32_t> v);
+    [[nodiscard]] kira::View<std::int32_t> tailAt(kira::Size at, kira::View<std::int32_t> xs);
     [[nodiscard]] std::int32_t sumTail(const kira::List<std::int32_t>& xs);
     [[nodiscard]] kira::List<kira::List<std::int32_t>> freshLists();
     [[nodiscard]] kira::Rc<kira::Box<kira::List<std::int32_t>>> freshRef();
@@ -140,12 +141,17 @@ namespace evalorder
         return s;
     }
 
+    kira::View<std::int32_t> tailAt(kira::Size at, kira::View<std::int32_t> xs)
+    {
+        return xs.from(at);
+    }
+
     std::int32_t sumTail(const kira::List<std::int32_t>& xs)
     {
         return [&]() -> std::int32_t
         {
             const kira::Size t0_ = nextSize();
-            const kira::View<std::int32_t> t1_ = tail(xs, t0_);
+            const kira::View<std::int32_t> t1_ = tailAt(t0_, xs);
             return total(t1_);
         }();
     }

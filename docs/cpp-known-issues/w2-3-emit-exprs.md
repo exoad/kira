@@ -8,6 +8,80 @@ issue is, where it lives, how to reproduce it, and why it is safe to leave for n
 means built with the goldens' warning flags and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC
 `/W4 /WX`, and run.
 
+## Views are second-class, round 2: decision 4b read literally
+
+A first round-2 fixer was killed mid-work by a machine restart. Its uncommitted edit to
+`CppHoister.kt` was reviewed hunk by hunk and all of it was kept: `mayKeepAlive`, `provedPure`,
+`constructionRank` and the dispatch guard in `isPureCall`. This round finished it and added the
+tests. Nothing was discarded.
+
+- **Round 1's finding, fixed: E2 missed an owner.** A fresh struct holding the only `Ref` to a
+  list, used as the receiver of a method that returns a view through that `Ref`
+  (`sum2(Wrap { Ref<List<Int32>> { [...] } }.items(), next())`), was emitted as
+  `const kira::View<std::int32_t> t0_ = Wrap{...}.items();`. The `Wrap` died with that
+  declaration. gcc printed 823559285 and other garbage where Kira gives 3601, and MSVC's ASan
+  reported a heap-use-after-free. `ordered` found owners with `ownsStorage || isPointerLike`,
+  and a struct whose only fields are a `Ref`, a class or a trait owns no storage by value.
+  `CppHoister.mayKeepAlive` now counts every fresh value as an owner, except a scalar, an enum
+  and a second-class value. It is the same test in `rangeMayDangle`'s stdlib-call case.
+  - Emitted: `const Wrap t0_ = Wrap{...};`, then `const kira::View<std::int32_t> t1_ =
+    t0_.items();`.
+  - Measured: 3601 on gcc, clang and msvc, with 0 MSVC ASan reports (scratchpad `r2w23/p2`).
+  - Pinned: `CppHoisterTest.aViewOfATemporaryIsFormedInsideTheLambdaThatHoldsItsOwner`
+    (`positionalOwner`) and its compiler run.
+- **The named-field form is now pinned** (round 1's minor note). `Wrap { r = Ref... }.items()`
+  was safe only because `scan` ranks a named construction's field-name identifiers as READS.
+  It is now an owner by `mayKeepAlive` too. It is pinned beside the positional form
+  (`namedOwner`), and both check 3601 on gcc, clang and msvc.
+- **Ranks no effects table can make pure (decision 4b read literally: what is not proved pure
+  is impure).** The following ranks are IMPURE whatever `TypedModel.effects` or `fnEffects`
+  says:
+  - a virtual, trait, `Fx`-value or extern call;
+  - a call of a bodiless prototype, or a construction through call syntax (`provedPure`);
+  - a call handed a `MutView`, or whose callee declares a `MutView` parameter (`handsMutView`,
+    new this round). A write through a `MutView` of a place is a write to that place, so
+    `sub(p[0], zero(p.from(0)))` left unordered printed 8 on gcc and MSVC, where Kira gives 0;
+  - a construction whose class, or a superclass, has an `initially` or `finally` block, or
+    whose left-out field defaults are IMPURE (`constructionRank`).
+  Pinned:
+  - `CppHoisterTest.anFxCallAndACallHandedAMutViewAreImpureWhateverTheEffectsTableSays` emits
+    with a table that calls every call and callee PURE. Its control, `sub(ticks, next())`, is
+    left alone. The `Fx` and `MutView` calls are still spilled.
+  - `impureDefault` (`ticks * 100 + Stamp { a = 1 }.k`, where the default of `k` calls
+    `stamp()`) reads `ticks` first and gives 1011 on gcc, clang and msvc.
+  - A class `initially`/`finally`, a virtual or trait call and an extern cannot be emitted on
+    this branch (classes are W2.4's, a struct `initially` is refused by D30, FFI is W2.6's). Their
+    rule is the same one line in `provedPure` and `constructionRank`.
+- **Tests and golden lines that relied on the softer reading were rewritten.** Each viewed a
+  shared place (a mut global, a `const&` parameter, a place through a `Ref`) with an impure call
+  in the view's span. In each, the impure sibling now runs before the view is formed, or the
+  viewed place is a local:
+  - evalorder `sumTail`: `total(tail(xs, nextSize()))` became `total(tailAt(nextSize(), xs))`.
+    Its output is unchanged, 9.
+  - `CppHoisterTest`:
+    - `lentFromParameter` became `tailAt(nextSize(), xs)`;
+    - `viewKeptNowhere` became `countAfter(nextSize(), gl)`;
+    - `arrViewBeside` became `plusView(growGls(), garr.view())`;
+    - `convertedRefStorage` became `plusSize(nextSize(), tail(makeRef().value, 1))`, which now
+      checks 91;
+    - `elementWriteSeen` became `minus(ls, setAt(mut ls[0]))` with `ls` a local. Design 30 3.3
+      allows it: the place is private, and the element write does not contain `ls`. It still
+      gives 55. `minus(gl, setFirst())` was refused under either reading.
+  - `CppExprRowsTest` f3: `sumV(tailV(gl, nextSize()))` became `sumV(tailAtV(nextSize(), gl))`,
+    still 55.
+  Kept, because the view's span holds no impure call:
+  - `total(garr.from(nextSize()))`: the index is part of the view's formation, before the span;
+  - `total(gbag.head(nextSize()))`;
+  - `sub(gv.view().get(0), setGv())`: the view is consumed by `get` before `setGv` runs;
+  - `sub(ws[0], poke(ws.from(0)))`, with `ws` a local.
+- **Measured this round.**
+  - `CppHoisterTest`: 38 tests, 0 failures. Its views module runs 13 checks on gcc, clang and
+    msvc, 13 passed each, with 0 MSVC ASan reports (`r2w23/viewsasan.sh`).
+  - The evalorder golden: 0 ASan reports, output identical to `expected.txt` (`r2w23/eoasan.sh`).
+  - No other golden's `expected/` changed.
+- **KI-13 is left to the rule** (below): it stays `cpp.unsupported`, and ViewPass should refuse
+  it. The literal reading is OD-4.
+
 ## Views are second-class (decision 4b, design 30), round 1
 
 The user replaced the view provenance analysis with one rule: a view (`View`, `MutView`, `CStr`,
@@ -25,8 +99,9 @@ This emitter now refuses no view; it only lowers them.
   and `CppStmtEmitter.kt`.
 - **E1:** a place a view is formed of is `PlaceMode.LENT`, never copied: a place the typer
   converts to a `View` (`Coercion.ToView`), or the receiver of a call whose result is
-  second-class. The old D33 snapshot of `countOf(gl, nextSize())` is gone. `minus(gl,
-  setFirst())`, with `setFirst` writing `gl[0] = 50`, gives 55 as Kira does; the snapshot gave 6.
+  second-class. The old D33 snapshot of `countOf(gl, nextSize())` is gone. `minus(ls,
+  setAt(mut ls[0]))`, with `setAt` writing 50, gives 55 as Kira does; a snapshot gives 6. (Round
+  1 measured this as `minus(gl, setFirst())`, which the rule refuses; round 2 rewrote it.)
 - **E2, E3:** a call whose result is second-class is an `Operand.Chain` of its enclosing call.
   Its receiver and arguments are leaves of the spill that call opens, the owner of a view of a
   temporary is spilled into an owning typed temporary (`const kira::List<std::int32_t> t0_ =
@@ -41,7 +116,7 @@ This emitter now refuses no view; it only lowers them.
   local or a parameter that is no view; an if-expression with statement branches whose value is
   a view. Each message names the `rules.view.*` code ViewPass refuses it with.
 - **Measured.** `CppHoisterTest.theViewsOfTemporariesRunLeftToRightOnEveryCompiler` runs 10
-  checks on gcc, clang and msvc, 10 passed each; the same module under MSVC `/fsanitize=address`
+  checks (13 from round 2) on gcc, clang and msvc, all passed; the same module under MSVC `/fsanitize=address`
   has 0 reports (scratchpad `sc31/viewsasan.sh`). The evalorder golden passes on gcc, clang,
   msvc and zig-aarch64, and under MSVC ASan with 0 reports and output identical to
   `expected.txt` (`sc31/eoasan.sh`).
@@ -82,6 +157,16 @@ while it lives.
 - **The choice.** (a) Keep the snapshot. (b) Read a receiver in place, as R19 says of a place:
   the JS answer, which would flip those two lines to 99 and 50.
 
+### OD-4. Decision 4b's "impure": literal, or "has hidden writes"
+
+- **What.** Design 30 3.2 read "any impure call" as "a call with hidden writes". A call that
+  only prints, throws or writes its own named `mut` arguments would then not refuse a view of a
+  shared place in its span. From round 2 on, the literal reading is what everything is written
+  against: `effect(C) == IMPURE`. The softer reading is not implemented.
+- **The choice (the user's).**
+  - (a) Keep the literal reading. It is simple, and round 1 broke `HiddenWrites` five ways.
+  - (b) The softer reading. It needs a provenance analysis that does not break those ways.
+
 OD-2 (when a kept view is made) and OD-3 (a view held across a statement that grows what it
 views) are closed by decision 4b: no view is kept or held, a view is formed where the call uses
 it (E1), and ViewPass refuses a write that moves the place in the view's span.
@@ -119,9 +204,15 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
 - **Where.** `CppHoister.ordered` (Value) and `CppHoister.spill`.
 - **Reproduce.** `CppHoisterTest`'s `branchViewsATemporaryBesideAnEffect`.
 - **Why it can wait.** A rare shape with a one-line rewrite (an if statement), and it is a
-  refusal, never a use after free. The fix is a design choice: design 30 2.1's IF could refuse
-  a branch with a TEMP origin, as RANGE does, or the lowering could hold each branch's owner in
-  a `std::optional` declared before the `?:`.
+  refusal, never a use after free.
+- **Round 2: left to the rule, not lowered.** Round 1 named two ways out. Design 30 2.1's IF
+  could refuse a branch with a TEMP origin, as RANGE does. Or the lowering could hold each
+  branch's owner in a `std::optional` declared before the `?:`. The second covers only a
+  branch whose own operands need no spill. A branch like `makeList().from(next())` would still
+  need a lambda that returns a view. So the emitter keeps `cpp.unsupported`, and ViewPass
+  (W2.5) should refuse an SC if-expression with a TEMP-origin branch as `rules.view.position`.
+  That also refuses `total(if c { makeList().view() } else { gl.view() })`, which is lowered
+  safely here. It is a simpler rule to state.
 
 ### KI-14. The emitter reads the typer's facts, not `TypedModel.viewOrigins`
 
@@ -144,6 +235,19 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
 - **Where.** `CppHoister.writes`.
 - **Reproduce.** `CppHoisterTest.aLocalASiblingWritesIsReadBeforeTheWrite`; evalorder's
   `sub(ws[0], poke(ws.from(0)))` gives 0.
+
+### KI-16. A spilled temporary's own temporaries end at its declaration (a question for W2.4)
+
+- **What.** A D33 spill ends every C++ temporary made in a typed temporary's initializer at that
+  declaration, before a later sibling runs. In `sub(len(makeObj()), next())`, a class handle
+  `makeObj()` returns, whose `finally` has an effect, would be dropped before `next()` runs.
+  C++ with no spill drops it at the end of the full expression. If that is also where Kira
+  drops it, the spill runs the `finally` too early. Ranking such an operand IMPURE would not
+  help, since the spill is what moves the drop. This is a reading of the lowering, not
+  measured: classes are not lowered on this branch.
+- **Where.** `CppHoister.copied`, together with W2.4's class lifetimes.
+- **Why it can wait.** It needs W2.4's classes. It moves when an effect runs, and never frees
+  storage early.
 
 ### KI-1. `closures` stays `emit: pending`: it needs W2.4's class lowering
 
@@ -208,7 +312,9 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
   container read beside a user call, that no view is formed of, is deep-copied (D33), and every
   user call returning a view is copied into a `kira::View` temporary after its parts (E3).
 - **Why it can wait.** A cost, not a correctness issue. EffectsPass's `PURE` entries remove
-  them.
+  them, except where the hoister ranks a call IMPURE whatever the table says (round 2 above):
+  a virtual, trait, `Fx`, extern or bodiless call, a call handed a `MutView`, and a
+  construction with an `initially`, a `finally` or an impure default.
 
 ### KI-10. A `for` range is copied unless it is proved not to dangle
 

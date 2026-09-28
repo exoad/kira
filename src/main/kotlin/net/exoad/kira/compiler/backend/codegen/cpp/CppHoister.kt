@@ -7,6 +7,8 @@ import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.Effect
+import net.exoad.kira.compiler.analysis.types.EnumSymbol
+import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
@@ -114,7 +116,11 @@ import java.util.IdentityHashMap
  *   [scan]'s answer, since the model's PURE says the evaluation has no effect, not that it
  *   reads nothing a sibling writes. The scan: IMPURE for a call whose own entry is absent
  *   (absent means impure) unless the callee is a stdlib binding marked `pure: true` or a
- *   function EffectsPass proved pure, for an assignment, a `throw`, a `try` or a trace; READS
+ *   function EffectsPass proved pure, dispatched statically, with a body (a virtual, trait,
+ *   `Fx` or extern call, and a call handed a `MutView` it may write through, is IMPURE
+ *   whatever an entry says: decision 4b read literally), for a construction whose class has
+ *   an `initially` or `finally` block or a left-out field's default that is IMPURE, for an
+ *   assignment, a `throw`, a `try` or a trace; READS
  *   for a read of a `mut` global, a parameter passed by reference (`mut`, or a struct, `Str`,
  *   container or class the design passes by `const&`), a field, an element of a view, or a
  *   pure call that reads through a view or a handle (`v.get(0)`, `readU16Le(pkt, 0)`); PURE
@@ -132,9 +138,10 @@ import java.util.IdentityHashMap
  * - Views are second-class (decision 4b, design 30): which view is allowed where, and which
  *   write a view's span may hold, is ViewPass's (W2.5), and this lowers what it allows without
  *   refusing any. A second-class value in a position the rule never allows reaching the
- *   emitter is a checker's bug, `cpp.internal` ([internalView]). One lowering the rule allows is
- *   not made yet, `cpp.unsupported` ([unsupportedView]): a view of a temporary inside an
- *   if-expression's branch that D33 must order against a sibling, since the branch's owner
+ *   emitter is a checker's bug, `cpp.internal` ([internalView]). One shape design 30 2.1 lets
+ *   through is not lowered, `cpp.unsupported` ([unsupportedView]), and is left to ViewPass to
+ *   refuse as it refuses a `for` range with a TEMP origin (KI-13): a view of a temporary inside
+ *   an if-expression's branch that D33 must order against a sibling, since the branch's owner
  *   cannot be spilled unconditionally.
  * - A temporary's name is reserved before its initializer is written, so a nested spill in the
  *   initializer never declares the same name inside it (`-Wshadow`).
@@ -353,9 +360,11 @@ class CppHoister(private val lower: CppLowering) {
      * over its ordered parts, and a snapshot place is that path copied. A lent place is its
      * path, applied where the call uses it, after every sibling. A chain is its call over its
      * ordered parts, copied after them when its own call is not PURE; then every owner among
-     * its parts ([keep]: a fresh value that owns storage or a handle, at any depth) is copied
-     * too, even a PURE one (`kira::List<std::int32_t>{5, 6, 7}`), since the view named after
-     * them points into it and a temporary of the declaration would die with it (E2). Called
+     * its parts ([keep]: a value of any type [mayKeepAlive] says may hold what the view points
+     * into, at any depth) is copied too, even a PURE one (`kira::List<std::int32_t>{5, 6, 7}`,
+     * or `Wrap{...}` holding the only `Ref` to the list its `items()` views), since the view
+     * named after them points into it or through it, and a temporary of the declaration would
+     * die with it (E2). Called
      * inside a [CppBodyState.block] that an [iife] closes; [written] is [writtenBy] of the
      * operands.
      */
@@ -372,7 +381,7 @@ class CppHoister(private val lower: CppLowering) {
                 // kira::View whose owner dies with the declaration.
                 unsupportedView(e, "a view of a temporary in an if-expression's branch, ordered against a sibling (D33) (call it in an if statement instead, or pass the if-expression where nothing beside it has an effect)")
             }
-            val owner = keep && e != null && lower.model.typeOrNull(e)?.let { ownsStorage(it) || lower.isPointerLike(it) } == true
+            val owner = keep && e != null && lower.model.typeOrNull(e)?.let { mayKeepAlive(it) } == true
             copied(e, op.mutable, op.emit, lines, written, rank = if (owner) IMPURE else null)
         }
         is Operand.Chain -> {
@@ -415,9 +424,8 @@ class CppHoister(private val lower: CppLowering) {
         val rc = (node as? FunctionCallExpr)?.let { lower.model.call(it) } ?: lower.model.opCall(node) ?: return IMPURE
         val fn = rc.fn ?: return IMPURE
         return when (rc.kind) {
-            CallKind.MAGIC -> if (lower.bindingFor(fn, rc.receiver?.let { lower.model.typeOrNull(it) })?.second?.pure == true) PURE else IMPURE
-            CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD -> if (lower.model.effect(fn) == Effect.PURE) PURE else IMPURE
-            else -> IMPURE
+            CallKind.MAGIC -> if (!handsMutView(rc) && lower.bindingFor(fn, rc.receiver?.let { lower.model.typeOrNull(it) })?.second?.pure == true) PURE else IMPURE
+            else -> if (provedPure(rc)) PURE else IMPURE
         }
     }
 
@@ -553,7 +561,7 @@ class CppHoister(private val lower: CppLowering) {
         fun call(rc: ResolvedCall): Boolean = when (rc.kind) {
             CallKind.MAGIC -> (listOfNotNull(rc.receiver) + rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }).any { x ->
                 val xt = model.typeOrNull(x)
-                xt == null || ((ownsStorage(xt) || lower.isPointerLike(xt)) && isTemporary(x))
+                xt == null || (mayKeepAlive(xt) && isTemporary(x))
             }
             else -> false
         }
@@ -767,6 +775,11 @@ class CppHoister(private val lower: CppLowering) {
                 }
                 is IntrinsicExpr -> if (node.intrinsicKey.name == "_trace_") return IMPURE
                 is ThrowExpr, is TryExpr, is AssignmentExpr, is CompoundAssignmentExpr, is PlaceAssignmentExpr -> return IMPURE
+                is ObjectInitExpr -> {
+                    val own = constructionRank(node)
+                    if (own == IMPURE) return IMPURE
+                    best = maxOf(best, own)
+                }
                 is Identifier -> if (readsShared(node)) best = READS
                 // A struct's `this` is the receiver C++ holds by reference: a read of it as a
                 // value (`peek(this, bump())`) is shared state a sibling `mut fx` changes. A
@@ -785,7 +798,7 @@ class CppHoister(private val lower: CppLowering) {
                 }
                 is ArrayIndexExpr -> if (isView(lower.model.typeOrNull(node.originExpr))) best = READS
                 is Expr -> lower.model.opCalls[node]?.let { rc ->
-                    rc.fn?.let { if (lower.model.effect(it) != Effect.PURE) return IMPURE }
+                    if (rc.fn != null && !provedPure(rc)) return IMPURE
                     if (!isSecondClass(rc.returnType) && readsThrough(rc)) best = maxOf(best, READS)
                 }
                 else -> {}
@@ -825,13 +838,84 @@ class CppHoister(private val lower: CppLowering) {
     }
 
     private fun isPureCall(c: FunctionCallExpr): Boolean {
+        val rc = lower.model.call(c)
+        if (rc != null && (rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT || rc.kind == CallKind.FN_VALUE || rc.kind == CallKind.EXTERN || handsMutView(rc))) {
+            // It may run any body, or writes through what it is handed ([provedPure]), whatever the model's entry says.
+            return false
+        }
         lower.model.effects[c]?.let { return rankOf(it) == PURE }
-        val rc = lower.model.call(c) ?: return false
+        rc ?: return false
         val fn = rc.fn ?: return false
         return when (rc.kind) {
             CallKind.MAGIC -> lower.bindingFor(fn, rc.receiver?.let { lower.model.typeOrNull(it) })?.second?.pure == true
-            CallKind.FREE, CallKind.METHOD -> lower.model.effect(fn) == Effect.PURE
-            else -> false
+            else -> provedPure(rc)
+        }
+    }
+
+    /**
+     * Whether the call [rc] of a user function is proved pure: EffectsPass calls its callee
+     * PURE, the callee has a body, the call runs that body and no other, and it is handed no
+     * `MutView` ([handsMutView]). A call through a vtable, a trait or an `Fx` value, an extern,
+     * a bodiless prototype and a construction through call syntax may run any body, so each is
+     * impure whatever a table says (decision 4b, read literally: what is not proved pure is
+     * impure).
+     */
+    private fun provedPure(rc: ResolvedCall): Boolean {
+        val fn = rc.fn ?: return false
+        return (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD || rc.kind == CallKind.OP_OVERLOAD) &&
+            fn.body != null && !fn.isVirtual && fn.foreign == null && !handsMutView(rc) && lower.model.effect(fn) == Effect.PURE
+    }
+
+    /**
+     * Whether the call [rc] is handed a `MutView` (not one converted to a `View`), or its callee
+     * declares a `MutView` parameter: the callee may write through it, and a write through a
+     * `MutView` of a place is a write to that place (decision 4b, read literally), which an
+     * EffectsPass that counts only its own writes would call pure (`sub(p[0], zero(p.from(0)))`
+     * left unordered printed 8 on gcc and MSVC, where Kira gives 1 - 1 = 0).
+     */
+    private fun handsMutView(rc: ResolvedCall): Boolean =
+        rc.fn?.params?.any { CppBindingTable.magicName(it.type) == "MutView" } == true ||
+            rc.args.any { a -> a is ArgBinding.Given && CppBindingTable.magicName(lower.model.typeOrNull(a.expr)) == "MutView" && lower.model.coercion(a.expr) !is Coercion.ToView }
+
+    /** The classes whose construction [constructionRank] is scanning, so a default that constructs its own class ends the walk (IMPURE). */
+    private val constructing: MutableSet<ClassSymbol> = Collections.newSetFromMap(IdentityHashMap())
+
+    /**
+     * The rank of what the construction [e] runs beyond the fields it writes: IMPURE when it is
+     * not resolved, or when its class or a superclass has an `initially` or a `finally` block
+     * (a temporary's is run where the full expression drops it); else the highest [scan] of the
+     * defaults of the fields it leaves out, which C++ evaluates at the construction (a struct's
+     * default member initializer, a class constructor's default argument).
+     */
+    private fun constructionRank(e: ObjectInitExpr): Int {
+        val ri = lower.model.init(e) ?: return IMPURE
+        val cls = ri.cls ?: return IMPURE
+        if (!constructing.add(cls)) {
+            return IMPURE
+        }
+        try {
+            var c: ClassSymbol? = cls
+            val seen: MutableSet<ClassSymbol> = Collections.newSetFromMap(IdentityHashMap())
+            while (c != null && seen.add(c)) {
+                if (c.initially != null || c.finally != null) {
+                    return IMPURE
+                }
+                c = c.superclass?.sym as? ClassSymbol
+            }
+            var best = PURE
+            ri.fields.forEach { f ->
+                if (f is FieldInit.Default) {
+                    val d = f.field.default ?: return@forEach
+                    val r = scan(d)
+                    if (r == IMPURE) {
+                        return IMPURE
+                    }
+                    best = maxOf(best, r)
+                }
+            }
+            return best
+        } finally {
+            constructing.remove(cls)
         }
     }
 
@@ -916,6 +1000,24 @@ class CppHoister(private val lower: CppLowering) {
                 else -> false
             }
             else -> false
+        }
+
+        /**
+         * Whether a fresh value of type [t] may be what keeps alive the storage a view formed
+         * from it points into, directly or through a handle it holds (E2): every type but a
+         * scalar, an enum and a second-class value (a view points wherever it was made, and a
+         * copy of it keeps nothing alive). A value class (a struct, and after W2.9 an immutable
+         * class) counts whatever its fields: `Wrap{.r = std::make_shared<...>(...)}` holds the
+         * only `Ref` to the list its `items()` returns a view of, though [ownsStorage] finds no
+         * storage in it (a `Ref`, class or trait field owns none by value), and the view copied
+         * out of the declaration that made it printed 823559285 on gcc where Kira gives 3601 (a
+         * heap-use-after-free under MSVC's ASan). Deciding which fields may reach storage is the
+         * provenance analysis decision 4b avoids; anything not proved inert is an owner.
+         */
+        fun mayKeepAlive(t: KType): Boolean = when (t) {
+            is KType.Scalar, KType.Void, KType.Never, KType.NullT, KType.Error -> false
+            is KType.Nominal -> t.sym !is EnumSymbol && !isSecondClass(t)
+            KType.Str, is KType.Param, is KType.Fn -> true
         }
 
         /**
