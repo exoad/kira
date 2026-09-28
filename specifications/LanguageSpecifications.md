@@ -1122,11 +1122,11 @@ y: Bool = 10 != 5    // Inequality
 
 -   `a == b` is `a.@_op_eq_(b)`, and `a < b` is `a.@_op_lt_(b)` (see Operator Overloading); each returns `Bool`
 -   `a != b` is `a.@_op_neq_(b)` when the class declares it, and `!(a == b)` otherwise
--   A class that neither declares an `@_op_eq_` nor inherits a declared one has one supplied. A body-less `@_op_eq_`, such as `Equatable<T>`'s, is not a declared one:
+-   A class that neither declares an `@_op_eq_` nor inherits a declared one has one supplied. A trait's body-less `@_op_eq_`, such as `Equatable<T>`'s, is not a declared one:
     -   an immutable class compares the classes of the two objects, then every field, inherited ones included, each by its own `==`. The answer does not depend on the variables' types: an object never equals one of another class, its parent's included. A field whose type has no `==` makes `==` on the class an error
     -   a mutable class compares identity: an object equals only itself
 -   In a hierarchy, each class that neither declares an `@_op_eq_` nor inherits a declared one has its own supplied one, overriding its parent's: an immutable subclass compares its own fields too, and a mutable subclass compares identity. A declared `@_op_eq_` is inherited like any method, by immutable and mutable subclasses alike
--   The supplied `@_op_eq_` is a method like any other: `a.@_op_eq_(b)` calls it, and it implements `Equatable<C>`'s `@_op_eq_` when the class declares that trait, directly or through `Comparable<C>`. So a class needs only `@_op_lt_` to be `Comparable<C>`
+-   The supplied `@_op_eq_` is a method like any other: `a.@_op_eq_(b)` calls it, and it implements `Equatable<C>`'s `@_op_eq_`, where `C` is the class itself, when the class declares that trait, directly or through a trait that extends it, such as `Comparable<C>`. So a class needs only `@_op_lt_` to be `Comparable<C>`
 -   A trait-typed value has `==` only when the trait declares one: `trait Shape: Equatable<Shape>`
 -   A built-in has `==` where the standard library declares it: the numbers, `Bool`, `Char` and `Str`, and, element by element, `View`, `MutView`, `Arr`, `List` and the tuples. `Maybe`, `Result`, `Map`, `Set`, `Stack`, `Queue`, `Deque`, `StrBuf`, `Ref`, `Weak` and `Fx` have none
 -   Enums compare their values
