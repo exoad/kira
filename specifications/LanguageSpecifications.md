@@ -2587,8 +2587,10 @@ handler: Handler = Handler {
 handler.process("test data")
 ````
 
-Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. Any class with
-unimplemented methods can receive implementations during instantiation, allowing for flexible object construction where
+Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. A body-less method of a
+class is a slot. A construction must fill every slot of the class being built unless that class overrides the method
+or inherits an override of it, so `Handler { }` is an error, and building a `Circle` (see Inheritance) needs no `area`.
+A slot is fixed at construction, so it does not make its class mutable. This allows flexible object construction where
 behavior can be customized without requiring subclassing.
 
 ### Inheritance
