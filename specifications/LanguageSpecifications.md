@@ -3086,10 +3086,12 @@ result: Int32 = identity<Int32>(42)
 Constrain type parameters to ensure they implement specific traits:
 
 ```kira
-fx sort<T: Comparable>: (items: List<T>) List<T> {
+fx sort<T: Comparable<T>>: (items: List<T>) List<T> {
     // implementation using T's comparison methods
 }
 ```
+
+An operator on a `T` value resolves through `T`'s bounds like any method: `a < b` needs `T: Comparable<T>`, `a + b` needs `T: Num<T>`, and `a == b` needs `T: Equatable<T>`.
 
 **Multiple Trait Bounds:**
 
@@ -3097,11 +3099,11 @@ When a type parameter must satisfy multiple traits, use **comma-separated** synt
 
 ```kira
 // ✓ Correct: comma-separated bounds
-fx processItem<T: Comparable, Serializable>: (item: T) Str {
-    // T must implement both Comparable and Serializable
+fx processItem<T: Comparable<T>, Serializable>: (item: T) Str {
+    // T must implement both Comparable<T> and Serializable
 }
 
-// Incorrect: not T: Comparable + Serializable
+// Incorrect: not T: Comparable<T> + Serializable
 ```
 
 The type parameter `T` must implement all specified traits.
