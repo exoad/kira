@@ -1241,6 +1241,8 @@ length: Int32 = range.length()
 element: Int32 = range[0]
 ```
 
+`range[0]` is `range.@_op_get_(0)`, as for any class.
+
 ### Assignment Operator
 
 Simple assignment uses `=`:
