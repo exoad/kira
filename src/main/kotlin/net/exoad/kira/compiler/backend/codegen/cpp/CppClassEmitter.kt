@@ -91,13 +91,16 @@ import java.util.WeakHashMap
  *   arguments; it is `explicit` for exactly one parameter. Its mem-initializers keep that
  *   order (the superclass's constructor first, so the superclass's `initially` runs first)
  *   and move what is not a scalar; `initially` is its body. No field and no `initially`:
- *   `C() = default;`.
+ *   `C() = default;`. A default that is not PURE is no default argument (R-D): its
+ *   parameter is `std::optional<T> x_ = std::nullopt`, and its mem-initializer runs the
+ *   default when the construction left the field out, so the defaults run in declaration
+ *   order, a superclass's and its `initially` first (OQ-2, Kotlin's order).
  * - `final` unless the program subclasses it. A method is virtual only when the program
  *   overrides it or a trait declares it; one that overrides says `override`; it is `const`
- *   unless it is `mut` or it writes its receiver ([CppClassFacts.isConstMethod]): the typer
- *   lets a plain `fx` of a class write a `mut` field and call a `mut fx` on itself (a class
- *   is a reference, D29: `thisMutable` holds in every class method), so `const` has to come
- *   from the body, not the modifier, or no compiler takes the method. A C++ `override`
+ *   unless it is `mut` or its body writes its receiver in a way the rules let a plain `fx`
+ *   (a lambda through the captured `self`, a field passed `mut`, a view of a `mut` field the
+ *   typer lends as a `MutView`, a trait default calling a `mut fx`: [CppClassFacts.isConstMethod]).
+ *   A C++ `override`
  *   overrides every same-named virtual of every base at once, so the whole family (the
  *   superclass method and each trait method it implements, and on through their bases and
  *   overriders) is decided together. Either way it is callable through a `const kira::Rc<C>&`.
@@ -330,14 +333,32 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
     // ---- constructor, destructor, fields -------------------------------------------------------------
 
-    /** One constructor parameter: a field of the class or of a superclass. */
-    private class CtorParam(val field: FieldSymbol, val owner: ClassSymbol, val type: String, val name: String, val default: String?, val moved: Boolean) {
-        val argument: String get() = if (moved) "std::move($name)" else name
+    /**
+     * One constructor parameter: a field of the class or of a superclass. [fieldType] is the
+     * field's C++ type and [kType] its Kira type under the chain's type arguments. A field
+     * whose default is not PURE is [deferred] (R-D and OQ-2, [CppClassFacts.pureDefault]):
+     * the parameter is `std::optional<T>`, empty when the construction leaves the field out,
+     * and the field's own mem-initializer runs the default then, after the superclass's
+     * constructor and in declaration order.
+     */
+    private class CtorParam(
+        val field: FieldSymbol,
+        val owner: ClassSymbol,
+        val fieldType: String,
+        val kType: KType,
+        val name: String,
+        val default: String?,
+        val moved: Boolean,
+        val deferred: Boolean,
+    ) {
+        val type: String get() = if (deferred) "std::optional<$fieldType>" else fieldType
+        val argument: String get() = if (moved || deferred) "std::move($name)" else name
     }
 
     /**
      * Every field of the chain, root first, as the constructor takes it. The defaults are
-     * spelled only [withDefaults] (the declaration), so a default is lowered once.
+     * spelled only [withDefaults] (the declaration), so a default is lowered once: a PURE
+     * default as itself, a deferred one ([CtorParam.deferred]) as `std::nullopt`.
      */
     private fun constructorParams(c: ClassSymbol, withDefaults: Boolean): List<CtorParam> {
         val fields = facts.chain(c).flatMap { link -> link.cls.fields.map { f -> link to f } }
@@ -347,8 +368,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
         return fields.mapIndexed { i, (link, f) ->
             val type = f.type.substitute(link.substitution)
-            val default = if (withDefaults && i >= firstDefault) decls.initText(f.default!!, type) else null
-            CtorParam(f, link.cls, fieldText(f, link.substitution), constructorParamName(f), default, !ctx.speller.byValue(type))
+            val deferred = f.default?.let { !facts.pureDefault(it) } == true
+            val default = when {
+                !withDefaults || i < firstDefault -> null
+                deferred -> "std::nullopt"
+                else -> decls.initText(f.default!!, type)
+            }
+            CtorParam(f, link.cls, fieldText(f, link.substitution), type, constructorParamName(f), default, !ctx.speller.byValue(type), deferred)
         }
     }
 
@@ -378,7 +404,14 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return "$explicit$name(${params.joinToString(", ") { p -> "${p.type} ${p.name}" + (p.default?.let { " = $it" } ?: "") }});"
     }
 
-    /** The superclass's constructor (when it takes anything), then each own field, in declaration order. */
+    /**
+     * The superclass's constructor (when it takes anything), then each own field, in
+     * declaration order: C++ runs them in that order whatever the list says, so a deferred
+     * default ([CtorParam.deferred]) runs after the superclass's field defaults and its
+     * `initially`, and after the class's earlier fields (Kotlin's order, the user's OQ-2
+     * answer: `Kid {}` under `Base { initially { seen = next() } }` with `k: Int32 = next()`
+     * gives seen=4, k=5; a default argument ran k first, seen=5, k=4 on every compiler).
+     */
     private fun memInitializers(c: ClassSymbol, params: List<CtorParam>): List<String> {
         val out = mutableListOf<String>()
         val inherited = params.filter { it.owner !== c }
@@ -386,7 +419,15 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         if (sup != null && inherited.isNotEmpty()) {
             out += "${ctx.speller.bareClass(sup)}(${inherited.joinToString(", ") { it.argument }})"
         }
-        params.filter { it.owner === c }.forEach { out += "${ctx.names.escape(it.field.name)}(${it.argument})" }
+        params.filter { it.owner === c }.forEach { p ->
+            val value = if (p.deferred) {
+                val default = p.field.default!!
+                "${p.name}.has_value() ? std::move(*${p.name}) : static_cast<${p.fieldType}>(${skippedDefault(default, p.kType, default)})"
+            } else {
+                p.argument
+            }
+            out += "${ctx.names.escape(p.field.name)}($value)"
+        }
         return out
     }
 
@@ -1277,18 +1318,21 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * `C { ... }` for a class (R9): `std::make_shared<C>(...)` with one argument per field of
      * the chain in constructor order ([ResolvedInit.fields]). The trailing fields left to
      * their defaults are left to the C++ default arguments; a skipped earlier one is filled
-     * in with its default (or `T{}` for a field without one, D38). `Ref<T> { value = v }` is
-     * `std::make_shared<kira::Box<T>>(v)` (D46), and a system module's class is its
-     * runtime's (`kira::sync::Thread`).
+     * in with its PURE default, `std::nullopt` for a default that is not PURE (the
+     * constructor runs it, R-D and OQ-2), or `T{}` for a field without one (D38). A given
+     * value of a field whose default is not PURE is `std::make_optional<T>(v)`.
+     * `Ref<T> { value = v }` is `std::make_shared<kira::Box<T>>(v)` (D46), and a system
+     * module's class is its runtime's (`kira::sync::Thread`).
      *
      * D33, as W2.3's call hoister orders a call's arguments: C++ leaves the order of function
      * arguments unspecified, and `make_shared` forwards each one by reference, so a place or
      * a `const&` parameter is read inside `make_shared`, after every sibling has run. When
      * one operand may have an effect ([CppClassFacts.operandRank] IMPURE) and another is not
      * PURE, every operand that is not PURE is copied into a typed temporary of an immediately
-     * invoked lambda (R19), in Kira's order: the given values as written, then the skipped
-     * middle defaults the call fills in, in declaration order (a trailing default is the
-     * constructor's default argument, which runs after every argument, as Kira's does).
+     * invoked lambda (R19), in Kira's order: the given values as written. The defaults come
+     * after them: a PURE one is order-free, and the others run inside the constructor, after
+     * every argument (Kira: the given values, then the defaults in declaration order, a
+     * superclass's fields and `initially` before the subclass's fields).
      * `Pair { b.name, c.rename() }` with c = b printed `new` for Kira's `old` on g++, zig and
      * MSVC (ctorwrong2), and `Pair { s, h.reset() }` read a Str parameter bound into the Item
      * reset freed (ctororder: MSVC ASan heap-use-after-free).
@@ -1316,10 +1360,10 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
                 return "/* ${t.display()} */"
             }
         }
-        return construction(e, init, target)
+        return construction(e, init, target, kiraClass = facts.isKiraClass(cls))
     }
 
-    private fun construction(e: ObjectInitExpr, init: ResolvedInit, target: String): String {
+    private fun construction(e: ObjectInitExpr, init: ResolvedInit, target: String, kiraClass: Boolean): String {
         val fields = init.fields
         // No object holds a view (decision 4b): ViewPass refuses the field's type (rules.view.type) before any emitter runs.
         fields.firstOrNull { holdsSecondClass(it.field.type.substitute(init.substitution)) }?.let { f ->
@@ -1335,11 +1379,14 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
         val types = fields.map { it.field.type.substitute(init.substitution) }
         val texts = arrayOfNulls<String>(end)
-        // make_shared's operands in Kira's order: the given values as written, then the skipped middle defaults.
+        // A default that is not PURE is the constructor's to run (R-D, OQ-2): it is no operand here. (A `Ref` or a system
+        // class is the runtime's, whose constructor takes every field as it is.)
+        val deferred = { i: Int -> kiraClass && fields[i].field.default?.let { !facts.pureDefault(it) } == true }
+        // make_shared's operands in Kira's order: the given values as written, then the skipped middle PURE defaults.
         val operands = init.sourceOrder.filter { it < end && fields[it] is FieldInit.Given } +
-            (0 until end).filter { fields[it] is FieldInit.Default && fields[it].field.default != null }
+            (0 until end).filter { fields[it] is FieldInit.Default && fields[it].field.default != null && !deferred(it) }
         val operand = { i: Int -> (fields[i] as? FieldInit.Given)?.expr ?: fields[i].field.default!! }
-        val ranks = operands.map { facts.operandRank(operand(it)) }
+        val ranks = operands.map { i -> if (fields[i] is FieldInit.Default) CppClassFacts.RANK_PURE else facts.operandRank(operand(i)) }
         val spilled = mutableListOf<String>()
         if (ranks.any { it == CppClassFacts.RANK_IMPURE } && ranks.count { it != CppClassFacts.RANK_PURE } >= 2) {
             operands.filterIndexed { k, _ -> ranks[k] != CppClassFacts.RANK_PURE }.forEach { i ->
@@ -1362,7 +1409,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             }
             texts[i] = when (val f = fields[i]) {
                 is FieldInit.Given -> argument(f.expr)
-                is FieldInit.Default -> f.field.default?.let { skippedDefault(it, types[i], e) } ?: run {
+                is FieldInit.Default -> if (deferred(i)) "std::nullopt" else f.field.default?.let { skippedDefault(it, types[i], e) } ?: run {
                     if (!hasEmptyValue(types[i])) {
                         // Every such field is named, then nothing is lowered.
                         refuseSkipped(e, init, f.field, types[i])
@@ -1374,6 +1421,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
         if (refused) {
             return "/* ${init.cls?.name ?: "construction"} */"
+        }
+        // A given value of a deferred field fills its std::optional parameter. Wrapped explicitly: a bare `kira::none` for a
+        // Maybe field would convert to the empty optional itself, and the constructor would run the default instead.
+        for (i in 0 until end) {
+            if (fields[i] is FieldInit.Given && deferred(i)) {
+                texts[i] = "std::make_optional<${ctx.spell(types[i], if (fields[i].field.isMut) Pos.MUT_VALUE else Pos.FIELD, e)}>(${texts[i]})"
+            }
         }
         val call = "std::make_shared<$target>(${texts.joinToString(", ")})"
         if (spilled.isEmpty()) {
@@ -1831,6 +1885,18 @@ class CppClassFacts(private val program: TypedProgram) {
         else -> RANK_READS
     }
 
+    /**
+     * R-D (40-round3): whether the field default [e] may stay a C++ default argument, which
+     * C++ evaluates at the call, in no order against the other arguments and before any
+     * constructor runs: only when no evaluation can change or observe it, EffectsPass's PURE
+     * (or [operandRank]'s, a literal, an immutable global, a lambda that captures nothing).
+     * Any other default runs inside the constructor ([ClassLowering]'s deferred parameter), in
+     * declaration order after the superclass's defaults and `initially` (OQ-2, Kotlin's
+     * order). Measured before (second-class round 2): `Two {}` with three `next()` defaults
+     * printed 3 2 1 on g++ and MSVC and 1 2 3 on zig; Kira's is 1 2 3.
+     */
+    fun pureDefault(e: Expr): Boolean = model.effects[e] == Effect.PURE || operandRank(e) == RANK_PURE
+
     private fun readsNothingShared(e: Expr): Boolean = when (e) {
         is IntegerLiteral, is FloatLiteral, is CharLiteral, is StringLiteral -> true
         is UnaryExpr -> e.operator == UnaryOp.NEG && readsNothingShared(e.operand)
@@ -2064,10 +2130,23 @@ class CppClassFacts(private val program: TypedProgram) {
     /**
      * Which class and trait methods are not `const` ([isConstMethod]): every `mut fx`, then,
      * to a fixed point, every method whose body writes the receiver (a write, a `mut`
-     * argument, or a call to a method already known to write) and every method of a family
-     * one of those belongs to. A struct method never takes part: the typer already needs
-     * `mut` on it to write, and a struct implements a trait by static dispatch (D1); the
-     * trait default bodies it takes as members follow [traitBodyWrites].
+     * argument, a call to a method already known to write, or a `MutView` lent of a field)
+     * and every method of a family one of those belongs to (an override is `mut` exactly when
+     * what it overrides is, `types.override.signature`, so a family's declarations agree).
+     *
+     * W2.5's MutabilityPass refuses a plain `fx` of a class that writes its own state or calls
+     * a `mut fx` on itself (`rules.mutability.this`, `.method`), so for those shapes this is
+     * the declaration's `mut` again. The body is still read, because the rules let four shapes
+     * through that a `const` method could not lower (second-class round 3): a lambda the
+     * method writes that writes through the captured `self` (design 5.6; MutabilityPass exempts
+     * it), a field passed as a `mut` argument (`grab(mut n)` types clean in a plain `fx`;
+     * `int&` cannot bind a `const` member), a view of a `mut` field, which the typer lends as a
+     * `MutView` in any class body and the statement part spells `kira::mutView(items)` (round
+     * 1's `allowed2` stopped compiling on g++ and zig when this was narrowed to lambdas), and a
+     * trait default body calling a `mut fx` on its receiver (MutabilityPass has no class type
+     * to judge a trait's `this` by). A struct method never takes part: the typer already needs
+     * `mut` on it to write, and a struct implements a trait by static dispatch (D1); the trait
+     * default bodies it takes as members follow [traitBodyWrites].
      *
      * A family is what C++ ties together: an `override` in a class or trait overrides every
      * same-named virtual of every base, direct or indirect, at once (`class C: A, B` with

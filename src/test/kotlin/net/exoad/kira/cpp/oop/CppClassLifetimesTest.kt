@@ -31,6 +31,19 @@ class CppClassLifetimesTest {
     private fun unsupported(body: String): List<String> =
         emit(body).module(uri).diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }.map { it.message }
 
+    /**
+     * A program W2.5's rules now refuse first ([code] from the typer), whose refusal the
+     * classes part keeps as a backstop: with the rule pass [pass] off, the emitter refuses it
+     * with [wanted] (40-round3 4.2: "assert the checker's refusal; keep W2.4's as a backstop
+     * tested with the rule passes off").
+     */
+    private fun refusedFirstByTheRules(body: String, pass: String, code: String, wanted: String) {
+        val errors = OopTestSupport.typerErrors(OopTestSupport.module(uri, body))
+        assertTrue(errors.any { it.contains("[$code]") }, "expected the typer's $code, got:\n${errors.joinToString("\n")}")
+        val messages = OopTestSupport.withoutRulePass(pass) { unsupported(body) }
+        assertTrue(messages.any { it.startsWith(wanted) }, "expected the classes part's backstop '$wanted', got:\n${messages.joinToString("\n")}")
+    }
+
     private fun assertContains(text: String, vararg wanted: String) {
         wanted.forEach { assertTrue(text.contains(it), "expected to find:\n$it\nin:\n$text") }
     }
@@ -321,9 +334,9 @@ class CppClassLifetimesTest {
 
     @Test
     fun aLoopOverAnObjectsListWhoseBodyMayGrowItIsRefused() {
-        // bagloop2: for s in b.items { c.grow() } with c = b (g++: freed heap bytes).
-        val messages = unsupported(
-            """
+        // bagloop2: for s in b.items { c.grow() } with c = b (g++: freed heap bytes). W2.5's loop rule refuses it
+        // first since round 3 (a write through another handle of the same class, q6); this is the backstop.
+        val body = """
             pub class Bag {
                 pub mut items: List<Str> = List<Str> {}
 
@@ -341,9 +354,10 @@ class CppClassLifetimesTest {
                 return n
             }
             """
-        )
+        refusedFirstByTheRules(body, "exclusivity", "rules.exclusivity.loop", "the loop over b.items, storage an object holds, while its body may change or free it (the call to grow)")
+        val messages = OopTestSupport.withoutRulePass("exclusivity") { unsupported(body) }
         assertEquals(1, messages.size, messages.toString())
-        assertContains(messages.single(), "the loop over b.items, storage an object holds, while its body may change or free it (the call to grow)", "Iterate over a local copy instead")
+        assertContains(messages.single(), "Iterate over a local copy instead")
     }
 
     @Test
@@ -780,9 +794,9 @@ class CppClassLifetimesTest {
 
     @Test
     fun aFieldsDefaultLambdaIsCheckedAsABodyIs() {
-        // fielddefault: bagloop2's lambda as a field's default compiled, and read freed heap bytes.
-        val messages = unsupported(
-            """
+        // fielddefault: bagloop2's lambda as a field's default compiled, and read freed heap bytes. W2.5's loop rule
+        // refuses it first since round 3; the classes part's check of a field default is the backstop.
+        val body = """
             pub class Bag {
                 pub mut items: List<Str> = List<Str> {}
 
@@ -803,9 +817,7 @@ class CppClassLifetimesTest {
                 }
             }
             """
-        )
-        assertEquals(1, messages.size, messages.toString())
-        assertContains(messages.single(), "the loop over b.items, storage an object holds, while its body may change or free it (the call to grow)")
+        refusedFirstByTheRules(body, "exclusivity", "rules.exclusivity.loop", "the loop over b.items, storage an object holds, while its body may change or free it (the call to grow)")
     }
 
     // ---- a template Fx parameter bound to an Fx an object holds (convergence round 3) ---------------------
@@ -1187,8 +1199,10 @@ class CppClassLifetimesTest {
     }
 
     @Test
-    fun storageAnObjectHoldsPassedToAnExternWhoseCallbackMayFreeItIsRefused() {
-        // externstr with the argument a field: no copy at entry reaches it.
+    fun aStrAnObjectHoldsPassedToAnExternIsLeftToW26sCopyAtTheCall() {
+        // externstr with the argument a field. A body C++ supplies is given a copy made at the call (40-round3 R-B,
+        // W2.6's CppExternEmitter) for a Str, a container, a Maybe, Result or tuple and a value class, so the classes
+        // part no longer refuses it (round 2 did: "passed by const& to measure ... may run the Fx it is given").
         val messages = unsupported(
             """
             $externItem
@@ -1200,7 +1214,167 @@ class CppClassLifetimesTest {
             }
             """
         )
-        assertTrue(messages.any { it.startsWith("the argument c.item.label, storage an object holds, passed by const& to measure") }, messages.joinToString("\n"))
+        assertTrue(messages.none { it.contains("c.item.label") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aHandleAnObjectHoldsPassedToAnExternWhoseCallbackMayFreeItIsRefused() {
+        // R-B copies no class handle: inspect runs the callback, then reads `it`, a const kira::Rc<Item>& into the
+        // slot h.reset() overwrote (and into the Box c, which the callback may free). A local copy keeps it.
+        val messages = unsupported(
+            """
+            $externItem
+
+            pub fx inspect: (it: Item, f: Fx<Tuple0, Void>) Int32;
+
+            pub fx later: (c: Box, h: Box) Int32 {
+                return inspect(c.item, fx() Void {
+                    h.reset()
+                })
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the argument c.item, storage an object holds, passed by const& to inspect") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aStrAnObjectHoldsPassedToADispatchedCallWhoseCallbackMayFreeItIsRefused() {
+        // A trait method may be a C++ override (OD-2), and R-B copies only at a call C++ supplies itself: the Str
+        // argument of a dispatched call stays refused.
+        val messages = unsupported(
+            """
+            $externItem
+
+            pub trait Shower {
+                pub fx show: (s: Str, f: Fx<Tuple0, Void>) Int32;
+            }
+
+            pub fx later: (sh: Shower, c: Box, h: Box) Int32 {
+                return sh.show(c.item.label, fx() Void {
+                    h.reset()
+                })
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the argument c.item.label, storage an object holds, passed by const& to show") }, messages.joinToString("\n"))
+    }
+
+    // ---- R-C: a callee C++ supplies may run every Fx an argument reaches (second-class round 3) -------------
+
+    /**
+     * The five holders of an `Fx` 40-round3 5.5 names, each as a value the call is given: the
+     * parameter of a callee that takes it, and the statement that builds one whose callback
+     * runs `c.reset()`. The analysis cannot see which function a held `Fx` is, so each makes
+     * the callee's during everything (CallReach.mayHoldFx), where round 2 counted only a lambda
+     * or an argument of a function type.
+     */
+    private val holders = listOf(
+        Triple("a class field", "w: Wrap", "held: Wrap = Wrap { f = fx() Void { c.reset() } }"),
+        Triple("an Arr", "w: Arr<Fx<Tuple0, Void>, 1>", "held: Arr<Fx<Tuple0, Void>, 1> = [fx() Void { c.reset() }]"),
+        Triple("a List", "w: List<Fx<Tuple0, Void>>", "held: List<Fx<Tuple0, Void>> = [fx() Void { c.reset() }]"),
+        Triple("a Maybe", "w: Maybe<Fx<Tuple0, Void>>", "held: Maybe<Fx<Tuple0, Void>> = fx() Void { c.reset() }"),
+        Triple("a tuple", "w: Tuple2<Fx<Tuple0, Void>, Int32>", "held: Tuple2<Fx<Tuple0, Void>, Int32> = Tuple2<Fx<Tuple0, Void>, Int32> { fx() Void { c.reset() }, 1 }"),
+    )
+
+    private val wrap = """
+        pub class Wrap {
+            require pub f: Fx<Tuple0, Void>
+        }
+    """.trimIndent()
+
+    @Test
+    fun aMutArgumentAnExternMayFreeThroughAnFxAnArgumentHoldsIsRefused() {
+        // externarr: `bumpAll(mut h.item.count, [fx() Void { c.reset() }])`, an Arr of Fx given to an @_extern, wrote
+        // through the int& into the Item the callback freed (MSVC ASan heap-use-after-free). A mut place is never
+        // copied (R19), so it is refused, for each holder.
+        for ((what, param, build) in holders) {
+            val messages = unsupported(
+                """
+                $externItem
+
+                $wrap
+
+                pub fx bumpHeld: (mut n: Int32, $param) Void;
+
+                pub fx main: () Int32 {
+                    h: Box = Box {}
+                    c: Box = h
+                    $build
+                    bumpHeld(mut h.item.count, held)
+                    return h.item.count
+                }
+                """
+            )
+            assertTrue(
+                messages.any { it.startsWith("the mut argument h.item.count, storage an object holds, passed to bumpHeld, which may change or free that object") },
+                "$what: ${messages.joinToString("\n")}",
+            )
+        }
+    }
+
+    @Test
+    fun aParameterAnExternReadsAfterAnFxAnArgumentHoldsIsCopiedAtEntry() {
+        // externnested: `measure(s, w)` with w a Wrap holding a callback that frees the Item s is bound into: s was
+        // not copied at entry (MSVC ASan heap-use-after-free reading s). Now for each holder.
+        for ((what, param, build) in holders) {
+            val (_, s) = both(
+                """
+                $externItem
+
+                $wrap
+
+                pub fx measureHeld: (s: Str, $param) Int32;
+
+                pub fx later: (s: Str, c: Box) Int32 {
+                    $build
+                    return measureHeld(s, held)
+                }
+                """
+            )
+            assertTrue(s.contains("  std::int32_t later(const kira::Str& sRef_, const kira::Rc<Box>& c)\n  {\n      const kira::Str s = sRef_;\n"), "$what:\n$s")
+        }
+    }
+
+    @Test
+    fun aHolderOfNoFxLeavesTheExternsParameterUncopied() {
+        // A List<Int32> and a Str hold no Fx (CallReach.mayHoldFx is false): nothing of Kira's can run during the call.
+        val (_, s) = both(
+            """
+            $externItem
+
+            pub fx sumAll: (s: Str, xs: List<Int32>) Int32;
+
+            pub fx later: (s: Str, c: Box) Int32 {
+                xs: List<Int32> = [1, 2]
+                return sumAll(s, xs)
+            }
+            """
+        )
+        assertLacks(s, "sRef_")
+    }
+
+    @Test
+    fun aDispatchedCallGivenAHeldFxMayRunAnything() {
+        // A trait method's C++ override may run an Fx it reaches through an argument: a mut argument into an object
+        // is refused as for an extern, though no Kira override of it frees anything.
+        val messages = unsupported(
+            """
+            $externItem
+
+            pub trait Bumper {
+                pub fx bump: (mut n: Int32, fs: List<Fx<Tuple0, Void>>) Void;
+            }
+
+            pub fx bumpVia: (b: Bumper) Int32 {
+                h: Box = Box {}
+                c: Box = h
+                fs: List<Fx<Tuple0, Void>> = [fx() Void { c.reset() }]
+                b.bump(mut h.item.count, fs)
+                return h.item.count
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the mut argument h.item.count, storage an object holds, passed to bump") }, messages.joinToString("\n"))
     }
 
     private val runner = """
@@ -1220,8 +1394,9 @@ class CppClassLifetimesTest {
     @Test
     fun aTraitReceiverAnObjectHoldsThatTheCallbackMayReplaceIsRefused() {
         // Runner.run may be a C++ override (the chain driver's test double), which runs the callback and then reads
-        // its own object: the callback replaced the slot that was that object's last owner.
-        val messages = unsupported(
+        // its own object: the callback replaced the slot that was that object's last owner. W2.5's alias rule refuses
+        // it first (the receiver s.r beside a write of it); the classes part's refusal is the backstop.
+        refusedFirstByTheRules(
             """
             $runner
 
@@ -1230,9 +1405,11 @@ class CppClassLifetimesTest {
                     s.clear(spare)
                 })
             }
-            """
+            """,
+            "exclusivity",
+            "rules.exclusivity.alias",
+            "the call to run on s.r, storage an object holds, whose body C++ may supply",
         )
-        assertTrue(messages.any { it.startsWith("the call to run on s.r, storage an object holds, whose body C++ may supply") }, messages.joinToString("\n"))
     }
 
     @Test

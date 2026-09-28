@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
+import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.IndexKind
@@ -21,7 +22,9 @@ import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.display
+import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
@@ -105,12 +108,13 @@ import java.util.IdentityHashMap
  * the name for a virtual or trait call, and every lambda and function value for a call through
  * an `Fx` (the lambda itself, for a local that is not `mut` and was given one). What C++
  * supplies (a C++ override of a trait method, an `Fx` built in C++, an `@_extern`, a bodyless
- * `pub` prototype a C++ file defines) writes Kira storage only through its `mut` arguments and
- * runs Kira code only through the `Fx` arguments it is given, and reads its arguments during
- * the call: the boundary contract of 30-second-class.md 5.4, recorded in
- * `docs/cpp-known-issues/w2-4-emit-oop.md`. So such a call may do whatever its `Fx` arguments
- * do (everything, for an `Fx` value the analysis cannot see into), and an argument it reads,
- * and the receiver it runs on, is in use until it returns.
+ * `pub` prototype a C++ file defines, an `@_opaque` method) writes Kira storage only through
+ * its `mut` arguments and runs Kira code only through what it is given, and reads its
+ * arguments during the call: the boundary contract of 30-second-class.md 5.4, recorded in
+ * `docs/cpp-known-issues/w2-4-emit-oop.md`. So such a call may run any `Fx` its arguments
+ * reach (40-round3 R-C, W2.5's `CallReach.mayHoldFx`: a lambda written there runs its body,
+ * any other value that may hold an `Fx` runs everything), and an argument it reads, and the
+ * receiver it runs on, is in use until it returns.
  */
 class CppClassLifetimes(private val program: TypedProgram) {
     private val model = program.model
@@ -209,8 +213,8 @@ class CppClassLifetimes(private val program: TypedProgram) {
     /** Some object's destruction runs code: a class with a `finally`, or a system class. */
     val hasFinally: Boolean = systemInUse || kiraClasses.any { it.finally != null }
 
-    /** One body the summaries cover: a function or method, a lambda, an `initially` or a `finally`. */
-    private class Body(val statements: List<Statement>, val fn: FnSymbol?, val owner: TypeSymbol?)
+    /** One body the summaries cover: a function or method, a lambda, an `initially`, a `finally`, or a field's default. */
+    private class Body(val statements: List<ASTNode>, val fn: FnSymbol?, val owner: TypeSymbol?)
 
     private val bodies = mutableListOf<Body>()
     private val lambdas = mutableListOf<LambdaExpr>()
@@ -220,7 +224,14 @@ class CppClassLifetimes(private val program: TypedProgram) {
     private val fnValues: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
 
     /** Each body's effects, keyed by its statement list (identity): a fixpoint over the call graph. */
-    private val summaries = IdentityHashMap<List<Statement>, Effects>()
+    private val summaries = IdentityHashMap<List<ASTNode>, Effects>()
+
+    /**
+     * Each field default as a body of its own ([summaries]): a construction that leaves the
+     * field out runs it, inside the constructor (R-D and OQ-2: after the superclass's
+     * `initially`), so the construction's effects carry it ([Walker.construction]).
+     */
+    private val defaultBodies = IdentityHashMap<FieldSymbol, List<ASTNode>>()
 
     /** What a call through an `Fx` value may run: every lambda and every function used as a value. */
     private var fxPool = Effects()
@@ -244,6 +255,13 @@ class CppClassLifetimes(private val program: TypedProgram) {
                     sym.methods.forEach { m -> m.body?.let { bodies += Body(it, m, sym) } }
                     sym.initially?.let { bodies += Body(it, null, sym) }
                     sym.finally?.let { bodies += Body(it, null, sym) }
+                    sym.fields.forEach { f ->
+                        f.default?.let { d ->
+                            val body = listOf<ASTNode>(d)
+                            defaultBodies[f] = body
+                            bodies += Body(body, null, sym)
+                        }
+                    }
                 }
                 is TraitSymbol -> sym.methods.forEach { m -> m.body?.let { bodies += Body(it, m, sym) } }
                 else -> {}
@@ -349,37 +367,55 @@ class CppClassLifetimes(private val program: TypedProgram) {
     private fun release(): Effects = Effects.release().also { it.addAll(finallyPool) }
 
     /**
-     * Whether C++ may supply the body the call [rc] runs: an `@_extern` function or method, a
-     * bodyless prototype a C++ file defines, or a virtual or trait method, which a C++ class
-     * may override (the chain golden's test double). Such a callee reads its arguments during
-     * the call, after any `Fx` argument it runs, and copies none of them at entry.
+     * Whether C++ may supply the body the call [rc] runs (40-round3 R-G, read here as its
+     * wider question): C++ supplies it ([FnSymbol.suppliedByCpp], W2.5's one predicate: an
+     * `@_extern`, a bodyless `pub` prototype, a bodyless `@_opaque` method), or the call is
+     * dispatched and a C++ class may override it (a virtual or trait method: the chain golden's
+     * test double). Such a callee reads its arguments during the call, after any Kira code it
+     * runs ([cppRuns]), and copies none of them at entry.
      */
-    private fun suppliedByCpp(rc: ResolvedCall): Boolean = when (rc.kind) {
-        CallKind.EXTERN, CallKind.VIRTUAL, CallKind.TRAIT -> true
-        CallKind.FREE, CallKind.METHOD -> rc.fn?.body == null
-        else -> false
-    }
+    private fun mayBeSuppliedByCpp(rc: ResolvedCall): Boolean =
+        rc.kind == CallKind.EXTERN || rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT || rc.fn?.suppliedByCpp == true
 
-    /** The `Fx` arguments of [rc]: a lambda written there, or any argument of a function type. */
-    private fun fxArgs(rc: ResolvedCall): List<Expr> =
-        rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }.filter { it is LambdaExpr || model.typeOrNull(it) is KType.Fn }
+    /** C++ supplies the body itself, with no Kira override beside it ([FnSymbol.suppliedByCpp], or the EXTERN kind). */
+    private fun suppliedDirectly(rc: ResolvedCall): Boolean = rc.kind == CallKind.EXTERN || rc.fn?.suppliedByCpp == true
 
     /**
-     * What the `Fx` arguments of [rc] may do when the callee runs them, the union of their
-     * effects (contract 5.4.3: a callee C++ supplies runs Kira code only through them): a
-     * lambda written as the argument, its body's; a function named as a value, its body's;
-     * anything else (a local, a field, a parameter, a call's result, a C++-made closure)
-     * everything, since the analysis cannot see which function it holds.
+     * What C++ may run of Kira's while the call [rc] runs, when it may supply the body
+     * ([mayBeSuppliedByCpp]) or the call goes through an `Fx` value the analysis cannot see
+     * into: null when no Kira code can run. R-C (40-round3), with W2.5's one predicate
+     * [CallReach.mayHoldFx]: a callee C++ supplies may run any `Fx` it reaches through what it
+     * is given (contract 5.4.3), not only an argument of a function type. So each given
+     * argument contributes: a lambda written there, its body (C++ can reach nothing else
+     * through a closure: what it captures is the lambda's, and its body's summary covers it);
+     * a function named as a value, its body; any other value whose type [CallReach.mayHoldFx]
+     * (an `Fx` value, a class or trait handle, a container, `Maybe`, tuple or struct of one,
+     * a type parameter), everything. A body C++ supplies directly may also run what its
+     * receiver holds ([suppliedDirectly]: an `@_opaque` or extern method); a dispatched call's
+     * receiver is the object whose override runs, left to OD-2's contract (a C++ override runs
+     * Kira code only through its arguments), and a default never counts (D48: a constant).
+     * Measured before R-C (second-class round 2): externnested's `Wrap` holding an `Fx` field
+     * and externarr's `Arr<Fx>` were not seen, a heap-use-after-free under MSVC ASan each.
      */
-    private fun fxArguments(rc: ResolvedCall): Effects {
-        val e = Effects()
-        for (x in fxArgs(rc)) {
+    private fun cppRuns(rc: ResolvedCall): Effects? {
+        var e: Effects? = null
+        fun add(x: Effects) {
+            e = (e ?: Effects()).also { it.addAll(x) }
+        }
+        for (a in rc.args) {
+            val x = (a as? ArgBinding.Given)?.expr ?: continue
             val body = when (x) {
                 is LambdaExpr -> x.def.body
                 is Identifier -> (model.symbolOf(x) as? FnSymbol)?.body
                 else -> null
             }
-            e.addAll(body?.let { summaries[it] } ?: Effects.unknown())
+            when {
+                body != null -> add(summaries[body] ?: Effects.unknown())
+                CallReach.mayHoldFx(model.typeOrNull(x)) -> add(Effects.unknown())
+            }
+        }
+        if (suppliedDirectly(rc) && (rc.implicitThis || rc.receiver?.let { CallReach.mayHoldFx(model.typeOrNull(it)) } == true)) {
+            add(Effects.unknown())
         }
         return e
     }
@@ -479,7 +515,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
             return null
         }
         val callee = n.name
-        val place = model.place(callee) ?: return null
+        val place = model.readPlace(callee) ?: return null
         if (kindOf(place) != PlaceKind.SHARED) {
             return null
         }
@@ -507,6 +543,26 @@ class CppClassLifetimes(private val program: TypedProgram) {
         }
     }
 
+    /**
+     * The by-value argument kinds W2.6 copies at a call C++ supplies whenever that call may
+     * write them while it runs (40-round3 R-B, the copy that replaces [cppCalleeArgRefusals]
+     * for them): a `Str`, a container, a `Maybe`, `Result` or tuple, and a value class (a
+     * struct here; an immutable class after W2.9). A class, trait, `Ref` or `Weak` handle is not
+     * one of them.
+     */
+    private fun copiedAtTheCall(t: KType): Boolean = when (t) {
+        KType.Str -> true
+        is KType.Nominal -> when (val sym = t.sym) {
+            is ClassSymbol -> when (sym.kind) {
+                ClassKind.STRUCT -> true
+                ClassKind.MAGIC -> sym.name in COPIED_AT_THE_CALL || sym.name.startsWith("Tuple")
+                else -> false
+            }
+            else -> false
+        }
+        else -> false
+    }
+
     /** Whether the parameter column passes a [t] by `const&`: anything but a scalar, an enum, a view and a pointer (CppTypeSpeller.byValue). */
     private fun passedByReference(t: KType): Boolean = when (t) {
         is KType.Scalar, KType.Void, KType.Never, KType.NullT, KType.Error -> false
@@ -526,7 +582,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
         if (temporaryRange(target) != null) {
             return null
         }
-        val place = model.place(target) ?: return null
+        val place = model.readPlace(target) ?: return null
         if (kindOf(place) != PlaceKind.SHARED) {
             return null
         }
@@ -582,7 +638,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 break
             }
         }
-        if (!intoIt || e is Identifier || e is ThisExpr || model.place(e) != null) {
+        if (!intoIt || e is Identifier || e is ThisExpr || model.readPlace(e) != null) {
             return null
         }
         return e
@@ -620,16 +676,22 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
     /**
      * An argument C++ takes by `const&` that names storage an object holds, passed to a callee
-     * C++ supplies ([suppliedByCpp]) together with an `Fx` argument whose code may change or
-     * free that storage: the C++ callee reads the reference while it runs, after the callback
+     * C++ may supply ([mayBeSuppliedByCpp]) that may run Kira code which changes or frees that
+     * storage ([cppRuns]): the C++ callee reads the reference while it runs, after the callback
      * (externstr's shape with the argument a field, `measure(c.item.label, fx() Void {
      * h.reset() })`). A Kira callee copies such a parameter at entry ([guard]); a C++ one
      * copies nothing, and a parameter of the caller passed on is copied at the caller's entry
      * instead ([Walker.call]). A local copy is what makes it safe.
+     *
+     * Where C++ supplies the body itself ([suppliedDirectly]), W2.6 copies at the call every
+     * by-value argument of a kind 40-round3's R-B names ([copiedAtTheCall]), so those are not
+     * refused here (R-B replaces this refusal for them). What R-B does not copy stays refused:
+     * a class, trait, `Ref` or `Weak` handle in such storage, and every argument of a
+     * dispatched call, whose override a C++ class may write.
      */
     private fun cppCalleeArgRefusals(n: FunctionCallExpr, keeps: Keeps): List<String> {
         val rc = model.call(n) ?: return emptyList()
-        if (!suppliedByCpp(rc) || fxArgs(rc).isEmpty()) {
+        if (!mayBeSuppliedByCpp(rc) || cppRuns(rc) == null) {
             return emptyList()
         }
         val during = Walker(summary = true, fn = null, owner = null).calleeEffects(rc, n.name)
@@ -638,9 +700,12 @@ class CppClassLifetimes(private val program: TypedProgram) {
             if (a.byRef || a.expr is LambdaExpr) {
                 return@mapNotNull null
             }
-            val place = model.place(a.expr) ?: return@mapNotNull null
+            val place = model.readPlace(a.expr) ?: return@mapNotNull null
             val type = model.typeOrNull(a.expr) ?: return@mapNotNull null
             if (type is KType.Fn || !passedByReference(type) || kindOf(place) != PlaceKind.SHARED || !reaches(during, place, type, keeps)) {
+                return@mapNotNull null
+            }
+            if (suppliedDirectly(rc) && copiedAtTheCall(type)) {
                 return@mapNotNull null
             }
             val text = KiraUnparser.text(a.expr)
@@ -659,7 +724,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
      */
     private fun cppCalleeReceiverRefusal(rc: ResolvedCall, name: String, during: Effects, keeps: Keeps): String? {
         val receiver = rc.receiver ?: return null
-        val place = model.place(receiver) ?: return null
+        val place = model.readPlace(receiver) ?: return null
         val type = model.typeOrNull(receiver) ?: return null
         if (kindOf(place) != PlaceKind.SHARED || place is Place.This || !reaches(during, place, type, keeps)) {
             return null
@@ -683,7 +748,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
         val rc = model.call(n) ?: return null
         val receiver = rc.receiver ?: return null
         val type = model.typeOrNull(receiver) as? KType.Param ?: return null
-        val place = model.place(receiver) ?: return null
+        val place = model.readPlace(receiver) ?: return null
         if (kindOf(place) == PlaceKind.LOCAL) {
             return null
         }
@@ -1139,12 +1204,12 @@ class CppClassLifetimes(private val program: TypedProgram) {
             if (rc.implicitThis) {
                 useThis()
             }
-            rc.receiver?.let { r -> if (model.place(r)?.root() is Place.This) useThis() }
+            rc.receiver?.let { r -> if (model.readPlace(r)?.root() is Place.This) useThis() }
             // A receiver of type-parameter type is `kira::deref(x).m(...)`, x bound by reference: C++
             // reads it after the arguments (genrecv: `x.greet(h.reset())` ran greet on what reset left
             // in the caller's slot, a freed Kid under MSVC ASan). A parameter so read is copied at
             // entry; storage an object holds is refused ([paramReceiverRefusal]).
-            rc.receiver?.let { r -> if (model.typeOrNull(r) is KType.Param) inUse(model.place(r)) }
+            rc.receiver?.let { r -> if (model.typeOrNull(r) is KType.Param) inUse(model.readPlace(r)) }
             val e = callee.copy()
             rc.args.forEach { a ->
                 if (a is ArgBinding.Given && a.byRef) {
@@ -1152,18 +1217,19 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 }
             }
             event(e, n)
-            // A callee C++ supplies reads its arguments while it runs, after the Fx arguments it may
+            // A callee C++ may supply reads its arguments while it runs, after the Kira code it may
             // run (externstr: `measure(s, fx() Void { h.reset() })` read s, bound to the Item reset
-            // freed: freed heap bytes on g++, MSVC ASan heap-use-after-free). A parameter so read is
-            // copied at entry; storage an object holds is refused ([cppCalleeArgRefusals]).
-            // Its receiver too: the object it runs on is in use until it returns.
-            if (suppliedByCpp(rc) && fxArgs(rc).isNotEmpty()) {
+            // freed: freed heap bytes on g++, MSVC ASan heap-use-after-free; externnested: the same
+            // through an Fx field of a Wrap argument, R-C). A parameter so read is copied at entry;
+            // storage an object holds is copied at the call by W2.6 (R-B) or refused here
+            // ([cppCalleeArgRefusals]). Its receiver too: the object it runs on is in use until it returns.
+            if (mayBeSuppliedByCpp(rc) && cppRuns(rc) != null) {
                 rc.args.forEach { a ->
                     if (a is ArgBinding.Given && !a.byRef && a.expr !is LambdaExpr) {
-                        inUse(model.place(a.expr))
+                        inUse(model.readPlace(a.expr))
                     }
                 }
-                rc.receiver?.let { r -> inUse(model.place(r)) }
+                rc.receiver?.let { r -> inUse(model.readPlace(r)) }
                 if (rc.implicitThis) {
                     useThis()
                 }
@@ -1176,7 +1242,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
             }
             // A runtime method handed a function runs it while it works on its receiver.
             if (rc.kind == CallKind.MAGIC && rc.args.any { a -> a is ArgBinding.Given && (a.expr is LambdaExpr || model.typeOrNull(a.expr) is KType.Fn) }) {
-                rc.receiver?.let { r -> inUse(model.place(r)) }
+                rc.receiver?.let { r -> inUse(model.readPlace(r)) }
             }
             // A call through an Fx runs the function where it is stored: its callee (a parameter,
             // the receiver's field) is in use while what it runs runs, so it is read again after.
@@ -1200,17 +1266,19 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
         /**
          * What the call [rc] may run; [callee] is its callee expression (for a call through an
-         * `Fx` value, the value). A callee whose body C++ supplies ([suppliedByCpp]: an
-         * `@_extern`, a bodyless prototype, a C++ override of a virtual or trait method) runs
-         * Kira code only through the `Fx` arguments it is given (contract 5.4.3), so it may run
-         * each of them during the call ([fxArguments]).
+         * `Fx` value, the value). A callee C++ may supply ([mayBeSuppliedByCpp]: an `@_extern`,
+         * a bodyless `pub` prototype, an `@_opaque` method, a C++ override of a virtual or
+         * trait method) runs Kira code only through what it is given (contract 5.4.3), so it
+         * may run whatever an argument reaches ([cppRuns], R-C). A body the program has not
+         * got and C++ does not supply (a bodiless private prototype, which the typer refuses)
+         * may do anything.
          */
         fun calleeEffects(rc: ResolvedCall, callee: Expr? = null): Effects = when (rc.kind) {
             CallKind.PRINT -> Effects()
-            CallKind.EXTERN -> fxArguments(rc)
+            CallKind.EXTERN -> cppRuns(rc) ?: Effects()
             CallKind.MAGIC -> magic(rc)
-            CallKind.FREE, CallKind.METHOD -> rc.fn?.body?.let { summaries[it] } ?: fxArguments(rc)
-            CallKind.VIRTUAL, CallKind.TRAIT -> fxArguments(rc).also { e ->
+            CallKind.FREE, CallKind.METHOD -> rc.fn?.body?.let { summaries[it] } ?: if (suppliedDirectly(rc)) cppRuns(rc) ?: Effects() else Effects.unknown()
+            CallKind.VIRTUAL, CallKind.TRAIT -> (cppRuns(rc) ?: Effects()).also { e ->
                 val name = rc.fn?.name
                 if (name == null) {
                     e.addAll(Effects.unknown())
@@ -1218,8 +1286,11 @@ class CppClassLifetimes(private val program: TypedProgram) {
                     methodsNamed[name].orEmpty().forEach { m -> summaries[m.body]?.let(e::addAll) }
                 }
             }
-            // A local never reassigned that was given a lambda runs that lambda; any other Fx value, anything the pool may.
-            CallKind.FN_VALUE -> ((callee as? Identifier)?.let { model.symbolOf(it) } as? LocalSymbol)?.let { lambdaLocals[it] }?.def?.body?.let { summaries[it] } ?: fxPool
+            // A local never reassigned that was given a lambda runs that lambda. Any other Fx value runs anything the pool
+            // may (every lambda and function of the program used as a value), and, since C++ may have built it (OD-2), also
+            // whatever its arguments reach (R-C: a C++ closure handed an object that holds an Fx may call that Fx).
+            CallKind.FN_VALUE -> ((callee as? Identifier)?.let { model.symbolOf(it) } as? LocalSymbol)?.let { lambdaLocals[it] }?.def?.body?.let { summaries[it] }
+                ?: cppRuns(rc)?.let { e -> e.copy().also { it.addAll(fxPool) } } ?: fxPool
             else -> Effects.unknown()
         }
 
@@ -1239,7 +1310,7 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 val receiver = rc.receiver
                 if (receiver != null) {
                     // A temporary receiver (a call's result) is no place, and nothing else reaches it.
-                    model.place(receiver)?.let { e.addAll(write(it, receiverType, whole = true)) }
+                    model.readPlace(receiver)?.let { e.addAll(write(it, receiverType, whole = true)) }
                 }
             }
             rc.args.forEach { a ->
@@ -1267,6 +1338,8 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 c.initially?.let { summaries[it]?.let(e::addAll) }
                 c = c.superclass?.sym as? ClassSymbol
             }
+            // The defaults of the fields it leaves out run inside the constructors (R-D, OQ-2).
+            model.init(n)?.fields?.forEach { f -> if (f is FieldInit.Default) defaultBodies[f.field]?.let { b -> summaries[b]?.let(e::addAll) } }
             if (cls.kind == ClassKind.CLASS && hasFinally) {
                 e.addAll(release())
             }
@@ -1321,6 +1394,9 @@ class CppClassLifetimes(private val program: TypedProgram) {
 
         /** The `@_magic` classes the parameter column passes by value (CppTypeSpeller.BY_VALUE_MAGIC). */
         private val BY_VALUE_MAGIC = setOf("View", "MutView", "Unsafe", "CStr")
+
+        /** The `@_magic` containers and wrappers R-B copies at a call C++ supplies ([copiedAtTheCall]); a `TupleN` too. */
+        private val COPIED_AT_THE_CALL = setOf("List", "Map", "Set", "Deque", "Stack", "Queue", "Arr", "Maybe", "Result")
 
         /** The `@_magic` classes whose value holds no object: a non-owning handle, a view, a pointer. */
         private val NON_OWNING = setOf("Weak", "Unsafe", "CStr", "View", "MutView")

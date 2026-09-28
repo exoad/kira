@@ -277,6 +277,29 @@ object OopTestSupport {
         return unit
     }
 
+    /** The typer's error diagnostics for [sources] (STRICT, every rule pass), rendered (`file:line:col: error [code] message`), without emitting. */
+    fun typerErrors(vararg sources: Src): List<String> {
+        val program = KiraTyper.run(unitOf(sources.toList(), root), TyperMode.STRICT)
+        return program.diagnostics.filter { it.isError }.map { it.render() }
+    }
+
+    /**
+     * Runs [block] with the rule pass named [name] (`exclusivity`, ...) switched off: the
+     * classes part's own refusal of a program the rules refuse first stays tested as a
+     * backstop (40-round3 4.2). The pass list is the typer's, restored afterwards.
+     */
+    fun <T> withoutRulePass(name: String, block: () -> T): T {
+        val passes = KiraTyper.rulePasses.toList()
+        check(passes.any { it.name == name }) { "no rule pass named $name: ${passes.map { it.name }}" }
+        KiraTyper.rulePasses.removeAll { it.name == name }
+        try {
+            return block()
+        } finally {
+            KiraTyper.rulePasses.clear()
+            KiraTyper.rulePasses.addAll(passes)
+        }
+    }
+
     /**
      * Types [sources] STRICT, lets [tweak] adjust the model (a stand-in for a rule pass not
      * merged yet), and emits every workspace module with [parts]. Fails on a typer error.

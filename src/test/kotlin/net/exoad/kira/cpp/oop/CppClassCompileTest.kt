@@ -16,8 +16,10 @@ import kotlin.test.assertTrue
  * trait, a trait default body, a diamond of traits, `this` as a value (the chain root's
  * `kira::Shared`), a generic class and a generic bound, `Maybe<Class>`, `Ref<T>`, a stack-
  * constructed class, a destructor from `finally`, a skipped middle default of a narrow
- * type, plain methods that write their receiver (not `const`), and the lifetime guards (a
- * parameter copied at entry, a method that holds itself for its call). The bodies are W2.4's
+ * type, `mut fx` methods that write their receiver (not `const`), field defaults that are not
+ * PURE run in Kira's order inside the constructors (R-D and OQ-2: the given values, then the
+ * defaults in declaration order, a superclass's and its `initially` first), and the lifetime
+ * guards (a parameter copied at entry, a method that holds itself for its call). The bodies are W2.4's
  * fakes ([OopTestSupport.FakeStmtEmitter]), so the Kira bodies here only return values and
  * assign; the shapes around them are the real classes part.
  */
@@ -252,7 +254,7 @@ class CppClassCompileTest {
             return Band { lo = 1, hi = 2 }
         }
 
-        // Plain fx methods that write the receiver (the typer allows it, D29): not const.
+        // mut fx methods that write the receiver: not const, callable through a const Rc (D29).
         pub fx grab: (mut v: Int32) Void {
             v = 7
         }
@@ -260,7 +262,7 @@ class CppClassCompileTest {
         pub class Counter {
             mut n: Int32 = 0
 
-            pub fx bump: () Int32 {
+            pub mut fx bump: () Int32 {
                 n += 1
                 return n
             }
@@ -269,12 +271,12 @@ class CppClassCompileTest {
                 n = 0
             }
 
-            pub fx again: () Int32 {
+            pub mut fx again: () Int32 {
                 reset()
                 return n
             }
 
-            pub fx take: () Int32 {
+            pub mut fx take: () Int32 {
                 grab(mut n)
                 return n
             }
@@ -309,17 +311,17 @@ class CppClassCompileTest {
 
         // One override of a method two traits declare, writing its receiver: both pure virtuals lose const.
         pub trait Left {
-            pub fx hit: () Int32;
+            pub mut fx hit: () Int32;
         }
 
         pub trait Right {
-            pub fx hit: () Int32;
+            pub mut fx hit: () Int32;
         }
 
         pub class Target: Left, Right {
             mut hits: Int32 = 0
 
-            override pub fx hit: () Int32 {
+            override pub mut fx hit: () Int32 {
                 hits += 1
                 return hits
             }
@@ -339,19 +341,19 @@ class CppClassCompileTest {
 
         // One override of a superclass method that also implements a trait's, writing: the trait's follows.
         pub trait Stamper {
-            pub fx stamp: () Int32;
+            pub mut fx stamp: () Int32;
         }
 
         pub class Plain {
             pub mut count: Int32 = 0
 
-            pub fx stamp: () Int32 {
+            pub mut fx stamp: () Int32 {
                 return 1
             }
         }
 
         pub class Counting: Plain, Stamper {
-            override pub fx stamp: () Int32 {
+            override pub mut fx stamp: () Int32 {
                 count += 1
                 return count
             }
@@ -485,17 +487,17 @@ class CppClassCompileTest {
 
         // An override of an override of a generic root, at Int32: both say the root's const&.
         pub trait Feed<T> {
-            pub fx take: (v: T) T;
+            pub mut fx take: (v: T) T;
         }
 
         pub class Mid: Feed<Int32> {
-            override pub fx take: (v: Int32) Int32 {
+            override pub mut fx take: (v: Int32) Int32 {
                 return v
             }
         }
 
         pub class Leaf: Mid {
-            override pub fx take: (v: Int32) Int32 {
+            override pub mut fx take: (v: Int32) Int32 {
                 return 12
             }
         }
@@ -540,7 +542,7 @@ class CppClassCompileTest {
         pub class Alias: Feed<Int32> {
             pub mut n: Int32 = 1
 
-            override pub fx take: (v: Int32) Int32 {
+            override pub mut fx take: (v: Int32) Int32 {
                 n = 100
                 return v
             }
@@ -752,6 +754,94 @@ class CppClassCompileTest {
         pub fx greetIt<T: Greets>: (x: T, h: Crib) Str {
             return x.greet(h.swap())
         }
+
+        // R-D and OQ-2 (second-class round 3): a field default that is not PURE runs inside the constructor, in
+        // declaration order, after the given values and after the superclass's defaults and initially (Kotlin's
+        // order). As C++ default arguments, g++ and MSVC ran Three's right to left, and Late's k before Seen's
+        // initially.
+        pub mut tick: Int32 = 0
+
+        pub fx next: () Int32 {
+            tick += 1
+            return tick
+        }
+
+        pub class Three {
+            pub a: Int32 = next()
+            pub b: Int32 = next()
+            pub c: Int32 = next()
+        }
+
+        pub class Seen {
+            pub mut seen: Int32 = 0
+
+            initially {
+                seen = next()
+            }
+        }
+
+        pub class Late: Seen {
+            pub k: Int32 = next()
+            pub mut after: Int32 = 0
+
+            initially {
+                after = next()
+            }
+        }
+
+        pub class Low {
+            pub a: Int32 = next()
+        }
+
+        pub class High: Low {
+            pub b: Int32 = next()
+        }
+
+        pub class Mix {
+            pub x: Int32 = next()
+            require pub y: Int32
+            pub z: Int32 = next()
+            pub w: Int32 = next()
+        }
+
+        pub fx makeThree: () Three {
+            return Three {}
+        }
+
+        pub fx makeLate: () Late {
+            return Late {}
+        }
+
+        pub fx makeHigh: () High {
+            return High {}
+        }
+
+        pub fx makeMix: () Mix {
+            return Mix { y = next() }
+        }
+
+        pub fx makeMixGiven: () Mix {
+            return Mix { w = 70, y = next(), x = 50 }
+        }
+
+        // A deferred default that calls a private function, in the constructor's definition; and a Maybe field whose
+        // default is not PURE, given null: the null is the field's, not an omitted value.
+        fx pick: () Maybe<Str> {
+            tick += 100
+            return "picked"
+        }
+
+        pub class Slot {
+            pub mut item: Maybe<Str> = pick()
+        }
+
+        pub fx emptySlot: () Slot {
+            return Slot { item = null }
+        }
+
+        pub fx fullSlot: () Slot {
+            return Slot {}
+        }
     """
 
     private val driver = """
@@ -900,6 +990,29 @@ class CppClassCompileTest {
             const kira::Rc<shapes::Crib> crib = std::make_shared<shapes::Crib>();
             crib->kid = std::make_shared<shapes::Kid>(longName);
             check(shapes::greetIt(crib->kid, crib) == longName && crib->kid->name == "other", "a type-parameter receiver the arguments replace is copied at entry");
+            shapes::tick = 0;
+            const kira::Rc<shapes::Three> three = shapes::makeThree();
+            check(three->a == 1 && three->b == 2 && three->c == 3, "defaults that are not pure run in declaration order (ctordefaults2)");
+            shapes::tick = 0;
+            const kira::Rc<shapes::Late> late = shapes::makeLate();
+            check(late->seen == 1 && late->k == 2 && late->after == 3, "a subclass's defaults run after its superclass's initially (OQ-2, Kotlin's order)");
+            shapes::tick = 0;
+            const kira::Rc<shapes::High> high = shapes::makeHigh();
+            check(high->a == 1 && high->b == 2, "a superclass's default runs before the subclass's (ctordefaults3)");
+            shapes::tick = 0;
+            const kira::Rc<shapes::Mix> mix = shapes::makeMix();
+            check(mix->y == 1 && mix->x == 2 && mix->z == 3 && mix->w == 4, "the given values first, then the defaults in declaration order (Mid)");
+            shapes::tick = 0;
+            const kira::Rc<shapes::Mix> mixGiven = shapes::makeMixGiven();
+            check(mixGiven->x == 50 && mixGiven->y == 1 && mixGiven->z == 2 && mixGiven->w == 70, "a given value of a field whose default is not pure fills its optional");
+            shapes::tick = 10;
+            const kira::Rc<shapes::Three> fromCpp = std::make_shared<shapes::Three>(7);
+            check(fromCpp->a == 7 && fromCpp->b == 11 && fromCpp->c == 12 && shapes::tick == 12, "a C++ caller gives a value the optional takes, and leaves the rest to the constructor");
+            shapes::tick = 0;
+            const kira::Rc<shapes::Slot> emptied = shapes::emptySlot();
+            const bool leftNull = emptied->item == std::nullopt && shapes::tick == 0;
+            const kira::Rc<shapes::Slot> filled = shapes::fullSlot();
+            check(leftNull && filled->item == kira::Str("picked") && shapes::tick == 100, "null given to a Maybe field whose default is not pure stays null; the default runs only when left out");
             std::printf("%d checks, %d failed\n", checks, failures);
             return failures == 0 ? 0 : 1;
         }
@@ -930,7 +1043,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("43 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("50 checks, 0 failed"), run.stdout)
             }
         }
     }

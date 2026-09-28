@@ -424,10 +424,43 @@ class CppClassShapeTest {
     }
 
     @Test
-    fun aMethodThatWritesItsReceiverIsNotConstEvenWithoutMut() {
-        // The typer lets a plain fx of a class write a mut field and call a mut fx on itself
-        // (thisMutable holds in every class method, D29); a const method that did would
-        // compile nowhere, so const comes from the body, and a whole override family agrees.
+    fun aPlainFxThatWritesItsReceiverIsRefusedSoConstFollowsTheDeclarations() {
+        // Round 2 derived `const` from a class method's body, because the typer let a plain fx write its receiver
+        // (D29). W2.5's MutabilityPass refuses that now (design 5.5, DECISIONS: `mut fx` marks state-changing
+        // methods): those shapes are the declaration's `mut` again.
+        val refused = OopTestSupport.typerErrors(
+            OopTestSupport.module(
+                uri,
+                """
+                pub fx grab: (mut v: Int32) Void {
+                    v = 7
+                }
+                pub class Counter {
+                    mut n: Int32 = 0
+                    pub fx bump: () Int32 {
+                        n += 1
+                        return n
+                    }
+                    pub mut fx reset: () Void {
+                        n = 0
+                    }
+                    pub fx again: () Int32 {
+                        reset()
+                        return n
+                    }
+                    pub fx viaThis: () Void {
+                        this.n = 3
+                    }
+                }
+                """,
+            ),
+        )
+        assertTrue(refused.count { it.contains("[rules.mutability.this]") } == 2 && refused.any { it.contains("[rules.mutability.method]") && it.contains("again") }, refused.joinToString("\n"))
+        // What still takes const away: a `mut fx`, and what the rules let a plain fx do that a const method could not
+        // lower: a lambda that writes through the captured self (design 5.6, which MutabilityPass exempts), a field
+        // passed `mut` (grabIt), a view of a `mut` field, which the typer lends as a MutView in any class body
+        // (viewAll; allowed2 stopped compiling when this was narrowed), a trait default body calling a `mut fx` on
+        // its receiver (MutabilityPass has no class to judge a trait's `this` by); and a family one of those joins.
         val (h, s) = both(
             """
             pub struct Tally {
@@ -437,7 +470,7 @@ class CppClassShapeTest {
                 }
             }
             pub trait Poker {
-                pub fx poke: () Void;
+                pub mut fx poke: () Void;
                 pub fx nudge: () Void {
                     poke()
                 }
@@ -455,25 +488,25 @@ class CppClassShapeTest {
                 mut n: Int32 = 0
                 mut tally: Tally = Tally {}
                 require pet: Pet
-                pub fx bump: () Int32 {
+                pub mut fx bump: () Int32 {
                     n += 1
                     return n
                 }
                 pub mut fx reset: () Void {
                     n = 0
                 }
-                pub fx again: () Int32 {
+                pub mut fx again: () Int32 {
                     reset()
                     return n
                 }
-                pub fx viaThis: () Void {
+                pub mut fx viaThis: () Void {
                     this.n = 3
                 }
-                pub fx tick: () Int32 {
+                pub mut fx tick: () Int32 {
                     tally.tick()
                     return tally.n
                 }
-                pub fx take: () Int32 {
+                pub mut fx take: () Int32 {
                     grab(mut n)
                     return n
                 }
@@ -483,11 +516,11 @@ class CppClassShapeTest {
                         return n
                     }
                 }
-                pub fx me: () Counter {
+                pub mut fx me: () Counter {
                     n += 1
                     return this
                 }
-                override pub fx poke: () Void {
+                override pub mut fx poke: () Void {
                     n = 9
                 }
                 pub fx peek: () Int32 {
@@ -499,9 +532,21 @@ class CppClassShapeTest {
                 pub fx petFed: () Int32 {
                     return pet.fed
                 }
+                mut nums: List<Int32> = List<Int32> {}
+                pub fx grabIt: () Int32 {
+                    grab(mut n)
+                    return n
+                }
+                pub fx viewAll: () Int32 {
+                    return total(nums.view())
+                }
+            }
+            pub fx total: (v: View<Int32>) Int32 {
+                return 0
             }
             """
         )
+        assertContains(h, "      [[nodiscard]] std::int32_t grabIt();\n      [[nodiscard]] std::int32_t viewAll();\n")
         assertContains(
             h,
             "      [[nodiscard]] std::int32_t bump();\n      void reset();\n      [[nodiscard]] std::int32_t again();\n      void viaThis();\n" +
@@ -509,7 +554,7 @@ class CppClassShapeTest {
                 "      [[nodiscard]] kira::Rc<Counter> me();\n      void poke() override;\n      [[nodiscard]] std::int32_t peek() const;\n" +
                 // a mut fx on a field that is a class runs through the pointer: this stays const
                 "      void feedPet() const;\n      [[nodiscard]] std::int32_t petFed() const;\n",
-            // the trait's family follows its writing implementer, its default body too
+            // the trait's default body calls its mut requirement on this
             "      virtual void poke() = 0;\n      virtual void nudge();\n",
         )
         assertContains(s, "  std::int32_t Counter::bump()\n", "  void Poker::nudge()\n", "  void Counter::feedPet() const\n")
@@ -901,7 +946,7 @@ class CppClassShapeTest {
                 pub fx greet: () Str {
                     return name
                 }
-                pub fx setup: () Void {
+                pub mut fx setup: () Void {
                     seen = 1
                     greet()
                 }
@@ -1117,11 +1162,23 @@ class CppClassShapeTest {
         assertContains(s, "      return std::make_shared<Trio>(label, h->rename(), k);")
     }
 
+    // ---- field defaults run in Kira's order, inside the constructor (R-D and OQ-2, second-class round 3) -------
+
+    private val counting = """
+        pub mut counter: Int32 = 0
+
+        pub fx next: () Int32 {
+            counter += 1
+            return counter
+        }
+    """.trimIndent()
+
     @Test
-    fun aSkippedMiddleDefaultComesAfterTheGivenValues() {
-        // make_shared's operands are the given values as written, then the defaults it fills in: a mut global
-        // a default reads is read after the given value that changes it, as the constructor's own default would be.
-        val s = emit(
+    fun aSkippedMiddleDefaultThatIsNotPureRunsInsideTheConstructor() {
+        // Round 2 filled the skipped `b = seed` in at the call and spilled it after the given values. A default that
+        // is not PURE is no operand of the call now: its parameter is an empty std::optional, and the field's own
+        // mem-initializer reads seed, after every argument (the given values first, as Kira has it).
+        val (h, s) = both(
             """
             pub mut seed: Int32 = 1
 
@@ -1140,8 +1197,159 @@ class CppClassShapeTest {
                 return Duo { a = 5, c = bumpSeed() }
             }
             """
+        )
+        assertContains(h, "      Duo(std::int32_t a_, std::optional<std::int32_t> b_, std::int32_t c_);")
+        assertContains(
+            s,
+            "  Duo::Duo(std::int32_t a_, std::optional<std::int32_t> b_, std::int32_t c_)\n" +
+                "      : a(a_), b(b_.has_value() ? std::move(*b_) : static_cast<std::int32_t>(seed)), c(c_)\n",
+            "      return std::make_shared<Duo>(5, std::nullopt, bumpSeed());",
+        )
+    }
+
+    @Test
+    fun trailingDefaultsThatAreNotPureAreNoCppDefaultArguments() {
+        // ctordefaults2: `Two {}` with a and b = next() left both to C++ default arguments, which C++ evaluates in no
+        // order (3 2 1 on g++ and MSVC, 1 2 3 on zig for three). Each is now an empty optional the constructor fills
+        // in declaration order; a PURE default stays a default argument. A given value fills its optional.
+        val (h, s) = both(
+            """
+            $counting
+
+            pub class Two {
+                pub a: Int32 = next()
+                pub b: Int32 = next()
+                pub c: Int32 = 7
+            }
+
+            pub fx none: () Two {
+                return Two {}
+            }
+
+            pub fx middle: () Two {
+                return Two { b = 9 }
+            }
+            """
+        )
+        assertContains(h, "      Two(std::optional<std::int32_t> a_ = std::nullopt, std::optional<std::int32_t> b_ = std::nullopt, std::int32_t c_ = 7);")
+        assertContains(
+            s,
+            "      : a(a_.has_value() ? std::move(*a_) : static_cast<std::int32_t>(next())), b(b_.has_value() ? std::move(*b_) : static_cast<std::int32_t>(next())), c(c_)\n",
+            "      return std::make_shared<Two>();",
+            "      return std::make_shared<Two>(std::nullopt, std::make_optional<std::int32_t>(9));",
+        )
+    }
+
+    @Test
+    fun aSubclassDefaultRunsAfterTheSuperclassInitially() {
+        // OQ-2, the user's answer (Kotlin's order): Base's defaults and initially, then Kid's own defaults. As a C++
+        // default argument k ran at the call, before Base's constructor: seen=5, k=4 on every compiler; Kira 4, 5.
+        // Base's constructor is the first mem-initializer and C++ runs k's after it.
+        val (h, s) = both(
+            """
+            $counting
+
+            pub class Base {
+                pub mut seen: Int32 = 0
+
+                initially {
+                    seen = next()
+                }
+            }
+
+            pub class Kid: Base {
+                pub k: Int32 = next()
+                pub mut after: Int32 = 0
+
+                initially {
+                    after = next()
+                }
+            }
+
+            pub fx kid: () Kid {
+                return Kid {}
+            }
+            """
+        )
+        assertContains(h, "      Kid(std::int32_t seen_ = 0, std::optional<std::int32_t> k_ = std::nullopt, std::int32_t after_ = 0);")
+        assertContains(
+            s,
+            "  Kid::Kid(std::int32_t seen_, std::optional<std::int32_t> k_, std::int32_t after_)\n" +
+                "      : Base(seen_), k(k_.has_value() ? std::move(*k_) : static_cast<std::int32_t>(next())), after(after_)\n",
+            "      return std::make_shared<Kid>();",
+        )
+    }
+
+    @Test
+    fun aSuperclassDefaultThatIsNotPureIsForwardedAsItsOptional() {
+        // ctordefaults3: Base's a and Kid's b, both next(). Kid's constructor hands Base the optional it was given.
+        val s = emit(
+            """
+            $counting
+
+            pub class Low {
+                pub a: Int32 = next()
+            }
+
+            pub class High: Low {
+                pub b: Int32 = next()
+            }
+
+            pub fx high: () High {
+                return High { a = 4 }
+            }
+            """
         ).source(uri)
-        assertContains(s, "      return []() -> kira::Rc<Duo> { const std::int32_t t0_Arg_ = bumpSeed(); const std::int32_t t1_Arg_ = seed; return std::make_shared<Duo>(5, t1_Arg_, t0_Arg_); }();")
+        assertContains(
+            s,
+            "  High::High(std::optional<std::int32_t> a_, std::optional<std::int32_t> b_)\n      : Low(std::move(a_)), b(b_.has_value() ? std::move(*b_) : static_cast<std::int32_t>(next()))\n",
+            "      return std::make_shared<High>(std::make_optional<std::int32_t>(4));",
+        )
+    }
+
+    @Test
+    fun aNullGivenToAMaybeFieldWhoseDefaultIsNotPureIsWrapped() {
+        // `kira::none` converts to any std::optional, the parameter's own included: passed bare, it would leave the
+        // field out and run the default. Given, it is wrapped explicitly.
+        val s = emit(
+            """
+            $counting
+
+            fx pick: () Maybe<Str> {
+                counter += 100
+                return "picked"
+            }
+
+            pub class Slot {
+                pub mut item: Maybe<Str> = pick()
+            }
+
+            pub fx empty: () Slot {
+                return Slot { item = null }
+            }
+            """
+        ).source(uri)
+        assertContains(s, "      return std::make_shared<Slot>(std::make_optional<", ">(kira::none));")
+    }
+
+    @Test
+    fun noEmittedConstructorHasADefaultArgumentThatIsNotPure() {
+        // 40-round3 6.4's static check, over the three OOP goldens: a constructor's default argument is a literal or
+        // an empty value (no call C++ could run out of order), or std::nullopt for a default the constructor runs.
+        val defaulted = Regex("""^\s+(explicit )?[A-Z]\w*\((.*_ = .*)\);$""")
+        val default = Regex("""\w+_ = ([^,]+)""")
+        var seen = 0
+        for (name in listOf("chain", "sender", "classes")) {
+            val headers = OopTestSupport.emitCase(OopTestSupport.case(name)).filter { it.relative.endsWith(".kira.hxx") }
+            headers.flatMap { it.text.lines() }.mapNotNull { defaulted.find(it)?.groupValues?.get(2) }.forEach { params ->
+                default.findAll(params).forEach { m ->
+                    seen += 1
+                    val value = m.groupValues[1].trim()
+                    assertTrue(value == "std::nullopt" || !value.contains("("), "$name: the constructor default $value in ($params)")
+                }
+            }
+        }
+        assertTrue(seen >= 4, "found $seen constructor defaults")
     }
 
     // ---- this under construction or destruction (second-class round 2) --------------------------------------
@@ -1542,19 +1750,20 @@ class CppClassShapeTest {
 
     @Test
     fun aMethodTwoTraitsDeclareLosesConstInBothWhenTheOverrideWrites() {
-        // C++ takes C::id() as the override of A::id and B::id at once, so both pure virtuals
-        // follow the writing body; the typer links only one (FnSymbol.overrides).
+        // C++ takes C::id() as the override of A::id and B::id at once, so the family is decided
+        // together; the typer links only one (FnSymbol.overrides), and each says `mut` itself
+        // (types.override.signature: an override is `mut` exactly when what it overrides is).
         val (h, s) = both(
             """
             pub trait A {
-                pub fx id: () Int32;
+                pub mut fx id: () Int32;
             }
             pub trait B {
-                pub fx id: () Int32;
+                pub mut fx id: () Int32;
             }
             pub class C: A, B {
                 mut n: Int32 = 0
-                override pub fx id: () Int32 {
+                override pub mut fx id: () Int32 {
                     n += 1
                     return n
                 }
@@ -1578,16 +1787,16 @@ class CppClassShapeTest {
         val h = header(
             """
             pub trait Tagged {
-                pub fx tag: () Int32;
+                pub mut fx tag: () Int32;
             }
             pub class Animal {
                 pub mut n: Int32 = 0
-                pub fx tag: () Int32 {
+                pub mut fx tag: () Int32 {
                     return 1
                 }
             }
             pub class Dog: Animal, Tagged {
-                override pub fx tag: () Int32 {
+                override pub mut fx tag: () Int32 {
                     n += 1
                     return n
                 }
@@ -1610,18 +1819,18 @@ class CppClassShapeTest {
         val h = header(
             """
             pub trait P {
-                pub fx m: () Int32;
+                pub mut fx m: () Int32;
                 pub fx other: () Int32;
             }
             pub trait T: P {
             }
             pub class Base: T {
                 pub mut n: Int32 = 0
-                override pub fx m: () Int32 { return n }
+                override pub mut fx m: () Int32 { return n }
                 override pub fx other: () Int32 { return n }
             }
             pub class Sub: Base {
-                override pub fx m: () Int32 {
+                override pub mut fx m: () Int32 {
                     n += 1
                     return n
                 }

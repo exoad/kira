@@ -18,7 +18,10 @@ and kind 1's `lent` exception are deleted, not patched. What that closed is list
 with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is written in parallel).
 Second-class round 2 measures on a trial of this branch's working tree with W2.3's re-signed
 head `e355c3e` (the same tree as 9e00cfb) merged the same way; what it fixed is under "Fixed in
-second-class round 2". From round 2 on, decision 4b is read literally (OD-5).
+second-class round 2". From round 2 on, decision 4b is read literally (OD-5). Second-class
+round 3 merges `cpp/w2-5-rules` f86261f into this branch first, so its tests run against the
+rules, and measures on a trial of this round's tree with W2.3's head `8bac10a` merged the same
+way ("Fixed in second-class round 3").
 
 ## Known issues
 
@@ -48,7 +51,9 @@ second-class round 2". From round 2 on, decision 4b is read literally (OD-5).
   `emit: required` set, `CppGoldenEmitTest` fails on exactly these two hunks (sender is
   byte-identical) and `CppGoldenCompileTest` runs 79 tests with 0 failures. Under decision 4b
   read literally, `b->id()` is a trait call EffectsPass cannot prove pure, so the spill is
-  W2.3's rule working as intended.
+  W2.3's rule working as intended. Second-class round 3, on the trial with W2.3 8bac10a and
+  `emit: required` set: the same two hunks, sender byte-identical, `CppGoldenCompileTest` 79
+  tests with 0 failures.
 - **Why it can wait.** The emitted code is correct and compiles. The difference is W2.3's
   rule against expected text written before that rule. W2.3 or the integrator has to either
   keep the rule and regenerate those two `expected/` files, or narrow the rule. Until one of
@@ -140,27 +145,13 @@ second-class round 2". From round 2 on, decision 4b is read literally (OD-5).
   program is lowered unsafely. Narrowing it needs to know which handles can hold a Thread,
   which is worth doing when a kira:sync program meets it (the pilot's port, wave 3+).
 
-### KI-9. With W2.5 merged, its MutabilityPass refuses six of this package's fixtures
+### KI-9. Closed: W2.5's MutabilityPass and this package's fixtures
 
-- **What.** `CppClassCompileTest`'s program and five `CppClassShapeTest` cases write their own
-  state from a plain `fx` (`Counter.bump`, `Target.hit`, `Dog.tag`, ...), because they test
-  how the classes part derives `const` from the body (D29: the typer on cpp-backend lets a
-  plain `fx` write its receiver). W2.5's rule (`rules.mutability.this`: declare it `mut fx`)
-  refuses them, so on a tree with W2.5 merged those six tests fail at typing.
-- **Where.** `src/test/kotlin/net/exoad/kira/cpp/oop/`, against W2.5's `MutabilityPass`.
-- **Reproduce.** On a trial with W2.3 9e00cfb and W2.5 1dc7587, `./gradlew test` with the three
-  OOP goldens at `emit: required`: the six fail with `rules.mutability.this` and
-  `rules.mutability.method`. Measured in round 4: 96 of 1293 fail with the round's change and
-  98 of 1285 at 70f3e7f; the 96 are the 98 less the two CppHoisterTest cases round 3 broke
-  (round 3's significant #3), and the rest are the two KI-1 spills, KI-19's routing failure,
-  the evalorder golden and W2.5's rules against W2.3's and W2.2's fixtures. (The second-class
-  round deletes the view tests that accepted a W2.5 refusal; its internal-assertion test
-  accepts `rules.view.type` first. No other fixture of this package writes a second-class
-  type anywhere but a parameter or an argument.)
-- **Why it can wait.** It is a disagreement between two correct rules about test inputs, not
-  a miscompile. Whoever merges W2.5 turns those methods into `mut fx` (the C++ is the same,
-  non-`const`), or keeps them as W2.5's negative cases; the classes part's derived `const`
-  stays for W2.5's own known gaps (its ledger's Issue 8).
+- **Closed in second-class round 3.** With W2.5 merged into this branch, the six fixtures
+  that wrote their own state from a plain `fx` are `mut fx` (with the methods they override,
+  since an override is `mut` exactly when what it overrides is), and the test of the derived
+  `const` asserts the typer's refusal instead ("Fixed in second-class round 3"). The derived
+  `const` itself stays for the four shapes the rules let a plain `fx` through.
 
 ### KI-10. A method that holds itself delays its object's `finally` to the end of the call
 
@@ -321,6 +312,30 @@ second-class round 2". From round 2 on, decision 4b is read literally (OD-5).
   and `cpp.view-lifetime`, and turns those tests into emission tests; the refused programs move
   to ViewPassTest. The entry closes then.
 
+### KI-23. A field whose default is not PURE takes a `std::optional<T>` from C++
+
+- **What.** R-D and OQ-2 run such a default inside the constructor, so its parameter is
+  `std::optional<T> x_` (`= std::nullopt` in the trailing run). A C++ caller that constructs
+  the class gives a value (`std::make_shared<Three>(7)` converts) or leaves it out; for a
+  `Maybe` field it must say `std::make_optional<kira::Maybe<X>>(kira::none)`, since a bare
+  `kira::none` converts to the parameter's own empty optional. Kira's constructions always
+  wrap a given value (measured: without the wrap no toolchain compiled the compile test's
+  `Slot { item = null }`).
+- **Where.** `ClassLowering.constructorParams`, `memInitializers` and `construction`.
+- **Why it can wait.** A C++ caller's mistake is a compile error, not a wrong program, and
+  bibo's C++ builds no such class today (the goldens' defaults are all PURE and unchanged).
+
+### KI-24. A struct's field default runs before a given value (superseded by W2.9)
+
+- **What.** W2.2 lowers a struct to an aggregate whose field defaults are default member
+  initializers, and a construction to designated initializers: C++ initializes in member
+  order, so `S { b = next() }` with `a: Int32 = next()` declared first runs a's default
+  before the given b. The `structdefaults` probe prints `1 2` (a=1, b=2) on g++, zig and MSVC;
+  R-D's order, the given values first, is a=2, b=1.
+- **Where.** W2.2's `CppDeclEmitter` struct lowering, not this package's.
+- **Why it can wait.** It exists only in struct code: superseded by W2.9 (no struct). W2.9's
+  lowering of an immutable class to a C++ value has to keep R-D's order (routed below).
+
 ### KI-22. A field default's lambda that calls a later `pub` function does not compile
 
 - **What.** `sink: Fx<...> = fx(v) { return total(v) }` puts the lambda in the constructor's
@@ -342,23 +357,28 @@ second-class round 2". From round 2 on, decision 4b is read literally (OD-5).
 - **What.** The analysis follows every Kira body a call can reach: every body of the name for
   a virtual or trait call, every lambda and function used as a value for a call through an
   `Fx`. It does not see C++: an `@_extern` function, a bodyless `pub` prototype a C++ file
-  defines, an override a C++ class writes for a Kira trait (the chain driver's `Greedy`), and
-  an `Fx` a C++ caller builds (the sender driver's `write`).
-- **The contract.** For the first two, this is 30-second-class.md 5.4, which replaces this
+  defines, an `@_opaque` method, an override a C++ class writes for a Kira trait (the chain
+  driver's `Greedy`), and an `Fx` a C++ caller builds (the sender driver's `write`).
+- **The contract.** For the first three, this is 30-second-class.md 5.4, which replaces this
   package's FFI note: an extern writes Kira storage only through its `mut` arguments and its
-  receiver, and runs Kira code only through the `Fx` arguments it is given. The classes part
-  applies the same contract to the last two, which are C++ code called through a Kira
-  signature.
-- **What the contract lets such a callee do (second-class round 2).** Run each `Fx` argument
-  during the call: its `during` (`calleeEffects`) is the union of what they may do, a lambda
-  written there its body's, a function named as a value its body's, any other `Fx` value
-  everything. And read its arguments and its receiver while it runs, after the callbacks: it
-  copies nothing at entry, as a Kira callee does. Round 1 took an extern's and a bodyless
-  prototype's `during` as nothing (externmut, externstr).
-- **The option left for the user.** Take a C++ override or a C++-built `Fx` to do anything.
-  Then `Chain::has` (a loop over `loaded` that calls `b->id()`) is refused, and Chain and
-  Sender derive `kira::Shared` and hold themselves in `load`, `has` and `send`.
-- **Current behaviour kept.** The contract; it is documented here and in `CppClassLifetimes`.
+  receiver, and runs Kira code only through what it is given. The classes part applies the
+  same contract to the last two, which are C++ code called through a Kira signature.
+- **What the contract lets such a callee do (second-class round 3, R-C).** Run any `Fx` it
+  reaches through an argument during the call (`CppClassLifetimes.cppRuns`, with W2.5's
+  `CallReach.mayHoldFx`): a lambda written there runs its body, a function named as a value its
+  body, and any other value that may hold an `Fx` (an `Fx` value, a class or trait handle, a
+  container, `Maybe`, tuple or struct of one, a type parameter) everything. A body C++
+  supplies directly may also run what its receiver holds. And read its arguments and its
+  receiver while it runs, after the callbacks: it copies nothing at entry, as a Kira callee
+  does. Round 2 counted only a lambda or an argument of a function type (externnested and
+  externarr were heap-use-after-frees).
+- **The option left for the user.** Take the receiver of a dispatched call, too, as holding
+  an `Fx` a C++ override may run (R-C's text read literally), or take a C++ override or a
+  C++-built `Fx` to do anything. Every trait and virtual call on an object would then run
+  anything: `Chain::has` (a loop over `loaded` that calls `b->id()`) would be refused, and
+  Chain and Sender would derive `kira::Shared` and hold themselves in `load`, `has` and `send`.
+- **Current behaviour kept.** The contract, with R-C over the arguments; it is documented here
+  and in `CppClassLifetimes`.
 
 ### OD-3. A field that is neither `require` nor defaulted, skipped at construction
 
@@ -413,9 +433,121 @@ second-class round 2". From round 2 on, decision 4b is read literally (OD-5).
 - **W2.5.** KI-13: the classes part is not safe without W2.5's alias rules and ViewPass merged.
   OD-5: decision 4b read literally (`effect(C) == IMPURE`, EffectsPass conservative on the shapes
   second-class round 1 broke) is W2.5's to implement; nothing here depends on either reading.
+- **W2.6 (second-class round 3).** At a call C++ supplies directly, the classes part no longer
+  refuses a `Str`, container, `Maybe`, `Result`, tuple or struct argument in storage an object
+  holds whose callee may run Kira code (`CppClassLifetimes.copiedAtTheCall`): R-B's copy at the
+  call has to cover exactly those kinds, whenever `CallReach.mayRunAnything` holds or a `mut`
+  argument may hold the type. A class, trait, `Ref` or `Weak` handle, and any argument of a
+  dispatched call, is still refused here. On this branch alone the accepted `Str` shape is not
+  copied yet (the integration merges W2.6 first).
+- **W2.5 (second-class round 3).** MutabilityPass lets a plain `fx` of a class pass its own field
+  as a `mut` argument (`grab(mut n)` types clean), and the typer lends a `MutView` of a `mut`
+  field in any class body (`CallResolver`'s `c.isMutablePlace` under phase C's looser
+  context), so `items.view()` in a plain `fx` is spelled `kira::mutView(items)`. Both keep the
+  classes part's derived `const` alive (KI-9); if the rules refuse the first and lend a `View`
+  in a plain `fx`, the inference is dead code for classes.
+- **W2.9.** An immutable class lowered to a C++ value must keep R-D's construction order (the
+  given values, then the defaults in declaration order), which a C++ aggregate's default member
+  initializers do not (KI-24, measured on a W2.2 struct).
 - **The C backend (no package here).** It prints `new` for ctorwrong2 too, its own
   argument-order issue: it is not a reference for Kira's left-to-right order, which D33 and
   W2.5's `rules.exclusivity.order` message are (second-class round 1's verifier, minor).
+
+## Fixed in second-class round 3 (for the record)
+
+Round 2's verdict named two significant issues (w2-4 #0 construction order, #1 what a callee
+C++ supplies may run) and five minors; section 4.2 of `40-round3.md` named the 7 tests W2.5's
+rules turned red, and W2.5's round 3 (f86261f) turned two more. This round merges
+`cpp/w2-5-rules` f86261f first (cdaf753, clean), so every test here runs against the rules.
+Measured on the branch (the whole `./gradlew test`: 1209 tests, 0 failures, 0 skipped; the oop tests 150, the compile test on all four toolchains) and on a trial of this
+round's tree with W2.3's head `8bac10a` (W2.3 with the same W2.5 merged) merged without a
+commit and round 4's `rewire.py` applied: 18 probes through its CLI, each on g++ 13.2 and zig
+c++ 0.15 with `-Werror`, and MSVC 14.44 `/fsanitize=address`. The trial's whole `./gradlew
+test` with the three OOP goldens at `emit: required` runs 1321 tests with 39 failures, none in
+this package's classes: 33 CppHoisterTest cases and 4 on the evalorder golden (40-round3 4.1,
+W2.3's round-3 work against W2.5's round-3 rules) and KI-1's two hunks; `CppGoldenCompileTest`
+runs 79 with 0 failures.
+
+- **Construction order, R-D, and OQ-2 (w2-4 #0; w2-4 minor #2, now the user's decision).** A
+  field default that is not PURE (`CppClassFacts.pureDefault`: EffectsPass's PURE, or
+  `operandRank`'s) is no C++ default argument any more. Its constructor parameter is
+  `std::optional<T> x_` (`= std::nullopt` in the trailing run), the construction passes
+  `std::nullopt` when it leaves the field out and `std::make_optional<T>(v)` when it gives one,
+  and the field's own mem-initializer runs the default:
+  `x(x_.has_value() ? std::move(*x_) : static_cast<T>(default))`. C++ runs the superclass's
+  constructor, then the members in declaration order, so the given values run first (at the
+  call, ordered by the existing D33 spill), then the defaults in declaration order, a
+  superclass's fields and its `initially` before the subclass's fields: Kotlin's order, the
+  user's OQ-2 answer. A PURE default stays a default argument, so no golden changes (the
+  goldens' constructor defaults are `0`, `5`, `-1` and `kira::List<...>{}`). A `Ref` or a
+  system class is the runtime's and keeps its constructor. Probes: ctordefaults prints
+  `1 2 3 4 5 6` (Two 1 2 3; Kid seen=4, k=5, after=6: the design's probe), ctordefaults2
+  `1 2 3`, ctordefaults3 `1 2 4 3 5 6` (Kid 1 2; `Mid { y = next() }` y=3, then x=4, z=5, w=6),
+  the same on g++, zig and MSVC with 0 ASan reports (round 2: `3 2 1` on g++ and MSVC, and
+  seen=5, k=4 everywhere). Tests: `CppClassCompileTest` gains 7 runtime checks (50 now: Three,
+  Late, High, Mix and a given Mix, a C++ caller's `make_shared<Three>(7)`, and a `Maybe` field
+  given null). With the rule reverted (`pureDefault` always true), 6 of 50 fail on gcc and
+  MSVC and 2 on clang; with it, 0 of 50 on gcc, clang and MSVC, and the aarch64 build
+  compiles. Without the explicit `std::make_optional` wrap, no toolchain compiles the Slot
+  construction. Shape tests: the deferred middle default (`Duo`), trailing defaults, the
+  subclass after its superclass's `initially`, a superclass's optional forwarded, the wrapped
+  null, and 6.4's static check that no golden constructor default is a call.
+- **What a callee C++ supplies may run, R-C and R-G (w2-4 #1).** `fxArgs`/`fxArguments` are
+  gone. `mayBeSuppliedByCpp` is W2.5's `FnSymbol.suppliedByCpp` (or the EXTERN kind) plus a
+  VIRTUAL or TRAIT dispatch; `cppRuns` gives what such a call may run: a lambda written as an
+  argument runs its body, a function named as a value its body, and any other argument whose
+  type `CallReach.mayHoldFx` (W2.5's one predicate) runs everything, a class field's `Fx`, an
+  `Arr`, `List`, `Maybe` or tuple of one, a type parameter. A body C++ supplies directly (an
+  extern or `@_opaque` method) may also run what its receiver holds; a dispatched call's
+  receiver is left to OD-2. A call through an `Fx` value the analysis cannot see into adds
+  what its arguments reach to the pool (a C++-made closure, OD-2). A bodiless function C++
+  does not supply (the typer refuses one) may do anything. externnested (a `Wrap` holding the
+  callback) copies `s` at entry and prints the label and 63 on all three, 0 ASan reports (was
+  a heap-use-after-free); externarr (`bumpAll(mut h.item.count, [fx() Void { c.reset() }])`) is
+  refused as a `mut` argument the call may free (was accepted and a heap-use-after-free).
+  Tests: each of the five holders (a class field, an `Arr`, a `List`, a `Maybe`, a tuple)
+  refuses the `mut` argument and copies the parameter at entry, a `List<Int32>` copies
+  nothing, and a trait call given a held `Fx` refuses the `mut` argument. With round 2's
+  predicate put back, 3 of those tests fail.
+- **R-B replaces a refusal.** At a call C++ supplies directly, `cppCalleeArgRefusals` no
+  longer refuses a `Str`, container, `Maybe`, `Result`, tuple or struct argument in storage an
+  object holds: W2.6 copies it at the call (40-round3 R-B). It still refuses what R-B does not
+  copy, a class, trait, `Ref` or `Weak` handle (`inspect(c.item, ...)`), and every such
+  argument of a dispatched call, whose override a C++ class may write. Tests: the `Str` field is
+  accepted, the handle and the dispatched `Str` refused. On this branch alone (no W2.6), the
+  accepted `Str` shape is not yet copied: the integration order puts W2.6 before W2.4.
+- **R-A reads.** Every place the lifetimes analysis reads (a loop's range, a C++-supplied
+  callee's argument and receiver, a type-parameter receiver, a call through an `Fx`, what a
+  call keeps in use) is `TypedModel.readPlace`, so `gl.get(0)` is the place `gl[0]`; writes
+  stay `model.place`.
+- **Construction effects.** Each field default is a body of the summaries, and a construction
+  that leaves the field out carries its effects (it runs inside the constructor now).
+- **Section 4.2's tests.** The four PROG shape tests and the compile test's five plain-`fx`
+  writers are `mut fx`, and so are the methods they override (`types.override.signature`: an
+  override is `mut` exactly when what it overrides is). `aMethodThatWritesItsReceiverIsNotConstEvenWithoutMut`
+  is now `aPlainFxThatWritesItsReceiverIsRefusedSoConstFollowsTheDeclarations`: the typer
+  refuses the plain writers (`rules.mutability.this` twice, `.method`). The lifetimes test W2.5's
+  alias rule refuses first, and the two its round-3 loop rule now refuses first (bagloop2 and
+  its field-default twin, q6), assert the checker's code, and assert the classes part's own
+  refusal with the `exclusivity` pass off (`OopTestSupport.withoutRulePass`).
+- **The derived `const` stays, for four shapes.** 4.2 asked to delete the inference. For a
+  plain `fx` that writes its own state it is dead now (the typer refuses the program), but the
+  rules let four shapes through that a `const` method cannot lower: a lambda writing through
+  the captured `self`, a field passed `mut` (`grab(mut n)`), a view of a `mut` field (the typer
+  lends a `MutView` in any class body and the statement part spells `kira::mutView(items)`),
+  and a trait default body calling a `mut fx`. Narrowed to lambdas, round 1's `allowed2`
+  stopped compiling on g++ and zig (`no matching function for call to 'mutView'`); with the
+  inference whole it prints `6 6 5 12 4 12 112` on all three, 0 ASan reports. The shape test
+  pins `grabIt` and `viewAll` as not `const`.
+- **Round 2's probes, unchanged.** ctorwrong2 `old 7`, ctororder the label and 7, ctorthis the
+  name and 7, genrecv the two names, genrecv2 the name, externstr the label and 63, ctorinlam
+  the label and 7 twice; externmut refused; `allowed` refused by `rules.view.write` (correct
+  under the literal reading); all the same on g++, zig and MSVC ASan (0 reports).
+- **Round 2's minors.** KI-1 stays (the trial's golden numbers are in KI-1). The `allowed`
+  note is corrected above. OQ-2 is decided and built (first item). KIRA_EXTERN_CHECK before the
+  class it names (externnested2) is W2.6's, and on this trial the `@_extern` declarations are not
+  lowered at all without W2.6. The order rule's over-refusals (earlyview, ctorinlam's `own`) are
+  W2.5's F1: earlyview is accepted and prints `1006 1006` on all three, 0 ASan reports.
 
 ## Fixed in second-class round 2 (for the record)
 
