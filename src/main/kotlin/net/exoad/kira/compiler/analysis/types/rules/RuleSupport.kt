@@ -288,6 +288,38 @@ internal class Rules(val program: TypedProgram) {
     fun writesObjectOnly(b: Body, e: FunctionCallExpr, op: CallOperand): Boolean =
         op.isReceiver && op.writes && receiverType(b, e, op)?.let { isReference(it) } == true
 
+    /**
+     * A value of [t] may hold the storage of a place of type [q] (30-second-class 3.3): it is
+     * one, holds one by value, or holds any reference. The one answer ViewPass (a write through
+     * a `mut` parameter that may be bound to a viewed place) and W2.6's R-B copy (condition 2: a
+     * `mut` argument of an extern that may hold a by-reference argument's storage) read.
+     */
+    fun mayHold(t: KType?, q: KType?): Boolean = t == null || q == null || holdsType(t, q, HashSet())
+
+    private fun holdsType(t: KType, q: KType, path: MutableSet<KType>): Boolean {
+        if (t == q) {
+            return true
+        }
+        return when (t) {
+            is KType.Scalar, KType.Str, KType.Void, KType.Never, KType.NullT -> false
+            is KType.Param, is KType.Fn, KType.Error -> true
+            is KType.Nominal -> when (val sym = t.sym) {
+                is ClassSymbol -> when (sym.kind) {
+                    ClassKind.STRUCT -> path.add(t) && run {
+                        val sub = sym.typeParams.zip(t.typeArgs()).toMap()
+                        val found = sym.fields.any { holdsType(it.type.substitute(sub), q, path) }
+                        path.remove(t)
+                        found
+                    }
+                    ClassKind.MAGIC -> isReference(t) || t.typeArgs().any { holdsType(it, q, path) }
+                    else -> true
+                }
+                is TraitSymbol -> true
+                else -> false
+            }
+        }
+    }
+
     /** Whether the owner of a field is a reference type, so writing the field writes shared state. */
     fun ownerIsReference(f: FieldSymbol): Boolean = when (val o = f.owner) {
         is TraitSymbol -> true

@@ -1,7 +1,97 @@
-# Known issues: w2-6-ffi (second-class views, round 2)
+# Known issues: w2-6-ffi (second-class views, round 3)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
+
+## Round 3 (40-round3 5.6): R-B, R-G's typer switch and dispatch, F2's typer half
+
+`cpp/w2-5-rules` f86261f is merged first (04cc00f, clean, signed), so every test here runs
+against the rules. Measured after the merge, before this round's change: 1173 tests, 11 fail,
+exactly 40-round3 4.3's eleven. After: 1180 tests, 0 failures, 1 skipped (ExternDelegationTest's
+own skip).
+
+### Closed (round 2's verdict, sc-round2.json)
+
+| Finding | End | Test |
+|---|---|---|
+| w2-6 #4, a `Str` argument that is a lent result (`gstrs.get(0)`, b1c/b1u/b7c) | fixed: R-B reads `readPlace`, `kira::ffi::in(kira::Str(kira::at(gstrs, 0)))`, 82 | `ExternCallRunTest` sLent; `CppExternEmitterTest.aByReferenceArgumentThatIsAPlaceIsCopiedWhenTheCallMayWriteIt` |
+| w2-6 #5, only `Str` was copied (`sumListL(gl, fs)`, b9: 21 for 6) | fixed: every kind C++ takes by `const&` (`Rules.aliasesCaller`) plus `Str` into `CStr`: `List`, `Arr`, `Maybe`, a value struct, a class handle, a struct holding an `Fx` | rows cList 6, cArr 6, cMaybe 82, cStruct 82, cClass 82, sStructFx 82 |
+| w2-6 #6, a `Str` beside a `mut` argument of the same storage (b2b/b2e/b2f/b2g: 1 for 82) | fixed: R-B condition 2 (`Rules.mayHold`) | rows mViaMut 82, mCStr 82; nUnrelated (a `mut Int32`) is not copied |
+| w2-6 #7, a bodiless `pub` prototype lowered as a Kira call (a5b, a5c: g++ errors) | fixed: R-G, below | rows gPeek 10, gPlen 4; `aBodylessPubPrototypeIsAnExternForTheUnsafeConventionToo`; `everyCalleeWhoseBodyCppSuppliesIsCalledAsAnExternAndNoOther` |
+| w2-6 #8, this package's tests red on the integration | fixed: the 11 of 4.3 rewritten over locals, first-class results and `@_opaque` handles; `aStrIsNoCStrAnywhereElse` expects its two refusals | `CppExternEmitterTest` 25/0 |
+| [owner w2-5] #0, a `mut Unsafe<T>` never given a `MutView` of a place | fixed (W2.5's F2 checker half; this branch's end-to-end test) | `aMutUnsafeTakesAMutViewOfALocalAndAMutViewOfACaptureIsRefused`: four locals accepted, a global refused `rules.view.write`, lowered `(kira::mutView(xs)).data()` |
+| [owner w2-5] #1, a `Str` given to a `CStr` is no view (b7 6 for 82, b8b; ASan UAF in strlen) | fixed by R-B's copy, `kira::ffi::CStrBuf(gs).c_str()`, as R-B says (not by the literal-4b refusal, which would refuse `ImGui::Text(this.label)`) | rows cCStr 82, mCStr 82 |
+| [owner w2-6] w2-4 minor #3, externnested2: a check naming the module's own class at the top of the header | fixed: the checks follow the module's declarations and name its own types from the global scope (`CppEmitContextImpl.atGlobalScope`) | `theChecksFollowTheModulesOwnDeclarationsAndNameThemFromTheGlobalScope`; ExternCallRunTest compiles checks naming `w::Pt`, `w::Cb` |
+| r1 minor #3 and round-2 minor u11, a `MutView` of a capture into `mut Unsafe<T>` | refused: `types.lambda.assign-capture` (F2's typer half) | the same F2 test, also through `zero(xs.view().from(1))` |
+| round-2 minor, "Fix 1 copies whenever the call carries an Fx" | superseded by R-B's two conditions; the direct lambda is `rules.exclusivity.alias` | the direct-lambda assertion in the R-B test |
+| W2.5's "R-C's limit" (a callback C++ stored in an earlier call) | settled by a contract line, below | - |
+
+Every copy row was checked to bite: with `copiedArguments` returning nothing, 15 of the 17 copy
+rows print another value on each of g++, clang and MSVC (sGlobal 168, cList 21, mViaMut 1,
+cStruct 1; cCStr 0 on g++, 6 on MSVC).
+
+End to end, on a scratch integration (trial 3e76959 + 04cc00f + this diff, W2.3's expression
+emitter doing the lowering): 29 probes of 6.2's matrix (a `mut` global, a qualified `ctr.G`, a
+lent place, a field through a handle, `Ref.value`, `this.name`, a `const&` and a `mut` parameter,
+a local, a literal, a computed value; a `List`, `Arr`, `Maybe`, struct and class argument; the
+`Fx` in a `List` or a struct field; the `mut` twins; a5b, a5c; F2), each prints Kira's value on
+g++ 13.2 and zig clang 20, and the 28 accepted ones on MSVC 14.44 `/fsanitize=address` with 0
+reports. The one refused is F2's capture. The same integration's full suite: 1419 tests and 57
+failures before this diff, 1426 and 46 after; the 11 fewer are 4.3's, and no test of W2.3 or
+W2.4 changed state (the 46 are theirs, 40-round3 4.1 and 4.2).
+
+### R-B, as built
+
+`CppExternEmitter.copiedArguments`. A given argument is in scope when its parameter is not
+`mut` and C++ receives it by reference or pointer: `Rules.aliasesCaller(paramType)` (the rule
+for what a Kira parameter takes by `const&`, design 5.1) or a `Str` given to a `CStr`. It is
+copied when it is a place (`TypedModel.readPlace`) and (1) `CallReach.mayRunAnything` (R-C) or
+(2) a `mut` argument, or a `mut fx` receiver, has a type that `Rules.mayHold` its type (the
+pointee for a `mut Unsafe<T>`). Spelled `kira::ffi::in(kira::Str(x))`, `kira::ffi::CStrBuf(x).c_str()`,
+or `T(x)` from the type speller. `mayHoldFx` of this file is gone.
+
+### Decisions beyond the design's letter
+
+- **An `Fx` argument and a class or trait handle are in scope.** 2's list ends at "a value
+  class" and puts `Fx` arguments out of scope; `aliasesCaller` holds both, and each is the same
+  hazard (a handle or `std::function` bound by `const&` to a variable the callback rebinds). The
+  cost is a refcount or a `std::function` copy. `scanOf(car)` is now `scanOf(kira::Rc<::bibo::Car>(car))`.
+- **A class receiver counts for condition 1** (R-C: a class may hold an `Fx`), so an extern
+  class's method copies its place arguments. A free function given nothing that may hold an
+  `Fx` (`ImGui::Text(this.label)`) copies nothing.
+- **A Kira constant is never copied:** an immutable global reached through no reference step.
+  Nothing can write it, and a `Str` one is the `const char*` literal itself (D12).
+- **3.3's "T may hold q" moved into `Rules.mayHold`** (RuleSupport.kt), and ViewPass's private
+  copy now calls it: one predicate for the two readers (group G). A W2.5 file; its owner may
+  move it again.
+- **A `View` of a captured variable is a `View`.** The typer made `xs.view()` a `MutView` for a
+  captured `mut` local, and a read `sumV(xs.view())` inside a lambda was lowered `kira::mutView(xs)`
+  over the lambda's const copy: g++ and clang rejected it (measured on the integration, probe
+  f_viewcap). It is a `View` now; handing it to a writer is F2's refusal.
+- **The contract line for R-C's limit.** An extern runs a Kira `Fx` only during a call given it,
+  or given something that may hold it (a handle of the C++ object that keeps it, which as a class
+  or `@_opaque` receiver or argument always counts). A C++ callback registry is reached through
+  such a handle, never through a free function given none. Written at `copiedArguments`.
+
+### R-G, as built
+
+`CallResolver.isExternLike` is `suppliedByCpp`, and `kindFor`/`free` give every such call
+`CallKind.EXTERN`, which the expression part dispatches on, so it reaches `CppExternEmitter.call`
+without a change to W2.3's file. `isExternCall` is `suppliedByCpp` too. A markerless prototype is
+spelled as the module spells its functions (`ctx.qualified`), keeps Kira's own defaults, and gets
+no `declared<T>` (Kira declared its C++ type). A bodiless method of a class is a slot, not an
+extern (round 2's `isExternLike` counted any bodiless `pub` method).
+
+### Open
+
+- **The stdlib half of R-B** ("a stdlib binding given an `Fx`") is W2.3's binding lowering, not
+  this emitter. Today's such bindings are `spawn(name, body)`, `Mutex.lock(body)` and
+  `Mutex.waitUntil(pred, timeoutMs)`; the only by-reference argument beside the `Fx` is `spawn`'s
+  `name`, which `kira::sync::Thread` captures by copy before the thread starts (sync.hxx), so
+  nothing needs a copy. A future binding with one must ask the same question.
+- **Bodies are still not lowered on this branch.** ExternCallRunTest runs the call texts over a
+  hand-written driver; the end-to-end numbers above are from the scratch integration.
+- **MSVC ASan is not in the gradle harness.** The 0-report figure is the scratch run above.
 
 ## Second-class views round 2: the two significant findings of round 1's verdict
 
@@ -115,7 +205,8 @@ this package's OWNS, and neither is one of the two significant findings assigned
   into a `CStr` parameter, lowered `gs.c_str()` — is a heap-use-after-free under MSVC ASan
   (measured: prints 6 where 82 is correct). `3.3`'s rule refuses it only if `ViewPass` treats
   a `Str` given to a `CStr` extern parameter as a view with origin `PLACE(gs)`, which the
-  typer records no coercion for today. Include this shape in `ViewPassTest`.
+  typer records no coercion for today. Include this shape in `ViewPassTest`. **Closed in round
+  3 by R-B's copy** (`CStrBuf(gs).c_str()`, 82), not by ViewPass.
 - **For `w2-3-emit-exprs`.** The current hoister's `lentArgument` makes every extern argument
   `LENT`, so `lenPlus(gs, change())` spills `change()` first and passes `kira::ffi::in(gs)`,
   printing 16801 where 8201 is correct (the Kira-function control `lenPlusK` snapshots `gs`
@@ -131,8 +222,8 @@ this package's OWNS, and neither is one of the two significant findings assigned
   mutable place. This predates this round's fix (it is the pre-existing exact-`MutView`
   path, round 4's) and is not one of round 1's two significant findings for this package;
   should be a Kira diagnostic (`types.lambda.assign-capture`, the same one `mutReceiver`
-  already reports for a `mut fx` receiver), not a C++ compile error. Left open for a future
-  round.
+  already reports for a `mut fx` receiver), not a C++ compile error. **Closed in round 3**:
+  `types.lambda.assign-capture` (F2's typer half).
 
 ### The kept non-regression tests still model programs decision 4b's `ViewPass` will refuse once merged
 
@@ -146,7 +237,7 @@ callee's other tests already use elsewhere in this file, not literally the same
 `Maybe<CStr>`/`Unsafe<UInt8>` callees. Not touched this round (not one of round 1's two
 significant findings, and the tests are correct today on this branch alone, which has no
 `ViewPass`); left here so the next round that merges `w2-5-rules` rewrites these two tests
-over first-class results before they contradict the rule.
+over first-class results before they contradict the rule. **Closed in round 3**: both rewritten.
 
 ### The three unsigned round-2/3/4 commits are resolved
 

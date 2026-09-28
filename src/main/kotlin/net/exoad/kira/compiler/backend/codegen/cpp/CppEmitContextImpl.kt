@@ -442,7 +442,7 @@ class CppEmitContextImpl(
         val owner: ModuleSymbol = sym.module
         if (owner === symbol) {
             val inImpl = placement.inImpl(sym)
-            if (hiddenByScope(sym.name)) {
+            if (outsideNamespace || hiddenByScope(sym.name)) {
                 return if (inImpl) "::$namespace::$IMPL_NAMESPACE::$name" else "::$namespace::$name"
             }
             return if (inImpl) "$IMPL_NAMESPACE::$name" else name
@@ -450,6 +450,25 @@ class CppEmitContextImpl(
         referencedModules.add(owner)
         val ns = layout.namespaceFor(owner.uri)
         return if (placementOf(owner).inImpl(sym)) "::$ns::$IMPL_NAMESPACE::$name" else "::$ns::$name"
+    }
+
+    /**
+     * True while text written at global scope, outside this module's namespace, is spelled
+     * ([atGlobalScope]): the extern checks (W2.6), which may name a class this module declares
+     * (`KIRA_EXTERN_CHECK(w::boxLenL(std::declval<const kira::Rc<::w::Box>&>()...))`), and
+     * spelled bare it was "'Box' was not declared in this scope".
+     */
+    private var outsideNamespace: Boolean = false
+
+    /** Runs [block] with this module's own names spelled from the global namespace ([qualified]), restoring after. */
+    fun <T> atGlobalScope(block: () -> T): T {
+        val before = outsideNamespace
+        outsideNamespace = true
+        try {
+            return block()
+        } finally {
+            outsideNamespace = before
+        }
     }
 
     /**

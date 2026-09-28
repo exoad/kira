@@ -11,11 +11,14 @@ import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
+import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
-import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.rules.CallReach
+import net.exoad.kira.compiler.analysis.types.rules.Rules
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
@@ -86,7 +89,10 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * the header unwrapped.
  *
  * At a call, [call] spells the C++ name with a leading `::` and the proxies (the expression
- * part hands over the spelled receiver and arguments), and converts the result as above.
+ * part hands over the spelled receiver and arguments), converts the result as above, and
+ * copies a by-reference argument the call may write while it runs (R-B, [copiedArguments]).
+ * Every call whose body C++ supplies comes here (R-G): a bodiless `pub` prototype too, which
+ * Kira declared itself and so is spelled and typed as the module's own function.
  * An extern constant is read by its C++ name exactly as the marker spells it, with no `::`
  * added ([constant]), converted the same way: a C constant
  * reached through `c =` is usually an object-like macro (`#define LIMIT 42`, and ImGui's
@@ -185,7 +191,16 @@ object CppExternEmitter : CppExternsPart {
         return out.toList()
     }
 
-    override fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter) {
+    /**
+     * The checks are written at global scope after the module's own declarations (the
+     * declaration emitter puts them there), so a type this module declares is spelled from the
+     * global namespace ([CppEmitContextImpl.atGlobalScope]): an extern taking a Kira class of
+     * its own module named it bare, at the top of the header, and g++ said "'Wrap' was not
+     * declared in this scope" (w2-4 round-2 minor #3, externnested2).
+     */
+    override fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter) = ctx.atGlobalScope { checkAtGlobalScope(ctx, sym, w) }
+
+    private fun checkAtGlobalScope(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter) {
         ctx.includeInHeader(FFI_HEADER)
         (includes(ctx, sym) + cIncludes(ctx, sym)).filter { it.startsWith("<") }.forEach { header ->
             // The declaration emitter writes every include in quotes; `#include "<cmath>"` names a file.
@@ -333,14 +348,24 @@ object CppExternEmitter : CppExternsPart {
     override fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String {
         val fn = call.fn ?: return "/* extern call without a callee */"
         val owner = fn.owner
+        // R-G (40-round3): every function whose body C++ supplies comes here, not only an
+        // `@_extern` one. A bodiless `pub` prototype has no marker: Kira declared it in this
+        // module's header with its own C++ types, so it is spelled as the module spells its
+        // functions and its result is already the declared type (round 2 lowered its call as a
+        // Kira call, and `peek(w, v)` / `plen(loc)` failed in g++: 'cannot convert
+        // kira::View<int> to const int32_t*', 'cannot convert kira::Str to const char*').
+        val marked = externOf(fn) != null
         val callee = when {
-            owner == null || receiver == null -> globalName(fn)
+            owner == null || receiver == null -> if (marked) globalName(fn) else ctx.qualified(fn)
             else -> receiver + accessor(owner) + cppName(fn)
         }
         // An extern parameter has no Kira default (functionCheck refuses one), so every binding
-        // here is a given argument; a Default would be a default the C++ side never sees.
-        call.args.filterIsInstance<ArgBinding.Default>().firstOrNull()?.let { d ->
-            (d.param.default ?: fn.decl)?.let { ctx.unsupported(it, "the default of parameter '${d.param.name}' of the extern function '${fn.name}'") }
+        // here is a given argument; a Default would be a default the C++ side never sees. A
+        // prototype Kira declared carries its defaults in its own C++ declaration.
+        if (marked) {
+            call.args.filterIsInstance<ArgBinding.Default>().firstOrNull()?.let { d ->
+                (d.param.default ?: fn.decl)?.let { ctx.unsupported(it, "the default of parameter '${d.param.name}' of the extern function '${fn.name}'") }
+            }
         }
         // Whether an extern's result, a `mut` argument, or a `mut fx`'s mutated receiver could
         // hand the caller a fresh pointer into a buffer this call itself built (a computed `Str`
@@ -354,63 +379,107 @@ object CppExternEmitter : CppExternsPart {
         // (5.2, 5.3, refused at the declaration by ViewPass's `rules.view.extern`/`rules.view.type`),
         // so a temporary `Str` buffer fed to any argument of this call is safe for the call's own
         // full-expression, whatever the call hands back.
-        //
-        // A separate hazard 4b does not close: contract 5.4's point 3 lets an extern run Kira
-        // code through the `Fx` arguments it is given, and that code may reassign a `Str` place
-        // (a `mut` global, a field through a `Ref` or a handle, a local through a `mut` param)
-        // this same call also passes by name. `argument` binds a plain `Str` parameter straight
-        // to the place's own storage (`kira::ffi::in(place)`, a `const std::string&`), which Kira
-        // passes by value; a reassignment inside the `Fx` frees that storage while the C++
-        // parameter still points at it. Measured on the trial CLI (round-1 verdict, probes u5/u8):
-        // `lenAfter(gs, fx() Void { gs = "" })` with `gs: mut Str` global printed 0 for 82 (g++,
-        // clang), MSVC ASan heap-use-after-free in the callee reading the freed buffer;
-        // `lenAfter(r.value, fx() Void { r.value = "" })` with `r: Ref<Str>` the same. [reenters]
-        // is conservative (`mayHoldFx`): true when any given argument's type is an `Fx`, or may
-        // hold one through value composition (an `Arr`/`List`/.../`Maybe`/a `TupleN`/a struct's
-        // fields) or through any reference type (a class, a trait, `Ref`, `Weak`), which cannot be
-        // seen through. When it holds, every `Str` argument that is a place ([argument] reads
-        // `ctx.model.places`) is copied first, never bound to the place itself; a temporary or a
-        // literal is unaffected (nothing else can name it to write it back).
-        val reenters = call.args.any { b -> (b as? ArgBinding.Given)?.expr?.let { mayHoldFx(ctx.model.types[it]) } == true }
-        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, reenters) }
-        return declared(ctx, fn.ret, "$callee(${texts.joinToString(", ")})")
+        val copied = copiedArguments(ctx, call, fn)
+        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied) }
+        val text = "$callee(${texts.joinToString(", ")})"
+        return if (marked) declared(ctx, fn.ret, text) else text
     }
 
     /**
-     * Whether a value of type [t] is an `Fx`, or may hold one where this walk cannot see past
-     * it: by value, through an `Arr`, `List`, `Map`, `Set`, `Deque`, `Stack`, `Queue`, `Maybe`,
-     * `Result` or a `TupleN`'s type arguments, or a struct's fields (cycle-guarded by [seen]);
-     * or through any reference type this call's static type does not fix the contents of - a
-     * class, a trait value, `Ref<T>` or `Weak<T>` (the same grouping `TypeFacts.isReference`
-     * uses) - which may reach any object, including one holding a closure elsewhere. `View`,
-     * `MutView`, `Unsafe` and `CStr` hold no `Fx` (they are raw pointers/spans, not values). A
-     * generic `T` is unknown, so it counts as holding one.
+     * R-B (40-round3 2, group B): the indices of the given arguments this call passes as a copy
+     * made at the call, because Kira passes them by value, C++ may receive them by reference or
+     * pointer, and the call may write their storage while it runs.
+     *
+     * C++ binds a `Str` (`kira::ffi::in`, a `const std::string&`), a `Str` given to a `CStr`
+     * parameter (`.c_str()`, a pointer into it), a container, a `Maybe`, `Result` or tuple, a
+     * value class, a class or trait handle and an `Fx` (the checks state them `std::declval<const
+     * T&>()`) straight to the argument's own storage: [Rules.aliasesCaller], the rule for which
+     * types a Kira parameter takes by `const&`, is the rule here too, plus the `Str`-to-`CStr`
+     * pointer. A scalar, an enum, an opaque handle, a second-class argument (a `View`, a
+     * `MutView`, an `Unsafe`, a `CStr` value: its own pointer, which moves nothing) and a `mut`
+     * argument (`kira::ffi::out`, which the callee is meant to write) are passed as they are.
+     *
+     * Such an argument is copied when it is a place ([TypedModel.readPlace]: a variable, a
+     * field, an element, a lent result such as `gstrs.get(0)` (R-A), a qualified global) that
+     * something may write during the call:
+     *
+     * 1. the call may run any Kira code ([CallReach.mayRunAnything], R-C: an argument or the
+     *    receiver may hold an `Fx`, which the callee may call and which may write anything); or
+     * 2. a `mut` argument, or the receiver of a `mut fx`, has a type that may hold the
+     *    argument's storage ([Rules.mayHold], 30-second-class 3.3; the pointee `T` for a `mut
+     *    Unsafe<T>`): the callee writes it, and the two may be one storage (`appendLen(gs, mut
+     *    o)` inside `viaMut(mut gs)`, `appendLen(h1.name, mut h2.name)` with `h2 = h1`). No
+     *    disjointness proof is attempted.
+     *
+     * Otherwise the argument is lent as it always was: by contract 5.4.2 and 5.4.3 nothing of
+     * Kira's runs during the call and the call writes only its `mut` arguments. A literal, a
+     * computed temporary and a Kira constant (an immutable global reached through no reference:
+     * nothing can write it, and a `Str` one is the `const char*` literal itself, D12) are never
+     * copied.
+     *
+     * Measured before this rule (round-2 verdict, g++/clang/MSVC ASan): `lenAfter(gstrs.get(0),
+     * fs)` 0 or a heap-use-after-free for 82; `sumListL(gl, fs)` 21 for 6; `lenAfterCL(gs, fs)`
+     * and `appendLenC(gs, mut o)` 6 for 82 and a heap-use-after-free in strlen; `appendLen(gs,
+     * mut o)` inside `viaMut(mut gs)` 1 for 82. Round 1 copied only a `Str` that was a
+     * `model.places` entry, and only beside an `Fx`.
+     *
+     * The contract line R-C cannot see past (W2.5's ledger, "R-C's limit"): an extern that keeps
+     * an `Fx` it was given and runs it during a LATER call runs Kira code that call's arguments
+     * say nothing of. The FFI contract (5.4) therefore reads: an extern runs a Kira `Fx` only
+     * during a call that is given it, or given something that may hold it (a handle to the C++
+     * object that keeps it, which as a class or opaque receiver or argument always counts); a
+     * C++ callback registry is reached through such a handle, never through a free function
+     * taking none.
      */
-    private fun mayHoldFx(t: KType?, seen: MutableSet<ClassSymbol> = HashSet()): Boolean = when (t) {
-        null -> false
-        is KType.Fn -> true
-        is KType.Param -> true
-        is KType.Nominal -> when (val sym = t.sym) {
-            is ClassSymbol -> when (sym.kind) {
-                ClassKind.CLASS, ClassKind.OPAQUE -> true
-                ClassKind.STRUCT -> if (!seen.add(sym)) false else t.typeArgsSubstitutedFields().any { mayHoldFx(it, seen) }
-                ClassKind.MAGIC -> when (sym.name) {
-                    UNSAFE, VIEW, MUT_VIEW, CSTR -> false
-                    "Ref", "Weak" -> true
-                    else -> t.typeArgs().any { mayHoldFx(it, seen) }
+    private fun copiedArguments(ctx: CppEmitContextImpl, call: ResolvedCall, fn: FnSymbol): Set<Int> {
+        val model = ctx.model
+        val rules = Rules(ctx.program)
+        val candidates = call.args.withIndex().filter { (i, b) ->
+            val given = b as? ArgBinding.Given ?: return@filter false
+            val p = fn.params.getOrNull(i) ?: return@filter false
+            !p.byRef && lentByReference(rules, p.type, model.types[given.expr]) && writable(rules, model.readPlace(given.expr))
+        }
+        if (candidates.isEmpty()) {
+            return emptySet()
+        }
+        if (CallReach.mayRunAnything(call, model)) {
+            return candidates.map { it.index }.toSet()
+        }
+        val written = buildList {
+            call.args.forEachIndexed { i, b ->
+                val p = fn.params.getOrNull(i)
+                if (b is ArgBinding.Given && p != null && p.byRef) {
+                    add(if (isUnsafe(p.type)) (p.type as KType.Nominal).typeArgs().firstOrNull() else p.type)
                 }
             }
-            is TraitSymbol -> true
-            else -> false
+            if (fn.isMutMethod) {
+                call.receiver?.let { add(model.types[it]) }
+            }
         }
-        else -> false
+        return candidates.filter { (_, b) ->
+            val t = model.types[(b as ArgBinding.Given).expr]
+            written.any { rules.mayHold(it, t) }
+        }.map { it.index }.toSet()
     }
 
-    /** [t]'s fields' types, its own type arguments substituted for its type parameters. */
-    private fun KType.Nominal.typeArgsSubstitutedFields(): List<KType> {
-        val cls = sym as ClassSymbol
-        val sub = cls.typeParams.zip(typeArgs()).toMap()
-        return cls.fields.map { it.type.substitute(sub) }
+    /**
+     * An argument of type [given] bound to a parameter of type [param] that C++ receives by
+     * reference or pointer into the argument's own storage ([copiedArguments]).
+     */
+    private fun lentByReference(rules: Rules, param: KType, given: KType?): Boolean = when {
+        isCStr(param) -> given == KType.Str
+        else -> rules.aliasesCaller(param)
+    }
+
+    /**
+     * Whether [place] is storage something may write during a call: any place but one rooted
+     * at an immutable global and reached through no reference (a Kira constant, or a value
+     * inside one). Null (a literal, a computed temporary) is no storage anything else names.
+     */
+    private fun writable(rules: Rules, place: Place?): Boolean {
+        place ?: return false
+        val root = place.root()
+        return !(root is Place.Global && !root.sym.isMut && place.path().none { rules.isReferenceStep(it) })
     }
 
     /**
@@ -480,17 +549,14 @@ object CppExternEmitter : CppExternsPart {
      * to the end of the call's own full-expression - is always long enough, whatever a literal,
      * a named `Str`, a constant or a computed expression builds it from.
      *
-     * `kira::ffi::in(text)` for a plain `Str` parameter binds a `const std::string&` straight to
-     * [text]'s own storage when [text] is a place - no copy, since Kira passes a `Str` by value
-     * and the callee only reads it for the call. That is unsound when [reenters] ([call]'s doc):
-     * the extern may run Kira code through an `Fx` argument that reassigns the very place this
-     * argument names, freeing the buffer the C++ parameter still points at (measured, round-1
-     * verdict). So when [reenters] and [expr] is a place (`ctx.model.places`),
-     * the argument is copied first, `kira::ffi::in(kira::Str(text))`: a fresh `kira::Str` a
-     * reassignment elsewhere cannot reach. A literal or a computed expression is already a
-     * temporary nothing else can name, so it is unaffected either way.
+     * When [copy] ([copiedArguments], R-B) the argument is a place the call may write while it
+     * runs, and it is handed over as a copy made at the call instead of its own storage:
+     * `kira::ffi::in(kira::Str(text))` for a `Str`, `kira::ffi::CStrBuf(text).c_str()` for a
+     * `Str` given to a `CStr` (CStrBuf holds its own `std::string`), and `T(text)` for any other
+     * by-reference type (`kira::List<std::int32_t>(gl)`, `kira::Rc<ns::C>(h)`, a value class's
+     * copy constructor). Each copy lives to the end of the call's full-expression.
      */
-    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, reenters: Boolean = false): String {
+    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, copy: Boolean = false): String {
         if (p == null) {
             return text
         }
@@ -509,13 +575,14 @@ object CppExternEmitter : CppExternsPart {
             return "kira::ffi::out($text)"
         }
         if (p.type == KType.Str) {
-            return if (reenters && expr != null && ctx.model.places[expr] != null) "kira::ffi::in(kira::Str($text))" else "kira::ffi::in($text)"
+            return if (copy) "kira::ffi::in(kira::Str($text))" else "kira::ffi::in($text)"
         }
         if (isCStr(p.type)) {
             if (expr == null || ctx.model.types[expr] != KType.Str) {
                 return text
             }
             return when {
+                copy -> "kira::ffi::CStrBuf($text).c_str()"
                 expr is StringLiteral -> text
                 expr is Identifier && expr !is IntrinsicExpr -> when (val sym = ctx.model.symbolOf(expr)) {
                     is GlobalSymbol -> when {
@@ -527,6 +594,9 @@ object CppExternEmitter : CppExternsPart {
                 }
                 else -> "kira::ffi::CStrBuf($text).c_str()"
             }
+        }
+        if (copy) {
+            return "${ctx.spell(p.type, Pos.VALUE)}($text)"
         }
         return text
     }
@@ -556,8 +626,13 @@ object CppExternEmitter : CppExternsPart {
      */
     override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String = declared(ctx, sym.type, cppName(sym))
 
-    /** Whether [call] is one the expression part must hand to [CppExternEmitter.call]: its callee is extern. */
-    fun isExternCall(call: ResolvedCall): Boolean = call.fn?.foreign is Foreign.Extern
+    /**
+     * Whether [call] is one the expression part must hand to [CppExternEmitter.call]: its
+     * callee's body C++ supplies (R-G, [suppliedByCpp]). The typer gives every such call
+     * [net.exoad.kira.compiler.analysis.types.CallKind.EXTERN], which is what the expression
+     * part dispatches on; the two agree by construction and a test pins it.
+     */
+    fun isExternCall(call: ResolvedCall): Boolean = call.fn?.suppliedByCpp == true
 
     private const val CSTR = "CStr"
     private const val UNSAFE = "Unsafe"

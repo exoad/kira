@@ -4,7 +4,6 @@ import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.Capture
-import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.Effect
@@ -1373,31 +1372,7 @@ internal class ViewPass : RulePass {
             return false
         }
 
-        /** A value of [t] may hold the storage of a place of type [q] (3.3): it is one, holds one by value, or holds any reference. */
-        private fun mayHold(t: KType?, q: KType?): Boolean = t == null || q == null || holds(t, q, HashSet())
-
-        private fun holds(t: KType, q: KType, path: MutableSet<KType>): Boolean {
-            if (t == q) {
-                return true
-            }
-            return when (t) {
-                is KType.Scalar, KType.Str, KType.Void, KType.Never, KType.NullT -> false
-                is KType.Param, is KType.Fn, KType.Error -> true
-                is KType.Nominal -> when (val sym = t.sym) {
-                    is ClassSymbol -> when (sym.kind) {
-                        ClassKind.STRUCT -> path.add(t) && run {
-                            val sub = sym.typeParams.zip(t.typeArgs()).toMap()
-                            val found = sym.fields.any { holds(it.type.substitute(sub), q, path) }
-                            path.remove(t)
-                            found
-                        }
-                        ClassKind.MAGIC -> r.isReference(t) || t.typeArgs().any { holds(it, q, path) }
-                        else -> true
-                    }
-                    is TraitSymbol -> true
-                    else -> false
-                }
-            }
-        }
+        /** A value of [t] may hold the storage of a place of type [q] (3.3): [Rules.mayHold], the one predicate W2.6's R-B copy reads too. */
+        private fun mayHold(t: KType?, q: KType?): Boolean = r.mayHold(t, q)
     }
 }

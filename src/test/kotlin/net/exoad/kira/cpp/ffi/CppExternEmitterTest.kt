@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
@@ -190,9 +191,13 @@ class CppExternEmitterTest {
                 pub y: Float32 = 0.0
             }
 
+            @_opaque @_extern(cpp = "bibo::Buf", header = "car.hxx")
+            pub class Buf {
+            }
+
             @_extern(cpp = "bibo::Frame", header = "car.hxx")
             pub struct Frame {
-                pub mut data: Unsafe<UInt8>
+                require pub mut data: Buf
                 pub len: Size
             }
 
@@ -209,8 +214,9 @@ class CppExternEmitterTest {
             "static_assert(sizeof(ImVec2) == sizeof(ui::ffi_::Vec2), \"Kira's Vec2 no longer matches its C++ header\");",
             "KIRA_EXTERN_FIELD(ImVec2, ui::ffi_::Vec2, x, float, \"Vec2.x\");",
             "KIRA_EXTERN_FIELD(ImVec2, ui::ffi_::Vec2, y, float, \"Vec2.y\");",
-            "namespace ui::ffi_ { struct Frame { std::uint8_t* data; kira::Size len; }; }",
-            "KIRA_EXTERN_FIELD(bibo::Frame, ui::ffi_::Frame, data, std::uint8_t*, \"Frame.data\");",
+            // A pointer field is an @_opaque handle: an Unsafe<T> field is rules.view.unsafe (4b, 1.4).
+            "namespace ui::ffi_ { struct Frame { bibo::Buf* data; kira::Size len; }; }",
+            "KIRA_EXTERN_FIELD(bibo::Frame, ui::ffi_::Frame, data, bibo::Buf*, \"Frame.data\");",
             "KIRA_EXTERN_FIELD(bibo::Frame, ui::ffi_::Frame, len, kira::Size, \"Frame.len\");",
             "KIRA_EXTERN_CHECK(std::declval<const bibo::Scan&>().ahead(), float, \"Scan.ahead\");",
         )
@@ -365,9 +371,6 @@ class CppExternEmitterTest {
             @_extern(c = "c_only_fn", header = "probe.h")
             pub fx cOnly: (a: Int32) Int32;
 
-            @_extern(cpp = "alloc_buf", header = "probe.h")
-            pub fx allocBuf: (n: Size) Unsafe<UInt8>;
-
             @_extern(cpp = "fill_buf", header = "probe.h")
             pub fx fill: (mut p: Unsafe<UInt8>, n: Size) Void;
 
@@ -379,8 +382,8 @@ class CppExternEmitterTest {
                 mut v: Float32 = 0.0
                 moved: Bool = sliderFloat("throttle", mut v, 0.0, 1.0)
                 drawList().addLine(7)
-                mut buf: Unsafe<UInt8> = allocBuf(4)
-                fill(mut buf, 4)
+                mut bytes: List<UInt8> = List<UInt8> { values = [1, 2, 3, 4] }
+                fill(bytes.view(), 4)
                 return hypot(3, 4) + cOnly(1)
             }
             """
@@ -388,17 +391,19 @@ class CppExternEmitterTest {
         // A class handle, a struct and a scalar reach Kira as the declared type (a unique_ptr, a
         // Scan& or a C `int` would pass the check); a Void and a pointer are what C++ gave.
         assertEquals("kira::ffi::declared<kira::Rc<::bibo::Car>>(::bibo::openCar())", c.text("openCar", null))
-        assertEquals("kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car))", c.text("scanOf", null, "car"))
+        // R-B: `car` is a class handle C++ takes by const&, and a handle may hold an Fx (R-C), so
+        // the handle is copied at the call (a refcount, never the object).
+        assertEquals("kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(kira::Rc<::bibo::Car>(car)))", c.text("scanOf", null, "car"))
         assertEquals("kira::ffi::declared<bool>(car->arm())", c.text("arm", "car"))
         assertEquals("car->Drive(0.1f, 0.0f)", c.text("drive", "car", "0.1f", "0.0f"))
         assertEquals("kira::ffi::declared<float>(kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car)).ahead())", c.text("ahead", "kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car))"))
         assertEquals("kira::ffi::declared<bool>(::ImGui::SliderFloat(kira::ffi::in(\"throttle\"), kira::ffi::out(v), 0.0f, 1.0f))", c.text("sliderFloat", null, "\"throttle\"", "v", "0.0f", "1.0f"))
         assertEquals("::ImGui::GetWindowDrawList()->AddLine(7u)", c.text("addLine", "::ImGui::GetWindowDrawList()", "7u"))
         assertEquals("kira::ffi::declared<std::int32_t>(::c_hypot(3, 4))", c.text("hypot", null, "3", "4"))
-        // A C name (7.3) and a mut Unsafe<T>, which is the T* itself: no out(...) around it.
+        // A C name (7.3) and a mut Unsafe<T>, which is the T* itself: no out(...) around it; a
+        // MutView of a local gives it its pointer (an Unsafe<T> result or local is refused, 4b).
         assertEquals("kira::ffi::declared<std::int32_t>(::c_only_fn(1))", c.text("cOnly", null, "1"))
-        assertEquals("::fill_buf(buf, 4u)", c.text("fill", null, "buf", "4u"))
-        assertEquals("::alloc_buf(4u)", c.text("allocBuf", null, "4u"))
+        assertEquals("::fill_buf((kira::mutView(bytes)).data(), 4u)", c.text("fill", null, "kira::mutView(bytes)", "4u"))
         assertTrue(c.ctx.model.calls.values.filter { it.fn?.name == "arm" }.all { CppExternEmitter.isExternCall(it) })
     }
 
@@ -425,14 +430,15 @@ class CppExternEmitterTest {
             @_extern(cpp = "probe::find", header = "probe.hxx")
             pub fx find: () Maybe<Int32>;
 
-            @_extern(cpp = "probe::version", header = "probe.hxx")
-            pub fx version: () CStr;
-
             @_extern(cpp = "probe::count", header = "probe.hxx")
             pub fx count: () Int32;
 
+            @_opaque @_extern(cpp = "probe::Buffer", header = "probe.hxx")
+            pub class Buffer {
+            }
+
             @_extern(cpp = "probe::buffer", header = "probe.hxx")
-            pub fx buffer: () Unsafe<UInt8>;
+            pub fx buffer: () Buffer;
 
             @_extern(cpp = "probe::VERSION", header = "probe.hxx")
             pub VERSION: Str;
@@ -443,16 +449,16 @@ class CppExternEmitterTest {
             fx main: () Int32 {
                 s: Str = name()
                 m: Maybe<Int32> = find()
-                v: CStr = version()
-                p: Unsafe<UInt8> = buffer()
+                p: Buffer = buffer()
                 return count()
             }
             """
         )
         assertEquals("kira::ffi::declared<kira::Str>(::probe::name())", c.text("name", null))
         assertEquals("kira::ffi::declared<kira::Maybe<std::int32_t>>(::probe::find())", c.text("find", null))
-        assertEquals("::probe::version()", c.text("version", null))
         assertEquals("kira::ffi::declared<std::int32_t>(::probe::count())", c.text("count", null))
+        // A pointer result is an @_opaque handle, kept as C++ gave it (a CStr or Unsafe<T>
+        // result is rules.view.extern: an extern never hands back a pointer, 5.2).
         assertEquals("::probe::buffer()", c.text("buffer", null))
         val version = c.ctx.symbol.members["VERSION"] as GlobalSymbol
         val limit = c.ctx.symbol.members["LIMIT"] as GlobalSymbol
@@ -472,12 +478,16 @@ class CppExternEmitterTest {
     fun aFieldReadOfAnExternStructReachesKiraAsTheDeclaredType() {
         val (_, ctx) = emit(
             """
+            @_opaque @_extern(cpp = "probe::Buf", header = "probe.hxx")
+            pub class Buf {
+            }
+
             @_extern(cpp = "probe::Rec", header = "probe.hxx")
             pub struct Rec {
                 pub c: Int8 = 0
                 pub mode: Int32 = 0
                 pub x: Float32 = 0.0
-                require pub mut buf: Unsafe<UInt8>
+                require pub mut buf: Buf
             }
 
             pub struct Own {
@@ -548,7 +558,8 @@ class CppExternEmitterTest {
         // kira::ffi::CStrBuf(expr).c_str(). A Kira Str constant is `inline constexpr const
         // char*` (D12), already a CStr, so it passes through like the literal; a mut Str global
         // is a kira::Str; an extern Str constant is whatever C++ declared, so it takes the
-        // buffer. A CStr value (an extern CStr return) passes as itself.
+        // buffer. A CStr value (a CStr parameter; an extern CStr result is rules.view.extern,
+        // 5.2) passes as itself.
         //
         // The typer takes a Str for a CStr parameter of an extern function and records the
         // argument as the Str it is (CallResolver.typeGiven); it refused every one of these
@@ -559,9 +570,6 @@ class CppExternEmitterTest {
             @_extern(cpp = "ImGui::Text", header = "imgui.h")
             pub fx text: (s: CStr) Void;
 
-            @_extern(cpp = "bibo::version", header = "car.hxx")
-            pub fx version: () CStr;
-
             @_extern(cpp = "bibo::nameOf", header = "car.hxx")
             pub fx nameOf: (i: Int32) Str;
 
@@ -571,8 +579,8 @@ class CppExternEmitterTest {
             pub GREETING: Str = "hi"
             pub mut TITLE: Str = "t"
 
-            fx show: (label: Str) Void {
-                text(version())
+            fx show: (label: Str, version: CStr) Void {
+                text(version)
                 text("literal")
                 text(label)
                 text(GREETING)
@@ -590,7 +598,7 @@ class CppExternEmitterTest {
         }
         fun named(name: String): (Expr) -> Boolean = { it is Identifier && it.value == name }
         fun calling(name: String): (Expr) -> Boolean = { it is FunctionCallExpr && (it.name as? Identifier)?.value == name }
-        assertEquals("::ImGui::Text(::bibo::version())", given("::bibo::version()", calling("version")))
+        assertEquals("::ImGui::Text(version)", given("version", named("version")))
         assertEquals("::ImGui::Text(\"literal\")", given("\"literal\"") { it is StringLiteral })
         assertEquals("::ImGui::Text(label.c_str())", given("label", named("label")))
         assertEquals("::ImGui::Text(::ext::GREETING)", given("::ext::GREETING", named("GREETING")))
@@ -601,7 +609,7 @@ class CppExternEmitterTest {
         textCalls.forEach { call ->
             val arg = (call.args.single() as ArgBinding.Given).expr
             assertTrue(c.ctx.model.coercion(arg) == null, "no coercion at a CStr argument")
-            assertTrue(c.ctx.model.types[arg] == KType.Str || calling("version")(arg), "the argument keeps its Str type")
+            assertTrue(c.ctx.model.types[arg] == KType.Str || named("version")(arg), "the argument keeps its Str type")
         }
     }
 
@@ -637,12 +645,14 @@ class CppExternEmitterTest {
         // A literal, a plain named Str, and a Kira Str constant build no temporary at all
         // (CppExternEmitter.argument's doc), so none of them was ever refused even against a
         // call whose result is a pointer-carrying shape - and nothing here checks that any more.
+        // The results are first-class (Int32): a Maybe<CStr> result or local is rules.view.type
+        // (decision 4b), which ViewPassTest pins.
         val literal = diagsOf(
             """
             @_extern(cpp = "probe::after", header = "probe.hxx")
-            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
+            pub fx after: (s: CStr, c: Int32) Int32;
             fx cat: () Void {
-                r: Maybe<CStr> = after("literal", 1)
+                r: Int32 = after("literal", 1)
             }
             """,
             "after", null, "\"literal\"", "1",
@@ -652,9 +662,9 @@ class CppExternEmitterTest {
         val namedCStr = diagsOf(
             """
             @_extern(cpp = "probe::after", header = "probe.hxx")
-            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
+            pub fx after: (s: CStr, c: Int32) Int32;
             fx cat: (a: Str) Void {
-                r: Maybe<CStr> = after(a, 1)
+                r: Int32 = after(a, 1)
             }
             """,
             "after", null, "a", "1",
@@ -664,10 +674,10 @@ class CppExternEmitterTest {
         val constantCStr = diagsOf(
             """
             @_extern(cpp = "probe::after", header = "probe.hxx")
-            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
+            pub fx after: (s: CStr, c: Int32) Int32;
             pub GREETING: Str = "hi"
             fx cat: () Void {
-                r: Maybe<CStr> = after(GREETING, 1)
+                r: Int32 = after(GREETING, 1)
             }
             """,
             "after", null, "::ext::GREETING", "1",
@@ -677,9 +687,9 @@ class CppExternEmitterTest {
         val namedStr = diagsOf(
             """
             @_extern(cpp = "probe::afterS", header = "probe.hxx")
-            pub fx afterS: (s: Str, c: Int32) Maybe<CStr>;
+            pub fx afterS: (s: Str, c: Int32) Int32;
             fx cat: (a: Str) Void {
-                r: Maybe<CStr> = afterS(a, 1)
+                r: Int32 = afterS(a, 1)
             }
             """,
             "afterS", null, "a", "1",
@@ -712,16 +722,14 @@ class CppExternEmitterTest {
             """
             @_extern(cpp = "probe::nameOf", header = "probe.hxx")
             pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::allocBuf", header = "probe.hxx")
-            pub fx allocBuf: (n: Size) Unsafe<UInt8>;
             @_extern(cpp = "probe::fillFrom", header = "probe.hxx")
             pub fx fillFrom: (s: Str, mut buf: Unsafe<UInt8>) Void;
             fx cat: () Void {
-                mut b: Unsafe<UInt8> = allocBuf(4)
-                fillFrom(nameOf(1), mut b)
+                mut b: List<UInt8> = List<UInt8> { values = [0, 0, 0, 0] }
+                fillFrom(nameOf(1), b.view())
             }
             """,
-            "fillFrom", null, "::probe::nameOf(1)", "b",
+            "fillFrom", null, "::probe::nameOf(1)", "kira::mutView(b)",
         )
         assertTrue(mutUnsafeAlone.isEmpty(), mutUnsafeAlone.toString())
     }
@@ -775,29 +783,81 @@ class CppExternEmitterTest {
     }
 
     /**
-     * Round-1 significant finding #1 (this package's own, verdict wave2/sc-round1.json). A
-     * plain `Str` parameter is lowered `kira::ffi::in(text)`, which binds a `const
-     * std::string&` straight to [text]'s own storage: no copy, since Kira passes a `Str` by
-     * value and (before this fix) nothing here accounted for the callee reading it again after
-     * an `Fx` argument writes it. That is unsound once the call also carries an `Fx`: contract
-     * 5.4 lets an extern run Kira code through the `Fx` arguments it is given, and that code
-     * may reassign the very place the `Str` argument names, freeing the buffer
-     * `kira::ffi::in` still points at mid-call. Measured on the trial CLI (round-1 verdict,
-     * probes u5/u8): `lenAfter(gs, fx() Void { gs = "" })` with `gs: mut Str` a global printed
-     * 0 for 82 on g++ and clang (MSVC ASan: heap-use-after-free in the callee, reading the
-     * freed buffer); the same through `r.value` with `r: Ref<Str>`.
+     * Round-1 significant finding #1 and round 2's #4-#6 (this package's), closed by R-B
+     * (40-round3 2): a by-value argument C++ receives by reference - a `Str` through
+     * `kira::ffi::in`, a `Str` into a `CStr` as `.c_str()`, a container, a value struct, a
+     * handle - is bound to the argument's own storage, and an extern may run Kira code through
+     * what it is given (contract 5.4.3) or write a `mut` argument that is the same storage. Such
+     * an argument that is a place is copied at the call exactly then:
+     * [CppExternEmitter.call] asks R-C's `CallReach.mayRunAnything` (condition 1) and R-A's
+     * `readPlace` (a lent `gstrs.get(0)` is the place `gstrs[0]`), and `Rules.mayHold` for a `mut`
+     * argument (condition 2). A literal, a computed value and a Kira constant never are, nor is
+     * anything when neither condition holds. ExternCallRunTest runs the same shapes on three
+     * compilers.
      *
-     * Fixed: when the call carries an `Fx` argument, or anything that may hold one by value or
-     * through a reference ([mayHoldFx]), every `Str` argument that is a place
-     * (`ctx.model.places`) is copied first, `kira::ffi::in(kira::Str(text))` - a fresh
-     * `kira::Str` no reassignment elsewhere can reach - never bound to the place itself. A
-     * literal or a computed expression is unaffected either way (nothing else can name it to
-     * write it back), and so is a call with no `Fx` argument anywhere in it.
+     * Round 2's fixture handed the extern a direct lambda that writes `GS`; with W2.5's rules
+     * merged that is `rules.exclusivity.alias` (D37), refused before any emission, so the
+     * shapes that reach the copy are an `Fx` held in a List or in a struct field.
      */
     @Test
-    fun aStrArgumentThatIsAPlaceIsCopiedFirstWhenTheCallAlsoCarriesAnFx() {
-        // A mut global, reassigned by the very Fx the call carries: copied.
-        val global = callsOf(
+    fun aByReferenceArgumentThatIsAPlaceIsCopiedWhenTheCallMayWriteIt() {
+        val c = callsOf(
+            """
+            @_extern(cpp = "probe::lenAfterL", header = "probe.hxx")
+            pub fx lenAfterL: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
+            @_extern(cpp = "probe::lenAfterCb", header = "probe.hxx")
+            pub fx lenAfterCb: (s: Str, c: Cb) Int32;
+            @_extern(cpp = "probe::sumListL", header = "probe.hxx")
+            pub fx sumListL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
+            @_extern(cpp = "probe::appendLen", header = "probe.hxx")
+            pub fx appendLen: (s: Str, mut out: Str) Int32;
+            @_extern(cpp = "probe::appendLenI", header = "probe.hxx")
+            pub fx appendLenI: (s: Str, mut n: Int32) Int32;
+            @_extern(cpp = "probe::lengthOfS", header = "probe.hxx")
+            pub fx lengthOfS: (s: Str) Int32;
+            pub struct Cb {
+                require pub f: Fx<Tuple0, Void>
+            }
+            pub mut GS: Str = "hi"
+            pub mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            pub mut GSTRS: List<Str> = List<Str> { values = ["hi"] }
+            pub GREETING: Str = "hi"
+            fx inList: (fs: List<Fx<Tuple0, Void>>) Int32 {
+                return lenAfterL(GS, fs) + lenAfterL(GSTRS.get(0), fs) + sumListL(GL, fs) + lenAfterL("hi", fs) + lenAfterL(GREETING, fs)
+            }
+            fx inField: (c: Cb) Int32 {
+                return lenAfterCb(GS, c)
+            }
+            fx viaMut: (mut o: Str, mut n: Int32) Int32 {
+                return appendLen(GS, mut o) + appendLenI(GS, mut n) + lengthOfS(GS)
+            }
+            """
+        )
+        fun text(callee: String, first: String, vararg args: String): String {
+            val call = c.ctx.model.calls.values.firstOrNull { rc ->
+                rc.fn?.name == callee && (rc.args.first() as ArgBinding.Given).expr.let { net.exoad.kira.compiler.analysis.types.KiraUnparser.text(it) } == first
+            } ?: fail("no call $callee($first, ...)")
+            return CppExternEmitter.call(c.ctx, call, null, args.toList())
+        }
+        // Condition 1, an Fx held in a List: the global, the lent element and the List are
+        // copied; the literal and the constant are not. The List of closures is itself a
+        // by-reference place (the parameter `fs`), so it is copied too.
+        val fsCopy = "kira::List<kira::Fn<void()>>(fs)"
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lenAfterL(kira::ffi::in(kira::Str(::ext::GS)), $fsCopy))", text("lenAfterL", "GS", "::ext::GS", "fs"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lenAfterL(kira::ffi::in(kira::Str(kira::at(::ext::GSTRS, 0))), $fsCopy))", text("lenAfterL", "GSTRS.get(0)", "kira::at(::ext::GSTRS, 0)", "fs"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::sumListL(kira::List<std::int32_t>(::ext::GL), $fsCopy))", text("sumListL", "GL", "::ext::GL", "fs"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lenAfterL(kira::ffi::in(\"hi\"), $fsCopy))", text("lenAfterL", "\"hi\"", "\"hi\"", "fs"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lenAfterL(kira::ffi::in(::ext::GREETING), $fsCopy))", text("lenAfterL", "GREETING", "::ext::GREETING", "fs"))
+        // Condition 1, an Fx in a struct field (round 1's "anything holding one").
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lenAfterCb(kira::ffi::in(kira::Str(::ext::GS)), Cb(c)))", text("lenAfterCb", "GS", "::ext::GS", "c"))
+        // Condition 2: a mut Str may be GS itself; a mut Int32 cannot hold a Str; and a call
+        // given nothing that may run Kira code or write lends the place as before.
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::appendLen(kira::ffi::in(kira::Str(::ext::GS)), kira::ffi::out(o)))", text("appendLen", "GS", "::ext::GS", "o"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::appendLenI(kira::ffi::in(::ext::GS), kira::ffi::out(n)))", text("appendLenI", "GS", "::ext::GS", "n"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lengthOfS(kira::ffi::in(::ext::GS)))", text("lengthOfS", "GS", "::ext::GS"))
+
+        // The direct lambda that writes the place it is handed with is refused, not copied.
+        val direct = TyperTestSupport.snippet(
             """
             @_extern(cpp = "probe::lenAfter", header = "probe.hxx")
             pub fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
@@ -806,78 +866,8 @@ class CppExternEmitterTest {
                 return lenAfter(GS, fx() Void { GS = "" })
             }
             """
-        )
-        assertEquals(
-            "kira::ffi::declared<std::int32_t>(::probe::lenAfter(kira::ffi::in(kira::Str(GS)), whenDoneText))",
-            global.text("lenAfter", null, "GS", "whenDoneText"),
-        )
-
-        // A local place beside the same shape: this fix does not try to prove a lambda's
-        // captures (copies, design 4) cannot reach it - copied too, the conservative call.
-        val local = callsOf(
-            """
-            @_extern(cpp = "probe::lenAfter", header = "probe.hxx")
-            pub fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
-            fx cat: (a: Str) Int32 {
-                s: Str = a
-                return lenAfter(s, fx() Void { trace(1) })
-            }
-            """
-        )
-        assertEquals(
-            "kira::ffi::declared<std::int32_t>(::probe::lenAfter(kira::ffi::in(kira::Str(s)), whenDoneText))",
-            local.text("lenAfter", null, "s", "whenDoneText"),
-        )
-
-        // A literal beside an Fx argument: not a place, so unaffected - it was never bound to
-        // any storage a reassignment could free.
-        val literal = callsOf(
-            """
-            @_extern(cpp = "probe::lenAfter", header = "probe.hxx")
-            pub fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
-            fx cat: () Int32 {
-                return lenAfter("hi", fx() Void { trace(1) })
-            }
-            """
-        )
-        assertEquals(
-            "kira::ffi::declared<std::int32_t>(::probe::lenAfter(kira::ffi::in(\"hi\"), whenDoneText))",
-            literal.text("lenAfter", null, "\"hi\"", "whenDoneText"),
-        )
-
-        // The same global place, with no Fx argument anywhere in the call: still the direct
-        // reference binding - this fix must not copy what round 1-4 already left correct.
-        val noFx = callsOf(
-            """
-            @_extern(cpp = "probe::lengthOfS", header = "probe.hxx")
-            pub fx lengthOfS: (s: Str) Int32;
-            pub mut GS: Str = "hi"
-            fx cat: () Int32 {
-                return lengthOfS(GS)
-            }
-            """
-        )
-        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lengthOfS(kira::ffi::in(GS)))", noFx.text("lengthOfS", null, "GS"))
-
-        // "or anything holding one" (the finding's own words): an Fx nested inside a struct
-        // argument's field is not a direct Fx-typed argument, but mayHoldFx still finds it.
-        val nested = callsOf(
-            """
-            @_extern(cpp = "probe::lenAfterCb", header = "probe.hxx")
-            pub fx lenAfterCb: (s: Str, c: Cb) Int32;
-            pub struct Cb {
-                pub f: Fx<Tuple0, Void> = fx() Void {}
-            }
-            pub mut GS: Str = "hi"
-            fx cat: () Int32 {
-                return lenAfterCb(GS, Cb { f = fx() Void { GS = "" } })
-            }
-            """
-        )
-        assertEquals(
-            "kira::ffi::declared<std::int32_t>(::probe::lenAfterCb(kira::ffi::in(kira::Str(GS)), cbText))",
-            nested.text("lenAfterCb", null, "GS", "cbText"),
-        )
+        ).diagnostics.map { it.code }
+        assertTrue("rules.exclusivity.alias" in direct, direct.toString())
     }
 
     /**
@@ -903,11 +893,14 @@ class CppExternEmitterTest {
             """
             @_extern(cpp = "probe::sumP", header = "probe.hxx")
             pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
-            fx cat: (ys: List<Int32>) Int32 {
+            fx cat: () Int32 {
+                ys: List<Int32> = List<Int32> { values = [1, 2] }
                 return sumP(ys, ys.size())
             }
             """
         )
+        // `ys` a local: a List parameter is shared storage, and beside the IMPURE extern the
+        // view of it is rules.view.write (decision 4b, literally), which ViewPassTest pins.
         assertTrue(errorsIgnoringUnloweredBodies(list.ctx).isEmpty(), errorsIgnoringUnloweredBodies(list.ctx).toString())
         assertEquals(
             "kira::ffi::declared<std::int32_t>(::probe::sumP((kira::view(ys)).data(), n))",
@@ -920,7 +913,8 @@ class CppExternEmitterTest {
             """
             @_extern(cpp = "probe::sumP", header = "probe.hxx")
             pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
-            fx cat: (xs: Arr<Int32, 4>) Int32 {
+            fx cat: () Int32 {
+                xs: Arr<Int32, 4> = [1, 2, 3, 4]
                 return sumP(xs, 4)
             }
             """
@@ -985,28 +979,50 @@ class CppExternEmitterTest {
      * `CallResolver.isExternLike` also counts a bodyless `pub` function or method, and both
      * `externCallee` call sites (`method`, `free`) read it instead of the marker alone. A
      * private bodyless function is a different, and already-refused (`CppDeclEmitter`,
-     * `NO_BODY_CODE`), shape: `isExternLike` stays `isPub`-gated, so it is unaffected.
+     * `NO_BODY_CODE`), shape.
+     *
+     * Round 3 (R-G, round-2 w2-6 #7): the prototype was typed as an extern but its call was
+     * lowered as a Kira call (`::w::peek(w, v)`, 'cannot convert kira::View<int> to const
+     * int32_t*' in g++). `isExternLike` is now R-G's one predicate, `suppliedByCpp`, the typer
+     * gives the call `CallKind.EXTERN`, and [CppExternEmitter.call] lowers it: `.data()` for the
+     * views, the module's own spelling of the name, no `declared<T>` (Kira declared the C++
+     * prototype itself). ExternCallRunTest compiles and runs it. The views are of locals: of
+     * parameters (shared storage) beside the IMPURE call they are rules.view.write (4b).
      */
     @Test
     fun aBodylessPubPrototypeIsAnExternForTheUnsafeConventionToo() {
-        // Checked through the typer alone (TyperTestSupport.snippet): a bodyless free
-        // function has no C++ emitted for it in this test module at all (there is no @_extern
-        // header to check against), so DeclTestSupport's declaration-emission pipeline is not
-        // what this shape is about - CallResolver's typing decision is.
-        val pub = TyperTestSupport.snippet(
+        val body = """
+            pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+            fx cat: () Int32 {
+                xs: List<Int32> = List<Int32> { values = [1, 2] }
+                mut ys: List<Int32> = List<Int32> { values = [3, 4] }
+                return peek(xs.view(), ys.view())
+            }
+        """
+        val pub = TyperTestSupport.snippet(body).diagnostics.map { it.message }
+        assertTrue(pub.isEmpty(), pub.toString())
+        val c = callsOf(body)
+        val call = c.of("peek")
+        assertEquals(net.exoad.kira.compiler.analysis.types.CallKind.EXTERN, call.kind)
+        assertTrue(CppExternEmitter.isExternCall(call))
+        assertEquals("peek((kira::view(xs)).data(), (kira::mutView(ys)).data())", c.text("peek", null, "kira::view(xs)", "kira::mutView(ys)"))
+
+        val shared = TyperTestSupport.snippet(
             """
             pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
             fx cat: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
                 return peek(xs.view(), ys.view())
             }
             """
-        ).diagnostics.map { it.message }
-        assertTrue(pub.isEmpty(), pub.toString())
+        ).diagnostics.map { it.code }
+        assertTrue("rules.view.write" in shared, shared.toString())
 
         val private = TyperTestSupport.snippet(
             """
             fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
-            fx cat: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
+            fx cat: () Int32 {
+                xs: List<Int32> = List<Int32> { values = [1, 2] }
+                mut ys: List<Int32> = List<Int32> { values = [3, 4] }
                 return peek(xs.view(), ys.view())
             }
             """
@@ -1031,9 +1047,13 @@ class CppExternEmitterTest {
             }
             """
         )
+        // Two diagnostics, each a refusal: the Str given to a Kira function's CStr, and the
+        // extern's CStr result itself (rules.view.extern: an extern never hands back a
+        // pointer, 5.2). `own(version())` is a CStr given to a CStr and adds nothing.
         val messages = program.diagnostics.map { it.message }
         assertEquals(1, messages.count { it.contains("expects CStr, but this is Str") }, messages.toString())
-        assertEquals(1, program.diagnostics.size, messages.toString())
+        assertEquals(1, program.diagnostics.count { it.code == "rules.view.extern" && it.message.contains("'version' returns a CStr") }, messages.toString())
+        assertEquals(2, program.diagnostics.size, messages.toString())
     }
 
     /**
@@ -1144,5 +1164,156 @@ class CppExternEmitterTest {
         assertEquals("::FILE*", ctx.spell(fn("fopen").ret, Pos.RETURN))
         assertEquals("::cnt_get", CppExternEmitter.globalName(fn("cntGet")))
         assertEquals("struct ::raw_pt", CppExternEmitter.globalName(ctx.symbol.members["RawPt"] as ClassSymbol))
+    }
+
+    /**
+     * R-G (40-round3 2, round-2 w2-6 #7): one predicate says C++ supplies a body,
+     * `FnSymbol.suppliedByCpp`, and every reader agrees with it: the typer's call kind
+     * (`CallKind.EXTERN`, what the expression part dispatches on), [CppExternEmitter.isExternCall],
+     * and EffectsPass (IMPURE). One callee of each kind: an `@_extern` function, an `@_extern`
+     * class's method, a bodiless `pub` prototype, a bodiless method of an `@_opaque` class; and
+     * three that are not: a Kira function with a body, a class's bodiless method (a slot a
+     * construction fills), a trait method.
+     */
+    @Test
+    fun everyCalleeWhoseBodyCppSuppliesIsCalledAsAnExternAndNoOther() {
+        val c = callsOf(
+            """
+            @_extern(cpp = "probe::ext", header = "probe.hxx")
+            pub fx ext: () Int32;
+
+            @_extern(cpp = "probe::Car", header = "probe.hxx")
+            pub class Car {
+                pub fx speed: () Int32;
+            }
+
+            @_extern(cpp = "probe::openCar", header = "probe.hxx")
+            pub fx openCar: () Car;
+
+            pub fx proto: () Int32;
+
+            @_opaque
+            pub class Handle {
+                pub fx size: () Int32;
+            }
+
+            @_extern(cpp = "probe::openHandle", header = "probe.hxx")
+            pub fx openHandle: () Handle;
+
+            fx kira: () Int32 {
+                return 1
+            }
+
+            fx all: () Int32 {
+                car: Car = openCar()
+                h: Handle = openHandle()
+                return ext() + car.speed() + proto() + h.size() + kira()
+            }
+            """
+        )
+        val supplied = mapOf("ext" to true, "speed" to true, "openCar" to true, "proto" to true, "size" to true, "openHandle" to true, "kira" to false)
+        supplied.forEach { (name, want) ->
+            val call = c.of(name)
+            val fn = call.fn ?: fail("no callee for $name")
+            assertEquals(want, fn.suppliedByCpp, "suppliedByCpp($name)")
+            assertEquals(want, call.kind == net.exoad.kira.compiler.analysis.types.CallKind.EXTERN, "the call kind of $name is ${call.kind}")
+            assertEquals(want, CppExternEmitter.isExternCall(call), "isExternCall($name)")
+            if (want) {
+                val e = c.ctx.model.calls.entries.first { it.value === call }.key
+                assertEquals(net.exoad.kira.compiler.analysis.types.Effect.IMPURE, c.ctx.model.effect(e), "EffectsPass ranks $name")
+            }
+        }
+    }
+
+    /**
+     * F2 (40-round3 R-F; round-2 w2-6 #0, r1 minor #3): a `mut p: Unsafe<T>` takes a `MutView` of
+     * a local and moves nothing, so the canonical calls of design 1.4 are accepted (round 2
+     * refused each as rules.view.write "'mut xs'"); with a shared `xs` the same calls are refused
+     * by literal 4b; and a `MutView` formed of a variable a lambda captured is
+     * `types.lambda.assign-capture` (the typer half, CallResolver), where round 1 reached g++
+     * and failed there ('no matching function for call to mutView').
+     */
+    @Test
+    fun aMutUnsafeTakesAMutViewOfALocalAndAMutViewOfACaptureIsRefused() {
+        val decls = """
+            @_extern(cpp = "probe::fillP", header = "probe.hxx")
+            pub fx fillP: (mut p: Unsafe<Int32>, n: Size, v: Int32) Void;
+            @_extern(cpp = "probe::setFirst", header = "probe.hxx")
+            pub fx setFirst: (mut p: Unsafe<Int32>, v: Int32) Int32;
+            pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+            fx zero: (v: MutView<Int32>) Void {
+                v[0] = 0
+            }
+            fx run: (f: Fx<Tuple0, Void>) Void {
+                f()
+            }
+        """.trimIndent()
+        fun codes(body: String): List<String> = TyperTestSupport.snippet(decls + "\n" + body.trimIndent()).diagnostics.map { it.code }
+        val locals = codes(
+            """
+            fx cat: () Int32 {
+                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                mut arr: Arr<Int32, 3> = [1, 2, 3]
+                ys: List<Int32> = List<Int32> { values = [4, 5, 6] }
+                fillP(xs.view(), xs.size(), 7)
+                fillP(arr.view(), 3, 1)
+                n: Int32 = setFirst(xs.view(), 9)
+                return n + peek(ys.view(), xs.view())
+            }
+            """
+        )
+        assertTrue(locals.isEmpty(), locals.toString())
+        val c = callsOf(
+            decls + "\n" + """
+            fx cat: () Void {
+                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                fillP(xs.view(), xs.size(), 7)
+            }
+            """.trimIndent()
+        )
+        assertEquals("::probe::fillP((kira::mutView(xs)).data(), n, 7)", c.text("fillP", null, "kira::mutView(xs)", "n", "7"))
+
+        val shared = codes(
+            """
+            mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            fx cat: () Void {
+                fillP(gl.view(), 3, 7)
+            }
+            """
+        )
+        assertTrue("rules.view.write" in shared, shared.toString())
+
+        val capturedIntoUnsafe = codes(
+            """
+            fx cat: () Void {
+                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                run(fx() Void { fillP(xs.view(), 3, 0) })
+            }
+            """
+        )
+        assertEquals(listOf("types.lambda.assign-capture"), capturedIntoUnsafe)
+        val capturedIntoMutView = codes(
+            """
+            fx cat: () Void {
+                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                run(fx() Void { zero(xs.view().from(1)) })
+            }
+            """
+        )
+        assertEquals(listOf("types.lambda.assign-capture"), capturedIntoMutView)
+        // A View of a capture reads it, and a lambda's own local is no capture.
+        val reads = codes(
+            """
+            fx cat: () Void {
+                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                run(fx() Void {
+                    mut own: List<Int32> = List<Int32> { values = [1] }
+                    fillP(own.view(), 1, 0)
+                    trace(peek(xs.view(), own.view()))
+                })
+            }
+            """
+        )
+        assertTrue("types.lambda.assign-capture" !in reads, reads.toString())
     }
 }

@@ -222,13 +222,17 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         tail.forEach { sb.append("#include \"").append(it).append("\"\n") }
         sb.append("#include \"$MACRO_PUSH\"\n")
-        if (externChecks.isNotEmpty()) {
-            sb.append(externChecks)
-        }
         if (body.isNotEmpty()) {
             val w = CppWriter()
             w.namespace(ctx.namespace) { lines(body) }
             sb.append(w.toString())
+        }
+        // The extern checks go after the module's own declarations: a check may name a Kira
+        // class, struct or enum this module declares (an extern taking a `Wrap`), and at the
+        // top of the header g++ said "'Wrap' was not declared in this scope" (w2-4 round-2
+        // minor #3, externnested2). Nothing in the body reads a check.
+        if (externChecks.isNotEmpty()) {
+            sb.append(externChecks)
         }
         sb.append("#include \"$MACRO_POP\"\n")
         return sb.toString()
