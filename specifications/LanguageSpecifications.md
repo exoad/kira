@@ -2785,6 +2785,29 @@ pub class Counter {
 }
 ```
 
+**Mutable and Immutable Classes:**
+
+-   A class is mutable when it declares a `mut` field or a `mut fx`, or a parent class does. Implementing a trait's `mut fx` counts, since the class declares it `mut fx` too
+-   A mutable object is shared by reference: every variable holding it sees each change, and its `mut fx` is callable through any of them
+-   Every other class is immutable. Assigning a field of an immutable object is an error, through any variable, except in the class's own `initially`
+-   Immutability is about the class's own fields: a `Box<Counter>` is immutable even though the `Counter` inside it is not
+-   A `mut` variable or a `mut` parameter holding an immutable object may be rebound to a new one:
+
+```kira
+pub class Decoder {
+    require pub ticks: Int32
+
+    pub fx feed: () Decoder {
+        return Decoder { ticks + 1 }
+    }
+}
+
+mut decoder: Decoder = Decoder { 0 }
+decoder = decoder.feed()
+```
+
+-   The containers and `StrBuf` are mutable values (see Standard Types): a `mut fx` on one, such as `List.add`, needs a mutable place
+
 ### Access Modifiers
 
 Class members support two visibility levels:
