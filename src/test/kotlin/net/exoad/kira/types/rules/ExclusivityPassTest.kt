@@ -553,7 +553,9 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.view.position", "rules.exclusivity.loop", "rules.exclusivity.loop")
+        // poke's set5(GL.view()) is ViewPass's too: set5 writes through the MutView it is lent, so it is impure, and GL
+        // is a mut global (decision 4b read literally, round 2).
+        expectExactly(p, "rules.view.write", "rules.view.position", "rules.exclusivity.loop", "rules.exclusivity.loop")
         val messages = p.diagnostics.map { it.message }
         assertTrue(messages.any { it.contains("iterates 'half(xs)', and its body calls the `mut fx` 'add' on it") }, messages.joinToString("\n"))
         assertTrue(messages.any { it.contains("iterates 'GL', and its body calls 'poke', which writes 'GL'") }, messages.joinToString("\n"))

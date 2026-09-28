@@ -7,11 +7,13 @@ import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
+import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
+import net.exoad.kira.compiler.analysis.types.IndexKind
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
@@ -80,7 +82,9 @@ import java.util.IdentityHashMap
  * - `rules.view.store` (2.1): a view passed, assigned or returned where a first-class value
  *   (an `Any`, a trait value) is kept.
  * - `rules.view.write` (3.3): a view of a place formed while a later operand of its consuming
- *   call, or the call itself, may move that place ([HiddenWrites.named], [HiddenWrites.summary]).
+ *   call, or the call itself, may move that place: a named write that may be it, or, when the
+ *   place is shared or a `mut` global, any IMPURE call or node (decision 4b read literally:
+ *   "any impure call, when the place lies in a mutable class"; [Effects]).
  * - `rules.view.extern` (5.2): an extern that returns a pointer.
  * - `rules.view.unsafe` (1.4): an `Unsafe<T>` anywhere but an extern's parameter.
  *
@@ -121,7 +125,7 @@ internal class ViewPass : RulePass {
     private class Check(val r: Rules, val bodies: List<Body>) {
         val model = r.model
         val facts = r.facts
-        val hidden = HiddenWrites.of(r, bodies)
+        val effects = EffectsPass.of(r)
         val reports = mutableListOf<Report>()
 
         /** Declarations refused here: a use of one is not reported again. */
@@ -130,9 +134,22 @@ internal class ViewPass : RulePass {
         /** For each generic function, why it is not view-safe for each type parameter; no entry is view-safe (1.3). */
         val unsafeFor = IdentityHashMap<FnSymbol, IdentityHashMap<TypeParamSymbol, String>>()
         private val bodyOf = IdentityHashMap<FnSymbol, Body>()
+        private val overriders = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
+
+        /** The methods with a body that override [fn], directly or further down. */
+        fun overridersOf(fn: FnSymbol): List<FnSymbol> = overriders[fn].orEmpty()
 
         fun run() {
             bodies.forEach { b -> b.fn?.let { bodyOf[it] = b } }
+            // Every method with a body, under each method it overrides (a trait method, a superclass method, and theirs).
+            for (fn in bodyOf.keys) {
+                var base = fn.overrides
+                val seen = java.util.Collections.newSetFromMap(IdentityHashMap<FnSymbol, Boolean>())
+                while (base != null && seen.add(base)) {
+                    overriders.getOrPut(base) { ArrayList() }.add(fn)
+                    base = base.overrides
+                }
+            }
             declarations()
             viewSafety()
             for (b in bodies) {
@@ -206,9 +223,10 @@ internal class ViewPass : RulePass {
             }
         }
 
-        /** A function whose body C++ supplies (section 5): an `@_extern` one, or a bodiless free prototype. */
+        /** A function whose body C++ supplies (section 5): an `@_extern` one, a bodiless free prototype, or a bodiless method of an `@_opaque` class. */
         fun isExtern(fn: FnSymbol): Boolean =
-            fn.foreign is Foreign.Extern || (fn.foreign == null && fn.body == null && !fn.hasBody && fn.owner == null)
+            fn.foreign is Foreign.Extern || (fn.foreign == null && fn.body == null && !fn.hasBody && fn.owner == null) ||
+                (fn.body == null && !fn.hasBody && (fn.owner as? ClassSymbol)?.kind == ClassKind.OPAQUE)
 
         private fun returnsPointer(t: KType): Boolean = isSecondClass(t, emptySet()) || (t is KType.Fn && returnsPointer(t.ret))
 
@@ -393,11 +411,17 @@ internal class ViewPass : RulePass {
     /** A function or lambda a node is in: its own parameters, its declared result, and whether it is a method's body. */
     private class Frame(val params: Set<ParamSymbol>, val result: KType?, val lambda: LambdaExpr?, val method: Boolean)
 
+    /** A moving write a call site spells (3.2): a `mut` argument's place, or the receiver of a `mut fx` on a value. [type] is the written value's type; [at] the operand. */
+    private class NamedWrite(val place: Place, val type: KType?, val at: ASTNode)
+
     /** What happens between forming a view and the return of its consumer (3.1). */
     private sealed interface Event {
-        class Named(val w: NamedWrite, val by: String) : Event
+        val by: String
 
-        class Hid(val h: Hidden, val by: String) : Event
+        class Named(val w: NamedWrite, override val by: String) : Event
+
+        /** An IMPURE call or node (EffectsPass): a write of every shared or global place (decision 4b). */
+        class Impure(override val by: String) : Event
     }
 
     /**
@@ -660,10 +684,22 @@ internal class ViewPass : RulePass {
                     report(at, TYPE, c.typeMessage("The type argument ${t.name} of '${fn.name}'", arg, held, c.remedyFor(held)), "instantiates '${fn.name}' with ${arg.display()}")
                     continue
                 }
-                if (isSc(arg) && !c.viewSafe(fn, t)) {
-                    val why = c.whyNotViewSafe(fn, t)
-                    report(at, GENERIC, "'${fn.name}' cannot take ${t.name} = ${arg.display()}: '${fn.name}' $why (1.3). Write the function over View<T> directly.",
-                        "passes a ${arg.display()} to '${fn.name}', which $why")
+                if (!isSc(arg)) {
+                    continue
+                }
+                // Dispatched at run time, the call runs whichever override the object has: each must be view-safe.
+                val runs = if (rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT) listOf(fn) + c.overridersOf(fn) else listOf(fn)
+                val index = fn.typeParams.indexOf(t)
+                for (impl in runs) {
+                    val ti = impl.typeParams.getOrNull(index) ?: continue
+                    if (c.viewSafe(impl, ti)) {
+                        continue
+                    }
+                    val why = c.whyNotViewSafe(impl, ti)
+                    val whose = if (impl === fn) "'${fn.name}'" else "its override in ${impl.owner?.name ?: "a subclass"}"
+                    report(at, GENERIC, "'${fn.name}' cannot take ${t.name} = ${arg.display()}: $whose $why (1.3). Write the function over View<T> directly.",
+                        "passes a ${arg.display()} to '${fn.name}', where $whose $why")
+                    break
                 }
             }
         }
@@ -979,10 +1015,7 @@ internal class ViewPass : RulePass {
             for (q in qs) {
                 for (ev in events) {
                     val how = conflict(q, ev) ?: continue
-                    val by = when (ev) {
-                        is Event.Named -> ev.by
-                        is Event.Hid -> ev.by
-                    }
+                    val by = ev.by
                     report(v, WRITE, "The view of ${describe(q)} formed here is still in use until its consuming call returns, and $by may replace, grow or free " +
                         "'${r.describe(q.place)}' ($how) (decision 4b). Call it in its own statement first, or pass a view parameter so the caller checks it.",
                         "writes '${r.describe(q.place)}' while its view is in use")
@@ -999,9 +1032,11 @@ internal class ViewPass : RulePass {
                     // The call forms the view of its receiver, and may move or free it first; its own write of that
                     // receiver (a `mut fx` on a value) comes before the view is formed, and is its own business.
                     val text = KiraUnparser.text(v)
-                    out.add(Event.Hid(summaryOf(site, rc), "'$text'"))
+                    if (c.effects.node(site) == Effect.IMPURE) {
+                        out.add(Event.Impure("'$text'"))
+                    }
                     (site as? FunctionCallExpr)?.let { call ->
-                        c.hidden.named(b.owner, call, rc).filter { w -> w.at !== rc.receiver && w.at !== call }.forEach { out.add(Event.Named(it, "'$text'")) }
+                        named(call, rc).filter { w -> w.at !== rc.receiver && w.at !== call }.forEach { out.add(Event.Named(it, "'$text'")) }
                     }
                 }
             }
@@ -1073,40 +1108,87 @@ internal class ViewPass : RulePass {
             return out
         }
 
-        private fun summaryOf(site: ASTNode, rc: ResolvedCall): Hidden = c.hidden.summary(b.owner, site, rc)
-
+        /** A call on the chain: its named writes, and itself when it is IMPURE. */
         private fun callEvents(site: ASTNode, rc: ResolvedCall, out: MutableList<Event>) {
             val text = "'${KiraUnparser.text(site)}'"
-            (site as? FunctionCallExpr)?.let { call -> c.hidden.named(b.owner, call, rc).forEach { out.add(Event.Named(it, text)) } }
-            out.add(Event.Hid(summaryOf(site, rc), text))
+            (site as? FunctionCallExpr)?.let { call -> named(call, rc).forEach { out.add(Event.Named(it, text)) } }
+            if (c.effects.node(site) == Effect.IMPURE) {
+                out.add(Event.Impure(text))
+            }
         }
 
-        /** The writes evaluating [e] makes (its lambdas aside, which run only when called; a callee given one is charged with it). */
+        /**
+         * What evaluating the later operand [e] does (its lambdas aside, which run only when
+         * called; a callee given one is IMPURE when it runs it): each call's and assignment's
+         * named writes, and every node that is IMPURE or declares a local whose drop is.
+         */
         private fun events(e: Expr, out: MutableList<Event>) {
-            HiddenWrites.walkOutsideLambdas(listOf(e)) { n ->
+            AstScan.outsideLambdas(listOf(e)) { n ->
                 when (n) {
-                    is FunctionCallExpr -> model.calls[n]?.let { callEvents(n, it, out) }
-                    is BinaryExpr -> model.opCalls[n]?.let { callEvents(n, it, out) }
-                    is UnaryExpr -> model.opCalls[n]?.let { callEvents(n, it, out) }
-                    is ObjectInitExpr -> out.add(Event.Hid(c.hidden.construction(model.inits[n]?.cls), "'${KiraUnparser.text(n)}'"))
+                    is FunctionCallExpr -> model.calls[n]?.let { rc -> named(n, rc).forEach { out.add(Event.Named(it, "'${KiraUnparser.text(n)}'")) } }
                     is AssignmentExpr -> assigned(model.places[n.target], model.types[n.target], n, out)
                     is CompoundAssignmentExpr -> assigned(model.places[n.left], model.types[n.left], n, out)
                     is PlaceAssignmentExpr -> assigned(model.places[n.target], model.types[n.target], n, out)
                     else -> {}
                 }
+                if (c.effects.node(n) == Effect.IMPURE || c.effects.declared(n) == Effect.IMPURE) {
+                    out.add(Event.Impure("'${KiraUnparser.text(n)}'"))
+                }
             }
         }
 
         private fun assigned(place: Place?, type: KType?, at: Expr, out: MutableList<Event>) {
-            val text = "'${KiraUnparser.text(at)}'"
-            if (place == null) {
-                out.add(Event.Hid(Hidden.ANY, text))
-                return
+            // A write of no known place is IMPURE (EffectsPass), which [events] adds.
+            place ?: return
+            out.add(Event.Named(NamedWrite(place, type, at), "'${KiraUnparser.text(at)}'"))
+        }
+
+        /**
+         * The moving writes the call [e] spells (3.2): each `mut` argument's place, and the
+         * receiver of a `mut fx` on a value (a container, a `StrBuf`, a struct; for a stdlib
+         * container's `set`, the element alone, which moves nothing that contains it). A `mut fx`
+         * on a reference writes the object behind it, which only its effect shows; a `MutView`
+         * argument moves nothing at the call site (a callee that writes through it is IMPURE).
+         */
+        private fun named(e: FunctionCallExpr, rc: ResolvedCall): List<NamedWrite> {
+            val out = mutableListOf<NamedWrite>()
+            for (a in rc.args) {
+                val given = a as? ArgBinding.Given ?: continue
+                if (given.byRef) {
+                    r.placeOf(given.expr)?.let { out.add(NamedWrite(it, model.types[given.expr], given.expr)) }
+                }
             }
-            out.add(Event.Named(NamedWrite(place, type, at), text))
-            // The old value may be the last handle of an object whose `finally` runs now.
-            if (r.mayHoldStorage(type)) {
-                out.add(Event.Hid(c.hidden.drops(), text))
+            val fn = rc.fn ?: return out
+            if (!fn.isMutMethod) {
+                return out
+            }
+            val owner = b.owner
+            val recvType = if (rc.implicitThis) (owner as? ClassSymbol)?.selfType else rc.receiver?.let { model.types[it] }
+            if (recvType == null || r.isReference(recvType)) {
+                return out
+            }
+            val place = if (rc.implicitThis) owner?.let { Place.This(it) } else rc.receiver?.let { r.placeOf(it) }
+            val at: ASTNode = rc.receiver ?: e
+            if (place != null) {
+                val element = elementWrite(fn, recvType)
+                if (element != null) {
+                    out.add(NamedWrite(Place.Index(place, element), r.facts.elementOf(recvType), at))
+                } else {
+                    out.add(NamedWrite(place, recvType, at))
+                }
+            }
+            return out
+        }
+
+        /** The index kind of a stdlib container's element setter (`xs.set(i, v)`), which writes the element alone; null for every other mutator. */
+        private fun elementWrite(fn: FnSymbol, recvType: KType): IndexKind? {
+            if (fn.foreign !is Foreign.Magic || fn.name != "set") {
+                return null
+            }
+            return when {
+                r.facts.isList(recvType) -> IndexKind.LIST
+                r.facts.isArr(recvType) -> IndexKind.ARR
+                else -> null
             }
         }
 
@@ -1124,21 +1206,11 @@ internal class ViewPass : RulePass {
                     else -> null
                 }
             }
-            is Event.Hid -> {
-                val h = ev.h
-                when (q.kind) {
-                    PlaceKind.PRIVATE -> null
-                    PlaceKind.GLOBAL -> when {
-                        h.any -> "it may write anything: a virtual, trait or Fx-value call, or a callback"
-                        (q.place.root() as? Place.Global)?.sym in h.globals -> "it writes the global '${(q.place.root() as Place.Global).sym.name}'"
-                        else -> null
-                    }
-                    PlaceKind.SHARED -> when {
-                        h.any -> "it may write anything: a virtual, trait or Fx-value call, or a callback"
-                        h.heap -> "it writes shared storage through a reference"
-                        else -> h.globals.firstOrNull { mayHold(it.type, q.type) }?.let { "it writes the global '${it.name}'" }
-                    }
-                }
+            // Decision 4b, literally: beside a view of a shared place or a mut global, any impure call may be a write of it.
+            is Event.Impure -> when (q.kind) {
+                PlaceKind.PRIVATE -> null
+                PlaceKind.GLOBAL -> "it is impure, and '${r.describe(q.place)}' is a mut global any impure call may write"
+                PlaceKind.SHARED -> "it is impure, and '${r.describe(q.place)}' is shared storage any impure call may write"
             }
         }
 

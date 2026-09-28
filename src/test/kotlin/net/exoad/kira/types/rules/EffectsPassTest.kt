@@ -325,4 +325,117 @@ class EffectsPassTest {
             assertEquals(Effect.IMPURE, p.model.effect(fn(p, name)), name)
         }
     }
+
+    // ---- conservative where the view rule needs it (decision 4b read literally) --------------------
+
+    @Test
+    fun whatDropsTheLastHandleOfAnObjectWithAnImpureFinallyIsImpure() {
+        // w2-5 round 1's first finding: a finally run by a drop. A local, a by-value parameter, a construction or a
+        // call result whose value may be such a handle is dropped by the body, and the finally writes GL. A
+        // trait-typed or generic value may be any class, and a closure holds what it captured. Quiet's finally
+        // writes only its own local, so dropping a Quiet is pure.
+        val p = snippet(
+            """
+            mut GL: List<Int32> = List<Int32> {}
+            pub trait Shape {
+                pub fx area: () Int32;
+            }
+            pub class Dropper: Shape {
+                pub mut n: Int32 = 0
+                override pub fx area: () Int32 {
+                    return n
+                }
+                finally {
+                    GL = List<Int32> {}
+                }
+            }
+            pub class Owner {
+                pub d: Maybe<Dropper> = null
+            }
+            pub class Quiet {
+                pub mut n: Int32 = 0
+                finally {
+                    mut k: Int32 = 1
+                    k += 1
+                }
+            }
+            pub fx local: () Int32 {
+                d: Dropper = Dropper {}
+                return d.n
+            }
+            pub fx param: (d: Dropper) Int32 {
+                return 1
+            }
+            pub fx owner: () Bool {
+                return (Owner {}).d.isSome()
+            }
+            pub fx shape: (s: Maybe<Shape>) Int32 {
+                return 1
+            }
+            pub fx generic<T>: (x: T) Int32 {
+                return 1
+            }
+            pub fx quiet: () Int32 {
+                q: Quiet = Quiet {}
+                return q.n
+            }
+            """,
+        )
+        for (name in listOf("local", "param", "owner", "shape", "generic")) {
+            assertEquals(Effect.IMPURE, p.model.effect(fn(p, name)), name)
+        }
+        assertEquals(Effect.READS, p.model.effect(fn(p, "quiet")), "a finally that writes only its own locals runs nothing a caller can see; q.n is read through a class reference")
+        assertEquals(Effect.IMPURE, p.model.effect(BodyTestSupport.node<net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr>(p, "Dropper { }")))
+    }
+
+    @Test
+    fun externsPrototypesDispatchInitializersAndMutViewWritesAreImpure() {
+        // Round 1's other shapes: an extern given an Fx (nested in an Arr), a bodiless prototype, a MutView of a
+        // global formed in a callee that writes through it (P12), a construction whose initially writes a global
+        // (P2f's Maker); and a pure binding that compares a user class's elements runs its operators.
+        val p = snippet(
+            """
+            mut GXSS: List<List<Int32>> = List<List<Int32>> {}
+            mut GD: Int32 = 0
+            @_extern(cpp = "ext::applyAll", header = "ext.hxx")
+            pub fx applyAll: (fs: Arr<Fx<Tuple0, Void>>) Int32;
+            pub fx proto: () Int32;
+            pub class Maker {
+                pub mut n: Int32 = 0
+                initially {
+                    GD = 1
+                }
+            }
+            pub class Id {
+                pub k: Int32 = 0
+            }
+            pub fx clobber: (mv: MutView<List<Int32>>) Int32 {
+                mv[0] = List<Int32> {}
+                return 0
+            }
+            pub fx formsAndLends: () Int32 {
+                return clobber(GXSS.view())
+            }
+            pub fx nested: () Int32 {
+                return applyAll([fx() Void {}])
+            }
+            pub fx prototype: () Int32 {
+                return proto()
+            }
+            pub fx made: () Int32 {
+                return (Maker {}).n
+            }
+            pub fx finds: (ids: List<Id>, id: Id, ns: List<Int32>) Bool {
+                return ids.contains(id)
+            }
+            pub fx findsInts: (ns: List<Int32>) Bool {
+                return ns.contains(3)
+            }
+            """,
+        )
+        for (name in listOf("clobber", "formsAndLends", "nested", "prototype", "made", "finds")) {
+            assertEquals(Effect.IMPURE, p.model.effect(fn(p, name)), name)
+        }
+        assertEquals(Effect.READS, p.model.effect(fn(p, "findsInts")), "List.contains over Int32 runs no user operator")
+    }
 }

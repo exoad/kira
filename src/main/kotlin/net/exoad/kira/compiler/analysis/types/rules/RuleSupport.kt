@@ -6,7 +6,6 @@ import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
-import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -17,7 +16,6 @@ import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
-import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.PathStep
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -35,16 +33,13 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import org.yaml.snakeyaml.Yaml
 import java.nio.file.Files
@@ -138,6 +133,18 @@ internal object AstScan {
             if (push) {
                 stack.removeAt(stack.size - 1)
             }
+        }
+        roots.forEach { go(it) }
+    }
+
+    /** Every node of [roots] outside a lambda's body (a lambda literal itself is visited), in pre-order. */
+    fun outsideLambdas(roots: List<ASTNode>, visit: (ASTNode) -> Unit) {
+        fun go(n: ASTNode) {
+            visit(n)
+            if (n is LambdaExpr) {
+                return
+            }
+            AstTree.children(n).forEach { go(it) }
         }
         roots.forEach { go(it) }
     }
@@ -545,42 +552,10 @@ internal fun rebase(base: Place, steps: List<PathStep>): Place {
     return p
 }
 
-/** A moving write a call site spells (30-second-class 3.2): a `mut` argument's place, or the receiver of a `mut fx` on a value. [type] is the written value's type; [at] the operand. */
-internal class NamedWrite(val place: Place, val type: KType?, val at: ASTNode)
-
 /**
- * What a call may write that its call site does not spell, for the view rule
- * (30-second-class 3.2): some `mut` [globals], anything behind a reference ([heap]: a field of
- * a class object, `Ref.value`, what a handle holds), or anything at all ([any], which stands
- * for every global and the heap). Only a write that can move storage is counted: one whose
- * written value holds a container, a `Str`, a reference or anything unknown
- * ([Rules.mayHoldStorage]); writing an `Int32` field reallocates nothing.
- */
-internal class Hidden(val globals: Set<GlobalSymbol>, val heap: Boolean, val any: Boolean) {
-    val isEmpty: Boolean get() = globals.isEmpty() && !heap && !any
-
-    operator fun plus(o: Hidden): Hidden = when {
-        o.isEmpty || covers(o) -> this
-        isEmpty -> o
-        else -> Hidden(globals + o.globals, heap || o.heap, any || o.any)
-    }
-
-    fun covers(o: Hidden): Boolean = any || ((heap || !o.heap) && !o.any && globals.containsAll(o.globals))
-
-    companion object {
-        val NONE = Hidden(emptySet(), heap = false, any = false)
-        val HEAP = Hidden(emptySet(), heap = true, any = false)
-        val ANY = Hidden(emptySet(), heap = true, any = true)
-
-        fun global(g: GlobalSymbol) = Hidden(setOf(g), heap = false, any = false)
-    }
-}
-
-/**
- * The writes a call makes that its caller cannot see at the call site, two ways.
- *
- * [of], for ExclusivityPass: the places a function writes out of sight: globals, for a
- * method, fields reached through `this`, and what it writes through a parameter it takes
+ * The writes a call makes that its caller cannot see at the call site, for ExclusivityPass
+ * only: the places a function writes out of sight: globals, for a method, fields reached
+ * through `this`, and what it writes through a parameter it takes
  * without `mut` (a class reference, `sc: Sc`, whose fields any reference may write, D29:
  * `sc.k = K {}`, `sc.resetK()`), whether written by its own body or by the functions it calls
  * (a fixpoint over the call graph; a callee's `this` writes are seen through the receiver
@@ -595,24 +570,11 @@ internal class Hidden(val globals: Set<GlobalSymbol>, val heap: Boolean, val any
  * it write. A call handed a lambda may run it, so the lambda's body writes at the call
  * (`run(fx() { LOG.add(1) })` writes `LOG`); so does a call of an `Fx` local through the
  * lambdas stored in it (`g()`). A lambda that reaches a call through a field, a global or an
- * `Fx` parameter is not followed there: that is a known gap of the loop rule, which [summary]
- * does not share.
- *
- * [summary], for ViewPass (30-second-class 3.2): a [Hidden] per call, with no gap. A pure
- * stdlib binding writes nothing; any other binding nothing of its own, plus [Hidden.heap] on a
- * reference receiver, and [Hidden.any] for a handle's bodiless `mut fx` or when a type
- * argument is a user class or trait (it may run their operators); an extern nothing of its
- * own (its contract, 30-second-class 5.4); a Kira callee with a body, dispatched statically,
- * what its body writes out of sight, a fixpoint over the call graph; a virtual, trait or
- * `Fx`-value call [Hidden.any], except, inside the summary of a function, a call of its own
- * non-escaping `Fx` parameter, which its call sites are charged with instead; and every call
- * adds what each `Fx` argument may write: a lambda literal's body, a named function's summary,
- * anything else [Hidden.any]. A construction adds its class's `initially` and field defaults,
- * and every function the writes of any class's `finally` (a handle it drops may be the last).
+ * `Fx` parameter is not followed there: that is a known gap of the loop rule (the view rule
+ * does not share it: it refuses every IMPURE call, and EffectsPass makes each such call IMPURE).
  */
 internal class HiddenWrites private constructor(
     private val r: Rules,
-    private val bodies: List<Body>,
     private val table: IdentityHashMap<FnSymbol, MutableSet<Place>>,
     private val overriders: IdentityHashMap<FnSymbol, MutableList<FnSymbol>>,
 ) {
@@ -729,275 +691,10 @@ internal class HiddenWrites private constructor(
         return out.toList()
     }
 
-    // ---- the view rule's summary (30-second-class 3.2) ------------------------------------------
-
-    private val fnHidden = IdentityHashMap<FnSymbol, Hidden>()
-    private var finallyHidden = Hidden.NONE
-    private val initMemo = IdentityHashMap<ClassSymbol, Hidden>()
-    private val summarised: Boolean by lazy {
-        summarise()
-        true
-    }
-
-    /** What the call [rc] at [site] may write out of sight, seen from a body whose receiver type is [owner] (ViewPass's check: no summary is being built). */
-    fun summary(owner: TypeSymbol?, site: ASTNode, rc: ResolvedCall): Hidden {
-        check(summarised)
-        return callHidden(owner, site, rc, null)
-    }
-
-    /** What constructing an object of [cls] runs out of sight: its `initially` and field defaults, and its superclasses'. */
-    fun construction(cls: ClassSymbol?): Hidden {
-        check(summarised)
-        return initHidden(cls)
-    }
-
-    /** What dropping the last handle of any object may write: every class's `finally`. */
-    fun drops(): Hidden {
-        check(summarised)
-        return finallyHidden
-    }
-
-    /**
-     * The moving writes the call [e] spells: each `mut` argument's place, and the receiver of a
-     * `mut fx` on a value (a container, a `StrBuf`, a struct; for a stdlib container's `set`,
-     * the element alone, which moves nothing that contains it). A `mut fx` on a reference writes
-     * the object behind it, which its summary has; a `MutView` argument moves nothing.
-     */
-    fun named(owner: TypeSymbol?, e: FunctionCallExpr, rc: ResolvedCall): List<NamedWrite> {
-        val out = mutableListOf<NamedWrite>()
-        for (a in rc.args) {
-            val given = a as? ArgBinding.Given ?: continue
-            if (given.byRef) {
-                r.placeOf(given.expr)?.let { out.add(NamedWrite(it, model.types[given.expr], given.expr)) }
-            }
-        }
-        val fn = rc.fn ?: return out
-        if (!fn.isMutMethod) {
-            return out
-        }
-        val recvType = if (rc.implicitThis) (owner as? ClassSymbol)?.selfType else rc.receiver?.let { model.types[it] }
-        if (recvType == null || r.isReference(recvType)) {
-            return out
-        }
-        val place = if (rc.implicitThis) owner?.let { Place.This(it) } else rc.receiver?.let { r.placeOf(it) }
-        val at: ASTNode = rc.receiver ?: e
-        if (place != null) {
-            val element = elementWrite(fn, recvType)
-            if (element != null) {
-                out.add(NamedWrite(Place.Index(place, element), r.facts.elementOf(recvType), at))
-            } else {
-                out.add(NamedWrite(place, recvType, at))
-            }
-        }
-        return out
-    }
-
-    /** The index kind of a stdlib container's element setter (`xs.set(i, v)`), which writes the element alone; null for every other mutator. */
-    private fun elementWrite(fn: FnSymbol, recvType: KType): IndexKind? {
-        if (fn.foreign !is Foreign.Magic || fn.name != "set") {
-            return null
-        }
-        return when {
-            r.facts.isList(recvType) -> IndexKind.LIST
-            r.facts.isArr(recvType) -> IndexKind.ARR
-            else -> null
-        }
-    }
-
-    /** What writing [place] (holding a [type]) moves out of sight of a call site: a `mut` global, the heap, or nothing (a local, a `mut` parameter the call site names, a value's own parts). */
-    private fun written(place: Place?, type: KType?): Hidden {
-        if (place == null) {
-            return Hidden.ANY
-        }
-        if (!r.mayHoldStorage(type)) {
-            return Hidden.NONE
-        }
-        if (place.path().any { r.isReferenceStep(it) }) {
-            return Hidden.HEAP
-        }
-        return when (val root = place.root()) {
-            is Place.Global -> if (root.sym.isMut) Hidden.global(root.sym) else Hidden.NONE
-            is Place.This -> if (root.owner is TraitSymbol || (root.owner as? ClassSymbol)?.let { it.kind == ClassKind.CLASS || it.kind == ClassKind.OPAQUE } == true) Hidden.HEAP else Hidden.NONE
-            else -> Hidden.NONE
-        }
-    }
-
-    /** Everything [roots] (their lambdas aside) may write out of sight of its caller. [analysed] is the function whose summary this is, whose own non-escaping `Fx` parameters are charged at its call sites. */
-    private fun bodyHidden(owner: TypeSymbol?, roots: List<ASTNode>, analysed: FnSymbol?): Hidden {
-        var h = Hidden.NONE
-        walkOutsideLambdas(roots) { n ->
-            h += when (n) {
-                is AssignmentExpr -> written(model.places[n.target], model.types[n.target] ?: model.places[n.target]?.let { placeType(it) })
-                is CompoundAssignmentExpr -> written(model.places[n.left], model.types[n.left])
-                is PlaceAssignmentExpr -> written(model.places[n.target], model.types[n.target])
-                is FunctionCallExpr -> model.calls[n]?.let { rc ->
-                    named(owner, n, rc).fold(callHidden(owner, n, rc, analysed)) { acc, w -> acc + written(w.place, w.type) }
-                } ?: Hidden.NONE
-                is BinaryExpr, is UnaryExpr -> model.opCalls[n as Expr]?.let { callHidden(owner, n, it, analysed) } ?: Hidden.NONE
-                is ObjectInitExpr -> initHidden(model.inits[n]?.cls)
-                else -> Hidden.NONE
-            }
-        }
-        return h
-    }
-
-    private fun placeType(p: Place): KType? = when (p) {
-        is Place.Local -> p.sym.type
-        is Place.Param -> p.sym.type
-        is Place.Global -> p.sym.type
-        is Place.Field -> p.sym.type
-        else -> null
-    }
-
-    private fun callHidden(owner: TypeSymbol?, site: ASTNode, rc: ResolvedCall, analysed: FnSymbol?): Hidden {
-        val fn = rc.fn
-        var h = when (rc.kind) {
-            CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> when {
-                fn == null -> Hidden.ANY
-                fn.body != null -> fnHidden[fn] ?: Hidden.ANY
-                fn.foreign is Foreign.Magic -> magicHidden(rc)
-                fn.foreign is Foreign.Extern || fn.owner == null -> Hidden.NONE
-                // A method without a body is a slot a closure fills at construction (the spec's "no abstract classes").
-                else -> Hidden.ANY
-            } + (if (rc.kind == CallKind.CTOR) initHidden((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol) else Hidden.NONE)
-            CallKind.VIRTUAL, CallKind.TRAIT -> Hidden.ANY
-            CallKind.FN_VALUE -> if (analysed != null && site is FunctionCallExpr && ownFx(site.name, analysed)) Hidden.NONE else Hidden.ANY
-            CallKind.MAGIC -> magicHidden(rc)
-            CallKind.EXTERN, CallKind.PRINT -> Hidden.NONE
-        }
-        rc.args.forEachIndexed { i, a ->
-            val given = a as? ArgBinding.Given ?: return@forEachIndexed
-            val paramType = fn?.params?.getOrNull(i)?.type?.substitute(rc.substitution) ?: model.types[given.expr]
-            if (paramType is KType.Fn || model.types[given.expr] is KType.Fn) {
-                h += fxArgument(owner, given.expr, analysed)
-            }
-        }
-        return h
-    }
-
-    /** A stdlib binding writes only its receiver and `mut` arguments, which the call site names, unless it is a handle's or runs a user type's operators. */
-    private fun magicHidden(rc: ResolvedCall): Hidden {
-        val fn = rc.fn ?: return Hidden.ANY
-        if (r.bindings.isPure(fn)) {
-            return Hidden.NONE
-        }
-        var h = Hidden.NONE
-        val recvType = rc.receiver?.let { model.types[it] }
-        if (recvType != null && r.isReference(recvType)) {
-            h += if (fn.isMutMethod) Hidden.ANY else Hidden.HEAP
-        }
-        val typeArgs = rc.substitution.values + ((recvType as? KType.Nominal)?.typeArgs() ?: emptyList())
-        if (typeArgs.any { holdsUserType(it, HashSet()) }) {
-            h += Hidden.ANY
-        }
-        return h
-    }
-
-    /** A user class or struct, a trait or a type parameter anywhere in [t]: a stdlib binding over it may run its operators. */
-    private fun holdsUserType(t: KType, seen: MutableSet<KType>): Boolean = when (t) {
-        is KType.Param -> true
-        is KType.Fn -> false
-        is KType.Nominal -> when (val sym = t.sym) {
-            is TraitSymbol -> true
-            is ClassSymbol -> sym.kind != ClassKind.MAGIC || (seen.add(t) && t.typeArgs().any { holdsUserType(it, seen) })
-            else -> false
-        }
-        else -> false
-    }
-
-    /** What an `Fx` argument may write when the callee runs it. */
-    private fun fxArgument(owner: TypeSymbol?, e: Expr, analysed: FnSymbol?): Hidden {
-        var h = Hidden.NONE
-        for (v in AstScan.values(e)) {
-            val fnRef = model.coercions[v] as? Coercion.FnRef
-            h += when {
-                v is LambdaExpr -> v.def.body?.let { bodyHidden(owner, it, analysed) } ?: Hidden.NONE
-                fnRef != null -> when {
-                    fnRef.fn.body != null -> fnHidden[fnRef.fn] ?: Hidden.ANY
-                    fnRef.fn.foreign is Foreign.Extern -> Hidden.NONE
-                    else -> Hidden.ANY
-                }
-                analysed != null && ownFx(v, analysed) -> Hidden.NONE
-                else -> Hidden.ANY
-            }
-        }
-        return h
-    }
-
-    /** [e] names a non-escaping `Fx` parameter of [fn]: its calls are charged at [fn]'s call sites, to the argument. */
-    private fun ownFx(e: Expr, fn: FnSymbol): Boolean {
-        val p = (e as? Identifier)?.let { model.refs[it] } as? ParamSymbol ?: return false
-        return p.fn === fn && p.type is KType.Fn && !model.fxEscapes(p)
-    }
-
-    private fun initHidden(cls: ClassSymbol?): Hidden {
-        if (cls == null || (cls.kind != ClassKind.CLASS && cls.kind != ClassKind.STRUCT)) {
-            return Hidden.NONE
-        }
-        initMemo[cls]?.let { return it }
-        initMemo[cls] = Hidden.NONE
-        var h = Hidden.NONE
-        var c: ClassSymbol? = cls
-        val seen = HashSet<ClassSymbol>()
-        while (c != null && seen.add(c)) {
-            c.initially?.let { h += bodyHidden(c, it, null) }
-            for (f in c.fields) {
-                f.default?.let { h += bodyHidden(c, listOf(it), null) }
-            }
-            c = c.superclass?.sym as? ClassSymbol
-        }
-        initMemo[cls] = h
-        return h
-    }
-
-    /** The summaries of every function with a body, and of every `finally`, a fixpoint from "writes nothing". */
-    private fun summarise() {
-        val fnBodies = bodies.filter { it.fn != null }
-        val finallies = bodies.filter { it.kind == BodyKind.FINALLY }
-        fnBodies.forEach { fnHidden[it.fn!!] = Hidden.NONE }
-        var changed = true
-        while (changed) {
-            changed = false
-            initMemo.clear()
-            val fin = finallies.fold(Hidden.NONE) { acc, b -> acc + bodyHidden(b.owner, b.roots, null) }
-            if (!finallyHidden.covers(fin)) {
-                finallyHidden += fin
-                changed = true
-            }
-            for (b in fnBodies) {
-                val fn = b.fn!!
-                val was = fnHidden[fn]!!
-                val now = was + bodyHidden(b.owner, b.roots, fn) + finallyHidden
-                if (!was.covers(now)) {
-                    fnHidden[fn] = now
-                    changed = true
-                }
-            }
-        }
-        initMemo.clear()
-    }
-
     companion object {
         private const val MAX_DEPTH = 6
 
-        private val memo = java.util.WeakHashMap<TypedProgram, HiddenWrites>()
-
-        /** Every node of [roots] outside a lambda's body, in pre-order. */
-        fun walkOutsideLambdas(roots: List<ASTNode>, visit: (ASTNode) -> Unit) {
-            fun go(n: ASTNode) {
-                visit(n)
-                if (n is LambdaExpr) {
-                    return
-                }
-                AstTree.children(n).forEach { go(it) }
-            }
-            roots.forEach { go(it) }
-        }
-
-        /** One per program: ExclusivityPass and ViewPass share it. */
-        fun of(r: Rules, bodies: List<Body>): HiddenWrites = synchronized(memo) { memo.getOrPut(r.program) { build(r, bodies) } }
-
-        private fun build(r: Rules, bodies: List<Body>): HiddenWrites {
+        fun of(r: Rules, bodies: List<Body>): HiddenWrites {
             val model = r.model
             val table = IdentityHashMap<FnSymbol, MutableSet<Place>>()
             val fnBodies = bodies.filter { it.fn != null }
@@ -1013,7 +710,7 @@ internal class HiddenWrites private constructor(
                     base = base.overrides
                 }
             }
-            val hidden = HiddenWrites(r, bodies, table, overriders)
+            val hidden = HiddenWrites(r, table, overriders)
             fun add(set: MutableSet<Place>, p: Place) {
                 val root = p.root()
                 val hidden = when (root) {
