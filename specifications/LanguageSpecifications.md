@@ -731,7 +731,7 @@ Kira provides several core reference types for advanced memory management and ty
 
 **`Any`**
 
-The universal supertype of all classes. Used for dynamic typing scenarios where the specific type is determined at runtime.
+The universal supertype of all classes. Used for dynamic typing scenarios where the specific type is determined at runtime. `Any` is the implicit root of every type, not a parent class: a class declared without `: Parent` has no parent class, and is still usable as `Any`.
 
 ```kira
 value: Any = 42
@@ -758,17 +758,19 @@ value: Ref<Int32> = Ref<Int32> { 42 }
 
 Non-owning reference that does not increment the reference count. Used to break circular reference cycles. Accessing a weak reference requires upgrading to a strong reference, which may fail if the object has been deallocated.
 
+`T` must be a mutable class or a trait. An immutable object has no identity to refer to weakly, since a copy of it is the same object, so `Weak<T>` of an immutable class is an error: take the `Weak` of the mutable object that holds it.
+
 ```kira
-weak: Weak<MyClass> = Weak<MyClass> { strongRef }
+weak: Weak<MyClass> = Weak<MyClass> { strongRef }  // MyClass is a mutable class
 maybeValue: Maybe<MyClass> = weak.upgrade()
 ```
 
 **`Unsafe<T>`**
 
-Raw pointer-like reference without reference counting or lifetime tracking. Intended only for performance-critical FFI code or unsafe optimizations. Using `Unsafe<T>` bypasses Kira's safety guarantees.
+Raw pointer-like reference without reference counting or lifetime tracking, for FFI only. It is the type of an extern function's parameter and nothing else (see Views and Unsafe References).
 
 ```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
+pub fx checksum: (p: Unsafe<UInt8>, n: Size) UInt32;  // an extern: its body is native code
 ```
 
 ### Collection Types
