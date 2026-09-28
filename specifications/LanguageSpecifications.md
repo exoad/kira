@@ -3214,11 +3214,13 @@ fx processValue<T>: (value: Box<T>, handler: Fx<Tuple1<T>, Void>) Void {
 
 Kira employs Automatic Reference Counting (ARC) for deterministic memory management. Every object maintains a reference count that tracks the number of strong references to it.
 
+The implementation may copy an immutable object instead of counting references to it, since no program can tell the difference. An object whose class has `finally` is always counted, since its end is observable.
+
 ### Reference Counting Semantics
 
 **Ownership:**
 
-When a variable holds a reference to an object, it owns that reference and increments the reference count.
+When a variable holds a reference to an object, it owns that reference and increments the reference count. (`MyClass` here is a mutable class.)
 
 ```kira
 obj1: MyClass = MyClass {}  // refCount = 1
@@ -3237,7 +3239,7 @@ When the reference count reaches zero, the object is immediately deallocated.
 
 ### Weak References
 
-Weak references do not increment the reference count, preventing retain cycles:
+Weak references do not increment the reference count, preventing retain cycles. `Weak<T>` needs a mutable class or a trait for `T`: an immutable object has no identity to refer to weakly.
 
 ```kira
 pub class Node {
@@ -3290,41 +3292,14 @@ pub class Child {
 
 ### Unsafe References
 
-`Unsafe<T>` provides raw pointer semantics without reference counting. Use only when necessary for performance or FFI:
+`Unsafe<T>` provides raw pointer semantics without reference counting, for FFI only. It is second-class (see Views) and exists only as the type of an extern function's parameter: `p: Unsafe<T>` takes a `View<T>` argument, and `mut p: Unsafe<T>` takes a `MutView<T>`, whose elements the extern may write. It is never a local, a field, a result or any other parameter, so no Kira code holds a raw pointer:
 
 ```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
+pub fx checksum: (p: Unsafe<UInt8>, n: Size) UInt32;  // an extern: its body is native code
+
+packet: List<UInt8> = List<UInt8> { [1, 2, 3, 4] }
+sum: UInt32 = checksum(packet.view(), packet.size())
 ```
-
-**Type Conversion:**
-
-There is **no way to convert between safe and unsafe types** directly. However, you can dereference an `Unsafe<T>` pointer to get the underlying value:
-
-```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
-value: Int32 = @dereference(ptr)  // Get value from unsafe pointer
-
-// Cannot convert safe to unsafe or vice versa directly
-safeRef: Ref<Int32> = ptr  // Not allowed
-unsafePtr: Unsafe<Int32> = safeRef  // Not allowed
-```
-
-Additionally, unsafe references only exist in certain transpilation targets that supports direct memory access such as compiling to machine code or transpiling to C/C++. Thus manipulation of the `Unsafe` type requires the usage of intrinsics:
-
-```kira
-@_trace_(ptr.@acquire_value()) // returns an Int32 representing the real memory location
-
-array: List<Int32> = mut []
-
-// <Type>, <Dest>, <Location>
-ptr.@read_offset(@_type_of_(array), array, ptr.@aquire_value() + 10)
-
-// Used to directly write memory information
-ptr.@store_offset(@_type_of_(array), array, ptr.@acquire_value() + 10)
-
-```
-
-> Note: Modifying unsafe references are not yet implemented and are still in triage.
 
 ---
 
