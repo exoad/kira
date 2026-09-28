@@ -1012,28 +1012,46 @@ y: Int32 = +10
 
 ### Operator Overloading
 
-Kira supports operator overloading through intrinsic markers. Classes can define methods with specific intrinsic names that map to operators, allowing custom types to work with standard operators.
+Operators are methods. A class or a trait declares an operator as a member method with an intrinsic name, like any `fx`, and the operator calls it: `a + b` is `a.@_op_add_(b)`. The built-in classes declare theirs the same way in the standard library (`Int32`'s `@_op_add_` comes from `Num<Int32>`, `List`'s `@_op_get_` from `List` itself), so a built-in operator and a user one resolve alike. An operator is always a member.
 
-**Operator Intrinsic Mapping:**
+**Operator Methods:**
 
-| Operator | Intrinsic Name | Signature Example                          |
-|----------|----------------|--------------------------------------------|
-| `+`      | `@_op_add_`    | `fx @_op_add_: (other: T) T`                |
-| `-`      | `@_op_sub_`    | `fx @_op_sub_: (other: T) T`                |
-| `*`      | `@_op_mul_`    | `fx @_op_mul_: (other: T) T`                |
-| `/`      | `@_op_div_`    | `fx @_op_div_: (other: T) T`                |
-| `%`      | `@_op_mod_`    | `fx @_op_mod_: (other: T) T`                |
-| `==`     | `@_op_eq_`     | `fx @_op_eq_: (other: T) Bool`              |
-| `!=`     | `@_op_neq_`    | `fx @_op_neq_: (other: T) Bool`             |
-| `<`      | `@_op_lt_`     | `fx @_op_lt_: (other: T) Bool`              |
-| `>`      | `@_op_gt_`     | `fx @_op_gt_: (other: T) Bool`              |
-| `<=`     | `@_op_lte_`    | `fx @_op_lte_: (other: T) Bool`             |
-| `>=`     | `@_op_gte_`    | `fx @_op_gte_: (other: T) Bool`             |
-| `-` (un) | `@_op_neg_`    | `fx @_op_neg_: () T`                        |
-| `[]`     | `@_op_get_`    | `fx @_op_get_: (get: Int32) T`              |
-| `[]=`    | `@_op_set_`    | `fx @_op_set_: (index: Int32, val: T) Void` |
+| Syntax | Method | Arity | Result |
+|---|---|---|---|
+| `a + b`, `a - b`, `a * b`, `a / b`, `a % b` | `@_op_add_` `@_op_sub_` `@_op_mul_` `@_op_div_` `@_op_mod_` | 1 | any |
+| `a == b`, `a != b` | `@_op_eq_` `@_op_neq_` | 1 | `Bool` |
+| `a < b`, `a > b`, `a <= b`, `a >= b` | `@_op_lt_` `@_op_gt_` `@_op_lte_` `@_op_gte_` | 1 | `Bool` |
+| `-a` | `@_op_neg_` | 0 | any |
+| `a[i]` | `@_op_get_` | 1 | any |
+| `a[i] = v` | `@_op_set_` | 2 | `Void` |
+| `a & b`, `a \| b`, `a ^ b` | `@_op_bitand_` `@_op_bitor_` `@_op_xor_` | 1 | any |
+| `a << n`, `a >> n`, `a >>> n` | `@_op_shl_` `@_op_shr_` `@_op_ushr_` | 1 | any |
+| `~a`, `!a`, `+a` | `@_op_bitnot_` `@_op_not_` `@_op_pos_` | 0 | any |
 
-> Note: Function Signatures can vary, but using a different signature means you must explicitly invoke the intrinsic as a function instead.
+-   The arity, and `Bool` for the six comparisons, are the contract. Parameter and result types are the declaring class's choice: `@_op_mul_: (scalar: Float32) Vector2` below is used as `v1 * 2.0`.
+-   A method with another shape, such as `@_op_get_: (row: Int32, col: Int32) T`, is an ordinary method, callable only by name: `m.@_op_get_(r, c)`.
+-   An operator can always be called by name: `a.@_op_add_(b)` is the same call as `a + b`.
+-   `&&`, `||`, `..`, `as`, `is`, `=` and `.` are syntax, not methods.
+-   An operator method follows every rule of a method: `pub`, `mut`, bodies, and `override`, which is required when it overrides, are as for any `fx`, and a class has at most one method of each name, operators included. `@_op_set_` is normally a `mut fx`.
+-   A generic operator method is marked `@_infer`, since operator syntax has nowhere to write type arguments: its type parameters are inferred from its arguments, in operator syntax and in an explicit call alike. `List` declares `pub @_infer fx @_op_get_<I: IntNum<I>>: (index: I) T`, which is what lets any integer type index it. A generic operator method without `@_infer` cannot be used with operator syntax.
+
+**Desugaring and Evaluation:**
+
+The operator is resolved on the left operand's type exactly as `a.name(...)` is: the class, its parents, its traits, or a type parameter's bounds.
+
+| Kira | Is |
+|---|---|
+| `a op b` | `a.@_op_X_(b)` |
+| `-a`, `~a`, `!a`, `+a` | `a.@_op_X_()` |
+| `a[i]` | `a.@_op_get_(i)` |
+| `a[i] = v` | `a.@_op_set_(i, v)` |
+| `a op= b` | `a = a.@_op_X_(b)`, with `a` evaluated once |
+| `a[i] op= v` | `a.@_op_set_(i, a.@_op_get_(i).@_op_X_(v))`, with `a` and `i` evaluated once |
+| `a != b` | `a.@_op_neq_(b)` when the class declares it, `!(a == b)` otherwise |
+
+-   The left operand is evaluated first, then the right. A left operand that is a variable or a field is not copied: the call reads it when it runs, so `xs[next()]` sees what `next` did to `xs`, exactly as `xs.@_op_get_(next())` does.
+-   No operator is derived from another beyond the `!=` rule. (`Comparable<T>` gives `>`, `<=` and `>=` default bodies from `<` and `==`, as library code a class may override.)
+-   A literal on the left takes the other operand's type only when the method found on that type takes its own type. So `v1 * 2.0` works, and `2.0 * v1` is an error: `Float32` has no `@_op_mul_` taking a `Vector2`.
 
 **Example:**
 
@@ -1070,8 +1088,7 @@ equal: Bool = v1 == v2
 
 **Notes:**
 
--   Intrinsic markers are just symbol placeholders for the parser
--   Function signatures can differ (return types, parameter types can vary)
+-   Function signatures can differ (return types, parameter types can vary), within the arity rule
 -   Not all operators need to be overloaded
 -   The compiler transforms operator usage into method calls at compile time
 
