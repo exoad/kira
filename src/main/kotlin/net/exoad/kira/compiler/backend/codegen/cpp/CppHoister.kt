@@ -734,12 +734,6 @@ class CppHoister(private val lower: CppLowering) {
         return false
     }
 
-    private fun rankOf(effect: Effect): Int = when (effect) {
-        Effect.PURE -> PURE
-        Effect.IMPURE -> IMPURE
-        else -> READS
-    }
-
     /**
      * The rank of [root] (the class KDoc): IMPURE at a call the model or the binding table does
      * not call pure, an assignment, a `throw`, a `try` or a trace; READS at a read of state a
@@ -767,6 +761,8 @@ class CppHoister(private val lower: CppLowering) {
                 is LambdaExpr -> continue
                 is FunctionCallExpr -> {
                     if (!isPureCall(node)) return IMPURE
+                    // EffectsPass's READS: no effect, but it observes state a sibling may change.
+                    if (lower.model.effects[node] == Effect.READS) best = maxOf(best, READS)
                     lower.model.call(node)?.let { rc ->
                         if (!isSecondClass(rc.returnType) && readsThrough(rc)) {
                             best = maxOf(best, READS)
@@ -843,7 +839,8 @@ class CppHoister(private val lower: CppLowering) {
             // It may run any body, or writes through what it is handed ([provedPure]), whatever the model's entry says.
             return false
         }
-        lower.model.effects[c]?.let { return rankOf(it) == PURE }
+        // A READS entry is a call with no effect (Effect's contract); [scan] ranks the read.
+        lower.model.effects[c]?.let { return it != Effect.IMPURE }
         rc ?: return false
         val fn = rc.fn ?: return false
         return when (rc.kind) {

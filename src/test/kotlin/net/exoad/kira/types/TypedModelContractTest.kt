@@ -85,7 +85,7 @@ class TypedModelContractTest {
         }
         val required = listOf(
             "types", "refs", "typeRefs", "calls", "opCalls", "inits", "members", "coercions", "places", "consts",
-            "conversions", "captures", "loops", "ifShape", "effects", "declSyms", "fxEscapes", "viewEscapes",
+            "conversions", "captures", "loops", "ifShape", "effects", "declSyms", "fxEscapes", "viewOrigins",
         )
         val names = maps.map { it.name }.toSet()
         assertTrue(names.containsAll(required), "missing ${required - names}")

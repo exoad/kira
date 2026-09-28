@@ -1,7 +1,9 @@
 package net.exoad.kira.cpp.decls
 
 import net.exoad.kira.compiler.analysis.types.FnSymbol
+import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
+import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitContextImpl
 import net.exoad.kira.compiler.backend.codegen.cpp.Pos
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
@@ -42,11 +44,11 @@ class CppTypeSpellerTest {
         pub fx strings: (s: Str, mut t: Str) Str;
         pub fx arrays: (fixed: Arr<UInt8, 4>, mut fixedOut: Arr<UInt8, 4>, grow: Arr<Int32>, xs: List<Str>, mut ys: List<Str>) List<Int32>;
         pub fx maps: (m: Map<Str, Int32>, s: Set<Int32>, d: Deque<Int32>, st: Stack<Int32>, q: Queue<Int32>, mut mm: Map<Str, Int32>) Map<Str, Int32>;
-        pub fx views: (v: View<UInt8>, w: MutView<UInt8>) View<Char>;
+        pub fx views: (v: View<UInt8>, w: MutView<UInt8>) View<Char> { return "x" }
         pub fx maybes: (a: Maybe<Int32>, b: Maybe<Pt>, c: Maybe<Node>, d: Maybe<Shape>, mut e: Maybe<Int32>) Maybe<Node>;
         pub fx nominals: (p: Pt, mut q: Pt, n: Node, mut o: Node, s: Shape, k: Kind, mut kk: Kind) Node;
         pub fx handles: (h: Handle, w: Weak<Node>, r: Ref<Int32>, u: Unsafe<Int32>, mut v: Unsafe<Int32>) Weak<Node>;
-        pub fx nested: (pp: Unsafe<Unsafe<Int32>>, mut qq: Unsafe<Unsafe<Int32>>, n: Int, mut f: Float) Unsafe<Unsafe<Int32>>;
+        pub fx nested: (n: Int, mut f: Float) Int;
         pub fx externs: (s: Scan, mut t: Scan, c: Car) Car;
         pub fx fns: (f: Fx<Tuple2<Str, Int32>, Kind>, g: Fx<Tuple1<mut Int32>, Void>, h: Fx<Tuple0, Int64>) Fx<Tuple0, Void>;
         pub fx tuples: (t: Tuple2<Int32, Str>, r: Result<Int32, Str>, z: Tuple0) Tuple2<Int32, Str>;
@@ -148,10 +150,14 @@ class CppTypeSpellerTest {
         assertEquals("const std::int32_t*", param("handles", "u"))
         assertEquals("std::int32_t*", param("handles", "v"))
         assertEquals("kira::Weak<Node>", ret("handles"))
-        // the const qualifies the pointee: a pointer to a `const T*`, never `const const T**`
-        assertEquals("const std::int32_t* const*", param("nested", "pp"))
-        assertEquals("const std::int32_t**", param("nested", "qq"))
-        assertEquals("const std::int32_t* const*", ret("nested"))
+        // the const qualifies the pointee: a pointer to a `const T*`, never `const const T**`. Kira can no
+        // longer write an Unsafe of an Unsafe, nor return an Unsafe (decision 4b, 30-second-class 1.2 and
+        // 5.2), but the speller still spells the type it is handed.
+        val unsafeInt = fn("handles").params.first { it.name == "u" }.type as KType.Nominal
+        val nested = KType.Nominal(unsafeInt.sym, listOf(TypeArg.Ty(unsafeInt)))
+        assertEquals("const std::int32_t* const*", ctx.spell(nested, Pos.PARAM))
+        assertEquals("const std::int32_t**", ctx.spell(nested, Pos.MUT_PARAM))
+        assertEquals("const std::int32_t* const*", ctx.spell(nested, Pos.RETURN))
     }
 
     @Test

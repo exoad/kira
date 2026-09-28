@@ -144,7 +144,8 @@ class TyperPhaseTest {
         val verb = param("verb", ty("Str"))
         val args = param("args", ty("Str"), StringLiteral(""))
         val retries = param("retries", ty("Int32"), IntegerLiteral(3))
-        astModule(unit, "test:cmd", fn("command", listOf(verb, args, retries), ty("Str")))
+        // A stub: a Str-returning function with an empty body would miss its return (rules.return.missing).
+        astModule(unit, "test:cmd", fn("command", listOf(verb, args, retries), ty("Str"), body = null))
         val p = typed(unit)
         expectNoErrors(p)
         val command = p.member("test:cmd", "command") as FnSymbol

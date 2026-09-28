@@ -39,7 +39,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStat
 
 /**
  * Phase C of the typer (design 3.2): types every body the program holds, filling every
- * TypedModel table but `effects`, `fnEffects`, `fxEscapes` and `viewEscapes` (the rule passes'
+ * TypedModel table but `effects`, `fnEffects`, `fxEscapes` and `viewOrigins` (the rule passes'
  * own). Registered as [KiraTyper.bodyTyper].
  */
 internal object KiraBodyTyper : BodyTyper {

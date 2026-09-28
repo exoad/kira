@@ -88,7 +88,7 @@ pub struct Bag {
 pub DYN: Arr<Int32> = [1, 2, 3]            // no error: built at run time from literals, in no order (D49)
 pub DSIZE: Size = DYN.size()               // @error types.const.not-constant
 pub DFIRST: Int32 = DYN.get(0)             // @error types.const.not-constant
-pub DV: View<Int32> = DYN.view()           // @error types.const.not-constant
+pub DV: View<Int32> = DYN.view()           // @error types.const.not-constant; @error rules.view.type
 pub DCOPY: Arr<Int32> = DYN.clone()        // @error types.const.not-constant
 pub mut SEED0: Int32 = DYN.get(0) + 1      // @error types.global.mut-init
 pub LST: List<Int32> = [4, 5]
@@ -126,7 +126,7 @@ pub mut GG: Sized = Sized { 3 }
 pub mut GB: SizedBag = SizedBag { }        // @error types.global.mut-init
 pub mut GBG: SizedBag = SizedBag { n = 3 }
 
-pub @_const fx firstOf: (xs: Arr<Int32> = DYN) Int32 {
+pub @_const fx firstOf: (xs: Arr<Int32> = DYN) Int32 { // @error rules.const.type
     return xs.get(0)
 }
 
