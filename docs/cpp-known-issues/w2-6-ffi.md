@@ -1,11 +1,118 @@
-# Known issues: w2-6-ffi (convergence round 4)
+# Known issues: w2-6-ffi (convergence round 5)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
 
+## Convergence round 5: decision 4b, views are second-class (30-second-class.md)
+
+### The three open significant issues (converge-result.json) are dissolved, not patched
+
+**What.** `wave2/converge-result.json`'s three "significant" findings for this package were
+all shapes `carriesPointer` missed: a collection of pointers (`List<CStr>` result, a `mut
+List<CStr>` parameter — issue 1), the pointee of a bare `mut p: Unsafe<T>` out-buffer when
+`T` itself carries a pointer (issue 2), and an `Fx` result or callback parameter that
+returns/receives a pointer (issue 3). Each earlier round's fix to `carriesPointer` closed
+the shapes the previous round's verifier found and missed the next ones (a `Maybe`, then a
+class field, then `View`/`MutView`, then a `mut` argument or receiver, and now these three) —
+the same open-ended list the design's own retrospective names in 30-second-class.md section
+7.4: "chasing an ever-growing list of shapes."
+
+**Where.** `CppExternEmitter.kt`'s `carriesPointer`, `call`'s `pointerEscapes` computation,
+`receiverType`, `isTemporaryStr` and `refuseDanglingStr` (round 4's shapes, ~110 lines total,
+per 30-second-class.md 7.4's line count).
+
+**Status: resolved this round by deletion, per design 7.4.** All five are deleted outright,
+not patched to cover the three new shapes. Decision 4b's rule (30-second-class.md) refuses
+an extern's result, `mut` argument or receiver from ever being second-class *at the
+declaration* (`rules.view.extern`, `rules.view.type` — a `List<CStr>` parameter or result
+is `rules.view.type` on the `CStr` type argument alone, 1.2; an `Fx<..., CStr>` result or
+callback parameter is `rules.view.extern`, 5.2), owned by `w2-5-rules`'s new `ViewPass`, not
+by this emitter. Once that declaration-time refusal exists, nothing this emitter's
+`argument`/`call` could see at a *call* site was ever reachable in a well-formed program, so
+the heuristic this package kept re-patching is unneeded rather than merely incomplete: there
+is no shape left for it to miss, because the shapes it existed to catch cannot be declared.
+This closes all three open issues without adding a fourth patch to the list.
+
+**Merge-order note (30-second-class.md 7.0).** In this branch alone (without `w2-5-rules`'s
+`ViewPass` merged), the three shapes above are — same as before this round, and as every
+shape `carriesPointer` never covered — simply unchecked: a `List<CStr>`-returning extern and
+a computed `Str` argument feeding it compile with no diagnostic on this branch standalone.
+This is expected, not a regression this round introduces: the design's merge order (7.0)
+already requires `ViewPass` to land at `cpp-backend` before this package's deletions do, so
+no build ever compiles the unsafe shape unchecked. `./gradlew test` (994 tests) and every
+acceptance command in the brief pass on this branch alone regardless, since none of them
+constructs these three shapes.
+
+### New: `Unsafe<T>` takes a `View<T>`/`MutView<T>` argument at an extern call, lowered `.data()`
+
+**What.** Design 1.4/5.5: `Unsafe<T>` is now extern-parameter-only (nothing else can declare
+one, once `w2-5-rules`'s `ViewPass` lands `rules.view.unsafe`), so the only way left to call
+something like `ImGui::InputText(label, char* buf, size)` is to pass a `View<T>` (a `const
+T*`) or, for a `mut Unsafe<T>` (`T*` by value, not an out-parameter, table 5.1), a
+`MutView<T>` — nothing else can ever hold an `Unsafe<T>` value to pass along unchanged.
+
+**Where.** `CallResolver.kt`'s `typeGiven` (both the byRef and non-byRef argument branches),
+and `CppExternEmitter.kt`'s `argument`.
+
+**Status: added this round.** `typeGiven` accepts a `View<T>`/`MutView<T>` argument against
+an `Unsafe<T>` parameter (non-`mut`: either; `mut`: `MutView<T>` only, matching element type,
+and needs no call-site `mut` and no place, since the callee only reads the view's own
+pointer) at an extern call only (`externCallee`), recording nothing beyond the argument's
+own `View`/`MutView` type — the same convention the `CStr`-for-`Str` case just above it
+already uses, so no new `Coercion` case is needed. `CppExternEmitter.argument` reads that
+type back and lowers `(text).data()`; the exact-type case (an `Unsafe<T>` argument that
+already is one) is untouched and still passes through as itself.
+`CppExternEmitterTest.anUnsafeParameterTakesAViewOrAMutViewLoweredDotData` covers both.
+
+**Touches `CallResolver.kt`, outside this package's OWNS/TOUCHES.** Same disclosure as the
+round-2 entry below for this file: the change (18 lines) is needed for design 1.4/5.5's
+`Unsafe<T>` calling convention, which 30-second-class.md 7.4 explicitly assigns to this
+package ("CallResolver coercion at extern calls only, plus the lowering"). `./gradlew test`
+(994 tests, 0 failures) passes with it in place; reconciling it with any independent change
+another package makes to the same file is `cpp-backend`'s merge step, not a mid-round revert
+here.
+
+### `CppExternEmitterTest`'s round-3/4 refusal tests move to `ViewPassTest` (design 7.4)
+
+**What.** Design 7.4: "the 3 round-4 tests and the round-3 refusal test become `ViewPassTest`
+negatives on the declarations... their non-regression halves... stay." The four tests that
+asserted `carriesPointer`/`refuseDanglingStr` refused a computed `Str` argument no longer
+have anything to assert, since the check is deleted (`argument`'s doc, above).
+
+**Where.** `CppExternEmitterTest.kt`.
+
+**Status: done this round.**
+`aComputedStrIntoAPointerCarryingResultIsRefusedNotALiteralOrANamedOne`,
+`aLiteralOrAKiraStrConstantIntoAStrParameterOfAPointerCarryingResultIsRefusedToo` and
+`aComputedStrEscapingThroughAMutParameterOrAMutMethodReceiverIsRefused` are deleted except
+for their non-regression halves (a literal, a named `Str`, a Kira `Str` constant into a
+`CStr` parameter; a literal into a scalar-returning call; a bare `mut Unsafe<T>` out-buffer
+alongside a computed `Str`), consolidated into
+`aLiteralANamedStrOrAConstantIntoACStrParameterIsNeverRefused` and
+`aMutUnsafeOutBufferBesideAComputedStrArgumentIsNeverRefused`.
+`aComputedStrIntoAViewOrMutViewResultIsRefused` had no non-regression half (both of its
+cases were refused shapes) and is deleted outright; its two probes are now the
+`w2-5-rules` verifier's `ViewPassTest` negatives (not this package's file). Net: 21 → 20
+tests in this file (4 removed, 3 added — the third being
+`anUnsafeParameterTakesAViewOrAMutViewLoweredDotData`, above); the full suite is 994 tests
+(was 995), 0 failures.
+
 ## Open decisions
 
 ### The FFI contract only proves the buffer safe to the end of the full-expression, never beyond what the typed model can see
+
+**Status: closed this round.** 30-second-class.md section 5.4 states the contract this
+entry asked the user to pick a direction on, as three explicit rules rather than an
+annotation mechanism: (1) an extern reads a second-class argument only during the call and
+keeps no pointer from it — a C++ callee that retains one (an opaque handle storing a
+`string_view`, a global setter, the reassigned-`Str` case below) is a seam bug the typed
+model cannot see, full stop, not something Kira refuses; (2) an extern writes Kira storage
+only through its `mut` arguments and its receiver; (3) an extern runs Kira code only
+through the `Fx` arguments it is given. This is choice (a) from the two this entry
+originally posed — the trust-boundary reading, not a `@_retains` annotation — decided by
+the design rather than left open. Nothing in this package's code changes for it beyond the
+deletions above, which already assume exactly this contract (`call`'s updated doc cites
+5.2/5.3 directly). The original text is kept below for the record of what was open and why.
 
 **What.** Round 3 and round 4's refusals (`CppExternEmitter.argument`, `carriesPointer`)
 close every escape this package's typed model can trace: the call's own result, a `mut`

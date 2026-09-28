@@ -605,18 +605,17 @@ class CppExternEmitterTest {
     }
 
     /**
-     * Policy 1 (no silent miscompile): `kira::ffi::CStrBuf(expr)` and `kira::ffi::in(expr)`
-     * build a temporary that lives only to the end of the call's own full-expression. When
-     * the call's result is a `CStr`, an `Unsafe<T>`, or a `Maybe` or struct holding one, that
-     * is not proven long enough (measured on the trial CLI, MSVC ASan: `Maybe<CStr>` from a
-     * `strchr`-shaped `after`, and a bare `CStr` from `strip`, both freed by `~CStrBuf` before
-     * the result was read). Rather than track whether a spill or a stored result outlives the
-     * buffer, a computed `Str` (here, `nameOf(1)`: neither a literal, a constant, nor a named
-     * `Str`) into such a call is refused outright; a literal or a named `Str` is not, since
-     * neither builds a temporary at all. Bodies are not lowered on this branch yet (pending on
-     * W2.3, ledgered), so each call is built directly through [CppExternEmitter.call], the same
-     * way [aCStrParameterTakesAStrAsSection72Says] and [aCallSpellsTheCppNameAndTheProxies] do;
-     * a fresh module per call keeps its diagnostics to exactly what that one call reports.
+     * Rounds 1-4 refused a computed `Str` argument feeding a call whose result, `mut` argument
+     * or `mut` receiver could point into it ("policy 1"), tracked here through `carriesPointer`.
+     * Decision 4b (30-second-class.md, section 7.4) deletes that check from this emitter: an
+     * extern's result, `mut` argument and receiver can never be second-class any more (5.2, 5.3
+     * - refused at the declaration by ViewPass's `rules.view.extern`/`rules.view.type`, in
+     * `w2-5-rules`, which also carries the refused shapes these rounds probed as
+     * `ViewPassTest` negatives), so a temporary `Str` buffer feeding any argument here is always
+     * safe for the call's own full-expression. What stays worth pinning in this file is exactly
+     * what rounds 1-4 called "not the regression": these shapes were never refused, and still
+     * are not, now with no check standing between them and a silent one - there being none any
+     * more is the point.
      */
     private fun diagsOf(body: String, fnName: String, receiver: String? = null, vararg args: String): List<String> {
         val c = callsOf(body)
@@ -625,55 +624,14 @@ class CppExternEmitterTest {
         // Bodies are not lowered on this branch (pending on W2.3, ledgered), so emit(body)
         // already reported "the body of '<fn>' is not lowered yet" for every function with a
         // body; that noise is unrelated to what this test checks and is filtered out here.
-        return c.ctx.diagnostics.filter { it.isError && "a computed Str argument" in it.message }.map { it.render() }
+        return c.ctx.diagnostics.filter { it.isError && "the body of" !in it.message }.map { it.render() }
     }
 
     @Test
-    fun aComputedStrIntoAPointerCarryingResultIsRefusedNotALiteralOrANamedOne() {
-        val computedCStr = diagsOf(
-            """
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::after", header = "probe.hxx")
-            pub fx after: (s: CStr, c: Int32) Maybe<CStr>;
-            fx cat: () Void {
-                r: Maybe<CStr> = after(nameOf(1), 1)
-            }
-            """,
-            "after", null, "::probe::nameOf(1)", "1",
-        )
-        assertTrue(computedCStr.any { it.contains("a computed Str argument") && it.contains("'after'") && it.contains("can point into it") }, computedCStr.toString())
-
-        val computedStr = diagsOf(
-            """
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::afterS", header = "probe.hxx")
-            pub fx afterS: (s: Str, c: Int32) Maybe<CStr>;
-            fx cat: () Void {
-                r: Maybe<CStr> = afterS(nameOf(1), 1)
-            }
-            """,
-            "afterS", null, "::probe::nameOf(1)", "1",
-        )
-        assertTrue(computedStr.any { it.contains("a computed Str argument") && it.contains("'afterS'") && it.contains("can point into it") }, computedStr.toString())
-
-        val computedIntoCStrResult = diagsOf(
-            """
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::strip", header = "probe.hxx")
-            pub fx strip: (s: CStr) CStr;
-            fx cat: () Void {
-                r: CStr = strip(nameOf(1))
-            }
-            """,
-            "strip", null, "::probe::nameOf(1)",
-        )
-        assertTrue(computedIntoCStrResult.any { it.contains("a computed Str argument") && it.contains("'strip'") && it.contains("can point into it") }, computedIntoCStrResult.toString())
-
-        // A literal, a plain named Str, and a Kira Str constant build no temporary at all, so
-        // none of them are refused even though the callee's result is the same shape.
+    fun aLiteralANamedStrOrAConstantIntoACStrParameterIsNeverRefused() {
+        // A literal, a plain named Str, and a Kira Str constant build no temporary at all
+        // (CppExternEmitter.argument's doc), so none of them was ever refused even against a
+        // call whose result is a pointer-carrying shape - and nothing here checks that any more.
         val literal = diagsOf(
             """
             @_extern(cpp = "probe::after", header = "probe.hxx")
@@ -722,49 +680,8 @@ class CppExternEmitterTest {
             "afterS", null, "a", "1",
         )
         assertTrue(namedStr.isEmpty(), namedStr.toString())
-    }
 
-    /**
-     * Policy 1, issue 1 (round 4): on the `Str`-parameter path `kira::ffi::in(text)` always
-     * takes a `const std::string&`, so a literal (a C string literal, W2.3's `cppString`) and a
-     * named Kira `Str` constant (D12: `inline constexpr const char*`) build a fresh temporary
-     * there just as a computed expression does - unlike the `CStr`-parameter path, where both
-     * pass through as the `const char*` they already are, with no temporary at all (the round-3
-     * regression above checks exactly that CStr-path pair and only that pair). A literal or a
-     * Kira `Str` constant into a `Str` parameter whose call can hand a pointer back must be
-     * refused the same way a computed expression is (measured on the trial CLI: `afterS("hello,
-     * world, ...", 44)` and `afterS(GREETING, 44)` both read 0 where 77/78 are correct, MSVC
-     * ASan reporting a heap-use-after-free in `~basic_string` for each).
-     */
-    @Test
-    fun aLiteralOrAKiraStrConstantIntoAStrParameterOfAPointerCarryingResultIsRefusedToo() {
-        val literalIntoStr = diagsOf(
-            """
-            @_extern(cpp = "probe::afterS", header = "probe.hxx")
-            pub fx afterS: (s: Str, c: Int32) Maybe<CStr>;
-            fx cat: () Void {
-                r: Maybe<CStr> = afterS("a literal long enough to live on the heap", 44)
-            }
-            """,
-            "afterS", null, "\"a literal long enough to live on the heap\"", "44",
-        )
-        assertTrue(literalIntoStr.any { it.contains("a computed Str argument") && it.contains("'afterS'") }, literalIntoStr.toString())
-
-        val constantIntoStr = diagsOf(
-            """
-            @_extern(cpp = "probe::afterS", header = "probe.hxx")
-            pub fx afterS: (s: Str, c: Int32) Maybe<CStr>;
-            pub GREETING: Str = "hi"
-            fx cat: () Void {
-                r: Maybe<CStr> = afterS(GREETING, 44)
-            }
-            """,
-            "afterS", null, "::ext::GREETING", "44",
-        )
-        assertTrue(constantIntoStr.any { it.contains("a computed Str argument") && it.contains("'afterS'") }, constantIntoStr.toString())
-
-        // Against a call whose result carries no pointer, the same literal and constant are
-        // still not refused: kira::ffi::in's temporary is not read after the full-expression.
+        // Against a call whose result carries no pointer at all, a literal was always fine too.
         val literalIntoScalarResult = diagsOf(
             """
             @_extern(cpp = "probe::lengthOfS", header = "probe.hxx")
@@ -779,73 +696,13 @@ class CppExternEmitterTest {
     }
 
     /**
-     * Policy 1, issue 2 (round 4): [CppExternEmitter]'s `carriesPointer` looked only at the
-     * call's return type; a pointer into the same temporary buffer can also leave through a
-     * `mut` parameter (`kira::ffi::out(x)` lets the callee write a fresh value there, table 5.1)
-     * or through a `mut fx`'s mutated receiver, and a computed `Str` argument feeding either
-     * escape dangles exactly as it would through the result (measured on the trial CLI, MSVC
-     * ASan: `afterInto(a + b, 44, mut e)` then `trace(lenM(e))`; `setName(mut o, a + b)` then
-     * `trace(lenM(o.name))`; `o.rename(a + b)` then `trace(lenM(o.name))`; each a
-     * heap-use-after-free). A bare `mut p: Unsafe<T>` parameter is not such a channel - it is
-     * the caller's own buffer passed in to be filled, not a value the callee produces (table
-     * 5.1, [CppExternEmitter.argument]'s doc) - so it alone never triggers the refusal.
+     * A bare `mut p: Unsafe<T>` out-buffer is the caller's own memory, not a value the callee
+     * produces (table 5.1), so round 4's `carriesPointer` never refused a computed `Str`
+     * argument beside one - the one shape among rounds 1-4's probes that was never refused even
+     * before this round deleted the check. It still is not.
      */
     @Test
-    fun aComputedStrEscapingThroughAMutParameterOrAMutMethodReceiverIsRefused() {
-        val throughMutParam = diagsOf(
-            """
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::afterInto", header = "probe.hxx")
-            pub fx afterInto: (s: Str, c: Int32, mut out: Maybe<CStr>) Void;
-            fx cat: () Void {
-                mut e: Maybe<CStr> = null
-                afterInto(nameOf(1), 44, mut e)
-            }
-            """,
-            "afterInto", null, "::probe::nameOf(1)", "44", "e",
-        )
-        assertTrue(throughMutParam.any { it.contains("a computed Str argument") && it.contains("'afterInto'") }, throughMutParam.toString())
-
-        val throughMutStructParam = diagsOf(
-            """
-            @_extern(cpp = "probe::Opts", header = "probe.hxx")
-            pub struct Opts {
-                pub name: Maybe<CStr>
-                pub n: Int32
-            }
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::setName", header = "probe.hxx")
-            pub fx setName: (mut o: Opts, s: CStr) Void;
-            fx cat: (mut o: Opts) Void {
-                setName(mut o, nameOf(1))
-            }
-            """,
-            "setName", null, "o", "::probe::nameOf(1)",
-        )
-        assertTrue(throughMutStructParam.any { it.contains("a computed Str argument") && it.contains("'setName'") }, throughMutStructParam.toString())
-
-        val throughMutReceiver = diagsOf(
-            """
-            @_extern(cpp = "probe::Opts", header = "probe.hxx")
-            pub struct Opts {
-                pub name: Maybe<CStr>
-                pub n: Int32
-                pub mut fx rename: (s: CStr) Void;
-            }
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            fx cat: (mut o: Opts) Void {
-                o.rename(nameOf(1))
-            }
-            """,
-            "rename", "o", "::probe::nameOf(1)",
-        )
-        assertTrue(throughMutReceiver.any { it.contains("a computed Str argument") && it.contains("'rename'") }, throughMutReceiver.toString())
-
-        // A bare `mut p: Unsafe<T>` out-buffer is the caller's own memory, not a channel the
-        // callee hands a fresh pointer back through, so it never triggers the refusal alone.
+    fun aMutUnsafeOutBufferBesideAComputedStrArgumentIsNeverRefused() {
         val mutUnsafeAlone = diagsOf(
             """
             @_extern(cpp = "probe::nameOf", header = "probe.hxx")
@@ -865,42 +722,51 @@ class CppExternEmitterTest {
     }
 
     /**
-     * Policy 1, issue 3 (round 4): [CppExternEmitter]'s `carriesPointer` covered `CStr`,
-     * `Unsafe<T>`, `Maybe` and a struct field, but not `View<T>`/`MutView<T>` - `kira::View` is
-     * a borrowed ptr+len over someone else's storage (core.hxx), and a computed `Str` argument
-     * feeding a call whose result is one dangles exactly as a `CStr` result would (measured on
-     * the trial CLI, MSVC ASan: `t: View<Char> = tailOf(a + b, 7); trace(t[0])`, a
-     * heap-use-after-free).
+     * Design 1.4, 5.5: an `Unsafe<T>` parameter of an extern function - the pointer type's only
+     * legal position - takes a `View<T>` argument as itself, and a `mut Unsafe<T>` (`T*` by
+     * value, not an out-parameter, table 5.1) a `MutView<T>`, with no call-site `mut` and no
+     * place needed for the `mut` one: it hands over the view's own pointer, not a reference the
+     * callee writes back through. `CallResolver.typeGiven` accepts either at an extern call
+     * only, recording nothing beyond the argument's own `View`/`MutView` type (exactly as the
+     * `CStr`-for-`Str` case needs no coercion either); the emitter reads that type back and
+     * lowers `.data()`. The exact-type case (an `Unsafe<T>` argument that already is one, table
+     * 5.1's other way of reaching a C buffer) is untouched: it still passes through as itself.
      */
     @Test
-    fun aComputedStrIntoAViewOrMutViewResultIsRefused() {
-        val view = diagsOf(
+    fun anUnsafeParameterTakesAViewOrAMutViewLoweredDotData() {
+        val c = callsOf(
             """
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::tailOf", header = "probe.hxx")
-            pub fx tailOf: (s: Str, at: Int32) View<Char>;
-            fx cat: () Void {
-                t: View<Char> = tailOf(nameOf(1), 7)
-            }
-            """,
-            "tailOf", null, "::probe::nameOf(1)", "7",
-        )
-        assertTrue(view.any { it.contains("a computed Str argument") && it.contains("'tailOf'") }, view.toString())
+            @_extern(cpp = "probe::readBuf", header = "probe.hxx")
+            pub fx readBuf: (p: Unsafe<UInt8>, n: Size) Int64;
 
-        val mutView = diagsOf(
-            """
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::tailOfMut", header = "probe.hxx")
-            pub fx tailOfMut: (s: Str, at: Int32) MutView<Char>;
-            fx cat: () Void {
-                t: MutView<Char> = tailOfMut(nameOf(1), 7)
+            @_extern(cpp = "probe::fillBuf", header = "probe.hxx")
+            pub fx fillBuf: (mut p: Unsafe<UInt8>, n: Size) Void;
+
+            fx read: (v: View<UInt8>) Int64 {
+                return readBuf(v, 4)
             }
-            """,
-            "tailOfMut", null, "::probe::nameOf(1)", "7",
+
+            fx fill: (v: MutView<UInt8>) Void {
+                fillBuf(v, 4)
+            }
+            """
         )
-        assertTrue(mutView.any { it.contains("a computed Str argument") && it.contains("'tailOfMut'") }, mutView.toString())
+        // The typer accepted View<T> and MutView<T> arguments against Unsafe<T> and mut
+        // Unsafe<T> parameters at all (measured under --target cpp, this branch would have
+        // refused both with types.assign.mismatch/types.call.mut-missing before); the emitter
+        // wraps `.data()` around whatever text the expression part already produced for them.
+        assertEquals(
+            "kira::ffi::declared<std::int64_t>(::probe::readBuf((v).data(), 4u))",
+            c.text("readBuf", null, "v", "4u"),
+        )
+        assertEquals(
+            "::probe::fillBuf((v).data(), 4u)",
+            c.text("fillBuf", null, "v", "4u"),
+        )
+        val readArg = (c.of("readBuf").args[0] as ArgBinding.Given).expr
+        val fillArg = (c.of("fillBuf").args[0] as ArgBinding.Given).expr
+        assertTrue(c.ctx.model.coercion(readArg) == null, "no coercion recorded at a View argument to Unsafe<T>")
+        assertTrue(c.ctx.model.coercion(fillArg) == null, "no coercion recorded at a MutView argument to a mut Unsafe<T>")
     }
 
     @Test

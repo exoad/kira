@@ -601,6 +601,16 @@ internal class CallResolver(private val c: PhaseC) {
      * anything else a `kira::ffi::CStrBuf`; the C++ extern emitter spells which, from the
      * argument's recorded `Str` type, so no coercion is recorded here). Only an extern function
      * has a `CStr` parameter to fill; anywhere else a `Str` is no `CStr`.
+     *
+     * With [externCallee], an `Unsafe<T>` parameter (design 1.4, 5.5: the FFI pointer type,
+     * extern-parameter-only) takes a `View<T>` argument as itself, and a `mut Unsafe<T>`
+     * parameter (`T*` by value, not an out-parameter: table 5.1) a `MutView<T>`, needing neither
+     * a call-site `mut` nor a place - it hands the callee the view's own pointer, not a
+     * reference the callee writes back through. Either is recorded as-is, exactly like the
+     * `CStr` case: the C++ extern emitter reads the argument's own `View`/`MutView` type and
+     * lowers it `.data()`. An `Unsafe<T>` argument that already is one (the exact-type case a
+     * `mut p: Unsafe<T>` local still takes, table 5.1's other way of calling into a C buffer)
+     * is unaffected: [mutArgument]'s exact-type check still applies to it.
      */
     private fun typeGiven(
         e: FunctionCallExpr,
@@ -625,6 +635,14 @@ internal class CallResolver(private val c: PhaseC) {
             val isMut = siteMut[arg] == true
             if (byRef.getOrElse(i) { false }) {
                 val t = pre[arg] ?: c.exprs.synth(arg, ctx, scope)
+                if (externCallee && facts.isMagic(expected, UNSAFE) && t != expected &&
+                    facts.isMutView(t) && facts.elementOf(t) == facts.elementOf(expected)
+                ) {
+                    // `mut p: Unsafe<T>` is `T*` by value, not an out-parameter (table 5.1): the
+                    // caller hands over a MutView's own pointer, so no call-site `mut` and no
+                    // place are needed, unlike every other `mut` parameter.
+                    return@forEachIndexed
+                }
                 mutArgument(arg, t, expected, isMut, names.getOrElse(i) { "#${i + 1}" }, ctx)
                 return@forEachIndexed
             }
@@ -648,6 +666,18 @@ internal class CallResolver(private val c: PhaseC) {
                 }
                 return@forEachIndexed
             }
+            if (externCallee && facts.isMagic(expected, UNSAFE)) {
+                val t = known ?: c.exprs.synth(arg, ctx, scope)
+                val element = facts.elementOf(expected)
+                if (t != expected && element != null && (facts.isView(t) || facts.isMutView(t)) && facts.elementOf(t) == element) {
+                    // Given as itself (table 5.1: a `View<T>`/`MutView<T>` converts to the `const
+                    // T*`/`T*` the extern emitter lowers it to, `.data()`); anything else falls
+                    // through to the ordinary mismatch below.
+                    return@forEachIndexed
+                }
+                c.coercions.assign(arg, t, expected, what)
+                return@forEachIndexed
+            }
             if (known != null) {
                 c.coercions.assign(arg, known, expected, what)
             } else {
@@ -658,6 +688,9 @@ internal class CallResolver(private val c: PhaseC) {
 
     /** `CStr`, the FFI `const char*` (design 7.2, a magic class of the builtins). */
     private val CSTR = "CStr"
+
+    /** `Unsafe<T>`, the FFI `const T*`/`T*` (design 1.4, table 5.1, a magic class of the builtins). */
+    private val UNSAFE = "Unsafe"
 
     private fun mutArgument(arg: Expr, t: KType, expected: KType, isMut: Boolean, name: String, ctx: BodyContext) {
         if (!isMut) {
