@@ -965,18 +965,22 @@ Expressions in Kira evaluate to values and can be composed using various operato
 
 Operators are listed from highest to lowest precedence:
 
-| Precedence | Operator            | Description                      | Associativity |
-| ---------- | ------------------- | -------------------------------- | ------------- |
-| 1          | `.` `[]` `()`       | Member access, indexing, call    | Left to right |
-| 2          | `!` `-` `+` (unary) | Logical NOT, unary minus/plus    | Right to left |
-| 3          | `*` `/` `%`         | Multiplication, division, modulo | Left to right |
-| 4          | `+` `-`             | Addition, subtraction            | Left to right |
-| 5          | `..`                | Range operator                   | Left to right |
-| 6          | `<` `>` `<=` `>=`   | Relational comparison            | Left to right |
-| 7          | `==` `!=`           | Equality comparison              | Left to right |
-| 8          | `&&`                | Logical AND                      | Left to right |
-| 9          | `||`                | Logical OR                       | Left to right |
-| 10         | `=`                 | Assignment                       | Right to left |
+| Precedence | Operator                | Description                              | Associativity |
+| ---------- | ----------------------- | ---------------------------------------- | ------------- |
+| 1          | `.` `[]` `()`           | Member access, indexing, call            | Left to right |
+| 2          | `!` `-` `+` `~` (unary) | Logical NOT, unary minus/plus, bitwise NOT | Right to left |
+| 3          | `*` `/` `%`             | Multiplication, division, modulo         | Left to right |
+| 4          | `+` `-`                 | Addition, subtraction                    | Left to right |
+| 5          | `<<` `>>` `>>>`         | Shift left, shift right, logical shift right | Left to right |
+| 6          | `..`                    | Range operator                           | Left to right |
+| 7          | `<` `>` `<=` `>=`       | Relational comparison                    | Left to right |
+| 8          | `==` `!=`               | Equality comparison                      | Left to right |
+| 9          | `&`                     | Bitwise AND                              | Left to right |
+| 10         | `^`                     | Bitwise XOR                              | Left to right |
+| 11         | `\|`                    | Bitwise OR                               | Left to right |
+| 12         | `&&`                    | Logical AND                              | Left to right |
+| 13         | `\|\|`                  | Logical OR                               | Left to right |
+| 14         | `=`                     | Assignment                               | Right to left |
 
 ### Arithmetic Operators
 
