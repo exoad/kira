@@ -1027,6 +1027,67 @@ class OperatorMemberCollectTest {
     }
 
     @Test
+    fun aTraitRedeclaringADisagreeingNameReportsTheConflictExactlyOnce() {
+        // w2-9-1-parse round 7 mutant sweep, T5: `traitOverrides`' `parentNames` filter excludes
+        // every name `t` redeclares (`it !in ownNames`) precisely because the per-method loop
+        // above (`for (m in t.methods) { ... reportConflictIfAny(t, m.name, m.decl, null,
+        // fromTraits(m.name, parentRoots)) }`) already compares a redeclared name against its
+        // parents. Mutant T5 drops that exclusion, so `T` (which redeclares `m` itself) is
+        // compared a *second* time by the `parentNames` loop, doubling the diagnostic. Only one
+        // `types.member.conflict` must be reported for `T`.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait A {
+                    pub fx m: () Int32;
+                }
+                pub trait B {
+                    pub fx m: (x: Int32) Int32;
+                }
+                pub trait T: A, B {
+                    override pub fx m: () Int32 { return 1 }
+                }
+                """
+            )
+        }
+        val conflicts = program.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(conflicts.size == 1, "expected exactly one types.member.conflict, got ${conflicts.size}: ${render(program)}")
+    }
+
+    @Test
+    fun aTraitSupersededTwoHopsUpTheChainIsNotAConflictWithItsAncestor() {
+        // w2-9-1-parse round 7 mutant sweep, F4: `traitAncestors` must be transitive, not direct
+        // parents only. Mutant F4 (SignatureResolver.kt, the `visit` in `traitAncestors` without
+        // its recursive call) still passes every two-level test in this file, because
+        // `frontierDeclarers`'s ancestor filter only needs the *adjacent* hop when both
+        // declarers are directly related. It only differs when a middle trait in the chain does
+        // NOT itself redeclare the name: `A` declares `m`, `Mid: A` does not touch `m` at all,
+        // and `Leaf: Mid` overrides it. `frontierDeclarers(Leaf)`'s closure still finds two
+        // declarers of `m` (`A` and `Leaf`, `Mid` has none), and only a *transitive*
+        // `traitAncestors(Leaf)` (reaching past `Mid` to `A`) tells the filter that `Leaf`
+        // supersedes `A`. With the mutant, `A` is never filtered out, so `class C: Leaf {}`
+        // would falsely see two disagreeing candidates for `m` and report a conflict that must
+        // not exist -- `Leaf` legitimately overrides `A` through `Mid`.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait A {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait Mid: A {
+                }
+                pub trait Leaf: Mid {
+                    override pub fx m: (x: Int32) Int32 { return 2 }
+                }
+                pub class C: Leaf {
+                }
+                """
+            )
+        }
+        assertFalse(program.diagnostics.any { it.code == "types.member.conflict" }, render(program))
+    }
+
+    @Test
     fun finalClassExtendedIsTypesClassFinal() {
         val program = phasesAAndB {
             snippet(
