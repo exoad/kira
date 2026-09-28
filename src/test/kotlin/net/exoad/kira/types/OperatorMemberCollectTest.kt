@@ -1118,4 +1118,237 @@ class OperatorMemberCollectTest {
         }
         assertFalse(program.diagnostics.any { it.code == "types.class.final" }, render(program))
     }
+
+    // ---- round 8, significant issue #1: a generic diamond inside one wrapping trait root -----
+
+    @Test
+    fun aGenericDiamondWrappedInATraitConflictsAgainstASuperclassRegardlessOfTheWrapperOrder() {
+        // w2-9-1-parse round 8, significant issue #1: `frontierDeclarers`'s `traitClosure(listOf(root),
+        // sub)` dedupes its `seen` by `TraitSymbol` alone (SignatureResolver.kt:499-503), so when
+        // `class C: Base, W {}` names `W` as a *single* root and `W: A, B` itself forks into a
+        // generic diamond (`A: X<Int32>`, `B: X<Str>`), whichever of `A`/`B` `traitClosure` visits
+        // first decides which substitution of `X` is kept -- the other is silently dropped. `Base`
+        // agrees with `X<Int32>` and disagrees with `X<Str>`, so `C`'s own conflict check found no
+        // conflict for `W: A, B` (whichever parent order happened to keep `X<Int32>`) but did for
+        // `W: B, A`. Fixed by `frontierClosure`, which dedupes by (trait, substitution) instead, so
+        // the class-level result no longer depends on `W`'s own internal parent order.
+        val bodies = """
+            pub trait X<T> {
+                pub fx k: (t: T) Int32;
+            }
+            pub trait A: X<Int32> {
+            }
+            pub trait B: X<Str> {
+            }
+            pub class Base {
+                pub fx k: (t: Int32) Int32 { return 0 }
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub trait W: A, B {\n}\npub class C: Base, W {\n}") }
+        val abConflicts = ab.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(abConflicts.any { it.message.startsWith("C inherits") }, render(ab))
+        val ba = phasesAAndB { snippet("$bodies\npub trait W: B, A {\n}\npub class C: Base, W {\n}") }
+        val baConflicts = ba.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(baConflicts.any { it.message.startsWith("C inherits") }, render(ba))
+    }
+
+    @Test
+    fun aGenericDiamondWrappedInATraitConflictsAgainstADirectTraitRegardlessOfTheWrapperOrder() {
+        // Same bug, `class C: W, Y {}` instead of a superclass: `Y` (a direct trait, not `Base`)
+        // plays the role that disagrees with only one branch of `W`'s internal fork. The verifier
+        // measured this shape behaves the same way as the superclass one above.
+        val bodies = """
+            pub trait X<T> {
+                pub fx k: (t: T) Int32;
+            }
+            pub trait A: X<Int32> {
+            }
+            pub trait B: X<Str> {
+            }
+            pub trait Y {
+                pub fx k: (t: Int32) Int32 { return 0 }
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub trait W: A, B {\n}\npub class C: W, Y {\n}") }
+        val abConflicts = ab.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(abConflicts.any { it.message.startsWith("C inherits") }, render(ab))
+        val ba = phasesAAndB { snippet("$bodies\npub trait W: B, A {\n}\npub class C: W, Y {\n}") }
+        val baConflicts = ba.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(baConflicts.any { it.message.startsWith("C inherits") }, render(ba))
+    }
+
+    @Test
+    fun aGenericDiamondNestedThroughAnExtraTraitLevelStillConflictsRegardlessOfOrder() {
+        // The same bug through one more level of trait nesting (`trait V: W {}`, `class C: Base,
+        // V {}`): `frontierClosure`'s recursion must keep both substitutions of `X` however deep
+        // `W` sits, not just when it is a direct parent. `Base` now agrees with `X<Str>` instead
+        // (the verifier's "flips the opposite way"), to pin that the fix is not simply "prefer
+        // the parent-order-last branch".
+        val bodies = """
+            pub trait X<T> {
+                pub fx k: (t: T) Int32;
+            }
+            pub trait A: X<Int32> {
+            }
+            pub trait B: X<Str> {
+            }
+            pub class Base {
+                pub fx k: (t: Str) Int32 { return 0 }
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub trait W: A, B {\n}\npub trait V: W {\n}\npub class C: Base, V {\n}") }
+        val abConflicts = ab.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(abConflicts.any { it.message.startsWith("C inherits") }, render(ab))
+        val ba = phasesAAndB { snippet("$bodies\npub trait W: B, A {\n}\npub trait V: W {\n}\npub class C: Base, V {\n}") }
+        val baConflicts = ba.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(baConflicts.any { it.message.startsWith("C inherits") }, render(ba))
+    }
+
+    @Test
+    fun aClassOverridingIntoAWrappedGenericDiamondIsRefusedRegardlessOfTheWrapperOrder() {
+        // `class C: W { override fx k: (t: Int32) Int32 }`: `overrides()`'s own override-link
+        // pick (`base ?: viaTraits.firstOrNull()`, `target`) is order-dependent by a separate,
+        // already-documented minor (V17: the link can point at whichever of `X<Int32>`/`X<Str>`
+        // `frontierClosure` happens to list first), so which diagnostic appears can still vary --
+        // but `W`'s own trait-level check (`traitOverrides`) independently disagrees on `k`
+        // regardless of order (both roots `A` and `B` are compared directly, never through a
+        // single forking root), so the program as a whole must be refused, with *some*
+        // diagnostic, either way.
+        val bodies = """
+            pub trait X<T> {
+                pub fx k: (t: T) Int32;
+            }
+            pub trait A: X<Int32> {
+            }
+            pub trait B: X<Str> {
+            }
+        """.trimIndent()
+        val ab = phasesAAndB {
+            snippet("$bodies\npub trait W: A, B {\n}\npub class C: W {\n    override pub fx k: (t: Int32) Int32 { return 0 }\n}")
+        }
+        assertTrue(ab.diagnostics.isNotEmpty(), "W: A, B must still refuse the program: ${render(ab)}")
+        val ba = phasesAAndB {
+            snippet("$bodies\npub trait W: B, A {\n}\npub class C: W {\n    override pub fx k: (t: Int32) Int32 { return 0 }\n}")
+        }
+        assertTrue(ba.diagnostics.isNotEmpty(), "W: B, A must still refuse the program: ${render(ba)}")
+    }
+
+    // ---- round 8, significant issue #2: sameSignature's per-parameter/per-bound loops ---------
+
+    @Test
+    fun differingOnlyInTheSecondOfTwoParametersIsAConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 8, significant issue #2: mutant V2 cuts `sameSignature`'s
+        // per-parameter loop (SignatureResolver.kt:747) to `params[0]` only, and the suite still
+        // passes with it. `A` and `B` agree on the first parameter and disagree only on the
+        // second, so a comparison that only ever looks at index 0 would see them as the same.
+        val bodies = """
+            pub trait A {
+                pub fx m: (a: Int32, b: Int32) Int32;
+            }
+            pub trait B {
+                pub fx m: (a: Int32, b: Str) Int32;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun differingOnlyInTheFirstOfTwoParametersIsAConflictRegardlessOfParentOrder() {
+        // Companion mutant V7 cuts the same loop to the *last* parameter only. `A` and `B` agree
+        // on the second (last) parameter and disagree only on the first, so a comparison that
+        // only ever looks at the last index would also see them as the same.
+        val bodies = """
+            pub trait A {
+                pub fx m: (a: Int32, b: Int32) Int32;
+            }
+            pub trait B {
+                pub fx m: (a: Str, b: Int32) Int32;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun differingOnlyInTheSecondTypeParametersBoundIsAConflictRegardlessOfParentOrder() {
+        // Mutant V1 cuts `sameSignature`'s per-type-parameter bounds loop
+        // (SignatureResolver.kt:740) to `typeParams[0]` only. `A` and `B` both have two type
+        // parameters, `U` and `V`; both leave `U` unbound and disagree only on `V`'s bound, so a
+        // comparison that only ever looks at index 0 would also see them as the same.
+        val bounds = """
+            pub trait X {
+            }
+            pub trait A {
+                pub fx m<U, V: X>: (u: U, v: V) V;
+            }
+            pub trait B {
+                pub fx m<U, V>: (u: U, v: V) V;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bounds\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    // ---- round 8, significant issue #3: two traitOverrides checks -----------------------------
+
+    @Test
+    fun aTraitsParentNamesReachThroughTransitiveParentsNotJustDirectOnes() {
+        // w2-9-1-parse round 8, significant issue #3: mutant V12 builds `traitOverrides`'s
+        // `parentNames` from `t.parents`' own declared methods directly (SignatureResolver.kt:483)
+        // instead of `traitClosure(t.parents, ...)`'s whole transitive closure. `A` and `B`
+        // (`W`'s direct parents) declare no method of their own; the disagreement is one level
+        // further up, in `P1` and `P2`. Real code must still refuse `W` -- a mutant that only
+        // looks at `A`/`B`'s own methods finds nothing to compare and reports nothing.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait P1 {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait P2 {
+                    pub fx m: (x: Int32) Int32 { return x }
+                }
+                pub trait A: P1 {
+                }
+                pub trait B: P2 {
+                }
+                pub trait W: A, B {
+                }
+                """
+            )
+        }
+        val conflicts = program.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(conflicts.any { it.message.startsWith("W inherits") }, render(program))
+    }
+
+    @Test
+    fun aValidGenericOverrideOfATraitsOwnParentIsNotFalselyRefused() {
+        // w2-9-1-parse round 8, significant issue #3: mutant V9 drops the substitution
+        // `traitOverrides` passes its own `checkOverride` call (SignatureResolver.kt:466),
+        // `inherited.second`, for `emptyMap()`. `P<T>`'s `m: (t: T) Int32` reaches `A: P<Int32>`
+        // with `T` substituted to `Int32`; `A`'s own `override pub fx m: (t: Int32) Int32` is a
+        // genuinely valid override once that substitution is applied. Without it, `P`'s
+        // parameter stays the bare type parameter `T` and a false `types.override.signature`
+        // appears even though the program is correct.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait P<T> {
+                    pub fx m: (t: T) Int32;
+                }
+                pub trait A: P<Int32> {
+                    override pub fx m: (t: Int32) Int32 { return 0 }
+                }
+                """
+            )
+        }
+        expectNoErrors(program)
+    }
 }

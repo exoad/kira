@@ -184,13 +184,30 @@ class OperatorMemberParseTest {
     }
 
     // 1.3.1's whole table: every member name declares in a class and in a trait.
-    private val zeroArity = setOf(
-        OperatorIntrinsics.memberName(net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp.NEG),
-        OperatorIntrinsics.memberName(net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp.POS),
-        OperatorIntrinsics.memberName(net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp.NOT),
-        OperatorIntrinsics.memberName(net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp.BIT_NOT),
+    //
+    // w2-9-1-parse round 8, significant issue #4: the two tests below used to iterate
+    // `OperatorIntrinsics.allMembers.map { it.name }` -- the implementation's own generated
+    // list -- so a mutant that renames or drops one entry of `memberName` (V20: `_op_lte_` ->
+    // `_op_le_`; V21: `BinaryOp.USHR` -> `null`; V22: `UnaryOp.POS` -> `null`) just changes what
+    // "every member name" means, and a test that only asks "does each of *whatever this list
+    // is* parse" never notices. This is 1.3.1's table (20-revision.md / the brief's BUILD step
+    // 1) copied verbatim: 23 names, independent of `OperatorIntrinsics`.
+    private val theOperatorTable1_3_1 = listOf(
+        "_op_add_", "_op_sub_", "_op_mul_", "_op_div_", "_op_mod_",
+        "_op_eq_", "_op_neq_",
+        "_op_lt_", "_op_gt_", "_op_lte_", "_op_gte_",
+        "_op_neg_",
+        "_op_get_", "_op_set_",
+        "_op_bitand_", "_op_bitor_", "_op_xor_",
+        "_op_shl_", "_op_shr_", "_op_ushr_",
+        "_op_bitnot_", "_op_not_", "_op_pos_",
     )
-    private val setArity = setOf(OperatorIntrinsics.SET)
+
+    // Literal too (not `OperatorIntrinsics.memberName(...)`), for the same reason as the table
+    // above: only the signature template `signatureFor` picks depends on these, but a corrupted
+    // `memberName` must not also corrupt the *input* an independent test feeds the parser.
+    private val zeroArity = setOf("_op_neg_", "_op_pos_", "_op_not_", "_op_bitnot_")
+    private val setArity = setOf("_op_set_")
 
     private fun signatureFor(name: String): String = when {
         name in zeroArity -> "()"
@@ -200,7 +217,8 @@ class OperatorMemberParseTest {
 
     @Test
     fun everyMemberNameParsesInAClass() {
-        for (name in OperatorIntrinsics.allMembers.map { it.name }) {
+        assertEquals(23, theOperatorTable1_3_1.size, "1.3.1's table has 23 names")
+        for (name in theOperatorTable1_3_1) {
             val ast = parse("pub class V2 { pub fx @$name: ${signatureFor(name)} Void { } }")
             val cls = classLike<ClassDecl>(ast)
             val m = cls.members.filterIsInstance<FunctionDecl>().single()
@@ -210,12 +228,25 @@ class OperatorMemberParseTest {
 
     @Test
     fun everyMemberNameParsesInATrait() {
-        for (name in OperatorIntrinsics.allMembers.map { it.name }) {
+        assertEquals(23, theOperatorTable1_3_1.size, "1.3.1's table has 23 names")
+        for (name in theOperatorTable1_3_1) {
             val ast = parse("pub trait Ops { pub fx @$name: ${signatureFor(name)} Void; }")
             val trait = classLike<TraitDecl>(ast)
             val m = trait.members.single()
             assertEquals(name, assertIs<IntrinsicExpr>(m.name).intrinsicKey.name, "trait member: $name")
         }
+    }
+
+    @Test
+    fun theLiteralTableMatchesWhatOperatorIntrinsicsActuallyRegisters() {
+        // The other half of significant issue #4: the literal list above must still agree with
+        // `OperatorIntrinsics.allMembers` -- so a renamed or dropped entry (V20/V21/V22) is
+        // caught by *this* comparison, even though the two tests above no longer depend on it.
+        assertEquals(
+            theOperatorTable1_3_1.toSet(),
+            OperatorIntrinsics.allMembers.map { it.name }.toSet(),
+            "OperatorIntrinsics.allMembers must be exactly 1.3.1's 23 names",
+        )
     }
 
     /** Captures `net.exoad.kira`'s java.util.logging records raised while running [block]. */

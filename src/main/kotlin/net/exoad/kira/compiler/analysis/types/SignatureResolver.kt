@@ -636,21 +636,56 @@ internal class SignatureResolver(private val program: TypedProgram) {
         chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == name }?.let { it to s } }
 
     /**
+     * Every trait [root]'s own closure reaches, each with the substitution that reaches it --
+     * like [traitClosure], but deduplicated by (trait, substitution) rather than by trait alone.
+     * [traitClosure]'s `seen` is an `IdentityHashMap<TraitSymbol, Boolean>`: it visits a trait at
+     * most once regardless of the substitution that reached it, which is right for
+     * [traitOverrides]' own use (linking `m.overrides` to *a* base) but wrong here, where a
+     * generic diamond can reach one trait under two genuinely different substitutions (`trait W:
+     * A, B {}` with `A: X<Int32>` and `B: X<Str>`): whichever parent [traitClosure] visits first
+     * decides which one is kept, so `class C: Base, W {}`'s own conflict check (a *single* root,
+     * `W`) depended on `W`'s internal parent order -- `W: A, B` and `W: B, A` gave different
+     * results for the very same class (round 8's bug). Deduplicating by the pair instead keeps
+     * both: two paths reaching the same trait under the *same* substitution still collapse to
+     * one (an ordinary diamond, not a fork), but two under different substitutions both survive,
+     * exactly as two candidates reached through two different root traits already did.
+     */
+    private fun frontierClosure(
+        root: KType.Nominal,
+        sub: Map<TypeParamSymbol, KType>,
+    ): List<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>> {
+        val out = mutableListOf<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>>()
+        val seen = HashSet<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>>()
+        fun visit(n: KType.Nominal, outer: Map<TypeParamSymbol, KType>) {
+            val t = n.sym as? TraitSymbol ?: return
+            val s = t.typeParams.zip(n.typeArgs().map { it.substitute(outer) }).toMap()
+            if (!seen.add(t to s)) {
+                return
+            }
+            out.add(t to s)
+            t.parents.forEach { visit(it, s) }
+        }
+        visit(root, sub)
+        return out
+    }
+
+    /**
      * Every most-derived candidate for [name] within one trait root's own closure: the
-     * declarations of [name] in [root]'s closure, minus any declarer some *other* declarer in
-     * that same closure extends (transitively) -- that declarer's own declaration replaces the
-     * ancestor's for anything reaching it only through the more-derived one. Two declarers
-     * neither of which extends the other (a fork, `trait T: A, B {}` with neither `A: B` nor
-     * `B: A`) both survive, so the caller sees the disagreement instead of the first-found
-     * declaration silently winning (round 2 of this package's bug: `T` wrapping `A` and `B` gave
-     * only `A`'s declaration, so `class C: T {}` never saw `B`'s).
+     * declarations of [name] in [root]'s closure ([frontierClosure], never [traitClosure] --
+     * see its doc), minus any declarer some *other* declarer in that same closure extends
+     * (transitively) -- that declarer's own declaration replaces the ancestor's for anything
+     * reaching it only through the more-derived one. Two declarers neither of which extends the
+     * other (a fork, `trait T: A, B {}` with neither `A: B` nor `B: A`) both survive, so the
+     * caller sees the disagreement instead of the first-found declaration silently winning
+     * (round 2 of this package's bug: `T` wrapping `A` and `B` gave only `A`'s declaration, so
+     * `class C: T {}` never saw `B`'s).
      */
     private fun frontierDeclarers(
         root: KType.Nominal,
         sub: Map<TypeParamSymbol, KType>,
         name: String,
     ): List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>> {
-        val declarers = traitClosure(listOf(root), sub).mapNotNull { (t, ts) ->
+        val declarers = frontierClosure(root, sub).mapNotNull { (t, ts) ->
             t.methods.firstOrNull { it.name == name }?.let { Triple(t, it, ts) }
         }
         return declarers
