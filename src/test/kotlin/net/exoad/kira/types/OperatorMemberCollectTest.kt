@@ -643,6 +643,123 @@ class OperatorMemberCollectTest {
     }
 
     @Test
+    fun returnTypeMismatchIsAConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 6, significant issue #1: `sameSignature`'s return-type comparison
+        // (SignatureResolver.kt:754) has no test that isolates it -- every existing conflict
+        // test also differs in parameter type or arity. Mutant R8 replaces the whole comparison
+        // with `return true`, and the suite still passes 932/0: `A`'s `m: () Int32` and `B`'s
+        // `m: () Str` (same arity, same params, same mut-ness, same bounds; only the return type
+        // disagrees) would then compare equal and the conflict would vanish. Both orders must
+        // conflict.
+        val bodies = """
+            pub trait A {
+                pub fx m: () Int32;
+            }
+            pub trait B {
+                pub fx m: () Str;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun byRefMismatchIsAConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 6, significant issue #1: `sameSignature`'s byRef comparison
+        // (SignatureResolver.kt:750) has no test either. Mutant R6 drops
+        // `|| a.params[i].byRef != b.params[i].byRef`, and the suite still passes 932/0: `A`'s
+        // `m: (a: Int32)` and `B`'s `m: (mut a: Int32)` (same type, same arity; only the
+        // parameter's byRef-ness disagrees) would then compare equal. Both orders must conflict.
+        val bodies = """
+            pub trait A {
+                pub fx m: (a: Int32) Int32;
+            }
+            pub trait B {
+                pub fx m: (mut a: Int32) Int32;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun twoBoundsOfEqualCountButDifferentTargetIsAConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 6, significant issue #2: round 5's bounds check is tested only as
+        // "has a bound" vs "has none". Mutant R5 (SignatureResolver.kt:743) compares only how
+        // many bounds each side has, not what they are. `A`'s `m<U: X>` and `B`'s `m<U: Y>` both
+        // have exactly one bound, so the mutant sees them as the same and the suite still passes
+        // 932/0, half-reverting round 5's fix. Both orders must conflict.
+        val bounds = """
+            pub trait X {
+            }
+            pub trait Y {
+            }
+            pub trait A {
+                pub fx m<U: X>: (u: U) U;
+            }
+            pub trait B {
+                pub fx m<U: Y>: (u: U) U;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bounds\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun aSubstitutedBoundAgreeingWithTheOtherSideIsNoConflict() {
+        // w2-9-1-parse round 6, significant issue #2: the bounds line's `aSub` substitution
+        // (SignatureResolver.kt:741) has no test. Mutant R3 drops it, so `A<T>`'s own type
+        // parameter `T` is never replaced by the class's actual argument (`Int32` here) before
+        // comparing bounds. `A<Int32>`'s `m<U: Marker<T>>` and `B`'s `m<U: Marker<Int32>>` agree
+        // once `T` is substituted to `Int32`, so this must never conflict -- with `aSub` dropped
+        // it falsely does, but (the verifier's measurement) only when `A` is the class's first
+        // parent, so both orders are asserted.
+        val bounds = """
+            pub trait Marker<T> {
+            }
+            pub trait A<T> {
+                pub fx m<U: Marker<T>>: (u: U) U;
+            }
+            pub trait B {
+                pub fx m<U: Marker<Int32>>: (u: U) U;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bounds\npub class C: A<Int32>, B {\n}") }
+        assertFalse(ab.diagnostics.any { it.code == "types.member.conflict" }, render(ab))
+        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A<Int32> {\n}") }
+        assertFalse(ba.diagnostics.any { it.code == "types.member.conflict" }, render(ba))
+    }
+
+    @Test
+    fun anFBoundAgreeingUnderItsOwnTypeParameterIsNoConflict() {
+        // w2-9-1-parse round 6, significant issue #2: the bounds line's `ownMap` substitution
+        // (SignatureResolver.kt:739/741) has no test either. Mutant R4 drops it, so a method's
+        // own type parameter is never mapped onto the other side's before comparing bounds.
+        // `F`'s `m<U: Marker<U>>` and `G`'s `m<V: Marker<V>>` are the same F-bounded shape under
+        // different names, so this must never conflict -- with `ownMap` dropped it falsely does.
+        val bounds = """
+            pub trait Marker<T> {
+            }
+            pub trait F {
+                pub fx m<U: Marker<U>>: (u: U) U;
+            }
+            pub trait G {
+                pub fx m<V: Marker<V>>: (v: V) V;
+            }
+        """.trimIndent()
+        val fg = phasesAAndB { snippet("$bounds\npub class C: F, G {\n}") }
+        assertFalse(fg.diagnostics.any { it.code == "types.member.conflict" }, render(fg))
+        val gf = phasesAAndB { snippet("$bounds\npub class C: G, F {\n}") }
+        assertFalse(gf.diagnostics.any { it.code == "types.member.conflict" }, render(gf))
+    }
+
+    @Test
     fun aTraitOverridingAMemberOperatorReplacesItInFlatten() {
         // w2-9-1-parse round 5, significant issue #2: `SignatureResolver.flatten` must merge a
         // member operator by name (`m.isFreeOperator`), like any other method -- mutant M7
