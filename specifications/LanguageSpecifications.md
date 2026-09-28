@@ -1001,10 +1001,12 @@ x: Int32 = -10
 y: Int32 = +10
 ```
 
+`-x` is `x.@_op_neg_()`, and `+x` is `x.@_op_pos_()`, the identity on numbers. A negative literal such as `-10` is a literal, not a negation.
+
 **Type Rules:**
 
--   Operands must have compatible numeric types
--   No implicit type coercion; explicit casting required for mixed-type operations
+-   Both operands have the same type: `a + b` is `a.@_op_add_(b)`, and each number's `@_op_add_` takes its own type
+-   No implicit type coercion; explicit casting with `as` required for mixed-type operations, `Size` with another integer type included
 -   Integer division truncates toward zero
 -   Division by zero results in runtime error
 
