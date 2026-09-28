@@ -2463,6 +2463,17 @@ pub class Vector2 {
 }
 ```
 
+**Immutable and Mutable Classes:**
+
+This `Vector2` is mutable: it declares `mut` fields. A class is mutable when it or a parent class declares a `mut` field or a `mut fx` (see Mutable Methods). Every other class is immutable: no field of its objects changes after construction, through any variable, and a changed object is built anew, usually with `copy` (see Constructor).
+
+```kira
+pub class Point {
+    require pub x: Float32
+    require pub y: Float32
+}
+```
+
 ### Constructor
 
 Classes use a declarative constructor syntax. The `require` keyword specifies fields that must be provided during construction:
@@ -2514,6 +2525,24 @@ user3: User = User {
                 active = false
               }
 ````
+
+**Copying with Changes (`copy`):**
+
+An immutable class that no class extends has a method `copy`, with one named parameter per field, inherited fields first. Each defaults to the receiver's value of that field, so an argument left out keeps it:
+
+```kira
+p: Point = Point { 1.0, 2.0 }
+q: Point = p.copy(y = 5.0)  // Point { 1.0, 5.0 }
+```
+
+-   A private field is a parameter of `copy` only inside the class
+-   `copy` is construction: the class's `initially` runs again
+-   The receiver is evaluated first and once, then the arguments left to right
+-   A class may not declare its own `copy`. A mutable class has none, and `copy` on a class that another class extends is an error, since it would drop the subclass's fields
+
+**Construction and `initially`:**
+
+A class's own `initially` block may assign the class's own fields, even in an immutable class, since the object is not visible until construction ends (the `Person` example in Initializers and Finalizers does this). Nothing else assigns a field of an immutable object. Inside `initially`, `this` is used only to read and write the class's fields and as the receiver of its methods that do not pass `this` on: it is never an argument, a returned value, a capture or a stored value.
 
 **Method Implementation During Instantiation:**
 
