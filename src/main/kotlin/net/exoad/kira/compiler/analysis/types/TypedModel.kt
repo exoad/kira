@@ -81,12 +81,17 @@ data class LoopPlan(
  * source order, when one of them is IMPURE and another is not PURE (R19). Every non-PURE
  * operand is copied then, the READS ones included: `add2(G, bump())`, where `bump` writes
  * `G`, reads `G` first in Kira (D33), and C++ does the same only as `t0 = G; t1 = bump();
- * add2(t0, t1)`; copying `bump()` alone would run it before `G` is read. The operands the
- * emitter cannot copy, because C++ takes them by reference (a `mut` argument, a receiver, the
- * target of a compound assignment, whose old value Kira reads first), are ExclusivityPass's:
- * it refuses a sibling whose write, visible or hidden in its callee, reaches such an operand
- * (`rules.exclusivity.order`), and leaves every other read to the spill; a place that is only
- * located (an assignment's target, `xs[G] = f()`) is bound by reference in order.
+ * add2(t0, t1)`; copying `bump()` alone would run it before `G` is read. PURE says an
+ * evaluation has no effect, not that nothing writes what it reads: a local read beside a
+ * sibling that writes it by name (`sub(x, inc(mut x))`, `pair8(arr[0], fill(arr.view()))`) is
+ * PURE here, and the emitter raises it to READS itself (W2.3's `writtenBy`), so D33 copies it
+ * first. By-value arguments, operator operands and compound targets of an immutable value (a
+ * number, a `Str`, an immutable class: the user's OQ-1, READ FIRST) are all read first that
+ * way. What the emitter cannot copy is ExclusivityPass's (`rules.exclusivity.order`, 40-round3
+ * 3.2): a class receiver a sibling may rebind (C++ holds a raw pointer), a `mut` place a
+ * sibling also writes (a `mut` place is never copied, R19), and, until W2.9.8 lowers Q4, the
+ * receiver of a container or a mutable value beside a write of its place (Q4 reads it when
+ * the call runs; a snapshot would give the answer Q4 rejected).
  */
 enum class Effect { PURE, READS, IMPURE }
 
@@ -140,8 +145,8 @@ enum class PlaceKind {
  *
  * Who fills what: phase B (W1.2) fills [typeRefs], [aliasRefs], [declSyms], [refs] for
  * declared names and type names, and [consts] for folded module-level initializers, enum
- * values and defaults. Phase C (W2.1) fills every table but [effects], [fnEffects],
- * [fxEscapes] and [viewOrigins], which the rule passes (W2.5) fill.
+ * values and defaults. Phase C (W2.1) fills every table but [lentPlaces], [effects],
+ * [fnEffects], [fxEscapes] and [viewOrigins], which the rule passes (W2.5) fill.
  */
 class TypedModel {
     /** The type of every expression. */
@@ -169,6 +174,18 @@ class TypedModel {
     /** Assignable locations, keyed by the expression that denotes them. */
     val places: IdentityHashMap<Expr, Place> = IdentityHashMap()
 
+    /**
+     * Lent places (40-round3 R-A; the rules pre-pass `LentPlaces` fills it, read-only): the
+     * result of a stdlib accessor whose C++ binding returns a reference into its receiver
+     * (`xs.get(i)`, `m.unwrap()`, `r.unwrapErr()`: `Rules.ACCESSORS`), on a receiver that is a
+     * place or a view of one, is that place with one step more, exactly as the other spelling
+     * records it (`xs[i]`, `m.value`, `r.error`). So are an index or a field read through such a
+     * result (`xs.view()[0]`, `ks.get(0).child`), which [places] has no receiver for. Never an
+     * assignable place: `mut xs.get(0)` and `xs.get(0) = v` stay refused. Read it through
+     * [readPlace].
+     */
+    val lentPlaces: IdentityHashMap<Expr, Place> = IdentityHashMap()
+
     /** Compile-time values. */
     val consts: IdentityHashMap<Expr, ConstValue> = IdentityHashMap()
     val conversions: IdentityHashMap<TypeCastExpr, ConversionKind> = IdentityHashMap()
@@ -190,7 +207,12 @@ class TypedModel {
     /** Whether an `Fx` parameter escapes (EscapePass); an absent entry means ESCAPING, so `std::function`. */
     val fxEscapes: IdentityHashMap<ParamSymbol, Boolean> = IdentityHashMap()
 
-    /** Where each second-class expression points (ViewPass, [ViewOrigin]); absent for every first-class one. */
+    /**
+     * Where each second-class expression points (ViewPass, [ViewOrigin]); also, for a
+     * first-class result of a lending accessor on a second-class receiver (`v.get(0)` on a
+     * view parameter: the receiver's origins with the element step appended, R-A), where
+     * that result's storage lives. Absent for every other first-class expression.
+     */
     val viewOrigins: IdentityHashMap<Expr, Set<ViewOrigin>> = IdentityHashMap()
 
     fun typeOrNull(e: Expr): KType? = types[e] ?: (e as? Type)?.let { typeRefs[it] }
@@ -217,6 +239,14 @@ class TypedModel {
     fun coercion(e: Expr): Coercion? = coercions[e]
 
     fun place(e: Expr): Place? = places[e]
+
+    /**
+     * Where the storage [e] reads lives, however it is spelled (40-round3 R-A): its lent place
+     * ([lentPlaces]) when it has one, else its assignable place. Every question of where
+     * storage lives (a view's origin, an overlap, a READS rank, a copy at an extern call) asks
+     * this, never the call's syntax; only an assignment or a `mut` argument asks [place].
+     */
+    fun readPlace(e: Expr): Place? = lentPlaces[e] ?: places[e]
 
     fun const(e: Expr): ConstValue? = consts[e]
 

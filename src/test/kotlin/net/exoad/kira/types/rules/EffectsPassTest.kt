@@ -438,4 +438,75 @@ class EffectsPassTest {
         }
         assertEquals(Effect.READS, p.model.effect(fn(p, "findsInts")), "List.contains over Int32 runs no user operator")
     }
+
+    @Test
+    fun aGenericClassIsJudgedUnderEachSubstitutionItIsReachedWith() {
+        // Round 2's minor (w2-5, w2-3 #1): Drops kept one `seen` set across a whole walk, so PairAB, whose Box<Int32>
+        // came first, was judged unable to hold a Dropper (fAB PURE, emitted with no D33 spill) while PairBA, the
+        // same fields swapped, was not. Both field orders are judged alike now: a by-value parameter that may be the
+        // last handle of a Dropper is dropped in the callee.
+        val p = snippet(
+            """
+            mut GI: Int32 = 0
+            pub class Dropper {
+                pub n: Int32 = 0
+                finally {
+                    GI = 5
+                }
+            }
+            pub class Box<T> {
+                pub v: Maybe<T> = null
+            }
+            pub struct PairAB {
+                pub a: Box<Int32> = Box<Int32> {}
+                pub b: Box<Dropper> = Box<Dropper> {}
+            }
+            pub struct PairBA {
+                pub b: Box<Dropper> = Box<Dropper> {}
+                pub a: Box<Int32> = Box<Int32> {}
+            }
+            pub struct Ints {
+                pub a: Box<Int32> = Box<Int32> {}
+                pub c: Box<Int32> = Box<Int32> {}
+            }
+            pub fx fAB: (p: PairAB) Int32 {
+                return 0
+            }
+            pub fx fBA: (p: PairBA) Int32 {
+                return 0
+            }
+            pub fx fInts: (p: Ints) Int32 {
+                return 0
+            }
+            """,
+        )
+        assertEquals(Effect.IMPURE, p.model.effect(fn(p, "fAB")))
+        assertEquals(Effect.IMPURE, p.model.effect(fn(p, "fBA")))
+        assertEquals(Effect.PURE, p.model.effect(fn(p, "fInts")), "a Box<Int32> holds no Dropper")
+    }
+
+    @Test
+    fun aLentResultReadsTheStorageItIsLentFrom() {
+        // R-A in EffectsPass's READS: GL.get(0) is GL[0], a read of a mut global (READS) whichever spelling; an
+        // accessor on a local is PURE either way.
+        val p = snippet(
+            """
+            mut GL: List<Int32> = List<Int32> { values = [1] }
+            pub fx g: () Int32 {
+                return GL.get(0)
+            }
+            pub fx i: () Int32 {
+                return GL[0]
+            }
+            pub fx l: () Int32 {
+                xs: List<Int32> = List<Int32> { values = [1] }
+                return xs.get(0) + xs[0]
+            }
+            """,
+        )
+        assertEquals(Effect.READS, p.model.effect(fn(p, "g")))
+        assertEquals(Effect.READS, p.model.effect(fn(p, "i")))
+        assertEquals(Effect.READS, p.model.effect(BodyTestSupport.node<net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr>(p, "GL.get(0)")))
+        assertEquals(Effect.PURE, p.model.effect(fn(p, "l")))
+    }
 }

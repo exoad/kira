@@ -35,7 +35,7 @@ import kotlin.test.fail
 
 /**
  * Phase C over the C++ golden corpus: every case's `src/` types under STRICT, all three phases,
- * with no diagnostic of any severity, and every value expression the C++ emitter will lower has
+ * with no error and no warning but NamingPass's, and every value expression the C++ emitter will lower has
  * a type (TypedModel.require would otherwise throw). The stdlib's own bodies type cleanly too.
  */
 class TyperBodyCorpusTest {
@@ -48,7 +48,9 @@ class TyperBodyCorpusTest {
         return cases.map { dir ->
             DynamicTest.dynamicTest(dir.name) {
                 val program = TyperTestSupport.project(dir, TyperMode.STRICT)
-                assertTrue(program.diagnostics.isEmpty(), "${dir.name}:\n${TyperTestSupport.render(program)}")
+                // No error. A NamingPass warning is allowed: the decls golden renames LIMIT, width and Mode on purpose,
+                // and those names are its subject (40-round3 4.4).
+                assertTrue(program.diagnostics.none { it.isError || !it.code.startsWith("rules.naming.") }, "${dir.name}:\n${TyperTestSupport.render(program)}")
                 val problems = program.workspaceModules.flatMap { untypedValues(program, it) }
                 assertTrue(problems.isEmpty(), "${dir.name}: value expressions without a type, or typed <error>:\n${problems.joinToString("\n")}")
             }

@@ -28,6 +28,7 @@ import net.exoad.kira.compiler.analysis.types.TypedModel
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.containsError
 import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
@@ -176,11 +177,29 @@ internal class Rules(val program: TypedProgram) {
     /** One reader per program, so the ten passes parse each manifest once. */
     val bindings: BindingFlags = synchronized(flagsByProgram) { flagsByProgram.getOrPut(program) { BindingFlags() } }
 
-    private companion object {
-        val flagsByProgram = java.util.WeakHashMap<TypedProgram, BindingFlags>()
+    companion object {
+        /** The magic methods that lend a view of their receiver. */
+        val LENDERS: Set<String> = setOf("from", "slice", "view")
+
+        /**
+         * R-A's `LEND` (40-round3 2): the stdlib accessors, by binding key, whose `*.bind.yaml`
+         * entry returns a reference into the receiver (`kira::at({self}, i)`, `{self}[i]`,
+         * `kira::unwrap({self})`, `{self}.unwrap()`, `{self}.unwrapErr()`), so their result is
+         * the receiver's storage, not a temporary. `Stack.peek`, `Queue.peek` and `Map.get`
+         * return by value and are not here. W2.3 pins this set against the manifests, and
+         * `rt_test.cxx` pins the helpers' lvalue results. Each key's step: `get` an element,
+         * `unwrap` the field `value`, `unwrapErr` the field `error` (the other spellings,
+         * `xs[i]`, `m.value`, `r.error`).
+         */
+        val ACCESSORS: Set<String> = setOf(
+            "List.get", "Arr.get", "View.get", "MutView.get",
+            "Maybe.unwrap", "Result.unwrap", "Result.unwrapErr",
+        )
+
+        private val flagsByProgram = java.util.WeakHashMap<TypedProgram, BindingFlags>()
 
         /** The magic classes the parameter column passes by value (CppTypeSpeller.BY_VALUE_MAGIC). */
-        val BY_VALUE_MAGIC = setOf("View", "MutView", "Unsafe", "CStr")
+        private val BY_VALUE_MAGIC = setOf("View", "MutView", "Unsafe", "CStr")
     }
 
     private val reported = IdentityHashMap<ASTNode, MutableSet<String>>()
@@ -197,14 +216,18 @@ internal class Rules(val program: TypedProgram) {
     }
 
     /** The names of the magic methods that lend a view of their receiver (`p.from(4)`, `xs.slice(0, n)`, `xs.view()`). */
-    val lenders: Set<String> = setOf("from", "slice", "view")
+    val lenders: Set<String> = LENDERS
+
+    /** R-A's `LEND`: the accessors whose binding returns a reference into the receiver ([ACCESSORS]). */
+    val accessors: Set<String> = ACCESSORS
 
     /**
-     * The place an expression denotes, for exclusivity: its own place, or the place a lent
-     * view aliases (`xs.from(1)` aliases `xs`).
+     * The place an expression denotes, for exclusivity: its own place or its lent place
+     * (`TypedModel.readPlace`, R-A: `xs.get(0)` is `xs[0]`), or the place a lent view aliases
+     * (`xs.from(1)` aliases `xs`).
      */
     fun placeOf(e: Expr): Place? {
-        model.places[e]?.let { return it }
+        model.readPlace(e)?.let { return it }
         if (e is FunctionCallExpr) {
             val rc = model.calls[e] ?: return null
             val recv = rc.receiver ?: return null
@@ -314,6 +337,9 @@ internal class Rules(val program: TypedProgram) {
     }
 
     fun isView(t: KType?): Boolean = t != null && (facts.isView(t) || facts.isMutView(t))
+
+    /** A second-class type (30-second-class 1.1): a `View`, `MutView`, `CStr` or `Unsafe`. */
+    fun isSecondClass(t: KType?): Boolean = t != null && (isView(t) || facts.isMagic(t, "CStr") || facts.isMagic(t, "Unsafe"))
 
     /** A user or extern class (D29): held by `kira::Rc`, so a parameter or a plain local copies the same handle, not the object. A struct is a value type and never this. */
     fun isClass(t: KType?): Boolean = t != null && facts.isClass(t)
@@ -758,5 +784,97 @@ internal class HiddenWrites private constructor(
             }
             return hidden
         }
+    }
+}
+
+/**
+ * Which `Fx` a call may run (40-round3 R-C): the one answer W2.4 (`calleeEffects`, in place of
+ * `fxArgs`/`fxArguments`), W2.6 (R-B's condition 1, in place of `CppExternEmitter.mayHoldFx`)
+ * and EffectsPass read. Nobody else defines such a predicate.
+ *
+ * A call whose body is not known at the call ([bodyUnknown]) runs, while it runs, everything
+ * ([mayRunAnything]) when an argument or its receiver [mayHoldFx], and otherwise only its named
+ * writes. A call whose body the checker sees runs what that body does.
+ */
+object CallReach {
+    private val HOLDERS = setOf("List", "Map", "Set", "Deque", "Stack", "Queue", "Arr", "Maybe", "Result", "View", "MutView", "Unsafe")
+
+    /**
+     * Whether a value of [t] may hold an `Fx` a callee could run: an `Fx`; every reference (a
+     * class, an `@_opaque` handle, a trait, `Ref`, `Weak`, a stdlib handle, `Any`), since an
+     * object may hold an `Fx` field now or in a subclass; a type parameter and an unknown type;
+     * a container, `Maybe`, `Result`, tuple, `View`, `MutView` or `Unsafe` whose type argument
+     * may (a `View<Fx<...>>` hands the callee the closures it views; a `View<UInt8>` holds
+     * none); a struct with a field that may, under its type arguments (a cycle adds nothing).
+     * False for scalars, enums (payload-free), `Str`, `StrBuf` and `CStr`.
+     */
+    fun mayHoldFx(t: KType?): Boolean = holds(t, HashSet())
+
+    private fun holds(t: KType?, path: MutableSet<KType>): Boolean = when (t) {
+        null, KType.Error, is KType.Fn, is KType.Param -> true
+        is KType.Scalar, KType.Str, KType.Void, KType.Never, KType.NullT -> false
+        is KType.Nominal -> when (val sym = t.sym) {
+            is EnumSymbol -> false
+            is TraitSymbol -> true
+            is ClassSymbol -> when (sym.kind) {
+                ClassKind.CLASS, ClassKind.OPAQUE -> true
+                ClassKind.STRUCT -> path.add(t) && run {
+                    val sub = sym.typeParams.zip(t.typeArgs()).toMap()
+                    val found = sym.fields.any { holds(it.type.substitute(sub), path) }
+                    path.remove(t)
+                    found
+                }
+                ClassKind.MAGIC -> when {
+                    sym.name == "StrBuf" || sym.name == "CStr" -> false
+                    sym.name in HOLDERS || sym.name.startsWith("Tuple") -> t.typeArgs().any { holds(it, path) }
+                    // Ref, Weak, Any, a stdlib handle (Mutex, Thread, Suite, ...).
+                    else -> true
+                }
+            }
+            else -> true
+        }
+    }
+
+    /** The call is handed an `Fx` itself: a lambda literal or an `Fx`-typed argument. */
+    fun givenFx(rc: ResolvedCall, model: TypedModel): Boolean =
+        rc.args.any { a -> (a as? ArgBinding.Given)?.expr?.let { model.types[it] } is KType.Fn }
+
+    /**
+     * The call's body is not known at the call: C++ supplies it ([suppliedByCpp], or the
+     * `EXTERN` kind), it is dispatched at run time (`VIRTUAL`, `TRAIT`), it is an `Fx` value
+     * (`FN_VALUE`), or it is a stdlib binding handed an `Fx` ([givenFx]). A `trace`/`print`
+     * runs nothing of Kira's.
+     */
+    fun bodyUnknown(rc: ResolvedCall, model: TypedModel): Boolean {
+        if (rc.kind == CallKind.EXTERN || rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT || rc.kind == CallKind.FN_VALUE) {
+            return true
+        }
+        val fn = rc.fn ?: return false
+        return when {
+            fn.suppliedByCpp -> true
+            fn.foreign is Foreign.Magic && fn.body == null -> givenFx(rc, model)
+            else -> false
+        }
+    }
+
+    /**
+     * R-C: while [rc] runs it may run any Kira code (`any`, so it may write, move or free
+     * anything a closure can reach): its body is unknown ([bodyUnknown]) and it calls an `Fx`
+     * value, or a given argument or its receiver may hold an `Fx` ([mayHoldFx]). [receiverType]
+     * is the receiver's type; pass the enclosing class's type for an implicit `this` (an
+     * implicit `this` passed as null counts as holding one). A given argument counts by its
+     * own type; a default never does (D48: a default is a constant).
+     */
+    fun mayRunAnything(rc: ResolvedCall, model: TypedModel, receiverType: KType? = rc.receiver?.let { model.types[it] }): Boolean {
+        if (!bodyUnknown(rc, model)) {
+            return false
+        }
+        if (rc.kind == CallKind.FN_VALUE) {
+            return true
+        }
+        if (receiverType != null && mayHoldFx(receiverType) || rc.implicitThis && receiverType == null) {
+            return true
+        }
+        return rc.args.any { a -> (a as? ArgBinding.Given)?.let { mayHoldFx(model.types[it.expr]) } == true }
     }
 }

@@ -34,7 +34,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentEx
  *   down modifies nothing itself.
  * - `rules.mutability.element`: writing an element of a container held in an immutable place.
  * - `rules.mutability.method`: a `mut fx` (a struct's own, or a stdlib mutator such as
- *   `List.add`) called on an immutable place, or a class's own `mut fx` called on `this`
+ *   `List.add`) called on an immutable place or on a lent result (`ys.get(0).add(1)`: R-A makes
+ *   it a read-only place, never a write), or a class's own `mut fx` called on `this`
  *   in the body of a plain `fx` of the class (its instance state changes). A class's `mut
  *   fx` is callable through any other reference (D29), and so is a stdlib handle's (a
  *   Suite, a Mutex).
@@ -146,6 +147,17 @@ internal class MutabilityPass : RulePass {
             }
         }
         if (place == null) {
+            // A lent result (R-A: `ys.get(0)` is `ys[0]`, and C++'s `kira::at` hands back a reference into ys) is no
+            // temporary: a `mut fx` on it would write ys through an accessor, a write capability R-A never grants.
+            val lent = rc.receiver?.let { r.model.lentPlaces[it] }
+            if (lent != null) {
+                r.report(
+                    "rules.mutability.method",
+                    "'${fn.name}' is a `mut fx` and writes its receiver '${KiraUnparser.text(rc.receiver!!)}', which is '${r.describe(lent)}' lent by an " +
+                        "accessor, not a place to write (R-A). Write the place itself (`${r.describe(lent)}.${fn.name}(...)` on a `mut` binding).",
+                    rc.receiver,
+                )
+            }
             // A temporary: nothing observable is written.
             return
         }

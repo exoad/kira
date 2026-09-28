@@ -2,6 +2,7 @@ package net.exoad.kira.types.rules
 
 import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.body.BodyTestSupport
 import net.exoad.kira.types.rules.RulesTestSupport.expectClean
 import net.exoad.kira.types.rules.RulesTestSupport.expectExactly
@@ -168,7 +169,10 @@ class ExclusivityPassTest {
     // ---- negative ----------------------------------------------------------------------------
 
     @Test
-    fun aPlaceWrittenByOneArgumentAndReadByItsSiblingHasNoOrderInCpp() {
+    fun aByValueReadBesideANamedWriteIsReadFirstAndTwoWritesOfOnePlaceAreRefused() {
+        // F1 (40-round3 3.2): a by-value argument or an operator operand that reads the written place is copied
+        // first by D33 (the emitter raises a local a sibling writes to READS), so t, u and v are in order; two
+        // operands that both write b are a place written twice by one call, which stays refused.
         val p = snippet(
             bag + """
             pub fx f: () Int32 {
@@ -184,8 +188,8 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
-        assertTrue(message(p, "rules.exclusivity.order").contains("'b.grow()' writes 'b' while one operand of 'sz' is evaluated, and 'b.items' is read by another"))
+        expectExactly(p, "rules.exclusivity.order")
+        assertTrue(message(p, "rules.exclusivity.order").startsWith("'b.grow()' writes 'b' while one operand of 'pair' is evaluated, and 'b.grow()' writes it again"))
     }
 
     @Test
@@ -227,10 +231,10 @@ class ExclusivityPassTest {
 
     @Test
     fun aMutViewLendsAWriteOfWhatItWasLentFrom() {
-        // D33 (round 2, issue 1): fill's MutView parameter writes arr, and a sibling operand reads arr; the read
-        // is PURE (a local), so R19 never spills it, and only this rule keeps the order. The view is lent at the
-        // call (arr.view(), arr.from(0)), or is a MutView parameter (mv): no view is held in a local or a field
-        // (decision 4b, ViewPass).
+        // fill's MutView parameter writes arr, and a sibling operand reads an element of arr by value. F1: the
+        // element is a value D33 copies first (the emitter raises a read of the MutView's source to READS, its
+        // `writtenBy`), whether spelled arr[0] or arr.get(0) (R-A: one place), or read through a MutView parameter;
+        // the order rule refuses none. A MutView of arr beside arr itself in one call is D37's argument rule.
         val p = snippet(
             """
             pub fx fill: (v: MutView<UInt8>) UInt8 {
@@ -257,30 +261,26 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(
-            p,
-            "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order",
-            "rules.exclusivity.argument",
-        )
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.startsWith("'the MutView 'arr.view()'' writes 'arr' while one operand of 'pair8' is evaluated, and 'arr[0]' is read") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'the MutView 'mv'' writes 'mv' while one operand of 'pair8'") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("the MutView 'arr.view()' overlaps the argument 'arr' of 'both'") }, messages.joinToString("\n"))
+        expectExactly(p, "rules.exclusivity.argument")
+        assertTrue(message(p, "rules.exclusivity.argument").startsWith("the MutView 'arr.view()' overlaps the argument 'arr' of 'both'"))
     }
 
     @Test
-    fun aMutViewReadOnlyBesideAWriteOfItsStorageIsCaughtToo() {
-        // The other way round: the sibling writes the storage a view reads (lent where it is read: no view is held
-        // in a local, decision 4b).
+    fun anElementReadThroughAViewBesideAWriteOfItsStorageIsAValueReadFirst() {
+        // The other way round: the sibling writes the storage a view's element is read from (F1: an Int32 value,
+        // copied first; R-A: xs.view()[0] is the place xs[0]). A mut argument the sibling writes is refused.
         val p = snippet(
             bag + """
             pub fx f: () Int32 {
                 mut xs: Arr<Int32> = [1, 2]
-                return pair(xs.view()[0], bump(mut xs[1]))
+                a: Int32 = pair(xs.view()[0], bump(mut xs[1]))
+                put(mut xs[0], bump(mut xs[1]))
+                return a
             }
             """,
         )
         expectExactly(p, "rules.exclusivity.order")
+        assertTrue(message(p, "rules.exclusivity.order").contains("and 'xs[0]' is passed to it as mut"), message(p, "rules.exclusivity.order"))
     }
 
     @Test
@@ -349,17 +349,13 @@ class ExclusivityPassTest {
             }
             """,
         )
-        // A struct construction and an array literal are sequenced; `n = bump(mut n)` writes n after its value.
-        // Round 3, issue 7: on a class, `k->plus(k->grow())` reads the reference before the arguments and the
-        // fields after them, in C++17 as in Kira, so the receiver of a reference type is no sibling read.
-        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.contains("one operand of the assignment is evaluated, and 'n' is read") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.contains("one operand of the construction of Box is evaluated") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.contains("one operand of 'substring' is evaluated, and 's' is read") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.contains("one operand of the assignment is evaluated, and 'i' is read") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.contains("one operand of the string is evaluated") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.contains("'c.grow()' writes 'c' while one operand of 'plus' is evaluated, and 'c' is read") }, messages.joinToString("\n"))
+        // F1 and OQ-1 (READ FIRST): the compound target n and the Str receiver s are immutable values, read first,
+        // and every other operand here is a by-value read D33 copies first; a plain assignment's target (and its
+        // index) is located after its value, as C++17 does. Only the mutable struct receiver c of `c.plus(...)`
+        // stays refused: Q4 reads it when plus runs, which W2.9.8 lowers. On a class, `k->plus(k->grow())` reads
+        // the reference before the arguments and the fields after them, as Kira does.
+        expectExactly(p, "rules.exclusivity.order")
+        assertTrue(message(p, "rules.exclusivity.order").startsWith("'c.grow()' writes 'c' while one operand of 'plus' is evaluated, and 'c' is the receiver, a container or a mutable value"))
     }
 
     @Test
@@ -1015,17 +1011,19 @@ class ExclusivityPassTest {
     }
 
     @Test
-    fun aHiddenWriteIsThisRulesAgainstAnOperandTheEmitterCannotCopyAndTheEmittersAgainstAnArgument() {
-        // Round 5, issue 7: a write hidden in a callee (bumpG writes G) beside an argument or an operator's
-        // operand that reads G is READS beside IMPURE, which the emitter copies into temporaries in source order
-        // (TypedModel.Effect; W2.3's CppHoister at 1ff53c5), and an assignment's target is a place the emitter
-        // binds by reference in order (`xs[G] = bumpG()` locates xs[G] first). A receiver a free function takes
-        // by const& (S.startsWith) and the target of a compound assignment (whose old value Kira reads first, and
-        // C++ evaluates the right side first) can be given no copy, and the order is refused here.
+    fun aHiddenWriteBesideAnImmutableValueIsReadFirstAndBesideAContainerReceiverIsRefused() {
+        // A write hidden in a callee (bumpG writes G) beside an argument or an operator's operand that reads G is
+        // READS beside IMPURE, which the emitter copies into temporaries in source order (TypedModel.Effect), and
+        // an assignment's target is a place the emitter binds in order. The user's OQ-1 (READ FIRST): an immutable
+        // value's operand is read before the call, so the Str receiver of S.startsWith and the Int32 target of
+        // G += are copied first too. Q4 reads a container receiver when its call runs, which W2.9.8 lowers: until
+        // then GL.get(bumpL()) and GL.size() + ... on a List are refused, the index spelling GL[bumpL()] is not
+        // (kira::at reads GL when it runs, Q4's answer already).
         val p = snippet(
             """
             pub mut G: Int32 = 0
             pub mut S: Str = "ab"
+            pub mut GL: List<Int32> = List<Int32> { values = [1, 2] }
             pub fx bumpG: () Int32 {
                 G += 1
                 return 0
@@ -1033,6 +1031,10 @@ class ExclusivityPassTest {
             pub fx growS: () Str {
                 S = S + "c"
                 return "a"
+            }
+            pub fx bumpL: () Size {
+                GL.set(0, 50)
+                return 0
             }
             pub fx add2: (x: Int32, y: Int32) Int32 {
                 return x + y
@@ -1044,14 +1046,303 @@ class ExclusivityPassTest {
                 G += bumpG()
                 xs[G as Size] = bumpG()
                 c: Bool = S.startsWith(growS())
+                d: Int32 = GL[bumpL()]
+                e: Int32 = GL.get(bumpL())
+                return a + b + d + e
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.order")
+        assertTrue(message(p, "rules.exclusivity.order").startsWith("'bumpL()' writes 'GL' inside its callee while one operand of 'get' is evaluated, and 'GL' is the receiver"), message(p, "rules.exclusivity.order"))
+        assertEquals(listOf(Effect.READS, Effect.IMPURE), listOf(BodyTestSupport.all<Expr>(p, "G")[1], BodyTestSupport.all<Expr>(p, "bumpG()")[0]).map { p.model.effects[it] })
+    }
+
+    // ---- round 3 (40-round3 3.2, F1; the user's OQ-1 READ FIRST) ----------------------------------
+
+    private val evalorder = """
+        pub mut ticks: Int32 = 0
+        pub mut gl: List<Int32> = List<Int32> { }
+        pub mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
+        pub fx next: () Int32 {
+            ticks += 1
+            return ticks
+        }
+        pub fx sub: (a: Int32, b: Int32) Int32 {
+            return a - b
+        }
+        pub fx inc: (mut x: Int32) Int32 {
+            x += 1
+            return x
+        }
+        pub fx lenOf: (xs: List<Int32>, n: Int32) Int32 {
+            return xs.size() as Int32 + n
+        }
+        pub fx pushTo: (mut xs: List<Int32>) Int32 {
+            xs.add(3)
+            return 0
+        }
+        pub fx poke: (v: MutView<Int32>) Int32 {
+            v.set(0, 9)
+            return 0
+        }
+        pub fx putKey: () Int32 {
+            gm.put(1, 99)
+            return 1
+        }
+        pub fx setFirst: () Size {
+            gl.set(0, 50)
+            return 0
+        }
+        pub struct Acc {
+            pub n: Int32 = 1
+            pub mut fx bump: () Int32 {
+                n = 2
+                return 10
+            }
+            pub fx plus: (k: Int32) Int32 {
+                return n * 100 + k
+            }
+        }
+        pub mut ga: Acc = Acc { }
+        pub fx bumpA: () Int32 {
+            ga.bump()
+            return 10
+        }
+    """
+
+    @Test
+    fun theFiveEvalorderLinesTheOrderRuleRefusedWronglyAreAccepted() {
+        // 143, 231, 233, 236 and 259 of W2.3's evalorder golden: a compound target of an immutable value (READ
+        // FIRST), by-value arguments beside a named write (D33 copies them), an Int32 element beside a MutView of
+        // its List. Also the index spelling gl[setFirst()] (Q4 already) and the spelled-out twins of 143.
+        val p = snippet(
+            evalorder + """
+            pub fx f: () Int32 {
+                ticks += next()
+                mut x: Int32 = 5
+                a: Int32 = sub(x, inc(mut x))
+                mut xs: List<Int32> = List<Int32> { values = [1, 2] }
+                b: Int32 = lenOf(xs, pushTo(mut xs))
+                mut z: Int32 = 5
+                z += inc(mut z)
+                mut ws: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                c: Int32 = sub(ws[0], poke(ws.from(0)))
+                d: Int32 = gl[setFirst()]
+                ticks = ticks + next()
+                e: Int32 = sub(ticks, next())
+                return a + b + c + d + e + z
+            }
+            """,
+        )
+        expectClean(p)
+    }
+
+    @Test
+    fun theFiveReceiverLinesStayRefusedUntilQ4IsLoweredImplicitThisIncluded() {
+        // 192, 195, 222, 389 and 393 (the implicit this the round-2 rule missed): a Map, a List, a mutable struct
+        // global, an explicit and an implicit this of a struct whose mut fx writes it. Q4 reads each receiver when
+        // the call runs; W2.9.8 lowers that (99, 50, 210, 210, 210).
+        val p = snippet(
+            evalorder + """
+            pub struct Acc2 {
+                pub n: Int32 = 1
+                pub mut fx bump: () Int32 {
+                    n = 2
+                    return 10
+                }
+                pub fx plus: (k: Int32) Int32 {
+                    return n * 100 + k
+                }
+                pub mut fx viaThis: () Int32 {
+                    return this.plus(bump())
+                }
+                pub mut fx viaImplicit: () Int32 {
+                    return plus(bump())
+                }
+            }
+            pub fx f: () Int32 {
+                a: Int32 = gm.get(putKey()).unwrapOr(-1)
+                b: Int32 = gl.get(setFirst())
+                c: Int32 = ga.plus(bumpA())
+                return a + b + c
+            }
+            """,
+        )
+        expectExactly(p, *Array(5) { "rules.exclusivity.order" })
+        val messages = p.diagnostics.map { it.message }
+        for (text in listOf("and 'gm' is the receiver", "and 'gl' is the receiver", "and 'ga' is the receiver")) {
+            assertTrue(messages.any { it.contains(text) }, "$text:\n" + messages.joinToString("\n"))
+        }
+        assertEquals(2, messages.count { it.startsWith("'bump()' writes 'this' while one operand of 'plus' is evaluated, and 'this' is the receiver") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aMutPlaceASiblingWritesIsRefusedAndTwoCallsWritingOnePlaceBesideAValueAreNot() {
+        // Clause 2: a mut place is bound by reference and never copied, so a sibling's named write of it has no order
+        // both languages keep. Its hidden twin (G bound mut beside bumpG()) and a class mut fx are no refusal: the
+        // reference names the place either way.
+        val p = snippet(
+            evalorder + """
+            pub mut G: Int32 = 0
+            pub fx bumpG: () Int32 {
+                G += 1
+                return 0
+            }
+            pub fx two: (mut x: Int32, y: Int32) Int32 {
+                x += y
+                return x
+            }
+            pub fx f: () Int32 {
+                mut x: Int32 = 1
+                a: Int32 = two(mut x, inc(mut x))
+                b: Int32 = two(mut G, bumpG())
                 return a + b
             }
             """,
         )
+        expectExactly(p, "rules.exclusivity.order")
+        assertTrue(message(p, "rules.exclusivity.order").startsWith("'mut x' writes 'x' while one operand of 'two' is evaluated, and 'x' is passed to it as mut"))
+    }
+
+    @Test
+    fun aContainerOrMutableValueAsAnOperatorsReceiverIsHeldToo() {
+        // `a == b` is `a.@_op_eq_(b)` and `a += b` is `a = a.@_op_add_(b)` (DECISIONS 2): the left operand is the
+        // receiver, so a container there is Q4's (read when the operator runs) like a method call's receiver; an
+        // immutable value (an Int32, a Str, a Bool) is read first (OQ-1).
+        val p = snippet(
+            evalorder + """
+            pub mut S: Str = "a"
+            pub mut GA: Arr<Int32, 2> = [1, 2]
+            pub fx resetL: () List<Int32> {
+                gl = List<Int32> { }
+                return List<Int32> { values = [3] }
+            }
+            pub fx resetA: () Arr<Int32, 2> {
+                GA = [5, 6]
+                return [1, 2]
+            }
+            pub fx growS: () Str {
+                S = S + "b"
+                return "a"
+            }
+            pub fx f: () Bool {
+                a: Bool = gl == resetL()
+                b: Bool = GA == resetA()
+                c: Bool = S == growS()
+                d: Bool = gl.isEmpty() == resetL().isEmpty()
+                e: Int32 = ticks + next()
+                return a && b && c && d && e > 0
+            }
+            """,
+        )
         expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order")
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.startsWith("'bumpG()' writes 'G' inside its callee while one operand of the assignment is evaluated, and 'G' is read by the target, which C++ evaluates last") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'growS()' writes 'S' inside its callee while one operand of 'startsWith' is evaluated, and 'S' is read by the receiver, which C++ passes by reference") }, messages.joinToString("\n"))
-        assertEquals(listOf(Effect.READS, Effect.IMPURE), listOf(BodyTestSupport.all<Expr>(p, "G")[1], BodyTestSupport.all<Expr>(p, "bumpG()")[0]).map { p.model.effects[it] })
+        assertTrue(p.diagnostics.all { it.message.contains("is the receiver of the operator, a container or a mutable value") }, TyperTestSupport.render(p))
+    }
+
+    // ---- round 2's loop minors (w2-5 minor #2): a finally a drop runs, and two handles of one object ------
+
+    @Test
+    fun aLoopOverSharedStorageWhoseBodyMayRunAnImpureFinallyIsRefused() {
+        // q7: dropping GD's Dropper runs a finally that replaces GL while GL is iterated, directly (GD = null) or in
+        // a callee (drop()). A loop over a local, or in a program whose finally is pure, is untouched.
+        val p = snippet(
+            """
+            pub mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            pub class Dropper {
+                pub n: Int32 = 0
+                finally {
+                    GL = List<Int32> { }
+                }
+            }
+            pub mut GD: Maybe<Dropper> = null
+            pub fx drop: () Void {
+                GD = null
+            }
+            pub fx direct: () Int32 {
+                mut s: Int32 = 0
+                for x: Int32 in GL {
+                    GD = null
+                    s += x
+                }
+                return s
+            }
+            pub fx viaCall: () Int32 {
+                mut s: Int32 = 0
+                for x: Int32 in GL {
+                    drop()
+                    s += x
+                }
+                return s
+            }
+            pub fx local: () Int32 {
+                mut s: Int32 = 0
+                xs: List<Int32> = List<Int32> { values = [1, 2] }
+                for x: Int32 in xs {
+                    GD = null
+                    s += x
+                }
+                return s
+            }
+            pub class Item {
+                pub mut labels: List<Int32> = List<Int32> { values = [1] }
+            }
+            pub fx makeItem: () Item {
+                return Item { }
+            }
+            pub fx temporary: () Int32 {
+                mut s: Int32 = 0
+                for x: Int32 in makeItem().labels {
+                    GD = null
+                    s += x
+                }
+                return s
+            }
+            """,
+        )
+        // A temporary's field (makeItem().labels) is iterated through the copy W2.3's statement part makes: not refused.
+        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop")
+        assertTrue(message(p, "rules.exclusivity.loop").contains("may drop the last handle of an object whose `finally` is impure"), message(p, "rules.exclusivity.loop"))
+    }
+
+    @Test
+    fun aLoopBodyWritingTheIteratedFieldThroughAnotherHandleOfTheClassIsRefused() {
+        // q6: g and h may name one object, so g.reset() replacing g.items may invalidate a loop over h.items; a write
+        // of another field through g (g.bump()) is none.
+        val p = snippet(
+            """
+            pub class Holder {
+                pub mut items: List<Int32> = List<Int32> { values = [1, 2] }
+                pub mut n: Int32 = 0
+                pub mut fx reset: () Void {
+                    items = List<Int32> { }
+                }
+                pub mut fx bump: () Void {
+                    n += 1
+                }
+            }
+            pub fx mk: () Holder {
+                return Holder { }
+            }
+            pub fx f: (h: Holder, g: Holder) Int32 {
+                mut s: Int32 = 0
+                for x: Int32 in h.items {
+                    g.reset()
+                    s += x
+                }
+                for y: Int32 in h.items {
+                    g.bump()
+                    s += y
+                }
+                for z: Int32 in mk().items {
+                    g.reset()
+                    s += z
+                }
+                return s
+            }
+            """,
+        )
+        // The third loop iterates a temporary's field, through the copy W2.3's statement part makes: not refused.
+        expectExactly(p, "rules.exclusivity.loop")
+        assertTrue(message(p, "rules.exclusivity.loop").contains("calls 'reset', which writes 'g.items'"), message(p, "rules.exclusivity.loop"))
     }
 }

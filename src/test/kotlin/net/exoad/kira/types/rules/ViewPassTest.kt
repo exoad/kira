@@ -1,5 +1,6 @@
 package net.exoad.kira.types.rules
 
+import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.PlaceKind
 import net.exoad.kira.compiler.analysis.types.TypedProgram
@@ -2119,5 +2120,111 @@ class ViewPassTest {
             """,
         )
         assertEquals(listOf("rules.view.type", "rules.view.type", "rules.view.unsafe", "rules.view.unsafe", "rules.view.unsafe"), view(p), TyperTestSupport.render(p))
+    }
+
+    // ---- round 3 (40-round3 F2, F3, and round 2's minors) ------------------------------------------
+
+    @Test
+    fun aSecondClassArgumentIsNeverANamedWrite() {
+        // F2 (w2-6 #0, a regression): a `mut p: Unsafe<T>` is a T* by value (1.4), so passing it a MutView of a place
+        // moves nothing; with a local the canonical call of design 1.4 (fillP(xs.view(), xs.size(), 7)) is allowed.
+        // With a shared place (a mut List parameter) the extern is IMPURE beside a view of shared storage: literal 4b
+        // refuses it. W2.6's typer lets a view reach a `mut Unsafe<T>` and keeps the call's byRef (CallResolver); this
+        // branch's typer does not type that call yet, so the test types the same calls through a MutView parameter and
+        // sets byRef on the binding as W2.6's CallResolver does, then runs the passes again: no new refusal.
+        val p = snippet(
+            """
+            @_extern(cpp = "ext::fillP", header = "ext.hxx")
+            pub fx fillP: (p: MutView<Int32>, n: Size, v: Int32) Void;
+            @_extern(cpp = "ext::setFirst", header = "ext.hxx")
+            pub fx setFirst: (p: MutView<Int32>, v: Int32) Void;
+            @_extern(cpp = "ext::peek", header = "ext.hxx")
+            pub fx peek: (p: View<Int32>, q: MutView<Int32>) Int32;
+            pub fx locals: () Int32 {
+                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                mut arr: Arr<Int32, 3> = [1, 2, 3]
+                ys: List<Int32> = List<Int32> { values = [4] }
+                fillP(xs.view(), xs.size(), 7)
+                fillP(arr.view(), 3, 1)
+                setFirst(xs.view(), 9)
+                return peek(ys.view(), xs.view())
+            }
+            pub fx shared: (mut xs: List<Int32>) Void {
+                fillP(xs.view(), xs.size(), 7)
+            }
+            """,
+        )
+        fun check() {
+            assertEquals(listOf("rules.view.write"), p.diagnostics.filter { it.isError }.map { it.code }, TyperTestSupport.render(p))
+            assertTrue(messages(p, "rules.view.write").single().contains("'xs' is shared storage any impure call may write"), messages(p, "rules.view.write").single())
+        }
+        check()
+        for (call in BodyTestSupport.every<FunctionCallExpr>(p)) {
+            val rc = p.model.calls[call] ?: continue
+            if (rc.fn?.name !in setOf("fillP", "setFirst", "peek")) {
+                continue
+            }
+            val q = rc.args.lastIndex.takeIf { rc.fn?.name == "peek" } ?: 0
+            p.model.calls[call] = rc.copy(args = rc.args.mapIndexed { i, a -> if (i == q) (a as ArgBinding.Given).copy(byRef = true) else a })
+        }
+        net.exoad.kira.compiler.analysis.types.rules.ViewPass().run(p)
+        net.exoad.kira.compiler.analysis.types.rules.ExclusivityPass().run(p)
+        check()
+    }
+
+    @Test
+    fun anIfExpressionThatPicksAViewOfATemporaryIsRefusedWhereItStands() {
+        // F3 (KI-13, r1 w2-3 minor #1): C++ cannot keep one branch's temporary without making the other's, so an
+        // if-expression with a TEMP origin in a branch is rules.view.position, as a for over a temporary is. The
+        // remedy, an if statement with one call per branch, is allowed; so is an if-expression over places.
+        val p = snippet(
+            """
+            pub mut gl: List<Int32> = List<Int32> { values = [1] }
+            pub mut ticks: Int32 = 0
+            pub fx next: () Int32 {
+                ticks += 1
+                return ticks
+            }
+            pub fx makeList: () List<Int32> {
+                return List<Int32> { values = [2] }
+            }
+            pub fx minus: (v: View<Int32>, k: Int32) Int32 {
+                return v.size() as Int32 - k
+            }
+            pub fx total: (v: View<Int32>) Int32 {
+                return v.size() as Int32
+            }
+            pub fx f: (c: Bool) Int32 {
+                a: Int32 = minus(if c { makeList().view() } else { gl.view() }, next())
+                b: Int32 = total(if c { makeList().view() } else { gl.view() })
+                mut d: Int32 = 0
+                if c {
+                    d = total(makeList().view())
+                } else {
+                    d = total(gl.view())
+                }
+                mut xs: List<Int32> = List<Int32> { values = [3] }
+                e: Int32 = total(if c { xs.view() } else { xs.view().from(1) })
+                return a + b + d + e
+            }
+            """,
+        )
+        // The design's own example also forms a view of the mut global gl beside the impure next(): literal 4b, at gl.view().
+        assertEquals(listOf("rules.view.position", "rules.view.position", "rules.view.write"), view(p), TyperTestSupport.render(p))
+        assertTrue(messages(p, "rules.view.position").all { it.contains("in an if-expression") && it.contains("Use an if statement, one call per branch") }, messages(p, "rules.view.position").joinToString("\n"))
+    }
+
+    @Test
+    fun aBorrowingLambdaGivenToAnFxValueNamesTheCalleeAsWritten() {
+        // Round 2's w2-3 minor #2 (probe c3): the message read "is passed to '', which keeps it" for an Fx-value callee.
+        val p = snippet(
+            """
+            pub fx user: (v: View<Int32>, sink: Fx<Tuple1<Fx<Tuple0, Int32>>, Void>) Void {
+                sink(fx () Int32 { return v[0] })
+            }
+            """,
+        )
+        assertEquals(listOf("rules.view.capture"), view(p), TyperTestSupport.render(p))
+        assertTrue(messages(p, "rules.view.capture").single().contains("is passed to 'sink', which keeps it"), messages(p, "rules.view.capture").single())
     }
 }

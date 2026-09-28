@@ -24,6 +24,7 @@ import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
@@ -237,6 +238,34 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         return e
     }
 
+    /** Whether some class of the program has an IMPURE `finally` (without one, nothing [dropsHere]). */
+    val anyImpureFinally: Boolean get() = drops.impure.isNotEmpty()
+
+    /** A value of [t] may be the last handle of an object whose `finally` is IMPURE. */
+    fun mayDrop(t: KType?): Boolean = drops.mayDrop(t)
+
+    /**
+     * [n] itself (its children and callees aside) may drop the last handle of an object whose
+     * `finally` is IMPURE: a local it declares, the value an assignment replaces, a temporary
+     * call result, construction or array literal, what a closure captures. A `finally` may write
+     * anything its object reaches, so ExclusivityPass counts it as a write of every shared place.
+     */
+    fun dropsHere(n: ASTNode): Boolean {
+        if (declared(n) == Effect.IMPURE) {
+            return true
+        }
+        return when (n) {
+            is AssignmentExpr -> drops.mayDrop(model.types[n.target] ?: (model.places[n.target] as? Place.Local)?.sym?.type)
+            is CompoundAssignmentExpr -> drops.mayDrop(model.types[n.left])
+            is PlaceAssignmentExpr -> drops.mayDrop(model.types[n.target])
+            is FunctionCallExpr -> drops.mayDrop(model.types[n] ?: model.calls[n]?.returnType)
+            is ObjectInitExpr -> drops.mayDrop(model.inits[n]?.type)
+            is ArrayLiteral -> drops.mayDrop(model.types[n])
+            is LambdaExpr -> closure(n) == Effect.IMPURE
+            else -> false
+        }
+    }
+
     /** A local declared at [n] (a `val`, a loop variable) is dropped at the end of its scope: IMPURE when that may run an IMPURE `finally`. */
     fun declared(n: ASTNode): Effect {
         val t = (model.declSyms[n] as? LocalSymbol)?.type
@@ -287,7 +316,8 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
             is MemberAccessExpr -> ((model.members[e] as? MemberRef.ModuleMember)?.symbol as? GlobalSymbol)?.let { if (it.isMut) return true }
             else -> {}
         }
-        val p = model.places[e] ?: return false
+        // A lent result reads the storage it is lent from (R-A): `GL.get(0)` is `GL[0]`.
+        val p = model.readPlace(e) ?: return false
         // A view read as a value is iterated or indexed next: its contents are borrowed storage.
         return r.isSharedPlace(p) || r.isView(model.types[e])
     }
@@ -307,8 +337,10 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         var e = when (rc.kind) {
             CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> when {
                 fn == null -> Effect.IMPURE
+                // R-G: C++ supplies the body (an extern, a bodiless pub prototype, an opaque class's method).
+                fn.suppliedByCpp -> Effect.IMPURE
                 fn.foreign is Foreign.Magic && fn.body == null -> magic(rc, fn)
-                // An extern, a bodiless prototype or a slot a closure fills has no entry: IMPURE.
+                // A slot a closure fills has no entry either: IMPURE.
                 else -> fns[fn] ?: Effect.IMPURE
             }
             CallKind.MAGIC -> if (fn != null) magic(rc, fn) else Effect.IMPURE
@@ -343,7 +375,9 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         if (!r.bindings.isPure(fn)) {
             return Effect.IMPURE
         }
-        if (rc.args.any { (it as? ArgBinding.Given)?.expr?.let { x -> model.types[x] } is KType.Fn }) {
+        // R-C's question, asked once (CallReach): a binding handed an Fx may run it. A pure binding runs
+        // nothing else of Kira's (its manifest's promise), so an Fx inside an argument is not its to run.
+        if (CallReach.givenFx(rc, model)) {
             return Effect.IMPURE
         }
         if ((fn.foreign as? Foreign.Magic)?.key in RUNS_OPERATORS) {
@@ -513,22 +547,28 @@ internal class Drops(private val r: Rules, assumeEveryFinally: Boolean) {
         if (t == null) {
             return true
         }
-        return memo.getOrPut(t) { holds(t, java.util.Collections.newSetFromMap(IdentityHashMap())) }
+        return memo.getOrPut(t) { holds(t, HashSet()) }
     }
 
-    private fun holds(t: KType, seen: MutableSet<ClassSymbol>): Boolean = when (t) {
+    /**
+     * [path]: the objects being expanded on the way down, each under its substitution, so a
+     * class that holds itself adds nothing; a sibling field or type argument is expanded afresh
+     * (round 2's minor: one shared `seen` set judged `PairAB { a: Box<Int32>, b: Box<Dropper> }`
+     * unable to hold a Dropper because Box had been seen under `T = Int32`).
+     */
+    private fun holds(t: KType, path: MutableSet<Pair<ClassSymbol, Map<net.exoad.kira.compiler.analysis.types.TypeParamSymbol, KType>?>>): Boolean = when (t) {
         is KType.Scalar, KType.Str, KType.Void, KType.Never, KType.NullT -> false
         is KType.Param, is KType.Fn, KType.Error -> true
         is KType.Nominal -> when (val sym = t.sym) {
             is TraitSymbol -> true
             is ClassSymbol -> when (sym.kind) {
                 // A container, Maybe, tuple, Ref or Weak holds its type arguments; a handle without any (a Thread) may hold a closure.
-                ClassKind.MAGIC -> t.typeArgs().any { holds(it, seen) } || (t.typeArgs().isEmpty() && r.isReference(t))
+                ClassKind.MAGIC -> t.typeArgs().any { holds(it, path) } || (t.typeArgs().isEmpty() && r.isReference(t))
                 // C++ owns an opaque object: its destructor is not a Kira finally (the FFI contract).
                 ClassKind.OPAQUE -> false
                 else -> {
                     val sub = sym.typeParams.zip(t.typeArgs()).toMap()
-                    family(sym).any { c -> objectHolds(c, if (c === sym) sub else null, seen) }
+                    family(sym).any { c -> objectHolds(c, if (c === sym) sub else null, path) }
                 }
             }
             else -> false
@@ -536,23 +576,32 @@ internal class Drops(private val r: Rules, assumeEveryFinally: Boolean) {
     }
 
     /** An object of exactly [c] (its superclasses' parts included) runs an IMPURE `finally` or holds a value that may. */
-    private fun objectHolds(c: ClassSymbol, sub: Map<net.exoad.kira.compiler.analysis.types.TypeParamSymbol, KType>?, seen: MutableSet<ClassSymbol>): Boolean {
-        if (!seen.add(c)) {
+    private fun objectHolds(
+        c: ClassSymbol,
+        sub: Map<net.exoad.kira.compiler.analysis.types.TypeParamSymbol, KType>?,
+        path: MutableSet<Pair<ClassSymbol, Map<net.exoad.kira.compiler.analysis.types.TypeParamSymbol, KType>?>>,
+    ): Boolean {
+        val key = c to sub
+        if (!path.add(key)) {
             return false
         }
-        var k: ClassSymbol? = c
-        val chain = HashSet<ClassSymbol>()
-        while (k != null && chain.add(k)) {
-            if (k in impure) {
-                return true
+        try {
+            var k: ClassSymbol? = c
+            val chain = HashSet<ClassSymbol>()
+            while (k != null && chain.add(k)) {
+                if (k in impure) {
+                    return true
+                }
+                // A field of a subclass or a superclass is judged over its own type parameters: a type parameter may be anything.
+                if (k.fields.any { f -> holds(if (k === c && sub != null) f.type.substitute(sub) else f.type, path) }) {
+                    return true
+                }
+                k = k.superclass?.sym as? ClassSymbol
             }
-            // A field of a subclass or a superclass is judged over its own type parameters: a type parameter may be anything.
-            if (k.fields.any { f -> holds(if (k === c && sub != null) f.type.substitute(sub) else f.type, seen) }) {
-                return true
-            }
-            k = k.superclass?.sym as? ClassSymbol
+            return false
+        } finally {
+            path.remove(key)
         }
-        return false
     }
 
     /** [c] and every class below it. */

@@ -43,7 +43,7 @@ class RulesCorpusTest {
     @Test
     fun everyRulePassIsRegistered() {
         assertEquals(
-            listOf("effects", "escape", "view", "mutability", "exclusivity", "return", "visibility", "profile", "const", "generics", "naming"),
+            listOf("lent", "effects", "escape", "view", "mutability", "exclusivity", "return", "visibility", "profile", "const", "generics", "naming"),
             KiraTyper.rulePasses.map { it.name },
         )
     }
@@ -115,8 +115,9 @@ class RulesCorpusTest {
         // known exceptions are classes' `"${'$'}{name} says ${'$'}{sound()}"` (a class field READS beside a virtual
         // call) and chain's `b.id() == wanted` (a trait call beside a `const kira::Str&` parameter, READS since
         // round 3's issue 9), which W2.4's and W1.3's goldens emit bare; they are listed here so a change to either
-        // side is noticed. The integrator picks the emitter's spill rule (round 3, issue 8).
-        val cases = corpus.listFiles { f -> f.isDirectory && File(f, "src").isDirectory }?.sortedBy { it.name }.orEmpty()
+        // side is noticed. The integrator picks the emitter's spill rule (round 3, issue 8). A golden whose case.yaml
+        // says `pins: spills` exists to pin the spills (W2.3's evalorder, 40-round3 4.1) and is exempt.
+        val cases = corpus.listFiles { f -> f.isDirectory && File(f, "src").isDirectory && !pinsSpills(f) }?.sortedBy { it.name }.orEmpty()
         val known = mapOf(
             "classes" to listOf("\"${'$'}{name} says ${'$'}{sound()}\""),
             "chain" to listOf("b.id() == wanted"),
@@ -126,6 +127,28 @@ class RulesCorpusTest {
                 val p = TyperTestSupport.project(dir, TyperMode.STRICT, options(dir))
                 assertEquals(known[dir.name].orEmpty(), spillSites(p), dir.name)
             }
+        }
+    }
+
+    /** The case's `case.yaml` says `pins: spills` (a scalar or a list holding `spills`). */
+    private fun pinsSpills(dir: File): Boolean {
+        val manifest = File(dir, "case.yaml").takeIf { it.isFile } ?: return false
+        val pins = (Yaml().load<Any>(manifest.readText()) as? Map<*, *>)?.get("pins") ?: return false
+        return pins == "spills" || (pins as? List<*>)?.contains("spills") == true
+    }
+
+    @Test
+    fun aGoldenThatPinsItsSpillsIsExemptFromTheNoSpillCheck() {
+        val dir = kotlin.io.path.createTempDirectory("pins").toFile()
+        try {
+            File(dir, "case.yaml").writeText("toolchains: [gcc]\npins: spills\n")
+            assertTrue(pinsSpills(dir))
+            File(dir, "case.yaml").writeText("toolchains: [gcc]\npins: [spills, order]\n")
+            assertTrue(pinsSpills(dir))
+            File(dir, "case.yaml").writeText("toolchains: [gcc]\n")
+            assertFalse(pinsSpills(dir))
+        } finally {
+            dir.deleteRecursively()
         }
     }
 

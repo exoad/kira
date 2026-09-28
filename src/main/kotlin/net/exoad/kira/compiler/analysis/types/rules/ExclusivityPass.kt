@@ -3,7 +3,11 @@ package net.exoad.kira.compiler.analysis.types.rules
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
+import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.FnSymbol
+import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.PathStep
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.Place
@@ -40,46 +44,25 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatem
  *   by `T&` and by `const T&` at once.
  * - `rules.exclusivity.receiver`: a written argument's place overlaps the call's receiver, or
  *   the receiver of a `mut fx` overlaps another argument.
- * - `rules.exclusivity.order`: a place is written while one operand is evaluated (a call
- *   nested in it that writes the place, or an assignment inside an if-expression in it) and
- *   read or written by a sibling operand: `sz(b.items.size(), b.grow())`, `f(n, put(mut n,
- *   3))`, `b.x + b.grow()`, `pair8(arr[0], fill(arr.view()))`. Kira evaluates left to right
- *   (D33); C++ leaves these unsequenced, or sequences them the other way round, and a place
- *   is never spilled (R19), so the order would decide the value. The siblings are: a call's
- *   receiver and arguments (a Str or container method binds to a free function, and even a
- *   member call evaluates a place receiver to a reference, not a value); the operands of a
- *   binary operator (not `&&`/`||`, which sequence); the target and value of a compound
- *   assignment (C++ evaluates the right side first, so `n += bump(mut n)` reads the new `n`);
- *   the sub-expressions of an assignment's target (its indices) and its value (`xs[i] =
- *   bump(mut i)`); the arguments of a class construction (`std::make_shared<C>(a, b)` is a
- *   call; a struct's designated initializer and an array literal are sequenced); and the
- *   holes of an interpolated string (`kira::cat`). The receiver of a `mut fx` is not a
- *   sibling read: the callee takes it by reference after the arguments ran, in both
- *   languages, and `rules.exclusivity.receiver` covers a `mut` argument overlapping it. A
- *   receiver of reference type (a class) in a member call reads only the reference: C++17
- *   evaluates it before the arguments and the object after them, as Kira does, so
- *   `c.plus(c.grow())` on a class is in order (on a struct it is not: Kira reads the value
- *   first). But Kira holds that reference until the callee returns and C++ only a raw
- *   pointer, so a sibling that may rebind the variable it was read from, or one around it
- *   (`k.plus(rebind(mut k))`, `k.plus(if c { k = K {}; 1 } else { 2 })`), may destroy the
- *   object the callee runs on: that is the one read the receiver makes. A receiver that is
- *   a magic call returning a reference into its own receiver (`m.unwrap()` is
- *   `kira::unwrap(const std::shared_ptr<U>&)` returning that `const&`, `ks.get(0)` is
- *   `kira::at`) lives as long as that receiver's place, so `m.unwrap().plus(rebindM(mut
- *   m))` is the same hazard; a Kira function returns its `Rc` by value, and `mk().plus(...)`
- *   is safe. Writes hidden inside a callee's body ([HiddenWrites]: a global it assigns, a
- *   field of `this` or of a class parameter, a lambda it runs) count when the sibling is one
- *   the emitter can never copy (a receiver, or the target of a compound assignment, whose
- *   old value Kira reads first): `sc.k.plus(resetVia(sc))`, where `resetVia` rebinds `sc.k` through
- *   its parameter, `sc.k.plus(sc.swapOut())`, `k.plus(swapOut())` inside the class,
- *   `sc.k.plus(g())` with `g` a lambda that rebinds `sc.k`, `G.startsWith(bumpG())` and `G
- *   += bumpG()`. A class `mut fx` with a body writes what its body writes, so
- *   `sc.k.plus(sc.bumpC())` is in order when `bumpC` writes only `c`, and
- *   `sc.k.plus(sc.resetK())` is not. Against an argument or an operator's operand a hidden
- *   write is EffectsPass's and the emitter's: the operand is IMPURE, a sibling reading that
- *   state is READS, and the emitter copies every non-PURE operand into a typed temporary in
- *   source order (`add2(G, bump())` reads `G` first only if `G` is copied before `bump()`
- *   runs; see [net.exoad.kira.compiler.analysis.types.Effect]).
+ * - `rules.exclusivity.order` (narrowed in round 3, 40-round3 3.2 and the user's OQ-1): a
+ *   write made while one sibling operand is evaluated (by a call nested in it, named or hidden
+ *   in its callee, or an assignment in an if-expression in it) that reaches what the emitter
+ *   cannot copy in another. Kira evaluates left to right (D33), and the emitter copies every
+ *   by-value operand a sibling may change into a typed temporary first, so a by-value
+ *   argument, an operator operand or a compound target of an immutable value reading the
+ *   written place is in order (`sub(x, inc(mut x))`, `lenOf(xs, pushTo(mut xs))`, `ticks +=
+ *   next()`, `z += inc(mut z)`, `sub(ws[0], poke(ws.from(0)))`); a view operand is ViewPass's.
+ *   Refused: (1) a receiver of reference type a sibling may rebind (Kira holds the object
+ *   until the call returns and C++ only a raw pointer or a `const Rc&` to the variable:
+ *   `k.plus(rebind(mut k))`, `sc.k.plus(resetVia(sc))`, `m.unwrap().plus(rebindM(mut m))`; a
+ *   class `mut fx` writes the object, not the variable, so `k.plus(k.grow())` is in order);
+ *   (2) a `mut` argument a sibling also writes (`f(mut x, g(mut x))`: a `mut` place is never
+ *   copied), and two named writes of one place by two operands; (3) interim, until W2.9.8
+ *   lowers Q4: the receiver of a container or a mutable value (a method call's, an implicit
+ *   `this`, an operator's left operand, a compound target) beside a named or hidden write of
+ *   its place (`gl.get(setFirst())`, `gm.get(putKey())`, `ga.plus(bumpA())`,
+ *   `this.plus(bump())`, `plus(bump())`); Q4 reads it when the call runs, which no lowering
+ *   gives yet. The index spelling `gl[setFirst()]` already reads `gl` when `kira::at` runs.
  * - `rules.exclusivity.alias` (design 5.1): an argument C++ passes by `const&` (a struct, a
  *   `Str`, a container; the receiver of a struct method too) is a place the callee writes
  *   out of sight (`f(GS)` where `f` calls `bumpGS()`): Kira hands the callee a copy, C++ a
@@ -94,12 +77,20 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatem
  *   body on it or on a place around it (`xs.add(x)`, a magic mutator), or calls a function
  *   that writes it out of sight ([HiddenWrites]: `note()` adding to the global `LOG` being
  *   iterated, a `mut fx` with a body writing the iterated field, an override the object may
- *   have, a lambda the callee may run): iterator invalidation. A `mut fx` with a body writing
+ *   have, a lambda the callee may run): iterator invalidation. A write through another handle
+ *   of the same class counts (`g.items` while `h.items` is iterated: `g` and `h` may be one
+ *   object), and so does a drop that may run an IMPURE `finally` while a shared place is
+ *   iterated ([FinallyRuns]: a `finally` may write anything). A `mut fx` with a body writing
  *   only another field (`s.reset()` writing `s.a` while `s.items` is iterated) is no
  *   invalidation.
  */
 internal class ExclusivityPass : RulePass {
     override val name: String = "exclusivity"
+
+    private companion object {
+        /** The stdlib containers: the one mutable value (Q3, D44), read by Q4 when a call on them runs. */
+        val CONTAINERS = setOf("List", "Arr", "Map", "Set", "Deque", "Stack", "Queue", "StrBuf")
+    }
 
     /**
      * A place an expression touches while it is evaluated: the node that touches it, its text,
@@ -126,12 +117,121 @@ internal class ExclusivityPass : RulePass {
         val r = Rules(program)
         val bodies = Bodies.of(program)
         val hidden = HiddenWrites.of(r, bodies)
+        val finallies = FinallyRuns(r, bodies)
         for (b in bodies) {
-            Walk(r, b, hidden).run()
+            Walk(r, b, hidden, finallies).run()
         }
     }
 
-    private class Walk(private val r: Rules, private val b: Body, private val hidden: HiddenWrites) {
+    /**
+     * What may run an IMPURE `finally` (round 2's minor: the loop rule missed the write a
+     * `finally` makes when a drop in the body runs it, `for x in GL { GD = null }`). A node may
+     * when it drops the last handle of such an object itself (`Effects.dropsHere`), or calls
+     * what may: a function whose body does (a fixpoint), a stdlib mutator on a value that may
+     * hold one (`xs.clear()`), a construction with an `initially`, or a call that may run any
+     * Kira code (R-C, [CallReach.mayRunAnything]). A `finally` may write anything, so the loop
+     * rule counts such a node as a write of every shared place. Nothing runs one when no class
+     * has an IMPURE `finally` ([any]).
+     */
+    private class FinallyRuns(private val r: Rules, bodies: List<Body>) {
+        private val model = r.model
+        private val effects = EffectsPass.of(r)
+        val any: Boolean = effects.anyImpureFinally
+        private val fnRuns: MutableSet<FnSymbol> = java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
+        private val constructing: MutableSet<ClassSymbol> = java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
+
+        init {
+            if (any) {
+                val fnBodies = bodies.filter { it.fn != null }
+                var changed = true
+                while (changed) {
+                    changed = false
+                    for (b in fnBodies) {
+                        val fn = b.fn!!
+                        if (fn in fnRuns) {
+                            continue
+                        }
+                        if (fn.params.any { !it.byRef && effects.mayDrop(it.type) } || first(b, b.roots) != null) {
+                            fnRuns.add(fn)
+                            changed = true
+                        }
+                    }
+                }
+            }
+        }
+
+        /** The first node of [roots] (lambda bodies aside, which run only when called) that may run an IMPURE `finally`. */
+        fun first(b: Body, roots: List<ASTNode>): ASTNode? {
+            if (!any) {
+                return null
+            }
+            var found: ASTNode? = null
+            AstScan.walk(roots) { n, lambdas ->
+                if (found == null && lambdas.isEmpty() && node(b, n)) {
+                    found = n
+                }
+            }
+            return found
+        }
+
+        private fun node(b: Body, n: ASTNode): Boolean {
+            if (effects.dropsHere(n)) {
+                return true
+            }
+            val e = n as? Expr ?: return false
+            model.opCalls[e]?.let { if (callRuns(b, it)) return true }
+            return when (e) {
+                is FunctionCallExpr -> model.calls[e]?.let { callRuns(b, it) } ?: true
+                is ObjectInitExpr -> construction(b, model.inits[e]?.cls)
+                else -> false
+            }
+        }
+
+        private fun callRuns(b: Body, rc: ResolvedCall): Boolean {
+            val recvType = if (rc.implicitThis) (b.owner as? ClassSymbol)?.selfType else rc.receiver?.let { model.types[it] }
+            if (CallReach.mayRunAnything(rc, model, recvType)) {
+                return true
+            }
+            if (rc.kind == CallKind.CTOR) {
+                return construction(b, (rc.returnType as? KType.Nominal)?.sym as? ClassSymbol)
+            }
+            val fn = rc.fn ?: return false
+            if (fn.body != null) {
+                return fn in fnRuns || (rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT)
+            }
+            if (fn.foreign is Foreign.Magic && !r.bindings.isPure(fn)) {
+                // A mutator may drop what it replaces or removes (`xs.clear()`, `xs.set(0, v)`, `m.remove(k)`).
+                return recvType != null && effects.mayDrop(recvType) ||
+                    rc.args.any { a -> (a as? ArgBinding.Given)?.let { effects.mayDrop(model.types[it.expr]) } == true }
+            }
+            return false
+        }
+
+        /** A construction of [cls] runs its and its superclasses' `initially` and the field defaults it leaves out. */
+        private fun construction(b: Body, cls: ClassSymbol?): Boolean {
+            if (cls == null || !constructing.add(cls)) {
+                return false
+            }
+            try {
+                var c: ClassSymbol? = cls
+                val seen = HashSet<ClassSymbol>()
+                while (c != null && seen.add(c)) {
+                    if (c.initially != null) {
+                        return true
+                    }
+                    if (c.fields.any { f -> f.default?.let { first(b, listOf(it)) } != null }) {
+                        return true
+                    }
+                    c = c.superclass?.sym as? ClassSymbol
+                }
+                return false
+            } finally {
+                constructing.remove(cls)
+            }
+        }
+    }
+
+    private class Walk(private val r: Rules, private val b: Body, private val hidden: HiddenWrites, private val finallies: FinallyRuns) {
         private val model = r.model
 
         fun run() {
@@ -142,46 +242,36 @@ internal class ExclusivityPass : RulePass {
                         aliasing(n)
                         val rc = model.calls[n]
                         if (rc != null) {
-                            val args = rc.sourceOrder.mapNotNull { (rc.args[it] as? ArgBinding.Given)?.expr }
                             val what = "'${rc.fn?.name ?: KiraUnparser.text(n.name)}'"
-                            val reference = rc.receiver?.takeIf { isReferenceReceiver(rc, it) }
-                            if (reference != null) {
-                                // A member call on a reference (a class): C++17 evaluates the postfix-expression
-                                // to the reference before the arguments and the callee reads the object after
-                                // them, exactly as Kira does, so neither the receiver's own place nor what its
-                                // expression reads on the way is a sibling read. What remains is the object's
-                                // lifetime: Kira holds the reference until the callee returns, C++ only a raw
-                                // pointer (`k->plus(...)`), so an argument that rebinds the variable the reference
-                                // was read from (`rebind(mut k)`, `k = K {}` in an if-expression, a callee that
-                                // rebinds it out of sight) may destroy the object the callee then runs on. A class
-                                // `mut fx` on that place writes the object, not the variable, and is in order
-                                // (`k.plus(k.grow())`).
-                                siblings(n, listOf(reference) + args, what, reference = reference, pinned = 0)
-                            } else {
-                                // A receiver the call writes is a reference the callee takes after the arguments
-                                // ran, in Kira and in C++ alike; a receiver it only reads is a value taken before
-                                // them, and C++ passes it by `const&` to a free function, unsequenced with the
-                                // arguments and never copied by the emitter.
-                                val receiverWritten = r.callOperands(b, n).any { it.isReceiver && it.writes }
-                                val receiver = rc.receiver?.takeIf { !receiverWritten }
-                                siblings(n, listOfNotNull(receiver) + args, what, pinned = if (receiver != null) 0 else null)
+                            val args = rc.sourceOrder.mapNotNull { i ->
+                                val given = rc.args[i] as? ArgBinding.Given ?: return@mapNotNull null
+                                // A `mut` place is bound by reference and never copied (R19): clause 2. A second-class
+                                // argument (a `mut Unsafe<T>` given a view) moves nothing (F2), and a view is ViewPass's.
+                                val slot = rc.fn?.params?.getOrNull(i)?.type?.substitute(rc.substitution)
+                                Operand(given.expr, if (given.byRef && !r.isSecondClass(slot)) Role.MUT else Role.VALUE)
                             }
+                            siblings(n, listOfNotNull(receiver(n, rc)) + args, what)
                         }
                     }
+                    // `a + b` is `a.@_op_add_(b)` (DECISIONS 2): the left operand is its receiver.
                     is BinaryExpr -> if (n.operator != BinaryOp.AND && n.operator != BinaryOp.OR) {
-                        siblings(n, listOf(n.leftExpr, n.rightExpr), "the operator")
+                        siblings(n, listOf(held(n.leftExpr), Operand(n.rightExpr, Role.VALUE)), "the operator")
                     }
-                    // A compound assignment reads its target's old value, which no reference can give C++ once the
-                    // right side ran; a plain assignment's target is only located, which the emitter binds in order.
-                    is CompoundAssignmentExpr -> siblings(n, listOf(n.left, n.right), "the assignment", pinned = 0)
-                    is PlaceAssignmentExpr -> siblings(n, listOf(n.target, n.value), "the assignment", if (n.operator == null) model.places[n.target] else null, pinned = if (n.operator != null) 0 else null)
+                    // `a += b` is `a = a.@_op_add_(b)`: the target is the receiver of the operator its desugaring calls.
+                    is CompoundAssignmentExpr -> siblings(n, listOf(held(n.left), Operand(n.right, Role.VALUE)), "the assignment")
+                    // A plain assignment's target is only located, which the emitter binds in order after the value.
+                    is PlaceAssignmentExpr -> siblings(
+                        n,
+                        listOf(if (n.operator != null) held(n.target) else Operand(n.target, Role.VALUE), Operand(n.value, Role.VALUE)),
+                        "the assignment",
+                    )
                     is ObjectInitExpr -> {
                         val cls = model.inits[n]?.cls
                         if (cls != null && cls.kind == ClassKind.CLASS) {
-                            siblings(n, n.positionalArgs + n.namedArgs.map { it.value }, "the construction of ${cls.name}")
+                            siblings(n, (n.positionalArgs + n.namedArgs.map { it.value }).map { Operand(it, Role.VALUE) }, "the construction of ${cls.name}")
                         }
                     }
-                    is InterpolatedStringLiteral -> siblings(n, n.parts.filterIsInstance<InterpolationPart.Hole>().map { it.expr }, "the string")
+                    is InterpolatedStringLiteral -> siblings(n, n.parts.filterIsInstance<InterpolationPart.Hole>().map { Operand(it.expr, Role.VALUE) }, "the string")
                     is ForIterationStatement -> loop(n)
                     else -> {}
                 }
@@ -189,12 +279,84 @@ internal class ExclusivityPass : RulePass {
         }
 
         /**
-         * A receiver C++ takes as `this` from a reference (a class, a trait, a `Ref`) in a member
-         * call, which C++17 sequences before the arguments. A magic method binds to a free
-         * function over the reference, unsequenced with the arguments like any argument.
+         * What a sibling's write may not reach (F1, 40-round3 3.2). Kira evaluates operands left
+         * to right (D33); the emitter copies every by-value operand a sibling may change into a
+         * typed temporary first, so only what it never copies is this rule's:
+         *
+         * - [LIFETIME], clause 1: a receiver of reference type (a class, a trait, a `Ref`, a
+         *   handle). Kira holds the object until the call returns, C++ only a raw pointer or a
+         *   `const Rc&` to the variable, so a sibling that may rebind the variable, or a place
+         *   around it, is refused ([lifetimeOf]).
+         * - [MUT], clause 2: a `mut` argument. A `mut` place is bound by reference and never
+         *   copied (R19), so a sibling's named write of it is refused (`f(mut x, g(mut x))`).
+         * - [HELD], clause 3 (interim, until W2.9.8 lowers Q4): the receiver of a container or a
+         *   mutable value (a method call's, an implicit `this`, an operator's left operand, a
+         *   compound assignment's target). Q4 reads it when the call runs, and a snapshot would
+         *   give the answer Q4 rejected, so a sibling's named or hidden write of its place is
+         *   refused. An immutable value (a number, `Str`, an immutable class) is read first
+         *   (OQ-1, READ FIRST) and is a [VALUE].
+         * - [VALUE]: a by-value argument or operand, read first and copied by D33 (`sub(x,
+         *   inc(mut x))`, `ticks += next()`, `lenOf(xs, pushTo(mut xs))`), or a view (ViewPass's).
          */
-        private fun isReferenceReceiver(rc: ResolvedCall, recv: Expr): Boolean =
-            (rc.kind == CallKind.METHOD || rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT) && model.types[recv]?.let { r.isReference(it) } == true
+        private enum class Role { VALUE, MUT, HELD, LIFETIME }
+
+        /** A sibling operand: its expression (null for an implicit `this`) and [role]; [held] is an implicit `this`'s touch. */
+        private class Operand(val expr: Expr?, val role: Role, val held: List<Touch> = emptyList())
+
+        /**
+         * A call's receiver as an operand, or null when it has none the order rule reads: a
+         * reference ([Role.LIFETIME]); a container or mutable value the call only reads
+         * ([Role.HELD]); an implicit `this` of a mutable struct the call only reads; nothing for
+         * a value receiver the call writes (a `mut fx` binds it by reference after the arguments
+         * ran, in Kira and in C++ alike; `rules.exclusivity.receiver` covers an argument
+         * overlapping it) or an immutable one (read first).
+         */
+        private fun receiver(n: FunctionCallExpr, rc: ResolvedCall): Operand? {
+            val receiverWritten = r.callOperands(b, n).any { it.isReceiver && it.writes }
+            if (rc.implicitThis) {
+                val owner = b.owner as? ClassSymbol ?: return null
+                if (receiverWritten || r.isReference(owner.selfType) || !readAtCall(owner.selfType)) {
+                    return null
+                }
+                val at = (n.name as? MemberAccessExpr)?.member ?: n.name
+                return Operand(null, Role.HELD, listOf(Touch(Place.This(owner), at, "this", "this")))
+            }
+            val recv = rc.receiver ?: return null
+            val t = model.types[recv]
+            return when {
+                t != null && r.isReference(t) -> Operand(recv, Role.LIFETIME)
+                receiverWritten -> null
+                else -> held(recv)
+            }
+        }
+
+        /** An operand Q4 reads when its call runs ([Role.HELD]) when it is a container or mutable value, else a [Role.VALUE]. */
+        private fun held(e: Expr): Operand = Operand(e, if (readAtCall(model.types[e])) Role.HELD else Role.VALUE)
+
+        /**
+         * Whether Q4 reads a receiver of type [t] when its call runs, which no lowering gives yet:
+         * a container (`List`, `Arr`, `Map`, `Set`, `Deque`, `Stack`, `Queue`, `StrBuf`) or a
+         * mutable value (a struct with a `mut` field or a `mut fx`); a type parameter or an
+         * unknown type may be one. An immutable value (a scalar, `Str`, an enum, an immutable
+         * struct, `Maybe`, `Result`, a tuple) is read first (OQ-1); a reference is [Role.LIFETIME]'s;
+         * a view is ViewPass's.
+         */
+        private fun readAtCall(t: KType?): Boolean = when (t) {
+            null, KType.Error, is KType.Param -> true
+            is KType.Nominal -> when (val sym = t.sym) {
+                is ClassSymbol -> when (sym.kind) {
+                    ClassKind.STRUCT -> sym.fields.any { it.isMut } || sym.methods.any { it.isMutMethod }
+                    ClassKind.MAGIC -> sym.name in CONTAINERS
+                    else -> false
+                }
+                else -> false
+            }
+            else -> false
+        }
+
+        /** A place touch of [e] for a [Role.MUT] or [Role.HELD] operand: where it is (R-A's `readPlace`, or the place a lent view aliases). */
+        private fun placeTouch(e: Expr): List<Touch> =
+            r.placeOf(e)?.let { listOf(Touch(it, e, KiraUnparser.text(e), KiraUnparser.text(e))) }.orEmpty()
 
         /**
          * The receiver of a class `mut fx` whose body this pass analysed: the object is shared
@@ -350,81 +512,72 @@ internal class ExclusivityPass : RulePass {
         }
 
         /**
-         * `rules.exclusivity.order` over the sibling [operands] of [e]: what evaluating one of
-         * them writes against what evaluating any other reads or writes. Lambdas inside an
-         * operand run later, or never: they are skipped. [assigned] is the place a plain
-         * assignment writes after both operands: the target itself and the places around it are
-         * no reads of the target operand (only its indices are), and `n = bump(mut n)` is in
-         * order. [reference] is a class receiver of a member call: its only read is the
-         * [Touch.lifetime] of the reference it evaluates to.
+         * `rules.exclusivity.order` over the sibling [operands] of [e] (F1, 40-round3 3.2): what
+         * evaluating one of them writes against what the emitter cannot copy in another ([Role]).
+         * Lambdas inside an operand run later, or never: they are skipped. Refused:
          *
-         * A write hidden inside a callee ([HiddenWrites]: a global it assigns, a field of
-         * `this` or of a class parameter, what a lambda it runs writes) is the emitter's when
-         * the sibling reading the place is an argument or an operator's operand: the operand is
-         * IMPURE, the read is READS, and the emitter copies both into temporaries in source
-         * order (R19). It is this rule's when the sibling is [pinned]: an operand the emitter
-         * never copies, because C++ takes it by reference. That is a call's receiver (a
-         * reference receiver's lifetime, `sc.k.plus(resetVia(sc))` where `resetVia` rebinds
-         * `sc.k` out of sight; a value receiver's place, which a free function takes by
-         * `const&`, `G.startsWith(bumpG())`), and the target of a compound assignment (`G +=
-         * bumpG()`: Kira reads the old `G`, C++ evaluates the right side first, and a reference
-         * to `G` cannot give the old value). A plain assignment's target is only located, and
-         * the emitter binds it by reference in order (`xs[G] = bumpG()` locates `xs[G]` first).
+         * - a named or hidden write ([HiddenWrites]: a global a callee assigns, a field of `this`
+         *   or of a class parameter, what a lambda it runs writes) that may rebind a
+         *   [Role.LIFETIME] receiver (`k.plus(rebind(mut k))`, `sc.k.plus(resetVia(sc))`);
+         * - a named write of a [Role.MUT] argument's place (`f(mut x, g(mut x))`);
+         * - a named or hidden write of a [Role.HELD] receiver's place (`gl.get(setFirst())`,
+         *   `ga.plus(bumpA())`, `this.plus(bump())`, `plus(bump())` on a mutable struct), until
+         *   W2.9.8 lowers Q4;
+         * - two named writes of one place by two operands (`pair(b.grow(), b.grow())` on a struct).
+         *
+         * Every other read of a written place is a by-value read D33 copies first, and is allowed.
          */
-        private fun siblings(e: Expr, operands: List<Expr>, what: String, assigned: Place? = null, reference: Expr? = null, pinned: Int? = null) {
+        private fun siblings(e: Expr, operands: List<Operand>, what: String) {
             if (operands.size < 2) {
                 return
             }
-            val writes = operands.map { writesOf(it) }
-            val hidden = if (pinned != null) operands.map { hiddenWritesOf(it) } else operands.map { emptyList() }
+            val writes = operands.map { op -> op.expr?.let { writesOf(it) }.orEmpty() }
+            val pins = operands.map { op ->
+                when (op.role) {
+                    Role.VALUE -> emptyList()
+                    Role.MUT -> placeTouch(op.expr!!)
+                    Role.HELD -> op.held.ifEmpty { op.expr?.let { placeTouch(it) }.orEmpty() }
+                    Role.LIFETIME -> lifetimeOf(op.expr!!)
+                }
+            }
+            val hidden = operands.mapIndexed { i, op ->
+                if (pins.withIndex().any { (j, p) -> j != i && p.isNotEmpty() && operands[j].role != Role.MUT }) op.expr?.let { hiddenWritesOf(it) }.orEmpty() else emptyList()
+            }
             if (writes.all { it.isEmpty() } && hidden.all { it.isEmpty() }) {
                 return
             }
-            val reads = operands.mapIndexed { i, op ->
-                val all = if (op === reference) lifetimeOf(op) else readsOf(op)
-                if (assigned != null && i == 0) all.filter { !(it.place.overlaps(assigned) && it.place.path().size <= assigned.path().size) } else all
+            fun pinnedAgainst(w: List<Touch>, hid: List<Touch>, k: Int): Pair<Touch, Touch>? {
+                val p = pins[k]
+                if (p.isEmpty()) {
+                    return null
+                }
+                return overlap(w, p) ?: if (operands[k].role != Role.MUT) overlap(hid, p) else null
             }
-            // Once per pair of operands: a write in one against a read or write in the other, either way round;
-            // then a hidden write in one against the pinned other's reads.
+            // Once per pair of operands: a write in one against the other's pinned place, either way round, then
+            // a named write in both.
             for (i in operands.indices) {
                 for (j in i + 1 until operands.size) {
-                    val pair = overlap(writes[i], reads[j] + writes[j])
-                        ?: overlap(writes[j], reads[i])
-                        ?: (if (pinned == i) overlap(hidden[j], reads[i]) else null)
-                        ?: (if (pinned == j) overlap(hidden[i], reads[j]) else null)
+                    val (w, hit, k) = pinnedAgainst(writes[i], hidden[i], j)?.let { Triple(it.first, it.second, j) }
+                        ?: pinnedAgainst(writes[j], hidden[j], i)?.let { Triple(it.first, it.second, i) }
+                        ?: overlap(writes[i], writes[j])?.let { Triple(it.first, it.second, -1) }
                         ?: continue
-                    val (w, hit) = pair
                     val where = if (w.hidden) " inside its callee" else ""
-                    if (hit.lifetime) {
-                        r.report(
-                            "rules.exclusivity.order",
-                            "'${w.text}' writes '${w.placeText}'$where while one operand of $what is evaluated, and '${hit.text}' is the receiver, a " +
-                                "reference read before the arguments (D33, D37): Kira keeps its object alive until $what returns, but C++ holds " +
-                                "only a raw pointer, and rebinding the last reference destroys the object $what then runs on. Evaluate the " +
-                                "argument into a local first.",
-                            hit.at,
-                        )
-                        continue
+                    val message = when (if (k < 0) null else operands[k].role) {
+                        Role.LIFETIME -> "'${w.text}' writes '${w.placeText}'$where while one operand of $what is evaluated, and '${hit.text}' is the receiver, a " +
+                            "reference read before the arguments (D33, D37): Kira keeps its object alive until $what returns, but C++ holds " +
+                            "only a raw pointer, and rebinding the last reference destroys the object $what then runs on. Evaluate the " +
+                            "argument into a local first."
+                        Role.MUT -> "'${w.text}' writes '${w.placeText}' while one operand of $what is evaluated, and '${hit.text}' is passed to it as mut " +
+                            "(D33, D37): a mut place is bound by reference and never copied (R19), so the two writes have no order both " +
+                            "languages keep. Evaluate the other operand into a local first."
+                        Role.HELD -> "'${w.text}' writes '${w.placeText}'$where while one operand of $what is evaluated, and '${hit.text}' is " +
+                            "${if (e is FunctionCallExpr) "the receiver" else "the receiver of the operator"}, a container or a mutable value, " +
+                            "which Kira reads when $what runs (Q4); that order is not lowered yet (W2.9.8), and a copy taken first would read " +
+                            "it before the write. Evaluate the other operand into a local first."
+                        else -> "'${w.text}' writes '${w.placeText}' while one operand of $what is evaluated, and '${hit.text}' writes it again " +
+                            "(D33, D37): a place written by two operands of one call. Evaluate one of them into a local first."
                     }
-                    if (w.hidden) {
-                        val role = if (e is FunctionCallExpr) "the receiver, which C++ passes by reference" else "the target, which C++ evaluates last"
-                        r.report(
-                            "rules.exclusivity.order",
-                            "'${w.text}' writes '${w.placeText}' inside its callee while one operand of $what is evaluated, and '${hit.text}' is " +
-                                "read by $role (D33, D37): Kira evaluates left to right, but C++ would read the written value, and the emitter " +
-                                "never copies a place it passes by reference. Evaluate the other operand into a local first.",
-                            hit.at,
-                        )
-                        continue
-                    }
-                    val how = if (hit in writes[i] || hit in writes[j]) "written again" else "read"
-                    r.report(
-                        "rules.exclusivity.order",
-                        "'${w.text}' writes '${w.placeText}' while one operand of $what is evaluated, and '${hit.text}' is $how by " +
-                            "another (D33, D37): Kira evaluates left to right, but C++ leaves them unsequenced and would decide the " +
-                            "value by the order it picks. Evaluate one of them into a local first.",
-                        hit.at,
-                    )
+                    r.report("rules.exclusivity.order", message, hit.at)
                 }
             }
         }
@@ -543,18 +696,6 @@ internal class ExclusivityPass : RulePass {
             return out
         }
 
-        /** The places evaluating [e] reads: every place expression inside it (a lent view reads what it was lent from). */
-        private fun readsOf(e: Expr): List<Touch> {
-            val out = mutableListOf<Touch>()
-            AstScan.walk(listOf(e)) { n, lambdas ->
-                if (lambdas.isNotEmpty() || n !is Expr) {
-                    return@walk
-                }
-                r.placeOf(n)?.let { p -> out.add(Touch(p, n, KiraUnparser.text(n), KiraUnparser.text(n))) }
-            }
-            return out
-        }
-
         private fun loop(s: ForIterationStatement) {
             val plan = model.loops[s] ?: return
             if (plan.kind == LoopKind.RANGE || plan.kind == LoopKind.RANGE_INCLUSIVE) {
@@ -568,8 +709,10 @@ internal class ExclusivityPass : RulePass {
                 return
             }
             val iteratedText = KiraUnparser.text(target)
+            var reported = false
             fun writes(places: List<Place>, at: ASTNode, how: String): Boolean {
-                if (places.any { p -> iterated.any { p.overlaps(it) } }) {
+                if (places.any { p -> iterated.any { mayBeSame(p, it) } }) {
+                    reported = true
                     r.report(
                         "rules.exclusivity.loop",
                         "This loop iterates '$iteratedText', and its body $how (D37): changing a collection while iterating it " +
@@ -613,7 +756,7 @@ internal class ExclusivityPass : RulePass {
                         }
                         if (!seen) {
                             // A write the call site does not show: the callee's own, an override's, or a lambda's it may run.
-                            hidden.of(b, n).firstOrNull { w -> iterated.any { w.overlaps(it) } }?.let { w ->
+                            hidden.of(b, n).firstOrNull { w -> iterated.any { mayBeSame(w, it) } }?.let { w ->
                                 writes(listOf(w), n, "calls '${fnName ?: KiraUnparser.text(n.name)}', which writes '${r.describe(w)}'")
                             }
                         }
@@ -621,6 +764,57 @@ internal class ExclusivityPass : RulePass {
                     else -> {}
                 }
             }
+            // A `finally` a drop in the body runs may write anything a reference reaches: every shared place. A
+            // temporary's field (`makeItem().labels`) is none: the emitter iterates a copy made while the temporary lives.
+            if (!reported && iterated.any { r.isSharedPlace(it) && !temporary(it) }) {
+                finallies.first(b, s.body)?.let { n ->
+                    r.report(
+                        "rules.exclusivity.loop",
+                        "This loop iterates '$iteratedText', and its body runs '${KiraUnparser.text(n)}', which may drop the last handle of an object whose " +
+                            "`finally` is impure (D37): a `finally` may write anything a reference reaches, '$iteratedText' included, and changing a " +
+                            "collection while iterating it invalidates the iteration. Collect the changes and apply them after the loop.",
+                        n,
+                    )
+                }
+            }
+        }
+
+        /** A place rooted at a field of no place (`makeItem().labels`): part of a temporary, which nothing else names. */
+        private fun temporary(p: Place): Boolean = (p.root() as? Place.Field)?.receiver == null && p.root() is Place.Field
+
+        /**
+         * Two places may be one storage: they overlap, or they are reached through the same
+         * field of a reference type (`g.items` and `h.items` with `g` and `h` two handles of one
+         * class, `this.items` and `other.items`), whose objects two handles may share (round 2's
+         * q6: `for xs in h.items { g.reset() }` with `g` aliasing `h`).
+         */
+        private fun mayBeSame(a: Place, b: Place): Boolean {
+            if (a.overlaps(b)) {
+                return true
+            }
+            // A temporary's field is iterated through a copy the emitter makes while the temporary lives (W2.3's statement part).
+            if (temporary(a) || temporary(b)) {
+                return false
+            }
+            val pa = a.path()
+            val pb = b.path()
+            for (i in pa.indices) {
+                val s = pa[i] as? PathStep.FieldStep ?: continue
+                if (!r.ownerIsReference(s.sym)) {
+                    continue
+                }
+                for (j in pb.indices) {
+                    if ((pb[j] as? PathStep.FieldStep)?.sym !== s.sym) {
+                        continue
+                    }
+                    val ra = pa.drop(i)
+                    val rb = pb.drop(j)
+                    if ((0 until minOf(ra.size, rb.size)).all { ra[it].matches(rb[it]) }) {
+                        return true
+                    }
+                }
+            }
+            return false
         }
     }
 }

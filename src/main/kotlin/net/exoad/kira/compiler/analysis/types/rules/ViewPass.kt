@@ -29,7 +29,9 @@ import net.exoad.kira.compiler.analysis.types.TypeParamSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.ViewOrigin
 import net.exoad.kira.compiler.analysis.types.display
+import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
@@ -223,10 +225,8 @@ internal class ViewPass : RulePass {
             }
         }
 
-        /** A function whose body C++ supplies (section 5): an `@_extern` one, a bodiless free prototype, or a bodiless method of an `@_opaque` class. */
-        fun isExtern(fn: FnSymbol): Boolean =
-            fn.foreign is Foreign.Extern || (fn.foreign == null && fn.body == null && !fn.hasBody && fn.owner == null) ||
-                (fn.body == null && !fn.hasBody && (fn.owner as? ClassSymbol)?.kind == ClassKind.OPAQUE)
+        /** A function whose body C++ supplies (section 5): R-G's one predicate, [suppliedByCpp]. */
+        fun isExtern(fn: FnSymbol): Boolean = fn.suppliedByCpp
 
         private fun returnsPointer(t: KType): Boolean = isSecondClass(t, emptySet()) || (t is KType.Fn && returnsPointer(t.ret))
 
@@ -380,8 +380,8 @@ internal class ViewPass : RulePass {
 
     /** Where a second-class expression stands (2.1). */
     private sealed interface Ctx {
-        /** A given argument of [rc] at parameter [index], bound to a parameter of type [slot]. */
-        class Arg(val rc: ResolvedCall, val index: Int, val slot: KType?) : Ctx
+        /** A given argument of [rc] (the call [call]) at parameter [index], bound to a parameter of type [slot]. */
+        class Arg(val rc: ResolvedCall, val index: Int, val slot: KType?, val call: FunctionCallExpr) : Ctx
 
         /** The receiver of a method or operator, an operand of an operator or an index, a hole of an interpolation. */
         data object Recv : Ctx
@@ -767,7 +767,7 @@ internal class ViewPass : RulePass {
             if (index < 0) {
                 return Ctx.Other("an argument")
             }
-            return Ctx.Arg(rc, index, slotOf(rc, index, call.name))
+            return Ctx.Arg(rc, index, slotOf(rc, index, call.name), call)
         }
 
         private fun constructionContext(o: ObjectInitExpr, e: Expr): Ctx {
@@ -787,6 +787,18 @@ internal class ViewPass : RulePass {
                 return
             }
             val t = model.types[e]?.takeIf { isSc(it) } ?: facts.viewOf(facts.elementOf(model.types[e] ?: KType.Error) ?: KType.Error)
+            // F3 (40-round3, KI-13): an if-expression that picks a view of a temporary in one branch. D33 may have to
+            // order it against a sibling, and C++ cannot spill one branch's owner without making the other's; like a
+            // for over a temporary, it is refused where it stands. A returned one is the return rule's.
+            if (e is IfExpr && ctx !is Ctx.Return && ctx != Ctx.Branch && ctx != Ctx.BranchWithStatements) {
+                val bad = origins(e).firstOrNull { it is ViewOrigin.Temp }
+                if (bad != null) {
+                    report(e, POSITION, "$text chooses a view of ${describe(bad)} in an if-expression: a view of a temporary is only an argument, a receiver or a return " +
+                        "written straight at its call (decision 4b), and C++ cannot keep one branch's temporary without making the other's. " +
+                        "Use an if statement, one call per branch.", "chooses a view of ${describe(bad)} in an if-expression")
+                    return
+                }
+            }
             when (ctx) {
                 is Ctx.Arg -> {
                     val slot = ctx.slot
@@ -848,7 +860,8 @@ internal class ViewPass : RulePass {
                     if (p != null && !model.fxEscapes(p) && ctx.rc.kind != CallKind.VIRTUAL && ctx.rc.kind != CallKind.TRAIT) {
                         return
                     }
-                    "is passed to '${ctx.rc.fn?.name ?: KiraUnparser.text((ctx.rc.receiver))}', which keeps it"
+                    // An Fx-value callee has no FnSymbol: name it as it is written (`sink(...)`), never ''.
+                    "is passed to '${ctx.rc.fn?.name ?: KiraUnparser.text(ctx.call.name)}', which keeps it"
                 }
                 is Ctx.Kept -> "is stored in ${ctx.what}"
                 is Ctx.Return -> "is returned"
@@ -911,7 +924,7 @@ internal class ViewPass : RulePass {
                 }
             }
             if (model.coercions[e] is Coercion.ToView && !isSc(model.types[e])) {
-                return setOf(storage(e, within = false))
+                return storages(e, within = false)
             }
             return when (e) {
                 is Identifier -> when (val sym = model.refs[e]) {
@@ -941,33 +954,121 @@ internal class ViewPass : RulePass {
                     }
                 }
             }
-            receiverOrigin(rc)?.let { out.add(it) } ?: rc.receiver?.takeIf { rc.kind != CallKind.FN_VALUE && isSecondClassExpr(it) }?.let { out.addAll(origins(it)) }
+            val ro = receiverOrigins(rc)
+            if (ro.isNotEmpty()) {
+                out.addAll(ro)
+            } else {
+                rc.receiver?.takeIf { rc.kind != CallKind.FN_VALUE && isSecondClassExpr(it) }?.let { out.addAll(origins(it)) }
+            }
             return out
         }
 
-        /** The storage a call with a view result may point into through its first-class receiver: formed at the call (3.1). */
-        private fun receiverOrigin(rc: ResolvedCall): ViewOrigin? {
+        /** The storage a call with a view result may point into through its first-class receiver: formed at the call (3.1). Empty for none. */
+        private fun receiverOrigins(rc: ResolvedCall): Set<ViewOrigin> {
             if (rc.kind == CallKind.FN_VALUE) {
-                return null
+                return emptySet()
             }
             if (rc.implicitThis) {
-                return b.owner?.let { ViewOrigin.Stored(Place.This(it), PlaceKind.SHARED, true, (it as? ClassSymbol)?.selfType) }
+                return b.owner?.let { setOf(ViewOrigin.Stored(Place.This(it), PlaceKind.SHARED, true, (it as? ClassSymbol)?.selfType)) }.orEmpty()
             }
-            val recv = rc.receiver ?: return null
+            val recv = rc.receiver ?: return emptySet()
             if (isSecondClassExpr(recv)) {
-                return null
+                return emptySet()
             }
             val lender = rc.kind == CallKind.MAGIC && rc.fn?.name in r.lenders
-            return storage(recv, within = !lender)
+            return storages(recv, within = !lender)
         }
 
-        /** The storage a first-class expression [x] owns or names, viewed (2.3). */
+        /**
+         * The storage a first-class expression [x] owns or names, viewed (2.3): a lent result on a
+         * second-class receiver is where that receiver's view points ([lentOrigins], R-A rule 2),
+         * recorded in `viewOrigins` for [x] so the emitter reads the same answer; anything else is
+         * one [storage].
+         */
+        private fun storages(x: Expr, within: Boolean): Set<ViewOrigin> {
+            val lent = lentOrigins(x, within) ?: return setOf(storage(x, within))
+            if (!dry) {
+                model.viewOrigins[x] = lent
+            }
+            return lent
+        }
+
+        /**
+         * R-A rule 2 (40-round3): an element or a value field read off a second-class receiver
+         * that is no place (`mk().view().get(0)`, `pick(a.view(), b.view()).get(0)`, and a
+         * struct field of such an element) is stored where that receiver's view points, one step
+         * further: each PLACE origin gains the step; STATIC and TEMP stay as they are. A PARAM
+         * origin becomes the storage inside that view parameter, which is the caller's and which
+         * the callee may itself write through a `MutView` (`total(mv.from(0).get(0).view(),
+         * clobber(mv))`), so SHARED, as the index spelling `mv[0]` is. Rule 1 comes first: a
+         * receiver that is a place, or lent from one (`xs.view().get(0)` is `xs[0]`), is a place
+         * (`readPlace`) and is [storage]'s. A field through a reference (`...get(0).items` of a
+         * class element) is shared storage whoever lent the view, and is [storage]'s too. Null
+         * when [x] is none of these.
+         */
+        private fun lentOrigins(x: Expr, within: Boolean): Set<ViewOrigin>? {
+            if (model.readPlace(x) != null) {
+                return null
+            }
+            val (recv, field) = lentStep(x) ?: return null
+            if (field != null && r.ownerIsReference(field)) {
+                return null
+            }
+            val base = if (isSecondClassExpr(recv)) origins(recv) else lentOrigins(recv, within) ?: return null
+            val t = model.types[x]
+            fun step(p: Place, owner: KType?): Place = if (field != null) Place.Field(p, field) else Place.Index(p, indexKind(owner))
+            return base.mapTo(LinkedHashSet()) { o ->
+                when (o) {
+                    is ViewOrigin.Stored -> ViewOrigin.Stored(step(o.place, o.type), o.kind, within || o.within, t)
+                    is ViewOrigin.Param -> ViewOrigin.Stored(step(Place.Param(o.param), o.param.type), PlaceKind.SHARED, within, t)
+                    else -> o
+                }
+            }
+        }
+
+        /** [x]'s receiver and step when [x] reads through it: an accessor in [Rules.ACCESSORS], an index, or a field (null step: an element). */
+        private fun lentStep(x: Expr): Pair<Expr, FieldSymbol?>? {
+            if (x is ArrayIndexExpr) {
+                return x.originExpr to null
+            }
+            callOf(x)?.let { (_, rc) ->
+                val key = (rc.fn?.foreign as? Foreign.Magic)?.key ?: return null
+                val recv = rc.receiver ?: return null
+                return when (key.takeIf { it in Rules.ACCESSORS }?.substringAfter('.')) {
+                    "get" -> recv to null
+                    "unwrap", "unwrapErr" -> {
+                        val cls = (model.types[recv] as? KType.Nominal)?.sym as? ClassSymbol ?: return null
+                        val name = if (key.endsWith("unwrapErr")) "error" else "value"
+                        recv to (cls.fields.firstOrNull { it.name == name } ?: return null)
+                    }
+                    else -> null
+                }
+            }
+            if (x is MemberAccessExpr) {
+                val f = (model.members[x] as? MemberRef.Field)?.field ?: return null
+                return x.origin to f
+            }
+            return null
+        }
+
+        private fun indexKind(t: KType?): IndexKind = when {
+            t == null -> IndexKind.OTHER
+            t == KType.Str -> IndexKind.STR
+            facts.isList(t) -> IndexKind.LIST
+            facts.isArr(t) -> IndexKind.ARR
+            facts.isView(t) -> IndexKind.VIEW
+            facts.isMutView(t) -> IndexKind.MUT_VIEW
+            facts.isMap(t) -> IndexKind.MAP
+            else -> IndexKind.OTHER
+        }
+
+        /** The storage a first-class expression [x] owns or names, viewed (2.3); a lent result is a place (R-A, `readPlace`). */
         private fun storage(x: Expr, within: Boolean): ViewOrigin {
             if (x is StringLiteral) {
                 return ViewOrigin.Static
             }
             val t = model.types[x]
-            val place = model.places[x] ?: return ViewOrigin.Temp(x)
+            val place = model.readPlace(x) ?: return ViewOrigin.Temp(x)
             val root = place.root()
             val throughRef = place.path().any { r.isReferenceStep(it) }
             if (!throughRef && root is Place.Global && !root.sym.isMut) {
@@ -996,12 +1097,15 @@ internal class ViewPass : RulePass {
         /** The places formed at [v] itself (3.1): a converted place, or a call's receiver; with whether the call is itself in the span (it forms the view of its receiver). */
         private fun formed(v: Expr): Pair<List<ViewOrigin.Stored>, Boolean> {
             if (model.coercions[v] is Coercion.ToView && !isSc(model.types[v])) {
-                return listOfNotNull(storage(v, within = false) as? ViewOrigin.Stored) to false
+                return storages(v, within = false).filterIsInstance<ViewOrigin.Stored>() to false
             }
             val (_, rc) = callOf(v) ?: return emptyList<ViewOrigin.Stored>() to false
-            val o = receiverOrigin(rc) as? ViewOrigin.Stored ?: return emptyList<ViewOrigin.Stored>() to false
+            val os = receiverOrigins(rc).filterIsInstance<ViewOrigin.Stored>()
+            if (os.isEmpty()) {
+                return os to false
+            }
             // A lender (`xs.view()`, `p.from(4)`) only forms the view; any other method may move its receiver first.
-            return listOf(o) to !(rc.kind == CallKind.MAGIC && rc.fn?.name in r.lenders)
+            return os to !(rc.kind == CallKind.MAGIC && rc.fn?.name in r.lenders)
         }
 
         // ---- the full-expression rule (3.1, 3.3) --------------------------------------------------
@@ -1125,7 +1229,11 @@ internal class ViewPass : RulePass {
         private fun events(e: Expr, out: MutableList<Event>) {
             AstScan.outsideLambdas(listOf(e)) { n ->
                 when (n) {
-                    is FunctionCallExpr -> model.calls[n]?.let { rc -> named(n, rc).forEach { out.add(Event.Named(it, "'${KiraUnparser.text(n)}'")) } }
+                    is FunctionCallExpr -> model.calls[n]?.let { rc ->
+                        val text = "'${KiraUnparser.text(n)}'"
+                        named(n, rc).forEach { out.add(Event.Named(it, text)) }
+                        lentWrites(n).forEach { out.add(Event.Named(it, text)) }
+                    }
                     is AssignmentExpr -> assigned(model.places[n.target], model.types[n.target], n, out)
                     is CompoundAssignmentExpr -> assigned(model.places[n.left], model.types[n.left], n, out)
                     is PlaceAssignmentExpr -> assigned(model.places[n.target], model.types[n.target], n, out)
@@ -1136,6 +1244,20 @@ internal class ViewPass : RulePass {
                 }
             }
         }
+
+        /**
+         * The places a call in a later operand is handed write access to through a `MutView` (an
+         * argument lent as one, `clobber(xs.view())`, or a `MutView` receiver a magic mutator
+         * writes): its callee may replace or grow what it is lent before the view's consumer runs,
+         * so for a private place too (q10c, `total(xs[0].view(), clobber(xs.view()))`). The order
+         * rule refused this until round 3's F1 left view operands to this pass. Within the consuming
+         * call itself a `MutView` beside a view of one place is D37's (`rules.exclusivity.argument`),
+         * and not listed here.
+         */
+        private fun lentWrites(n: FunctionCallExpr): List<NamedWrite> =
+            r.callOperands(b, n).filter { op ->
+                op.writes && (op.how == "a MutView of" || op.isReceiver && (op.at as? Expr)?.let { x -> facts.isMutView(model.types[x] ?: KType.Error) } == true)
+            }.map { op -> NamedWrite(op.place, (op.at as? Expr)?.let { model.types[it] }, op.at) }
 
         private fun assigned(place: Place?, type: KType?, at: Expr, out: MutableList<Event>) {
             // A write of no known place is IMPURE (EffectsPass), which [events] adds.
@@ -1152,9 +1274,11 @@ internal class ViewPass : RulePass {
          */
         private fun named(e: FunctionCallExpr, rc: ResolvedCall): List<NamedWrite> {
             val out = mutableListOf<NamedWrite>()
-            for (a in rc.args) {
+            for ((i, a) in rc.args.withIndex()) {
                 val given = a as? ArgBinding.Given ?: continue
-                if (given.byRef) {
+                // F2 (40-round3): a second-class argument moves nothing (3.2), `mut` or not: a `mut p: Unsafe<T>` is
+                // a `T*` by value (1.4), and a callee that writes through it is IMPURE already.
+                if (given.byRef && !isSc(slotOf(rc, i, e.name))) {
                     r.placeOf(given.expr)?.let { out.add(NamedWrite(it, model.types[given.expr], given.expr)) }
                 }
             }
