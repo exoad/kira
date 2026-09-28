@@ -219,8 +219,8 @@ internal class TypeFacts(private val builtins: Builtins) {
  * Whether a value of one type may stand where another is expected, and the implicit
  * conversion that makes it so (design 3.3): `null` into `Maybe<T>` ([Coercion.NoneOf]), a `T`
  * into `Maybe<T>` ([Coercion.WrapSome], at every use site), a class to its superclass or a
- * trait it implements ([Coercion.Upcast]), and an `Arr`/`List` place or a `MutView` (or a
- * string literal, for `View<Char>`) into a `View` ([Coercion.ToView]). Nothing else converts
+ * trait it implements ([Coercion.Upcast]), and an `Arr`/`List` (a place or a temporary) or a
+ * `MutView` (or a string literal, for `View<Char>`) into a `View` ([Coercion.ToView]). Nothing else converts
  * implicitly: no numeric widening, no int to float.
  *
  * A `T` whose class is a subclass of `Maybe`'s inner type is one [Coercion.WrapSome] whose
@@ -291,13 +291,9 @@ internal class CoercionRules(private val c: PhaseC) {
         if (facts.isView(expected)) {
             val element = facts.elementOf(expected) ?: return Fit.No()
             if ((facts.isArr(actual) || facts.isList(actual) || facts.isMutView(actual)) && facts.elementOf(actual) == element) {
-                if (facts.isMutView(actual) || c.model.places[e] != null) {
-                    return Fit.Coerce(Coercion.ToView(actual))
-                }
-                return Fit.No(
-                    "a View of a temporary ${actual.display()} would dangle; store it in a local first",
-                    "types.view.temporary",
-                )
+                // A temporary lives to the end of the full-expression (C++ [class.temporary]); where the view
+                // may go is ViewPass's rule (views are second-class, decision 4b).
+                return Fit.Coerce(Coercion.ToView(actual))
             }
             if (actual == KType.Str && element == KType.CHAR && e is StringLiteral) {
                 return Fit.Coerce(Coercion.ToView(KType.Str))

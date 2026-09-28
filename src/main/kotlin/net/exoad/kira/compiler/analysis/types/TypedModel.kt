@@ -91,6 +91,49 @@ data class LoopPlan(
 enum class Effect { PURE, READS, IMPURE }
 
 /**
+ * Where the storage a second-class value points into lives (ViewPass, design 30-second-class
+ * 2.3): TypedModel.viewOrigins, keyed by every second-class expression (a `View`, `MutView`,
+ * `CStr` or `Unsafe` value, a place the typer converts to a view, a lambda that captures a
+ * view parameter). The C++ emitter reads it to lower views (30-second-class 3.4) and never
+ * recomputes it.
+ */
+sealed interface ViewOrigin {
+    /** A second-class parameter [param] of the enclosing function or of an enclosing lambda: the caller checked its storage for the whole call. */
+    data class Param(val param: ParamSymbol) : ViewOrigin
+
+    /** A string literal's own text, or a non-`mut` global that is not a `Str` (an `Arr` constant). */
+    data object Static : ViewOrigin
+
+    /**
+     * The storage of the place [place], which the checker keeps from moving while the view
+     * is in use. [within] when the view may point anywhere inside it (a method's result on
+     * its receiver, the object behind a reference) rather than at [place]'s own buffer
+     * (`xs.view()`). [type] is the place's type; [kind] its class (30-second-class 2.3).
+     */
+    data class Stored(
+        val place: Place,
+        val kind: PlaceKind,
+        val within: Boolean,
+        val type: KType?,
+    ) : ViewOrigin
+
+    /** A temporary the full-expression makes, [owner] the expression that owns it (a call result, a construction, an operator, a Str constant). C++ keeps it to the end of the full-expression. */
+    data class Temp(val owner: Expr) : ViewOrigin
+}
+
+/** How far a [ViewOrigin.Stored] place is shared (30-second-class 2.3). */
+enum class PlaceKind {
+    /** Rooted at a local of this body or a by-value parameter through value steps only: nothing else can name it. */
+    PRIVATE,
+
+    /** Rooted at a `mut` global through value steps only. */
+    GLOBAL,
+
+    /** Everything else: a `const&` or `mut` parameter, `this`, or any step through a reference. */
+    SHARED,
+}
+
+/**
  * Every fact the typer establishes, in side tables keyed by AST node **identity**:
  * `Identifier.equals` compares by value, so two `x` identifiers would collide in a HashMap.
  * Every table here is a [java.util.IdentityHashMap].
@@ -98,7 +141,7 @@ enum class Effect { PURE, READS, IMPURE }
  * Who fills what: phase B (W1.2) fills [typeRefs], [aliasRefs], [declSyms], [refs] for
  * declared names and type names, and [consts] for folded module-level initializers, enum
  * values and defaults. Phase C (W2.1) fills every table but [effects], [fnEffects],
- * [fxEscapes] and [viewEscapes], which the rule passes (W2.5) fill.
+ * [fxEscapes] and [viewOrigins], which the rule passes (W2.5) fill.
  */
 class TypedModel {
     /** The type of every expression. */
@@ -147,11 +190,8 @@ class TypedModel {
     /** Whether an `Fx` parameter escapes (EscapePass); an absent entry means ESCAPING, so `std::function`. */
     val fxEscapes: IdentityHashMap<ParamSymbol, Boolean> = IdentityHashMap()
 
-    /**
-     * Whether a `View`/`MutView` parameter or local escapes (EscapePass); an absent entry
-     * means ESCAPING.
-     */
-    val viewEscapes: IdentityHashMap<Symbol, Boolean> = IdentityHashMap()
+    /** Where each second-class expression points (ViewPass, [ViewOrigin]); absent for every first-class one. */
+    val viewOrigins: IdentityHashMap<Expr, Set<ViewOrigin>> = IdentityHashMap()
 
     fun typeOrNull(e: Expr): KType? = types[e] ?: (e as? Type)?.let { typeRefs[it] }
 
@@ -195,6 +235,6 @@ class TypedModel {
     /** True unless EscapePass proved the parameter does not escape. */
     fun fxEscapes(p: ParamSymbol): Boolean = fxEscapes[p] ?: true
 
-    /** True unless EscapePass proved the view does not escape. */
-    fun viewEscapes(s: Symbol): Boolean = viewEscapes[s] ?: true
+    /** The origins ViewPass recorded for the second-class expression [e]; empty for a first-class one. */
+    fun viewOrigins(e: Expr): Set<ViewOrigin> = viewOrigins[e].orEmpty()
 }

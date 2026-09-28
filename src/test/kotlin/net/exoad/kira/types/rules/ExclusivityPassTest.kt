@@ -206,7 +206,8 @@ class ExclusivityPassTest {
             """,
         )
         // `sum(xs.view())` is a value, not a place: no overlap. `xs.view()` lends xs itself: overlap.
-        expectExactly(p, "rules.exclusivity.argument", "rules.exclusivity.argument", "rules.exclusivity.argument", "rules.exclusivity.argument")
+        // fill(mut xs, xs.view()) is ViewPass's as well: a named write of the place a view in use points into (3.3).
+        expectExactly(p, "rules.view.write", "rules.exclusivity.argument", "rules.exclusivity.argument", "rules.exclusivity.argument", "rules.exclusivity.argument")
         assertTrue(message(p, "rules.exclusivity.argument").contains("D37"))
     }
 
@@ -227,8 +228,9 @@ class ExclusivityPassTest {
     @Test
     fun aMutViewLendsAWriteOfWhatItWasLentFrom() {
         // D33 (round 2, issue 1): fill's MutView parameter writes arr, and a sibling operand reads arr; the read
-        // is PURE (a local), so R19 never spills it, and only this rule keeps the order. The view may be lent at
-        // the call (arr.view(), arr.from(0)), held in a MutView local (mv), or held in a struct local (w).
+        // is PURE (a local), so R19 never spills it, and only this rule keeps the order. The view is lent at the
+        // call (arr.view(), arr.from(0)), or is a MutView parameter (mv): no view is held in a local or a field
+        // (decision 4b, ViewPass).
         val p = snippet(
             """
             pub fx fill: (v: MutView<UInt8>) UInt8 {
@@ -238,53 +240,43 @@ class ExclusivityPassTest {
             pub fx pair8: (a: UInt8, b: UInt8) UInt8 {
                 return a
             }
-            pub struct W {
-                pub mv: MutView<UInt8>
-            }
-            pub fx fillW: (w: W) UInt8 {
-                w.mv.set(0, 9)
-                return 1
-            }
             pub fx both: (xs: Arr<UInt8, 4>, v: MutView<UInt8>) UInt8 {
                 v.set(0, 9)
                 return xs[0]
             }
+            pub fx viaParam: (mv: MutView<UInt8>) UInt8 {
+                return pair8(mv[0], fill(mv))
+            }
             pub fx f: () UInt8 {
                 mut arr: Arr<UInt8, 4> = [1, 2, 3, 4]
                 a: UInt8 = pair8(arr[0], fill(arr.view()))
-                mv: MutView<UInt8> = arr.view()
-                b: UInt8 = pair8(arr[0], fill(mv))
                 c: UInt8 = arr[0] + fill(arr.view())
                 d: UInt8 = pair8(arr.get(0), fill(arr.from(0)))
-                w: W = W { mv = arr.view() }
-                e: UInt8 = pair8(arr[0], fillW(w))
                 g: UInt8 = both(arr, arr.view())
-                h: UInt8 = pair8(mv[0], fill(mv))
-                return a + b + c + d + e + g + h
+                return a + c + d + g
             }
             """,
         )
         expectExactly(
             p,
             "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order",
-            "rules.exclusivity.order", "rules.exclusivity.argument", "rules.exclusivity.order",
+            "rules.exclusivity.argument",
         )
         val messages = p.diagnostics.map { it.message }
         assertTrue(messages.any { it.startsWith("'the MutView 'arr.view()'' writes 'arr' while one operand of 'pair8' is evaluated, and 'arr[0]' is read") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'the MutView 'mv'' writes 'arr' while one operand of 'pair8'") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'the MutView 'w'' writes 'arr' while one operand of 'pair8'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("'the MutView 'mv'' writes 'mv' while one operand of 'pair8'") }, messages.joinToString("\n"))
         assertTrue(messages.any { it.startsWith("the MutView 'arr.view()' overlaps the argument 'arr' of 'both'") }, messages.joinToString("\n"))
     }
 
     @Test
     fun aMutViewReadOnlyBesideAWriteOfItsStorageIsCaughtToo() {
-        // The other way round: the sibling writes the storage a view local reads.
+        // The other way round: the sibling writes the storage a view reads (lent where it is read: no view is held
+        // in a local, decision 4b).
         val p = snippet(
             bag + """
             pub fx f: () Int32 {
                 mut xs: Arr<Int32> = [1, 2]
-                v: View<Int32> = xs.view()
-                return pair(v[0], bump(mut xs[1]))
+                return pair(xs.view()[0], bump(mut xs[1]))
             }
             """,
         )
@@ -529,17 +521,20 @@ class ExclusivityPassTest {
 
     @Test
     fun aLoopOverAViewACalleeLentAndAWriteThroughAViewAliasInACalleeAreSeen() {
-        // Round 3, issue 6: `half(xs)` returns a view of xs, so the loop iterates xs; and poke writes GL through
-        // a MutView local of its own, which its caller cannot see at the call site.
+        // Round 3, issue 6: `half(xs)` returns a view of xs, so the loop iterates xs (ViewPass's origin of the range,
+        // which it refuses too: a for over a local's view is rules.view.position); and poke writes GL through a
+        // MutView it lends, which its caller cannot see at the call site.
         val p = snippet(
             """
             pub mut GL: List<Int32> = List<Int32> {}
-            pub fx half: (a: List<Int32>) View<Int32> {
-                return a.view()
+            pub fx half: (a: View<Int32>) View<Int32> {
+                return a
+            }
+            pub fx set5: (mv: MutView<Int32>) Void {
+                mv[0 as Size] = 5
             }
             pub fx poke: () Void {
-                mv: MutView<Int32> = GL.view()
-                mv[0 as Size] = 5
+                set5(GL.view())
             }
             pub fx l1: () Int32 {
                 mut xs: List<Int32> = List<Int32> {}
@@ -558,10 +553,10 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop")
+        expectExactly(p, "rules.view.position", "rules.exclusivity.loop", "rules.exclusivity.loop")
         val messages = p.diagnostics.map { it.message }
         assertTrue(messages.any { it.contains("iterates 'half(xs)', and its body calls the `mut fx` 'add' on it") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.contains("iterates 'GL', and its body calls 'poke', which writes 'GL[..]'") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.contains("iterates 'GL', and its body calls 'poke', which writes 'GL'") }, messages.joinToString("\n"))
     }
 
     @Test

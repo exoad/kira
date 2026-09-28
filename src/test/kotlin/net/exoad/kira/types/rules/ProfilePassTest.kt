@@ -30,7 +30,6 @@ class ProfilePassTest {
                 pub struct Frame {
                     pub bytes: Arr<UInt8, 8> = [0, 0, 0, 0, 0, 0, 0, 0]
                     pub mode: Mode = Mode.MODE_A
-                    pub head: View<Char> = ""
                     pub mut fx clear: () Void {
                         bytes[0] = 0
                     }

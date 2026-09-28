@@ -35,6 +35,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
@@ -43,7 +44,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import org.yaml.snakeyaml.Yaml
 import java.nio.file.Files
@@ -310,76 +311,54 @@ internal class Rules(val program: TypedProgram) {
     /** A user or extern class (D29): held by `kira::Rc`, so a parameter or a plain local copies the same handle, not the object. A struct is a value type and never this. */
     fun isClass(t: KType?): Boolean = t != null && facts.isClass(t)
 
-    /**
-     * Whether `this` may already be published for an object of [cls]: [ClassSymbol.thisEscapes]
-     * only ever gets set on the `ClassSymbol` whose own body does the publishing
-     * ([EscapePass]'s `Flows.classOwner`), so a subclass never sees an ancestor's `initially` or
-     * a plain method it inherits without overriding, and a class implementing a trait never sees
-     * that trait's own default body do it ([TraitSymbol.thisEscapes]) -- round 4's PB1/PB2/PB3.
-     * This is the union a fresh-local exemption or a construction-time check must test instead
-     * of [cls]'s own flag: [cls] itself, every superclass up the chain, and every trait (and its
-     * own parents, transitively) any of those implements.
-     */
-    fun classPublishesThis(cls: ClassSymbol): Boolean {
-        var c: ClassSymbol? = cls
-        val seenTraits = HashSet<TraitSymbol>()
-        val seenClasses = HashSet<ClassSymbol>()
-        while (c != null && seenClasses.add(c)) {
-            if (c.thisEscapes) {
-                return true
-            }
-            if (c.traits.any { traitPublishesThis(it.sym as? TraitSymbol, seenTraits) }) {
-                return true
-            }
-            c = c.superclass?.sym as? ClassSymbol
-        }
-        return false
-    }
-
-    private fun traitPublishesThis(t: TraitSymbol?, seen: MutableSet<TraitSymbol>): Boolean {
-        if (t == null || !seen.add(t)) {
-            return false
-        }
-        return t.thisEscapes || t.parents.any { traitPublishesThis(it.sym as? TraitSymbol, seen) }
-    }
-
-    /**
-     * The first view type a value of [t] carries, or null: [t] itself when it is a `View` or
-     * `MutView`, else one held by a field of a struct, an element of a container (`Arr`,
-     * `List`, `Set`, `Deque`, `Stack`, `Queue`, a `Map`'s key or value), a tuple, a `Maybe`, a
-     * `Result` or a `Ref`. A class is never looked into (a class holding a view is refused at
-     * its own declaration). A struct that contains itself ends the walk.
-     */
-    fun viewInside(t: KType?): KType? = inside(t, HashSet()) { isView(it) }
-
-    fun holdsView(t: KType?): Boolean = viewInside(t) != null
-
-    /** The first `MutView` a value of [t] carries (the same walk as [viewInside]), or null. */
+    /** The first `MutView` a value of [t] carries (itself, a struct's field, a container's element, a tuple's, a `Maybe`'s), or null. */
     fun mutViewInside(t: KType?): KType? = inside(t, HashSet()) { facts.isMutView(it) }
 
     /** Whether a value of [t] is or holds a `MutView`: passing it lends write access to what the view was lent from. */
     fun holdsMutView(t: KType?): Boolean = mutViewInside(t) != null
 
     /**
-     * Whether a value of [t] is or holds a closure (an `Fx`, a `Maybe` or container of one, a
-     * struct or a class with an `Fx` field, at any depth): it holds what the closure captured.
-     * Unlike a view, a closure may sit in a class field, so the walk looks into classes too.
+     * A step that goes through a reference (30-second-class 2.3): a field of a class, a trait,
+     * a `Ref`, a `Weak` or a stdlib handle, whose object any other reference may share, or an
+     * element of a view, which borrows storage the reader does not own.
      */
-    fun holdsClosure(t: KType?): Boolean = inside(t, HashSet(), throughClasses = true) { it is KType.Fn } != null
+    fun isReferenceStep(step: PathStep): Boolean = when (step) {
+        is PathStep.FieldStep -> ownerIsReference(step.sym)
+        is PathStep.IndexStep -> step.kind == IndexKind.VIEW || step.kind == IndexKind.MUT_VIEW
+    }
 
     /**
-     * Whether a value of [t] may borrow storage it does not own, so EscapePass traces its
-     * provenance: it is or holds a view, is or holds a closure (which holds what it captured),
-     * or its type is, or holds, a type parameter (`T` in `idG<T>: (x: T) T`), which a call may
-     * instantiate with a view or a closure: the generic body is analysed once, for every
-     * instantiation, and a `T` value borrows whatever the caller's argument does. A trait, or a
-     * subclassed (non-`final`) class, is walked as [throughOpenTypes]: the declared type's own
-     * fields are not the whole story once the concrete object may be an implementor or subclass
-     * this pass never looked at, so it is assumed to hold a closure rather than cleared by a
-     * declaration that says nothing about what it was upcast from (round 4, PA1..PA4).
+     * Whether a value of [t] owns or reaches storage a view could point into, so writing it may
+     * move that storage (30-second-class 3.2): a container, a `Str` or `StrBuf`, a reference
+     * (which a write may drop), a closure (which holds what it captured), a type parameter or
+     * anything unknown; a struct, a `Maybe`, a `Result` or a tuple when a part does. A scalar,
+     * a `Bool`, a `Char` and an enum reallocate nothing.
      */
-    fun mayBorrow(t: KType?): Boolean =
-        holdsView(t) || inside(t, HashSet(), throughClasses = true, throughOpenTypes = true) { it is KType.Fn || it is KType.Param } != null
+    fun mayHoldStorage(t: KType?): Boolean = holdsStorage(t, HashSet())
+
+    private fun holdsStorage(t: KType?, path: MutableSet<KType>): Boolean = when (t) {
+        null, KType.Error -> true
+        is KType.Scalar, KType.Void, KType.Never, KType.NullT -> false
+        KType.Str, is KType.Param, is KType.Fn -> true
+        is KType.Nominal -> when (val sym = t.sym) {
+            is EnumSymbol -> false
+            is ClassSymbol -> when (sym.kind) {
+                ClassKind.STRUCT -> path.add(t) && run {
+                    val sub = sym.typeParams.zip(t.typeArgs()).toMap()
+                    val found = sym.fields.any { holdsStorage(it.type.substitute(sub), path) }
+                    path.remove(t)
+                    found
+                }
+                ClassKind.MAGIC -> if (sym.name == "Maybe" || sym.name == "Result" || sym.name.startsWith("Tuple")) {
+                    t.typeArgs().any { holdsStorage(it, path) }
+                } else {
+                    true
+                }
+                else -> true
+            }
+            else -> true
+        }
+    }
 
     /**
      * A literal `Str` constant (design 5.1: `inline constexpr const char*`), which C++ converts
@@ -389,13 +368,7 @@ internal class Rules(val program: TypedProgram) {
      */
     fun isLiteralStrConstant(sym: Symbol?): Boolean = sym is GlobalSymbol && sym.isConstant && sym.type == KType.Str
 
-    private fun inside(
-        t: KType?,
-        path: MutableSet<KType>,
-        throughClasses: Boolean = false,
-        throughOpenTypes: Boolean = false,
-        wanted: (KType) -> Boolean,
-    ): KType? {
+    private fun inside(t: KType?, path: MutableSet<KType>, wanted: (KType) -> Boolean): KType? {
         if (t == null) {
             return null
         }
@@ -406,27 +379,15 @@ internal class Rules(val program: TypedProgram) {
             return null
         }
         val nominal = t as? KType.Nominal ?: return null
-        if (throughOpenTypes) {
-            val open = nominal.sym as? TraitSymbol != null ||
-                (nominal.sym as? ClassSymbol)?.let { it.kind == ClassKind.CLASS && it.isSubclassed } == true
-            if (open) {
-                // The concrete object may be an implementor or subclass with a field the declared
-                // type does not have (D29): assumed to hold what [wanted] looks for, not cleared.
-                return t
-            }
-        }
         val sym = nominal.sym as? ClassSymbol ?: return null
         return when (sym.kind) {
-            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, throughClasses, throughOpenTypes, wanted) }
-            ClassKind.STRUCT, ClassKind.CLASS -> {
-                if (sym.kind == ClassKind.CLASS && !throughClasses) {
-                    return null
-                }
+            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, wanted) }
+            ClassKind.STRUCT -> {
                 if (!path.add(t)) {
                     return null
                 }
                 val sub = sym.typeParams.zip(nominal.typeArgs()).toMap()
-                val found = sym.fields.firstNotNullOfOrNull { inside(it.type.substitute(sub), path, throughClasses, throughOpenTypes, wanted) }
+                val found = sym.fields.firstNotNullOfOrNull { inside(it.type.substitute(sub), path, wanted) }
                 path.remove(t)
                 found
             }
@@ -439,10 +400,11 @@ internal class Rules(val program: TypedProgram) {
      * `mut fx`, a `MutView` receiver of a magic method without `pure: true` (`v.set(0, 9)`),
      * a `mut` argument, and an argument bound to a parameter that is or holds a `MutView`
      * (`fill(arr.view())` writes `arr`). A lent view stands for what it was lent from
-     * ([placeOf]), and a view local for what was stored in it ([aliases]). Every operand with
-     * a place is listed, written or not, so the caller can pair them.
+     * ([placeOf]); no view is ever held in a local (decision 4b, ViewPass), so that is all a
+     * view can stand for. Every operand with a place is listed, written or not, so the caller
+     * can pair them.
      */
-    fun callOperands(b: Body, e: FunctionCallExpr, aliases: ViewAliases): List<CallOperand> {
+    fun callOperands(b: Body, e: FunctionCallExpr): List<CallOperand> {
         val rc = model.calls[e] ?: return emptyList()
         val out = mutableListOf<CallOperand>()
         val fn = rc.fn
@@ -450,10 +412,10 @@ internal class Rules(val program: TypedProgram) {
         val receiverWrites = fn?.isMutMethod == true ||
             (receiverType != null && facts.isMutView(receiverType) && fn?.foreign is Foreign.Magic && !bindings.isPure(fn))
         if (rc.implicitThis) {
-            b.owner?.let { out.add(CallOperand(Place.This(it), listOf(Place.This(it)), (e.name as? MemberAccessExpr)?.member ?: e.name, "this", receiverWrites, true, "the receiver")) }
+            b.owner?.let { out.add(CallOperand(Place.This(it), (e.name as? MemberAccessExpr)?.member ?: e.name, "this", receiverWrites, true, "the receiver")) }
         } else {
             rc.receiver?.let { recv ->
-                placeOf(recv)?.let { out.add(CallOperand(it, aliases.expand(it, forWrite = receiverWrites), recv, KiraUnparser.text(recv), receiverWrites, true, "the receiver")) }
+                placeOf(recv)?.let { out.add(CallOperand(it, recv, KiraUnparser.text(recv), receiverWrites, true, "the receiver")) }
             }
         }
         rc.args.forEachIndexed { i, a ->
@@ -463,7 +425,7 @@ internal class Rules(val program: TypedProgram) {
             val lendsWrite = !given.byRef && param != null && holdsMutView(param.type.substitute(rc.substitution))
             val how = if (given.byRef) "mut" else if (lendsWrite) "a MutView of" else ""
             val writes = given.byRef || lendsWrite
-            out.add(CallOperand(place, aliases.expand(place, forWrite = writes), given.expr, KiraUnparser.text(given.expr), writes, false, how))
+            out.add(CallOperand(place, given.expr, KiraUnparser.text(given.expr), writes, false, how))
         }
         return out
     }
@@ -558,13 +520,12 @@ internal class BindingFlags {
 }
 
 /**
- * One operand of a call that denotes a place: [place] as written, [places] with what a view
- * local stands for added ([ViewAliases.expand]), and whether the call [writes] it. [how] is
- * the message's word for the write: `mut`, `a MutView of`, or `the receiver`.
+ * One operand of a call that denotes a place: [place] as written, and whether the call
+ * [writes] it. [how] is the message's word for the write: `mut`, `a MutView of`, or `the
+ * receiver`.
  */
 internal class CallOperand(
     val place: Place,
-    val places: List<Place>,
     val at: ASTNode,
     val text: String,
     val writes: Boolean,
@@ -572,190 +533,97 @@ internal class CallOperand(
     val how: String,
 )
 
-/** [base] followed by [steps]; a field step stops the walk when [throughFields] is false (a view local's steps are index steps). */
-internal fun rebase(base: Place, steps: List<PathStep>, throughFields: Boolean): Place {
+/** [base] followed by [steps]. */
+internal fun rebase(base: Place, steps: List<PathStep>): Place {
     var p = base
     for (s in steps) {
         p = when (s) {
             is PathStep.IndexStep -> Place.Index(p, s.kind)
-            is PathStep.FieldStep -> if (throughFields) Place.Field(p, s.sym) else return p
+            is PathStep.FieldStep -> Place.Field(p, s.sym)
         }
     }
     return p
 }
 
+/** A moving write a call site spells (30-second-class 3.2): a `mut` argument's place, or the receiver of a `mut fx` on a value. [type] is the written value's type; [at] the operand. */
+internal class NamedWrite(val place: Place, val type: KType?, val at: ASTNode)
+
 /**
- * What the view-typed and view-holding locals of one body stand for: `v: View<T> =
- * xs.from(1)` makes `v` stand for `xs`, `w: W = W { mv = arr.view() }` makes `w` stand for
- * `arr`, and `u: View<T> = v` makes `u` stand for what `v` does. Assignments add to a
- * local's sources, and so does a mutator handed a view (`vs.add(arr.view())` makes `vs`
- * stand for `arr`). A call's view result stands for its view or view-holding arguments (a
- * container coerced to a view among them) and such a receiver (over-approximate: whichever
- * of them it returned).
+ * What a call may write that its call site does not spell, for the view rule
+ * (30-second-class 3.2): some `mut` [globals], anything behind a reference ([heap]: a field of
+ * a class object, `Ref.value`, what a handle holds), or anything at all ([any], which stands
+ * for every global and the heap). Only a write that can move storage is counted: one whose
+ * written value holds a container, a `Str`, a reference or anything unknown
+ * ([Rules.mayHoldStorage]); writing an `Int32` field reallocates nothing.
  */
-internal class ViewAliases private constructor(
-    private val r: Rules,
-    private val sources: IdentityHashMap<LocalSymbol, MutableSet<Place>>,
-) {
-    /** The places a view-valued expression stands for, each expanded: its own place, or what a call's view result was lent from. */
-    fun standsFor(e: Expr): List<Place> {
-        val out = LinkedHashSet<Place>()
-        lent(r, e, out)
-        return out.flatMap { expand(it) }
+internal class Hidden(val globals: Set<GlobalSymbol>, val heap: Boolean, val any: Boolean) {
+    val isEmpty: Boolean get() = globals.isEmpty() && !heap && !any
+
+    operator fun plus(o: Hidden): Hidden = when {
+        o.isEmpty || covers(o) -> this
+        isEmpty -> o
+        else -> Hidden(globals + o.globals, heap || o.heap, any || o.any)
     }
 
-    /**
-     * [p], and [p] rebased onto everything the local it starts from stands for. Reading the
-     * local reads all of it; writing it ([forWrite]) writes only what it holds a `MutView`
-     * of (`mv.set(0, 9)` writes `arr`, `vs.add(v)` on a `List<View<T>>` writes `vs` alone).
-     */
-    fun expand(p: Place, forWrite: Boolean = false): List<Place> {
-        val out = mutableListOf(p)
-        val root = p.root() as? Place.Local ?: return out
-        if (!sources.containsKey(root.sym)) {
-            return out
-        }
-        val seen = HashSet<LocalSymbol>()
-        fun go(sym: LocalSymbol) {
-            if (!seen.add(sym)) {
-                return
-            }
-            if (forWrite && !r.holdsMutView(sym.type)) {
-                return
-            }
-            for (s in sources[sym].orEmpty()) {
-                val root = s.root()
-                if (root is Place.Local && sources.containsKey(root.sym)) {
-                    go(root.sym)
-                } else {
-                    out.add(rebase(s, p.path(), throughFields = false))
-                }
-            }
-        }
-        go(root.sym)
-        return out
-    }
+    fun covers(o: Hidden): Boolean = any || ((heap || !o.heap) && !o.any && globals.containsAll(o.globals))
 
     companion object {
-        private val memo = java.util.WeakHashMap<Body, ViewAliases>()
+        val NONE = Hidden(emptySet(), heap = false, any = false)
+        val HEAP = Hidden(emptySet(), heap = true, any = false)
+        val ANY = Hidden(emptySet(), heap = true, any = true)
 
-        fun of(r: Rules, b: Body): ViewAliases = synchronized(memo) { memo.getOrPut(b) { build(r, b) } }
-
-        /** A value that is or holds a view: typed as one, or a container coerced to a view where one is expected. */
-        private fun viewish(r: Rules, e: Expr): Boolean {
-            val t = r.model.types[e]
-            return r.isView(t) || r.holdsView(t) || r.model.coercions[e] is Coercion.ToView
-        }
-
-        /**
-         * A value a call's view result may have been lent from: a view or view holder, or a
-         * place whose value the callee takes by reference ([Rules.aliasesCaller]: a `Str`, a
-         * container, a struct) and may return a view of (`half(xs)` returning `xs.view()`).
-         */
-        private fun lendable(r: Rules, e: Expr): Boolean =
-            viewish(r, e) || (r.placeOf(e) != null && r.model.types[e]?.let { r.aliasesCaller(it) } == true)
-
-        /** The places the view-valued [e] was lent from, into [out]. */
-        private fun lent(r: Rules, e: Expr, out: MutableSet<Place>) {
-            val model = r.model
-            for (v in AstScan.values(e)) {
-                val p = r.placeOf(v)
-                if (p != null) {
-                    out.add(p)
-                    continue
-                }
-                when (v) {
-                    is ObjectInitExpr -> {
-                        v.positionalArgs.forEach { lent(r, it, out) }
-                        v.namedArgs.forEach { lent(r, it.value, out) }
-                    }
-                    is ArrayLiteral -> v.value.forEach { lent(r, it, out) }
-                    is FunctionCallExpr -> {
-                        val rc = model.calls[v] ?: continue
-                        rc.receiver?.takeIf { lendable(r, it) }?.let { lent(r, it, out) }
-                        for (a in rc.args) {
-                            val given = a as? ArgBinding.Given ?: continue
-                            if (lendable(r, given.expr)) {
-                                lent(r, given.expr, out)
-                            }
-                        }
-                    }
-                    else -> {}
-                }
-            }
-        }
-
-        private fun build(r: Rules, b: Body): ViewAliases {
-            val model = r.model
-            val sources = IdentityHashMap<LocalSymbol, MutableSet<Place>>()
-            fun tracked(s: Symbol?): LocalSymbol? = (s as? LocalSymbol)?.takeIf { r.isView(it.type) || r.holdsView(it.type) }
-            AstScan.walk(b.roots) { n, _ ->
-                when (n) {
-                    is VariableDecl -> tracked(model.declSyms[n])?.let { local -> n.value?.let { lent(r, it, sources.getOrPut(local) { LinkedHashSet() }) } }
-                    is AssignmentExpr -> tracked((model.places[n.target]?.root() as? Place.Local)?.sym)?.let { lent(r, n.value, sources.getOrPut(it) { LinkedHashSet() }) }
-                    is PlaceAssignmentExpr -> if (n.operator == null) {
-                        tracked((model.places[n.target]?.root() as? Place.Local)?.sym)?.let { lent(r, n.value, sources.getOrPut(it) { LinkedHashSet() }) }
-                    }
-                    is FunctionCallExpr -> {
-                        // A mutator handed a view stores it in its receiver (`vs.add(arr.view())`, `out.set(0, v)`).
-                        val rc = model.calls[n] ?: return@walk
-                        val recv = rc.receiver ?: return@walk
-                        if (rc.fn?.isMutMethod != true) {
-                            return@walk
-                        }
-                        val local = tracked((r.placeOf(recv)?.root() as? Place.Local)?.sym) ?: return@walk
-                        for (a in rc.args) {
-                            val given = a as? ArgBinding.Given ?: continue
-                            if (!given.byRef && viewish(r, given.expr)) {
-                                lent(r, given.expr, sources.getOrPut(local) { LinkedHashSet() })
-                            }
-                        }
-                    }
-                    else -> {}
-                }
-            }
-            return ViewAliases(r, sources)
-        }
+        fun global(g: GlobalSymbol) = Hidden(setOf(g), heap = false, any = false)
     }
 }
 
 /**
- * The places a function writes that its caller cannot see at the call site: globals, for a
+ * The writes a call makes that its caller cannot see at the call site, two ways.
+ *
+ * [of], for ExclusivityPass: the places a function writes out of sight: globals, for a
  * method, fields reached through `this`, and what it writes through a parameter it takes
  * without `mut` (a class reference, `sc: Sc`, whose fields any reference may write, D29:
  * `sc.k = K {}`, `sc.resetK()`), whether written by its own body or by the functions it calls
  * (a fixpoint over the call graph; a callee's `this` writes are seen through the receiver
  * they were called on, and its parameter writes through the argument bound to the
  * parameter). A write to a `mut` parameter or through a `MutView` parameter is the caller's
- * to see ([Rules.callOperands]) and is left out; a write through a view local stands for the
- * storage the view was lent from ([ViewAliases]). Paths deeper than [MAX_DEPTH] are cut to
+ * to see ([Rules.callOperands]) and is left out. Paths deeper than [MAX_DEPTH] are cut to
  * their root, which overlaps everything under it. A class `mut fx` called on a reference
  * writes the object, not the reference's place ([Rules.writesObjectOnly]): with a body, its
  * writes are listed field by field; without one (a stdlib handle's) they are not nameable,
- * and nothing is listed.
+ * and nothing is listed. A call dispatched at run time (a virtual method, a trait method)
+ * runs whichever override the object has, so it writes what the method and every override of
+ * it write. A call handed a lambda may run it, so the lambda's body writes at the call
+ * (`run(fx() { LOG.add(1) })` writes `LOG`); so does a call of an `Fx` local through the
+ * lambdas stored in it (`g()`). A lambda that reaches a call through a field, a global or an
+ * `Fx` parameter is not followed there: that is a known gap of the loop rule, which [summary]
+ * does not share.
  *
- * A call dispatched at run time (a virtual method, a trait method) runs whichever override
- * the object has, so it writes what the method and every override of it write. A call handed
- * a lambda may run it, so the lambda's body writes at the call (`run(fx() { LOG.add(1) })`
- * writes `LOG`); so does a call of an `Fx` local through the lambdas stored in it (`g()`).
- * Captures are by value and immutable, so a lambda writes nothing of the enclosing body but
- * what a captured view lends. A lambda that reaches a call through a field, a global or an
- * `Fx` parameter is not followed, and nothing else charges it either: writing it down runs
- * nothing, and the walk skips lambda bodies. `for x in LOG { h.f() }` with `h.f` a lambda
- * that adds to `LOG` is a known gap of the loop rule; the writes of every lambda in the
- * program are the only sound answer, and that refuses every callback called in a loop.
+ * [summary], for ViewPass (30-second-class 3.2): a [Hidden] per call, with no gap. A pure
+ * stdlib binding writes nothing; any other binding nothing of its own, plus [Hidden.heap] on a
+ * reference receiver, and [Hidden.any] for a handle's bodiless `mut fx` or when a type
+ * argument is a user class or trait (it may run their operators); an extern nothing of its
+ * own (its contract, 30-second-class 5.4); a Kira callee with a body, dispatched statically,
+ * what its body writes out of sight, a fixpoint over the call graph; a virtual, trait or
+ * `Fx`-value call [Hidden.any], except, inside the summary of a function, a call of its own
+ * non-escaping `Fx` parameter, which its call sites are charged with instead; and every call
+ * adds what each `Fx` argument may write: a lambda literal's body, a named function's summary,
+ * anything else [Hidden.any]. A construction adds its class's `initially` and field defaults,
+ * and every function the writes of any class's `finally` (a handle it drops may be the last).
  */
 internal class HiddenWrites private constructor(
     private val r: Rules,
+    private val bodies: List<Body>,
     private val table: IdentityHashMap<FnSymbol, MutableSet<Place>>,
     private val overriders: IdentityHashMap<FnSymbol, MutableList<FnSymbol>>,
 ) {
+    private val model = r.model
+
     /** What the call [e] writes beyond what its operands show, seen from the caller's body [b]. */
-    fun of(b: Body, e: FunctionCallExpr, aliases: ViewAliases): List<Place> = of(b, e, aliases, IdentityHashMap())
+    fun of(b: Body, e: FunctionCallExpr): List<Place> = of(b, e, IdentityHashMap())
 
     /** [visiting]: the lambdas whose writes are being collected up the stack (two `Fx` locals reassigned into each other's lambdas would otherwise recurse without end). */
-    private fun of(b: Body, e: FunctionCallExpr, aliases: ViewAliases, visiting: IdentityHashMap<LambdaExpr, Boolean>): List<Place> {
-        val rc = r.model.calls[e] ?: return emptyList()
+    private fun of(b: Body, e: FunctionCallExpr, visiting: IdentityHashMap<LambdaExpr, Boolean>): List<Place> {
+        val rc = model.calls[e] ?: return emptyList()
         val out = LinkedHashSet<Place>()
         for (fn in callees(rc)) {
             val hidden = table[fn] ?: continue
@@ -764,11 +632,11 @@ internal class HiddenWrites private constructor(
                     is Place.Global -> out.add(w)
                     is Place.This -> if (rc.implicitThis) {
                         if (b.owner != null) {
-                            out.add(rebase(Place.This(b.owner), w.path(), throughFields = true))
+                            out.add(rebase(Place.This(b.owner), w.path()))
                         }
                     } else {
                         val recv = rc.receiver?.let { r.placeOf(it) } ?: continue
-                        aliases.expand(recv).forEach { out.add(rebase(it, w.path(), throughFields = true)) }
+                        out.add(rebase(recv, w.path()))
                     }
                     is Place.Param -> {
                         // Written through a parameter: at this call, through the argument bound to it (an
@@ -776,7 +644,7 @@ internal class HiddenWrites private constructor(
                         val i = fn.params.indexOfFirst { it === root.sym }
                         val given = rc.args.getOrNull(i) as? ArgBinding.Given ?: continue
                         val arg = r.placeOf(given.expr) ?: continue
-                        aliases.expand(arg).forEach { out.add(rebase(it, w.path(), throughFields = true)) }
+                        out.add(rebase(arg, w.path()))
                     }
                     else -> {}
                 }
@@ -784,7 +652,7 @@ internal class HiddenWrites private constructor(
         }
         for (l in lambdasRun(b, e, rc)) {
             if (visiting.put(l, true) == null) {
-                out.addAll(lambdaWrites(b, l, aliases, visiting))
+                out.addAll(lambdaWrites(b, l, visiting))
                 visiting.remove(l)
             }
         }
@@ -804,7 +672,7 @@ internal class HiddenWrites private constructor(
             for (x in AstScan.values(v)) {
                 when (x) {
                     is LambdaExpr -> out.add(x)
-                    is Identifier -> (r.model.refs[x] as? LocalSymbol)?.let { out.addAll(lambdasIn(b)[it].orEmpty()) }
+                    is Identifier -> (model.refs[x] as? LocalSymbol)?.let { out.addAll(lambdasIn(b)[it].orEmpty()) }
                     else -> {}
                 }
             }
@@ -822,7 +690,6 @@ internal class HiddenWrites private constructor(
 
     /** The lambdas each local of [b] was given (at its declaration or by assignment). */
     private fun lambdasIn(b: Body): IdentityHashMap<LocalSymbol, MutableList<LambdaExpr>> = lambdasInBody.getOrPut(b) {
-        val model = r.model
         val out = IdentityHashMap<LocalSymbol, MutableList<LambdaExpr>>()
         fun store(local: Symbol?, v: Expr?) {
             val sym = local as? LocalSymbol ?: return
@@ -840,22 +707,21 @@ internal class HiddenWrites private constructor(
     }
 
     /** The places the body of [l] (its own lambdas included) writes, seen from the body [b] that wrote it down. */
-    private fun lambdaWrites(b: Body, l: LambdaExpr, aliases: ViewAliases, visiting: IdentityHashMap<LambdaExpr, Boolean>): List<Place> {
-        val model = r.model
+    private fun lambdaWrites(b: Body, l: LambdaExpr, visiting: IdentityHashMap<LambdaExpr, Boolean>): List<Place> {
         val out = LinkedHashSet<Place>()
         val body = l.def.body ?: return emptyList()
         AstScan.walk(body) { n, _ ->
             when (n) {
-                is AssignmentExpr -> model.places[n.target]?.let { out.addAll(aliases.expand(it, forWrite = true)) }
-                is CompoundAssignmentExpr -> model.places[n.left]?.let { out.addAll(aliases.expand(it, forWrite = true)) }
-                is PlaceAssignmentExpr -> model.places[n.target]?.let { out.addAll(aliases.expand(it, forWrite = true)) }
+                is AssignmentExpr -> model.places[n.target]?.let { out.add(it) }
+                is CompoundAssignmentExpr -> model.places[n.left]?.let { out.add(it) }
+                is PlaceAssignmentExpr -> model.places[n.target]?.let { out.add(it) }
                 is FunctionCallExpr -> {
-                    for (op in r.callOperands(b, n, aliases)) {
+                    for (op in r.callOperands(b, n)) {
                         if (op.writes && !r.writesObjectOnly(b, n, op)) {
-                            out.addAll(op.places)
+                            out.add(op.place)
                         }
                     }
-                    out.addAll(of(b, n, aliases, visiting))
+                    out.addAll(of(b, n, visiting))
                 }
                 else -> {}
             }
@@ -863,10 +729,275 @@ internal class HiddenWrites private constructor(
         return out.toList()
     }
 
+    // ---- the view rule's summary (30-second-class 3.2) ------------------------------------------
+
+    private val fnHidden = IdentityHashMap<FnSymbol, Hidden>()
+    private var finallyHidden = Hidden.NONE
+    private val initMemo = IdentityHashMap<ClassSymbol, Hidden>()
+    private val summarised: Boolean by lazy {
+        summarise()
+        true
+    }
+
+    /** What the call [rc] at [site] may write out of sight, seen from a body whose receiver type is [owner] (ViewPass's check: no summary is being built). */
+    fun summary(owner: TypeSymbol?, site: ASTNode, rc: ResolvedCall): Hidden {
+        check(summarised)
+        return callHidden(owner, site, rc, null)
+    }
+
+    /** What constructing an object of [cls] runs out of sight: its `initially` and field defaults, and its superclasses'. */
+    fun construction(cls: ClassSymbol?): Hidden {
+        check(summarised)
+        return initHidden(cls)
+    }
+
+    /** What dropping the last handle of any object may write: every class's `finally`. */
+    fun drops(): Hidden {
+        check(summarised)
+        return finallyHidden
+    }
+
+    /**
+     * The moving writes the call [e] spells: each `mut` argument's place, and the receiver of a
+     * `mut fx` on a value (a container, a `StrBuf`, a struct; for a stdlib container's `set`,
+     * the element alone, which moves nothing that contains it). A `mut fx` on a reference writes
+     * the object behind it, which its summary has; a `MutView` argument moves nothing.
+     */
+    fun named(owner: TypeSymbol?, e: FunctionCallExpr, rc: ResolvedCall): List<NamedWrite> {
+        val out = mutableListOf<NamedWrite>()
+        for (a in rc.args) {
+            val given = a as? ArgBinding.Given ?: continue
+            if (given.byRef) {
+                r.placeOf(given.expr)?.let { out.add(NamedWrite(it, model.types[given.expr], given.expr)) }
+            }
+        }
+        val fn = rc.fn ?: return out
+        if (!fn.isMutMethod) {
+            return out
+        }
+        val recvType = if (rc.implicitThis) (owner as? ClassSymbol)?.selfType else rc.receiver?.let { model.types[it] }
+        if (recvType == null || r.isReference(recvType)) {
+            return out
+        }
+        val place = if (rc.implicitThis) owner?.let { Place.This(it) } else rc.receiver?.let { r.placeOf(it) }
+        val at: ASTNode = rc.receiver ?: e
+        if (place != null) {
+            val element = elementWrite(fn, recvType)
+            if (element != null) {
+                out.add(NamedWrite(Place.Index(place, element), r.facts.elementOf(recvType), at))
+            } else {
+                out.add(NamedWrite(place, recvType, at))
+            }
+        }
+        return out
+    }
+
+    /** The index kind of a stdlib container's element setter (`xs.set(i, v)`), which writes the element alone; null for every other mutator. */
+    private fun elementWrite(fn: FnSymbol, recvType: KType): IndexKind? {
+        if (fn.foreign !is Foreign.Magic || fn.name != "set") {
+            return null
+        }
+        return when {
+            r.facts.isList(recvType) -> IndexKind.LIST
+            r.facts.isArr(recvType) -> IndexKind.ARR
+            else -> null
+        }
+    }
+
+    /** What writing [place] (holding a [type]) moves out of sight of a call site: a `mut` global, the heap, or nothing (a local, a `mut` parameter the call site names, a value's own parts). */
+    private fun written(place: Place?, type: KType?): Hidden {
+        if (place == null) {
+            return Hidden.ANY
+        }
+        if (!r.mayHoldStorage(type)) {
+            return Hidden.NONE
+        }
+        if (place.path().any { r.isReferenceStep(it) }) {
+            return Hidden.HEAP
+        }
+        return when (val root = place.root()) {
+            is Place.Global -> if (root.sym.isMut) Hidden.global(root.sym) else Hidden.NONE
+            is Place.This -> if (root.owner is TraitSymbol || (root.owner as? ClassSymbol)?.let { it.kind == ClassKind.CLASS || it.kind == ClassKind.OPAQUE } == true) Hidden.HEAP else Hidden.NONE
+            else -> Hidden.NONE
+        }
+    }
+
+    /** Everything [roots] (their lambdas aside) may write out of sight of its caller. [analysed] is the function whose summary this is, whose own non-escaping `Fx` parameters are charged at its call sites. */
+    private fun bodyHidden(owner: TypeSymbol?, roots: List<ASTNode>, analysed: FnSymbol?): Hidden {
+        var h = Hidden.NONE
+        walkOutsideLambdas(roots) { n ->
+            h += when (n) {
+                is AssignmentExpr -> written(model.places[n.target], model.types[n.target] ?: model.places[n.target]?.let { placeType(it) })
+                is CompoundAssignmentExpr -> written(model.places[n.left], model.types[n.left])
+                is PlaceAssignmentExpr -> written(model.places[n.target], model.types[n.target])
+                is FunctionCallExpr -> model.calls[n]?.let { rc ->
+                    named(owner, n, rc).fold(callHidden(owner, n, rc, analysed)) { acc, w -> acc + written(w.place, w.type) }
+                } ?: Hidden.NONE
+                is BinaryExpr, is UnaryExpr -> model.opCalls[n as Expr]?.let { callHidden(owner, n, it, analysed) } ?: Hidden.NONE
+                is ObjectInitExpr -> initHidden(model.inits[n]?.cls)
+                else -> Hidden.NONE
+            }
+        }
+        return h
+    }
+
+    private fun placeType(p: Place): KType? = when (p) {
+        is Place.Local -> p.sym.type
+        is Place.Param -> p.sym.type
+        is Place.Global -> p.sym.type
+        is Place.Field -> p.sym.type
+        else -> null
+    }
+
+    private fun callHidden(owner: TypeSymbol?, site: ASTNode, rc: ResolvedCall, analysed: FnSymbol?): Hidden {
+        val fn = rc.fn
+        var h = when (rc.kind) {
+            CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> when {
+                fn == null -> Hidden.ANY
+                fn.body != null -> fnHidden[fn] ?: Hidden.ANY
+                fn.foreign is Foreign.Magic -> magicHidden(rc)
+                fn.foreign is Foreign.Extern || fn.owner == null -> Hidden.NONE
+                // A method without a body is a slot a closure fills at construction (the spec's "no abstract classes").
+                else -> Hidden.ANY
+            } + (if (rc.kind == CallKind.CTOR) initHidden((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol) else Hidden.NONE)
+            CallKind.VIRTUAL, CallKind.TRAIT -> Hidden.ANY
+            CallKind.FN_VALUE -> if (analysed != null && site is FunctionCallExpr && ownFx(site.name, analysed)) Hidden.NONE else Hidden.ANY
+            CallKind.MAGIC -> magicHidden(rc)
+            CallKind.EXTERN, CallKind.PRINT -> Hidden.NONE
+        }
+        rc.args.forEachIndexed { i, a ->
+            val given = a as? ArgBinding.Given ?: return@forEachIndexed
+            val paramType = fn?.params?.getOrNull(i)?.type?.substitute(rc.substitution) ?: model.types[given.expr]
+            if (paramType is KType.Fn || model.types[given.expr] is KType.Fn) {
+                h += fxArgument(owner, given.expr, analysed)
+            }
+        }
+        return h
+    }
+
+    /** A stdlib binding writes only its receiver and `mut` arguments, which the call site names, unless it is a handle's or runs a user type's operators. */
+    private fun magicHidden(rc: ResolvedCall): Hidden {
+        val fn = rc.fn ?: return Hidden.ANY
+        if (r.bindings.isPure(fn)) {
+            return Hidden.NONE
+        }
+        var h = Hidden.NONE
+        val recvType = rc.receiver?.let { model.types[it] }
+        if (recvType != null && r.isReference(recvType)) {
+            h += if (fn.isMutMethod) Hidden.ANY else Hidden.HEAP
+        }
+        val typeArgs = rc.substitution.values + ((recvType as? KType.Nominal)?.typeArgs() ?: emptyList())
+        if (typeArgs.any { holdsUserType(it, HashSet()) }) {
+            h += Hidden.ANY
+        }
+        return h
+    }
+
+    /** A user class or struct, a trait or a type parameter anywhere in [t]: a stdlib binding over it may run its operators. */
+    private fun holdsUserType(t: KType, seen: MutableSet<KType>): Boolean = when (t) {
+        is KType.Param -> true
+        is KType.Fn -> false
+        is KType.Nominal -> when (val sym = t.sym) {
+            is TraitSymbol -> true
+            is ClassSymbol -> sym.kind != ClassKind.MAGIC || (seen.add(t) && t.typeArgs().any { holdsUserType(it, seen) })
+            else -> false
+        }
+        else -> false
+    }
+
+    /** What an `Fx` argument may write when the callee runs it. */
+    private fun fxArgument(owner: TypeSymbol?, e: Expr, analysed: FnSymbol?): Hidden {
+        var h = Hidden.NONE
+        for (v in AstScan.values(e)) {
+            val fnRef = model.coercions[v] as? Coercion.FnRef
+            h += when {
+                v is LambdaExpr -> v.def.body?.let { bodyHidden(owner, it, analysed) } ?: Hidden.NONE
+                fnRef != null -> when {
+                    fnRef.fn.body != null -> fnHidden[fnRef.fn] ?: Hidden.ANY
+                    fnRef.fn.foreign is Foreign.Extern -> Hidden.NONE
+                    else -> Hidden.ANY
+                }
+                analysed != null && ownFx(v, analysed) -> Hidden.NONE
+                else -> Hidden.ANY
+            }
+        }
+        return h
+    }
+
+    /** [e] names a non-escaping `Fx` parameter of [fn]: its calls are charged at [fn]'s call sites, to the argument. */
+    private fun ownFx(e: Expr, fn: FnSymbol): Boolean {
+        val p = (e as? Identifier)?.let { model.refs[it] } as? ParamSymbol ?: return false
+        return p.fn === fn && p.type is KType.Fn && !model.fxEscapes(p)
+    }
+
+    private fun initHidden(cls: ClassSymbol?): Hidden {
+        if (cls == null || (cls.kind != ClassKind.CLASS && cls.kind != ClassKind.STRUCT)) {
+            return Hidden.NONE
+        }
+        initMemo[cls]?.let { return it }
+        initMemo[cls] = Hidden.NONE
+        var h = Hidden.NONE
+        var c: ClassSymbol? = cls
+        val seen = HashSet<ClassSymbol>()
+        while (c != null && seen.add(c)) {
+            c.initially?.let { h += bodyHidden(c, it, null) }
+            for (f in c.fields) {
+                f.default?.let { h += bodyHidden(c, listOf(it), null) }
+            }
+            c = c.superclass?.sym as? ClassSymbol
+        }
+        initMemo[cls] = h
+        return h
+    }
+
+    /** The summaries of every function with a body, and of every `finally`, a fixpoint from "writes nothing". */
+    private fun summarise() {
+        val fnBodies = bodies.filter { it.fn != null }
+        val finallies = bodies.filter { it.kind == BodyKind.FINALLY }
+        fnBodies.forEach { fnHidden[it.fn!!] = Hidden.NONE }
+        var changed = true
+        while (changed) {
+            changed = false
+            initMemo.clear()
+            val fin = finallies.fold(Hidden.NONE) { acc, b -> acc + bodyHidden(b.owner, b.roots, null) }
+            if (!finallyHidden.covers(fin)) {
+                finallyHidden += fin
+                changed = true
+            }
+            for (b in fnBodies) {
+                val fn = b.fn!!
+                val was = fnHidden[fn]!!
+                val now = was + bodyHidden(b.owner, b.roots, fn) + finallyHidden
+                if (!was.covers(now)) {
+                    fnHidden[fn] = now
+                    changed = true
+                }
+            }
+        }
+        initMemo.clear()
+    }
+
     companion object {
         private const val MAX_DEPTH = 6
 
-        fun of(r: Rules, bodies: List<Body>): HiddenWrites {
+        private val memo = java.util.WeakHashMap<TypedProgram, HiddenWrites>()
+
+        /** Every node of [roots] outside a lambda's body, in pre-order. */
+        fun walkOutsideLambdas(roots: List<ASTNode>, visit: (ASTNode) -> Unit) {
+            fun go(n: ASTNode) {
+                visit(n)
+                if (n is LambdaExpr) {
+                    return
+                }
+                AstTree.children(n).forEach { go(it) }
+            }
+            roots.forEach { go(it) }
+        }
+
+        /** One per program: ExclusivityPass and ViewPass share it. */
+        fun of(r: Rules, bodies: List<Body>): HiddenWrites = synchronized(memo) { memo.getOrPut(r.program) { build(r, bodies) } }
+
+        private fun build(r: Rules, bodies: List<Body>): HiddenWrites {
             val model = r.model
             val table = IdentityHashMap<FnSymbol, MutableSet<Place>>()
             val fnBodies = bodies.filter { it.fn != null }
@@ -882,7 +1013,7 @@ internal class HiddenWrites private constructor(
                     base = base.overrides
                 }
             }
-            val hidden = HiddenWrites(r, table, overriders)
+            val hidden = HiddenWrites(r, bodies, table, overriders)
             fun add(set: MutableSet<Place>, p: Place) {
                 val root = p.root()
                 val hidden = when (root) {
@@ -901,25 +1032,24 @@ internal class HiddenWrites private constructor(
                 changed = false
                 for (b in fnBodies) {
                     val set = table[b.fn!!]!!
-                    val aliases = ViewAliases.of(r, b)
                     val before = set.size
                     AstScan.walk(b.roots) { n, lambdas ->
                         if (lambdas.isNotEmpty()) {
                             return@walk
                         }
                         when (n) {
-                            is AssignmentExpr -> model.places[n.target]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
-                            is CompoundAssignmentExpr -> model.places[n.left]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
-                            is PlaceAssignmentExpr -> model.places[n.target]?.let { aliases.expand(it, forWrite = true).forEach { p -> add(set, p) } }
+                            is AssignmentExpr -> model.places[n.target]?.let { add(set, it) }
+                            is CompoundAssignmentExpr -> model.places[n.left]?.let { add(set, it) }
+                            is PlaceAssignmentExpr -> model.places[n.target]?.let { add(set, it) }
                             is FunctionCallExpr -> {
                                 // A class `mut fx` writes the object, which its body's hidden writes name field by
                                 // field; the variable holding the reference is untouched (Rules.writesObjectOnly).
-                                for (op in r.callOperands(b, n, aliases)) {
+                                for (op in r.callOperands(b, n)) {
                                     if (op.writes && !r.writesObjectOnly(b, n, op)) {
-                                        op.places.forEach { add(set, it) }
+                                        add(set, op.place)
                                     }
                                 }
-                                hidden.of(b, n, aliases).forEach { add(set, it) }
+                                hidden.of(b, n).forEach { add(set, it) }
                             }
                             else -> {}
                         }

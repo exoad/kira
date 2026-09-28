@@ -437,18 +437,18 @@ class CppDeclFixesTest {
             """
             pub struct Early { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
             pub struct Queued { pub d: Deque<Later> = Deque<Later> {} }
-            pub struct Viewed { pub v: View<Later> }
             pub struct Later { pub v: Int32 = 0 }
             pub class Node { pub v: Int32 = 0 }
             """,
             usageOf = { CppUsage.NONE },
         )
         // A List or Map value needs only the forward declaration, and its empty default is `xs{}`
-        // (the prvalue form makes libc++ instantiate the temporary's destructor); a Deque, Stack,
-        // Queue or View element must be complete on libc++ and MSVC, so Later moves up.
+        // (the prvalue form makes libc++ instantiate the temporary's destructor); a Deque, Stack or
+        // Queue element must be complete on libc++ and MSVC, so Later moves up. (A View is never a
+        // field: views are second-class, decision 4b.)
         assertContains(
             h,
-            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w{};\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };\n\n  struct Viewed\n  {\n      kira::View<Later> v{};\n  };",
+            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w{};\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };",
         )
     }
 

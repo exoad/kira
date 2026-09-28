@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.TypedProgram
+import net.exoad.kira.compiler.analysis.types.ViewOrigin
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
@@ -31,9 +32,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatem
  *
  * A call writes a place through a `mut` argument, the receiver of a `mut fx`, a `MutView`
  * argument or receiver (`fill(arr.view())`, `v.set(0, 9)`): [Rules.callOperands]. A lent
- * view stands for what it was lent from, and a view local (or a local holding a view) for
- * what was stored in it ([ViewAliases]), so `mv: MutView<T> = arr.view()` makes `fill(mv)` a
- * write of `arr`.
+ * view stands for what it was lent from; no view is held in a local (decision 4b), so a view
+ * iterated stands for the places ViewPass recorded as its origins (`TypedModel.viewOrigins`).
  *
  * - `rules.exclusivity.argument`: a written argument's place overlaps another argument of the
  *   same call (the same root, and one path a prefix of the other). C++ would pass one object
@@ -127,11 +127,11 @@ internal class ExclusivityPass : RulePass {
         val bodies = Bodies.of(program)
         val hidden = HiddenWrites.of(r, bodies)
         for (b in bodies) {
-            Walk(r, b, ViewAliases.of(r, b), hidden).run()
+            Walk(r, b, hidden).run()
         }
     }
 
-    private class Walk(private val r: Rules, private val b: Body, private val aliases: ViewAliases, private val hidden: HiddenWrites) {
+    private class Walk(private val r: Rules, private val b: Body, private val hidden: HiddenWrites) {
         private val model = r.model
 
         fun run() {
@@ -162,7 +162,7 @@ internal class ExclusivityPass : RulePass {
                                 // ran, in Kira and in C++ alike; a receiver it only reads is a value taken before
                                 // them, and C++ passes it by `const&` to a free function, unsequenced with the
                                 // arguments and never copied by the emitter.
-                                val receiverWritten = r.callOperands(b, n, aliases).any { it.isReceiver && it.writes }
+                                val receiverWritten = r.callOperands(b, n).any { it.isReceiver && it.writes }
                                 val receiver = rc.receiver?.takeIf { !receiverWritten }
                                 siblings(n, listOfNotNull(receiver) + args, what, pinned = if (receiver != null) 0 else null)
                             }
@@ -208,7 +208,7 @@ internal class ExclusivityPass : RulePass {
             r.writesObjectOnly(b, e, op) && model.calls[e]?.let { r.hasAnalysedBody(it) } == true
 
         private fun call(e: FunctionCallExpr) {
-            val ops = r.callOperands(b, e, aliases)
+            val ops = r.callOperands(b, e)
             for (i in ops.indices) {
                 val w = ops[i]
                 if (!w.writes || isAnalysedReferenceReceiver(e, w)) {
@@ -219,7 +219,7 @@ internal class ExclusivityPass : RulePass {
                         continue
                     }
                     val o = ops[j]
-                    if (w.places.none { wp -> o.places.any { it.overlaps(wp) } }) {
+                    if (!o.place.overlaps(w.place)) {
                         continue
                     }
                     if (o.writes && j < i) {
@@ -270,7 +270,7 @@ internal class ExclusivityPass : RulePass {
          */
         private fun aliasing(e: FunctionCallExpr) {
             val rc = model.calls[e] ?: return
-            val all = r.callOperands(b, e, aliases)
+            val all = r.callOperands(b, e)
             // An operand overlapping a written operand of the same call is the argument/receiver rule's, unless the
             // written one is the receiver of a class `mut fx` with a body, whose writes are listed as hidden writes.
             val written = all.filter { it.writes && !isAnalysedReferenceReceiver(e, it) }
@@ -280,7 +280,7 @@ internal class ExclusivityPass : RulePass {
                 if (op.writes && passing != Passing.REFERENCE) {
                     return@mapNotNull null
                 }
-                if (written.any { w -> w !== op && w.places.any { wp -> op.places.any { it.overlaps(wp) } } }) {
+                if (written.any { w -> w !== op && op.place.overlaps(w.place) }) {
                     return@mapNotNull null
                 }
                 op to passing
@@ -288,7 +288,7 @@ internal class ExclusivityPass : RulePass {
             if (ops.isEmpty()) {
                 return
             }
-            val hiddenWrites = hidden.of(b, e, aliases)
+            val hiddenWrites = hidden.of(b, e)
             if (hiddenWrites.isEmpty()) {
                 return
             }
@@ -296,7 +296,7 @@ internal class ExclusivityPass : RulePass {
             for ((op, passing) in ops) {
                 val what = if (op.isReceiver) "the receiver" else "the argument"
                 if (passing == Passing.REFERENCE) {
-                    val w = hiddenWrites.firstOrNull { w -> op.places.any { it.overlaps(w) && w.path().size <= it.path().size } } ?: continue
+                    val w = hiddenWrites.firstOrNull { w -> op.place.overlaps(w) && w.path().size <= op.place.path().size } ?: continue
                     val consequence = if (op.isReceiver) {
                         "Kira keeps the object alive until '$fnName' returns, but C++ runs '$fnName' on a raw pointer into it, which the write may destroy"
                     } else {
@@ -309,7 +309,7 @@ internal class ExclusivityPass : RulePass {
                         op.at,
                     )
                 } else {
-                    val w = hiddenWrites.firstOrNull { w -> op.places.any { it.overlaps(w) } } ?: continue
+                    val w = hiddenWrites.firstOrNull { w -> op.place.overlaps(w) } ?: continue
                     r.report(
                         "rules.exclusivity.alias",
                         "'$fnName' writes '${r.describe(w)}', and $what '${op.text}' is passed to it by reference (design 5.1): Kira hands " +
@@ -481,7 +481,7 @@ internal class ExclusivityPass : RulePass {
                 // no place of its own (a call result), with a null receiver precisely to say so (Place.kt):
                 // that Field aliases nothing, by identity, so it is no better than having no place at all
                 // here and must not stop this walk short.
-                r.placeOf(e)?.takeUnless { it is Place.Field && it.receiver == null }?.let { return aliases.expand(it) }
+                r.placeOf(e)?.takeUnless { it is Place.Field && it.receiver == null }?.let { return listOf(it) }
                 if (e is FunctionCallExpr) {
                     val rc = model.calls[e] ?: return emptyList()
                     if (rc.kind == CallKind.MAGIC && rc.receiver != null) {
@@ -504,7 +504,7 @@ internal class ExclusivityPass : RulePass {
                     return@walk
                 }
                 val text = KiraUnparser.text(n)
-                hidden.of(b, n, aliases).forEach { out.add(Touch(it, n, text, r.describe(it), hidden = true)) }
+                hidden.of(b, n).forEach { out.add(Touch(it, n, text, r.describe(it), hidden = true)) }
             }
             return out
         }
@@ -512,15 +512,15 @@ internal class ExclusivityPass : RulePass {
         /** The places evaluating [e] writes: the written operands of every call inside it, and assignment targets inside it. */
         private fun writesOf(e: Expr): List<Touch> {
             val out = mutableListOf<Touch>()
-            fun add(places: List<Place>, at: ASTNode, text: String, placeText: String) {
-                places.forEach { out.add(Touch(it, at, text, placeText)) }
+            fun add(place: Place, at: ASTNode, text: String, placeText: String) {
+                out.add(Touch(place, at, text, placeText))
             }
             AstScan.walk(listOf(e)) { n, lambdas ->
                 if (lambdas.isNotEmpty()) {
                     return@walk
                 }
                 when (n) {
-                    is FunctionCallExpr -> for (op in r.callOperands(b, n, aliases)) {
+                    is FunctionCallExpr -> for (op in r.callOperands(b, n)) {
                         if (op.writes) {
                             val text = when {
                                 op.isReceiver -> KiraUnparser.text(n)
@@ -531,26 +531,26 @@ internal class ExclusivityPass : RulePass {
                             // the reference; with a body, it writes what the body writes (its hidden writes).
                             val objectOnly = r.writesObjectOnly(b, n, op)
                             val analysed = objectOnly && model.calls[n]?.let { r.hasAnalysedBody(it) } == true
-                            op.places.forEach { out.add(Touch(it, n, text, r.describe(it), objectOnly = objectOnly, analysed = analysed)) }
+                            out.add(Touch(op.place, n, text, r.describe(op.place), objectOnly = objectOnly, analysed = analysed))
                         }
                     }
-                    is AssignmentExpr -> model.places[n.target]?.let { add(aliases.expand(it, forWrite = true), n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
-                    is CompoundAssignmentExpr -> model.places[n.left]?.let { add(aliases.expand(it, forWrite = true), n, KiraUnparser.text(n), KiraUnparser.text(n.left)) }
-                    is PlaceAssignmentExpr -> model.places[n.target]?.let { add(aliases.expand(it, forWrite = true), n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
+                    is AssignmentExpr -> model.places[n.target]?.let { add(it, n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
+                    is CompoundAssignmentExpr -> model.places[n.left]?.let { add(it, n, KiraUnparser.text(n), KiraUnparser.text(n.left)) }
+                    is PlaceAssignmentExpr -> model.places[n.target]?.let { add(it, n, KiraUnparser.text(n), KiraUnparser.text(n.target)) }
                     else -> {}
                 }
             }
             return out
         }
 
-        /** The places evaluating [e] reads: every place expression inside it (a lent view reads what it was lent from; a view local what it stands for). */
+        /** The places evaluating [e] reads: every place expression inside it (a lent view reads what it was lent from). */
         private fun readsOf(e: Expr): List<Touch> {
             val out = mutableListOf<Touch>()
             AstScan.walk(listOf(e)) { n, lambdas ->
                 if (lambdas.isNotEmpty() || n !is Expr) {
                     return@walk
                 }
-                r.placeOf(n)?.let { p -> aliases.expand(p).forEach { out.add(Touch(it, n, KiraUnparser.text(n), KiraUnparser.text(n))) } }
+                r.placeOf(n)?.let { p -> out.add(Touch(p, n, KiraUnparser.text(n), KiraUnparser.text(n))) }
             }
             return out
         }
@@ -561,8 +561,9 @@ internal class ExclusivityPass : RulePass {
                 return
             }
             val target = s.forIterationExpr.target
-            // The place iterated, or what a view iterated was lent from (`half(xs)` returning a view of xs).
-            val iterated = r.placeOf(target)?.let { aliases.expand(it) } ?: aliases.standsFor(target)
+            // The place iterated, or the places ViewPass says a view iterated points into.
+            val iterated = r.placeOf(target)?.let { listOf(it) }
+                ?: model.viewOrigins(target).mapNotNull { (it as? ViewOrigin.Stored)?.place }
             if (iterated.isEmpty()) {
                 return
             }
@@ -584,14 +585,14 @@ internal class ExclusivityPass : RulePass {
                     return@walk
                 }
                 when (n) {
-                    is AssignmentExpr -> model.places[n.target]?.let { writes(aliases.expand(it, forWrite = true), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
-                    is CompoundAssignmentExpr -> model.places[n.left]?.let { writes(aliases.expand(it, forWrite = true), n.left, "assigns '${KiraUnparser.text(n.left)}'") }
-                    is PlaceAssignmentExpr -> model.places[n.target]?.let { writes(aliases.expand(it, forWrite = true), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
+                    is AssignmentExpr -> model.places[n.target]?.let { writes(listOf(it), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
+                    is CompoundAssignmentExpr -> model.places[n.left]?.let { writes(listOf(it), n.left, "assigns '${KiraUnparser.text(n.left)}'") }
+                    is PlaceAssignmentExpr -> model.places[n.target]?.let { writes(listOf(it), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
                     is FunctionCallExpr -> {
                         val rc = model.calls[n]
                         val fnName = rc?.fn?.name
                         var seen = false
-                        for (op in r.callOperands(b, n, aliases)) {
+                        for (op in r.callOperands(b, n)) {
                             if (!op.writes) {
                                 continue
                             }
@@ -602,17 +603,17 @@ internal class ExclusivityPass : RulePass {
                                     false
                                 } else {
                                     val around = if (iterated.any { op.place.path().size < it.path().size }) "'${op.text}', which holds it" else "it"
-                                    writes(op.places, op.at, "calls the `mut fx` '$fnName' on $around")
+                                    writes(listOf(op.place), op.at, "calls the `mut fx` '$fnName' on $around")
                                 }
                             } else if (op.how == "mut") {
-                                writes(op.places, op.at, "passes '${op.text}' as mut")
+                                writes(listOf(op.place), op.at, "passes '${op.text}' as mut")
                             } else {
-                                writes(op.places, op.at, "passes a MutView of '${op.text}'")
+                                writes(listOf(op.place), op.at, "passes a MutView of '${op.text}'")
                             } || seen
                         }
                         if (!seen) {
                             // A write the call site does not show: the callee's own, an override's, or a lambda's it may run.
-                            hidden.of(b, n, aliases).firstOrNull { w -> iterated.any { w.overlaps(it) } }?.let { w ->
+                            hidden.of(b, n).firstOrNull { w -> iterated.any { w.overlaps(it) } }?.let { w ->
                                 writes(listOf(w), n, "calls '${fnName ?: KiraUnparser.text(n.name)}', which writes '${r.describe(w)}'")
                             }
                         }
