@@ -777,7 +777,7 @@ pub fx checksum: (p: Unsafe<UInt8>, n: Size) UInt32;  // an extern: its body is 
 
 **`Str`**
 
-Immutable Unicode string type. Strings are value types that support interpolation and common string operations.
+Immutable Unicode string type. Strings are immutable objects that support interpolation and common string operations. `s[i]` is the string's i-th code unit, a `Char`; a `Str` cannot be written through `[]`.
 
 ```kira
 greeting: Str = "Hello, ${name}!"
@@ -785,7 +785,7 @@ greeting: Str = "Hello, ${name}!"
 
 **`Arr<A>`**
 
-Fixed-size immutable array. Size is determined at initialization and cannot change. The compiler may optimize array operations using static size information.
+Fixed-size array, with writable elements. Size is determined at initialization and cannot change; an element changes through a mutable place (`mut a: Arr<Int32> = [1, 2]`, then `a[0] = 5`). The compiler may optimize array operations using static size information.
 
 **Array Literals:**
 
@@ -853,15 +853,63 @@ config["bufferSize"] = 4096
 timeout: Int32 = config["timeout"]
 ```
 
-This is similar to Java's Map interface but with operator overloading for cleaner syntax. The indexing operators are syntactic sugar for `get()` and `put()` methods.
+`config[k]` calls the map's `@_op_get_`, and `config[k] = v` calls its `@_op_set_`. Reading a missing key is a runtime error; `config.get(k)` returns a `Maybe<V>` instead. A key is a number, a `Bool`, a `Char`, a `Str` or an enum value.
 
 **`Set<A>`**
 
-Unordered collection of unique values.
+Unordered collection of unique values. An element is a number, a `Bool`, a `Char`, a `Str` or an enum value.
 
 ```kira
 mut uniqueIds: Set<Int32> = Set<Int32> { }
 uniqueIds.add(42)
+```
+
+**Indexing:**
+
+`Arr`, `List`, `Map`, `Str` and the views declare `@_op_get_` in the standard library, and `Arr`, `List`, `Map` and `MutView` declare `@_op_set_`. `xs[i]` calls them exactly as it calls a user class's (see Indexing Operator). An index into an `Arr`, a `List`, a `Str` or a view may be any integer type and is checked at run time.
+
+**`View<T>` and `MutView<T>`**
+
+A view lends a run of elements without copying them: a `View<T>` reads them, and a `MutView<T>` also writes them. `xs.view()`, `xs.from(4)` and `xs.slice(4, 8)` view an `Arr`, a `List` or another view, and `s.view()` views a `Str` as a `View<Char>`. An `Arr<T>`, a `List<T>` or a `MutView<T>` given where a `View<T>` is expected is viewed in place, not copied.
+
+**Views are second-class.** A view is only ever handed on, never kept, so it cannot outlive what it lends:
+
+-   A view may appear only as an argument of a call, as the receiver of a method call, or as the operand of `return` under the rule below. A call whose result is a view is held to the same positions, so `parsePacket(buf.view().from(4))` is allowed.
+-   A view is never bound to a local, and a view type is never the type of a local, a global, a field, a `mut` parameter, or a type argument of a container, `Maybe`, `Result`, a tuple, `Ref`, `Weak` or a generic class. `Maybe<View<Char>>` cannot be written. An `Fx` type may name one in its parameters or result, since those are a signature: `Fx<Tuple1<View<UInt8>>, Void>` receives a view and holds none. A view is never given where `Any` or a trait-typed value is expected either.
+-   A function whose result is a view may return only a view of its own view parameters or of its receiver (`this`), and its callers use the result in the same positions. To return part of a container, take it as a `View<T>` parameter: callers still pass the container.
+-   `for x: T in v` over a view is allowed when the view comes from the function's own view parameters, or from a literal or a constant.
+-   A lambda that captures a view may only be passed straight to a parameter that the called function only calls during the call, never storing, returning or passing it on to one that keeps it. Any other lambda never captures a view: pass the view to the lambda as an argument where it is called.
+-   A generic function may take a view type as its `T` only when its result type does not mention `T` and its body keeps no `T`. A generic class is never given a view type.
+-   A view is in use from where it is formed until the call that receives it returns. In that time nothing may change the storage it lends: no assignment to it, and no `mut` argument or `mut fx` receiver that names or contains it. When that storage lies in a mutable object or a `mut` module-level variable, no impure call may run in that time either.
+
+> Note: which calls count as impure for the last rule is still being decided.
+
+An extern function (one whose body is native code) may take a view, a `CStr` (a `Str` or a string literal passed as native text) or an `Unsafe<T>` parameter, whose argument obeys these rules; it never returns one. An extern reads such an argument only during the call and keeps nothing from it, writes Kira storage only through its `mut` arguments and its receiver, and runs Kira code only through the `Fx` arguments it is given. A type holding a view, a `CStr` or an `Unsafe<T>` cannot be written, so no container or class holding one ever reaches an extern.
+
+```kira
+fx total: (xs: View<Int32>) Int32 {
+    mut sum: Int32 = 0
+    for x: Int32 in xs {
+        sum += x
+    }
+    return sum
+}
+
+fx tail: (xs: View<Int32>, at: Size) View<Int32> {
+    return xs.from(at)  // a view of its own view parameter
+}
+
+// append: (from: View<Int32>, mut into: List<Int32>) Void
+mut values: List<Int32> = List<Int32> { [1, 2, 3, 4] }
+sum: Int32 = total(tail(values, 2))  // values is viewed in place
+rest: View<Int32> = tail(values, 2)  // Error: a view is never kept in a local
+append(tail(values, 2), mut values)  // Error: values may change while its view is in use
+```
+
+Each misuse is a compile error that names the view and says what to write instead:
+
+```
+'rest' would hold tail(values, 2), a View<Int32>: a view is never kept in a local. Pass it straight to the call that uses it, total(tail(values, 2)), or take a View parameter.
 ```
 
 ---
