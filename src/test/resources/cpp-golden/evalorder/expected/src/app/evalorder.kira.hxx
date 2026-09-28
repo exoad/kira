@@ -5,10 +5,6 @@
 namespace evalorder
 {
   struct Box;
-  struct Lender;
-  template<typename T>
-  struct Holder;
-  struct Win;
   struct Acc;
 
   struct Box
@@ -17,28 +13,6 @@ namespace evalorder
 
       [[nodiscard]] std::int32_t pair(std::int32_t a, std::int32_t b) const;
       void grow(std::int32_t a, std::int32_t b);
-  };
-
-  struct Lender
-  {
-      kira::List<std::int32_t> xs = kira::List<std::int32_t>{1, 2, 3};
-
-      [[nodiscard]] kira::MutView<std::int32_t> lend();
-  };
-
-  template<typename T>
-  struct Holder
-  {
-      T v{};
-      kira::Size k = 0;
-  };
-
-  struct Win
-  {
-      kira::View<std::int32_t> v{};
-      kira::Size k = 0;
-
-      void attach(kira::View<std::int32_t> src, kira::Size k_p);
   };
 
   struct Acc

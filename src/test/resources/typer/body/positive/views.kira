@@ -53,6 +53,6 @@ pub fx texts: (mut out: StrBuf<16>, x: Int32) Void {
     out.addInt(x as Int64)                 // @type Void call=MAGIC(StrBuf.addInt)
     out.addFixed(1.5, 2)                   // @type Void call=MAGIC(StrBuf.addFixed)
     n: Size = out.size()                   // @type Size call=MAGIC(StrBuf.size)
-    v: View<Char> = out.view()             // @type View<Char> call=MAGIC(StrBuf.view)
+    m: Size = out.view().size()            // @type View<Char> call=MAGIC(StrBuf.view) @ out.view()
     out.clear()                            // @type Void call=MAGIC(StrBuf.clear)
 }

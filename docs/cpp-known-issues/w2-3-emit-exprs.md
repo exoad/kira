@@ -1,198 +1,72 @@
 # Known issues: w2-3-emit-exprs
 
 The C++ backend's expression, statement, closure and binding lowering: `CppExprEmitter.kt`,
-`CppStmtEmitter.kt`, `CppClosureEmitter.kt`, `CppHoister.kt` (with `CppLending` and
-`CppEscapes`) and `CppBindingTable.kt`, the tests under `src/test/kotlin/net/exoad/kira/cpp/exprs/`
-and the `evalorder` golden. Each entry says what the issue is, where it lives, how to reproduce
-it, and why it is safe to leave for now. "Measured" means built with the goldens' warning flags
-and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC `/W4 /WX`, and run.
+`CppStmtEmitter.kt`, `CppClosureEmitter.kt`, `CppHoister.kt` (with `CppEscapes`, now only the
+`Fx` escape fallback) and `CppBindingTable.kt`, the tests under
+`src/test/kotlin/net/exoad/kira/cpp/exprs/` and the `evalorder` golden. Each entry says what the
+issue is, where it lives, how to reproduce it, and why it is safe to leave for now. "Measured"
+means built with the goldens' warning flags and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC
+`/W4 /WX`, and run.
 
-Fixed in convergence round 1, and so not listed below: a generic callee that stores its `T`
-instantiated with a view (`keep<View<Int32>>(mut h, gl, nextSize())` copied `gl`, and `h.v`
-dangled: gcc printed garbage, MSVC's ASan a heap-use-after-free); a `View` built from a
-`List` in a call's argument list, unsequenced against an impure sibling (`sizeOf(gl, grow())`
-printed 4 on gcc and 3 on clang); a function used as a value whose `Fx` parameter had become a
-template parameter (`g: Fx<...> = applyTo` did not compile on any compiler); the escape scan's
-"a body that makes any view lends every by-reference operand" rule, which read `lenOf(gl,
-grow())` after the effect; and a local read beside a sibling that writes it through a `mut`
-argument or a `MutView` (`sub(x, inc(mut x))` printed 14 on gcc and 4 on clang).
+## Views are second-class (decision 4b, design 30), round 1
 
-Fixed in convergence round 2, and so not listed below (each is in `CppHoisterTest`, and the
-ones that compile run in the evalorder golden on gcc, clang and msvc, ASan-clean on MSVC):
+The user replaced the view provenance analysis with one rule: a view (`View`, `MutView`, `CStr`,
+`Unsafe`) is only an argument, a receiver or a return derived from the function's own view
+parameters or receiver (scratchpad `kira-plan/30-second-class.md`). ViewPass (W2.5) checks it.
+This emitter now refuses no view; it only lowers them.
 
-- **A view into a temporary is refused wherever it would outlive its full expression**
-  (`cpp.view-lifetime`, with what to write instead: "store the result of 'makeList' in a local
-  first"). This covers a fresh operand a call lends from inside the lambda that orders the
-  call's operands (`trace(total(tail(makeList(), nextSize())))` printed 1651771218 on gcc, and
-  MSVC's ASan reported a heap-use-after-free), with the same for `makeList().from(nextSize())`,
-  a construction holding a call, `gl.toArr()` and an interpolated `Str`. It covers a value
-  holding such a view copied into the lambda (`pick(tail(makeList(), 1), nextSize())`). It
-  also covers a local, a `return`, an assignment and a `for` range that keep one
-  (`v: View<Int32> = makeList().view()` compiled and read freed memory), a callee that stores
-  one (`vs.add(tail(makeList(), 3))`), and an if-expression branch whose value views a local of
-  that branch. `"x".view()` is no longer such a view: it is `kira::lit("x")`, which views the
-  literal's static storage, as the implicit conversion already did. Before, it was
-  `kira::str::view("x")`, which views a temporary `kira::Str`.
-- **An explicit view made before a later operand's effect that may move its storage is
-  refused.** `total(gl.view(), grow())` copied `kira::mutView(gl)` into the lambda before
-  `grow()` reallocated `gl`, which is a heap-use-after-free. A view of an `Arr` or a `StrBuf`,
-  whose storage never moves, is still copied first, as D33 says.
-- **A bound place is located after a sibling that may move its container** (`PlaceMode.BOUND`:
-  a `mut` argument, the receiver a `mut fx` writes). `gll[0].add(growGll())` and
-  `store(mut gls[0], growGls())` bound `kira::at(...)` before the growth. All three compilers
-  wrote into freed storage, and MSVC's ASan reported it. The element steps through a
-  `List`/`Map` are now leaves, so the sibling is spilled first. A `StrBuf` element of such a
-  container beside an interpolation hole that may grow it is refused, because each piece
-  binds its receiver before its own hole.
-- **A pure read through a view or a handle is READS** (`sub(v.get(0), setG())`,
-  `readU16Le(pkt, 0)` beside `pump()`: gcc and MSVC printed 8, clang 0). The model's PURE
-  now means only "no effect", and the scan still looks for reads under it (EffectsPass calls
-  a function that reads a global pure).
-- **A local some `MutView` is lent from is shared state.** A closure that captured the view,
-  a `List<MutView>` and a struct holding it could all write it from a sibling, so
-  `sub(xs[0], pk())` printed 8 on gcc and MSVC and 0 on clang. Taking a view of the local is
-  still no read (`writeU32(p.from(20), crc32(...))` in `unilidar` is unchanged).
+- **Deleted:** `CppHoister.kt` went from 2098 lines to 967: `checkViews`,
+  the `Str` default and `Maybe` copy temporaries, `storageMoves`, `Source` and `sources`, the
+  kept-temporary and kept-receiver refusals, the branch-local refusal, `mutViewRoots` and
+  `throughMutView`, `object CppLending` (its `reallocates` and `borrowable` moved into the
+  hoister as `reallocates` and `ownsStorage`), and every part of `CppEscapes` but `fxEscapes`
+  (`ViewScan`, `viewEscapes`, `dispatchStores`, `fxArgumentKeeps`, `lendsMutView`, the body
+  enumeration). The code `cpp.view-lifetime` is gone, with its callers in `CppExprEmitter.kt`
+  and `CppStmtEmitter.kt`.
+- **E1:** a place a view is formed of is `PlaceMode.LENT`, never copied: a place the typer
+  converts to a `View` (`Coercion.ToView`), or the receiver of a call whose result is
+  second-class. The old D33 snapshot of `countOf(gl, nextSize())` is gone. `minus(gl,
+  setFirst())`, with `setFirst` writing `gl[0] = 50`, gives 55 as Kira does; the snapshot gave 6.
+- **E2, E3:** a call whose result is second-class is an `Operand.Chain` of its enclosing call.
+  Its receiver and arguments are leaves of the spill that call opens, the owner of a view of a
+  temporary is spilled into an owning typed temporary (`const kira::List<std::int32_t> t0_ =
+  makeList();`, then `kira::view(t0_)`), and a chain call with an effect of its own is copied
+  into `const kira::View<T> tN_` after its parts. A chain copied that way names every owner in
+  its parts, even a PURE one (`kira::List<std::int32_t>{5, 6, 7}`), which a first version of
+  this round missed: it would have been a temporary of the view's own declaration. No lambda
+  returns a view.
+- **Backstops (`cpp.internal`, never a user diagnostic once W2.5 merges):** a local, an
+  assignment target, an array literal, a construction's field, or a stdlib receiver whose type
+  is or holds a view; a `return` or a `for` range viewing a temporary; a `return` viewing a
+  local or a parameter that is no view; an if-expression with statement branches whose value is
+  a view. Each message names the `rules.view.*` code ViewPass refuses it with.
+- **Measured.** `CppHoisterTest.theViewsOfTemporariesRunLeftToRightOnEveryCompiler` runs 10
+  checks on gcc, clang and msvc, 10 passed each; the same module under MSVC `/fsanitize=address`
+  has 0 reports (scratchpad `sc31/viewsasan.sh`). The evalorder golden passes on gcc, clang,
+  msvc and zig-aarch64, and under MSVC ASan with 0 reports and output identical to
+  `expected.txt` (`sc31/eoasan.sh`).
+- **Goldens rewritten to the allowed form.** `text`: `word` returned `Maybe<View<Char>>`, now
+  `wordEnd: (s, w) Maybe<Size>`, the offset past the word; the driver slices
+  `s.from(kira::unwrap(...))`, and `expected.txt` is unchanged. `evalorder`: `tail` takes a
+  `View<Int32>`; the view field (`Win`), `Holder<View<Int32>>`, the view and `MutView` locals,
+  `List<MutView>` and the `MutView` lenders are gone (the rule refuses each), and so are
+  `countOf(ys, pushTo(mut ys))` and `countOf(gl, growL())` (a write that moves the viewed list
+  in the view's span, design 30 3.3). New: `sub(gv.view().get(0), setGv())`, `sub(ws[0],
+  poke(ws.from(0)))`, and the E2 and E3 lines, 9998 and 8998. 64 expected lines became 50.
+- **The converge verdict's open issue** (a fresh `Ref`, or one in a `Maybe` or a `Mutex`,
+  whose field's view a callee keeps: h1, h5, h6, h7, h9, h10) is refused by the rule at
+  `rules.view.type`: each keeps the view in a `Maybe<MutView<Int32>>` global or a
+  `List<MutView<T>>`, types no program may write. Here each is `cpp.internal` at the store,
+  pinned in `CppHoisterTest.aViewWhereTheRuleAllowsNoneIsAnInternalErrorAndAnOrderNoLoweringGivesIsRefused`.
 
-Fixed in convergence round 3, and so not listed below. Each refusal is pinned in
-`CppHoisterTest.aTemporaryTheLoweringMakesOrStorageAPathMovesIsRefusedWithWhatToWriteInstead`,
-next to its safe neighbours, which still compile. The spills run in the evalorder golden on
-gcc, clang and msvc, ASan-clean on MSVC. The verifier's probes are in the scratchpad's
-`vw23cr2`, and this round's own are in `w23r3`.
-
-- **A temporary the lowering makes where the source names none is a temporary.** Two kinds
-  were taken for places:
-  - A `Str` default (D48: a literal or a `Str` constant) is a fresh `kira::Str` that the
-    `const kira::Str&` parameter binds at the call. It is refused where a view into it would
-    outlive the full expression: inside a D33 spill (`count(tailS(1), nextSize())` printed
-    102 on gcc and 103 on clang), returned out of the spill's lambda
-    (`count(tailK(nextSize(), nextSize()))`), in a local (`v: View<Char> = tailS(1)`, the
-    verifier's pd1, which was pending on W2.5 and is now refused here too), and where the
-    callee keeps a view of it (`keepS()` storing `s.view()` in a global). The message says to
-    pass the parameter explicitly, from a local. A default that is a constant place of the
-    parameter's own type binds as it is and is no temporary.
-  - A place the typer wraps for a `Maybe` parameter (`WrapSome`) is a `kira::Maybe` copy of
-    the place, and `m.value.view()` in the callee points into the copy.
-    `v: View<Int32> = mview(xs)` printed 331473940 on gcc, and MSVC's ASan reported a
-    heap-use-after-free. It is refused in a local, inside a spill (`mfrom(gxs, nextSize())`)
-    and where the callee keeps the view. The message says to store the value in a local of
-    the `Maybe` type first.
-- **A view into storage that a step of its path moves is refused before a later effect.**
-  The test used to read only the viewed value's own type. `total2(gla[0].view(), grow())`
-  with `gla: List<Arr<Int32, 3>>`, and `total2(gr.value.view(), reset())` with `gr` a `Ref`,
-  copied the view before the growth or the reset freed its storage (gcc -886930616, and ASan
-  on both). `CppHoister.storageMoves` now also follows the path: an element of a container
-  that reallocates, and a field behind a handle or inside a `Maybe`, both move. A local
-  `Arr`, and an `Arr` beside a pure sibling, are still copied first.
-- **A `MutView` a user callee lends out of a variable makes that variable shared state.**
-  `mv: MutView<Int32> = mk(mut xs)`, then a closure writing through `mv`, then
-  `sub(xs[0], pk())` printed 8 on gcc and MSVC and 0 on clang. `mutViewRoots` now also
-  takes the `mut` argument, or the receiver of a `mut fx`, of any call that
-  `CppEscapes.lendsMutView` says may let a `MutView` out: returned (a `List` and an `Arr`
-  argument, a struct's `mut fx`, an `Fx` value's `mut` parameter) or stored (in a global).
-  A callee that only writes its `mut` argument lends nothing, so `sub(x, bump())` after
-  `inc(mut x)` stays unspilled.
-- **A callee that is not known statically is scanned through every body it may run.**
-  `keep(makeList())`, with `keep` an `Fx` value whose lambda stores `xs.view()` in a global
-  (gcc -741963422 where Kira gives 1360) or through a captured `Ref`, is now refused, as the
-  same body as a free function already was. `CppEscapes.dispatchStores` scans every lambda
-  of the program and every function used as a value that has the `Fx` value's type, or, for
-  a virtual or trait call, every method of that name and arity. A lambda of another type
-  and a local argument are not refused.
-- **More ways a temporary's view could outlive its statement are refused:**
-  - a method that keeps a view of a fresh receiver (`makeBag().stash()` storing
-    `items.view()` in a global printed 2071994584 on gcc);
-  - a `Ref`'s box or a class object built around a view into a temporary
-    (`Ref<View<Int32>> { value = makeList().view() }` printed 633348308 on gcc);
-  - an operator overload that keeps a view of a temporary operand;
-  - a store through a local handle (`keepR(makeList())`, whose body does
-    `r.value.add(xs.view())` with `r` a local `Ref`, printed -921081130 on gcc). The escape
-    scan used to count that as a store into the local.
-
-  The receiver, the box and the local handle each printed garbage on gcc before this round,
-  where clang printed 1360. They are in the scratchpad's `w23r3/rf2`, `rf3` and `rf4`. The
-  operator overload applies the same rule to an operator's operands, which the round-2 code
-  never checked.
-
-Fixed in convergence round 4, and so not listed below. Each refusal is pinned in
-`CppHoisterTest.aViewIntoAFreshValuesStorageOrKeptByALambdaInAGenericFunctionIsRefused`,
-next to its safe neighbours, which still compile. The spill and the loop copies are pinned
-in `aMutViewALambdaInAGenericFunctionLendsMakesItsSourceShared` and
-`aForRangeThatMayBeAReferenceIntoATemporaryIsCopiedWhileItLives`, and they run in the
-evalorder golden on gcc, clang and msvc, ASan-clean on MSVC. The verifier's probes are in
-the scratchpad's `vw23cr3`, and this round's own are in `w23cr4` (`n1` to `n7`).
-
-- **A lambda written in a generic function is one of the bodies an `Fx` value may run.**
-  `CppEscapes.fnValueBodies` kept a lambda only when its type equalled the `Fx` value's
-  concrete type. A lambda in `fx mkKeeper<T>` has the type `Fx<Tuple1<List<T>>, Void>`, so
-  `k(makeList())` through `k: Fx<Tuple1<List<Int32>>, Void> = mkKeeper<Int32>(gref)` was
-  never scanned. The body stored `xs.view()`, and gcc printed 1014930946 where Kira gives
-  1360 (MSVC's ASan: a heap-use-after-free). A body whose own type mentions a type parameter
-  now fits every type it may be instantiated as (`mayInstantiate`: a parameter matches any
-  type, everything else must have the same shape), and one whose type is unknown fits every
-  type. The same fix reaches `lendsMutView` and `mutViewRoots`: `mz: MutView<Int32> =
-  mkf(mut zs)` through `mkLender<T>`'s lambda now makes `zs` shared state, so
-  `sub(zs[0], pz())` is spilled and prints 0 on every compiler (gcc and MSVC printed 8).
-- **Storage a fresh value owns is a temporary's, though the typer records it as a place.**
-  The typer records a field of any value as a place (`Place.Field` with no receiver), so
-  `CppHoister.owner` took `makeRef().value` and `makeMaybe().value` for places.
-  `CppHoister.freshRoot` now walks a place's fields and elements up to the first step that is
-  no place, and that value owns the storage. A step through a view ends the walk, because a
-  view points wherever it was made. The shapes now refused, each naming the temporary
-  ("a view into 'value' of the result of 'makeRef' ... store the result of 'makeRef' in a
-  local first"), are:
-  - a lent place inside a D33 spill: `total(tailL(makeRef().value, nextSize()))` returned
-    `tailL(t0_->value, t1_)` out of the lambda that owned `t0_` (gcc -1951855684, where Kira
-    gives 1350);
-  - a view of such a place copied into the spill: `total3(nextSize(),
-    makeRef().value.from(1))` (gcc -1448277679) and its `makeMaybe()` twin (gcc -1448277678);
-  - a converted view a callee keeps: `keepV(makeRef().value)`. The typer's own
-    `types.view.temporary` rule refuses `keepV(makeList())`, but it also takes
-    `makeRef().value` for a place and lets it through;
-  - a local, a return, a `for` range or a construction that keeps such a view:
-    `v: View<Int32> = makeRef().value.view()` and `w: View<Int32> = makeMaybe().value.view()`
-    (gcc -1634301228). The verifier listed these under KI-9's pending-on-W2.5 cases, but this
-    emitter now refuses them itself;
-  - an element of a fresh value's storage: `makeRefs().value[0].view()`.
-
-  `total2(makeRef().value.view(), nextSize())` used to be refused with a misleading message
-  (the moving-storage rule, saying that `nextSize()` "may move or free the storage"). It now
-  gets the temporary's message, which names `makeRef`.
-- **A `for` range that may be a reference into a temporary is copied while it lives.**
-  `for(x : r)` binds `r` to a reference, which keeps a temporary alive only when `r` is that
-  temporary itself. `for x in makeLists()[0]` became `for(... : kira::at(makeLists(), 0))`:
-  gcc's `-Werror=dangling-reference` failed the build, and clang and MSVC printed 0 where Kira
-  gives 1360. `for x in makeRef().value` became `for(... : makeRef()->value)`: gcc printed
-  1037470104, and ASan reported both. The same happened to a `View` held inside a
-  temporary (`for x in makeRefV().value`, `makeViews()[0]`, the scratchpad's `w23cr4/n7`):
-  the storage it views lives, but the `kira::View` object is freed with the box.
-  `CppHoister.rangeMayDangle` says when a range may be such a reference. It may be when its
-  object is owned by a fresh value, when it is an element of one, or when it is a stdlib
-  call given a temporary. It may not be when it is a place found through a variable, nor
-  when C++ returns it by value (a user function's result, a construction). A range that may
-  be one is copied in its own range expression: `kira::List<std::int32_t>(kira::at(makeLists(),
-  0))`. Kira iterates a value, so the copy is what the source says. It costs a copy, never a
-  refusal, and nothing that compiled before is refused. A copy of a prvalue is elided
-  (`kira::List<T>(kira::unwrap(makeMaybe()))`).
-- **A stdlib call that hands its receiver's storage to an `Fx` argument keeps what that `Fx`
-  keeps.** `refuseKeptReceiver` said that a stdlib method keeps nothing of its receiver. That
-  is false for `kira:sync`'s `Mutex.lock` and `Mutex.waitUntil`, which run a user lambda with
-  the value by reference. `Mutex<List<Int32>> { ... }.lock(fx (mut l: List<Int32>) Void { gv
-  = l.view() })` kept a view into a mutex whose `make_shared` temporary freed it at the end
-  of the statement (gcc -152925846, where Kira gives 1360). `CppEscapes.fxArgumentKeeps` scans
-  every body an `Fx` argument of a stdlib call may run, and a temporary receiver or argument
-  of such a call is refused. The fresh receiver may be a handle here, which is what a
-  `Mutex` is. The escape scan applies the same rule inside a body, whatever the receiver's
-  type. So a function handed a temporary `Mutex` that it locks with such a lambda is refused
-  at the call (`lockAndKeep(Mutex<List<Int32>> { ... })`, gcc -1098113010, the scratchpad's
-  `w23cr4/n5`). A local `Mutex`, and a temporary one whose lambda keeps nothing, still
-  compile.
+Still in force from the earlier rounds, and pinned in `CppHoisterTest`: D33's spills, a read of
+shared state copied before an effect, a bound place located after a sibling that may move its
+container, a pure read through a view as READS, a local a sibling writes through a `mut`
+argument or a handed `MutView` read first, a function used as a value taking its `Fx`
+parameter as a `kira::Fn`, and a `for` range that may be a reference into a temporary copied
+while it lives.
 
 ## Open decisions
-
-These are questions about the language that only the user can settle. The current behaviour
-is documented, and the evalorder golden pins the behaviour of OD-1 and OD-2. OD-1 and OD-2
-are memory-safe. OD-3 is not: it is a memory-safety hole in the language rules, and the
-emitter cannot close it alone.
 
 ### OD-1. A stdlib receiver beside an effect is read before it
 
@@ -200,79 +74,76 @@ emitter cannot close it alone.
   reads `gl` before `pushed()` runs (D33, snapshot: the hoister copies the receiver). The
   copy has no element at that index, so the program panics with `kira: index out of range`.
   The JS backend prints 7, because a JS array is a reference and R19 says a place is never
-  copied. Kira's left-to-right rule and D44's value semantics say the receiver is evaluated
-  first, as a value.
-- **Where.** `CppExprEmitter.receiverOperand` / `receiverMode`: a receiver the call cannot
-  lend from is a `PlaceMode.SNAPSHOT`.
-- **Reproduce.** The verifier's `o-tq7` probe prints -1, then panics (exit 127) on gcc,
-  clang and MSVC. `evalorder/expected.txt` lines 22-23 (`gm.get(putKey())` gives 42 and
+  copied.
+- **Where.** `CppExprEmitter.receiverOperand` / `receiverMode`: a receiver no view is formed of
+  is a `PlaceMode.SNAPSHOT`.
+- **Reproduce.** `evalorder/expected.txt` lines 22-23 (`gm.get(putKey())` gives 42 and
   `gl.get(setFirst())` gives 1) pin the snapshot rule.
-- **The choice.** (a) Keep the snapshot. (b) Read a receiver in place, as R19 says of a place.
-  That is the JS answer, and it would flip those two golden lines to 99 and 50.
+- **The choice.** (a) Keep the snapshot. (b) Read a receiver in place, as R19 says of a place:
+  the JS answer, which would flip those two lines to 99 and 50.
 
-### OD-2. A view the callee keeps is made after its siblings' effects
-
-- **What.** When a call may keep a view into an operand (the lent case: the callee stores it,
-  returns it, or hands it to a callee that is not seen through), the emitter never copies that
-  operand, because the view would point into a copy that dies with the IIFE. It reads the
-  operand after every sibling has run. Left to right would take the view first. The emitter
-  does not do that, because taking the view first is not memory-safe when a sibling moves the
-  storage the view points into. For example, in `keep<View<Int32>>(mut h, gl, growL())`,
-  `growL()` appends past `gl`'s capacity. A view taken before it would point at freed
-  storage. Taken after it, the view sees 67 elements, not 3. The same holds for a lending
-  receiver (`gl.from(grow())`), a construction's view field (`Win { v = gl, k = grow() }`) and
-  an assignment into a view (`sinks[nextSize()].v = gl`). For the assignment, Kira's own
-  order, target first, agrees with reading `gl` after the index.
-- **Where.** `CppHoister.PlaceMode.LENT` (a leaf of its own, never copied, its path applied
-  after every sibling), chosen by `lentArgument`, `lentReceiver` and `CppLending.lends`.
-- **Reproduce.** `evalorder/expected.txt` lines 45-46 (11, then 67). Under MSVC
-  `/fsanitize=address` the whole evalorder golden runs with 0 reports.
-- **The choice.** (a) Keep this. It is safe and deterministic, and it differs from left to
-  right only where a sibling writes the operand. (b) Take the view first and refuse the call
-  wherever a sibling may write the viewed storage. That needs EffectsPass's write sets to be
-  precise. Until EffectsPass merges, every user call is impure, so (b) would also refuse
-  `w.attach(gl, nextSize())`, which is fine today. A lent operand no sibling can reach (a
-  local) is unaffected either way.
-- **An explicit view is not deferred.** `total(gl.view(), grow())` is refused instead (round 2,
-  above): the view is an expression with operands of its own (`gl.from(gidx)` reads `gidx`),
-  so it cannot be moved after its siblings without breaking D33 for those operands. The
-  message asks for the later operand in a local first. Under choice (b) the implicit
-  conversion (`total(gl, grow())`) would be refused the same way.
-
-### OD-3. A view held across a statement that grows what it views dangles
-
-- **What.** D5 lets a `View` of a `List` or a `Str` live in a local, but no rule stops the
-  viewed container from growing, or being reassigned, while the view lives:
-  `v: View<Int32> = gl.view()`, then `k: Int32 = growL()`, then `trace(total(v) + k)`. No
-  evaluation order is involved: each statement is one full expression. `kira::View` is a
-  pointer and a length, so after `growL()` reallocates `gl`, `v` points at freed storage.
-  gcc printed -2039998058 where clang printed 13, and MSVC's `/fsanitize=address` reports
-  heap-use-after-free. The same happens through a `View` parameter, since the callee may grow
-  the caller's `List` through a global. It also happens to a `mut` parameter or a struct's
-  `this` bound to a `List` element, when the callee grows that `List` through a global before
-  it writes: `storeAfterGrowth(mut gls[0], 7)`, whose body calls `growGls()` and then does
-  `into = v`. There gcc segfaulted and MSVC's ASan reported a heap-use-after-free. In C++ each
-  of these is a reference, and D37 says nothing about the storage behind it.
-- **Where.** It is a language rule, not an emitter one. Design 3.4's `EscapePass` refuses only
-  a view returned from a local or stored in a class field. `ExclusivityPass` refuses
-  overlapping `mut` arguments and a loop that mutates what it iterates. Neither covers a
-  live view or reference across a growth that the callee reaches through a global.
-- **Reproduce.** The scratchpad probes `w23r2/e5` (the three lines above, with `growL` pushing
-  64 elements onto `gl`) and `w23r2/e8` (`storeAfterGrowth`). Both were measured on gcc and
-  zig c++, and under MSVC ASan.
-- **The choice.** (a) A borrow rule in ExclusivityPass: while a view of a place, or a `mut`
-  parameter or `this` bound to it, is live, no write may move the place's storage. That
-  covers a growth, a reassignment, a `mut` argument, and a call that may reach the place
-  through a global. It covers every case above, but it is flow-sensitive and needs
-  EffectsPass's write sets. (b) Views only of storage that never moves (`Arr`, `StrBuf`, `Str`
-  literals), with a `List` or `Str` copied to an `Arr` first. That is simple, but it refuses
-  today's views of a `List` or a `Str` (the `text` golden slices a `Str` parameter), and it
-  leaves the `mut` parameter case open. (c) A counted view that keeps its storage alive (a
-  `std::shared_ptr` to the buffer). That is safe, but it costs a count per view and cannot
-  be done freestanding. Until the user decides, this package's emitter refuses every case it
-  can see within one statement (round 2, above). Across statements it cannot see the case.
+OD-2 (when a kept view is made) and OD-3 (a view held across a statement that grows what it
+views) are closed by decision 4b: no view is kept or held, a view is formed where the call uses
+it (E1), and ViewPass refuses a write that moves the place in the view's span.
 
 ## Known issues
+
+### KI-12. Until W2.5's ViewPass merges, this branch refuses no unsafe view
+
+- **What.** The refusals this package made are deleted, as design 30 7.2 says. On this branch
+  alone a view the rule refuses compiles unless a `cpp.internal` backstop catches it. Two that
+  none catches: a view formed of a place a sibling moves in the same call (`viewPlus(gl.view(),
+  growL())`, `growL` appending 64 elements), which E1 makes after the growth: 2022 on gcc, clang
+  and msvc, memory-safe, where the view Kira's left to right makes would point at freed
+  storage; and a callee that moves what its view parameter points into before reading it
+  (`growThenSum(gl.view())`, whose body grows `gl`, then sums `v`), which dangles: gcc printed
+  -1715043538 where clang and msvc printed 600. ViewPass refuses the second at the call
+  (design 30 3.3: `growThenSum` writes `gl`, a global, in the view's span). Probes: scratchpad
+  `sc31/k1`, `sc31/k3`. A callee whose own return breaks the return rule (`return
+  xs.from(at)` with `xs: List<Int32>`, `sc31/k2`: gcc printed 1009792083, clang and msvc 13300
+  before this backstop) is now `cpp.internal` at that return. The verifier's h1, h5, h6, h7,
+  h9 and h10 all stop at `cpp.internal` through this branch's CLI (`sc31/h*`, emit exit 1).
+- **Where.** W2.5's `rules/ViewPass.kt` (design 30 2.2 and 3.3).
+- **Why it can wait.** Merge order (design 30 7.0): W2.5 merges before, or with, this branch.
+  Nothing is released in between.
+
+### KI-13. A view of a temporary in an if-expression's branch that D33 orders is not lowered
+
+- **What.** `minus(if c { makeList().view() } else { gl.view() }, next())` is allowed by the
+  rule (an if-expression is transparent in an argument, and a temporary needs no write check),
+  but D33 copies the if-expression into `const kira::View<T> t0_ = c ? ... : ...;`, and the
+  list dies with that declaration. It is `cpp.unsupported`, and so is a spilled branch whose
+  own call returns such a view out of a lambda. With nothing to order,
+  `total(if c { makeList().view() } else { gl.view() })` is lowered as one full expression and
+  is safe.
+- **Where.** `CppHoister.ordered` (Value) and `CppHoister.spill`.
+- **Reproduce.** `CppHoisterTest`'s `branchViewsATemporaryBesideAnEffect`.
+- **Why it can wait.** A rare shape with a one-line rewrite (an if statement), and it is a
+  refusal, never a use after free. The fix is a design choice: design 30 2.1's IF could refuse
+  a branch with a TEMP origin, as RANGE does, or the lowering could hold each branch's owner in
+  a `std::optional` declared before the `?:`.
+
+### KI-14. The emitter reads the typer's facts, not `TypedModel.viewOrigins`
+
+- **What.** Design 30 2.3 has W2.5 record each view's origins in `TypedModel.viewOrigins` for
+  the emitter. That table does not exist on this branch. E1 decides LENT from the typer's
+  `Coercion.ToView` and the call's second-class result type, which are the PLACE-origin facts,
+  and `CppHoister.viewsTemporary` walks a view's receiver and view arguments for a TEMP origin
+  (the E3 and E4 checks and the backstops). The walk trusts the return rule: a callee's view
+  points only into its receiver and view arguments.
+- **Why it can wait.** Both are the same facts `viewOrigins` holds. After the merge they can
+  read it; nothing else changes.
+
+### KI-15. `writtenBy` keeps the `MutView` source of a handed argument
+
+- **What.** Design 30 7.2 lists `lentMutView` for deletion, reasoning that `writtenBy` sees a
+  sibling's write through a `MutView` without it. It does not: `sub(p[0], zero(p.from(0)))`
+  needs `p.from(0)` traced to `p` to read `p[0]` first. It stays, under the same name, as the
+  named write of design 30 3.2. `throughMutView` (a `MutView` held in a variable) is deleted: no
+  variable holds one.
+- **Where.** `CppHoister.writes`.
+- **Reproduce.** `CppHoisterTest.aLocalASiblingWritesIsReadBeforeTheWrite`; evalorder's
+  `sub(ws[0], poke(ws.from(0)))` gives 0.
 
 ### KI-1. `closures` stays `emit: pending`: it needs W2.4's class lowering
 
@@ -280,210 +151,82 @@ emitter cannot close it alone.
   `closures.kira:51:11: error: cpp.unsupported: the class 'Counter' is not lowered yet`.
 - **Where.** `class Counter` in `src/test/resources/cpp-golden/closures/src/lang/closures.kira`.
   Classes are W2.4's (`CppClassEmitter`).
-- **Reproduce.** `kira --target cpp` on a copy of the case, or flip its `case.yaml` to
-  `emit: required` and run `CppGoldenEmitTest`.
-- **Why it can wait.** It depends on another package (policy item 5). Its `expected/`
-  already compiles and runs on gcc, clang and MSVC, and compiles for zig-aarch64
-  (`CppGoldenCompileTest`). The verifier checked that everything in `closures.kira` except
-  `class Counter` emits byte for byte as `expected/`.
+- **Why it can wait.** It depends on another package. Its `expected/` already compiles and runs
+  on gcc, clang and MSVC, and compiles for zig-aarch64 (`CppGoldenCompileTest`).
 
 ### KI-2. With no EscapePass entry, `fxEscapes` is approximated rather than taken as escaping
 
 - **What.** The model contract (design 3.1) says an absent `TypedModel.fxEscapes` entry means
   escaping. Where W2.5 has written no entry, `CppEscapes.fxEscapes` instead makes an `Fx`
   parameter a template parameter when the body only calls it, outside any lambda, in a
-  non-virtual, non-trait method. `unilidar`'s `each` needs this to be `emit: required`
-  (design line 802).
+  non-virtual, non-trait method. `unilidar`'s `each` needs this to be `emit: required`.
+  Design 30 7.2 says the fallback goes; it stays until W2.5 merges, because without it
+  `unilidar` would no longer be byte-identical on this branch.
 - **Where.** `CppEscapes.fxEscapes` / `scanFx`. It is read by `CppPlacement.isNonEscapingFx`
-  (W2.2's file) and `CppClosureEmitter.prepare`, so placement and closures agree.
+  (W2.2's file) and `CppClosureEmitter.prepare`.
 - **Reproduce.** `CppHoisterTest.anFxParameterOnlyCalledIsATemplateParameterAndOnePassedOnIsNot`.
-- **Why it is safe.** A template parameter and a `kira::Fn` make the same call. The one way a
-  template goes wrong, a function used as a value, is excluded: every `Fx` parameter of a
-  function that any `FnRef` names, and every one with a default, is a `kira::Fn` whatever the
-  model says. If another fact ever makes such a function a template, `functionValue` refuses
-  the reference by name rather than write C++ that does not compile. W2.5's entries win
+- **Why it is safe.** A template parameter and a `kira::Fn` make the same call, and a function
+  used as a value, or a parameter with a default, is always a `kira::Fn`. W2.5's entries win
   wherever present.
-
-### KI-3. The view-escape scan is conservative in known ways
-
-- **What.** `CppEscapes.viewEscapes` answers "can a view into this operand outlive the call".
-  It is sound but coarse in these ways:
-  - a value of a view-holding type computed from the operand counts as derived from it
-    (`Win { v = other, k = xs.size() }`);
-  - a view held in a local struct, used as a user method's receiver, escapes;
-  - a closure that mentions a view escapes;
-  - a stdlib binding with a view-holding parameter lends at the call site;
-  - a `T` parameter fed a converted view counts as kept wherever the body stores its `T`;
-  - a cycle in the call graph escapes.
-
-  In each case the operand is lent (OD-2): never copied, and read after its siblings. The only
-  cost is D33's snapshot where a copy would in fact have been safe.
-- **Where.** `CppEscapes.ViewScan` in `CppHoister.kt`.
-- **Reproduce.** `fx f: (xs: List<Int32>, k: Size) Win { return Win { v = other, k =
-  xs.size() } }` called as `f(gl, grow())` reads `gl` after `grow()`. A snapshot would have
-  been safe.
-- **Why it can wait.** It never costs memory safety. A precise answer would need per-value
-  provenance, which is `EscapePass`'s job. `TypedModel.viewEscapes` entries are only allowed
-  to add an escape, never to remove one: EscapePass's view rule (design 3.4) allows a view to
-  be returned, so its "does not escape" does not answer the hoister's question.
 
 ### KI-4. W2.4's `chain` and `classes` goldens differ from this branch by one D33 spill each
 
-- **What.** W2.4's ledger (its KI-1) reports that, with this branch merged, `chain` and
-  `classes` differ from their `expected/` by one D33 spill each: a class field read beside a
-  virtual call, `kira::cat(name, " says ", sound())`, is copied first because `sound()` may
-  change `name`.
-- **Where.** W2.4's `expected/` against this branch's `CppHoister`.
-- **Why it can wait.** The spilled code is correct and compiles on every toolchain (W2.4
-  measured this). At the merge the integrator regenerates those two `expected/` files or
-  narrows the rule. This branch keeps D33's rule.
+- **What.** With this branch merged, `chain` and `classes` differ from their `expected/` by one
+  D33 spill each: a class field read beside a virtual call, `kira::cat(name, " says ",
+  sound())`, is copied first because `sound()` may change `name`.
+- **Why it can wait.** The spilled code is correct and compiles on every toolchain. The
+  integrator regenerates those two `expected/` files at the merge.
 
 ### KI-5. gcc 11.4, the design's floor, is not measured on this branch
 
 - **What.** The branch is measured on g++ 13.2, zig c++ (clang) and MSVC, and compiled for
-  aarch64. gcc 11.4 is not.
-- **Where.** The board (`jack@bibobox`) has gcc 11.4.
-- **Reproduce.** `ssh -o ConnectTimeout=8 jack@bibobox 'g++ --version'` timed out from this
-  session, and the Docker daemon is not running.
-- **Why it can wait.** Rounds 3 and 4 add no C++ language feature. The new output is
-  ordinary IIFEs, `const T t0_ = ...;` temporaries and, in round 4, a functional-cast copy of
-  a `for` range (`kira::List<std::int32_t>(...)`), all C++11 or older. Someone with the board
-  runs `kira/cpp/tests/goldens.sh` and `run.sh` there before the merge.
+  aarch64. gcc 11.4 (the board, `jack@bibobox`) is not.
+- **Why it can wait.** This round adds no C++ language feature: typed temporaries and
+  `kira::View` temporaries in IIFEs, all C++11. Someone with the board runs
+  `kira/cpp/tests/goldens.sh` and `run.sh` there before the merge.
 
 ### KI-6. Four earlier commits are unsigned
 
-- **What.** 41575c6, 71b8c4b, 42f1b7f and fbf0f61 show `%G? = N`. From those sessions gpg
-  failed with "No pinentry".
-- **Why it can wait.** Rewriting published branch history is the merger's call. Re-signing
-  is `git rebase --exec 'git commit --amend --no-edit -S' 1ff53c5` at a terminal where
-  pinentry can prompt.
+- **What.** 41575c6, 71b8c4b, 42f1b7f and fbf0f61 show `%G? = N` (gpg had "No pinentry").
+- **Why it can wait.** Rewriting published branch history is the merger's call.
 
 ### KI-7. Files outside this package's OWNS and TOUCHES
 
-- **What.** Earlier rounds edited files that other packages own:
-  - `kira/cpp/kira/rt.hxx` and `kira/cpp/tests/rt_test.cxx` (runtime owner, w1-3): two
-    `kira::list` overloads on `std::array`;
-  - `CppPlacement.kt` (W2.2): `isNonEscapingFx` reads `CppEscapes`;
-  - `CppDeclEmitter.kt` (`includeLine`) and `CppEmitContext.kt` (docs), both W2.2's;
-  - `examples/regenerate.sh` and `examples/cpp-legs.txt`;
-  - the plumbing tests `CppCliTest.kt`, `KiraCppBackendTest.kt` and
-    `decls/CppDeclEmitterTest.kt`.
-
-  Convergence rounds 1 to 4 add none. `CppExprEmitter.functionValue` reads W2.2's
-  existing `ctx.placementOf(...).isNonEscapingFx`.
-- **Why it can wait.** Each change is small and covered by tests. The merger routes them to
-  their owners.
+- **What.** Earlier rounds edited `kira/cpp/kira/rt.hxx` and `kira/cpp/tests/rt_test.cxx` (two
+  `kira::list` overloads), `CppPlacement.kt`, `CppDeclEmitter.kt` and `CppEmitContext.kt`
+  (W2.2's), `examples/regenerate.sh`, `examples/cpp-legs.txt` and three plumbing tests. This
+  round edits `src/test/resources/typer/body/positive/views.kira` (W2.1's fixture): its
+  `v: View<Char> = out.view()` becomes `m: Size = out.view().size()` with the same `@type`
+  check on `out.view()`, since `CppTyperFixturesTest` emits it and a view local is now
+  `cpp.internal`. It also rewrites the `text` golden's source, driver and `expected/`, which
+  design 30 section 8 gives this package.
+- **Why it can wait.** Each change is small and covered by tests. The merger routes them.
 
 ### KI-8. Until EffectsPass lands, a container read beside any user call is copied
 
-- **What.** EffectsPass (W2.5) has not merged yet, so every user call is impure. A `Str`,
-  struct or container that is read beside a user call, and that the callee cannot lend from,
-  is deep-copied into the IIFE (D33).
-- **Why it can wait.** It is a cost, not a correctness issue. When EffectsPass merges, its
-  `PURE` entries remove every copy whose sibling cannot write.
+- **What.** EffectsPass (W2.5) has not merged, so every user call is impure. A `Str`, struct or
+  container read beside a user call, that no view is formed of, is deep-copied (D33), and every
+  user call returning a view is copied into a `kira::View` temporary after its parts (E3).
+- **Why it can wait.** A cost, not a correctness issue. EffectsPass's `PURE` entries remove
+  them.
 
-### KI-9. Until EscapePass merges, a view of a local can leave its function (pending on W2.5)
+### KI-10. A `for` range is copied unless it is proved not to dangle
 
-- **What.** This branch accepts two shapes that dangle, and emits them:
-  - an escaping closure that captures a view of a local. `v: View<Int32> = xs.view()` then
-    `return fx () Int32 { return v.get(0) }` becomes `return [v]() ...` after `xs` has died,
-    and gcc printed -511830624;
-  - a direct `return xs.view()` of a local.
-- **Where.** W2.5's `EscapePass` (design 3.4: "a View must not be returned when derived from a
-  local"). It refuses both, and its test for the closure case is
-  `aClosureCapturingAViewOfALocalEscapes...`. The C++ emitter adds no second copy of that
-  rule, because a view held in a local points wherever it was made, which only the pass's
-  flow analysis knows.
-- **Reproduce.** The verifier's probes `verify-w23c1/c1` (the closure) and `c2`
-  (`fx bad: () View<Int32> { xs: ...; return xs.view() }`). Both emit, build and run, reading
-  freed memory.
-- **Why it can wait.** It depends on another package (policy item 5). The rule is written
-  and tested on W2.5's branch, and the merge brings it in ahead of the emitter. Within one
-  statement this emitter already refuses a view into a *temporary* that a `return` keeps
-  (`return tail(makeList(), 1)`), since no pass sees that one. That includes the temporaries
-  the lowering makes where the source names none (round 3, above): a local that keeps a view
-  into a `Str` default (the verifier's pd1, which W2.5 refuses too, as
-  `rules.escape.view-store`) or into the `Maybe` copy of a place. It also includes the
-  storage a fresh value owns (round 4, above): `v: View<Int32> = makeRef().value.view()` and
-  `w: View<Int32> = makeMaybe().value.view()`, the verifier's `vw23cr3/r2`, which W2.5 also
-  refuses as `rules.escape.view-store`.
-
-### KI-10. The round-2 view rules are conservative in known ways
-
-- **What.** The rules that close the round-2 memory-safety issues are sound but coarse.
-  Each item below costs a refusal the program did not need, or a spill:
-  - a call whose result can hold a view is taken to point into every operand that owns or
-    reaches storage. `pick(v, makeList())` in a local is refused, although `pick` returns `v`;
-  - an if-expression branch whose value is a view *variable* declared in that branch is
-    refused, although the variable may view outer storage;
-  - a local that a `MutView` is lent from anywhere in the program is shared state in every
-    expression that reads it. A read of it beside any user call is spilled, even where no
-    sibling can reach the view;
-  - a pure call given a view is READS even where it reads only the length (`v.size()`), which
-    no sibling can change.
-
-  Round 3 adds these. Each is again sound and coarse:
-  - a callee not known statically (an `Fx` value, a virtual or trait method) keeps a view of
-    a temporary argument when *any* body it may run does: every lambda and function used as
-    a value of the `Fx` value's exact type (of its arity only, when the type is generic), or
-    every method of that name and arity, plus every lambda of that arity when one of those
-    methods has no body (a slot a construction fills). One keeping lambda anywhere in the
-    program refuses every such call handed a temporary;
-  - a user callee lends a `MutView` out of a `mut` argument wherever its body lets *any*
-    view of the argument be stored, and not only a `MutView`. The variable is then shared
-    state (a spill, never a refusal);
-  - a view is taken to move before a later effect when any step of its path goes through a
-    `Maybe`'s payload, a class's `this` or a handle, though a sibling that frees the object
-    would make that `this` dangle anyway (OD-3's class, not an ordering one);
-  - a default is a temporary for every parameter type that owns storage, except a constant
-    place of the parameter's own type.
-
-  Round 4 adds these. Each is again sound and coarse:
-  - storage reached from a fresh handle (`makeRef().value`, a field of a class a call
-    returns) is a temporary's, even where the object is shared and outlives the statement
-    (a `makeRef` that returns a `Ref` also held in a global). The same is true of storage
-    reached through a stdlib call's result, such as a field of the element `gbags.get(0)`
-    returns, although that binding returns a reference to a variable's element;
-  - a lambda written in a generic function fits every concrete `Fx` type its own type may be
-    instantiated as. A type parameter need not stand for the same type at each of its uses;
-  - a stdlib call whose `Fx` argument may store a view of any of its parameters (the
-    lambda written there, the function it names, or else any lambda of its type) is taken to
-    hand that parameter the call's receiver or any operand;
-  - a `for` range is copied unless it is a place found through a variable, or a value C++
-    returns by value. That includes a stdlib call given a temporary whose binding returns a
-    new container. The copy of a prvalue is elided, so the cost falls only on a real
-    reference. It is never a refusal.
-- **Where.** `CppHoister.sources`, `refuseBranchLocalView`, `mutViewRoots`, `readsThrough`,
-  `keepsParameter`, `storageMoves`, `defaultTemporaries`, `freshRoot` and `rangeMayDangle`,
-  and `CppEscapes.dispatchStores`, `lendsMutView`, `fnValueBodies` and `fxArgumentKeeps`.
-- **Reproduce.** `CppHoisterTest.aViewTheLoweringWouldLeaveDanglingIsRefusedWithWhatToWriteInstead`,
-  `aTemporaryTheLoweringMakesOrStorageAPathMovesIsRefusedWithWhatToWriteInstead` and
-  `aViewIntoAFreshValuesStorageOrKeptByALambdaInAGenericFunctionIsRefused` pin each refusal
-  and its safe neighbours. The golden cases' `expected/` files are unchanged by these rules
-  (none of `proto`, `unilidar`, `hall`, `text`, `strings`, `numerics` moved a byte, and
-  `evalorder` only gained its round-4 lines).
-  The virtual and trait arm of `dispatchStores` cannot run end to end on this branch: class
-  lowering is W2.4's. Its enumeration is a superset by construction. Every method of the
-  name is one of the overrides a dispatch may reach, and a slot adds every lambda.
-- **Why it can wait.** None of them costs memory safety or evaluation order. A refused
-  program has a one-line rewrite, which the message names: a temporary or an operand stored
-  in a local first, or a defaulted parameter passed explicitly. EffectsPass's `PURE`
-  entries and a provenance fact from EscapePass would make each item precise.
+- **What.** `CppHoister.rangeMayDangle` copies a range that may be a reference into a
+  temporary (`kira::List<std::int32_t>(kira::at(makeLists(), 0))`, `makeRef()->value`) in its
+  own range expression. It copies unless the range is a place found through a variable or a
+  value C++ returns by value, including a stdlib call given a temporary whose binding returns a
+  new container. A view range is never copied: its storage is a view parameter's or a
+  literal's (design 30 E5).
+- **Why it can wait.** A copy of a prvalue is elided, so the cost falls only on a real
+  reference, and it is never a refusal.
 
 ### KI-11. The CLI cannot reach R6's skipped middle default, so only the rows test covers it
 
 - **What.** R6 fills a skipped middle default in at the call (`three(1, c = 9)` becomes
-  `three(1, 2, 9)`). From source, `f(1, c = 5)` against
-  `f: (a: Int32, b: Int32 = 2, c: Int32 = 3)` stops in the frontend with "Call to 'f' leaves
-  parameter(s) without an argument: b". The C/JS semantic analyzer's named-argument check
-  runs before the typer and knows no defaults. The typer's `CallResolver` binds the call,
-  with `b` as a middle `ArgBinding.Default`.
-- **Where.** `KiraSemanticAnalyzer.checkNamedArguments` and `core/NamedArguments.bind`. They
-  are frontend code, not this package's. The emitter's side is `CppLowering.arguments`
-  (`Slot.Filled`).
-- **Reproduce.** The verifier's probe `vw23cr2/pn1`, through the CLI.
-- **Why it can wait.** Nothing is emitted wrongly: the program is refused before the
-  backend runs. The fill-in itself is emitted and run by `CppExprRowsTest`'s `r6` row, which
-  types the module without the semantic analyzer. It checks `r6::skipMiddle() == 129` under
-  the warning contract on gcc, clang, msvc and zig-aarch64. The fix is for the frontend's
-  owner: let `NamedArguments.bind` treat a parameter with a default as bound.
+  `three(1, 2, 9)`). From source, the C/JS semantic analyzer's named-argument check refuses
+  `f(1, c = 5)` before the typer binds it.
+- **Where.** `KiraSemanticAnalyzer.checkNamedArguments` and `core/NamedArguments.bind`
+  (frontend code). The emitter's side is `Slot.Filled`.
+- **Why it can wait.** Nothing is emitted wrongly. `CppExprRowsTest`'s `r6` row checks
+  `r6::skipMiddle() == 129` on gcc, clang, msvc and zig-aarch64.

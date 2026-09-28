@@ -13,7 +13,7 @@ namespace bibo::text
     }
   }
 
-  kira::Maybe<kira::View<char>> word(kira::View<char> s, kira::View<char> w)
+  kira::Maybe<kira::Size> wordEnd(kira::View<char> s, kira::View<char> w)
   {
       const kira::Size n{w.size()};
       if(s.size() < n || s.slice(0, n) != w)
@@ -29,7 +29,7 @@ namespace bibo::text
       {
           at += 1;
       }
-      return s.from(at);
+      return at;
   }
 
   kira::Size trimEnd(kira::View<char> s)
@@ -74,7 +74,7 @@ namespace bibo::text
 
   bool isCommand(kira::View<char> s, kira::View<char> verb)
   {
-      return kira::isSome(word(s, verb));
+      return !!kira::isSome(wordEnd(s, verb));
   }
 }
 #include "kira/macro_pop.hxx"

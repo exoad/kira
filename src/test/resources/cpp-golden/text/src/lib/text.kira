@@ -11,10 +11,11 @@ fx isBlank: (c: Char) Bool {
     return c == ' ' || c == '\t'
 }
 
-// Matches w as a WHOLE word at the start of s, returning what follows with the
-// spaces skipped. A bare command returns an empty view, NOT none: "matched,
-// nothing after it" and "did not match" stay apart.
-pub fx word: (s: View<Char>, w: View<Char>) Maybe<View<Char>> {
+// Matches w as a WHOLE word at the start of s, returning the offset of what
+// follows, the spaces skipped: the caller slices, s.from(at). A bare command
+// returns s.size(), NOT none: "matched, nothing after it" and "did not match"
+// stay apart. A view is never held, so the offset is what comes back.
+pub fx wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
     n: Size = w.size()
     if s.size() < n || s.slice(0, n) != w {
         return null
@@ -26,7 +27,7 @@ pub fx word: (s: View<Char>, w: View<Char>) Maybe<View<Char>> {
     while at < s.size() && s[at] == ' ' {
         at += 1
     }
-    return s.from(at)
+    return at
 }
 
 // The length without trailing CR, LF, space and tab. A terminal picks its own
@@ -65,5 +66,5 @@ pub fx driveReply: (servo: Int32, esc: Int32, mut out: StrBuf<32>) Void {
 }
 
 pub fx isCommand: (s: View<Char>, verb: View<Char>) Bool {
-    return word(s, verb).isSome()
+    return !wordEnd(s, verb).isNull()
 }

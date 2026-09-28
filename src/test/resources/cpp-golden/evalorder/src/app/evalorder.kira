@@ -8,10 +8,12 @@ module "app:evalorder"
 // pure (R19): a call is copied, a read of shared state is copied before the effect runs
 // (a Str, a struct or a container too, which C++ would otherwise hand the callee as the
 // effect left it), and a place (a mut argument, an assignment's target, the receiver a mut
-// fx writes, a container a call lends a view from) is never copied and never held by
-// reference: the values along its path (each index) are ordered like any other, and the
-// path is applied where the call or assignment uses it. Every line below would print
-// something else on some compiler, or read freed memory, if it did not.
+// fx writes, a place a view is formed of) is never copied and never held by reference: the
+// values along its path (each index) are ordered like any other, and the path is applied
+// where the call or assignment uses it. A view is only ever an argument, a receiver or a
+// return (decision 4b), and a view of a temporary is formed inside the lambda that holds its
+// owner. Every line below would print something else on some compiler, or read freed
+// memory, if it did not.
 
 mut ticks: Int32 = 0
 mut idx: Size = 0
@@ -95,7 +97,7 @@ fx firstL: (xs: List<Int32>, k: Int32) Int32 {
     return xs.get(0) + k
 }
 
-fx tail: (xs: List<Int32>, at: Size) View<Int32> {
+fx tail: (xs: View<Int32>, at: Size) View<Int32> {
     return xs.from(at)
 }
 
@@ -170,8 +172,8 @@ fx main: () Void {
     idx = 0
     cells[nextSize()][nextSize()].grow(next(), next())
     trace(cells[1][2].v)
-    // A view lent from a List parameter beside an effect points at the caller's list, not
-    // at a copy that dies with the lambda: 2 + 3 + 4.
+    // A view of a List parameter beside an effect points at the caller's list, never at a
+    // copy: 2 + 3 + 4.
     idx = 0
     trace(sumTail(List<Int32> { values = [1, 2, 3, 4] }))
     // A view lent from a global: 20 + 30 + 40.
@@ -203,18 +205,6 @@ fx main: () Void {
     bufs[nextSize()].set("a${two}b")
     trace(idx)
     trace(bufs[1].size())
-    // A view the callee stores through a mut fx receiver (attach) or a mut argument (fill)
-    // points at the caller's list, never at a copy that dies with the lambda, though the
-    // result is Void: 11, 22 and 1, then 33 and 2.
-    gl = List<Int32> { values = [11, 22, 33] }
-    idx = 0
-    mut w: Win = Win { v = other, k = 0 }
-    w.attach(gl, nextSize())
-    trace(w.v.get(0) * 100 + w.v.get(1))
-    trace(w.k)
-    mut w2: Win = Win { v = other, k = 0 }
-    fill(mut w2, gl, nextSize())
-    trace(w2.v.get(2) * 10 + (w2.k as Int32))
     // A Str beside an effect is read before it whatever the callee returns: adder makes an
     // Fx of its own captures and no view, so it takes the "aaa" changeS() replaces: 3 + 1.
     gs = "aaa"
@@ -229,35 +219,15 @@ fx main: () Void {
     trace(b.viaImplicit())
     // A mut argument writes its variable while the call runs, so a read of that variable
     // beside the call is made first: x is 5 there (gcc printed 14, clang 4), and xs has
-    // 2 elements, read as a List and through a View: 5 - 1, 2, 2.
+    // 2 elements: 5 - 1, 2.
     mut x: Int32 = 5
     trace(sub(x, inc(mut x)))
     mut xs: List<Int32> = List<Int32> { values = [1, 2] }
     trace(lenOf(xs, pushTo(mut xs)))
-    mut ys: List<Int32> = List<Int32> { values = [1, 2] }
-    trace(countOf(ys, pushTo(mut ys)))
     // A compound assignment reads its target before a value that writes it: 5 + 1.
     mut z: Int32 = 5
     z += inc(mut z)
     trace(z)
-    // A List converted to a View for a parameter that keeps no view is read before the
-    // effect like any container, though growL() moves gl's storage: 3.
-    gl = List<Int32> { values = [1, 2, 3] }
-    trace(countOf(gl, growL()))
-    // A generic callee that stores its T, instantiated with a view, points at gl and never
-    // at a copy that dies with the lambda: 11, then 1.
-    gl = List<Int32> { values = [11, 22, 33] }
-    idx = 0
-    mut h: Holder<View<Int32>> = Holder<View<Int32>> { v = other, k = 0 }
-    keep<View<Int32>>(mut h, gl, nextSize())
-    trace(h.v.get(0))
-    trace(h.k)
-    // A view the callee keeps is made after its siblings' effects (the open D33 question in
-    // docs/cpp-known-issues/w2-3-emit-exprs.md): made before growL() moved gl, it would
-    // point at freed storage. 11, then 67.
-    keep<View<Int32>>(mut h, gl, growL())
-    trace(h.v.get(0))
-    trace(h.v.size())
     // A function used as a value takes its Fx parameter as a kira::Fn, never a template: 10.
     g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
     trace(g(twice, 5))
@@ -275,71 +245,21 @@ fx main: () Void {
     trace(gls.size())
     // A read through a view is a read of the storage behind it, made before a sibling writes
     // that storage (gcc and MSVC printed 8): 1 - 1.
-    v: View<Int32> = gv.view()
-    trace(sub(v.get(0), setGv()))
-    // A MutView a closure captured, or a List holds, writes what it was lent from: a read of
-    // that local is made before any sibling's call (gcc and MSVC printed 8): 1 - 1, twice.
+    trace(sub(gv.view().get(0), setGv()))
+    // A MutView handed to a callee writes what it is lent from, so a read of that local is
+    // made before the call (gcc and MSVC printed 8): 1 - 1.
     mut ws: List<Int32> = List<Int32> { values = [1, 2, 3] }
-    mv: MutView<Int32> = ws.from(0)
-    pk: Fx<Tuple0, Int32> = fx () Int32 {
-        mv.set(0, 9)
-        return 1
-    }
-    trace(sub(ws[0], pk()))
-    ws.set(0, 1)
-    mut ms: List<MutView<Int32>> = List<MutView<Int32>> { }
-    ms.add(ws.from(0))
-    trace(sub(ws[0], pokeAll(ms)))
-    // A MutView a user callee lends out of a mut argument or a mut fx's receiver writes
-    // that variable from wherever it went: returned from a function (a List and an Arr),
-    // from a struct's mut fx, stored in a global, or returned by an Fx value. Each read is
-    // made before the sibling that writes through the view (gcc and MSVC printed 8, clang
-    // 0): 1 - 1, five times.
-    mut us: List<Int32> = List<Int32> { values = [1, 2, 3] }
-    mu: MutView<Int32> = lendList(mut us)
-    pu: Fx<Tuple0, Int32> = fx () Int32 {
-        mu.set(0, 9)
-        return 1
-    }
-    trace(sub(us[0], pu()))
-    mut ua: Arr<Int32, 3> = [1, 2, 3]
-    ma: MutView<Int32> = lendArr(mut ua)
-    pa: Fx<Tuple0, Int32> = fx () Int32 {
-        ma.set(0, 9)
-        return 1
-    }
-    trace(sub(ua[0], pa()))
-    mut lb: Lender = Lender { }
-    mb: MutView<Int32> = lb.lend()
-    pb: Fx<Tuple0, Int32> = fx () Int32 {
-        mb.set(0, 9)
-        return 1
-    }
-    trace(sub(lb.xs[0], pb()))
-    mut ug: List<Int32> = List<Int32> { values = [1, 2, 3] }
-    lendGlobal(mut ug)
-    trace(sub(ug[0], writeLent()))
-    lendFx: Fx<Tuple1<mut List<Int32>>, MutView<Int32>> = fx (mut zs: List<Int32>) MutView<Int32> {
-        return zs.from(0)
-    }
-    mut uf: List<Int32> = List<Int32> { values = [1, 2, 3] }
-    mf: MutView<Int32> = lendFx(mut uf)
-    pf: Fx<Tuple0, Int32> = fx () Int32 {
-        mf.set(0, 9)
-        return 1
-    }
-    trace(sub(uf[0], pf()))
-    // So does one a lambda written in a generic function lends: mkLender<T>'s lambda has the
-    // type Fx<Tuple1<mut List<T>>, MutView<T>>, and is one of the bodies the concrete mkg may
-    // run (gcc and MSVC printed 8, clang 0): 1 - 1.
-    mkg: Fx<Tuple1<mut List<Int32>>, MutView<Int32>> = mkLender<Int32>()
-    mut ux: List<Int32> = List<Int32> { values = [1, 2, 3] }
-    mx: MutView<Int32> = mkg(mut ux)
-    px: Fx<Tuple0, Int32> = fx () Int32 {
-        mx.set(0, 9)
-        return 1
-    }
-    trace(sub(ux[0], px()))
+    trace(sub(ws[0], poke(ws.from(0))))
+    // A view of a temporary is formed inside the lambda that holds its owner (design 30, E2:
+    // gcc printed garbage for a kira::View copied out of the list's declaration): the list is
+    // made, then next() runs: 10000 - 2.
+    ticks = 0
+    trace(minus(makeList().view(), next()))
+    // A view call with an effect of its own is a kira::View temporary of the lambda its first-
+    // class root opens, never a lambda's result (E3: gcc printed -1950596383): 9000 - 2.
+    ticks = 0
+    idx = 0
+    trace(minus(tail(makeList().view(), nextSize()), next()))
     // A for range whose storage a temporary owns (an element of a fresh List, a fresh Ref's
     // box, a fresh Maybe's value) is copied while the temporary lives: C++'s range reference
     // keeps only a temporary it is bound to itself, and the loop read freed storage (gcc
@@ -361,12 +281,6 @@ fx main: () Void {
     trace(rm)
 }
 
-fx mkLender<T>: () Fx<Tuple1<mut List<T>>, MutView<T>> {
-    return fx (mut zs: List<T>) MutView<T> {
-        return zs.from(0)
-    }
-}
-
 fx freshLists: () List<List<Int32>> {
     return List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] }
 }
@@ -380,31 +294,13 @@ fx freshMaybe: () Maybe<List<Int32>> {
     return m
 }
 
-fx lendList: (mut xs: List<Int32>) MutView<Int32> {
-    return xs.from(0)
+fx makeList: () List<Int32> {
+    ticks += 1
+    return List<Int32> { values = [1000, 2000, 3000, 4000] }
 }
 
-fx lendArr: (mut a: Arr<Int32, 3>) MutView<Int32> {
-    return a.from(0)
-}
-
-pub struct Lender {
-    pub xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
-
-    pub mut fx lend: () MutView<Int32> {
-        return xs.from(0)
-    }
-}
-
-mut glent: Maybe<MutView<Int32>> = null
-
-fx lendGlobal: (mut xs: List<Int32>) Void {
-    glent = xs.from(0)
-}
-
-fx writeLent: () Int32 {
-    glent.unwrap().set(0, 9)
-    return 1
+fx minus: (v: View<Int32>, k: Int32) Int32 {
+    return total(v) - k
 }
 
 mut gll: List<List<Int32>> = List<List<Int32>> { }
@@ -436,8 +332,8 @@ fx setGv: () Int32 {
     return 1
 }
 
-fx pokeAll: (ms: List<MutView<Int32>>) Int32 {
-    ms.get(0).set(0, 9)
+fx poke: (m: MutView<Int32>) Int32 {
+    m[0] = 9
     return 1
 }
 
@@ -455,53 +351,12 @@ fx lenOf: (items: List<Int32>, k: Size) Size {
     return items.size()
 }
 
-fx countOf: (v: View<Int32>, k: Size) Size {
-    return v.size()
-}
-
-// Appends past any capacity gl had: its storage moves.
-fx growL: () Size {
-    mut i: Int32 = 0
-    while i < 64 {
-        gl.add(i)
-        i += 1
-    }
-    return 0
-}
-
-pub struct Holder<T> {
-    pub v: T
-    pub k: Size = 0
-}
-
-fx keep<T>: (mut into: Holder<T>, value: T, k: Size) Void {
-    into.v = value
-    into.k = k
-}
-
 fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
     return f(n)
 }
 
 fx twice: (n: Int32) Int32 {
     return n * 2
-}
-
-pub struct Win {
-    pub v: View<Int32>
-    pub k: Size = 0
-
-    pub mut fx attach: (src: View<Int32>, k: Size) Void {
-        v = src
-        this.k = k
-    }
-}
-
-mut other: List<Int32> = List<Int32> { values = [1, 2, 3] }
-
-fx fill: (mut w: Win, xs: List<Int32>, k: Size) Void {
-    w.v = xs.from(0)
-    w.k = k
 }
 
 fx adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {

@@ -14,6 +14,7 @@ import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
@@ -699,26 +700,36 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * it, and `m.value.view()` in the callee points into the copy, not into [e]).
      */
     fun isCopiedPlace(e: Expr): Boolean =
-        isCharPtr(e) || (model.coercion(e) is Coercion.WrapSome && isPlaceExpr(e) && model.typeOrNull(e)?.let { CppLending.borrowable(it) } == true)
+        isCharPtr(e) || (model.coercion(e) is Coercion.WrapSome && isPlaceExpr(e) && model.typeOrNull(e)?.let { CppHoister.ownsStorage(it) } == true)
 
     /**
      * [e] as an operand of a call, an operator or a construction that reads it: a place C++
      * holds by reference is a snapshot [CppHoister.Operand.Place] (D33 reads it before a
-     * sibling's effect, so the hoister copies it first), unless the use is [lent] from (a view
-     * the callee takes into it can outlive the call: [CppHoister.lentArgument],
-     * [CppHoister.lentReceiver], [CppHoister.lends] for a field or target), where it is never
-     * copied and its path is applied after every sibling; anything else is a
-     * [CppHoister.Operand.Value] that [emit] spells, marked lent when it is a fresh value that
-     * owns storage (a call's result, a construction, a `Str` constant C++ makes a `kira::Str`
-     * of), which the hoister refuses to order where the result could carry a view into it
-     * ([CppHoister.Operand.Value.lent]).
+     * sibling's effect, so the hoister copies it first), unless a view is formed of it ([lent]:
+     * the typer converts it to a `View`, or it is the receiver of a call whose result is
+     * second-class), where it is never copied and its path is applied after every sibling
+     * (design 30, E1); a call whose result is second-class is a [CppHoister.Operand.Chain]
+     * ([valueOperand]); anything else is a [CppHoister.Operand.Value] that [emit] spells. A
+     * `Str` constant a view is formed of is no place: C++ makes a `kira::Str` of it, a
+     * temporary, which the hoister spills as the view's owner.
      */
     fun operandOf(e: Expr, lent: Boolean = false, emit: () -> CppEx): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e)) && !(lent && isCopiedPlace(e))) {
+        if (isPlaceExpr(e) && heldByReference(typeOf(e)) && !(lent && isCharPtr(e))) {
             placeOperand(e, emit, if (lent) CppHoister.PlaceMode.LENT else CppHoister.PlaceMode.SNAPSHOT)
         } else {
-            CppHoister.Operand.Value(e, lent = lent && CppLending.borrowable(typeOf(e)) && model.coercion(e) !is Coercion.ToView, emit = emit)
+            valueOperand(e, emit = emit)
         }
+
+    /**
+     * [e], which is no place, as an operand: a [CppHoister.Operand.Chain] when it is a call
+     * whose result is second-class (its receiver and arguments are leaves of the enclosing
+     * spill, so a view is never copied out of the lambda that holds its owner: design 30, E2
+     * and E3), else a [CppHoister.Operand.Value] that [emit] spells.
+     */
+    private fun valueOperand(e: Expr, mutable: Boolean = false, emit: () -> CppEx): CppHoister.Operand {
+        val node = if (!isPlaceExpr(e) && CppHoister.isSecondClass(model.typeOrNull(e))) hoister.callNode(e) else null
+        return if (node != null) hoister.chain(e, node, emit) else CppHoister.Operand.Value(e, mutable, emit)
+    }
 
     /**
      * [e] as a step of a place's path (the container of an element, the struct a field is of):
@@ -726,7 +737,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * path lands where Kira wrote it; anything else (a call's result, a handle) is a value.
      */
     private fun pathOperand(e: Expr): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e) else CppHoister.Operand.Value(e) { coerced(e) }
+        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e) else valueOperand(e) { coerced(e) }
 
     /**
      * [target] as a place operand: an element is `kira::at(c, i)` (`c[i]` on a Map, `kira::str::at`
@@ -769,10 +780,12 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * the end (`kira::at(s, t0_) = t1_`).
      */
     private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
-        // A view into a temporary would dangle in the target once the statement ends.
-        hoister.refuseTemporaryView(value, "the assignment")
-        // A target that can hold a view (`w.v = gl`, v a View) points into the value: never a copy.
-        val ops = listOf(placeOperand(target), operandOf(value, lent = hoister.lends(typeOf(target))) { coerced(value) })
+        val tt = typeOf(target)
+        if (CppHoister.isSecondClass(tt) || CppHoister.holdsSecondClass(tt)) {
+            // No variable, field or element holds a view (design 30, 1.2).
+            hoister.internalView(node, "this assignment stores a view in a ${tt.display()}", "type")
+        }
+        val ops = listOf(placeOperand(target), operandOf(value) { coerced(value) })
         return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void) { (l, r) ->
             CppEx("${wrap(l, CppPrec.UNARY)} = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
         }
@@ -881,13 +894,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             // overload takes the left operand as its receiver, a free one as its first argument.
             val sym = CPP_OPS[op] ?: return unsupported(e, "the operator overload ${op.name}")
             val member = rc.receiver != null
-            // A temporary operand the overload keeps a view into dangles once the statement ends.
-            if (member) hoister.refuseKeptReceiver(rc, e.leftExpr) else hoister.refuseKeptTemporary(rc, 0, e.leftExpr)
-            hoister.refuseKeptTemporary(rc, if (member) 0 else 1, e.rightExpr)
-            val left = if (member) hoister.lentReceiver(rc, typeOf(e.leftExpr)) else hoister.lentArgument(rc, 0, e.leftExpr)
-            val right = hoister.lentArgument(rc, if (member) 0 else 1, e.rightExpr)
+            // A view is formed of an operand the typer converts, or of a receiver whose overload returns one (E1).
+            val left = if (member) CppHoister.isSecondClass(rc.returnType) else model.coercion(e.leftExpr) is Coercion.ToView
+            val right = model.coercion(e.rightExpr) is Coercion.ToView
             return hoister.lower(
-                listOf(operand(e.leftExpr, lent = left), operand(e.rightExpr, lent = right)), typeOf(e),
+                listOf(operand(e.leftExpr, lent = left), operand(e.rightExpr, lent = right)), typeOf(e), node = e,
             ) { (l, r) -> CppEx("${wrap(l, precOf(op))} $sym ${wrap(r, precOf(op) + 1)}", precOf(op), sym) }
         }
         return when (op) {
@@ -1145,9 +1156,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun arrayLiteral(e: ArrayLiteral): CppEx {
         val t = typeOf(e)
-        // An array of views (`[gl, other]` as Arr<View<Int32>, 2>) points into its elements.
-        val lent = hoister.lends(t)
-        val elements = e.value.map { operandOf(it, lent) { coerced(it) } }
+        if (CppHoister.holdsSecondClass(t)) {
+            hoister.internalView(e, "this array literal holds views, a ${t.display()}", "type")
+        }
+        val elements = e.value.map { operandOf(it) { coerced(it) } }
         return hoister.lower(elements, t) { texts ->
             CppEx("${ctx.spell(t, Pos.VALUE, e)}{${texts.joinToString(", ") { wrap(it, CppPrec.ASSIGN) }}}", CppPrec.POSTFIX)
         }
@@ -1170,9 +1182,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if ((cls.kind == ClassKind.MAGIC && cls.name == "Ref") || cls.kind == ClassKind.CLASS || ctx.speller.isSystemClass(cls)) {
             return classConstruction(e, ri, cls)
         }
+        refuseViewFields(e, ri)
         val given = ri.sourceOrder.map { ri.fields[it] as FieldInit.Given }
-        // A field that can hold a view (`Win { v = gl, k = nextSize() }`) points into its operand: never a copy.
-        val ops = given.map { g -> operandOf(g.expr, lent = hoister.lends(g.field.type.substitute(ri.substitution))) { coerced(g.expr) } }
+        val ops = given.map { g -> operandOf(g.expr) { coerced(g.expr) } }
         val byField = IdentityHashMap<FieldSymbol, Int>()
         given.forEachIndexed { i, g -> byField[g.field] = i }
         val typeText = if (model.typeOf(e.typeName) != null) ctx.spell(e.typeName, Pos.VALUE) else ctx.spell(t, Pos.VALUE, e)
@@ -1198,9 +1210,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * W2.4's `CppClassesPart.construct` spells this on its branch; at the merge this delegates to it.
      */
     fun classConstruction(e: ObjectInitExpr, ri: net.exoad.kira.compiler.analysis.types.ResolvedInit, cls: ClassSymbol): CppEx {
-        // A heap object outlives the statement: a view field given a view into a temporary
-        // (`Ref<View<Int32>> { value = makeList().view() }`) would dangle in it.
-        ri.fields.forEach { f -> if (f is FieldInit.Given) hoister.refuseTemporaryView(f.expr, "the object it is stored in") }
+        refuseViewFields(e, ri)
         val t = ri.type
         val target = if (cls.kind == ClassKind.MAGIC && cls.name == "Ref") {
             "kira::Box<${ctx.spell((t as? KType.Nominal)?.typeArgs()?.firstOrNull() ?: KType.Error, Pos.TEMPLATE_ARG, e)}>"
@@ -1218,7 +1228,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val g = fields[i] as? FieldInit.Given ?: return@forEach
             if (i < end) {
                 position[g.field] = ops.size
-                ops += operandOf(g.expr, lent = hoister.lends(g.field.type.substitute(ri.substitution))) { coerced(g.expr, CppLitRole.TYPED) }
+                ops += operandOf(g.expr) { coerced(g.expr, CppLitRole.TYPED) }
             }
         }
         return hoister.lower(ops, t) { texts ->
@@ -1230,6 +1240,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 }
             }
             CppEx("std::make_shared<$target>(${args.joinToString(", ")})", CppPrec.POSTFIX)
+        }
+    }
+
+    /** `cpp.internal` at the construction [e] of a type that holds a view (design 30, 1.2: no field, box or container holds one). */
+    private fun refuseViewFields(e: ObjectInitExpr, ri: net.exoad.kira.compiler.analysis.types.ResolvedInit) {
+        val held = ri.fields.firstOrNull { f -> f.field.type.substitute(ri.substitution).let { CppHoister.isSecondClass(it) || CppHoister.holdsSecondClass(it) } }
+        if (held != null || CppHoister.holdsSecondClass(ri.type)) {
+            hoister.internalView(e, "this construction of ${ri.type.display()} holds a view${held?.let { " in '${it.field.name}'" } ?: ""}", "type")
         }
     }
 
@@ -1296,17 +1314,15 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /**
      * The operands of [rc]'s written arguments in source order (D33), and the slots in
      * parameter order. A `mut` argument is a place: located in order, never copied (R19); a trailing
-     * default is left to C++'s default argument (R6). A default C++ binds as a temporary that
-     * the callee may keep a view into is refused at the call [node] ([CppHoister.refuseKeptDefault]).
+     * default is left to C++'s default argument (R6), a temporary of the call's full expression.
      */
-    private fun arguments(rc: ResolvedCall, node: Expr): Pair<List<CppHoister.Operand>, List<Slot>> {
-        hoister.refuseKeptDefault(rc, node)
+    private fun arguments(rc: ResolvedCall): Pair<List<CppHoister.Operand>, List<Slot>> {
         val operands = mutableListOf<CppHoister.Operand>()
         val indexOf = HashMap<Int, Int>()
         rc.sourceOrder.forEach { i ->
             val a = rc.args[i] as? ArgBinding.Given ?: return@forEach
             indexOf[i] = operands.size
-            operands += argumentOperand(a, rc, i)
+            operands += argumentOperand(a)
         }
         val slots = mutableListOf<Slot>()
         rc.args.forEachIndexed { i, a ->
@@ -1315,7 +1331,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                     val op = indexOf[i] ?: run {
                         // A written argument missing from sourceOrder: keep it, in parameter order.
                         indexOf[i] = operands.size
-                        operands += argumentOperand(a, rc, i)
+                        operands += argumentOperand(a)
                         indexOf[i]!!
                     }
                     slots += Slot.Given(op, i, a.byRef)
@@ -1332,16 +1348,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /**
      * A written argument: a `mut` one is a bound place (its path applied at the call, never
      * copied: R19; C++ may bind the reference before a sibling runs, so a sibling that may move
-     * its container is ordered first), any other an [operandOf], lent where the call [i] of
-     * [rc] may lend from it. A temporary the callee may keep a view into past the call is
-     * refused ([CppHoister.refuseKeptTemporary]).
+     * its container is ordered first), any other an [operandOf], lent where the typer converts
+     * it to a `View` (design 30, E1: the view is of the place, never of a copy).
      */
-    private fun argumentOperand(a: ArgBinding.Given, rc: ResolvedCall, i: Int): CppHoister.Operand {
+    private fun argumentOperand(a: ArgBinding.Given): CppHoister.Operand {
         if (a.byRef) {
             return placeOperand(a.expr, mode = CppHoister.PlaceMode.BOUND)
         }
-        hoister.refuseKeptTemporary(rc, i, a.expr)
-        return operandOf(a.expr, lent = hoister.lentArgument(rc, i, a.expr)) { coerced(a.expr) }
+        return operandOf(a.expr, lent = model.coercion(a.expr) is Coercion.ToView) { coerced(a.expr) }
     }
 
     /** The text of a struct's `this` as a receiver the hoister may copy: [accessWith] knows this instance as the uncopied one. */
@@ -1353,9 +1367,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * for a class's `this`, whose identity is fixed. A place C++ holds by reference (a struct,
      * a `Str`, a container, a type parameter: [heldByReference]; a struct's own `this` too) is
      * a place operand: the one a `mut fx` writes stays where it lives (the write lands there),
-     * one the call may lend from (a lending binding, a `MutView` taken of it, or
-     * [CppHoister.lentReceiver]) is never copied and is read after every sibling (the view is
-     * made of it as their effects left it), any other is a snapshot the hoister copies before
+     * one a view is formed of (a `MutView` lent of it, or the receiver of any call whose result
+     * is second-class: design 30, E1) is never copied and is read after every sibling, any
+     * other is a snapshot the hoister copies before
      * a sibling's effect (D33), so `gm.get(k())` and `gl.get(k())` read the same way, whichever
      * binding spells them, and `this.plus(bump())` reads the same as `ga.plus(bumpA())`. A
      * handle (a class, a trait, a `Ref`), a view, a scalar, and any receiver that is no place
@@ -1374,13 +1388,12 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val t = typeOf(receiver)
         val isPlace = isPlaceExpr(receiver)
-        val lent = lending || (rc != null && fn?.isMutMethod != true && hoister.lentReceiver(rc, t))
+        val lent = lending || (rc != null && fn?.isMutMethod != true && CppHoister.isSecondClass(rc.returnType))
         if (isPlace && heldByReference(t) && !(lent && isCharPtr(receiver))) {
             return placeOperand(receiver, emit, receiverMode(rc, fn, lending, t))
         }
-        // A fresh receiver the call lends from (`makeList().from(k)`): the hoister refuses to order it where the result could carry the view.
-        val fresh = lent && CppLending.borrowable(t)
-        return CppHoister.Operand.Value(receiver, mutable = writes || (memberStyle && !isPlace), lent = fresh) { emit() }
+        // A fresh receiver a view is formed of (`makeList().from(k)`) is the view's owner, spilled into a typed temporary of the lambda that uses the view (E2).
+        return valueOperand(receiver, mutable = writes || (memberStyle && !isPlace)) { emit() }
     }
 
     /** How a receiver place of type [t] is ordered ([receiverOperand]): lent, written through a bound reference, or a snapshot. */
@@ -1388,7 +1401,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         lending -> CppHoister.PlaceMode.LENT
         fn?.isMutMethod == true -> CppHoister.PlaceMode.BOUND
         rc == null -> CppHoister.PlaceMode.PATH
-        hoister.lentReceiver(rc, t) -> CppHoister.PlaceMode.LENT
+        CppHoister.isSecondClass(rc.returnType) -> CppHoister.PlaceMode.LENT
         else -> CppHoister.PlaceMode.SNAPSHOT
     }
 
@@ -1419,18 +1432,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun freeCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a free call without its function")
-        val (ops, slots) = arguments(rc, e)
+        val (ops, slots) = arguments(rc)
         val name = ctx.qualified(fn) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
-        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts -> CppEx("$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        return hoister.lower(ops, rc.returnType, node = e) { texts -> CppEx("$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
     private fun methodCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a method call without its method")
-        val (argOps, argSlots) = arguments(rc, e)
+        val (argOps, argSlots) = arguments(rc)
         val name = ctx.names.escape(fn.name) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
         val receiver = rc.receiver
-        // A temporary receiver the method keeps a view into dangles once the statement ends.
-        receiver?.let { hoister.refuseKeptReceiver(rc, it) }
         // The receiver is an operand before the arguments (D33): spilled, it runs first.
         val recvOp = when {
             receiver != null -> receiverOperand(receiver, rc, fn, memberStyle = false, lending = false) { coerced(receiver) }
@@ -1438,7 +1449,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             else -> null
         }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts ->
+        return hoister.lower(ops, rc.returnType, node = e) { texts ->
             val callee = when {
                 receiver != null -> accessWith(receiver, if (recvOp != null) texts[0] else null, typeOf(receiver)) + name
                 recvOp != null && texts[0] !== thisLeaf -> "${wrap(texts[0], CppPrec.POSTFIX)}.$name"
@@ -1457,11 +1468,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /** A call through an `Fx` value: a local, a parameter (a template's `F_p&&` too), or a field. */
     private fun fnValueCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
-        val (argOps, argSlots) = arguments(rc, e)
+        val (argOps, argSlots) = arguments(rc)
         // The callee is evaluated first (D33); as an operand it is spilled with the arguments.
         val calleeOp = operandOf(e.name) { coerced(e.name) }
         val (ops, slots) = withReceiver(calleeOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts -> CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        return hoister.lower(ops, rc.returnType, node = e) { texts -> CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
     /**
@@ -1470,11 +1481,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      */
     private fun externCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "an extern call without its function")
-        val (argOps, argSlots) = arguments(rc, e)
+        val (argOps, argSlots) = arguments(rc)
         val receiver = rc.receiver
         val recvOp = receiver?.let { receiverOperand(it, rc, fn, memberStyle = false, lending = false) { coerced(it) } }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts ->
+        return hoister.lower(ops, rc.returnType, node = e) { texts ->
             val recv = when {
                 receiver != null -> if (recvOp != null) wrap(texts[0], CppPrec.POSTFIX) else receiverText(receiver)
                 rc.implicitThis -> if (state.frame?.receiverAccess == CppBodyState.ThisCapture.SELF) selfPointer() else "this"
@@ -1534,7 +1545,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (freestanding) {
             return unsupported(e, "$name in a freestanding module (kira/core.hxx has no output; the board's serial seam prints)")
         }
-        val (ops, slots) = arguments(rc, e)
+        val (ops, slots) = arguments(rc)
         return hoister.lower(ops, KType.Void) { texts -> CppEx("kira::$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
@@ -1597,9 +1608,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val key = (fn.foreign as? Foreign.Magic)?.key
             if (key == "Result.success" || key == "Result.error") {
                 // D39: compiler-known; kira::Result's static factories.
-                val (ops, slots) = arguments(rc, e)
+                val (ops, slots) = arguments(rc)
                 val result = ctx.spell(rc.returnType, Pos.VALUE, e)
-                return hoister.lower(ops, rc.returnType, call = rc, node = e) { texts -> CppEx("$result::${fn.name}(${argList(slots, texts)})", CppPrec.POSTFIX) }
+                return hoister.lower(ops, rc.returnType, node = e) { texts -> CppEx("$result::${fn.name}(${argList(slots, texts)})", CppPrec.POSTFIX) }
             }
             return unsupported(e, "the magic call '${fn.qualifiedName}' (no cpp binding under ${CppBindingTable.keysFor(fn, recvType, program)})")
         }
@@ -1622,9 +1633,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             addAll(rc.typeArgs)
         }.map { ctx.spell(it, Pos.TEMPLATE_ARG, e) }
-        // A temporary receiver whose storage the binding hands to an Fx argument that keeps a view of it (`Mutex.lock`).
-        receiver?.let { hoister.refuseKeptReceiver(rc, it) }
-        val (argOps, slots) = arguments(rc, e)
+        if (recvType != null && CppHoister.holdsSecondClass(recvType)) {
+            // A container, box or Maybe of views (design 30, 1.2).
+            hoister.internalView(e, "the receiver of '${fn.name}' holds views, a ${recvType.display()}", "type")
+        }
+        val (argOps, slots) = arguments(rc)
         val lending = recvType != null && fn.name in LENDERS && (CppBindingTable.isArr(recvType) || CppBindingTable.magicName(recvType) == "List") &&
             CppBindingTable.magicName(rc.returnType) == "MutView"
         val ops = mutableListOf<CppHoister.Operand>()
@@ -1644,7 +1657,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val op = if (name == "self") ops.getOrNull(receiverIndex) else slots.getOrNull(name.toInt()).let { s -> (s as? Slot.Given)?.let { ops[it.operand + shift] } }
             op != null && hoister.rankOf(op) != CppHoister.PURE
         }
-        return hoister.lower(ops, rc.returnType, force, call = rc, node = e) { texts ->
+        return hoister.lower(ops, rc.returnType, force, node = e) { texts ->
             val argTexts = slots.map { s ->
                 when (s) {
                     is Slot.Given -> texts[s.operand + shift]
@@ -1752,7 +1765,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val written = hoister.writtenBy(holes.map { h -> CppHoister.Operand.Value(h.expr) { CppEx("", CppPrec.PRIMARY) } })
         if (op != null && hoister.stepRank(op, written) != CppHoister.PURE) {
             holes.firstOrNull { hoister.rank(it.expr, written) == CppHoister.IMPURE }?.let { hole ->
-                hoister.refuse(hole.expr, "this hole's effect may move the container the StrBuf is an element of, which C++ has already located for the append: store the hole's value in a local first")
+                hoister.refuseOrder(hole.expr, "this hole's effect may move the container the StrBuf is an element of, which C++ has already located for the append: store the hole's value in a local first")
             }
         }
         if (op == null || hoister.rankOf(op) == CppHoister.PURE) {
@@ -1807,6 +1820,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val t = typeOf(e)
         if (model.ifShape(e) == true) {
             return ternary(e, t)
+        }
+        if (CppHoister.isSecondClass(t)) {
+            // Its branches would be a lambda's, and a view made in one would be returned past its statements (design 30, E4).
+            hoister.internalView(e, "an if-expression with statement branches is a view (${t.display()})", "position")
         }
         return ctx.parts.stmts.let { stmts ->
             val part = stmts as? CppStmtEmitter ?: return unsupported(e, "an if-expression that is no ternary, without W2.3's statement part")

@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
@@ -139,7 +140,15 @@ class CppStmtEmitter : CppStmtPart {
             return listOf("return;")
         }
         val lower = CppLowering.of(ctx)
-        lower.hoister.refuseTemporaryView(e, "the returned value")
+        if (CppHoister.isSecondClass(ctx.model.typeOrNull(e))) {
+            // The return rule (design 30, 2.2): a returned view comes from a view parameter, the receiver or a literal.
+            when {
+                lower.hoister.viewsTemporary(e) ->
+                    lower.hoister.internalView(e, "this return is a view into a temporary, which C++ destroys as the function returns", "return")
+                lower.hoister.viewsForeignStorage(e) ->
+                    lower.hoister.internalView(e, "this return is a view of a local or of a parameter that is no view, which may be gone once the function returns", "return")
+            }
+        }
         return listOf("return ${lower.emit(e, CppPrec.NONE)};")
     }
 
@@ -188,8 +197,11 @@ class CppStmtEmitter : CppStmtPart {
                 }
                 else -> {
                     // `for(x : range)` binds the range to a reference, which keeps the outermost
-                    // temporary alive and no other: a view into one dies before the first step.
-                    val refused = lower.hoister.refuseTemporaryView(fe.target, "the loop")
+                    // temporary alive and no other: a view into one dies before the first step
+                    // (design 30, E5: a view range is a view parameter's or a literal's).
+                    if (CppHoister.isSecondClass(model.typeOrNull(fe.target)) && lower.hoister.viewsTemporary(fe.target)) {
+                        lower.hoister.internalView(fe.target, "this loop ranges over a view into a temporary, which C++ destroys before the first step", "position")
+                    }
                     val unused = if (isRead(ctx, variable)) "" else "[[maybe_unused]] "
                     val decl = when {
                         (variable as? LocalSymbol)?.isMut == true -> "$typeText $name"
@@ -200,9 +212,9 @@ class CppStmtEmitter : CppStmtPart {
                     val rangeType = model.typeOrNull(fe.target)
                     // A range that may be a reference into a temporary (`kira::at(makeLists(), 0)`,
                     // `makeRef()->value`) is copied while the temporary lives, and the loop's
-                    // reference keeps the copy alive. A converted range is a view (ToView): one
-                    // into a temporary was refused above.
-                    val copy = !refused && rangeType != null && model.coercion(fe.target) == null && lower.hoister.rangeMayDangle(fe.target)
+                    // reference keeps the copy alive. A converted range is a view (ToView), and a
+                    // view's copy points where the view did.
+                    val copy = rangeType != null && model.coercion(fe.target) == null && !CppHoister.isSecondClass(rangeType) && lower.hoister.rangeMayDangle(fe.target)
                     val text = if (copy && rangeType != null) "${ctx.spell(rangeType, Pos.VALUE, fe.target)}($range)" else range
                     "$unused$decl : $text"
                 }
@@ -275,8 +287,11 @@ class CppStmtEmitter : CppStmtPart {
             spelled.endsWith("*") -> "$spelled const $name"
             else -> "const $spelled $name"
         }
+        if (CppHoister.isSecondClass(t) || CppHoister.holdsSecondClass(t)) {
+            // Design 30, 2.1: a view is never kept in a local, nor is anything that holds one (1.2).
+            lower.hoister.internalView(decl, "the local '${decl.name.value}' holds a view, a ${t.display()}", if (CppHoister.isSecondClass(t)) "local" else "type")
+        }
         val init = decl.value ?: return "$unused$declarator{};"
-        lower.hoister.refuseTemporaryView(init, "the local '${decl.name.value}'")
         val scalar = t is KType.Scalar || (t is KType.Nominal && t.sym is EnumSymbol)
         return when {
             scalar -> "$unused$declarator{${lower.emit(init, CppPrec.ASSIGN)}};"
@@ -406,30 +421,11 @@ class CppStmtEmitter : CppStmtPart {
             val tail = when {
                 last == null -> emptyList()
                 value == null || value is ThrowExpr || ctx.model.typeOrNull(value) == KType.Never -> render(ctx, last)
-                else -> {
-                    // The value leaves the lambda: a view into a temporary or a local of the branch would dangle.
-                    if (!lower.hoister.refuseTemporaryView(value, "the if-expression's value")) {
-                        lower.hoister.refuseBranchLocalView(value, declaredIn(ctx, statements.dropLast(1)))
-                    }
-                    listOf("return ${lower.emit(value, CppPrec.NONE)};")
-                }
+                else -> listOf("return ${lower.emit(value, CppPrec.NONE)};")
             }
             body + tail
         }
         return listOf("{") + inner.flatMap { it.split('\n') }.map { if (it.isEmpty()) it else "    $it" } + "}"
-    }
-
-    /** The locals [statements] declare, at any depth (a branch's own variables; one inside a lambda is never named outside it). */
-    private fun declaredIn(ctx: CppEmitContextImpl, statements: List<Statement>): Set<Symbol> {
-        val out: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
-        statements.forEach { st ->
-            AstTree.walk(st) { node ->
-                if (node is VariableDecl) {
-                    ctx.model.declSymbol(node)?.let { out += it }
-                }
-            }
-        }
-        return out
     }
 
     // ---- names -----------------------------------------------------------------------------------

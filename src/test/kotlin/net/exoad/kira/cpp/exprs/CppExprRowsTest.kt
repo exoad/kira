@@ -1282,25 +1282,26 @@ class CppExprRowsTest {
                 return idx
             }
 
-            pub struct Win {
-                pub v: View<Int32>
-                pub k: Size = 0
+            fx tailV: (v: View<Int32>, k: Size) View<Int32> {
+                return v.from(k)
             }
 
-            fx mkWin: (v: View<Int32>, k: Size) Win {
-                return Win { v = v, k = k }
+            fx sumV: (v: View<Int32>) Int32 {
+                mut s: Int32 = 0
+                for x: Int32 in v {
+                    s += x
+                }
+                return s
             }
 
-            pub fx lentThroughCall: () Int32 {
+            pub fx viewOfAPlace: () Int32 {
                 idx = 0
-                w: Win = mkWin(gl, nextSize())
-                return w.v.get(0) * 100 + w.v.get(1) + (w.k as Int32)
+                return sumV(tailV(gl, nextSize()))
             }
 
-            pub fx lentThroughConstruction: () Int32 {
+            pub fx viewOfATemporary: () Int32 {
                 idx = 0
-                w: Win = Win { v = gl, k = nextSize() }
-                return w.v.get(2) * 10 + (w.k as Int32)
+                return sumV(tailV(List<Int32> { values = [5, 6, 7] }.view(), nextSize()))
             }
 
             pub struct Acc {
@@ -1349,9 +1350,10 @@ class CppExprRowsTest {
             }
             """,
             listOf(
-                // A lent operand is never copied; the view is made after the sibling's effect.
-                "const kira::Size t0_ = nextSize();\n          return mkWin(gl, t0_);",
-                "const kira::Size t0_ = nextSize();\n          return Win{.v = gl, .k = t0_};",
+                // A place a view is formed of is never copied (E1), and a view call with an effect
+                // is a kira::View temporary of its root's lambda (E3), its owner spilled first (E2).
+                "const kira::Size t0_ = nextSize();\n          const kira::View<std::int32_t> t1_ = tailV(gl, t0_);\n          return sumV(t1_);",
+                "const kira::List<std::int32_t> t0_ = kira::List<std::int32_t>{5, 6, 7};\n          const kira::Size t1_ = nextSize();\n          const kira::View<std::int32_t> t2_ = tailV(kira::view(t0_), t1_);",
                 "const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);",
                 "return kira::list::contains(a, 2) && !kira::list::contains(a, 4);",
                 "const kira::List<std::int32_t> c = kira::list::clone(a);",
@@ -1360,7 +1362,7 @@ class CppExprRowsTest {
                 "const kira::Map<kira::Str, std::int32_t> e = kira::Map<kira::Str, std::int32_t>{};",
             ),
             listOf(
-                """check(f3::lentThroughCall() == 1123 && f3::lentThroughConstruction() == 331, "D33: a struct result that holds a view lends, so its operands are read where they live, never from a copy that dies with the lambda");""",
+                """check(f3::viewOfAPlace() == 55 && f3::viewOfATemporary() == 13, "D33: a view is formed of the place itself, and of a temporary only inside the lambda that holds it (design 30, E1-E3)");""",
                 """check(f3::thisBeforeBump() == 11, "D33: a struct's this beside a sibling mut fx is read before the effect");""",
                 """check(f3::fixedContains() && f3::fixedClone() == 3, "Arr<T, N>.contains and Arr<T, N>.clone bind over a std::array");""",
                 """check(f3::mapLiteral() == 22 && f3::setLiteral() == 202, "R9: a Map or Set literal is a braced list of entries or values (a Set keeps one of each), and an empty one is T{}");""",
