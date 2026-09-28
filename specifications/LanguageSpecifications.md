@@ -597,7 +597,7 @@ b.add(3)  // a is still [1, 2]
 **Unsigned Integer Types:**
 
 -   `UInt8`, `UInt16`, `UInt32`, `UInt64`: unsigned integers of 8, 16, 32 and 64 bits. Unsigned arithmetic wraps.
--   `Size`: the unsigned integer as wide as a pointer on the target. `length()` and `size()` return a `Size`, and a `Size` mixes with no other integer type: `i < s.length()` needs `i: Size`.
+-   `Size`: the unsigned integer as wide as a pointer on the target. A container's, a view's or a `Str`'s `length()`/`size()` returns a `Size`, and a `Size` mixes with no other integer type: `i < s.length()` needs `i: Size`. A class outside those declares its own `size()`/`length()` return type, such as a tuple's `Int32` (see Variadic Type Parameters and Tuples).
 
 **Character Type:**
 
@@ -1125,6 +1125,7 @@ y: Bool = 10 != 5    // Inequality
 -   A class that declares or inherits no `@_op_eq_` has one supplied:
     -   an immutable class compares the classes of the two objects, then every field, inherited ones included, each by its own `==`. The answer does not depend on the variables' types: an object never equals one of another class, its parent's included. A field whose type has no `==` makes `==` on the class an error
     -   a mutable class compares identity: an object equals only itself
+-   In a hierarchy, each class without its own `@_op_eq_` has its own supplied one, overriding its parent's: an immutable subclass compares its own fields too, and a mutable subclass compares identity
 -   A trait-typed value has `==` only when the trait declares one: `trait Shape: Equatable<Shape>`
 -   A built-in has `==` where the standard library declares it: the numbers, `Bool`, `Char` and `Str`, and, element by element, `View`, `MutView`, `Arr`, `List` and the tuples. `Maybe`, `Result`, `Map`, `Set`, `Stack`, `Queue`, `Deque`, `StrBuf`, `Ref`, `Weak` and `Fx` have none
 -   Enums compare their values
@@ -1237,7 +1238,7 @@ The `Range` type implements the `Iterable<Int32>` interface and provides array-l
 
 ```kira
 range: Range = 5..10
-length: Int32 = range.length()
+length: Size = range.length()
 element: Int32 = range[0]
 ```
 
