@@ -3397,6 +3397,8 @@ pub sealed class Maybe<T> {
 }
 ```
 
+These are the API's only spellings. A `Maybe` has no `==`: test it with `isSome()` or `isNull()`, and read it with `value` or `unwrapOr`.
+
 **Usage Examples:**
 
 ```kira
