@@ -1176,9 +1176,10 @@ result: Bool = true || expensiveCheck()
 -   Operands must be of type `Bool`
 -   No implicit conversion from other types to `Bool`
 -   Always returns `Bool`
+-   `!a` is `a.@_op_not_()`, which `Bool` declares. `&&` and `||` are not methods: no method call can skip evaluating its argument, so they take `Bool` operands only
 
 ```kira
-result: Bool = 5 && 10
+result: Bool = 5 && 10  // Error: && takes Bool operands
 
 result: Bool = (5 > 0) && (10 > 0)
 ```
