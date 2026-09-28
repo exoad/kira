@@ -1,7 +1,161 @@
-# Known issues: w2-6-ffi (convergence round 5)
+# Known issues: w2-6-ffi (second-class views, round 2)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
+
+## Second-class views round 2: the two significant findings of round 1's verdict
+
+Round 1's verifier (`wave2/sc-round1.json`, `"w2-6-ffi".verdict`) passed every acceptance
+command but found two significant issues in round 5's own change, both this package's own
+(neither is a `rules.view.*` shape `w2-5-rules`' `ViewPass` covers). Both are fixed this
+round; the verdict's `minorToLedger` list is addressed below.
+
+### Fixed: a plain `Str` argument bound by reference could dangle when the same call ran Kira code through an `Fx` argument
+
+**What.** `CppExternEmitter.argument` lowered a `Str` parameter's argument as
+`kira::ffi::in(text)` whichever way `text` names storage: a place (a global, a field through
+a `Ref` or a handle, a local) is bound directly, `In{s = text}`, a `const std::string&` over
+the place's own buffer. Kira passes a `Str` by value, so nothing about that binding is
+observable from Kira's own side of a *pure* call — but contract 5.4's own point 3 lets an
+extern run Kira code through the `Fx` arguments it is given, and that Kira code may reassign
+the very place the `Str` argument names before the callee finishes reading it, freeing (or
+reallocating) the buffer `In::s` still refers to.
+
+**Where.** `CppExternEmitter.kt`'s `argument` (the `p.type == KType.Str` branch) and `call`
+(the new `mayHoldFx` scan).
+
+**Reproduction (round-1 verdict, probes u5/u8, trial CLI).**
+`lenAfter(gs, fx() Void { gs = "" })` with `gs: mut Str` a global printed 0 for 82 on g++ and
+clang, MSVC ASan a heap-use-after-free in the callee reading the freed buffer; the same
+through `r.value` with `r: Ref<Str>`.
+
+**Status: fixed this round.** `call` now computes `reenters` once per call: true when any
+given argument's type is an `Fx`, or may hold one through value composition (an
+`Arr`/`List`/.../`Maybe`/a `TupleN`'s type arguments, or a struct's fields) or through any
+reference type this static check cannot see past (a class, a trait, `Ref`, `Weak` — the same
+grouping `TypeFacts.isReference` uses; a generic `T` counts too, unknown). `argument` reads
+`reenters` and, for a `Str` parameter whose given argument is a place
+(`ctx.model.places[expr] != null`), copies it first: `kira::ffi::in(kira::Str(text))` — a
+fresh `kira::Str` (`std::string`) a reassignment elsewhere cannot reach, its own lifetime
+extended to the end of the C++ full-expression by ordinary temporary-lifetime rules, the same
+pattern `CStrBuf`/`in` already rely on for a computed argument (E6, 30-second-class.md 3.4).
+A literal or a computed expression is unaffected either way (nothing else can name it to
+write it back), and so is any call with no `Fx` argument reachable in it — round 1-4's own
+fixes are untouched. `CppExternEmitterTest.aStrArgumentThatIsAPlaceIsCopiedFirstWhenTheCallAlsoCarriesAnFx`
+covers a global place, a local place (copied too — this fix does not try to prove a lambda's
+copied captures cannot reach it, the conservative call), a literal (unaffected), the same
+global with no `Fx` anywhere in the call (unaffected, the round 1-4 baseline), and an `Fx`
+nested inside a struct argument's field (`mayHoldFx`'s recursion, not a direct `Fx`-typed
+argument).
+
+**Not this round's concern, restated.** The same aliasing shape on the `CStr`-from-named-`Str`
+path (`.c_str()`, not `kira::ffi::in`) — `lenAfterC(gs, fx() Void { gs = "<longer>" + gs })` —
+is round 1's own `minorToLedger` note "for W2.5": `ViewPass` is meant to refuse it by treating
+a `Str` given to a `CStr` extern parameter as a view with origin `PLACE(gs)`. This package's
+fix does not touch the `CStr` branch; carried below under "Deferred to other packages" so it
+is not lost.
+
+### Fixed: `Unsafe<T>` did not take everything design 1.4 and section 5 promise it does
+
+**What, part (a).** Design 1.4: a non-`mut` `p: Unsafe<T>` takes "a `View<T>` argument (or
+anything the typer converts to one, `Coercion.ToView`)" — the same conversion an ordinary
+`View<T>` parameter accepts. `CallResolver.typeGiven`'s `Unsafe<T>` branch only ever checked
+whether the argument's *own* static type already was `View<T>`/`MutView<T>`; a bare
+`Arr`/`List` place or a `Str` literal fell through to the plain `Unsafe<T>` mismatch.
+
+**What, part (b).** Design 30 section 5: "'Extern' here means every function whose body C++
+supplies: an `@_extern` function or method, and a bodyless `pub` prototype a C++ file defines
+... as W2.4 already groups them" — the decls golden's own
+`peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;` has no `@_extern` marker at all.
+`externCallee` (both call sites, `method` and `free`) was `fn.foreign is Foreign.Extern`
+alone, so this convention — and the `CStr`-for-`Str` one beside it — never applied to such a
+prototype.
+
+**Where.** `CallResolver.kt`'s `typeGiven` (the `Unsafe<T>` branch, non-`mut` case) and the
+new `isExternLike`; `CppExternEmitter.kt`'s `argument` (the `Unsafe<T>` branch now also reads
+a recorded `Coercion.ToView`).
+
+**Reproduction (round-1 verdict, probes u2/u10, trial CLI).** `sumP(ys, ys.size())` with
+`ys: List<Int32>` refused `types.assign.mismatch "expects Unsafe<Int32>, but this is
+List<Int32>"`; `lenBuf("abc")` the same against `Unsafe<Char>`; `peek(ys.view(), xs.view())`
+against the bodyless `peek` above refused three ways at once (the `View` argument's mismatch,
+plus `types.call.mut-missing`/`mut-not-place`/`mut-type` for the `mut` `MutView` one, since
+neither the coercion nor the by-ref `MutView` exemption ever ran for a non-`Foreign.Extern`
+callee).
+
+**Status: fixed this round.** (a) `typeGiven`'s `Unsafe<T>` branch now also tries
+`CoercionRules.fit(arg, t, View<element>)` before the plain mismatch; a fit records
+`Coercion.ToView` exactly as a `View<T>` parameter would, and `CppExternEmitter.argument`
+reads that coercion (alongside the pre-existing exact-type check) to decide the `.data()`
+wrap. The `mut Unsafe<T>` case is untouched — still `MutView<T>`-only — since design 1.4
+gives the "anything the typer converts" clause to the non-`mut` case alone. (b) `isExternLike`
+is `fn.foreign is Foreign.Extern || (!fn.hasBody && fn.isPub)`, and both `externCallee` call
+sites read it. A private bodyless function is a different, already-refused
+(`CppDeclEmitter.refuseBodilessPrivates`, `NO_BODY_CODE`) shape, so `isExternLike` stays
+`isPub`-gated and does not touch it. `CppExternEmitterTest.
+aListOrArrPlaceOrAStrLiteralCoercesToUnsafeViaToView` (a List/Arr place, a Str literal, the
+wrong element type still refused, the `mut` case still refused) and `.
+aBodylessPubPrototypeIsAnExternForTheUnsafeConventionToo` (the bodyless `pub` prototype
+accepted, a private one still refused) cover both.
+
+**Touches `CallResolver.kt`, outside this package's OWNS/TOUCHES.** Same disclosure as the
+round-5 entry below for this file (and the round-2 entry further down): 30-second-class.md
+7.0 assigns "the `Unsafe<T>` coercion at extern calls" to this package explicitly, and
+`isExternLike` is the same call sites' own `externCallee` decision, not a new one.
+`./gradlew test` (997 tests: 994 + 3 net new, 0 failures) passes with it in place;
+reconciling it with any independent change another package makes to the same file is
+`cpp-backend`'s merge step.
+
+### Deferred to other packages (round-1 verdict's `minorToLedger`, not this package's to fix)
+
+Recorded here so they are not lost between rounds, per the verdict's own routing (neither is
+this package's OWNS, and neither is one of the two significant findings assigned to it):
+
+- **For `w2-5-rules`.** `lenAfterC(gs, fx() Void { gs = "<longer>" + gs })` — a named `Str`
+  into a `CStr` parameter, lowered `gs.c_str()` — is a heap-use-after-free under MSVC ASan
+  (measured: prints 6 where 82 is correct). `3.3`'s rule refuses it only if `ViewPass` treats
+  a `Str` given to a `CStr` extern parameter as a view with origin `PLACE(gs)`, which the
+  typer records no coercion for today. Include this shape in `ViewPassTest`.
+- **For `w2-3-emit-exprs`.** The current hoister's `lentArgument` makes every extern argument
+  `LENT`, so `lenPlus(gs, change())` spills `change()` first and passes `kira::ffi::in(gs)`,
+  printing 16801 where 8201 is correct (the Kira-function control `lenPlusK` snapshots `gs`
+  and prints 8201 correctly). Design 7.2 replaces `lentArgument` with a read of
+  `viewOrigins` in W2.3's commit B, after which a first-class `Str` argument is
+  SNAPSHOT-copied.
+- **A lambda capturing a `mut` local reaches a `mut Unsafe<T>` and fails at the C++ compiler,
+  not at Kira.** `run(fx() Void { fillP(xs.view(), 3, 0) })` with the `mut` local `xs`
+  captured is accepted by Kira (rc 0), and g++ then fails with "no matching function for call
+  to `mutView`". The `Unsafe<T>` coercion's early return in `typeGiven`'s `byRef` branch skips
+  `mutArgument`'s `writesCapture` check, and the `MutView` lending at `CallResolver` (the
+  `.view()`/`.from()`/`.slice()` return-type override, ~line 296) treats a capture as a
+  mutable place. This predates this round's fix (it is the pre-existing exact-`MutView`
+  path, round 4's) and is not one of round 1's two significant findings for this package;
+  should be a Kira diagnostic (`types.lambda.assign-capture`, the same one `mutReceiver`
+  already reports for a `mut fx` receiver), not a C++ compile error. Left open for a future
+  round.
+
+### The kept non-regression tests still model programs decision 4b's `ViewPass` will refuse once merged
+
+**What.** `aLiteralANamedStrOrAConstantIntoACStrParameterIsNeverRefused` binds
+`r: Maybe<CStr> = after(...)` and `aMutUnsafeOutBufferBesideAComputedStrArgumentIsNeverRefused`
+declares `mut b: Unsafe<UInt8> = allocBuf(4)` — both shapes `rules.view.type`/
+`rules.view.extern` refuse once `w2-5-rules`' `ViewPass` merges (a `Maybe<CStr>` result type,
+an `Unsafe<T>` local). Design 7.4 itself only ever asked to keep "a literal, a named Str and
+a constant into a CStr parameter" from those tests, over whatever first-class result the
+callee's other tests already use elsewhere in this file, not literally the same
+`Maybe<CStr>`/`Unsafe<UInt8>` callees. Not touched this round (not one of round 1's two
+significant findings, and the tests are correct today on this branch alone, which has no
+`ViewPass`); left here so the next round that merges `w2-5-rules` rewrites these two tests
+over first-class results before they contradict the rule.
+
+### The three unsigned round-2/3/4 commits are resolved
+
+**What.** Round 5's verdict flagged `c387f55`, `b9961a1` and `43eb030` as still unsigned,
+carried from an earlier round's ledger entry ("rebase-to-sign before the `cpp-backend`
+merge"). `git log --format='%h %G? %s' -8` on this branch now shows every commit `G` (good
+EDDSA signature) — the hashes changed (re-signing rewrites them), matching
+`COORDINATION.md`'s note that "the branches were re-signed since, with identical trees."
+Nothing to do this round.
 
 ## Convergence round 5: decision 4b, views are second-class (30-second-class.md)
 

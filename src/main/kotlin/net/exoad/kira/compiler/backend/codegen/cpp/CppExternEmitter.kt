@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -353,8 +354,63 @@ object CppExternEmitter : CppExternsPart {
         // (5.2, 5.3, refused at the declaration by ViewPass's `rules.view.extern`/`rules.view.type`),
         // so a temporary `Str` buffer fed to any argument of this call is safe for the call's own
         // full-expression, whatever the call hands back.
-        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text) }
+        //
+        // A separate hazard 4b does not close: contract 5.4's point 3 lets an extern run Kira
+        // code through the `Fx` arguments it is given, and that code may reassign a `Str` place
+        // (a `mut` global, a field through a `Ref` or a handle, a local through a `mut` param)
+        // this same call also passes by name. `argument` binds a plain `Str` parameter straight
+        // to the place's own storage (`kira::ffi::in(place)`, a `const std::string&`), which Kira
+        // passes by value; a reassignment inside the `Fx` frees that storage while the C++
+        // parameter still points at it. Measured on the trial CLI (round-1 verdict, probes u5/u8):
+        // `lenAfter(gs, fx() Void { gs = "" })` with `gs: mut Str` global printed 0 for 82 (g++,
+        // clang), MSVC ASan heap-use-after-free in the callee reading the freed buffer;
+        // `lenAfter(r.value, fx() Void { r.value = "" })` with `r: Ref<Str>` the same. [reenters]
+        // is conservative (`mayHoldFx`): true when any given argument's type is an `Fx`, or may
+        // hold one through value composition (an `Arr`/`List`/.../`Maybe`/a `TupleN`/a struct's
+        // fields) or through any reference type (a class, a trait, `Ref`, `Weak`), which cannot be
+        // seen through. When it holds, every `Str` argument that is a place ([argument] reads
+        // `ctx.model.places`) is copied first, never bound to the place itself; a temporary or a
+        // literal is unaffected (nothing else can name it to write it back).
+        val reenters = call.args.any { b -> (b as? ArgBinding.Given)?.expr?.let { mayHoldFx(ctx.model.types[it]) } == true }
+        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, reenters) }
         return declared(ctx, fn.ret, "$callee(${texts.joinToString(", ")})")
+    }
+
+    /**
+     * Whether a value of type [t] is an `Fx`, or may hold one where this walk cannot see past
+     * it: by value, through an `Arr`, `List`, `Map`, `Set`, `Deque`, `Stack`, `Queue`, `Maybe`,
+     * `Result` or a `TupleN`'s type arguments, or a struct's fields (cycle-guarded by [seen]);
+     * or through any reference type this call's static type does not fix the contents of - a
+     * class, a trait value, `Ref<T>` or `Weak<T>` (the same grouping `TypeFacts.isReference`
+     * uses) - which may reach any object, including one holding a closure elsewhere. `View`,
+     * `MutView`, `Unsafe` and `CStr` hold no `Fx` (they are raw pointers/spans, not values). A
+     * generic `T` is unknown, so it counts as holding one.
+     */
+    private fun mayHoldFx(t: KType?, seen: MutableSet<ClassSymbol> = HashSet()): Boolean = when (t) {
+        null -> false
+        is KType.Fn -> true
+        is KType.Param -> true
+        is KType.Nominal -> when (val sym = t.sym) {
+            is ClassSymbol -> when (sym.kind) {
+                ClassKind.CLASS, ClassKind.OPAQUE -> true
+                ClassKind.STRUCT -> if (!seen.add(sym)) false else t.typeArgsSubstitutedFields().any { mayHoldFx(it, seen) }
+                ClassKind.MAGIC -> when (sym.name) {
+                    UNSAFE, VIEW, MUT_VIEW, CSTR -> false
+                    "Ref", "Weak" -> true
+                    else -> t.typeArgs().any { mayHoldFx(it, seen) }
+                }
+            }
+            is TraitSymbol -> true
+            else -> false
+        }
+        else -> false
+    }
+
+    /** [t]'s fields' types, its own type arguments substituted for its type parameters. */
+    private fun KType.Nominal.typeArgsSubstitutedFields(): List<KType> {
+        val cls = sym as ClassSymbol
+        val sub = cls.typeParams.zip(typeArgs()).toMap()
+        return cls.fields.map { it.type.substitute(sub) }
     }
 
     /**
@@ -423,21 +479,37 @@ object CppExternEmitter : CppExternsPart {
      * argument and receiver can never carry a pointer (5.2, 5.3), so the buffer's own lifetime -
      * to the end of the call's own full-expression - is always long enough, whatever a literal,
      * a named `Str`, a constant or a computed expression builds it from.
+     *
+     * `kira::ffi::in(text)` for a plain `Str` parameter binds a `const std::string&` straight to
+     * [text]'s own storage when [text] is a place - no copy, since Kira passes a `Str` by value
+     * and the callee only reads it for the call. That is unsound when [reenters] ([call]'s doc):
+     * the extern may run Kira code through an `Fx` argument that reassigns the very place this
+     * argument names, freeing the buffer the C++ parameter still points at (measured, round-1
+     * verdict). So when [reenters] and [expr] is a place (`ctx.model.places`),
+     * the argument is copied first, `kira::ffi::in(kira::Str(text))`: a fresh `kira::Str` a
+     * reassignment elsewhere cannot reach. A literal or a computed expression is already a
+     * temporary nothing else can name, so it is unaffected either way.
      */
-    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String): String {
+    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, reenters: Boolean = false): String {
         if (p == null) {
             return text
         }
         val expr = (binding as? ArgBinding.Given)?.expr
         if (isUnsafe(p.type)) {
             val given = expr?.let { ctx.model.types[it] }
-            return if (given != null && (isMagic(given, VIEW) || isMagic(given, MUT_VIEW))) "($text).data()" else text
+            val viewLike = given != null && (isMagic(given, VIEW) || isMagic(given, MUT_VIEW))
+            // Design 1.4: an Arr/List place or a Str literal reaches Unsafe<T> through
+            // Coercion.ToView (CallResolver.typeGiven), the same conversion an ordinary
+            // View<T> parameter takes; whatever wraps that coercion into a view (`kira::view`)
+            // has already run by the time [text] reaches here, so `.data()` is all this adds.
+            val toView = expr != null && ctx.model.coercion(expr) is Coercion.ToView
+            return if (viewLike || toView) "($text).data()" else text
         }
         if (p.byRef) {
             return "kira::ffi::out($text)"
         }
         if (p.type == KType.Str) {
-            return "kira::ffi::in($text)"
+            return if (reenters && expr != null && ctx.model.places[expr] != null) "kira::ffi::in(kira::Str($text))" else "kira::ffi::in($text)"
         }
         if (isCStr(p.type)) {
             if (expr == null || ctx.model.types[expr] != KType.Str) {

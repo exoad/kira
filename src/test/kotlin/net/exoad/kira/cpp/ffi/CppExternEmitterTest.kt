@@ -2,6 +2,7 @@ package net.exoad.kira.cpp.ffi
 
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
@@ -624,8 +625,12 @@ class CppExternEmitterTest {
         // Bodies are not lowered on this branch (pending on W2.3, ledgered), so emit(body)
         // already reported "the body of '<fn>' is not lowered yet" for every function with a
         // body; that noise is unrelated to what this test checks and is filtered out here.
-        return c.ctx.diagnostics.filter { it.isError && "the body of" !in it.message }.map { it.render() }
+        return errorsIgnoringUnloweredBodies(c.ctx)
     }
+
+    /** [errorsOf]/[Calls.ctx]'s errors, minus the "body not lowered yet" noise every function with a body reports on this branch ([diagsOf]'s doc). */
+    private fun errorsIgnoringUnloweredBodies(ctx: CppEmitContextImpl): List<String> =
+        ctx.diagnostics.filter { it.isError && "the body of" !in it.message }.map { it.render() }
 
     @Test
     fun aLiteralANamedStrOrAConstantIntoACStrParameterIsNeverRefused() {
@@ -767,6 +772,246 @@ class CppExternEmitterTest {
         val fillArg = (c.of("fillBuf").args[0] as ArgBinding.Given).expr
         assertTrue(c.ctx.model.coercion(readArg) == null, "no coercion recorded at a View argument to Unsafe<T>")
         assertTrue(c.ctx.model.coercion(fillArg) == null, "no coercion recorded at a MutView argument to a mut Unsafe<T>")
+    }
+
+    /**
+     * Round-1 significant finding #1 (this package's own, verdict wave2/sc-round1.json). A
+     * plain `Str` parameter is lowered `kira::ffi::in(text)`, which binds a `const
+     * std::string&` straight to [text]'s own storage: no copy, since Kira passes a `Str` by
+     * value and (before this fix) nothing here accounted for the callee reading it again after
+     * an `Fx` argument writes it. That is unsound once the call also carries an `Fx`: contract
+     * 5.4 lets an extern run Kira code through the `Fx` arguments it is given, and that code
+     * may reassign the very place the `Str` argument names, freeing the buffer
+     * `kira::ffi::in` still points at mid-call. Measured on the trial CLI (round-1 verdict,
+     * probes u5/u8): `lenAfter(gs, fx() Void { gs = "" })` with `gs: mut Str` a global printed
+     * 0 for 82 on g++ and clang (MSVC ASan: heap-use-after-free in the callee, reading the
+     * freed buffer); the same through `r.value` with `r: Ref<Str>`.
+     *
+     * Fixed: when the call carries an `Fx` argument, or anything that may hold one by value or
+     * through a reference ([mayHoldFx]), every `Str` argument that is a place
+     * (`ctx.model.places`) is copied first, `kira::ffi::in(kira::Str(text))` - a fresh
+     * `kira::Str` no reassignment elsewhere can reach - never bound to the place itself. A
+     * literal or a computed expression is unaffected either way (nothing else can name it to
+     * write it back), and so is a call with no `Fx` argument anywhere in it.
+     */
+    @Test
+    fun aStrArgumentThatIsAPlaceIsCopiedFirstWhenTheCallAlsoCarriesAnFx() {
+        // A mut global, reassigned by the very Fx the call carries: copied.
+        val global = callsOf(
+            """
+            @_extern(cpp = "probe::lenAfter", header = "probe.hxx")
+            pub fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
+            pub mut GS: Str = "hi"
+            fx cat: () Int32 {
+                return lenAfter(GS, fx() Void { GS = "" })
+            }
+            """
+        )
+        assertEquals(
+            "kira::ffi::declared<std::int32_t>(::probe::lenAfter(kira::ffi::in(kira::Str(GS)), whenDoneText))",
+            global.text("lenAfter", null, "GS", "whenDoneText"),
+        )
+
+        // A local place beside the same shape: this fix does not try to prove a lambda's
+        // captures (copies, design 4) cannot reach it - copied too, the conservative call.
+        val local = callsOf(
+            """
+            @_extern(cpp = "probe::lenAfter", header = "probe.hxx")
+            pub fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
+            fx cat: (a: Str) Int32 {
+                s: Str = a
+                return lenAfter(s, fx() Void { trace(1) })
+            }
+            """
+        )
+        assertEquals(
+            "kira::ffi::declared<std::int32_t>(::probe::lenAfter(kira::ffi::in(kira::Str(s)), whenDoneText))",
+            local.text("lenAfter", null, "s", "whenDoneText"),
+        )
+
+        // A literal beside an Fx argument: not a place, so unaffected - it was never bound to
+        // any storage a reassignment could free.
+        val literal = callsOf(
+            """
+            @_extern(cpp = "probe::lenAfter", header = "probe.hxx")
+            pub fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
+            fx cat: () Int32 {
+                return lenAfter("hi", fx() Void { trace(1) })
+            }
+            """
+        )
+        assertEquals(
+            "kira::ffi::declared<std::int32_t>(::probe::lenAfter(kira::ffi::in(\"hi\"), whenDoneText))",
+            literal.text("lenAfter", null, "\"hi\"", "whenDoneText"),
+        )
+
+        // The same global place, with no Fx argument anywhere in the call: still the direct
+        // reference binding - this fix must not copy what round 1-4 already left correct.
+        val noFx = callsOf(
+            """
+            @_extern(cpp = "probe::lengthOfS", header = "probe.hxx")
+            pub fx lengthOfS: (s: Str) Int32;
+            pub mut GS: Str = "hi"
+            fx cat: () Int32 {
+                return lengthOfS(GS)
+            }
+            """
+        )
+        assertEquals("kira::ffi::declared<std::int32_t>(::probe::lengthOfS(kira::ffi::in(GS)))", noFx.text("lengthOfS", null, "GS"))
+
+        // "or anything holding one" (the finding's own words): an Fx nested inside a struct
+        // argument's field is not a direct Fx-typed argument, but mayHoldFx still finds it.
+        val nested = callsOf(
+            """
+            @_extern(cpp = "probe::lenAfterCb", header = "probe.hxx")
+            pub fx lenAfterCb: (s: Str, c: Cb) Int32;
+            pub struct Cb {
+                pub f: Fx<Tuple0, Void> = fx() Void {}
+            }
+            pub mut GS: Str = "hi"
+            fx cat: () Int32 {
+                return lenAfterCb(GS, Cb { f = fx() Void { GS = "" } })
+            }
+            """
+        )
+        assertEquals(
+            "kira::ffi::declared<std::int32_t>(::probe::lenAfterCb(kira::ffi::in(kira::Str(GS)), cbText))",
+            nested.text("lenAfterCb", null, "GS", "cbText"),
+        )
+    }
+
+    /**
+     * Round-1 significant finding #2, part (a). Design 1.4: a non-`mut` `p: Unsafe<T>` takes
+     * "a `View<T>` argument (or anything the typer converts to one, `Coercion.ToView`)" - the
+     * same conversion an ordinary `View<T>` parameter accepts (`CoercionRules.fit`'s
+     * `facts.isView(expected)` branch): an `Arr`/`List` place, or a `Str` literal when `T` is
+     * `Char`. Before this fix, `CallResolver.typeGiven`'s `Unsafe<T>` branch checked only for
+     * an argument whose static type already *was* `View<T>`/`MutView<T>`, so a bare place or a
+     * literal fell through to the ordinary mismatch (measured, round-1 verdict probes u2/u10:
+     * `sumP(ys, ys.size())` with `ys: List<Int32>` refused `types.assign.mismatch "expects
+     * Unsafe<Int32>, but this is List<Int32>"`; `lenBuf("abc")` the same against
+     * `Unsafe<Char>`). Fixed: `typeGiven` now tries the same `View<T>` fit before falling back
+     * to the plain `Unsafe<T>` mismatch, and records the `Coercion.ToView` exactly as a
+     * `View<T>` parameter would - the emitter's `.data()` wrap (`isUnsafe(p.type)`, extended to
+     * read that coercion too) is all that is new at the boundary. The `mut Unsafe<T>` case is
+     * untouched (still `MutView<T>`-only, table 5.1): design 1.4 states the "anything the typer
+     * converts" clause for the non-`mut` case alone.
+     */
+    @Test
+    fun aListOrArrPlaceOrAStrLiteralCoercesToUnsafeViaToView() {
+        val list = callsOf(
+            """
+            @_extern(cpp = "probe::sumP", header = "probe.hxx")
+            pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
+            fx cat: (ys: List<Int32>) Int32 {
+                return sumP(ys, ys.size())
+            }
+            """
+        )
+        assertTrue(errorsIgnoringUnloweredBodies(list.ctx).isEmpty(), errorsIgnoringUnloweredBodies(list.ctx).toString())
+        assertEquals(
+            "kira::ffi::declared<std::int32_t>(::probe::sumP((kira::view(ys)).data(), n))",
+            list.text("sumP", null, "kira::view(ys)", "n"),
+        )
+        val listArg = (list.of("sumP").args[0] as ArgBinding.Given).expr
+        assertTrue(list.ctx.model.coercion(listArg) is Coercion.ToView, "a List place records Coercion.ToView into Unsafe<T>")
+
+        val arr = callsOf(
+            """
+            @_extern(cpp = "probe::sumP", header = "probe.hxx")
+            pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
+            fx cat: (xs: Arr<Int32, 4>) Int32 {
+                return sumP(xs, 4)
+            }
+            """
+        )
+        assertTrue(errorsIgnoringUnloweredBodies(arr.ctx).isEmpty(), errorsIgnoringUnloweredBodies(arr.ctx).toString())
+
+        val literal = callsOf(
+            """
+            @_extern(cpp = "probe::lenBuf", header = "probe.hxx")
+            pub fx lenBuf: (p: Unsafe<Char>) Int32;
+            fx cat: () Int32 {
+                return lenBuf("abc")
+            }
+            """
+        )
+        assertTrue(errorsIgnoringUnloweredBodies(literal.ctx).isEmpty(), errorsIgnoringUnloweredBodies(literal.ctx).toString())
+        assertEquals(
+            "kira::ffi::declared<std::int32_t>(::probe::lenBuf((kira::lit(\"abc\")).data()))",
+            literal.text("lenBuf", null, "kira::lit(\"abc\")"),
+        )
+
+        // A List of the wrong element type: the View<T> fit does not apply, so this still
+        // refuses against Unsafe<T>'s own message, not silently against View<T>'s. Checked
+        // through the typer alone (TyperTestSupport.snippet), since callsOf/emit hard-fails
+        // the moment the typer has any error (DeclTestSupport.emitWith).
+        val wrong = TyperTestSupport.snippet(
+            """
+            @_extern(cpp = "probe::sumP", header = "probe.hxx")
+            pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
+            fx cat: (ys: List<Int64>) Int32 {
+                return sumP(ys, ys.size())
+            }
+            """
+        ).diagnostics.map { it.message }
+        assertTrue(wrong.any { it.contains("expects Unsafe<Int32>") && it.contains("List<Int64>") }, wrong.toString())
+
+        // The mut Unsafe<T> case is untouched: a plain mut List place is still refused, since
+        // design 1.4 gives the "anything the typer converts" clause to the non-mut case alone.
+        val mutList = TyperTestSupport.snippet(
+            """
+            @_extern(cpp = "probe::fillP", header = "probe.hxx")
+            pub fx fillP: (mut p: Unsafe<Int32>, n: Size) Void;
+            fx cat: (mut ys: List<Int32>) Void {
+                fillP(mut ys, ys.size())
+            }
+            """
+        ).diagnostics
+        assertTrue(mutList.isNotEmpty(), mutList.toString())
+    }
+
+    /**
+     * Round-1 significant finding #2, part (b). Design 30 section 5: "'Extern' here means every
+     * function whose body C++ supplies: an `@_extern` function or method, and a bodyless `pub`
+     * prototype a C++ file defines ... as W2.4 already groups them" - the decls golden's own
+     * `peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;` has no `@_extern` marker at all.
+     * Before this fix, `externCallee` was `fn.foreign is Foreign.Extern` alone, so calling such
+     * a prototype with `View`/`MutView` arguments was refused three ways (measured, round-1
+     * verdict probe u10): `types.assign.mismatch` against `Unsafe<Int32>` for the `View`
+     * argument, plus `types.call.mut-missing`/`mut-not-place`/`mut-type` for the `mut`
+     * `MutView` one, since neither the `Unsafe` coercion nor the by-ref `MutView` exemption
+     * (design 1.4's "no call-site `mut` and no place needed") ever ran. Fixed:
+     * `CallResolver.isExternLike` also counts a bodyless `pub` function or method, and both
+     * `externCallee` call sites (`method`, `free`) read it instead of the marker alone. A
+     * private bodyless function is a different, and already-refused (`CppDeclEmitter`,
+     * `NO_BODY_CODE`), shape: `isExternLike` stays `isPub`-gated, so it is unaffected.
+     */
+    @Test
+    fun aBodylessPubPrototypeIsAnExternForTheUnsafeConventionToo() {
+        // Checked through the typer alone (TyperTestSupport.snippet): a bodyless free
+        // function has no C++ emitted for it in this test module at all (there is no @_extern
+        // header to check against), so DeclTestSupport's declaration-emission pipeline is not
+        // what this shape is about - CallResolver's typing decision is.
+        val pub = TyperTestSupport.snippet(
+            """
+            pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+            fx cat: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
+                return peek(xs.view(), ys.view())
+            }
+            """
+        ).diagnostics.map { it.message }
+        assertTrue(pub.isEmpty(), pub.toString())
+
+        val private = TyperTestSupport.snippet(
+            """
+            fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+            fx cat: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
+                return peek(xs.view(), ys.view())
+            }
+            """
+        ).diagnostics.map { it.message }
+        assertTrue(private.any { it.contains("expects Unsafe<Int32>") }, private.toString())
     }
 
     @Test

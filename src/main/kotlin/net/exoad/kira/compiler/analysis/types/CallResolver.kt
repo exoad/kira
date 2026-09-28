@@ -306,7 +306,7 @@ internal class CallResolver(private val c: PhaseC) {
         typeGiven(
             e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, IdentityHashMap(), ctx, scope,
             strBufText = facts.isStrBuf(recv) && fn.name in setOf("set", "add"),
-            externCallee = fn.foreign is Foreign.Extern,
+            externCallee = isExternLike(fn),
         )
         if (receiver != null && recv == KType.Str && isLiteralStrConstant(receiver)) {
             // R5: a literal Str constant is a `const char*` in C++; as a Str method's receiver it
@@ -382,7 +382,7 @@ internal class CallResolver(private val c: PhaseC) {
         val sub: Map<TypeParamSymbol, KType> = ownTypeArgs(e, fn, fn.name, allowInfer = true) ?: infer(e, fn, bound, hint, pre, ctx, scope)
         val paramTypes = fn.params.map { it.type.substitute(sub) }
         val ret = fn.ret.substitute(sub)
-        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, pre, ctx, scope, externCallee = kind == CallKind.EXTERN)
+        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, pre, ctx, scope, externCallee = isExternLike(fn))
         model.calls[e] = ResolvedCall(kind, fn, null, false, fn.typeParams.map { sub[it] ?: KType.Error }, bound.args, bound.order, ret, sub)
         return ret
     }
@@ -675,6 +675,25 @@ internal class CallResolver(private val c: PhaseC) {
                     // through to the ordinary mismatch below.
                     return@forEachIndexed
                 }
+                // Design 1.4: a non-mut `p: Unsafe<T>` also takes "anything the typer converts
+                // to" a `View<T>` - an `Arr`/`List` place, or a `Str` literal when `T` is `Char`
+                // (`Coercion.ToView`, `CoercionRules.fit`'s own `facts.isView(expected)` branch,
+                // the same conversion an ordinary `View<T>` parameter accepts). Tried before the
+                // plain mismatch below, so `sumP(ys, ...)` (`ys: List<Int32>`) and `lenBuf("abc")`
+                // fit, and the `mut Unsafe<T>` case (still `MutView<T>`-only above, table 5.1) is
+                // untouched. The coercion is recorded exactly as it would be for a `View<T>`
+                // parameter, so the emitter's `.data()` wrap (`isUnsafe(p.type)`, which now also
+                // reads this coercion) is all that is new at the boundary.
+                if (element != null) {
+                    when (val f = c.coercions.fit(arg, t, facts.viewOf(element))) {
+                        is CoercionRules.Fit.Coerce -> {
+                            model.coercions[arg] = f.coercion
+                            return@forEachIndexed
+                        }
+                        CoercionRules.Fit.Same -> return@forEachIndexed
+                        is CoercionRules.Fit.No -> {}
+                    }
+                }
                 c.coercions.assign(arg, t, expected, what)
                 return@forEachIndexed
             }
@@ -691,6 +710,18 @@ internal class CallResolver(private val c: PhaseC) {
 
     /** `Unsafe<T>`, the FFI `const T*`/`T*` (design 1.4, table 5.1, a magic class of the builtins). */
     private val UNSAFE = "Unsafe"
+
+    /**
+     * Whether [fn]'s body C++ supplies: an `@_extern` function or method, or a bodyless `pub`
+     * prototype a C++ file defines (design 30 section 5: "as W2.4 already groups them"; the
+     * decls golden's `peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;` has no `@_extern`
+     * marker at all). Both conventions this file gives an extern callee - `CStr` taking a `Str`
+     * (design 7.2) and `Unsafe<T>` taking a `View<T>`/`MutView<T>` (design 1.4) - apply to
+     * either the same way, since neither has a body of its own to fill a parameter differently.
+     * A private bodyless function is refused elsewhere (`CppDeclEmitter.refuseBodilessPrivates`),
+     * so `isPub` alone is enough here: nothing well-formed reaches this with a private one.
+     */
+    private fun isExternLike(fn: FnSymbol): Boolean = fn.foreign is Foreign.Extern || (!fn.hasBody && fn.isPub)
 
     private fun mutArgument(arg: Expr, t: KType, expected: KType, isMut: Boolean, name: String, ctx: BodyContext) {
         if (!isMut) {
