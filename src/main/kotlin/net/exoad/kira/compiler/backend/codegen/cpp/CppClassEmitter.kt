@@ -15,7 +15,6 @@ import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.IndexKind
 import net.exoad.kira.compiler.analysis.types.KType
-import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Place
@@ -1280,18 +1279,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
     private fun construction(e: ObjectInitExpr, init: ResolvedInit, target: String): String {
         val fields = init.fields
-        // A heap object outlives the statement: a view it is given into a temporary would dangle in it.
-        fields.forEach { f ->
-            if (f is FieldInit.Given) {
-                facts.lifetimes.temporaryViewed(f.expr, f.field.type.substitute(init.substitution))?.let { temporary ->
-                    ctx.diag(
-                        f.expr,
-                        CppModuleEmitterFactory.UNSUPPORTED_CODE,
-                        "the ${f.field.name} of this ${init.type.display()} is given a view into ${KiraUnparser.text(temporary)}, a temporary that C++ destroys at the end of the statement, " +
-                            "but the object it is stored in outlives it: store ${KiraUnparser.text(temporary)} in a local first",
-                    )
-                }
-            }
+        // No object holds a view (decision 4b): ViewPass refuses the field's type (rules.view.type) before any emitter runs.
+        fields.firstOrNull { holdsSecondClass(it.field.type.substitute(init.substitution)) }?.let { f ->
+            ctx.diag(
+                (f as? FieldInit.Given)?.expr ?: e,
+                CppModuleEmitterFactory.INTERNAL_CODE,
+                "the ${f.field.name} of ${init.type.display()} holds a view or a pointer, which reached the emitter although no field may hold one (rules.view.type)",
+            )
         }
         var end = fields.size
         while (end > 0 && fields[end - 1] is FieldInit.Default && fields[end - 1].field.default != null) {
@@ -1437,6 +1431,25 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
          * which no function taking the handle accepts (measured).
          */
         fun constLocal(type: String): String = if (type.endsWith("*")) "$type const" else "const $type"
+
+        /** The second-class types (decision 4b, 30-second-class.md 1.1): each points into storage it does not own. */
+        private val SECOND_CLASS = setOf("View", "MutView", "CStr", "Unsafe")
+
+        /**
+         * Whether a value of type [t] is, or holds by value, a second-class type: one itself, a
+         * type argument of a container, `Maybe`, `Ref` or generic class that is one, or a struct
+         * field that holds one. An `Fx` signature holds none (it receives or returns a view, 1.1).
+         */
+        fun holdsSecondClass(t: KType, seen: MutableSet<TypeSymbol> = Collections.newSetFromMap(IdentityHashMap())): Boolean {
+            val n = t as? KType.Nominal ?: return false
+            val sym = n.sym as? ClassSymbol ?: return false
+            return when (sym.kind) {
+                ClassKind.MAGIC -> sym.name in SECOND_CLASS || (sym.name != "Fx" && n.typeArgs().any { holdsSecondClass(it, seen) })
+                ClassKind.STRUCT -> seen.add(sym) && sym.typeParams.zip(n.typeArgs()).toMap().let { sub -> sym.fields.any { holdsSecondClass(it.type.substitute(sub), seen) } }
+                ClassKind.CLASS -> n.typeArgs().any { holdsSecondClass(it, seen) }
+                else -> false
+            }
+        }
 
         /**
          * A name the classes part declares inside a body, [base] then [mark] then `_`: a

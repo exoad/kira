@@ -566,30 +566,16 @@ class CppClassCompileTest {
             }
         }
 
-        // Overrides of a generic v: T at a pointer (`X* const&`), each copying v as the
-        // pointer its own declaration takes; the driver defines the bodyless functions.
+        // An override of a generic v: T at an opaque handle (`Handle* const&`), copying v as the
+        // pointer its own declaration takes; the driver defines the bodyless functions. (Unsafe
+        // and CStr are second-class, decision 4b: never a type argument or a field.)
         pub @_opaque class Handle
 
-        pub fx peek: (p: Unsafe<Int32>) Int32;
-        pub fx len: (s: CStr) Int32;
         pub fx useIt: (h: Handle) Int32;
-        pub fx cell: () Unsafe<Int32>;
         pub fx open: () Handle;
 
         pub trait Sink<T> {
             pub fx put: (v: T) Int32;
-        }
-
-        pub class PSink: Sink<Unsafe<Int32>> {
-            override pub fx put: (v: Unsafe<Int32>) Int32 {
-                return peek(v)
-            }
-        }
-
-        pub class CSink: Sink<CStr> {
-            override pub fx put: (v: CStr) Int32 {
-                return len(v)
-            }
         }
 
         pub class HSink: Sink<Handle> {
@@ -598,32 +584,23 @@ class CppClassCompileTest {
             }
         }
 
-        pub fx makePSink: () Sink<Unsafe<Int32>> {
-            return PSink {}
-        }
-
-        pub fx makeCSink: () Sink<CStr> {
-            return CSink {}
-        }
-
         pub fx makeHSink: () Sink<Handle> {
             return HSink {}
         }
 
         // A construction's D33 temporaries of pointer type, and pointer fields value-initialized.
         pub class PtrHolder {
-            require pub p: Unsafe<Int32>
+            require pub g: Handle
             require pub h: Handle
         }
 
         pub class Loose {
-            pub p: Unsafe<Int32>
             pub h: Handle
             require pub n: Int32
         }
 
         pub fx makePtrHolder: () PtrHolder {
-            return PtrHolder { h = open(), p = cell() }
+            return PtrHolder { h = open(), g = open() }
         }
 
         pub fx makeLoose: () Loose {
@@ -695,28 +672,12 @@ class CppClassCompileTest {
 
         namespace
         {
-          std::int32_t cellValue = 5;
           shapes::Handle theHandle;
-        }
-
-        std::int32_t shapes::peek(const std::int32_t* p)
-        {
-            return *p;
-        }
-
-        std::int32_t shapes::len(const char* s)
-        {
-            return static_cast<std::int32_t>(std::strlen(s));
         }
 
         std::int32_t shapes::useIt(Handle* h)
         {
             return h->n;
-        }
-
-        const std::int32_t* shapes::cell()
-        {
-            return &cellValue;
         }
 
         shapes::Handle* shapes::open()
@@ -803,11 +764,10 @@ class CppClassCompileTest {
             check(alias->take(alias->n) == 1 && alias->n == 100, "an override taken by const& reads the value it was passed, not the field it writes");
             const shapes::Tile tile{};
             check(tile.scaled(2) == 2 && tile.unit() == 3, "a trait default's parameter named as the copying struct's field");
-            const std::int32_t seven = 7;
-            check(shapes::makePSink()->put(&seven) == 7 && shapes::makeCSink()->put("abcd") == 4 && shapes::makeHSink()->put(shapes::open()) == 9, "an override at a pointer copies it as the pointer it takes: Unsafe, CStr, an opaque handle");
+            check(shapes::makeHSink()->put(shapes::open()) == 9, "an override at an opaque handle copies it as the pointer it takes");
             const kira::Rc<shapes::PtrHolder> held = shapes::makePtrHolder();
             const kira::Rc<shapes::Loose> loose = shapes::makeLoose();
-            check(held->p == shapes::cell() && held->h == shapes::open() && loose->p == nullptr && loose->h == nullptr && loose->n == 1, "a construction spills pointers into const pointers and value-initializes a skipped one");
+            check(held->g == shapes::open() && held->h == shapes::open() && loose->h == nullptr && loose->n == 1, "a construction spills pointers into const pointers and value-initializes a skipped one");
             // Longer than any small-string buffer, so a read of a freed Str reads freed heap memory.
             const char* longName = "a name long enough that no standard library keeps it in the string object itself";
             const kira::Rc<shapes::Link> head = shapes::makeLink("head");

@@ -2304,29 +2304,18 @@ class CppClassShapeTest {
     }
 
     @Test
-    fun anOverrideCopiesAPointerWithThePointeesConstWhereItWas() {
-        // Sink<T>'s v: T is const T&, which at a pointer is `X* const&` (the const binds to
-        // T). The copy is the parameter as its own declaration spells it, made const as a
-        // pointer is: `const const std::int32_t* v` was a duplicate const (gcc, clang,
-        // MSVC C4114) and `const Handle* v` a handle useIt(Handle*) refused (measured).
+    fun anOverrideCopiesAnOpaqueHandleAsThePointerItTakes() {
+        // Sink<T>'s v: T is const T&, which at an opaque handle is `Handle* const&` (the const
+        // binds to T). The copy is the parameter as its own declaration spells it, made const as
+        // a pointer is: `const Handle* v` was a handle useIt(Handle*) refused (measured). An
+        // Unsafe or CStr type argument, which gave `const const std::int32_t*` here, cannot be
+        // written any more: a second-class type is never a type argument (decision 4b, 1.2).
         val (h, s) = both(
             """
             pub @_opaque class Handle
-            pub fx peek: (p: Unsafe<Int32>) Int32;
-            pub fx len: (s: CStr) Int32;
             pub fx useIt: (h: Handle) Int32;
             pub trait Sink<T> {
                 pub fx put: (v: T) Int32;
-            }
-            pub class PSink: Sink<Unsafe<Int32>> {
-                override pub fx put: (v: Unsafe<Int32>) Int32 {
-                    return peek(v)
-                }
-            }
-            pub class CSink: Sink<CStr> {
-                override pub fx put: (v: CStr) Int32 {
-                    return len(v)
-                }
             }
             pub class HSink: Sink<Handle> {
                 override pub fx put: (v: Handle) Int32 {
@@ -2337,19 +2326,10 @@ class CppClassShapeTest {
         )
         assertContains(
             h,
-            "  class PSink final : public Sink<const std::int32_t*>\n",
-            "      [[nodiscard]] std::int32_t put(const std::int32_t* const& v) const override;",
-            "  class CSink final : public Sink<const char*>\n",
-            "      [[nodiscard]] std::int32_t put(const char* const& v) const override;",
             "  class HSink final : public Sink<Handle*>\n",
             "      [[nodiscard]] std::int32_t put(Handle* const& v) const override;",
         )
-        assertContains(
-            s,
-            "  std::int32_t PSink::put(const std::int32_t* const& vRef_) const\n  {\n      const std::int32_t* const v = vRef_;\n      return peek(v);\n  }",
-            "  std::int32_t CSink::put(const char* const& vRef_) const\n  {\n      const char* const v = vRef_;\n      return len(v);\n  }",
-            "  std::int32_t HSink::put(Handle* const& vRef_) const\n  {\n      Handle* const v = vRef_;\n      return useIt(v);\n  }",
-        )
+        assertContains(s, "  std::int32_t HSink::put(Handle* const& vRef_) const\n  {\n      Handle* const v = vRef_;\n      return useIt(v);\n  }")
         assertLacks(s, "const const", "const Handle*")
     }
 
@@ -2404,26 +2384,26 @@ class CppClassShapeTest {
     @Test
     fun aConstructionSpillsAndFillsPointersInTheirOwnColumn() {
         // D33's temporaries are const locals of the field's own column, a pointer's const on
-        // the pointer (`const const std::int32_t*` was a duplicate const), and a skipped
+        // the pointer (`const Handle*` is a handle nothing taking one accepts), and a skipped
         // field without a default is value-initialized as a pointer can be: `Handle*{}` is no
         // expression. The temporaries carry the classes part's mark, never a statement
         // part's t0_ (a construction spilled inside a spilled call shadowed it; measured).
+        // An opaque handle is the one pointer a field may hold: an Unsafe or CStr field cannot
+        // be written (decision 4b, rules.view.type).
         val s = emit(
             """
             pub @_opaque class Handle
-            pub fx cell: () Unsafe<Int32>;
             pub fx open: () Handle;
             pub class Holder {
-                require pub p: Unsafe<Int32>
+                require pub g: Handle
                 require pub h: Handle
             }
             pub class Loose {
-                pub p: Unsafe<Int32>
                 pub h: Handle
                 require pub n: Int32
             }
             pub fx make: () Holder {
-                return Holder { h = open(), p = cell() }
+                return Holder { h = open(), g = open() }
             }
             pub fx loose: () Loose {
                 return Loose { n = 1 }
@@ -2432,8 +2412,8 @@ class CppClassShapeTest {
         ).source(uri)
         assertContains(
             s,
-            "      return [&]() -> kira::Rc<Holder> { Handle* const t0_Arg_ = open(); const std::int32_t* const t1_Arg_ = cell(); return std::make_shared<Holder>(t1_Arg_, t0_Arg_); }();",
-            "      return std::make_shared<Loose>(static_cast<const std::int32_t*>(nullptr), static_cast<Handle*>(nullptr), 1);",
+            "      return [&]() -> kira::Rc<Holder> { Handle* const t0_Arg_ = open(); Handle* const t1_Arg_ = open(); return std::make_shared<Holder>(t1_Arg_, t0_Arg_); }();",
+            "      return std::make_shared<Loose>(static_cast<Handle*>(nullptr), 1);",
         )
     }
 }

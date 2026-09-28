@@ -31,17 +31,6 @@ class CppClassLifetimesTest {
     private fun unsupported(body: String): List<String> =
         emit(body).module(uri).diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }.map { it.message }
 
-    /**
-     * [unsupported], or null when the typer refuses [body] first by one of W2.5's [rules]: on a
-     * tree with W2.5 merged its ExclusivityPass and EscapePass refuse some shapes the classes
-     * part refuses too, which is the same outcome.
-     */
-    private fun unsupportedUnlessW25(vararg rules: String, body: () -> String): List<String>? = try {
-        unsupported(body())
-    } catch (e: AssertionError) {
-        if (e.message?.contains("the typer refused") == true && rules.any { e.message!!.contains(it) }) null else throw e
-    }
-
     private fun assertContains(text: String, vararg wanted: String) {
         wanted.forEach { assertTrue(text.contains(it), "expected to find:\n$it\nin:\n$text") }
     }
@@ -575,7 +564,7 @@ class CppClassLifetimesTest {
         assertEquals(emptyList(), e.errors(uri).map { it.message })
     }
 
-    // ---- a parameter a returned view may point into stays the caller's (convergence round 3) ---------
+    // ---- a view of a parameter copied at entry points into the copy, and lives only for the call (decision 4b) ----
 
     private val bag = """
         pub class Bag {
@@ -588,35 +577,11 @@ class CppClassLifetimesTest {
     """.trimIndent()
 
     @Test
-    fun aParameterAReturnedViewPointsIntoIsNotCopied() {
-        // viewlend2 and viewlend3: a copy at entry was what the returned view pointed into (MSVC ASan: heap-use-after-free).
-        val (_, s) = both(
-            """
-            $bag
-
-            pub fx firstOf: (xs: List<Int32>, b: Bag) View<Int32> {
-                b.grow()
-                return xs.view()
-            }
-
-            pub class Picker {
-                pub mut items: List<Int32> = List<Int32> {}
-
-                pub mut fx firstOf: (xs: List<Int32>) View<Int32> {
-                    items.add(9)
-                    return xs.view()
-                }
-            }
-            """
-        )
-        assertContains(s, "  kira::View<std::int32_t> firstOf(const kira::List<std::int32_t>& xs, const kira::Rc<Bag>& b)\n")
-        assertContains(s, "  kira::View<std::int32_t> Picker::firstOf(const kira::List<std::int32_t>& xs)\n")
-        assertLacks(s, "xsRef_")
-    }
-
-    @Test
-    fun aViewTakenOnlyForTheBodyLeavesTheCopyInPlace() {
-        // No view can leave the call (the result is an Int32), so the copy at entry is still the value passed.
+    fun aViewOfACopiedParameterIsTakenOfTheCopy() {
+        // xs is copied at entry (b.grow() may reach the List it names), and its view is an argument
+        // only, used within the one full-expression: it points into the copy, which lives for the
+        // whole body. A view that could leave the call is never of a non-view parameter (4b's
+        // return rule, ViewPass), so no parameter is ever kept as the caller's reference for one.
         val (_, s) = both(
             """
             $bag
@@ -632,148 +597,6 @@ class CppClassLifetimesTest {
             """
         )
         assertContains(s, "  std::int32_t sumAfter(const kira::List<std::int32_t>& xsRef_, const kira::Rc<Bag>& b)\n  {\n      const kira::List<std::int32_t> xs = xsRef_;\n")
-    }
-
-    @Test
-    fun aLentParameterReadAfterAnEffectThatMayReachItIsRefused() {
-        val value = unsupported(
-            """
-            $bag
-
-            pub fx firstOf: (xs: List<Int32>, b: Bag) View<Int32> {
-                b.grow()
-                trace(xs.size())
-                return xs.view()
-            }
-            """
-        )
-        assertEquals(1, value.size, value.toString())
-        assertContains(value.single(), "the parameter xs, read after the call to grow, which may change it", "a view the function hands back may point into it", "Read what you need from xs before the call to grow")
-        val freed = unsupported(
-            """
-            pub class Holder {
-                pub mut item: Maybe<Item> = null
-
-                pub mut fx clear: () Void {
-                    item = null
-                }
-            }
-
-            pub class Item {
-                pub mut labels: List<Int32> = List<Int32> {}
-            }
-
-            pub fx firstOf: (xs: List<Int32>, h: Holder) View<Int32> {
-                h.clear()
-                return xs.view()
-            }
-            """
-        )
-        assertEquals(1, freed.size, freed.toString())
-        assertContains(freed.single(), "the parameter xs, read after the call to clear, which may free or move what it names", "the read would see freed memory")
-    }
-
-    @Test
-    fun aViewOfAnObjectsStorageReadAfterAnEffectThatMayMoveItIsRefused() {
-        // viewbefore: v = xs.view(), then b.grow() through c = b, then return v (g++: freed heap bytes).
-        val messages = unsupported(
-            """
-            $bag
-
-            pub fx firstOf: (xs: List<Int32>, b: Bag) View<Int32> {
-                v: View<Int32> = xs.view()
-                b.grow()
-                return v
-            }
-
-            pub fx firstOfField: (b: Bag, c: Bag) Int32 {
-                v: View<Int32> = b.items.view()
-                c.grow()
-                return v.get(0)
-            }
-
-            pub fx after: (b: Bag, c: Bag) Int32 {
-                c.grow()
-                v: View<Int32> = b.items.view()
-                return v.get(0)
-            }
-            """
-        )
-        assertEquals(2, messages.size, messages.toString())
-        assertContains(messages[0], "the view v, taken of xs, read after the call to grow, which may change or free xs", "Take the view after the call to grow")
-        assertContains(messages[1], "the view v, taken of b.items, read after the call to grow")
-    }
-
-    @Test
-    fun aViewOfALocalReadAfterTheBodyGrowsTheLocalIsRefused() {
-        // viewlocalmut: v = items.view(), then items.add(9) a hundred times, then v.get(0) (g++: freed heap bytes).
-        val messages = unsupported(
-            """
-            pub fx grown: () Int32 {
-                mut items: List<Int32> = List<Int32> {}
-                items.add(1)
-                v: View<Int32> = items.view()
-                items.add(9)
-                return v.get(0)
-            }
-
-            pub fx inPlace: () Int32 {
-                mut a: Arr<Int32, 3> = [1, 2, 3]
-                v: View<Int32> = a.view()
-                a[0] = 5
-                a = [4, 5, 6]
-                return v.get(0)
-            }
-
-            pub fx before: () Int32 {
-                mut items: List<Int32> = List<Int32> {}
-                items.add(1)
-                v: View<Int32> = items.view()
-                n: Int32 = v.get(0)
-                items.add(9)
-                return n
-            }
-
-            pub class Item {
-                pub mut labels: List<Int32> = List<Int32> {}
-            }
-
-            pub fx replaced: () Int32 {
-                mut it: Item = Item {}
-                it.labels.add(1)
-                v: View<Int32> = it.labels.view()
-                it = Item {}
-                return v.get(0)
-            }
-            """
-        )
-        assertEquals(2, messages.size, messages.toString())
-        assertContains(messages[0], "the view v, taken of items, read after the call to add, which may change or free items")
-        assertContains(messages[1], "the view v, taken of it.labels, read after the assignment `it = Item { }`")
-    }
-
-    @Test
-    fun aViewOfAnObjectsStorageHandedToACallThatMayMoveItIsRefused() {
-        val messages = unsupported(
-            """
-            $bag
-
-            pub fx firstAfter: (v: View<Int32>, c: Bag) Int32 {
-                c.grow()
-                return v.get(0)
-            }
-
-            pub fx first: (v: View<Int32>) Int32 {
-                return v.get(0)
-            }
-
-            pub fx feed: (b: Bag, c: Bag) Int32 {
-                return firstAfter(b.items.view(), c) + first(b.items.view())
-            }
-            """
-        )
-        assertEquals(1, messages.size, messages.toString())
-        assertContains(messages.single(), "the view of b.items handed to firstAfter, which may change or free b.items while the view is in use")
     }
 
     // ---- a reference into this or a parameter's object kept while a call runs (convergence round 3) ----
@@ -1034,363 +857,118 @@ class CppClassLifetimesTest {
         assertContains(h, "  kira::Str callAfter(F_g&& gRef_, const kira::Rc<Box>& b)\n  {\n      const auto g = gRef_;\n")
     }
 
-    // ---- a view that leaves the call, and views kept in the caller (convergence round 4) ----------------
+    // ---- a lambda made after an effect captures what the parameter or this names then (second-class round 1) ----
 
-    private val bagWithAll = """
-        pub class Bag {
-            pub mut items: List<Int32> = List<Int32> {}
+    private val renaming = """
+        pub class C {
+            require pub mut name: Str
 
-            pub fx all: () View<Int32> {
-                return items.view()
+            pub mut fx set: (s: Str) Fx<Tuple0, Str> {
+                name = "b"
+                return fx() Str {
+                    return s
+                }
             }
 
-            pub mut fx grow: () Void {
-                items.add(9)
+            pub mut fx setEarly: (s: Str) Fx<Tuple0, Str> {
+                g: Fx<Tuple0, Str> = fx() Str {
+                    return s
+                }
+                name = "b"
+                return g
             }
         }
     """.trimIndent()
 
     @Test
-    fun aParameterAViewMayLeaveThroughARefBoxIsNotCopied() {
-        // lentref: `const kira::List<std::int32_t> xs = xsRef_;` was what `r.value = xs.view()` kept in
-        // the caller's box, freed at return (MSVC ASan: heap-use-after-free). A parameter that reaches a
-        // box of views is a way out, so xs stays the caller's reference, as a returned view's does.
-        val (_, s) = both(
-            """
-            $bag
-
-            pub fx stash: (xs: List<Int32>, b: Bag, r: Ref<View<Int32>>) Void {
-                b.grow()
-                r.value = xs.view()
-            }
-            """
-        )
-        assertContains(s, "  void stash(const kira::List<std::int32_t>& xs, const kira::Rc<Bag>& b, const kira::Rc<kira::Box<kira::View<std::int32_t>>>& r)\n")
-        assertLacks(s, "xsRef_")
+    fun aParameterALambdaCapturesAfterAnEffectThatMayReachItIsCopiedAtEntry() {
+        // capparam: `c.set(d.name)` with set renaming c, then building `fx() Str { return s }`, printed
+        // `b` on g++, zig and MSVC where Kira's parameter is the value passed, `a`: C++ copies s into
+        // the capture when the lambda is made, after the rename. A lambda made before it captures `a`.
+        val (_, s) = both(renaming)
+        assertContains(s, "  kira::Fn<kira::Str()> C::set(const kira::Str& sRef_)\n  {\n      const kira::Str s = sRef_;\n")
+        assertContains(s, "  kira::Fn<kira::Str()> C::setEarly(const kira::Str& s)\n")
+        assertLacks(s, "C::setEarly(const kira::Str& sRef_)")
     }
 
     @Test
-    fun aViewThatMayLeaveTheCallThroughAHandleOnlyTheCallKeepsIsRefused() {
-        // lenthandle: b copied at entry (h.reset() may drop the caller's Bag) was the Bag's last owner, and
-        // `return b.items.view()` pointed into it once the call returned; lenthandle2: the same for a method
-        // that holds itself (keepAlive_). Both were a heap-use-after-free under MSVC ASan.
-        val messages = unsupported(
+    fun aParameterALambdaCapturesAfterItsObjectMayBeFreedIsCopiedAtEntry() {
+        // capparamfree: s bound to c.item.label, h.reset() freeing that Item through a second handle,
+        // then a lambda capturing s: MSVC ASan, heap-use-after-free.
+        val (_, s) = both(
             """
-            pub class Bag {
-                pub mut items: List<Int32> = List<Int32> {}
-
-                pub fx viewAfter: (h: Holder) View<Int32> {
-                    h.reset()
-                    return items.view()
-                }
-
-                pub fx sizeAfter: (h: Holder) Size {
-                    h.reset()
-                    return items.size()
-                }
+            pub class Item {
+                require pub label: Str
             }
 
             pub class Holder {
-                pub mut bag: Bag = Bag {}
+                pub mut item: Item = Item { "short" }
 
                 pub mut fx reset: () Void {
-                    bag = Bag {}
+                    item = Item { "other" }
                 }
             }
 
-            pub fx viewOf: (b: Bag, h: Holder) View<Int32> {
+            pub fx later: (s: Str, h: Holder) Fx<Tuple0, Str> {
                 h.reset()
-                return b.items.view()
-            }
-
-            pub fx viewOfNow: (b: Bag) View<Int32> {
-                return b.items.view()
-            }
-
-            pub fx sizeOf: (b: Bag, h: Holder) Size {
-                h.reset()
-                return b.items.size()
+                return fx() Str {
+                    return s
+                }
             }
             """
         )
-        assertEquals(2, messages.size, messages.toString())
-        assertTrue(messages.any { it.contains("the view of items, which may leave viewAfter, points into the object the method runs on") && it.contains("the call to reset may free it") }, messages.toString())
-        assertTrue(messages.any { it.contains("the view of b.items, which may leave viewOf, points into storage reached through the parameter b, which the body copies at entry") }, messages.toString())
+        assertContains(s, "  kira::Fn<kira::Str()> later(const kira::Str& sRef_, const kira::Rc<Holder>& h)\n  {\n      const kira::Str s = sRef_;\n")
     }
 
     @Test
-    fun aViewReachedThroughAHandleReadAfterAnEffectThatMayMoveItIsRefused() {
-        // viewhandle, viewmethod, viewfn: a view a call returns of storage its receiver or argument reaches
-        // (viewOf(b), b.all()) was read after b.grow() (g++ printed garbage, MSVC ASan: heap-use-after-free);
-        // viewglobal: the same through a global a function views; viewif: a view an if-expression gives.
-        val messages = unsupported(
+    fun aMethodWhoseLambdaCapturesItselfAfterAReleaseHoldsItself() {
+        // capthis: selfkill2 with `name` read by a lambda made after tree.clear(), which freed the Kid:
+        // shared_from_this() threw std::bad_weak_ptr on g++ and zig, and MSVC ASan reported a
+        // heap-use-after-free. The hold keeps the Kid for the call, so the capture finds its owner.
+        val (h, s) = both(
             """
-            $bagWithAll
+            pub class Tree {
+                pub mut kids: List<Kid> = List<Kid> {}
 
-            mut nums: List<Int32> = List<Int32> {}
-
-            pub fx viewOf: (b: Bag) View<Int32> {
-                return b.items.view()
+                pub mut fx clear: () Void {
+                    kids = List<Kid> {}
+                }
             }
 
-            pub fx allNums: () View<Int32> {
-                return nums.view()
-            }
+            pub class Kid {
+                require pub name: Str
+                require pub tree: Tree
 
-            pub fx viaFunction: (b: Bag) Int32 {
-                v: View<Int32> = viewOf(b)
-                b.grow()
-                return v.get(0)
-            }
+                pub fx leave: () Fx<Tuple0, Str> {
+                    tree.clear()
+                    return fx() Str {
+                        return name
+                    }
+                }
 
-            pub fx viaMethod: (b: Bag) Int32 {
-                v: View<Int32> = b.all()
-                b.grow()
-                return v.get(0)
-            }
-
-            pub fx viaGlobal: () Int32 {
-                v: View<Int32> = allNums()
-                nums.add(9)
-                return v.get(0)
-            }
-
-            pub fx takenAfter: (b: Bag) Int32 {
-                b.grow()
-                v: View<Int32> = b.all()
-                return v.get(0)
-            }
-
-            pub fx readBefore: (b: Bag) Int32 {
-                v: View<Int32> = b.all()
-                n: Int32 = v.get(0)
-                b.grow()
-                return n
-            }
-
-            pub fx viaIf: (b: Bag, c: Bag, first: Bool) Int32 {
-                v: View<Int32> = if first { b.items.view() } else { c.items.view() }
-                b.grow()
-                return v.get(0)
+                pub fx early: () Fx<Tuple0, Str> {
+                    g: Fx<Tuple0, Str> = fx() Str {
+                        return name
+                    }
+                    tree.clear()
+                    return g
+                }
             }
             """
         )
-        assertEquals(4, messages.size, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, taken of b.items, read after the call to grow") }, messages.toString())
-        assertEquals(2, messages.count { it.contains("the view v, which may point into storage reached through b, read after the call to grow") }, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, which may point into storage reached through allNums(), read after the call to add") }, messages.toString())
+        assertContains(h, "  class Kid final : public kira::Shared<Kid>\n")
+        assertContains(s, "  kira::Fn<kira::Str()> Kid::leave() const\n  {\n      [[maybe_unused]] const auto keepAlive_ = weak_from_this().lock();\n")
+        assertLacks(s, "Kid::early() const\n  {\n      [[maybe_unused]]")
     }
 
-    @Test
-    fun aViewKeptInAListOrCapturedByALambdaIsCheckedAsTheViewIs() {
-        // viewlist: vs.add(b.items.view()), b.grow(), vs.get(0).get(1); viewcapture: a lambda capturing v of
-        // b.items, then b.grow(), then f(); viewcapture2: the same with a local List (g++ garbage, MSVC ASan:
-        // heap-use-after-free on each).
-        val messages = unsupported(
-            """
-            $bag
-
-            pub fx kept: (b: Bag) Int32 {
-                mut vs: List<View<Int32>> = List<View<Int32>> {}
-                vs.add(b.items.view())
-                b.grow()
-                return vs.get(0).get(0)
-            }
-
-            pub fx captured: (b: Bag) Int32 {
-                v: View<Int32> = b.items.view()
-                f: Fx<Tuple0, Int32> = fx() Int32 {
-                    return v.get(0)
-                }
-                b.grow()
-                return f()
-            }
-
-            pub fx capturedLocal: () Int32 {
-                mut xs: List<Int32> = List<Int32> {}
-                xs.add(1)
-                v: View<Int32> = xs.view()
-                f: Fx<Tuple0, Int32> = fx() Int32 {
-                    return v.get(0)
-                }
-                xs.add(9)
-                return f()
-            }
-
-            pub fx capturedAfter: (b: Bag) Int32 {
-                b.grow()
-                v: View<Int32> = b.items.view()
-                f: Fx<Tuple0, Int32> = fx() Int32 {
-                    return v.get(0)
-                }
-                return f()
-            }
-            """
-        )
-        assertEquals(3, messages.size, messages.toString())
-        assertTrue(messages.any { it.contains("the view vs, taken of b.items, read after the call to grow") }, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, captured by a lambda that may run after the call to grow, which may change or free b.items") }, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, captured by a lambda that may run after the call to add, which may change or free xs") }, messages.toString())
-    }
+    // ---- no object holds a view (decision 4b) -------------------------------------------------------------
 
     @Test
-    fun aViewTheCallReadsAfterALaterArgumentOrALoopBodyMovesItIsRefused() {
-        // viewrecv, viewrecv2: v.get(b.growAndGet()) and at(v, b.growAndGet()) read v after the argument grew
-        // b.items; loopview, loopview2: a range-for over b.items.view() or b.all() whose body grows b.items
-        // (g++ printed garbage or segfaulted on each; W2.5 refuses the four as exclusivity, this does not rely on it).
-        val messages = unsupportedUnlessW25("rules.exclusivity.order", "rules.exclusivity.loop") {
-            """
-            pub class Bag {
-                pub mut items: List<Int32> = List<Int32> {}
-
-                pub fx all: () View<Int32> {
-                    return items.view()
-                }
-
-                pub mut fx growAndGet: () Size {
-                    items.add(9)
-                    return 0
-                }
-            }
-
-            pub fx at: (v: View<Int32>, i: Size) Int32 {
-                return v.get(i)
-            }
-
-            pub fx asReceiver: (b: Bag) Int32 {
-                v: View<Int32> = b.items.view()
-                return v.get(b.growAndGet())
-            }
-
-            pub fx asArgument: (b: Bag) Int32 {
-                v: View<Int32> = b.items.view()
-                return at(v, b.growAndGet())
-            }
-
-            pub fx overView: (b: Bag) Int32 {
-                mut n: Int32 = 0
-                for x: Int32 in b.items.view() {
-                    n = n + x
-                    b.growAndGet()
-                }
-                return n
-            }
-
-            pub fx overCall: (b: Bag) Int32 {
-                mut n: Int32 = 0
-                for x: Int32 in b.all() {
-                    n = n + x
-                    b.growAndGet()
-                }
-                return n
-            }
-
-            pub fx argumentFirst: (b: Bag) Int32 {
-                i: Size = b.growAndGet()
-                v: View<Int32> = b.items.view()
-                return v.get(i)
-            }
-
-            pub fx loopLeavesItAlone: (b: Bag) Int32 {
-                mut n: Int32 = 0
-                for x: Int32 in b.all() {
-                    n = n + x
-                }
-                return n
-            }
-            """
-        } ?: return
-        assertEquals(4, messages.size, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, read by the call to get after the call to growAndGet among its arguments") }, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, read by the call to at after the call to growAndGet among its arguments") }, messages.toString())
-        assertTrue(messages.any { it.contains("the loop over b.items.view(), a view of b.items, while its body may change or free that storage") }, messages.toString())
-        assertTrue(messages.any { it.contains("the loop over b.all(), a view of storage reached through b") }, messages.toString())
-    }
-
-    @Test
-    fun aViewReturnedThroughALocalsHandleIsRefused() {
-        // lentlocal: `return b.items.view()` with b a local Bag, the object's only owner (freed at return).
-        // W2.5's EscapePass refuses the same return (rules.escape.view-return, D5); this does not rely on it.
-        val messages = unsupportedUnlessW25("rules.escape.view-return") {
-            """
-            pub class Bag {
-                pub mut items: List<Int32> = List<Int32> {}
-            }
-
-            pub fx viewOfFresh: () View<Int32> {
-                b: Bag = Bag {}
-                b.items.add(1)
-                return b.items.view()
-            }
-
-            pub fx viewOfParameter: (b: Bag) View<Int32> {
-                return b.items.view()
-            }
-            """
-        } ?: return
-        assertEquals(1, messages.size, messages.toString())
-        assertContains(messages.single(), "the returned view b.items.view() points into storage reached through the local b")
-    }
-
-    @Test
-    fun aViewOfABlocksLocalReadAfterTheBlockEndsIsRefused() {
-        // viewblock: v = x.items.view() inside an if, with x the block's local Bag, then v.get(1) after the
-        // block, which destroyed x's object (MSVC ASan: heap-use-after-free; it printed 2 and 2 on g++).
-        val messages = unsupportedUnlessW25("rules.escape") {
-            """
-            pub class Bag {
-                pub mut items: List<Int32> = List<Int32> {}
-            }
-
-            pub fx makeBag: () Bag {
-                return Bag {}
-            }
-
-            pub fx afterBlock: (c: Bool) Int32 {
-                empty: List<Int32> = List<Int32> {}
-                mut v: View<Int32> = empty.view()
-                if c {
-                    x: Bag = makeBag()
-                    v = x.items.view()
-                }
-                return v.get(0)
-            }
-
-            pub fx afterLoop: () Int32 {
-                empty: List<Int32> = List<Int32> {}
-                mut v: View<Int32> = empty.view()
-                mut i: Int32 = 0
-                while i < 2 {
-                    xs: List<Int32> = List<Int32> {}
-                    v = xs.view()
-                    i = i + 1
-                }
-                return v.get(0)
-            }
-
-            pub fx insideBlock: (c: Bool) Int32 {
-                mut n: Int32 = 0
-                if c {
-                    x: Bag = makeBag()
-                    v: View<Int32> = x.items.view()
-                    n = v.get(0)
-                }
-                return n
-            }
-            """
-        } ?: return
-        assertEquals(2, messages.size, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, taken of x.items, read after the end of the block that declares x") }, messages.toString())
-        assertTrue(messages.any { it.contains("the view v, taken of xs, read after the end of the block that declares xs") }, messages.toString())
-    }
-
-    @Test
-    fun anObjectGivenAViewIntoATemporaryIsRefused() {
-        // refview: a Ref's box given a view into makeList(), destroyed at the end of the statement
-        // (g++ printed 2, zig c++ 334). The statement part refuses the same construction when the
-        // rewire lets it lower one; this part refuses it itself.
-        val messages = unsupported(
-            """
+    fun anObjectHoldingAViewIsAnInternalErrorNeverAUserOne() {
+        // refview's `Ref<View<Int32>> { value = makeList().view() }` is W2.5's ViewPass's
+        // (rules.view.type: a Ref of a view cannot be written). Should one reach the classes part,
+        // it is the checker's bug, reported as cpp.internal, and never lowered as it is.
+        val program = """
             pub fx makeList: () List<Int32> {
                 return List<Int32> {}
             }
@@ -1398,15 +976,17 @@ class CppClassLifetimesTest {
             pub fx boxed: () Int32 {
                 return Ref<View<Int32>> { value = makeList().view() }.value.get(0)
             }
-
-            pub fx boxedLocal: () Int32 {
-                xs: List<Int32> = makeList()
-                return Ref<View<Int32>> { value = xs.view() }.value.get(0)
+        """
+        val diagnostics = try {
+            emit(program).module(uri).diagnostics.filter { it.isError }
+        } catch (e: AssertionError) {
+            if (e.message?.contains("the typer refused") == true && e.message!!.contains("rules.view.type")) {
+                return
             }
-            """
-        )
-        assertEquals(1, messages.size, messages.toString())
-        assertContains(messages.single(), "the value of this Ref<View<Int32>> is given a view into makeList(), a temporary")
+            throw e
+        }
+        assertTrue(diagnostics.any { it.code == CppModuleEmitterFactory.INTERNAL_CODE && it.message.contains("the value of Ref<View<Int32>> holds a view or a pointer") }, OopTestSupport.render(diagnostics))
+        assertTrue(diagnostics.none { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }, OopTestSupport.render(diagnostics))
     }
 
     // ---- the goldens ------------------------------------------------------------------------------------

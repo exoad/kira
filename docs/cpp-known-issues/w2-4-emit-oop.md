@@ -11,6 +11,12 @@ without a commit and the verifier's `rewire.py` applied, plus, where it says so,
 current W2.3 head, `cpp/w2-3-emit-exprs` 9e00cfb; rounds 1 to 3 measured against a00af85, and
 an entry that still cites a measurement on a00af85 says so.
 
+Views are second-class (decision 4b, the design's `30-second-class.md`). W2.5's ViewPass owns
+every view refusal, so the classes part follows no view: its kind 4 (views into class storage)
+and kind 1's `lent` exception are deleted, not patched. What that closed is listed under
+"Closed by the second-class rule". The second-class round measures on a trial of this branch
+with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is written in parallel).
+
 ## Known issues
 
 ### KI-1. chain and classes differ from `expected/` by one W2.3 D33 spill each
@@ -31,7 +37,10 @@ an entry that still cites a measurement on a00af85 says so.
   runs 1126 tests with 3 failures, the two spill hunks and the routing failure of KI-19, the
   same set as the tree before round 3 (d410f69) on 9e00cfb. `CppGoldenCompileTest` passes, so
   the spilled trees compile and run on gcc, clang and MSVC and compile for aarch64. (On
-  a00af85 the two messages were the same, and round 3's tree had 2 failures of 1113.)
+  a00af85 the two messages were the same, and round 3's tree had 2 failures of 1113.) The
+  second-class round's trial runs 1117 tests with 5 failures: the same two spill hunks, KI-19's
+  routing failure, and the two CppHoisterTest cases on W2.3's `Ref<View<Int32>>` fixture
+  (KI-19); `CppGoldenCompileTest` passes.
 - **Why it can wait.** The emitted code is correct and compiles. The difference is W2.3's
   rule against expected text written before that rule. W2.3 or the integrator has to either
   keep the rule and regenerate those two `expected/` files, or narrow the rule. Until one of
@@ -53,20 +62,6 @@ an entry that still cites a measurement on a00af85 says so.
   no other probe or golden changes (measured in round 6).
 - **Why it can wait.** It is a loud compile error, not a wrong program, and it exists only in
   struct code: superseded by W2.9 (no struct).
-
-### KI-3. A `mut Unsafe<T>` field initialized from an `Unsafe<T>` value does not compile
-
-- **What.** Table 5.1 spells `Unsafe<T>` as `const T*` unless the binding is `mut`, which
-  gives `T*`. So `Holder { q = cell() }`, with `require pub mut q: Unsafe<Int32>` and
-  `pub fx cell: () Unsafe<Int32>;`, passes a `const std::int32_t*` to the constructor's
-  `std::int32_t* q_` ("no matching function for call to construct_at").
-- **Where.** The `Unsafe` row of design table 5.1 (`CppTypeSpeller.wrap`, W2.2), which W2.6
-  (FFI) uses. The constructor takes each field in the field's own column, and a `mut` local
-  initialized the same way meets the same mismatch.
-- **Reproduce.** The `ctormut` probe fails the same way on the baseline trial and on this
-  round's trial.
-- **Why it can wait.** The compiler refuses the program loudly. This round did not cause it,
-  and fixing it means deciding where a `const T*` may become a `T*`, which is FFI design.
 
 ### KI-4. Files outside this package's OWNS list
 
@@ -150,10 +145,10 @@ an entry that still cites a measurement on a00af85 says so.
   `rules.mutability.method`. Measured in round 4: 96 of 1293 fail with the round's change and
   98 of 1285 at 70f3e7f; the 96 are the 98 less the two CppHoisterTest cases round 3 broke
   (round 3's significant #3), and the rest are the two KI-1 spills, KI-19's routing failure,
-  the evalorder golden and W2.5's rules against W2.3's and W2.2's fixtures. The round's 8 new
-  tests pass there; those whose input W2.5 refuses first (`rules.exclusivity.order`,
-  `rules.exclusivity.loop`, `rules.escape.view-return`) accept that, which is the same
-  outcome.
+  the evalorder golden and W2.5's rules against W2.3's and W2.2's fixtures. (The second-class
+  round deletes the view tests that accepted a W2.5 refusal; its internal-assertion test
+  accepts `rules.view.type` first. No other fixture of this package writes a second-class
+  type anywhere but a parameter or an argument.)
 - **Why it can wait.** It is a disagreement between two correct rules about test inputs, not
   a miscompile. Whoever merges W2.5 turns those methods into `mut fx` (the C++ is the same,
   non-`const`), or keeps them as W2.5's negative cases; the classes part's derived `const`
@@ -207,32 +202,28 @@ an entry that still cites a measurement on a00af85 says so.
 - **What.** `CppClassLifetimes.holdable` asks what class fields, `Ref` arguments and held `Fx`
   values hold by value, never what a global holds. So on a tree with W2.3 and without W2.5, a
   `const&` parameter bound to an element of a global List the callee grows (`globalalias`,
-  and `globaltrait` through a trait call) still prints freed heap bytes on g++, and a view
-  stored in a generic class's field that a caller reads through another function (`genview`)
-  prints garbage. W2.5 refuses them (`rules.exclusivity.alias`, and EscapePass's
-  `rules.escape.view-field`). The same holds for a place passed twice to one call directly
+  and `globaltrait` through a trait call) still prints freed heap bytes on g++. W2.5 refuses
+  both (`rules.exclusivity.alias`). The same holds for a place passed twice to one call directly
   (`fxparam`: `callIt(b.f, b)`, which prints the right string since round 3's copy), which W2.5
   refuses as `rules.exclusivity.alias`, and for a loop whose body changes what it iterates
   through the variable the range is reached from (`loopreassign`: `for s in it.labels { it =
   Item {} }`, freed heap bytes on W2.3 alone), which W2.5 refuses as `rules.exclusivity.loop`:
   the classes part's loop rule covers a change made through another handle (`bagloop2`), which
-  W2.5 cannot see. A view kept in a global, or in a class field of another object, is D5's
-  and W2.5's EscapePass's (`rules.escape.view-store`, `rules.escape.view-field`): the view
-  check follows the views one body keeps in its own locals.
-- **No longer on the list (round 4).** `loopview`, `loopview2`, `viewrecv`, `viewrecv2`
-  (unsafe on W2.3 alone; W2.5's `rules.exclusivity.loop` and `.order`), `refview` (W2.5's
-  `rules.escape.view-store`), and `lentlocal`, `lentlocal2` (W2.5's
-  `rules.escape.view-return`) are refused by the classes part itself now (see "Fixed in
-  convergence round 4").
-- **Where.** `CppClassLifetimes.collectHeld` and `holdable`, against W2.5's ExclusivityPass
-  and EscapePass.
-- **Reproduce.** `globalalias`, `globaltrait`, `genview` and `loopreassign` on a trial with W2.3
-  9e00cfb alone print garbage on g++; on a trial with W2.3 and W2.5 each is refused (measured
-  in round 4 over all 186 probes: these four are the only probes that are unsafe on W2.3 alone
-  and refused only with W2.5).
+  W2.5 cannot see.
+- **Views (second-class round 1).** Every view refusal is now W2.5's ViewPass's, so on a tree
+  without W2.5 no view is checked at all: `genview` (a view in a generic class's field,
+  `rules.view.type`), and every view shape rounds 3 and 4 refused here (a view in a local, a
+  `Ref` or a container, a view returned from a non-view parameter or a local's handle, a view
+  handed to a call that grows its storage) compile unchecked there. The merge order of
+  `30-second-class.md` 7.0 puts W2.5's ViewPass before this branch for that reason.
+- **Where.** `CppClassLifetimes.collectHeld` and `holdable`, against W2.5's ExclusivityPass;
+  every view shape, against W2.5's ViewPass.
+- **Reproduce.** `globalalias`, `globaltrait` and `loopreassign` on a trial with W2.3 9e00cfb
+  alone print garbage on g++; on a trial with W2.3 and W2.5 each is refused (measured in round
+  4 over all 186 probes).
 - **Why it can wait.** The C++ backend is shipped with W2.5's rules: the cpp target runs them
-  (design 3.4). This entry records that the classes part's guards are not safe without W2.5
-  merged, so W2.5 has to be merged no later than this package.
+  (design 3.4). This entry records that the classes part is not safe without W2.5 merged, so
+  W2.5 (with ViewPass) has to be merged before this package.
 
 ### KI-14. `keepAlive_` and `<param>Ref_` could meet a C++ name in scope
 
@@ -242,31 +233,6 @@ an entry that still cites a measurement on a00af85 says so.
   Kira name. A C++ name in scope can: a namespace-scope `keepAlive_` from an FFI header.
 - **Where.** `ClassLowering.bodyName`.
 - **Why it can wait.** The result is a loud `-Wshadow` compile error, not a wrong program.
-
-### KI-15. A parameter a returned view may point into stays the caller's reference
-
-- **What.** A parameter C++ takes by `const&`, of a type a view can point into, that the body
-  takes a view of when a view may leave the call (`return xs.view()`) is never copied at entry:
-  the copy was what the view pointed into, and it died at return (convergence round 3's
-  significant #1). The reference sees what the caller's storage holds when the view is taken.
-  Where that cannot be right, the body is refused by name: a read of the parameter after an
-  effect that may free or move what it names, and a read of its value (not a view of it) after
-  an effect that may change it (`lentval`: `trace(xs.size())` after `b.grow()`, with `c = b`,
-  would read the grown List of 3 where Kira's parameter has 2; round 2's copy printed 2, then
-  freed heap bytes through the view). Taking the view after such an effect is kept, and the
-  view shows the caller's storage (OD-4).
-- **Where.** `CppClassLifetimes.lentParams`, `Guard.lent`, `lentRefusal`. Whether a view may
-  leave the call is approximated from the body and the program (its return type, a `mut`
-  parameter, a parameter that reaches storage a view can be kept in (a `Ref` box or a generic
-  class of a view, an `Fx`, a type parameter: round 4's `lentref`), a throw, a lambda, a view
-  handed to C++, and any global or class field that can hold a view, an `Fx` or a type
-  parameter), meant to cover every route W2.3's `CppEscapes.viewEscapes` counts (a callee that
-  keeps a view keeps it in one of those).
-- **Reproduce.** `viewlend`, `viewlend2`, `viewlend3` print 1 2 on g++, zig and MSVC ASan
-  (clean); `lentval` is refused; its rewrite (`lentvalok`, the size read first) prints 1 5.
-- **Why it can wait.** Where the approximation says a view may leave and none does, a copy is
-  skipped that was harmless, and a read the copy made right is refused by name instead. It is
-  never unsafe. Sharing W2.3's `viewEscapes` once both are merged would make it exact.
 
 ### KI-16. Receiver paths through a handle rely on W2.3 copying the `kira::Rc`
 
@@ -283,21 +249,14 @@ an entry that still cites a measurement on a00af85 says so.
   stops copying a handle receiver, the same refusal as a `mut` argument's
   (`CppClassLifetimes.mutArgRefusals`) extends to it.
 
-### KI-17. More refusals that a different lowering could keep
+### KI-17. A `mut` argument inside another is refused where a lowering could keep it
 
-- **What.** Convergence round 3 refuses, by name and with the rewrite that compiles:
-  - a view of storage the body does not own, or of its own local, read after an effect that
-    may move what it points into (`viewbefore`, `viewlocalmut`, and `viewreassign`, where the
-    local the view was reached from is pointed at a new object: freed heap bytes), or handed to
-    a call that may (`viewparamgrow`): "take the view after the call" (`viewbeforeok` prints 3
-    and 1), or view a local copy. A `List` method the analysis cannot tell from a resizing one
-    (`items.set(0, v)`) counts as one that may move it;
-  - a `mut` argument inside another `mut` argument of the same call (`f(mut x, mut x.label)`),
-    which W2.5 refuses first as `rules.exclusivity.argument`.
-- **Where.** `Walker.readView` and the view check in `Walker.call`, `overlappingMutArgs`.
-- **Why it can wait.** Refusing is correct under the convergence policy; each rewrite is a
-  local. (Round 3's refusal of a range-for over a temporary is gone: W2.3 9e00cfb copies such a
-  range, KI-18.)
+- **What.** A `mut` argument inside another `mut` argument of the same call
+  (`f(mut x, mut x.label)`) is refused by name, and W2.5 refuses it first as
+  `rules.exclusivity.argument`. (Round 3's view refusals of this entry are ViewPass's now:
+  `rules.view.local` and `rules.view.write`.)
+- **Where.** `CppClassLifetimes.overlappingMutArgs`.
+- **Why it can wait.** Refusing is correct under the convergence policy; the rewrite is a local.
 
 ### KI-18. A range-for over storage a temporary keeps relies on W2.3 9e00cfb or later
 
@@ -305,129 +264,64 @@ an entry that still cites a measurement on a00af85 says so.
   temporary through a handle, an element or an accessor, because C++'s range-for kept the
   `kira::Rc` temporary alive only to the end of its initializer. W2.3 9e00cfb copies such a
   range in the range expression (`kira::List<kira::Str>(makeItem()->labels)`,
-  `CppHoister.rangeMayDangle`) and refuses a view of one (`cpp.view-lifetime`, the verifier's
-  `loopfreshview`), so the classes part no longer refuses it: the refusal made the evalorder
-  golden and two CppHoisterTest cases fail on that W2.3 (round 3's significant #3). On W2.3
+  `CppHoister.rangeMayDangle`), so the classes part no longer refuses it: the refusal made the
+  evalorder golden and two CppHoisterTest cases fail on that W2.3 (round 3's significant #3).
+  A loop over a view of such a temporary (the verifier's `loopfreshview`) is ViewPass's
+  (`rules.view.position`: a range's origins are view parameters or literals only). On W2.3
   a00af85, which copies nothing, `loopfresh` and `loopfreshview` are a heap-use-after-free.
 - **Where.** `CppClassLifetimes.loopRefusal` and `temporaryRange`, against W2.3's
   `CppStmtEmitter` range-for.
 - **Reproduce.** On a trial with W2.3 9e00cfb (with and without W2.5): `loopfresh`,
   `loopfresh_nf`, `loopfresh_r3`, `loopfresh2` (an element's field, a `Maybe`'s value's field,
   a List in a fresh object's List) and `loopfresh3` (bodies that build and drop objects) print
-  every label on g++ and zig c++ and are ASan-clean on MSVC; `loopfreshview` is refused by
-  W2.3. The copied range's temporary is destroyed at the end of the range's initializer, so an
-  Item's `finally` runs before the first iteration (`freed` is printed first), as D34's C++
-  order has it for a temporary; a local (`loopfreshok`) prints `freed` after the loop.
+  every label on g++ and zig c++ and are ASan-clean on MSVC (round 4). The copied range's
+  temporary is destroyed at the end of the range's initializer, so an Item's `finally` runs
+  before the first iteration (`freed` is printed first), as D34's C++ order has it for a
+  temporary; a local (`loopfreshok`) prints `freed` after the loop.
 - **Why it can wait.** It is safe on the W2.3 this package merges with; the entry records the
   order: W2.3 at 9e00cfb or later has to be merged no later than this package.
 
-### KI-19. The rewire sends W2.3's `classConstruction` here before W2.3's own view check
+### KI-19. CppHoisterTest's twelfth `cpp.view-lifetime` refusal, until W2.3's commit B
 
 - **What.** The verifier's `rewire.py` returns from W2.3's `CppExprEmitter.classConstruction`
   into the classes part's `construct` at its first line, above W2.3's
-  `hoister.refuseTemporaryView(f.expr, "the object it is stored in")`, so W2.3's refusal of
-  `Ref<View<Int32>> { value = makeList().view() }` never runs, and
-  `CppHoisterTest.aTemporaryTheLoweringMakesOrStorageAPathMovesIsRefusedWithWhatToWriteInstead`
-  finds 11 of its 12 `cpp.view-lifetime` refusals. Rounds 3 and 4 did not cause it: the
-  failure message is byte-identical on d410f69 (the verifier's measurement), 70f3e7f and this
-  round's tree, each with W2.3 9e00cfb.
+  `hoister.refuseTemporaryView(f.expr, "the object it is stored in")`, so on a trial with W2.3
+  9e00cfb `CppHoisterTest.aTemporaryTheLoweringMakesOrStorageAPathMovesIsRefusedWithWhatToWriteInstead`
+  finds 11 of its 12 `cpp.view-lifetime` refusals. The classes part no longer refuses
+  `Ref<View<Int32>> { value = makeList().view() }` as a user error (its `temporaryViewed` is
+  deleted): the program is ViewPass's (`rules.view.type`, a `Ref` of a view), and should one
+  reach the classes part, its construction reports `cpp.internal` (a field that holds a view
+  or a pointer), so it is never lowered.
 - **Where.** The integration's rewire, against W2.3's `classConstruction`.
-- **Reproduce.** On a trial with W2.3 9e00cfb, `./gradlew test --tests
-  net.exoad.kira.cpp.exprs.CppHoisterTest`.
-- **Why it can wait.** The program is refused either way: the classes part's construction now
-  refuses a heap object given a view into a temporary itself (`cpp.unsupported`, `refview`,
-  round 4). The test needs the rewire to place its redirect after W2.3's check line (or the
-  check to move where both parts call it), which is the integrator's one-line change.
-
-### KI-20. Where round 4's view rules refuse more than they must
-
-- **What.** The view check (`CppClassLifetimes.Walker.viewSources` and the checks that use it)
-  follows a view by what it may point into, and is conservative in these known ways, each of
-  which refuses a program that is safe and never accepts one that is not:
-  - A view a call returns through a handle, `this` or a global (`b.all()`, `viewOf(b)`,
-    `allNums()`) may point anywhere those reach, so any write outside the body's own locals of
-    a type that moves a buffer or holds an object refuses a later read of it, even a write to
-    a field of an unrelated object (`v = b.all(); c.name = "x"; v.get(0)`).
-  - A local `Ref` box of a view (`Ref<View<Int32>>`) may be given a view by anyone who holds
-    the box, so from its declaration on any such write refuses a read of it, and a call that
-    may have such an effect refuses handing it over (`lentref`'s `main`: `stash(c.items, b,
-    r)` stores its view after growing `b.items`, which is safe, and both lines are refused).
-  - A local container of views holds what any element points into; reading one element, or
-    calling a method on the container, reads them all.
-  - A lambda that captures a view is checked at each call of the local it was given to, when
-    that local is not `mut`, is only ever called, and only by its own body; any other lambda
-    (passed to a Kira function, stored, captured by another lambda) is taken to run after
-    every later effect of the body. A call through an `Fx` value that is not such a local may
-    run any lambda or function value of the program, the standard library's included.
-  - Whether a view may leave a call is decided for the whole body (KI-15's list without the
-    program's globals and fields): in a method that holds itself, or a function that copies a
-    handle parameter, a view of that object's storage handed to a `View` parameter
-    (`total(items)`) is refused when the body also builds a lambda or has an `Fx` parameter.
-  - A view returned through a local's handle is refused even when another owner keeps the
-    object (`x: Bag = b; return x.items.view()`); W2.5's EscapePass refuses it too (D5).
-  - A heap object given a view is refused when the view is of a value no place names that
-    owns a buffer, which includes an accessor's result the statement part sees as a reference
-    (`Ref<View<Int32>> { value = m.unwrap().view() }` with `m: Maybe<List<Int32>>`).
-  - With a `finally` anywhere (KI-12), a construction counts as a release, so a method that
-    builds an object and returns a view of its own field holds itself and is refused.
-- **Where.** `CppClassLifetimes`: `movesReached`, `sharesViews`, `Walker.keepViews`,
-  `Walker.capture` and `runCaptured`, `lentParams` (`leaves`), `Walker.returned`,
-  `temporaryViewed`.
-- **Why it can wait.** Refusing is correct under the convergence policy, and each refusal
-  names the local copy or the reordering that compiles. Precision here means per-field write
-  sets and an escape analysis over the call graph, which W2.3's `CppEscapes` and W2.5's
-  EffectsPass are; sharing them once all three are merged would narrow these.
-
-### KI-21. What the view check does not follow, and leaves to W2.3 and W2.5
-
-- **What.** A view a Kira callee stores through a `mut` argument (`point(mut v, xs)`,
-  `keep<View<Int32>>(mut h, gl, k)`) is followed into class storage only: what the call's
-  operands reach through a handle, `this`, or a place through a reference. A view of a local
-  or a global stored that way and read after the caller grows that storage is W2.3's open
-  decision OD-3 (a view held across a statement that grows what it views). The union that
-  would follow it cannot tell a `mut` argument the callee replaces from one it keeps, and it
-  refused the evalorder golden's `keep<View<Int32>>(mut h, gl, growL())`, which W2.3 makes
-  safe by taking the view after `growL()` (its OD-2, ASan-clean).
-- **Where.** `CppClassLifetimes.Walker.keepViews`.
-- **Reproduce.** `viewmutarg` (the class form, `point(mut v, b)` storing `b.items.view()`) is
-  refused; the same with a local List is accepted on W2.3 9e00cfb and is W2.3's OD-3 case.
-- **Why it can wait.** It is W2.3's open language decision, recorded in its ledger with the
-  options (a borrow rule in ExclusivityPass, views only of storage that never moves, a counted
-  view); the classes part's own storage, reached through a handle, is followed.
+- **Also, on the same trial.** `CppHoisterTest.aMutViewALambdaInAGenericFunctionLendsMakesItsSourceShared`
+  and `aForRangeThatMayBeAReferenceIntoATemporaryIsCopiedWhileItLives` share the fixture
+  `hoister-round4`, whose `makeRefV` builds `Ref<View<Int32>> { value = gsrc.view() }`
+  (round4.kira:28). The classes part's `cpp.internal` assertion refuses that construction, so
+  both fail there (second-class round 1). Under decision 4b the program is `rules.view.type`:
+  once W2.5's ViewPass is merged, which the merge order puts before this branch, it is refused
+  at typing whatever the classes part does, and the fixture is W2.3's to rewrite.
+- **Why it can wait.** W2.3's commit B (30-second-class.md 7.2) deletes `refuseTemporaryView`
+  and `cpp.view-lifetime`, and turns those tests into emission tests; the refused programs move
+  to ViewPassTest. The entry closes then.
 
 ## Open decisions
-
-### OD-4. A view lent from a value parameter while the caller's storage changes
-
-- **What.** Kira's parameters are values, and D5 lets a function return a view derived from
-  one, which W2.3 lends from the caller's own storage. When the callee changes that storage
-  through another handle before taking the view (`lentalias`: `firstOf(c.items, b)` with
-  `c = b` and `firstOf` growing `b.items`, then returning `xs.view()`), the view shows the
-  caller's storage as it is then: its size is 3, where the parameter's value had 2 elements.
-  It is memory-safe (the view is taken after the growth; MSVC ASan is clean).
-- **The options, for the user.**
-  1. The view is of the caller's storage, as lending says (current): it shows the change.
-  2. Refuse a returned view of a parameter the body's effects may reach (this refuses
-     `viewlend`, `viewlend2` and `viewlend3`, which print 1 2 today).
-  3. Leave it to W2.5's exclusivity rules, as a borrow of `c.items` while `b` is written.
-- **Current behaviour kept.** Option 1. A read of the parameter's value after such an effect
-  is refused (KI-15), so the difference shows only through the view.
 
 ### OD-2. What C++ supplies is taken to leave Kira's objects alone during a call
 
 - **What.** The analysis follows every Kira body a call can reach: every body of the name for
   a virtual or trait call, every lambda and function used as a value for a call through an
-  `Fx`. It does not see C++: an override a C++ class writes for a Kira trait (the chain
-  driver's `Greedy`), an `Fx` a C++ caller builds (the sender driver's `write`), an `@_extern`
-  function, a bodyless `pub` prototype a C++ file defines. Those are taken not to change or
-  free Kira objects while the call runs, the way W2.5 takes an `@_extern` parameter not to keep
-  a view.
-- **The options, for the user.**
-  1. Keep the contract (current). Chain and Sender stay as `expected/` has them.
-  2. Take C++ to do anything. Then `Chain::has` (a loop over `loaded` that calls `b->id()`)
-     is refused, and Chain and Sender derive `kira::Shared` and hold themselves in `load`,
-     `has` and `send`.
-- **Current behaviour kept.** Option 1; it is documented here and in `CppClassLifetimes`.
+  `Fx`. It does not see C++: an `@_extern` function, a bodyless `pub` prototype a C++ file
+  defines, an override a C++ class writes for a Kira trait (the chain driver's `Greedy`), and
+  an `Fx` a C++ caller builds (the sender driver's `write`).
+- **The contract.** For the first two, this is 30-second-class.md 5.4, which replaces this
+  package's FFI note: an extern writes Kira storage only through its `mut` arguments and its
+  receiver, and runs Kira code only through the `Fx` arguments it is given. The classes part
+  applies the same contract to the last two, which are C++ code called through a Kira
+  signature.
+- **The option left for the user.** Take a C++ override or a C++-built `Fx` to do anything.
+  Then `Chain::has` (a loop over `loaded` that calls `b->id()`) is refused, and Chain and
+  Sender derive `kira::Shared` and hold themselves in `load`, `has` and `send`.
+- **Current behaviour kept.** The contract; it is documented here and in `CppClassLifetimes`.
 
 ### OD-3. A field that is neither `require` nor defaulted, skipped at construction
 
@@ -449,15 +343,58 @@ an entry that still cites a measurement on a00af85 says so.
   its parameter, is not charged by `HiddenWrites`, although its ledger says it catches this
   direct-write shape (the verifier's probe `uaf3`). The C++ is now safe (the classes part
   copies `s` at entry), but the rule's claim is not.
-- **W2.3.** See KI-11 and KI-17 for the refusals its lowering could replace, KI-16 for the
-  receiver copy the classes part relies on, KI-18 for the range copy it relies on (9e00cfb or
-  later), and KI-21 for a view of a local stored through a `mut` argument (its OD-3).
-  `viewcapture2` (a lambda capturing a view of a local List that then grows) needs no routing:
-  the classes part's capture check refuses it.
-- **Integration.** KI-19: the rewire's redirect in `classConstruction` has to follow W2.3's
-  `refuseTemporaryView` line.
-- **W2.5.** KI-13: the guards are not safe without W2.5's alias and escape rules merged.
-  OD-4 names W2.5's exclusivity as one way to decide a view lent while its source changes.
+- **W2.5, ViewPassTest.** The converge verdict's S1, S2 and S3 probes (`arrview`, `arrsame`,
+  `arrview2`, `arrparam`, `arrhanded`, `arrmut`, `arrmethod`, `arrref`, `strelem`, `strelem2`,
+  `strparam`, `listelemparam`, `refelem`, `viewmutparam`, `viewmutlist`) are refused only by
+  ViewPass now (30-second-class.md 7.5: `rules.view.local`, `.write`, `.type`), and are its
+  negative cases. So are the 13 CppClassLifetimesTest programs this round deletes (a view in a
+  local, a `Ref`, a List or a lambda's capture; a view returned from a non-view parameter or a
+  local's handle; a view handed to a call that grows its storage; `refview`): they were in
+  that file at 5808b78. W2.2's `CppDeclFixesTest` declares `struct Viewed { pub v: View<Later> }`,
+  which `rules.view.type` refuses.
+- **W2.3.** See KI-11 for the refusals its lowering could replace, KI-16 for the receiver copy
+  the classes part relies on, KI-18 for the range copy it relies on (9e00cfb or later), and
+  KI-19 for the CppHoisterTest case its commit B replaces.
+- **W2.5.** KI-13: the classes part is not safe without W2.5's alias rules and ViewPass merged.
+
+## Closed by the second-class rule (second-class round 1)
+
+Decision 4b makes every view second-class, and W2.5's ViewPass refuses what the classes part
+used to follow. Deleted from `CppClassLifetimes.kt` (2213 lines, now 1176): kind 4 whole
+(`Walker.viewSources` and the view locals, captures, loops, hand-offs and returns it checked,
+`ViewSource`, `ViewHit`, `BlockEnd`, `movesBuffer`, `movesReached`, `reallocates`,
+`pointsInto`, `ownsBuffer`, `sharesViews`, `temporaryViewed`) and kind 1's `lent` exception
+(`Guard.lent`, `lentParams`, `lentRefusal`, `reachedRefusals`, `Lending`). Deleted from
+`CppClassEmitter.kt`: the construction's `temporaryViewed` refusal, replaced by a `cpp.internal`
+assertion (a class field that holds a second-class type).
+
+- **KI-3** (a `mut Unsafe<T>` field from an `Unsafe<T>` result): an `Unsafe` field is
+  `rules.view.type`, and an extern returning one is `rules.view.extern`.
+- **KI-15** (a parameter a returned view may point into stays the caller's reference): a
+  returned view comes only from the function's view parameters, its receiver or a literal
+  (the return rule, `rules.view.return`), so no view can point into a copied parameter after
+  the call, and every parameter an effect may reach is copied at entry. `viewlend`,
+  `viewlend2`, `viewlend3` and `lentval` return a view of a `List` parameter: `rules.view.return`.
+- **KI-20** (round 4's view rules refused more than they must) and **KI-21** (a view stored
+  through a `mut` argument): the rules are gone; a `mut` view parameter is `rules.view.type`.
+- **OD-4** (a view lent from a value parameter while the caller's storage changes): it cannot
+  be returned (`rules.view.return`), and a view parameter's storage is checked at the caller for
+  the whole call (`rules.view.write`).
+- **The converge verdict's S1** (`Arr` refilled under a view), **S2** (an element replaced
+  under a view) and **S3** (a view passed `mut`): refused by ViewPass (routed above). S1's
+  root cause, whether replacing an `Arr<T>` moves its buffer, no longer exists: 3.3 counts
+  every moving write whatever the type. S2's `strparam` also needs kind 1's copy of the `Str`
+  parameter itself, which stays.
+- **The converge verdict's S4** (a lambda made after an effect capturing a `const&` parameter
+  or `this`): fixed. `Walker.node(LambdaExpr)` reads each captured parameter, and `this` for a
+  captured field or receiver, where the lambda is made, so the parameter is copied at entry and
+  the method holds itself. On a trial with W2.3 9e00cfb and `rewire.py`: `capparam` prints `a`
+  (was `b`), `capparamfree` prints the label (was a heap-use-after-free), `capthis` prints the
+  name (threw std::bad_weak_ptr), and `capparam2` still prints `a`, on g++ 13.2, zig c++ 0.15
+  and MSVC 14.44 `/fsanitize=address` with 0 ASan reports on each.
+- **Fixtures.** The two shape tests and the compile test's overrides and constructions at
+  `Unsafe<Int32>` and `CStr` (a generic trait's type argument, a field, an extern result) keep
+  only their opaque-handle half: those types cannot be written there any more.
 
 ## Fixed in convergence round 4 (for the record)
 
