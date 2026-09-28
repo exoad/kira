@@ -11,20 +11,17 @@ namespace evalorder
     kira::Size row = 1;
     std::array<std::int32_t, 4> garr = {10, 20, 30, 40};
     kira::List<std::int32_t> gl = kira::List<std::int32_t>{};
-    kira::Map<std::int32_t, std::int32_t> gm = kira::Map<std::int32_t, std::int32_t>{};
     kira::Str gs = "a";
     kira::List<kira::List<std::int32_t>> gll = kira::List<kira::List<std::int32_t>>{};
     kira::List<std::int32_t> gls = kira::List<std::int32_t>{};
     kira::List<std::int32_t> gv = kira::List<std::int32_t>{1, 2, 3};
     Box gb = Box{.v = 1};
-    Acc ga = Acc{};
 
     [[nodiscard]] std::int32_t next();
     [[nodiscard]] kira::Size nextSize();
     [[nodiscard]] std::int32_t sub(std::int32_t a, std::int32_t b);
     void store(std::int32_t& into, std::int32_t tens, std::int32_t ones);
     [[nodiscard]] Box makeBox();
-    [[nodiscard]] std::int32_t putKey();
     [[nodiscard]] kira::Size setFirst();
     [[nodiscard]] std::int32_t changeS();
     [[nodiscard]] std::int32_t bumpB();
@@ -51,7 +48,6 @@ namespace evalorder
     [[nodiscard]] std::int32_t applyTo(const kira::Fn<std::int32_t(std::int32_t)>& f, std::int32_t n);
     [[nodiscard]] std::int32_t twice(std::int32_t n);
     [[nodiscard]] kira::Fn<std::int32_t(std::int32_t)> adder(const kira::Str& s, std::int32_t k);
-    [[nodiscard]] std::int32_t bumpA();
 
     std::int32_t next()
     {
@@ -79,12 +75,6 @@ namespace evalorder
     {
         ticks += 1;
         return Box{.v = ticks};
-    }
-
-    std::int32_t putKey()
-    {
-        gm.put(1, 99);
-        return 1;
     }
 
     kira::Size setFirst()
@@ -252,12 +242,6 @@ namespace evalorder
             return x + n + k;
         };
     }
-
-    std::int32_t bumpA()
-    {
-        ga.n = 2;
-        return 10;
-    }
   }
 
   std::int32_t Box::pair(std::int32_t a, std::int32_t b) const
@@ -321,6 +305,12 @@ namespace evalorder
           const std::int32_t t0_ = ticks;
           const std::int32_t t1_ = next();
           return kira::cat(t0_, "/", t1_);
+      }());
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = ::ctr::T;
+          const std::int32_t t1_ = ::ctr::bumpT();
+          return sub(t0_, t1_);
       }());
       [&]() -> void
       {
@@ -416,21 +406,9 @@ namespace evalorder
           const kira::Size t0_ = nextSize();
           return total(kira::mutView(garr).from(t0_));
       }());
-      gm.put(1, 42);
-      kira::trace(kira::unwrapOr([&]() -> kira::Maybe<std::int32_t>
-      {
-          const kira::Map<std::int32_t, std::int32_t> t0_ = gm;
-          const std::int32_t t1_ = putKey();
-          return t0_.get(t1_);
-      }(), -1));
       gl.push_back(1);
       gl.push_back(2);
-      kira::trace([&]() -> std::int32_t
-      {
-          const kira::List<std::int32_t> t0_ = gl;
-          const kira::Size t1_ = setFirst();
-          return kira::at(t0_, t1_);
-      }());
+      kira::trace(kira::at(gl, setFirst()));
       kira::trace([&]() -> kira::Str
       {
           const kira::Str t0_ = gs;
@@ -457,6 +435,13 @@ namespace evalorder
           const std::int32_t t1_ = resetL();
           return firstL(t0_, t1_);
       }());
+      kira::at(gl, 0) = 1;
+      kira::trace([&]() -> std::int32_t
+      {
+          const std::int32_t t0_ = kira::at(gl, 0);
+          const std::int32_t t1_ = resetL();
+          return sub(t0_, t1_);
+      }());
       std::array<kira::StrBuf<8>, 3> bufs = {kira::StrBuf<8>{}, kira::StrBuf<8>{}, kira::StrBuf<8>{}};
       idx = 0;
       [&]() -> void
@@ -481,16 +466,6 @@ namespace evalorder
           return adder(t0_, t1_);
       }();
       kira::trace(f(0));
-      kira::trace([&]() -> std::int32_t
-      {
-          const Acc t0_ = ga;
-          const std::int32_t t1_ = bumpA();
-          return t0_.plus(t1_);
-      }());
-      Acc a = Acc{};
-      kira::trace(a.viaThis());
-      Acc b = Acc{};
-      kira::trace(b.viaImplicit());
       std::int32_t x{5};
       kira::trace([&]() -> std::int32_t
       {
@@ -580,37 +555,6 @@ namespace evalorder
           rm += em;
       }
       kira::trace(rm);
-  }
-
-  std::int32_t Acc::bump()
-  {
-      n = 2;
-      return 10;
-  }
-
-  std::int32_t Acc::plus(std::int32_t k) const
-  {
-      return n * 100 + k;
-  }
-
-  std::int32_t Acc::viaThis()
-  {
-      return [&]() -> std::int32_t
-      {
-          const Acc t0_ = *this;
-          const std::int32_t t1_ = bump();
-          return t0_.plus(t1_);
-      }();
-  }
-
-  std::int32_t Acc::viaImplicit()
-  {
-      return [&]() -> std::int32_t
-      {
-          const Acc t0_ = *this;
-          const std::int32_t t1_ = bump();
-          return t0_.plus(t1_);
-      }();
   }
 }
 #include "kira/macro_pop.hxx"

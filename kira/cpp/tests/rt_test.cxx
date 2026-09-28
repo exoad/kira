@@ -43,6 +43,23 @@
 #include <cstdlib>
 #include <cstring>
 #include <locale>
+
+// ---- R-A's LEND (40-round3 2): which accessors lend their receiver's storage --
+// The rules make the result of each of these a place of its receiver
+// (Rules.ACCESSORS), because C++ hands back a reference into it; the emitter
+// pins the same set against the *.bind.yaml manifests (CppBindingTableTest).
+// Each half is checked against the other: the lenders return an lvalue
+// reference, and the accessors the set leaves out return a fresh value.
+static_assert(std::is_lvalue_reference_v<decltype(kira::at(std::declval<const kira::List<int>&>(), 0))>, "List.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(kira::at(std::declval<const std::array<int, 2>&>(), 0))>, "Arr.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::View<int>&>()[0])>, "View.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::MutView<int>&>()[0])>, "MutView.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(kira::unwrap(std::declval<const std::optional<kira::List<int>>&>()))>, "Maybe.unwrap lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::Result<kira::Str, kira::Str>&>().unwrap())>, "Result.unwrap lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::Result<kira::Str, kira::Str>&>().unwrapErr())>, "Result.unwrapErr lends");
+static_assert(!std::is_reference_v<decltype(std::declval<const kira::Stack<int>&>().peek())>, "Stack.peek copies");
+static_assert(!std::is_reference_v<decltype(std::declval<const kira::Queue<int>&>().peek())>, "Queue.peek copies");
+static_assert(!std::is_reference_v<decltype(std::declval<const kira::Map<int, int>&>().get(0))>, "Map.get copies");
 #endif
 
 // ---- a module inside the macro guard, as the emitter writes one --------------

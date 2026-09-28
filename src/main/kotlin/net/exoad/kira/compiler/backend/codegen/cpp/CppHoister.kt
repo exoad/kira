@@ -9,18 +9,18 @@ import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldInit
-import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
-import net.exoad.kira.compiler.analysis.types.GlobalSymbol
+import net.exoad.kira.compiler.analysis.types.IndexKind
 import net.exoad.kira.compiler.analysis.types.KType
-import net.exoad.kira.compiler.analysis.types.LocalSymbol
-import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
+import net.exoad.kira.compiler.analysis.types.PathStep
+import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
-import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypedModel
+import net.exoad.kira.compiler.analysis.types.rules.Rules
 import net.exoad.kira.compiler.analysis.types.substitute
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
@@ -112,9 +112,9 @@ import java.util.IdentityHashMap
  *   opened at the chain's root, the nearest call whose result is first-class. A chain call
  *   with an effect of its own is copied there after its parts, into a `const kira::View<T> tN_`
  *   that points into an earlier temporary of the same lambda or a place.
- * - An operand's rank: IMPURE where `TypedModel.effects` (EffectsPass, W2.5) says so; else
- *   [scan]'s answer, since the model's PURE says the evaluation has no effect, not that it
- *   reads nothing a sibling writes. The scan: IMPURE for a call whose own entry is absent
+ * - An operand's rank: at least what `TypedModel.effects` (EffectsPass, W2.5) says, READS as
+ *   well as IMPURE, raised by [scan]'s answer, since the model's PURE says the evaluation has
+ *   no effect, not that it reads nothing a sibling writes. The scan: IMPURE for a call whose own entry is absent
  *   (absent means impure) unless the callee is a stdlib binding marked `pure: true` or a
  *   function EffectsPass proved pure, dispatched statically, with a body (a virtual, trait,
  *   `Fx` or extern call, and a call handed a `MutView` it may write through, is IMPURE
@@ -138,11 +138,16 @@ import java.util.IdentityHashMap
  * - Views are second-class (decision 4b, design 30): which view is allowed where, and which
  *   write a view's span may hold, is ViewPass's (W2.5), and this lowers what it allows without
  *   refusing any. A second-class value in a position the rule never allows reaching the
- *   emitter is a checker's bug, `cpp.internal` ([internalView]). One shape design 30 2.1 lets
- *   through is not lowered, `cpp.unsupported` ([unsupportedView]), and is left to ViewPass to
- *   refuse as it refuses a `for` range with a TEMP origin (KI-13): a view of a temporary inside
- *   an if-expression's branch that D33 must order against a sibling, since the branch's owner
- *   cannot be spilled unconditionally.
+ *   emitter is a checker's bug, `cpp.internal` ([internalView]). That includes a view of a
+ *   temporary in an if-expression's branch (KI-13), which ViewPass refuses as
+ *   `rules.view.position`, as it refuses a `for` range with a TEMP origin (40-round3 F3): the
+ *   branch's owner cannot be spilled unconditionally.
+ * - Where storage lives and what an operand reads are the model's facts, never re-derived from
+ *   syntax (40-round3 R-E): a place is `TypedModel.readPlace`, however it is spelled (a
+ *   variable, another module's global written `ctr.G`, `this.x`, an implicit field, a lent
+ *   result `gl.get(0)`, which R-A makes the place `gl[0]` and which is lowered as that place);
+ *   a rank is at least EffectsPass's over the operand's nodes; [writtenBy] and [readsAny]
+ *   compare `Place.root()` values. No `MemberRef` kind decides a place or a rank here.
  * - A temporary's name is reserved before its initializer is written, so a nested spill in the
  *   initializer never declares the same name inside it (`-Wshadow`).
  */
@@ -261,6 +266,31 @@ class CppHoister(private val lower: CppLowering) {
         return Operand.Chain(e, capture.parts.orEmpty(), ownRank(node), capture.force, build)
     }
 
+    /**
+     * [e], a lent result (R-A: an accessor call whose result is a place of its receiver's
+     * storage, `gl.get(i)`), as a [Operand.Place] of [mode]: the call's own [lower], at [node],
+     * hands over its operands (its receiver as a step of the path, its index as a value) and
+     * [Operand.Place.build] makes the call over their ordered texts, exactly as `gl[i]` is
+     * `kira::at(gl, t0_)`. A call that reaches no [lower] of [node] is a place with no parts
+     * that [emit] spells; one whose binding names an operand twice (no accessor's does) is a
+     * value, which its own [lower] orders.
+     */
+    fun lentPlace(e: Expr, node: Expr, mode: PlaceMode, emit: () -> CppEx): Operand {
+        val saved = capturing
+        val capture = Capture(node)
+        capturing = capture
+        val text = try {
+            emit()
+        } finally {
+            capturing = saved
+        }
+        val build = capture.build ?: return Operand.Place(e, emptyList(), mode) { text }
+        if (capture.force) {
+            return Operand.Value(e) { emit() }
+        }
+        return Operand.Place(e, capture.parts.orEmpty(), mode, build = build)
+    }
+
     /** The call node [lower] is given for [e] (the call of `a.f()` is `f()`), or null when [e] is no call. */
     fun callNode(e: Expr): Expr? = when (e) {
         is FunctionCallExpr -> e.takeIf { lower.model.call(it) != null }
@@ -280,7 +310,7 @@ class CppHoister(private val lower: CppLowering) {
      * snapshot or lent place is a leaf of its own; a written place is its parts' leaves; a
      * chain its parts' and its own call's. [written] is [writtenBy] of the operands.
      */
-    fun needsSpill(ops: List<Operand>, written: Set<Symbol> = writtenBy(ops)): Boolean {
+    fun needsSpill(ops: List<Operand>, written: Set<Place> = writtenBy(ops)): Boolean {
         val ranks = leaves(ops, written)
         return ranks.any { it == IMPURE } && ranks.count { it != PURE } >= 2
     }
@@ -295,16 +325,16 @@ class CppHoister(private val lower: CppLowering) {
     }
 
     /** The rank of [op]: a value's evaluation, the highest of a place's parts (how its location is found), a chain's call and parts. */
-    fun rankOf(op: Operand, written: Set<Symbol> = emptySet()): Int = when (op) {
+    fun rankOf(op: Operand, written: Set<Place> = emptySet()): Int = when (op) {
         is Operand.Value -> op.expr?.let { rank(it, written) } ?: PURE
         is Operand.Place -> op.parts.maxOfOrNull { rankOf(it, written) } ?: PURE
         is Operand.Chain -> maxOf(op.rank, op.parts.maxOfOrNull { rankOf(it, written) } ?: PURE)
     }
 
     /** The rank of reading the snapshot or lent place [op] as a value. */
-    private fun readRank(op: Operand.Place, written: Set<Symbol>): Int = op.rank ?: op.expr?.let { rank(it, written) } ?: PURE
+    private fun readRank(op: Operand.Place, written: Set<Place>): Int = op.rank ?: op.expr?.let { rank(it, written) } ?: PURE
 
-    private fun leaves(ops: List<Operand>, written: Set<Symbol>): List<Int> = ops.flatMap { op ->
+    private fun leaves(ops: List<Operand>, written: Set<Place>): List<Int> = ops.flatMap { op ->
         when (op) {
             is Operand.Value -> listOf(rankOf(op, written))
             is Operand.Place -> when (op.mode) {
@@ -322,7 +352,7 @@ class CppHoister(private val lower: CppLowering) {
      * bound to the element dangles once a sibling moves it. An `Arr`'s elements never move,
      * and a local no sibling reaches is PURE.
      */
-    private fun stepRanks(op: Operand.Place, written: Set<Symbol>): List<Int> {
+    private fun stepRanks(op: Operand.Place, written: Set<Place>): List<Int> {
         val out = mutableListOf<Int>()
         fun walk(p: Operand.Place) {
             val e = p.expr
@@ -336,15 +366,15 @@ class CppHoister(private val lower: CppLowering) {
     }
 
     /** The highest of [stepRanks] of [op] (PURE for a value or a place with no such step). */
-    fun stepRank(op: Operand, written: Set<Symbol> = emptySet()): Int =
+    fun stepRank(op: Operand, written: Set<Place> = emptySet()): Int =
         (op as? Operand.Place)?.let { stepRanks(it, written).maxOrNull() } ?: PURE
 
-    private fun spill(ops: List<Operand>, result: KType, written: Set<Symbol>, node: Expr?, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
+    private fun spill(ops: List<Operand>, result: KType, written: Set<Place>, node: Expr?, build: (List<CppEx>) -> CppEx): CppEx = lower.state.block {
         if (node != null && isSecondClass(result) && viewsTemporary(node)) {
             // E3: the lambda would return a view into its own temporary. A chain as an operand
             // never opens one (its root does); a return, a loop or a local holding one is
             // refused before this; what is left is a branch of an if-expression.
-            unsupportedView(node, "a view of a temporary as an if-expression's branch whose operands are ordered (D33): a lambda would return it past its owner (call it in an if statement instead)")
+            internalView(node, "a view of a temporary as an if-expression's branch whose operands are ordered (D33), which a lambda would return past its owner", "position")
         }
         val lines = mutableListOf<String>()
         val texts = ops.map { ordered(it, lines, written) }
@@ -368,7 +398,7 @@ class CppHoister(private val lower: CppLowering) {
      * inside a [CppBodyState.block] that an [iife] closes; [written] is [writtenBy] of the
      * operands.
      */
-    fun ordered(op: Operand, lines: MutableList<String>, written: Set<Symbol> = emptySet(), keep: Boolean = false): CppEx = when (op) {
+    fun ordered(op: Operand, lines: MutableList<String>, written: Set<Place> = emptySet(), keep: Boolean = false): CppEx = when (op) {
         is Operand.Place -> {
             // The parts first, in source order; a snapshot copies the path over them.
             val texts = op.parts.map { ordered(it, lines, written, keep) }
@@ -379,7 +409,7 @@ class CppHoister(private val lower: CppLowering) {
             if (e != null && isSecondClass(lower.model.typeOrNull(e)) && rank(e, written) != PURE && viewsTemporary(e)) {
                 // E4: a `?:` that views a temporary in a branch would be copied into a
                 // kira::View whose owner dies with the declaration.
-                unsupportedView(e, "a view of a temporary in an if-expression's branch, ordered against a sibling (D33) (call it in an if statement instead, or pass the if-expression where nothing beside it has an effect)")
+                internalView(e, "a view of a temporary in an if-expression's branch, ordered against a sibling (D33)", "position")
             }
             val owner = keep && e != null && lower.model.typeOrNull(e)?.let { mayKeepAlive(it) } == true
             copied(e, op.mutable, op.emit, lines, written, rank = if (owner) IMPURE else null)
@@ -397,7 +427,7 @@ class CppHoister(private val lower: CppLowering) {
         mutable: Boolean,
         emit: () -> CppEx,
         lines: MutableList<String>,
-        written: Set<Symbol>,
+        written: Set<Place>,
         type: KType? = null,
         rank: Int? = null,
     ): CppEx {
@@ -435,7 +465,7 @@ class CppHoister(private val lower: CppLowering) {
      * Whether the second-class value [e] may point into storage a C++ temporary of its own
      * expression owns: design 30's TEMP origin (2.3), a view of a call's result, a construction,
      * an interpolated `Str` or a `Str` constant made a `kira::Str`, or of a place such a value
-     * owns ([freshRoot]: `makeRef().value`). A view parameter, a view of a variable's storage and
+     * owns ([freshlyOwned]: `makeRef().value`). A view parameter, a view of a variable's storage and
      * a literal's view (`kira::lit`) are not. A call's second-class result points only into its
      * receiver and its second-class arguments (the return rule, design 30 2.2), so only those
      * are followed.
@@ -451,9 +481,9 @@ class CppHoister(private val lower: CppLowering) {
      * parameter's, the receiver's and a literal's are allowed.
      */
     fun viewsForeignStorage(e: Expr): Boolean = owners(e).any { x ->
-        when (val sym = if (lower.isPlaceExpr(x)) rootSymbol(x) else null) {
-            is LocalSymbol -> true
-            is ParamSymbol -> !isSecondClass(sym.type)
+        when (val root = placeRoot(x)) {
+            is Place.Local -> true
+            is Place.Param -> !isSecondClass(root.sym.type)
             else -> false
         }
     }
@@ -500,43 +530,39 @@ class CppHoister(private val lower: CppLowering) {
     }
 
     /**
-     * The fresh value that owns the storage of the place [x], or null when [x] is found through
-     * a variable, a parameter, a global or `this`. The typer records a field of any value as a
-     * place (`Place.Field` with no receiver), so `makeRef().value`, `makeMaybe().value` and
-     * `makeBag().items[0]` are places, whose storage a temporary owns: the `kira::Rc` of the
-     * fresh `Ref`, the fresh `kira::Maybe`, the fresh struct, each destroyed at the end of the
-     * full expression. The walk goes up the fields and elements of the path; the first step
-     * that is no place is that value. A step through a view (or an `Unsafe` or a `Weak`) ends
-     * the walk with null: a view points wherever it was made, not into the value that holds it.
-     * A handle (a `Ref`, a class object) is not such a step: the fresh handle may be the only
+     * Whether a fresh value owns the storage of the place [x] (40-round3 R-E: read from the
+     * model's place, `TypedModel.readPlace`, however it is spelled). The typer records a field
+     * of any value as a place whose root is a `Place.Field` with no receiver, so
+     * `makeRef().value`, `makeMaybe().value` and `makeBag().items[0]` are places whose storage a
+     * temporary owns (the `kira::Rc` of the fresh `Ref`, the fresh `kira::Maybe`, the fresh
+     * struct), each destroyed at the end of the full expression. A place rooted at a variable, a
+     * parameter, a global or `this` is not, and neither is a lent place (R-A: `gll.get(0)` is
+     * `gll[0]`). A step through a view (or an `Unsafe` or a `Weak`) points wherever the view
+     * was made, not into the value that holds it, so no temporary owns what lies past it. A
+     * handle (a `Ref`, a class object) is not such a step: the fresh handle may be the only
      * owner of its object, which is taken to die with it.
      */
-    fun freshRoot(x: Expr): Expr? {
-        val model = lower.model
-        var cur = x
-        while (true) {
-            val next = when (cur) {
-                is MemberAccessExpr -> if (model.member(cur) is MemberRef.Field) cur.origin else return null
-                is ArrayIndexExpr -> cur.originExpr
-                else -> return null
+    fun freshlyOwned(x: Expr): Boolean {
+        val p = lower.model.readPlace(x) ?: return false
+        val root = p.root()
+        if (root !is Place.Field || root.receiver != null) {
+            return false
+        }
+        return p.path().none { step ->
+            when (step) {
+                is PathStep.FieldStep -> (step.sym.owner as? ClassSymbol)?.let { it.kind == ClassKind.MAGIC && it.name in NON_OWNING } == true
+                is PathStep.IndexStep -> step.kind == IndexKind.VIEW || step.kind == IndexKind.MUT_VIEW
             }
-            if (CppBindingTable.magicName(model.typeOrNull(next)) in NON_OWNING) {
-                return null
-            }
-            if (!lower.isPlaceExpr(next)) {
-                return next
-            }
-            cur = next
         }
     }
 
     /**
      * Whether [x], an operand that owns or reaches storage, is a temporary that dies with its
-     * full expression: a fresh value, a copy the lowering makes of a place (a `Str` constant's
-     * `kira::Str`, the `kira::Maybe` a `WrapSome` place becomes), or a place whose storage a
-     * fresh value owns ([freshRoot]).
+     * full expression: a fresh value (no place, assignable or lent), a copy the lowering makes
+     * of a place (a `Str` constant's `kira::Str`, the `kira::Maybe` a `WrapSome` place
+     * becomes), or a place whose storage a fresh value owns ([freshlyOwned]).
      */
-    private fun isTemporary(x: Expr): Boolean = !lower.isPlaceExpr(x) || lower.isCopiedPlace(x) || freshRoot(x) != null
+    private fun isTemporary(x: Expr): Boolean = !lower.isPlaceExpr(x) || lower.isCopiedPlace(x) || freshlyOwned(x)
 
     /**
      * Whether the C++ of the `for` range [e] may be a reference into a temporary. `for(x : r)`
@@ -546,7 +572,7 @@ class CppHoister(private val lower: CppLowering) {
      * MSVC's ASan a heap-use-after-free). A place found through a variable, a parameter, a
      * global or `this` is no such reference, and neither is a value C++ returns by value (a
      * user function's result, a construction, a literal). A place whose object a fresh value
-     * owns ([freshRoot]), an element of a fresh value, and a stdlib call given a temporary (its
+     * owns ([freshlyOwned]), an element of a fresh value, and a stdlib call given a temporary (its
      * binding may return a reference into it: `kira::at`, `Result.unwrap`) may be; so may
      * anything else. This is C++'s range-for trap before C++23, not a view rule: a view range
      * has only a view parameter's or a literal's storage (design 30 2.1, RANGE). The loop copies
@@ -556,7 +582,7 @@ class CppHoister(private val lower: CppLowering) {
     fun rangeMayDangle(e: Expr): Boolean {
         val model = lower.model
         if (lower.isPlaceExpr(e)) {
-            return freshRoot(e) != null
+            return freshlyOwned(e)
         }
         fun call(rc: ResolvedCall): Boolean = when (rc.kind) {
             CallKind.MAGIC -> (listOfNotNull(rc.receiver) + rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }).any { x ->
@@ -594,13 +620,6 @@ class CppHoister(private val lower: CppLowering) {
         }
     }
 
-    /** Reports `cpp.unsupported` at [node] (once): a lowering of a view the rule allows that is not made yet ([construct]). */
-    fun unsupportedView(node: ASTNode, construct: String) {
-        if (reported.add(node)) {
-            lower.ctx.unsupported(node, construct)
-        }
-    }
-
     /** Reports `cpp.unsupported` at [node] (once) with [message]: an order D33 needs that no lowering gives (a StrBuf piece's receiver bound before its hole). */
     fun refuseOrder(node: ASTNode, message: String) {
         if (reported.add(node)) {
@@ -611,27 +630,68 @@ class CppHoister(private val lower: CppLowering) {
     // ---- ranks ---------------------------------------------------------------------------------
 
     /**
-     * [PURE], [READS] or [IMPURE] for evaluating [e]: IMPURE where the model says so, else
-     * [scan]'s answer (a model's PURE says the evaluation has no effect, which is not that it
-     * reads nothing a sibling changes: EffectsPass calls a function that reads a global pure);
-     * a PURE read of a local a sibling writes ([written]) is READS.
+     * [PURE], [READS] or [IMPURE] for evaluating [e] (40-round3 R-E): at least the model's
+     * answer ([modelRank], EffectsPass's `TypedModel.effects` over [e]'s nodes, READS as well as
+     * IMPURE, however a read is spelled: `ctr.G`, `this.x`, `gl.get(0)`), raised by [scan]'s
+     * (a model's PURE says the evaluation has no effect, which is not that it reads nothing a
+     * sibling changes, and a call the table trusts may still run any body). A syntax scan
+     * raises a rank and never lowers one. A PURE read of a place a sibling writes ([written],
+     * by `Place.root()`) is READS.
      */
-    fun rank(e: Expr, written: Set<Symbol> = emptySet()): Int {
-        val base = if (lower.model.effects[e] == Effect.IMPURE) IMPURE else scan(e)
+    fun rank(e: Expr, written: Set<Place> = emptySet()): Int {
+        val model = modelRank(e)
+        val base = if (model == IMPURE) IMPURE else maxOf(model, scan(e))
         return if (base == PURE && written.isNotEmpty() && readsAny(e, written)) READS else base
     }
 
     /**
-     * The variables the operands [ops] write while they are evaluated, outside any lambda: the
-     * root of a call's `mut` argument, of a `MutView` a call is handed (not converted to a
-     * `View`: `writeU32(p.from(4), v)` writes `p`, the named write of design 30 3.2), of the
-     * receiver of a `mut fx`, and of an assignment's target, at any depth. The operands' own
-     * call writes nothing while they are evaluated (its callee runs after), so a written place
-     * among [ops] adds nothing. A `MutView` is never held (decision 4b), so none is lent from a
-     * variable anywhere but at the call it is handed to.
+     * EffectsPass's rank of [root] (R-E): its own entry, which is the join of its nodes'
+     * (`ExprEffects`), or, where it has none, the highest entry among its nodes outside any
+     * lambda. An absent entry is no evidence here, not IMPURE: [scan] ranks a call with no
+     * entry IMPURE itself.
      */
-    fun writtenBy(ops: List<Operand>): Set<Symbol> {
-        val out: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
+    private fun modelRank(root: Expr): Int {
+        val effects = lower.model.effects
+        effects[root]?.let { return rankOf(it) }
+        var best = PURE
+        val stack = ArrayDeque<ASTNode>()
+        AstTree.children(root).forEach { stack.addLast(it) }
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (node is LambdaExpr) {
+                continue
+            }
+            val found = (node as? Expr)?.let { effects[it] }
+            if (found != null) {
+                best = maxOf(best, rankOf(found))
+                if (best == IMPURE) {
+                    return IMPURE
+                }
+                continue
+            }
+            AstTree.children(node).forEach { stack.addLast(it) }
+        }
+        return best
+    }
+
+    private fun rankOf(effect: Effect): Int = when (effect) {
+        Effect.PURE -> PURE
+        Effect.READS -> READS
+        Effect.IMPURE -> IMPURE
+    }
+
+    /**
+     * The roots (`Place.root()`, R-E: a local, a parameter, a global however it is spelled,
+     * `this`) the operands [ops] write while they are evaluated, outside any lambda: the root
+     * of a call's `mut` argument, of a `MutView` a call is handed (not converted to a `View`:
+     * `writeU32(p.from(4), v)` writes `p`, the named write of design 30 3.2), of the receiver of
+     * a `mut fx`, and of an assignment's target, at any depth. The operands' own call writes
+     * nothing while they are evaluated (its callee runs after), so a written place among [ops]
+     * adds nothing. A `MutView` is never held (decision 4b), so none is lent from a variable
+     * anywhere but at the call it is handed to.
+     */
+    fun writtenBy(ops: List<Operand>): Set<Place> {
+        val out = LinkedHashSet<Place>()
         fun collect(op: Operand) {
             op.expr?.let { writes(it, out) }
             when (op) {
@@ -645,7 +705,7 @@ class CppHoister(private val lower: CppLowering) {
     }
 
     /** Adds to [out] what [root] writes ([writtenBy]). */
-    private fun writes(root: Expr, out: MutableSet<Symbol>) {
+    private fun writes(root: Expr, out: MutableSet<Place>) {
         val model = lower.model
         fun through(e: Expr) {
             val lentFrom = lentMutView(e)
@@ -654,7 +714,7 @@ class CppHoister(private val lower: CppLowering) {
                 through(lentFrom)
                 return
             }
-            rootSymbol(e)?.let { out += it }
+            placeRoot(e)?.let { out += it }
         }
         fun call(rc: ResolvedCall) {
             rc.args.forEach { a ->
@@ -708,16 +768,17 @@ class CppHoister(private val lower: CppLowering) {
         return lower.model.call(call)?.takeIf { CppBindingTable.magicName(it.returnType) == "MutView" }?.receiver
     }
 
-    /** The variable a place [e] is found through (`xs` for `xs[i].v`), or null. */
-    private fun rootSymbol(e: Expr): Symbol? = when (e) {
-        is Identifier -> lower.model.symbolOf(e)
-        is MemberAccessExpr -> if (lower.model.member(e) is MemberRef.Field) rootSymbol(e.origin) else null
-        is ArrayIndexExpr -> rootSymbol(e.originExpr)
-        else -> null
-    }
+    /**
+     * The variable the place [e] is found through, as the model records it (R-E:
+     * `TypedModel.readPlace(e).root()`, so `ctr.G`, `this.x`, an implicit field and `gl.get(0)`
+     * each name their root whatever the spelling): a local, a parameter, a global or `this`.
+     * Null when [e] is no place, or a place a temporary owns (a receiver-less root, which
+     * nothing else names).
+     */
+    private fun placeRoot(e: Expr): Place? = lower.model.readPlace(e)?.root()?.takeUnless { it is Place.Field && it.receiver == null }
 
-    /** Whether [e] reads one of [symbols], outside any lambda. */
-    private fun readsAny(e: Expr, symbols: Set<Symbol>): Boolean {
+    /** Whether [e] reads a place rooted at one of [roots], outside any lambda. */
+    private fun readsAny(e: Expr, roots: Set<Place>): Boolean {
         val stack = ArrayDeque<ASTNode>()
         stack.addLast(e)
         val seen = IdentityHashMap<ASTNode, Boolean>()
@@ -726,7 +787,7 @@ class CppHoister(private val lower: CppLowering) {
             if (seen.put(node, true) != null || node is LambdaExpr) {
                 continue
             }
-            if (node is Identifier && lower.model.symbolOf(node)?.let { it in symbols } == true) {
+            if (node is Expr && placeRoot(node)?.let { it in roots } == true) {
                 return true
             }
             AstTree.children(node).forEach { stack.addLast(it) }
@@ -761,8 +822,9 @@ class CppHoister(private val lower: CppLowering) {
                 is LambdaExpr -> continue
                 is FunctionCallExpr -> {
                     if (!isPureCall(node)) return IMPURE
-                    // EffectsPass's READS: no effect, but it observes state a sibling may change.
-                    if (lower.model.effects[node] == Effect.READS) best = maxOf(best, READS)
+                    // EffectsPass's READS: no effect, but it observes state a sibling may change;
+                    // and a lent result (R-A) reads the place it is lent from.
+                    if (lower.model.effects[node] == Effect.READS || sharedRead(node)) best = maxOf(best, READS)
                     lower.model.call(node)?.let { rc ->
                         if (!isSecondClass(rc.returnType) && readsThrough(rc)) {
                             best = maxOf(best, READS)
@@ -776,26 +838,29 @@ class CppHoister(private val lower: CppLowering) {
                     if (own == IMPURE) return IMPURE
                     best = maxOf(best, own)
                 }
-                is Identifier -> if (readsShared(node)) best = READS
                 // A struct's `this` is the receiver C++ holds by reference: a read of it as a
                 // value (`peek(this, bump())`) is shared state a sibling `mut fx` changes. A
                 // class's `this` is a handle, whose identity no effect changes.
                 is ThisExpr -> if (lower.model.typeOrNull(node)?.let { lower.heldByReference(it) } == true) best = READS
                 is MemberAccessExpr -> {
-                    // The member's own name is a field or method name, not a read of anything; a
-                    // field through `this` or a reference is shared state, a local struct's is not.
-                    val origin = node.origin
-                    if (lower.model.member(node) is MemberRef.Field && (origin is ThisExpr || lower.model.typeOrNull(origin)?.let { lower.isPointerLike(it) } == true)) {
+                    // The member's own name is a field or method name, not a read of anything; what
+                    // the access reads is the model's place for it (R-E: a field through `this` or
+                    // a reference, another module's `mut` global, a lent element).
+                    if (sharedRead(node)) {
                         best = READS
                     }
-                    stack.addLast(origin)
+                    stack.addLast(node.origin)
                     (node.member as? FunctionCallExpr)?.let { stack.addLast(it) }
                     continue
                 }
-                is ArrayIndexExpr -> if (isView(lower.model.typeOrNull(node.originExpr))) best = READS
-                is Expr -> lower.model.opCalls[node]?.let { rc ->
-                    if (rc.fn != null && !provedPure(rc)) return IMPURE
-                    if (!isSecondClass(rc.returnType) && readsThrough(rc)) best = maxOf(best, READS)
+                is Expr -> {
+                    if (sharedRead(node)) {
+                        best = READS
+                    }
+                    lower.model.opCalls[node]?.let { rc ->
+                        if (rc.fn != null && !provedPure(rc)) return IMPURE
+                        if (!isSecondClass(rc.returnType) && readsThrough(rc)) best = maxOf(best, READS)
+                    }
                 }
                 else -> {}
             }
@@ -818,25 +883,30 @@ class CppHoister(private val lower: CppLowering) {
         }
     }
 
-    /** Whether the name [id] reads state a sibling's effect could change (`Effect.READS`). */
-    private fun readsShared(id: Identifier): Boolean = when (val sym = lower.model.symbolOf(id)) {
-        is GlobalSymbol -> sym.isMut
-        is FieldSymbol -> true
-        is ParamSymbol -> sym.byRef || byConstRef(sym.type)
-        else -> false
+    /**
+     * Whether [e] reads state a sibling's effect could change (`Effect.READS`), read from the
+     * model's place for it (R-E: `TypedModel.readPlace`, so a variable, another module's global
+     * written `ctr.G`, a field, an element and a lent result are one question) and the rules'
+     * one answer for which places are shared (`Rules.isSharedPlace`: a `mut` global, a `mut` or
+     * `const&` parameter, a field of `this`, a step through a reference or a view). A place
+     * rooted at a local or a by-value parameter through value steps is not, and neither is
+     * `this` itself ([ThisExpr] in [scan]: a struct's is, a class's handle is not).
+     */
+    private fun sharedRead(e: Expr): Boolean {
+        val p = lower.model.readPlace(e) ?: return false
+        if (p is Place.This) {
+            return false
+        }
+        return rules.isSharedPlace(p)
     }
 
-    /** A parameter type the design passes by `const&` (5.1): a struct, a `Str`, a container, a class, a type parameter. */
-    private fun byConstRef(t: KType): Boolean = when (t) {
-        KType.Str, is KType.Param -> true
-        is KType.Nominal -> t.sym is ClassSymbol || t.sym is TraitSymbol
-        else -> false
-    }
+    /** The rules' shared predicates ([sharedRead]); one per program. */
+    private val rules: Rules by lazy { Rules(lower.ctx.program) }
 
     private fun isPureCall(c: FunctionCallExpr): Boolean {
         val rc = lower.model.call(c)
-        if (rc != null && (rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT || rc.kind == CallKind.FN_VALUE || rc.kind == CallKind.EXTERN || handsMutView(rc))) {
-            // It may run any body, or writes through what it is handed ([provedPure]), whatever the model's entry says.
+        if (rc != null && (rc.kind == CallKind.VIRTUAL || rc.kind == CallKind.TRAIT || rc.kind == CallKind.FN_VALUE || rc.kind == CallKind.EXTERN || rc.fn?.suppliedByCpp == true || handsMutView(rc))) {
+            // It may run any body (C++ supplies it, R-G, or a dispatch picks it), or writes through what it is handed ([provedPure]), whatever the model's entry says.
             return false
         }
         // A READS entry is a call with no effect (Effect's contract); [scan] ranks the read.
@@ -924,7 +994,7 @@ class CppHoister(private val lower: CppLowering) {
         /** The second-class types (design 30, 1.1): a value of one points into storage it does not own. */
         private val SECOND_CLASS = setOf("View", "MutView", "CStr", "Unsafe")
 
-        /** The magic classes whose value points at storage it does not own: a step through one ends [freshRoot]'s walk. */
+        /** The magic classes whose value points at storage it does not own: a step through one is no step a fresh value owns past ([freshlyOwned]). */
         private val NON_OWNING = setOf("View", "MutView", "Unsafe", "Weak")
 
         /** The magic classes whose value is a pointer to storage elsewhere: a copy points where the original did. */

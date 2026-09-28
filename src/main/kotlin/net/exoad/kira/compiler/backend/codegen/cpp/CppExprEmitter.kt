@@ -689,8 +689,23 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     fun isView(t: KType): Boolean = CppBindingTable.magicName(t).let { it == "View" || it == "MutView" }
 
-    /** Whether [e] names a place the typer recorded: a variable, a field or an element of one (TypedModel.places). */
-    fun isPlaceExpr(e: Expr): Boolean = model.place(e) != null
+    /**
+     * Whether [e] names storage that lives somewhere, however it is spelled (40-round3 R-A and
+     * R-E, `TypedModel.readPlace`): a variable, another module's global written `ctr.G`, a
+     * field or an element of one (TypedModel.places), or a lent result, the element or payload
+     * an accessor returns a reference to (`gl.get(0)` is `gl[0]`, `m.unwrap()` is `m.value`:
+     * TypedModel.lentPlaces). Only an assignment and a `mut` argument need the assignable
+     * table, and the typer and the rules have checked those before the emitter runs.
+     */
+    fun isPlaceExpr(e: Expr): Boolean = model.readPlace(e) != null
+
+    /**
+     * Whether [e] is a lent result (R-A): an accessor call whose result is a place of its
+     * receiver's storage (`gl.get(i)`, `m.unwrap()`, `r.unwrapErr()`, `Rules.ACCESSORS`), which
+     * is lowered as the other spelling (`gl[i]`, `m.value`) is: its receiver is a step of the
+     * path, located and never copied, and the call's own operands are the path's parts.
+     */
+    fun isLentCall(e: Expr): Boolean = model.lentPlaces[e] != null && hoister.callNode(e)?.let { model.lentPlaces[it] != null } == true
 
     /**
      * Whether the place [e] reaches its use in C++ as a copy made for it, which dies with the
@@ -749,6 +764,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * writes) is a path, a read the hoister may copy a snapshot, a read a call may lend from lent.
      */
     fun placeOperand(target: Expr, leaf: () -> CppEx = { coerced(target) }, mode: CppHoister.PlaceMode = CppHoister.PlaceMode.PATH): CppHoister.Operand = when {
+        // R-A: `gl.get(i)` is the place `gl[i]`: its parts are the call's own operands (the
+        // receiver as a step of the path, the index as a value), ordered as an element's are.
+        isLentCall(target) -> hoister.lentPlace(target, hoister.callNode(target)!!, mode) { coerced(target) }
         target is ArrayIndexExpr -> {
             val origin = target.originExpr
             val ct = typeOf(origin)
@@ -1642,7 +1660,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             CppBindingTable.magicName(rc.returnType) == "MutView"
         val ops = mutableListOf<CppHoister.Operand>()
         val receiverIndex = if (receiver != null) {
-            val op = receiverOperand(receiver, rc, fn, memberStyle, lending) { receiverEx(receiver, memberStyle) }
+            // A lent result's receiver (R-A: `gl.get(i)` is `gl[i]`) is a step of the path, as an
+            // element's container is: located where the accessor runs, never copied before it.
+            val op = (if (model.lentPlaces[e] != null) pathOperand(receiver) else null)
+                ?: receiverOperand(receiver, rc, fn, memberStyle, lending) { receiverEx(receiver, memberStyle) }
                 ?: CppHoister.Operand.Value(null) { receiverEx(receiver, memberStyle) }
             ops += op
             0

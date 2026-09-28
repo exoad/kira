@@ -42,7 +42,6 @@ class CppHoisterTest {
         mut row: Size = 1
         mut garr: Arr<Int32, 4> = [10, 20, 30, 40]
         mut gl: List<Int32> = List<Int32> { }
-        mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
 
         fx next: () Int32 {
             ticks += 1
@@ -86,11 +85,6 @@ class CppHoisterTest {
             return gl.size() - 1
         }
 
-        fx putKey: () Int32 {
-            gm.put(1, 42)
-            return 1
-        }
-
         fx tail: (xs: View<Int32>, at: Size) View<Int32> {
             return xs.from(at)
         }
@@ -131,12 +125,8 @@ class CppHoisterTest {
             return total(garr.from(nextSize()))
         }
 
-        pub fx mapReadBeside: () Int32 {
-            return gm.get(putKey()).unwrapOr(-1)
-        }
-
-        pub fx listReadBeside: () Int32 {
-            return gl.get(pushed())
+        pub fx listIndexBeside: () Int32 {
+            return gl[pushed()]
         }
 
         mut gs: Str = "a"
@@ -281,33 +271,10 @@ class CppHoisterTest {
             pub mut fx viaThis: () Int32 {
                 return peek(this, bump())
             }
-
-            pub fx plus: (k: Int32) Int32 {
-                return n * 100 + k
-            }
-
-            pub mut fx viaExplicit: () Int32 {
-                return this.plus(bump())
-            }
-
-            pub mut fx viaImplicit: () Int32 {
-                return plus(bump())
-            }
         }
 
         fx peek: (a: Acc, k: Int32) Int32 {
             return a.n + k
-        }
-
-        mut gacc: Acc = Acc { }
-
-        fx bumpAcc: () Int32 {
-            gacc.n = 2
-            return 10
-        }
-
-        pub fx namedBeside: () Int32 {
-            return gacc.plus(bumpAcc())
         }
 
         fx adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
@@ -634,14 +601,15 @@ class CppHoisterTest {
     }
 
     @Test
-    fun thisAsAReceiverReadsLikeANamedStructReceiver() {
-        // A named struct receiver beside a mut fx that writes it is copied first (D33), and so
-        // is `this`, explicit or implicit: `this.plus(bump())` and `plus(bump())` read the same
-        // as `gacc.plus(bumpAcc())`, never the state after the effect.
-        val named = body("namedBeside")
-        assertTrue(named.contains("const Acc t0_ = gacc;\n          const std::int32_t t1_ = bumpAcc();\n          return t0_.plus(t1_);"), named)
-        val copiedThis = "const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return t0_.plus(t1_);"
-        assertEquals(2, text.windowed(copiedThis.length).count { it == copiedThis }, "the explicit and the implicit this:\n$text")
+    fun thisAsAReceiverReadsLikeANamedStructReceiverAndBothAreRefusedUntilQ4IsLowered() {
+        // The user's Q4 reads a method call's receiver when the call runs (210 for each), and no
+        // lowering of that exists before W2.9.8; a snapshot would give 110, the answer Q4
+        // rejected. So the checker refuses a struct receiver beside a write of its place,
+        // however it is named: the global, `this`, and an implicit `this` (40-round3 3.2).
+        val refused = receiverRefusals()
+        listOf("return gacc.plus(bumpAcc())", "return this.plus(bump())", "return plus(bump())").forEach { call ->
+            assertTrue(refused.any { (l, _) -> l == receiverLine(call) }, "$call is refused:\n$refused")
+        }
     }
 
     @Test
@@ -668,22 +636,104 @@ class CppHoisterTest {
 
     @Test
     fun anFxParameterOnlyCalledIsATemplateParameterAndOnePassedOnIsNot() {
-        // Without EscapePass (W2.5), an Fx parameter the body only calls is known not to
-        // escape (design 5.6: a template parameter); one handed to another function is not
-        // seen through, so it is escaping (a kira::Fn).
-        // Both are module-private, so they are declared in the source's own namespace.
-        assertTrue(text.contains("template<typename F_each>\n      requires kira::Callable<F_each, void, std::int32_t>\n    void eachOf(const kira::List<std::int32_t>& xs, F_each&& each);"), text)
-        assertTrue(text.contains("void handOn(const kira::List<std::int32_t>& xs, const kira::Fn<void(std::int32_t)>& each);"), text)
+        // EscapePass (W2.5) decides whether an Fx parameter escapes, and its entry wins: handOn
+        // only hands `each` to eachOf's non-escaping parameter, so both are template parameters
+        // (design 5.6). Both are module-private, so they are declared in the source's own namespace.
+        val template = "template<typename F_each>\n      requires kira::Callable<F_each, void, std::int32_t>\n    "
+        assertTrue(text.contains(template + "void eachOf(const kira::List<std::int32_t>& xs, F_each&& each);"), text)
+        assertTrue(text.contains(template + "[[maybe_unused]] void handOn(const kira::List<std::int32_t>& xs, F_each&& each);"), text)
+        // Where EscapePass wrote no entry (here, the rule passes off), KI-2's fallback decides: a
+        // parameter the body only calls is a template parameter, one handed on is a kira::Fn.
+        val fallback = withoutRulePasses { CppExprTestSupport.emit("hoister-fallback", listOf(module)).source(module) }
+        assertTrue(fallback.contains(template + "void eachOf(const kira::List<std::int32_t>& xs, F_each&& each);"), fallback)
+        assertTrue(fallback.contains("void handOn(const kira::List<std::int32_t>& xs, const kira::Fn<void(std::int32_t)>& each);"), fallback)
     }
 
     @Test
     fun aMemberStyleAndAFreeFunctionBindingReadTheirReceiverTheSameWay() {
-        // A container receiver beside an effect is read before it (D33): copied, whichever
-        // binding spells the call, unless a view is formed of it.
-        val map = body("mapReadBeside")
-        assertTrue(map.contains("const kira::Map<std::int32_t, std::int32_t> t0_ = gm;\n          const std::int32_t t1_ = putKey();\n          return t0_.get(t1_);"), map)
-        val list = body("listReadBeside")
-        assertTrue(list.contains("const kira::List<std::int32_t> t0_ = gl;\n          const kira::Size t1_ = pushed();\n          return kira::at(t0_, t1_);"), list)
+        // A container receiver beside a write of it is read when the call runs (Q4), whichever
+        // binding spells the call: until W2.9.8 lowers that for a method call, both spellings
+        // are refused, the member-style `gm.get(k)` and the free `kira::at` of `gl.get(i)`, and
+        // the module is refused whole: five reports, one per receiver (40-round3 3.2).
+        val refused = receiverRefusals()
+        assertEquals(5, refused.size, "one rules.exclusivity.order per receiver:\n$refused")
+        listOf("return gm.get(putKey()).unwrapOr(-1)", "return gl.get(pushed())").forEach { call ->
+            assertTrue(refused.any { (l, _) -> l == receiverLine(call) }, "$call is refused:\n$refused")
+        }
+        // The index spelling reads its List when kira::at runs, after the index: Q4's answer.
+        val index = body("listIndexBeside")
+        assertTrue(index.contains("return kira::at(gl, pushed());"), index)
+    }
+
+    /** A method call's receiver beside a write of its place (40-round3 3.2's interim refusal), in a module of its own. */
+    private val receivers = Module(
+        "hoist:receivers",
+        """
+        mut gl: List<Int32> = List<Int32> { }
+        mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
+
+        fx pushed: () Size {
+            gl.add(7)
+            return gl.size() - 1
+        }
+
+        fx putKey: () Int32 {
+            gm.put(1, 42)
+            return 1
+        }
+
+        pub fx mapReadBeside: () Int32 {
+            return gm.get(putKey()).unwrapOr(-1)
+        }
+
+        pub fx listReadBeside: () Int32 {
+            return gl.get(pushed())
+        }
+
+        pub struct Acc {
+            pub n: Int32 = 1
+
+            pub mut fx bump: () Int32 {
+                n = 2
+                return 10
+            }
+
+            pub fx plus: (k: Int32) Int32 {
+                return n * 100 + k
+            }
+
+            pub mut fx viaExplicit: () Int32 {
+                return this.plus(bump())
+            }
+
+            pub mut fx viaImplicit: () Int32 {
+                return plus(bump())
+            }
+        }
+
+        mut gacc: Acc = Acc { }
+
+        fx bumpAcc: () Int32 {
+            gacc.n = 2
+            return 10
+        }
+
+        pub fx namedBeside: () Int32 {
+            return gacc.plus(bumpAcc())
+        }
+        """,
+    )
+
+    /** The line of [snippet] in [receivers]' file (its module line and a blank line come first). */
+    private fun receiverLine(snippet: String): Int =
+        receivers.text.lines().indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
+
+    /** Each `rules.exclusivity.order` the backend reports on [receivers], as (line, message); it refuses the module. */
+    private fun receiverRefusals(): List<Pair<Int, String>> {
+        val result = CppExprTestSupport.emitRefused("hoister-receivers", listOf(receivers))
+        val all = result.diagnostics.map { Triple(it.code, it.position?.lineNumber ?: -1, it.message) }
+        assertTrue(all.all { (code, _, _) -> code == "rules.exclusivity.order" }, "nothing but the order rule:\n$all")
+        return all.map { (_, l, m) -> l to m }
     }
 
     @Test
@@ -814,11 +864,15 @@ class CppHoisterTest {
             return List<Int32> { values = [1000, 2000, 3000, 4000] }
         }
 
+        // Impure (they count), so their result is an owner D33 must spill before the view of
+        // it is formed; a pure one stays in the full expression that uses the view.
         fx makeRef: () Ref<List<Int32>> {
+            ticks += 1
             return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40] } }
         }
 
         fx makeMaybe: () Maybe<List<Int32>> {
+            ticks += 1
             m: Maybe<List<Int32>> = List<Int32> { values = [10, 20, 30, 40] }
             return m
         }
@@ -1257,30 +1311,69 @@ class CppHoisterTest {
         }
     """.trimIndent()
 
+    /** Runs [block] with the rule passes (W2.5) switched off: what the emitter's own backstops catch when a checker's bug lets a program through. */
+    private fun <T> withoutRulePasses(block: () -> T): T {
+        val rules = KiraTyper.rulePasses.toList()
+        KiraTyper.rulePasses.clear()
+        try {
+            return block()
+        } finally {
+            KiraTyper.rulePasses.addAll(rules)
+        }
+    }
+
     @Test
-    fun aViewWhereTheRuleAllowsNoneIsAnInternalErrorAndAnOrderNoLoweringGivesIsRefused() {
-        // ViewPass (W2.5) refuses each cpp.internal one before the emitter runs (decision 4b);
-        // the emitter's cpp.internal is the backstop that keeps a checker's bug from compiling
-        // into a use after free. keepField, keepM, keptByAnFxValue, keptByATemporaryMutex,
-        // lockAndKeep and mkKeeper are the converge verdict's h1, h7, h5, h6, h10 and h9, each a
-        // heap-use-after-free under MSVC's ASan before (gcc -1921638536, -348905752,
-        // -1077665518, 321003290, 218111996, 1756766494 where Kira gives 1360): a view kept in a
-        // Maybe<MutView<Int32>> global or a List<MutView<T>> is a type no program may write
-        // (rules.view.type). The if-expression beside an effect views a temporary in a branch
-        // D33 must order (KI-13): its owner cannot be spilled unconditionally, so it stays
-        // cpp.unsupported, never a use after free, and is left to ViewPass to refuse as it
-        // refuses a RANGE with a TEMP origin. The StrBuf hole is an order D33 needs that no
-        // lowering gives. The safe* functions still compile.
-        val emitted = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:bad", refusing))
-        // (The local and its initializer are two constructs on one line: two reports.)
+    fun aViewWhereTheRuleAllowsNoneIsTheCheckersAndPastItAnInternalError() {
+        // Every shape here is refused by ViewPass (W2.5) before the emitter runs (decision 4b),
+        // with the checker's own code; the emitter lowers nothing and reports nothing. The keep*
+        // functions, lockAndKeep and keptBy* (the converge verdict's h1, h7, h5, h6, h10 and h9,
+        // each a heap-use-after-free under MSVC's ASan before) store a view in `gv`, a
+        // Maybe<MutView<Int32>>, a type no program may declare: they are refused at `gv` itself.
+        // A view of a temporary in an if-expression's branch (KI-13) is rules.view.position, as a
+        // for range with a TEMP origin is (40-round3 F3), in both the ordered and the one-statement
+        // form.
         val lines = "module \"vl:bad\"\n\n$refusing\n".lines()
         fun line(snippet: String): Int = lines.indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
+        val checked = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:bad", refusing))
+        // The typer's and the rules' diagnostics are the run's; the refused module emits nothing of its own.
+        val found = (checked.runDiagnostics + checked.diagnostics("vl:bad")).filter { it.isError }.map { Triple(it.position?.lineNumber ?: -1, it.code, it.message) }
+        val branch = line("return if c {")
+        val expected = listOf(
+            line("mut gv: Maybe<MutView<Int32>>") to "rules.view.type",
+            line("pub v: View<Int32>") to "rules.view.type",
+            line("fx mkKeeper<T>") to "rules.view.type",
+            line("sink.value.add(r.value.view())") to "rules.view.write",
+            line("v: View<Int32> = makeList().view()") to "rules.view.local",
+            line("mut vs: List<View<Int32>>") to "rules.view.type",
+            line("return tail(makeList().view(), 2)") to "rules.view.return",
+            line("return xs.from(at)") to "rules.view.return",
+            line("return ys.view()") to "rules.view.return",
+            line("for x: Int32 in makeList().view()") to "rules.view.position",
+            branch + 2 to "rules.view.position",
+            branch + 4 to "rules.view.position",
+            line("return minus(if c { makeList().view() } else { gl.view() }, next())") to "rules.view.position",
+            line("return minus(if c { makeList().view() } else { gl.view() }, next())") to "rules.view.write",
+            line("return total(if c { makeList().view() } else { gl.view() })") to "rules.view.position",
+        )
+        val shown = found.joinToString("\n") { (l, c, m) -> "$l $c $m" }
+        assertEquals(expected.size, found.size, "one refusal per shape, and none for the safe ones:\n$shown")
+        expected.forEach { (at, code) ->
+            assertTrue(found.any { (l, c, _) -> l == at && c == code }, "line $at: $code in:\n$shown")
+        }
+        assertTrue(found.none { (_, c, _) -> c.startsWith("cpp.") }, "the checker refuses first; the emitter reports nothing:\n$shown")
+
+        // Past the checker (the rule passes off, as a checker's bug would let a program through),
+        // each is the emitter's backstop, cpp.internal naming the rule that refuses it, and never a
+        // cpp.unsupported: no view the rule allows is left unlowered. The one-statement if-expression
+        // is lowered safely there (one full expression holds the temporary).
+        val past = withoutRulePasses { net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:bad", refusing)) }
         val internal = CppModuleEmitterFactory.INTERNAL_CODE
         val unsupported = CppModuleEmitterFactory.UNSUPPORTED_CODE
-        val found = emitted.diagnostics("vl:bad")
+        val backstops = past.diagnostics("vl:bad")
             .filter { it.code == internal || it.code == unsupported }
             .map { Triple(it.position?.lineNumber ?: -1, it.code, it.message) }
-        val expected = listOf(
+        // (The local and its initializer are two constructs on one line: two reports.)
+        val caught = listOf(
             Triple(line("gv = r.value.view()"), internal, "rules.view.type"),
             Triple(line("gv = m.value.value.view()"), internal, "rules.view.type"),
             Triple(line("sink.value.add(r.value.view())"), internal, "the receiver of 'add' holds views"),
@@ -1296,14 +1389,38 @@ class CppHoisterTest {
             Triple(line("return ys.view()"), internal, "a view of a local or of a parameter that is no view"),
             Triple(line("for x: Int32 in makeList().view()"), internal, "rules.view.position"),
             Triple(line("return if c {"), internal, "rules.view.position"),
-            Triple(line("return minus(if c { makeList().view() } else { gl.view() }, next())"), unsupported, "a view of a temporary in an if-expression's branch"),
+            Triple(line("return minus(if c { makeList().view() } else { gl.view() }, next())"), internal, "rules.view.position"),
             Triple(line("sbs[0].set("), unsupported, "this hole's effect may move the container the StrBuf is an element of"),
         )
-        val shown = found.joinToString("\n") { (l, c, m) -> "$l $c $m" }
-        assertEquals(expected.size, found.size, "one report per shape, and none for the safe ones:\n$shown")
-        expected.forEach { (at, code, text) ->
-            assertTrue(found.any { (l, c, m) -> l == at && c == code && m.contains(text) }, "line $at: $code '$text' in:\n$shown")
+        val pastShown = backstops.joinToString("\n") { (l, c, m) -> "$l $c $m" }
+        assertEquals(caught.size, backstops.size, "one report per shape, and none for the safe ones:\n$pastShown")
+        caught.forEach { (at, code, text) ->
+            assertTrue(backstops.any { (l, c, m) -> l == at && c == code && m.contains(text) }, "line $at: $code '$text' in:\n$pastShown")
         }
+        assertEquals(1, backstops.count { (_, c, _) -> c == unsupported }, "the StrBuf hole is the one cpp.unsupported, an order and no view:\n$pastShown")
+    }
+
+    @Test
+    fun anOrderNoLoweringGivesIsRefusedByTheEmitter() {
+        // A StrBuf interpolation's pieces are one call each on the receiver, bound before the hole
+        // runs: a hole that may move the List the StrBuf is an element of is an order D33 needs
+        // and no lowering gives. The rules accept it (it forms no view); the emitter refuses it.
+        val source = """
+            mut sbs: List<StrBuf<8>> = List<StrBuf<8>> { }
+
+            fx growSbs: () Int32 {
+                sbs.add(StrBuf<8> { })
+                return 1
+            }
+
+            pub fx strBufElementBesideAGrowth: () Void {
+                sbs[0].set("a${'$'}{growSbs()}")
+            }
+        """.trimIndent()
+        val emitted = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:order", source))
+        val found = emitted.diagnostics("vl:order").filter { it.isError }
+        assertEquals(listOf(CppModuleEmitterFactory.UNSUPPORTED_CODE), found.map { it.code }, found.joinToString("\n") { it.render() })
+        assertTrue(found.single().message.contains("this hole's effect may move the container the StrBuf is an element of"), found.single().message)
     }
 
     private val ranges = Module(
@@ -1373,5 +1490,501 @@ class CppHoisterTest {
         val plain = bodyIn(rangesText, "rangesThatNeedNoCopy")
         assertTrue(plain.contains("x : l)") && plain.contains("y : makeList())") && plain.contains("z : v)"), plain)
         assertFalse(plain.contains("kira::List<std::int32_t>("), plain)
+    }
+
+    // ---- one place however it is spelled (40-round3 R-E and R-A) ----------------------------------
+
+    /** Another module's `mut` globals and the calls that write them (w2-3 #0's lib:ctr, round 2's m1-m7). */
+    private val ctr = Module(
+        "hoist:ctr",
+        """
+        pub mut G: Int32 = 5
+        pub mut GS: Str = "old"
+        pub mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        pub mut GSL: List<Str> = List<Str> { }
+        pub mut GLL: List<List<Int32>> = List<List<Int32>> { }
+        pub mut GLS: List<Int32> = List<Int32> { }
+
+        pub fx reset: () Void {
+            G = 5
+            GS = "old"
+            GL = List<Int32> { values = [1, 2, 3] }
+            GSL = List<Str> { values = ["firstfirstfirstfirstfirstfirstfirstfirstfirstfirstfirst"] }
+            GLL = List<List<Int32>> { values = [List<Int32> { values = [1] }] }
+            GLS = List<Int32> { values = [100] }
+        }
+
+        pub fx bumpG: () Int32 {
+            G += 10
+            return 0
+        }
+
+        pub fx changeGS: () Int32 {
+            GS = "newnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnew"
+            return 0
+        }
+
+        pub fx growGL: () Int32 {
+            mut i: Int32 = 0
+            while i < 64 {
+                GL.add(1000)
+                i += 1
+            }
+            return 0
+        }
+
+        pub fx growGSL: () Int32 {
+            mut i: Int32 = 0
+            while i < 64 {
+                GSL.add("padpadpadpadpadpadpadpadpadpadpadpadpadpadpadpadpadpad")
+                i += 1
+            }
+            return 0
+        }
+
+        pub fx growGLL: () Int32 {
+            mut i: Int32 = 0
+            while i < 64 {
+                GLL.add(List<Int32> { values = [i] })
+                i += 1
+            }
+            return 7
+        }
+
+        pub fx growGLS: () Int32 {
+            mut i: Int32 = 0
+            while i < 64 {
+                GLS.add(i)
+                i += 1
+            }
+            return 7
+        }
+
+        pub fx store: (mut into: Int32, v: Int32) Void {
+            into = v
+        }
+        """,
+    )
+
+    /**
+     * Each read of [ctr]'s globals twice: qualified (`ctr.G`, a `MemberRef.ModuleMember` the
+     * hoister once ranked PURE) and unqualified (the control). Round 2 measured the qualified
+     * forms wrong on the trial: 15 where Kira gives 5, the replacement string, 67 for 3, a
+     * heap-use-after-free in kira::cat, a push into freed storage.
+     */
+    private val twins = Module(
+        "hoist:twins",
+        """
+        use "hoist:ctr"
+
+        fx sub: (a: Int32, b: Int32) Int32 {
+            return a - b
+        }
+
+        fx show: (s: Str, k: Int32) Str {
+            return "${'$'}{s}${'$'}{k}"
+        }
+
+        fx count: (xs: List<Int32>, k: Int32) Size {
+            return xs.size()
+        }
+
+        fx showK: (k: Int32, s: Str) Str {
+            return "${'$'}{k}:${'$'}{s}"
+        }
+
+        pub fx m1q: () Int32 {
+            reset()
+            return sub(ctr.G, bumpG())
+        }
+
+        pub fx m1u: () Int32 {
+            reset()
+            return sub(G, bumpG())
+        }
+
+        pub fx m1oq: () Int32 {
+            reset()
+            return ctr.G + bumpG()
+        }
+
+        pub fx m1ou: () Int32 {
+            reset()
+            return G + bumpG()
+        }
+
+        pub fx m1hq: () Str {
+            reset()
+            return "${'$'}{ctr.G}/${'$'}{bumpG()}"
+        }
+
+        pub fx m1hu: () Str {
+            reset()
+            return "${'$'}{G}/${'$'}{bumpG()}"
+        }
+
+        pub fx m2q: () Str {
+            reset()
+            return show(ctr.GS, changeGS())
+        }
+
+        pub fx m2u: () Str {
+            reset()
+            return show(GS, changeGS())
+        }
+
+        pub fx m2lq: () Size {
+            reset()
+            return count(ctr.GL, growGL())
+        }
+
+        pub fx m2lu: () Size {
+            reset()
+            return count(GL, growGL())
+        }
+
+        pub fx m4q: () Str {
+            reset()
+            return showK(growGSL(), ctr.GSL[0])
+        }
+
+        pub fx m4u: () Str {
+            reset()
+            return showK(growGSL(), GSL[0])
+        }
+
+        pub fx m4rq: () Str {
+            reset()
+            return show(ctr.GSL[0], growGSL())
+        }
+
+        pub fx m4ru: () Str {
+            reset()
+            return show(GSL[0], growGSL())
+        }
+
+        pub fx m6q: () Size {
+            reset()
+            ctr.GLL[0].add(growGLL())
+            return GLL[0].size()
+        }
+
+        pub fx m6u: () Size {
+            reset()
+            GLL[0].add(growGLL())
+            return GLL[0].size()
+        }
+
+        pub fx m6sq: () Int32 {
+            reset()
+            store(mut ctr.GLS[0], growGLS())
+            return GLS[0]
+        }
+
+        pub fx m6su: () Int32 {
+            reset()
+            store(mut GLS[0], growGLS())
+            return GLS[0]
+        }
+        """,
+    )
+
+    private val twinsTree by lazy { CppExprTestSupport.emit("hoister-twins", listOf(ctr, twins)) }
+
+    /** The pairs of [twins]: a qualified form and its unqualified control. */
+    private val twinPairs = listOf("m1q" to "m1u", "m1oq" to "m1ou", "m1hq" to "m1hu", "m2q" to "m2u", "m2lq" to "m2lu", "m4q" to "m4u", "m4rq" to "m4ru", "m6q" to "m6u", "m6sq" to "m6su")
+
+    @Test
+    fun aModuleQualifiedGlobalIsEmittedAsItsUnqualifiedName() {
+        // R-E: the hoister reads the place and the rank from the model, so `ctr.G` is the place
+        // `G` is (Place.Global) and READS as it is: each qualified form is emitted exactly as its
+        // control, the read copied before the call that writes it.
+        val source = twinsTree.source(twins)
+        twinPairs.forEach { (q, u) ->
+            assertEquals(bodyIn(source, u), bodyIn(source, q), "$q is emitted as $u")
+        }
+        assertTrue(bodyIn(source, "m1q").contains("const std::int32_t t0_ = ::ctr::G;\n          const std::int32_t t1_ = ::ctr::bumpG();\n          return sub(t0_, t1_);"), bodyIn(source, "m1q"))
+        assertTrue(bodyIn(source, "m4q").contains("const std::int32_t t0_ = ::ctr::growGSL();\n          const kira::Str t1_ = kira::at(::ctr::GSL, 0);"), bodyIn(source, "m4q"))
+        assertTrue(bodyIn(source, "m6q").contains("const std::int32_t t0_ = ::ctr::growGLL();\n          kira::at(::ctr::GLL, 0).push_back(t0_);"), bodyIn(source, "m6q"))
+    }
+
+    @TestFactory
+    fun aModuleQualifiedGlobalReadsKirasValueOnEveryCompiler(): List<DynamicNode> =
+        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
+            DynamicTest.dynamicTest("twins [${tc.id}]") {
+                val first = "firstfirstfirstfirstfirstfirstfirstfirstfirstfirstfirst"
+                val driver = buildString {
+                    append("#include \"").append(twins.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n")
+                    append(CppExprTestSupport.CHECK_PRELUDE)
+                    append("\nint main()\n{\n")
+                    listOf(
+                        "twins::m1q() == 5 && twins::m1u() == 5" to "m1: a qualified Int32 is read before bumpG()",
+                        "twins::m1oq() == 5 && twins::m1ou() == 5" to "m1: an operator's operand too",
+                        "twins::m1hq() == \"5/0\" && twins::m1hu() == \"5/0\"" to "m1: an interpolation hole too",
+                        "twins::m2q() == \"old0\" && twins::m2u() == \"old0\"" to "m2: a qualified Str is copied before changeGS()",
+                        "twins::m2lq() == 3 && twins::m2lu() == 3" to "m2: a qualified List is copied before growGL()",
+                        "twins::m4q() == \"0:$first\" && twins::m4u() == \"0:$first\"" to "m4: an element read after growGSL() is located after it",
+                        "twins::m4rq() == \"${first}0\" && twins::m4ru() == \"${first}0\"" to "m4: an element read before growGSL() is copied first",
+                        "twins::m6q() == 2 && twins::m6u() == 2" to "m6: a mut fx receiver element is located after growGLL()",
+                        "twins::m6sq() == 7 && twins::m6su() == 7" to "m6: a mut argument element is located after growGLS()",
+                    ).forEach { (cond, what) -> append("    check($cond, \"$what\");\n") }
+                    append("    std::printf(\"\\n%d checks, %d failed\\n\", checks, failures);\n")
+                    append("    return failures == 0 ? 0 : 1;\n}\n")
+                }
+                val stdout = CppExprTestSupport.compileAndRun(twinsTree, driver, tc) ?: return@dynamicTest
+                assertTrue(stdout.contains("\n9 checks, 0 failed\n"), "${tc.id}:\n$stdout")
+            }
+        }
+
+    /** Each lent result (R-A) twice: the accessor call and the place spelling it is (`gl.get(0)` and `gl[0]`, `gms.unwrap()` and `gms.value`). */
+    private val lent = Module(
+        "hoist:lent",
+        """
+        mut ticks: Int32 = 0
+        mut idx: Size = 0
+        mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        mut gstrs: List<Str> = List<Str> { values = ["first"] }
+        mut gll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] }
+        mut gms: Maybe<Str> = "some"
+
+        fx next: () Int32 {
+            ticks += 1
+            return ticks
+        }
+
+        fx nextSize: () Size {
+            idx += 1
+            return idx
+        }
+
+        fx sub: (a: Int32, b: Int32) Int32 {
+            return a - b
+        }
+
+        fx resetL: () Int32 {
+            gl = List<Int32> { values = [8] }
+            return 0
+        }
+
+        fx change: () Int32 {
+            gstrs = List<Str> { values = ["replaced, and long enough to live on the heap, not in a small buffer"] }
+            gms = "replaced too, and long enough to live on the heap, not in a small buffer"
+            return 0
+        }
+
+        fx showL: (s: Str, k: Int32) Str {
+            return "${'$'}{s}:${'$'}{k}"
+        }
+
+        fx total: (v: View<Int32>) Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in v {
+                s += x
+            }
+            return s
+        }
+
+        fx minus: (v: View<Int32>, k: Int32) Int32 {
+            return total(v) - k
+        }
+
+        fx setAt: (mut e: Int32) Int32 {
+            e = 50
+            return 0
+        }
+
+        pub fx lentScalar: () Int32 {
+            gl = List<Int32> { values = [1, 2, 3] }
+            return sub(gl.get(0), resetL())
+        }
+
+        pub fx indexScalar: () Int32 {
+            gl = List<Int32> { values = [1, 2, 3] }
+            return sub(gl[0], resetL())
+        }
+
+        pub fx lentStr: () Str {
+            gstrs = List<Str> { values = ["first"] }
+            return showL(gstrs.get(0), change())
+        }
+
+        pub fx indexStr: () Str {
+            gstrs = List<Str> { values = ["first"] }
+            return showL(gstrs[0], change())
+        }
+
+        pub fx lentMaybe: () Str {
+            gms = "some"
+            return showL(gms.unwrap(), change())
+        }
+
+        pub fx fieldMaybe: () Str {
+            gms = "some"
+            return showL(gms.value, change())
+        }
+
+        pub fx lentView: () Int32 {
+            mut ll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
+            return minus(ll.get(0), setAt(mut ll[0][0]))
+        }
+
+        pub fx indexView: () Int32 {
+            mut ll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
+            return minus(ll[0], setAt(mut ll[0][0]))
+        }
+
+        pub fx lentNested: () Int32 {
+            idx = 0
+            ticks = 0
+            return sub(gll.get(0).get(nextSize()), next())
+        }
+
+        pub fx indexNested: () Int32 {
+            idx = 0
+            ticks = 0
+            return sub(gll[0][nextSize()], next())
+        }
+
+        pub fx lentIndexArg: () Int32 {
+            idx = 0
+            return gll.get(0).get(nextSize())
+        }
+
+        pub fx indexIndexArg: () Int32 {
+            idx = 0
+            return gll[0][nextSize()]
+        }
+        """,
+    )
+
+    private val lentTree by lazy { CppExprTestSupport.emit("hoister-lent", listOf(lent)) }
+
+    private val lentPairs = listOf(
+        "lentScalar" to "indexScalar", "lentStr" to "indexStr", "lentMaybe" to "fieldMaybe",
+        "lentView" to "indexView", "lentNested" to "indexNested", "lentIndexArg" to "indexIndexArg",
+    )
+
+    @Test
+    fun aLentResultIsLoweredAsThePlaceItIs() {
+        // R-A, the emitter's side: an accessor's result is the place of the other spelling, so
+        // each pair is one C++ text. The element is read before a sibling replaces its List
+        // (lentScalar, D33's copy of a by-value read), and a view formed of it is of the element
+        // itself, never of a copy: on the merged branch before this, `minus(ll.get(0),
+        // setAt(mut ll[0][0]))` copied `ll[0]` first and printed 6 on gcc, clang and msvc, where
+        // Kira (and `minus(ll[0], ...)`) gives 55. The receiver of `gll.get(0).get(k)` is a step
+        // of the path, as `gll[0][k]`'s is: located where the element is read, never copied.
+        val source = lentTree.source(lent)
+        lentPairs.forEach { (a, b) ->
+            assertEquals(bodyIn(source, b), bodyIn(source, a), "$a is emitted as $b")
+        }
+        assertTrue(bodyIn(source, "lentScalar").contains("const std::int32_t t0_ = kira::at(gl, 0);\n          const std::int32_t t1_ = resetL();\n          return sub(t0_, t1_);"), bodyIn(source, "lentScalar"))
+        assertTrue(bodyIn(source, "lentView").contains("const std::int32_t t0_ = setAt(kira::at(kira::at(ll, 0), 0));\n          return minus(kira::at(ll, 0), t0_);"), bodyIn(source, "lentView"))
+        assertTrue(bodyIn(source, "lentIndexArg").contains("return kira::at(kira::at(gll, 0), nextSize());"), bodyIn(source, "lentIndexArg"))
+        assertFalse(source.contains("const kira::List<std::int32_t> t"), "no List is copied:\n$source")
+    }
+
+    @TestFactory
+    fun aLentResultReadsKirasValueOnEveryCompiler(): List<DynamicNode> =
+        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
+            DynamicTest.dynamicTest("lent [${tc.id}]") {
+                val driver = buildString {
+                    append("#include \"").append(lent.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n")
+                    append(CppExprTestSupport.CHECK_PRELUDE)
+                    append("\nint main()\n{\n")
+                    listOf(
+                        "lent::lentScalar() == 1 && lent::indexScalar() == 1" to "a lent element is read before resetL() replaces its List: 1 - 0",
+                        "lent::lentStr() == \"first:0\" && lent::indexStr() == \"first:0\"" to "a lent Str element is copied before change()",
+                        "lent::lentMaybe() == \"some:0\" && lent::fieldMaybe() == \"some:0\"" to "a lent Maybe payload is copied before change()",
+                        "lent::lentView() == 55 && lent::indexView() == 55" to "a view of a lent element is of the element: setAt's 50 is seen",
+                        "lent::lentNested() == 19 && lent::indexNested() == 19" to "a nested lent element's index runs first: 20 - 1",
+                        "lent::lentIndexArg() == 20 && lent::indexIndexArg() == 20" to "a lent receiver is a step of the path",
+                    ).forEach { (cond, what) -> append("    check($cond, \"$what\");\n") }
+                    append("    std::printf(\"\\n%d checks, %d failed\\n\", checks, failures);\n")
+                    append("    return failures == 0 ? 0 : 1;\n}\n")
+                }
+                val stdout = CppExprTestSupport.compileAndRun(lentTree, driver, tc) ?: return@dynamicTest
+                assertTrue(stdout.contains("\n6 checks, 0 failed\n"), "${tc.id}:\n$stdout")
+            }
+        }
+
+    /** w2-6's round-2 c2, c2b, c2c, c4 and c4b: a view of, or a loop over, a lent result beside a write of its owner. */
+    private val lentRefused = Module(
+        "hoist:lentrefused",
+        """
+        mut gl2: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
+        mut gm: Maybe<List<Int32>> = List<Int32> { values = [1, 2, 3] }
+
+        @_extern(cpp = "w::sumVF", header = "w.hxx")
+        pub fx sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
+
+        fx sumV: (v: View<Int32>) Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in v {
+                s += x
+            }
+            return s
+        }
+
+        fx sumAndClear: (v: View<Int32>) Int32 {
+            gl2 = List<List<Int32>> { values = [List<Int32> { values = [7] }] }
+            return sumV(v)
+        }
+
+        fx sumAndClearM: (v: View<Int32>) Int32 {
+            gm = List<Int32> { values = [7] }
+            return sumV(v)
+        }
+
+        pub fx c2: () Int32 {
+            return sumAndClear(gl2.get(0).view())
+        }
+
+        pub fx c2b: () Int32 {
+            return sumAndClearM(gm.unwrap().view())
+        }
+
+        pub fx c2c: () Int32 {
+            return sumVF(gl2.get(0).view(), fx () Void { gl2 = List<List<Int32>> { values = [List<Int32> { values = [7] }] } })
+        }
+
+        pub fx c4: () Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in gl2.get(0) {
+                gl2 = List<List<Int32>> { values = [List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }] }
+                s += x
+            }
+            return s
+        }
+
+        pub fx c4b: () Int32 {
+            mut s: Int32 = 0
+            for x: Int32 in gm.unwrap() {
+                gm = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }
+                s += x
+            }
+            return s
+        }
+        """,
+    )
+
+    @Test
+    fun aViewOrALoopOverALentResultBesideAWriteOfItsOwnerIsRefused() {
+        // w2-6's round-2 findings #2 and #3 (owner W2.3): `kira::view(kira::at(gl2, 0))` and a
+        // range-for over `kira::at(gl2, 0)` point into gl2's storage, which the callee, the Fx or
+        // the loop body replaces (g++ printed 197532125 and 1 509 1008271696, MSVC's ASan a
+        // heap-use-after-free). The lent result is the place gl2[0] (R-A), so the view rule and
+        // the loop rule see the write: refused, and nothing is emitted.
+        val result = CppExprTestSupport.emitRefused("hoister-lentrefused", listOf(lentRefused))
+        val lines = lentRefused.text.lines()
+        fun line(snippet: String): Int = lines.indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
+        val found = result.diagnostics.filter { it.isError }.map { (it.position?.lineNumber ?: -1) to it.code }
+        val expected = listOf(
+            line("return sumAndClear(gl2.get(0).view())") to "rules.view.write",
+            line("return sumAndClearM(gm.unwrap().view())") to "rules.view.write",
+            line("return sumVF(gl2.get(0).view()") to "rules.view.write",
+            line("gl2 = List<List<Int32>> { values = [List<Int32> { values = [7, 7") to "rules.exclusivity.loop",
+            line("gm = List<Int32> { values = [7, 7") to "rules.exclusivity.loop",
+        )
+        assertEquals(expected.toSet(), found.toSet(), result.diagnostics.joinToString("\n") { it.render() })
     }
 }

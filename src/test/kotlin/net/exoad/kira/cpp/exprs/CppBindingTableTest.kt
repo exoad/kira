@@ -89,4 +89,75 @@ class CppBindingTableTest {
         assertNotNull(table.lookup("Num.abs"))
         assertEquals(null, table.lookup("Int32.abs"))
     }
+
+    // ---- R-A's LEND, pinned from the emitter's side (40-round3 5.4, item 4) ---------------------
+
+    /**
+     * Whether the binding's C++ is one accessor applied to its receiver, so its result is a
+     * reference into the receiver's storage (`kira::at` and `kira::unwrap` return `const T&`,
+     * `operator[]` of a view and `Result::unwrap`/`unwrapErr` an lvalue): the whole expansion is
+     * `kira::at({self}, ...)`, `kira::unwrap({self})`, `{self}[...]`, `{self}.unwrap()` or
+     * `{self}.unwrapErr()`. A write through one (`kira::at({self}, {0}) = {1}`) is no accessor.
+     */
+    private fun returnsIntoReceiver(expr: String): Boolean {
+        val e = expr.trim()
+        fun oneCall(head: String): Boolean {
+            if (!e.startsWith(head)) {
+                return false
+            }
+            var depth = 0
+            // From the head's own bracket, which must close at the last character.
+            for (i in head.indexOfFirst { it == '(' || it == '[' } until e.length) {
+                when (e[i]) {
+                    '(', '[' -> depth += 1
+                    ')', ']' -> {
+                        depth -= 1
+                        if (depth == 0) {
+                            return i == e.length - 1
+                        }
+                    }
+                }
+            }
+            return false
+        }
+        return oneCall("kira::at({self}") || oneCall("kira::unwrap({self}") || oneCall("{self}[") ||
+            e == "{self}.unwrap()" || e == "{self}.unwrapErr()"
+    }
+
+    /** The keys of [dir]'s manifests whose binding [returnsIntoReceiver]. */
+    private fun lendingKeys(dir: File): Set<String> =
+        dir.listFiles { f -> f.name.endsWith(CppBindingTable.MANIFEST_SUFFIX) }.orEmpty()
+            .flatMap { m -> CppBindingTable.parse(m.toPath()).filter { (_, b) -> returnsIntoReceiver(b.expr) }.keys }
+            .toSortedSet()
+
+    @Test
+    fun theBindingsThatReturnAReferenceIntoTheirReceiverAreExactlyRulesAccessors() {
+        // The two halves of R-A pinned against each other: the rules' LEND set (Rules.ACCESSORS,
+        // whose results LentPlaces makes places) and the C++ the manifests spell. A binding added
+        // that returns a reference into its receiver, and is not in the set, would be a lent
+        // result every analysis calls a temporary (round 2's use-after-frees); one in the set that
+        // returned by value would make a copy a place. kira/cpp/tests/rt_test.cxx pins that the
+        // helpers return lvalue references, and that Stack.peek, Queue.peek and Map.get do not.
+        assertEquals(net.exoad.kira.compiler.analysis.types.rules.Rules.ACCESSORS.toSortedSet(), lendingKeys(File("kira")))
+        listOf("Stack.peek", "Queue.peek", "Map.get", "Maybe.unwrapOr", "List.set", "Arr.set").forEach { key ->
+            val b = assertNotNull(table.lookup(key), key)
+            assertTrue(!returnsIntoReceiver(b.expr), "$key returns by value: ${b.expr}")
+        }
+    }
+
+    @Test
+    fun theAccessorPinFailsOnAnAccessorTheRulesDoNotKnow() {
+        // 40-round3 6.1, "the pin bites": a scratch copy of the manifests with a fake List.first
+        // spelled as an accessor is no longer the rules' set.
+        val scratch = kotlin.io.path.createTempDirectory("lend-pin").toFile()
+        try {
+            File("kira").listFiles { f -> f.name.endsWith(CppBindingTable.MANIFEST_SUFFIX) }.orEmpty().forEach { it.copyTo(File(scratch, it.name)) }
+            File(scratch, "collections.bind.yaml").appendText("\nList.first:    { cpp: { expr: \"kira::at({self}, 0)\", pure: true } }\n")
+            val found = lendingKeys(scratch)
+            assertTrue("List.first" in found, found.toString())
+            assertTrue(found != net.exoad.kira.compiler.analysis.types.rules.Rules.ACCESSORS.toSortedSet(), found.toString())
+        } finally {
+            scratch.deleteRecursively()
+        }
+    }
 }

@@ -64,6 +64,29 @@ object CppExprTestSupport {
         options: CppOptions = CppOptions(lineDirectives = false),
         emitterFactory: (CompilationUnit, CppOptions) -> CppModuleEmitter = CppModuleEmitterFactory::create,
     ): Tree {
+        val (root, result, report) = run(name, modules, options, emitterFactory)
+        assertEquals(0, result.exitCode, "the backend refused the project:\n" + report.joinToString("\n") +
+            "\n" + result.diagnostics.joinToString("\n") { it.render() })
+        return Tree(root, result, root.resolve(options.effectiveRuntimeDir))
+    }
+
+    /** As [emit], for a project the typer, the rules or the emitter must refuse: its result, which writes nothing. */
+    fun emitRefused(
+        name: String,
+        modules: List<Module>,
+        options: CppOptions = CppOptions(lineDirectives = false),
+    ): CppBackendResult {
+        val (_, result, _) = run(name, modules, options, CppModuleEmitterFactory::create)
+        assertTrue(result.exitCode != 0 && result.diagnostics.any { it.isError }, "the backend accepted the project")
+        return result
+    }
+
+    private fun run(
+        name: String,
+        modules: List<Module>,
+        options: CppOptions,
+        emitterFactory: (CompilationUnit, CppOptions) -> CppModuleEmitter,
+    ): Triple<Path, CppBackendResult, List<String>> {
         val root = Path.of("build/tmp/cpp-exprs").resolve(name).toAbsolutePath().normalize()
         root.toFile().deleteRecursively()
         Files.createDirectories(root)
@@ -88,9 +111,7 @@ object CppExprTestSupport {
             stdlibCppDir = Path.of("kira/cpp").toAbsolutePath().normalize(),
             log = { }, report = { report += it }, out = { },
         )
-        assertEquals(0, result.exitCode, "the backend refused the project:\n" + report.joinToString("\n") +
-            "\n" + result.diagnostics.joinToString("\n") { it.render() })
-        return Tree(root, result, root.resolve(options.effectiveRuntimeDir))
+        return Triple(root, result, report)
     }
 
     /**

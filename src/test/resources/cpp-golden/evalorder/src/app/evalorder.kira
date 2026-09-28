@@ -1,5 +1,7 @@
 module "app:evalorder"
 
+use "lib:ctr"
+
 // D33: Kira evaluates a call's receiver and arguments, and an operator's operands, left
 // to right, and locates an assignment's target before its value runs. C++ leaves the
 // arguments and operands unsequenced (gcc and clang disagree on x86-64, measured in the
@@ -14,13 +16,17 @@ module "app:evalorder"
 // return (decision 4b), and a view of a temporary is formed inside the lambda that holds its
 // owner. Every line below would print something else on some compiler, or read freed
 // memory, if it did not.
+//
+// A method call's receiver beside a write of its place (`gl.get(setFirst())`,
+// `ga.plus(bumpA())`, `this.plus(bump())`, `plus(bump())`) is not here: the user's Q4 reads it
+// when the call runs, W2.9.8 lowers that, and until then rules.exclusivity.order refuses it
+// (40-round3 3.2). Its index spelling, `gl[setFirst()]`, already reads it that way.
 
 mut ticks: Int32 = 0
 mut idx: Size = 0
 mut row: Size = 1
 mut garr: Arr<Int32, 4> = [10, 20, 30, 40]
 mut gl: List<Int32> = List<Int32> { }
-mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
 
 fx next: () Int32 {
     ticks += 1
@@ -55,11 +61,6 @@ pub struct Box {
 fx makeBox: () Box {
     ticks += 1
     return Box { v = ticks }
-}
-
-fx putKey: () Int32 {
-    gm.put(1, 99)
-    return 1
 }
 
 fx setFirst: () Size {
@@ -139,6 +140,9 @@ fx main: () Void {
     trace(sub(ticks, next()))
     // The same in an interpolation hole: 13, then 14.
     trace("${ticks}/${next()}")
+    // The same read of another module's global, written qualified: one place however it is
+    // spelled (40-round3 R-E), read before the call that writes it: 5 - 6.
+    trace(sub(ctr.T, ctr.bumpT()))
     // A compound assignment reads its target before an impure value runs: 14 + 15.
     ticks += next()
     trace(ticks)
@@ -186,13 +190,11 @@ fx main: () Void {
     // A view lent from a global: 20 + 30 + 40.
     idx = 0
     trace(total(garr.from(nextSize())))
-    // A Map or a List receiver beside an effect is read before it, whichever binding spells
-    // the call: the copy holds 42, not the 99 putKey() writes, and 1, not the 50 setFirst() writes.
-    gm.put(1, 42)
-    trace(gm.get(putKey()).unwrapOr(-1))
+    // An element's List is read where kira::at runs, after the index (the user's Q4): 50,
+    // the value setFirst() writes, never a copy made before it.
     gl.add(1)
     gl.add(2)
-    trace(gl.get(setFirst()))
+    trace(gl[setFirst()])
     // A Str, a struct and a List global beside a call that reassigns or writes it are read
     // before the call: a1, a:1, 1, then 1 (C++'s const& would hand the callee b, b, 9 and 8).
     trace(pairS(gs, changeS()))
@@ -201,6 +203,10 @@ fx main: () Void {
     trace(sumB(gb, bumpB()))
     gl.set(0, 1)
     trace(firstL(gl, resetL()))
+    // A lent element is the place it is lent from (40-round3 R-A: gl.get(0) is gl[0]), read
+    // before a sibling replaces the List: 1 - 0.
+    gl.set(0, 1)
+    trace(sub(gl.get(0), resetL()))
     // A binding that names its receiver twice (StrBuf.set) and a StrBuf interpolation, one
     // call per piece, locate the receiver once: idx ends at 1 both times, and bufs[1] holds
     // a2b, 3 characters.
@@ -217,13 +223,6 @@ fx main: () Void {
     gs = "aaa"
     f: Fx<Tuple1<Int32>, Int32> = adder(gs, changeS())
     trace(f(0))
-    // A struct receiver beside a mut fx that writes it reads the same however it is named:
-    // the global, this, and an implicit this all give 110, never the 210 of the state after.
-    trace(ga.plus(bumpA()))
-    mut a: Acc = Acc { }
-    trace(a.viaThis())
-    mut b: Acc = Acc { }
-    trace(b.viaImplicit())
     // A mut argument writes its variable while the call runs, so a read of that variable
     // beside the call is made first: x is 5 there (gcc printed 14, clang 4), and xs has
     // 2 elements: 5 - 1, 2.
@@ -371,32 +370,4 @@ fx adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
     return fx (x: Int32) Int32 {
         return x + n + k
     }
-}
-
-pub struct Acc {
-    pub n: Int32 = 1
-
-    pub mut fx bump: () Int32 {
-        n = 2
-        return 10
-    }
-
-    pub fx plus: (k: Int32) Int32 {
-        return n * 100 + k
-    }
-
-    pub mut fx viaThis: () Int32 {
-        return this.plus(bump())
-    }
-
-    pub mut fx viaImplicit: () Int32 {
-        return plus(bump())
-    }
-}
-
-mut ga: Acc = Acc { }
-
-fx bumpA: () Int32 {
-    ga.n = 2
-    return 10
 }

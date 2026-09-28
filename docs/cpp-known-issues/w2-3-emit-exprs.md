@@ -8,6 +8,111 @@ issue is, where it lives, how to reproduce it, and why it is safe to leave for n
 means built with the goldens' warning flags and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC
 `/W4 /WX`, and run.
 
+## Views are second-class, round 3: one place however it is spelled
+
+This round merges `cpp/w2-5-rules` (f86261f, merge 8bac10a) first, so every test here runs
+against the rules, and then does 40-round3's W2.3 plan (section 5.4). The merge's 4 conflicts
+were resolved as the trial's db5eaac did (this branch's text golden; both `views.kira` lines),
+and it takes the seam commit's 11-line CppHoister hunk (a READS entry is a call with no
+effect). On the merge alone, `./gradlew test` ran 1168 tests with 37 failures, all this
+package's (CppHoisterTest 33, the evalorder golden 4). CppExprRowsTest's 37 already passed:
+F1 was their only cause.
+
+- **Round 2's w2-3 #0, fixed (R-E): a module-qualified global was read out of order.**
+  `CppHoister.scan` raised READS only for a `MemberRef.Field`, and `rank` took only IMPURE
+  from the model, so `ctr.G` (a `MemberRef.ModuleMember`) ranked PURE. Now:
+  - `rank` is at least EffectsPass's rank over the operand's nodes (`modelRank`: the root's
+    entry, which is the join of its nodes', READS as well as IMPURE), raised by the scan;
+  - the scan asks the model's place for every read (`TypedModel.readPlace`) and the rules'
+    `Rules.isSharedPlace`, not a `MemberRef` kind;
+  - `writtenBy`, `readsAny` and `viewsForeignStorage` compare `Place.root()` values
+    (`placeRoot`), and `freshRoot` became `freshlyOwned`, a receiver-less `Place.Field` root;
+  - no `MemberRef` is left in `CppHoister.kt`. `isPureCall` also reads R-G's
+    `FnSymbol.suppliedByCpp`.
+  Measured before (the merge's CLI) and after, on the round-2 verifier's probes (scratchpad
+  `w23r3/m1`..`m7`), with Kira's values from the unqualified controls:
+
+  | Probe | Before (the merge's CLI): gcc / clang / msvc | After, all three | MSVC ASan before / after |
+  |---|---|---|---|
+  | m1 `sub(ctr.G, bumpG())` and three twins | 15 / 5 / 15, and so on | 5, 15, 25, 35/0, 45, 55 | - / 0 |
+  | m2 `show(ctr.GS, changeGS())`, `count(ctr.GL, growGL())` | the new string and 67, on all three | old0, 3 | - / 0 |
+  | m4 `show(growGSL(), ctr.GSL[0])` and its mirror | bad_alloc / garbage / "0:" | 0:first..., first...:0, 129 | heap-use-after-free / 0 |
+  | m6 `ctr.GLL[0].add(growGLL())`, `store(mut ctr.GLS[0], ...)` | no output / no output / 1 | 2, 7 | heap-use-after-free / 0 |
+
+  m4 and m5, and m6 and m7, now emit the same C++ byte for byte. Pinned by
+  `CppHoisterTest.aModuleQualifiedGlobalIsEmittedAsItsUnqualifiedName` (nine qualified forms,
+  each equal to its control) and `aModuleQualifiedGlobalReadsKirasValueOnEveryCompiler` (9
+  checks on gcc, clang and msvc), and by the evalorder golden's new `sub(ctr.T, ctr.bumpT())`.
+  No other golden's `expected/` changed: the model's READS adds no spill to any of them.
+- **R-A, the emitter's side: a lent result is lowered as the place it is.** `isPlaceExpr`
+  reads `TypedModel.readPlace`, so `gl.get(i)`, `m.unwrap()` and `r.unwrapErr()` are places
+  the way `gl[i]` and `m.value` are. `placeOperand` makes a lent call a `Operand.Place` whose
+  parts are the call's own operands (`CppHoister.lentPlace` captures them as a chain's are),
+  and the accessor's receiver is a step of the path (`pathOperand`), never a snapshot.
+  Measured: `minus(ll.get(0), setAt(mut ll[0][0]))` (a view of a lent element, `ll` a local
+  List of Lists) printed 6 on gcc, clang and msvc on the merge, where Kira and the index
+  spelling give 55: the element was copied first and the view formed of the copy. It prints 55
+  now (`w23r3/ra` against `w23r3/ra-merge`). Six spelling pairs (a scalar, a `Str` element, a
+  `Maybe` payload, a view of an element, a nested element with an impure index, a lent
+  receiver) emit identical C++ and run right on the three compilers with 0 ASan reports.
+  Pinned by `aLentResultIsLoweredAsThePlaceItIs` and `aLentResultReadsKirasValueOnEveryCompiler`.
+- **The `LEND` pin, this side.** `CppBindingTableTest.theBindingsThatReturnAReferenceIntoTheirReceiverAreExactlyRulesAccessors`
+  reads the manifests through `CppBindingTable.parse`: the bindings whose whole expansion is
+  `kira::at({self}, ...)`, `kira::unwrap({self})`, `{self}[...]`, `{self}.unwrap()` or
+  `{self}.unwrapErr()` are exactly `Rules.ACCESSORS`, and `Stack.peek`, `Queue.peek`,
+  `Map.get`, `Maybe.unwrapOr`, `List.set` and `Arr.set` are not. The pin bites: a scratch copy
+  with a fake `List.first: kira::at({self}, 0)` fails it (`theAccessorPinFailsOnAnAccessorTheRulesDoNotKnow`).
+  `kira/cpp/tests/rt_test.cxx` gains the C++ half: static_asserts that the seven lenders
+  return lvalue references and that `Stack.peek`, `Queue.peek` and `Map.get` do not.
+- **Round 2's w2-3 #1, fixed: the evalorder golden and the order rule agreed.** W2.5's F1
+  accepts lines 143, 231, 233, 236 and 259 (29, 4, 2, 6, 0, unchanged). Lines 192, 195, 222,
+  389 and 393 left the golden with their helpers (`gm`, `putKey`, `Acc`, `ga`, `bumpA`): they
+  are W2.9.8's (KI-17). Three lines are new: `trace(gl[setFirst()])` (50, Q4 for the index
+  spelling), `trace(sub(ctr.T, ctr.bumpT()))` from a second module, `lib:ctr` (-1, R-E), and
+  `trace(sub(gl.get(0), resetL()))` where `gl[0]` is 1 (1, R-A). `case.yaml` says
+  `pins: spills`, which W2.5's no-spill corpus check skips. expected/ and expected.txt were
+  regenerated; the emitted diff is exactly those lines.
+- **Round 1's minor #1 (KI-13), closed by F3.** ViewPass refuses a view of a temporary in an
+  if-expression's branch as `rules.view.position`, in both the ordered and the one-statement
+  form. The emitter's two `cpp.unsupported` reports for it are `cpp.internal` now, and
+  `unsupportedView` is gone: no view-shaped `cpp.unsupported` is left in the emitter.
+- **w2-6's round-2 #2 and #3 (owner W2.3), refused.** A view of an accessor's result beside a
+  write of its owner (`sumAndClear(gl2.get(0).view())`, `sumAndClearM(gm.unwrap().view())`,
+  the extern `sumVF(gl2.get(0).view(), fx ...)`) is `rules.view.write`, and a `for` over one
+  whose body replaces the owner (`gl2.get(0)`, `gm.unwrap()`) is `rules.exclusivity.loop`,
+  because the result is the place `gl2[0]` or `gm.value` (R-A). Pinned by
+  `aViewOrALoopOverALentResultBesideAWriteOfItsOwnerIsRefused` (5 refusals, nothing emitted).
+- **The tests 40-round3 4.1 counts** (78 on the trial):
+  - CppExprRowsTest (37), the views module (4) and the optimistic module (1): F1, no change.
+  - CppHoisterTest's shared module (29): `mapReadBeside`, `listReadBeside`, `viaExplicit`,
+    `viaImplicit` and `namedBeside` moved to `hoist:receivers`, which the rules refuse whole:
+    five `rules.exclusivity.order`, asserted by
+    `thisAsAReceiverReadsLikeANamedStructReceiverAndBothAreRefusedUntilQ4IsLowered` and
+    `aMemberStyleAndAFreeFunctionBindingReadTheirReceiverTheSameWay`. The shared module gains
+    `gl[pushed()]`, emitted `kira::at(gl, pushed())`.
+  - The refusing test is two: `aViewWhereTheRuleAllowsNoneIsTheCheckersAndPastItAnInternalError`
+    asserts the checker's 15 codes (the emitter reports nothing), then, with the rule passes
+    off, the emitter's 17 backstops, 16 of them `cpp.internal` and one `cpp.unsupported`
+    (the StrBuf hole, an order, no view); `anOrderNoLoweringGivesIsRefusedByTheEmitter` shows
+    that hole refused with the rules on.
+  - The evalorder golden (3 tests) and RulesCorpusTest's no-spill check: above.
+  - Two more, not in 4.1's count: the views module's `makeRef` and `makeMaybe` are PURE under
+    EffectsPass, so their owner stays in the full expression that uses the view (safe);
+    they now bump `ticks`, so the test still pins the spilled owner. And EscapePass now sees
+    that `handOn` only hands its `Fx` on, so both `eachOf` and `handOn` take a template
+    parameter; the test checks that, and KI-2's fallback with the rule passes off.
+- **Decisions beyond the plan's letter.**
+  - The model's READS includes `this` of a class (a handle): EffectsPass calls every
+    `Place.This` shared. A class `this` handed as an argument beside an impure sibling is
+    therefore copied (a handle copy, correct and cheap). No golden on this branch lowers a
+    class; W2.4's `chain` and `classes` may gain such a spill at the integration (KI-4).
+  - A lent accessor's receiver is a path step, read where the accessor runs (Q4), not a
+    snapshot. Where that differs from a snapshot (a write of the receiver's place inside the
+    accessor's own arguments) the order rule's interim clause refuses the call.
+- **Measured this round.** The full suite, regenerate.sh, goldens.sh, run.sh and msvc.bat:
+  see the acceptance in the round's report. evalorder under MSVC `/fsanitize=address`: 0
+  reports, output identical to `expected.txt` (`w23r3/eoasan.sh`).
+
 ## Views are second-class, round 2: decision 4b read literally
 
 A first round-2 fixer was killed mid-work by a machine restart. Its uncommitted edit to
@@ -141,89 +246,49 @@ argument or a handed `MutView` read first, a function used as a value taking its
 parameter as a `kira::Fn`, and a `for` range that may be a reference into a temporary copied
 while it lives.
 
-## Open decisions
+## Decisions the user answered
 
-### OD-1. A stdlib receiver beside an effect is read before it
+- **OD-1 (a stdlib receiver beside an effect), answered by Q4.** The user's Q4 reads a place
+  receiver of a container or a mutable value when the call runs: `gm.get(putKey())` gives 99
+  and `gl.get(setFirst())` 50, not the snapshot's 42 and 1. Until W2.9.8 lowers that for method
+  calls, `rules.exclusivity.order` refuses the shape (KI-17), and the evalorder lines that
+  pinned the snapshot are gone. OD-1's JS answer is the user's.
+- **OD-4 (decision 4b's "impure"), answered: literal.** The user's 4b is read literally:
+  `effect(C) == IMPURE`, as everything since round 2 is written against.
+- **OQ-1 (an operator on an immutable value), answered: read first.** `ticks += next()` and
+  `z += inc(mut z)` keep 29 and 6 in evalorder: an immutable value's operand is read before
+  the call, as D33's copy reads it.
 
-- **What.** `gl.get(pushed())`, where `pushed()` appends to `gl` and returns the new index,
-  reads `gl` before `pushed()` runs (D33, snapshot: the hoister copies the receiver). The
-  copy has no element at that index, so the program panics with `kira: index out of range`.
-  The JS backend prints 7, because a JS array is a reference and R19 says a place is never
-  copied.
-- **Where.** `CppExprEmitter.receiverOperand` / `receiverMode`: a receiver no view is formed of
-  is a `PlaceMode.SNAPSHOT`.
-- **Reproduce.** `evalorder/expected.txt` lines 22-23 (`gm.get(putKey())` gives 42 and
-  `gl.get(setFirst())` gives 1) pin the snapshot rule.
-- **The choice.** (a) Keep the snapshot. (b) Read a receiver in place, as R19 says of a place:
-  the JS answer, which would flip those two lines to 99 and 50.
-
-### OD-4. Decision 4b's "impure": literal, or "has hidden writes"
-
-- **What.** Design 30 3.2 read "any impure call" as "a call with hidden writes". A call that
-  only prints, throws or writes its own named `mut` arguments would then not refuse a view of a
-  shared place in its span. From round 2 on, the literal reading is what everything is written
-  against: `effect(C) == IMPURE`. The softer reading is not implemented.
-- **The choice (the user's).**
-  - (a) Keep the literal reading. It is simple, and round 1 broke `HiddenWrites` five ways.
-  - (b) The softer reading. It needs a provenance analysis that does not break those ways.
-
-OD-2 (when a kept view is made) and OD-3 (a view held across a statement that grows what it
-views) are closed by decision 4b: no view is kept or held, a view is formed where the call uses
-it (E1), and ViewPass refuses a write that moves the place in the view's span.
+OD-2 and OD-3 were closed by decision 4b (no view is kept or held).
 
 ## Known issues
 
-### KI-12. Until W2.5's ViewPass merges, this branch refuses no unsafe view
+### KI-12. Closed: W2.5's ViewPass is merged
 
-- **What.** The refusals this package made are deleted, as design 30 7.2 says. On this branch
-  alone a view the rule refuses compiles unless a `cpp.internal` backstop catches it. Two that
-  none catches: a view formed of a place a sibling moves in the same call (`viewPlus(gl.view(),
-  growL())`, `growL` appending 64 elements), which E1 makes after the growth: 2022 on gcc, clang
-  and msvc, memory-safe, where the view Kira's left to right makes would point at freed
-  storage; and a callee that moves what its view parameter points into before reading it
-  (`growThenSum(gl.view())`, whose body grows `gl`, then sums `v`), which dangles: gcc printed
-  -1715043538 where clang and msvc printed 600. ViewPass refuses the second at the call
-  (design 30 3.3: `growThenSum` writes `gl`, a global, in the view's span). Probes: scratchpad
-  `sc31/k1`, `sc31/k3`. A callee whose own return breaks the return rule (`return
-  xs.from(at)` with `xs: List<Int32>`, `sc31/k2`: gcc printed 1009792083, clang and msvc 13300
-  before this backstop) is now `cpp.internal` at that return. The verifier's h1, h5, h6, h7,
-  h9 and h10 all stop at `cpp.internal` through this branch's CLI (`sc31/h*`, emit exit 1).
-- **Where.** W2.5's `rules/ViewPass.kt` (design 30 2.2 and 3.3).
-- **Why it can wait.** Merge order (design 30 7.0): W2.5 merges before, or with, this branch.
-  Nothing is released in between.
+The merge (8bac10a) brings the rule. The three probes that compiled on this branch alone
+are refused: `sc31/k1` (`viewPlus(gl.view(), growL())`) and `sc31/k3`
+(`growThenSum(gl.view())`) at `rules.view.write`, `sc31/k2` (`return xs.from(at)`) at
+`rules.view.return` (the round-3 CLI, scratchpad `w23r3/k1`..`k3`).
 
-### KI-13. A view of a temporary in an if-expression's branch that D33 orders is not lowered
+### KI-13. Closed: a view of a temporary in an if-expression's branch is the rule's (F3)
 
-- **What.** `minus(if c { makeList().view() } else { gl.view() }, next())` is allowed by the
-  rule (an if-expression is transparent in an argument, and a temporary needs no write check),
-  but D33 copies the if-expression into `const kira::View<T> t0_ = c ? ... : ...;`, and the
-  list dies with that declaration. It is `cpp.unsupported`, and so is a spilled branch whose
-  own call returns such a view out of a lambda. With nothing to order,
-  `total(if c { makeList().view() } else { gl.view() })` is lowered as one full expression and
-  is safe.
-- **Where.** `CppHoister.ordered` (Value) and `CppHoister.spill`.
-- **Reproduce.** `CppHoisterTest`'s `branchViewsATemporaryBesideAnEffect`.
-- **Why it can wait.** A rare shape with a one-line rewrite (an if statement), and it is a
-  refusal, never a use after free.
-- **Round 2: left to the rule, not lowered.** Round 1 named two ways out. Design 30 2.1's IF
-  could refuse a branch with a TEMP origin, as RANGE does. Or the lowering could hold each
-  branch's owner in a `std::optional` declared before the `?:`. The second covers only a
-  branch whose own operands need no spill. A branch like `makeList().from(next())` would still
-  need a lambda that returns a view. So the emitter keeps `cpp.unsupported`, and ViewPass
-  (W2.5) should refuse an SC if-expression with a TEMP-origin branch as `rules.view.position`.
-  That also refuses `total(if c { makeList().view() } else { gl.view() })`, which is lowered
-  safely here. It is a simpler rule to state.
+ViewPass refuses it as `rules.view.position` (40-round3 F3), also in the one-statement form
+`total(if c { makeList().view() } else { gl.view() })` that this emitter lowered safely. The
+emitter's two reports for it are `cpp.internal` backstops now. Pinned by
+`CppHoisterTest.aViewWhereTheRuleAllowsNoneIsTheCheckersAndPastItAnInternalError`.
 
 ### KI-14. The emitter reads the typer's facts, not `TypedModel.viewOrigins`
 
 - **What.** Design 30 2.3 has W2.5 record each view's origins in `TypedModel.viewOrigins` for
-  the emitter. That table does not exist on this branch. E1 decides LENT from the typer's
+  the emitter. The table exists since the merge; the emitter still does not read it. E1 decides LENT from the typer's
   `Coercion.ToView` and the call's second-class result type, which are the PLACE-origin facts,
   and `CppHoister.viewsTemporary` walks a view's receiver and view arguments for a TEMP origin
   (the E3 and E4 checks and the backstops). The walk trusts the return rule: a callee's view
   points only into its receiver and view arguments.
-- **Why it can wait.** Both are the same facts `viewOrigins` holds. After the merge they can
-  read it; nothing else changes.
+- **Why it can wait.** Both are the same facts `viewOrigins` holds, and the places the walk
+  reaches are read through `TypedModel.readPlace` (R-E), so a lent view (`gll.get(0).view()`)
+  is of a place there too. Switching to `viewOrigins` changes no emitted text on any golden or
+  test here; it is a later cleanup.
 
 ### KI-15. `writtenBy` keeps the `MutView` source of a handed argument
 
@@ -237,6 +302,13 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
   `sub(ws[0], poke(ws.from(0)))` gives 0.
 
 ### KI-16. A spilled temporary's own temporaries end at its declaration (a question for W2.4)
+
+- **Measured by round 2's verifier (b2).** `trace(sub(Holder { v = 50 }.get(), next()))` is
+  spilled as `const std::int32_t t0_ = std::make_shared<Holder>(50)->get()`, so Holder's
+  `finally` prints "bye 50" before "next 1"; the unspilled `trace(sub(makeH(70).get(), 1))`
+  prints "bye 70" after the result. The same on gcc, clang and msvc, 0 ASan reports. The spec
+  runs a `finally` when the count reaches zero, so both orders are defensible; whether an
+  unrelated impure sibling moves it is the lowering's, and it is W2.4's call.
 
 - **What.** A D33 spill ends every C++ temporary made in a typed temporary's initializer at that
   declaration, before a later sibling runs. In `sub(len(makeObj()), next())`, a class handle
@@ -258,20 +330,20 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
 - **Why it can wait.** It depends on another package. Its `expected/` already compiles and runs
   on gcc, clang and MSVC, and compiles for zig-aarch64 (`CppGoldenCompileTest`).
 
-### KI-2. With no EscapePass entry, `fxEscapes` is approximated rather than taken as escaping
+### KI-2. Where EscapePass wrote no entry, `fxEscapes` is approximated rather than taken as escaping
 
 - **What.** The model contract (design 3.1) says an absent `TypedModel.fxEscapes` entry means
-  escaping. Where W2.5 has written no entry, `CppEscapes.fxEscapes` instead makes an `Fx`
-  parameter a template parameter when the body only calls it, outside any lambda, in a
-  non-virtual, non-trait method. `unilidar`'s `each` needs this to be `emit: required`.
-  Design 30 7.2 says the fallback goes; it stays until W2.5 merges, because without it
-  `unilidar` would no longer be byte-identical on this branch.
-- **Where.** `CppEscapes.fxEscapes` / `scanFx`. It is read by `CppPlacement.isNonEscapingFx`
+  escaping. With W2.5 merged, EscapePass writes the entries and they win: `handOn`, which only
+  hands its `Fx` to `eachOf`'s non-escaping parameter, now takes a template parameter too.
+  Where no entry exists (the rule passes off), `CppEscapes.fxEscapes` still makes a parameter
+  the body only calls a template parameter.
+- **Where.** `CppEscapes.fxEscapes` / `scanFx`, read by `CppPlacement.isNonEscapingFx`
   (W2.2's file) and `CppClosureEmitter.prepare`.
-- **Reproduce.** `CppHoisterTest.anFxParameterOnlyCalledIsATemplateParameterAndOnePassedOnIsNot`.
+- **Reproduce.** `CppHoisterTest.anFxParameterOnlyCalledIsATemplateParameterAndOnePassedOnIsNot`
+  checks both: EscapePass's answer with the rules, the fallback's without them.
 - **Why it is safe.** A template parameter and a `kira::Fn` make the same call, and a function
-  used as a value, or a parameter with a default, is always a `kira::Fn`. W2.5's entries win
-  wherever present.
+  used as a value, or a parameter with a default, is always a `kira::Fn`. Design 30 7.2 says
+  the fallback goes; that is a cleanup once every path runs the rule passes.
 
 ### KI-4. W2.4's `chain` and `classes` goldens differ from this branch by one D33 spill each
 
@@ -280,6 +352,9 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
   sound())`, is copied first because `sound()` may change `name`.
 - **Why it can wait.** The spilled code is correct and compiles on every toolchain. The
   integrator regenerates those two `expected/` files at the merge.
+- **Round 3.** The rank is now at least EffectsPass's, which calls a class's `this` (a handle)
+  READS, so a class `this` handed as an argument beside an impure sibling is copied too. Not
+  measurable here (no class lowers on this branch); the integrator's regeneration covers it.
 
 ### KI-5. gcc 11.4, the design's floor, is not measured on this branch
 
@@ -289,10 +364,10 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
   `kira::View` temporaries in IIFEs, all C++11. Someone with the board runs
   `kira/cpp/tests/goldens.sh` and `run.sh` there before the merge.
 
-### KI-6. Four earlier commits are unsigned
+### KI-6. Closed: every commit is signed
 
-- **What.** 41575c6, 71b8c4b, 42f1b7f and fbf0f61 show `%G? = N` (gpg had "No pinentry").
-- **Why it can wait.** Rewriting published branch history is the merger's call.
+`git log --format=%G? cpp-backend..HEAD` shows `G` for every commit (the four this entry named,
+41575c6, 71b8c4b, 42f1b7f and fbf0f61, are no longer on the branch: its history was re-signed).
 
 ### KI-7. Files outside this package's OWNS and TOUCHES
 
@@ -303,18 +378,23 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
   `v: View<Char> = out.view()` becomes `m: Size = out.view().size()` with the same `@type`
   check on `out.view()`, since `CppTyperFixturesTest` emits it and a view local is now
   `cpp.internal`. It also rewrites the `text` golden's source, driver and `expected/`, which
-  design 30 section 8 gives this package.
+  design 30 section 8 gives this package. Round 3 adds the `LEND` static_asserts to
+  `kira/cpp/tests/rt_test.cxx` (40-round3 5.4 gives them to this package) and a second module,
+  `lib:ctr`, to the evalorder golden.
 - **Why it can wait.** Each change is small and covered by tests. The merger routes them.
 
-### KI-8. Until EffectsPass lands, a container read beside any user call is copied
+### KI-8. Closed: EffectsPass is merged
 
-- **What.** EffectsPass (W2.5) has not merged, so every user call is impure. A `Str`, struct or
-  container read beside a user call, that no view is formed of, is deep-copied (D33), and every
-  user call returning a view is copied into a `kira::View` temporary after its parts (E3).
-- **Why it can wait.** A cost, not a correctness issue. EffectsPass's `PURE` entries remove
-  them, except where the hoister ranks a call IMPURE whatever the table says (round 2 above):
-  a virtual, trait, `Fx`, extern or bodiless call, a call handed a `MutView`, and a
-  construction with an `initially`, a `finally` or an impure default.
+EffectsPass's PURE entries remove the copies a container read got beside any user call. What
+the hoister still ranks IMPURE whatever the table says is unchanged: a virtual, trait, `Fx`,
+extern or bodiless call (R-G's `suppliedByCpp` included), a call handed a `MutView`, and a
+construction with an `initially`, a `finally` or an impure default. A pure owner of a view now
+stays in the full expression that uses the view, which keeps it alive (`plusSize(t0_,
+kira::mutView(makeRef()->value).from(1))`); an impure one is spilled as before.
+
+A cost left (round 2's note): a user function returning a view of its view parameter
+(`tail(v, at)`) is READS (EffectsPass's read of a view), never PURE, so such a chain beside an
+effect is copied into a `const kira::View` temporary. Correct (round 2's b1), not the cheapest.
 
 ### KI-10. A `for` range is copied unless it is proved not to dangle
 
@@ -336,3 +416,22 @@ it (E1), and ViewPass refuses a write that moves the place in the view's span.
   (frontend code). The emitter's side is `Slot.Filled`.
 - **Why it can wait.** Nothing is emitted wrongly. `CppExprRowsTest`'s `r6` row checks
   `r6::skipMiddle() == 129` on gcc, clang, msvc and zig-aarch64.
+
+### KI-17. A method call's receiver beside a write of its place waits for W2.9.8 (Q4)
+
+- **What.** The user's Q4 reads a container's or a mutable value's receiver when the call runs.
+  No lowering of that exists for a method call before W2.9.8, and a snapshot would give the
+  answer Q4 rejected, so `rules.exclusivity.order` refuses the shape (40-round3 3.2, clause 3).
+  These left the evalorder golden with their helpers, with Q4's values for W2.9.8:
+
+  | Line (old golden) | Kira | Q4's value |
+  |---|---|---|
+  | 192 | `trace(gm.get(putKey()).unwrapOr(-1))` | 99 |
+  | 195 | `trace(gl.get(setFirst()))` | 50 |
+  | 222 | `trace(ga.plus(bumpA()))` | 210 |
+  | 389 | `this.plus(bump())` in `Acc.viaThis` | 210 |
+  | 393 | `plus(bump())` in `Acc.viaImplicit` | 210 |
+
+- **Where.** `hoist:receivers` in `CppHoisterTest` holds the same five shapes, refused.
+- **Why it can wait.** It is a refusal, never a wrong value. The index spelling
+  `gl[setFirst()]` already reads the List when `kira::at` runs (50, in the golden).

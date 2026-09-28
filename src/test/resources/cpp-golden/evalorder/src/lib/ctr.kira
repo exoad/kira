@@ -1,0 +1,11 @@
+module "lib:ctr"
+
+// A counter in a module of its own: evalorder reads it qualified, as ctr.T, beside a call
+// that writes it. A read of another module's mut global is shared state however it is
+// written (40-round3 R-E), so D33 copies it before the call runs.
+pub mut T: Int32 = 5
+
+pub fx bumpT: () Int32 {
+    T += 1
+    return T
+}

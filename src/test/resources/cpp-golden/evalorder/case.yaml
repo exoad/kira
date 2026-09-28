@@ -2,3 +2,5 @@ toolchains: [gcc, clang, msvc, zig-aarch64]
 profile: hosted
 defines: []
 emit: required
+# The case exists to pin D33's spills (40-round3 4.1): RulesCorpusTest's no-spill check skips it.
+pins: spills
