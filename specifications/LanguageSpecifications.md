@@ -1269,12 +1269,14 @@ a = b = 10
 
 **Compound Assignment Operators:**
 
-Compound assignment operators are not supported. Use explicit operations:
+Every binary arithmetic and bitwise operator has a compound form: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=` and `>>>=`. `a op= b` is `a = a.@_op_X_(b)`, with `a` evaluated once, so it needs what the assignment needs. `a[i] op= v` gets, operates and sets: `a.@_op_set_(i, a.@_op_get_(i).@_op_X_(v))`, with `a` and `i` evaluated once.
 
 ```kira
-x += 10
+mut x: Int32 = 10
+x += 10  // x = x + 10
 
-x = x + 10
+mut counts: List<Int32> = List<Int32> { [0, 0] }
+counts[1] += 1
 ```
 
 ### Member Access Operator
