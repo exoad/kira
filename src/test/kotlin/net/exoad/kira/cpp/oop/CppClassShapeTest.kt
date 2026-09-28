@@ -1008,7 +1008,294 @@ class CppClassShapeTest {
             }
             """
         ).source(uri)
-        assertContains(s, "      return [&]() -> kira::Rc<Pair> { const std::int32_t t0_Arg_ = second(); const std::int32_t t1_Arg_ = first(); return std::make_shared<Pair>(t1_Arg_, t0_Arg_); }();")
+        // Nothing of the body's frame is named, so the lambda captures nothing (it may then stand outside a block scope too).
+        assertContains(s, "      return []() -> kira::Rc<Pair> { const std::int32_t t0_Arg_ = second(); const std::int32_t t1_Arg_ = first(); return std::make_shared<Pair>(t1_Arg_, t0_Arg_); }();")
+    }
+
+    // ---- construction order: every operand that is not PURE, as W2.3's call hoister orders one (second-class round 2)
+
+    private val renaming = """
+        pub class Named {
+            require pub mut name: Str
+
+            pub mut fx rename: () Int32 {
+                name = "new"
+                return 7
+            }
+        }
+
+        pub class Pair {
+            require pub a: Str
+            require pub n: Int32
+        }
+    """.trimIndent()
+
+    @Test
+    fun aFieldReadBeforeAnImpureSiblingIsCopiedFirst() {
+        // ctorwrong2: make_shared forwarded b->name by reference and read it after c->rename() (c = b) had run:
+        // `new` on g++, zig and MSVC, where Kira's left to right gives `old`.
+        val s = emit(
+            """
+            $renaming
+
+            pub fx pairOf: (b: Named, c: Named) Pair {
+                return Pair { b.name, c.rename() }
+            }
+            """
+        ).source(uri)
+        assertContains(s, "      return [&]() -> kira::Rc<Pair> { const kira::Str t0_Arg_ = b->name; const std::int32_t t1_Arg_ = c->rename(); return std::make_shared<Pair>(t0_Arg_, t1_Arg_); }();")
+    }
+
+    @Test
+    fun aConstRefParameterBeforeAnImpureSiblingIsCopiedFirst() {
+        // ctororder: s, a const& bound to c.item.label, was read inside make_shared after h.reset() freed the Item
+        // (MSVC ASan heap-use-after-free in the Str copy). Named fields are ordered as written.
+        val s = emit(
+            """
+            $renaming
+
+            pub fx later: (s: Str, h: Named) Pair {
+                return Pair { n = h.rename(), a = s }
+            }
+            """
+        ).source(uri)
+        assertContains(s, "      return [&]() -> kira::Rc<Pair> { const std::int32_t t0_Arg_ = h->rename(); const kira::Str t1_Arg_ = s; return std::make_shared<Pair>(t1_Arg_, t0_Arg_); }();")
+    }
+
+    @Test
+    fun anImplicitFieldBeforeAnImpureSiblingIsCopiedFirst() {
+        // ctorthis: `Pair { name, tree.clear() }` in a Kid method read this->name after clear freed the Kid
+        // (freed heap bytes on g++ and zig, MSVC ASan heap-use-after-free).
+        val s = emit(
+            """
+            pub class Pair {
+                require pub a: Str
+                require pub n: Int32
+            }
+
+            pub class Tree {
+                pub mut kid: Maybe<Kid> = null
+
+                pub mut fx clear: () Int32 {
+                    kid = null
+                    return 7
+                }
+            }
+
+            pub class Kid {
+                require pub name: Str
+                require pub tree: Tree
+
+                pub fx leave: () Pair {
+                    return Pair { name, tree.clear() }
+                }
+            }
+            """
+        ).source(uri)
+        assertContains(s, "      return [&]() -> kira::Rc<Pair> { const kira::Str t0_Arg_ = name; const std::int32_t t1_Arg_ = tree->clear(); return std::make_shared<Pair>(t0_Arg_, t1_Arg_); }();")
+    }
+
+    @Test
+    fun aPureOperandBesideOneImpureOneIsNotSpilled() {
+        // One impure operand and PURE siblings (a literal, a local that is not mut, a by-value parameter) need no order.
+        val s = emit(
+            """
+            $renaming
+
+            pub class Trio {
+                require pub a: Str
+                require pub n: Int32
+                require pub k: Int32
+            }
+
+            pub fx trio: (h: Named, k: Int32) Trio {
+                label: Str = "x"
+                return Trio { label, h.rename(), k }
+            }
+            """
+        ).source(uri)
+        assertContains(s, "      return std::make_shared<Trio>(label, h->rename(), k);")
+    }
+
+    @Test
+    fun aSkippedMiddleDefaultComesAfterTheGivenValues() {
+        // make_shared's operands are the given values as written, then the defaults it fills in: a mut global
+        // a default reads is read after the given value that changes it, as the constructor's own default would be.
+        val s = emit(
+            """
+            pub mut seed: Int32 = 1
+
+            pub fx bumpSeed: () Int32 {
+                seed += 10
+                return seed
+            }
+
+            pub class Duo {
+                require pub a: Int32
+                pub b: Int32 = seed
+                require pub c: Int32
+            }
+
+            pub fx duo: () Duo {
+                return Duo { a = 5, c = bumpSeed() }
+            }
+            """
+        ).source(uri)
+        assertContains(s, "      return []() -> kira::Rc<Duo> { const std::int32_t t0_Arg_ = bumpSeed(); const std::int32_t t1_Arg_ = seed; return std::make_shared<Duo>(5, t1_Arg_, t0_Arg_); }();")
+    }
+
+    // ---- this under construction or destruction (second-class round 2) --------------------------------------
+
+    @Test
+    fun thisAsAValueInAMethodAnInitiallyRunsIsRefused() {
+        // initcall2: initially calls join, and join hands this on: shared_from_this() threw std::bad_weak_ptr
+        // on g++ and zig (MSVC 0xC0000409), since no kira::Rc owns an object under construction.
+        val messages = unsupported(
+            """
+            pub class Reg {
+                pub mut n: Int32 = 0
+            }
+
+            pub fx enroll: (r: Reg, n: Node) Void {
+            }
+
+            pub class Node {
+                require pub name: Str
+                require pub reg: Reg
+
+                initially {
+                    join()
+                }
+
+                pub fx join: () Void {
+                    enroll(reg, this)
+                }
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("this as a value in Node.join, which the initially block of Node runs: C++ has no shared_ptr to an object under construction") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun thisAsAValueInAMethodAFinallyReachesThroughAnotherIsRefused() {
+        // fincall2, one call further: finally calls bury, bury calls say, and say hands this on.
+        val messages = unsupported(
+            """
+            pub fx show: (n: Node) Void {
+            }
+
+            pub class Node {
+                require pub name: Str
+
+                finally {
+                    bury()
+                }
+
+                pub fx bury: () Void {
+                    say()
+                }
+
+                pub fx say: () Void {
+                    show(this)
+                }
+            }
+            """
+        )
+        assertTrue(
+            messages.any { it.startsWith("this as a value in Node.say, which the finally block of Node runs (through its call to bury): C++ has no shared_ptr to an object under destruction") },
+            messages.joinToString("\n"),
+        )
+    }
+
+    @Test
+    fun anEscapingLambdaThatCapturesThisInAMethodAnInitiallyRunsIsRefused() {
+        // initlam: initially calls hook, and hook stores a lambda capturing self = shared_from_this().
+        val messages = unsupported(
+            """
+            pub class Reg {
+                pub mut hook: Maybe<Fx<Tuple0, Str>> = null
+            }
+
+            pub class Node {
+                require pub name: Str
+                require pub reg: Reg
+
+                initially {
+                    hook()
+                }
+
+                pub fx describe: () Str {
+                    return name
+                }
+
+                pub fx hook: () Void {
+                    reg.hook = fx() Str {
+                        return describe()
+                    }
+                }
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("a lambda that escapes and captures this (self = shared_from_this()) in Node.hook, which the initially block of Node runs") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun thisAsAValueInAnOverrideATraitDefaultCallsFromInitiallyIsRefused() {
+        // initially calls a trait default, which calls a requirement on this: C++ dispatches it to the class's own override.
+        val messages = unsupported(
+            """
+            pub fx keep: (n: Node) Str {
+                return "k"
+            }
+
+            pub trait Greeter {
+                pub fx id: () Str;
+                pub fx greet: () Str {
+                    return id()
+                }
+            }
+
+            pub class Node: Greeter {
+                require pub name: Str
+
+                initially {
+                    greet()
+                }
+
+                override pub fx id: () Str {
+                    return keep(this)
+                }
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("this as a value in Node.id, which the initially block of Node runs (through its call to greet)") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun thisAsAValueInAMethodNoInitiallyOrFinallyRunsIsKept() {
+        // Only what those blocks may run is refused: a method reading a field from initially, and this as a value elsewhere.
+        val (h, s) = both(
+            """
+            pub class Node {
+                require pub name: Str
+                pub mut size: Int32 = 0
+
+                initially {
+                    measure()
+                }
+
+                pub mut fx measure: () Void {
+                    size = 1
+                }
+
+                pub fx me: () Node {
+                    return this
+                }
+            }
+            """
+        )
+        assertContains(h, "  class Node final : public kira::Shared<Node>\n")
+        assertContains(s, "      return std::const_pointer_cast<Node>(shared_from_this());")
     }
 
     @Test
@@ -2412,7 +2699,7 @@ class CppClassShapeTest {
         ).source(uri)
         assertContains(
             s,
-            "      return [&]() -> kira::Rc<Holder> { Handle* const t0_Arg_ = open(); Handle* const t1_Arg_ = open(); return std::make_shared<Holder>(t1_Arg_, t0_Arg_); }();",
+            "      return []() -> kira::Rc<Holder> { Handle* const t0_Arg_ = open(); Handle* const t1_Arg_ = open(); return std::make_shared<Holder>(t1_Arg_, t0_Arg_); }();",
             "      return std::make_shared<Loose>(static_cast<Handle*>(nullptr), 1);",
         )
     }

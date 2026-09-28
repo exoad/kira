@@ -652,6 +652,106 @@ class CppClassCompileTest {
         pub fx makeTwin: (n: Int32, m: Int32) Twin<Int32> {
             return Twin<Int32> { n = n, m = m }
         }
+
+        // A construction reads a field, a const& parameter, an implicit field and a mut global
+        // before the impure sibling that renames or frees what it names, and a skipped middle
+        // default after the given values (D33, as W2.3's call hoister orders a call).
+        pub class Tag {
+            require pub mut name: Str
+
+            pub mut fx rename: () Int32 {
+                name = "new"
+                return 7
+            }
+        }
+
+        pub class TagPair {
+            require pub a: Str
+            require pub n: Int32
+        }
+
+        pub fx tagPair: (b: Tag, c: Tag) TagPair {
+            return TagPair { b.name, c.rename() }
+        }
+
+        pub class Shelf {
+            pub mut tag: Maybe<Tag> = null
+
+            pub mut fx empty: () Int32 {
+                tag = null
+                return 7
+            }
+        }
+
+        pub fx shelved: (s: Str, h: Shelf) TagPair {
+            return TagPair { a = s, n = h.empty() }
+        }
+
+        pub class Nest {
+            pub mut twig: Maybe<Twig> = null
+
+            pub mut fx drop: () Int32 {
+                twig = null
+                return 7
+            }
+        }
+
+        pub class Twig {
+            require pub name: Str
+            require pub nest: Nest
+
+            pub fx leave: () TagPair {
+                return TagPair { name, nest.drop() }
+            }
+        }
+
+        pub mut seed: Int32 = 1
+
+        pub fx bumpSeed: () Int32 {
+            seed += 10
+            return seed
+        }
+
+        pub class Duo {
+            require pub a: Int32
+            pub b: Int32 = seed
+            require pub c: Int32
+        }
+
+        pub fx duo: () Duo {
+            return Duo { a = seed, c = bumpSeed() }
+        }
+
+        // The same spill in a field's default, a constructor's default argument: its lambda captures nothing.
+        pub class DuoBox {
+            pub duo: Duo = Duo { a = seed, c = bumpSeed() }
+        }
+
+        // A type-parameter receiver the arguments replace in the caller's slot: copied at entry.
+        pub trait Greets {
+            pub fx greet: (n: Int32) Str;
+        }
+
+        pub class Kid: Greets {
+            require pub name: Str
+
+            override pub fx greet: (n: Int32) Str {
+                return name
+            }
+        }
+
+        pub class Crib {
+            pub mut kid: Kid = Kid { "short" }
+
+            pub mut fx swap: () Int32 {
+                kid = Kid { "other" }
+                return 7
+            }
+        }
+
+        pub fx greetIt<T: Greets>: (x: T, h: Crib) Str {
+            return x.greet(h.swap())
+        }
     """
 
     private val driver = """
@@ -783,6 +883,23 @@ class CppClassCompileTest {
             }
             const kira::Rc<shapes::Twin<std::int32_t>> twin = shapes::makeTwin(1, 7);
             check(twin->take(twin->n) == 1 && twin->n == 7, "a template's const T& parameter is copied before the body writes the field it named");
+            const kira::Rc<shapes::Tag> tag = std::make_shared<shapes::Tag>("old");
+            const kira::Rc<shapes::TagPair> tagged = shapes::tagPair(tag, tag);
+            check(tagged->a == "old" && tagged->n == 7 && tag->name == "new", "a construction reads a field before the sibling that renames it");
+            const kira::Rc<shapes::Shelf> shelf = std::make_shared<shapes::Shelf>();
+            shelf->tag = std::make_shared<shapes::Tag>(longName);
+            check(shapes::shelved(kira::unwrap(shelf->tag)->name, shelf)->a == longName && shelf->tag == nullptr, "a construction copies a const& parameter before the sibling that frees what it names");
+            const kira::Rc<shapes::Nest> nest = std::make_shared<shapes::Nest>();
+            nest->twig = std::make_shared<shapes::Twig>(longName, nest);
+            shapes::Twig* const twig = kira::unwrap(nest->twig).get();
+            check(twig->leave()->a == longName && nest->twig == nullptr, "a construction copies its own object's field before the sibling that frees the object");
+            const kira::Rc<shapes::Duo> duo = shapes::duo();
+            const kira::Rc<shapes::DuoBox> duoBox = std::make_shared<shapes::DuoBox>();
+            check(duoBox->duo->a == 11 && duoBox->duo->c == 21 && duoBox->duo->b == 21, "a field default's construction spills in a default argument, a skipped middle default read after the given values");
+            check(duo->a == 1 && duo->c == 11 && duo->b == 11, "a skipped middle default is read after the given values");
+            const kira::Rc<shapes::Crib> crib = std::make_shared<shapes::Crib>();
+            crib->kid = std::make_shared<shapes::Kid>(longName);
+            check(shapes::greetIt(crib->kid, crib) == longName && crib->kid->name == "other", "a type-parameter receiver the arguments replace is copied at entry");
             std::printf("%d checks, %d failed\n", checks, failures);
             return failures == 0 ? 0 : 1;
         }
@@ -813,7 +930,7 @@ class CppClassCompileTest {
                 val exe = result.exe ?: return@dynamicTest
                 val run = CppCompileSupport.run(exe, extraPathDirs = listOfNotNull(located.binDir))
                 assertEquals(0, run.exitCode, "the driver failed on ${toolchain.id}:\n${run.stdout}\n${run.stderr}")
-                assertTrue(run.stdout.contains("37 checks, 0 failed"), run.stdout)
+                assertTrue(run.stdout.contains("43 checks, 0 failed"), run.stdout)
             }
         }
     }

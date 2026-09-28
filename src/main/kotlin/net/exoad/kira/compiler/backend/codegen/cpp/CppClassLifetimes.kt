@@ -83,7 +83,10 @@ import java.util.IdentityHashMap
  *    `c = b`, measured: freed heap bytes). Refused ([refusals]), as are a `mut` argument that
  *    names such storage when the call may change it, or lies inside another `mut` argument of
  *    the call, a call through an `Fx` such storage holds while the code it runs may replace
- *    it, and a lambda's `const&` parameter read after an effect that may reach it: each of
+ *    it, a lambda's `const&` parameter read after an effect that may reach it, an argument
+ *    or a receiver such storage holds that a C++-supplied callee reads after running an `Fx`
+ *    that may change it, and a type-parameter receiver in such storage its call's arguments
+ *    may change (C++ reads it after them): each of
  *    those lowerings is the statement part's, and each diagnostic names the local copy that
  *    makes the program safe. A range reached from a temporary is the statement part's, which
  *    copies it (W2.3 `CppHoister.rangeMayDangle`). A field's default is checked as a body is.
@@ -102,9 +105,12 @@ import java.util.IdentityHashMap
  * the name for a virtual or trait call, and every lambda and function value for a call through
  * an `Fx` (the lambda itself, for a local that is not `mut` and was given one). What C++
  * supplies (a C++ override of a trait method, an `Fx` built in C++, an `@_extern`, a bodyless
- * `pub` prototype a C++ file defines) is taken to leave Kira's objects alone during the call:
- * the boundary contract of 30-second-class.md 5.4, recorded in
- * `docs/cpp-known-issues/w2-4-emit-oop.md`.
+ * `pub` prototype a C++ file defines) writes Kira storage only through its `mut` arguments and
+ * runs Kira code only through the `Fx` arguments it is given, and reads its arguments during
+ * the call: the boundary contract of 30-second-class.md 5.4, recorded in
+ * `docs/cpp-known-issues/w2-4-emit-oop.md`. So such a call may do whatever its `Fx` arguments
+ * do (everything, for an `Fx` value the analysis cannot see into), and an argument it reads,
+ * and the receiver it runs on, is in use until it returns.
  */
 class CppClassLifetimes(private val program: TypedProgram) {
     private val model = program.model
@@ -342,6 +348,42 @@ class CppClassLifetimes(private val program: TypedProgram) {
     /** A release: an object may be freed, and what its `finally` does may run ([finallyPool]). */
     private fun release(): Effects = Effects.release().also { it.addAll(finallyPool) }
 
+    /**
+     * Whether C++ may supply the body the call [rc] runs: an `@_extern` function or method, a
+     * bodyless prototype a C++ file defines, or a virtual or trait method, which a C++ class
+     * may override (the chain golden's test double). Such a callee reads its arguments during
+     * the call, after any `Fx` argument it runs, and copies none of them at entry.
+     */
+    private fun suppliedByCpp(rc: ResolvedCall): Boolean = when (rc.kind) {
+        CallKind.EXTERN, CallKind.VIRTUAL, CallKind.TRAIT -> true
+        CallKind.FREE, CallKind.METHOD -> rc.fn?.body == null
+        else -> false
+    }
+
+    /** The `Fx` arguments of [rc]: a lambda written there, or any argument of a function type. */
+    private fun fxArgs(rc: ResolvedCall): List<Expr> =
+        rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }.filter { it is LambdaExpr || model.typeOrNull(it) is KType.Fn }
+
+    /**
+     * What the `Fx` arguments of [rc] may do when the callee runs them, the union of their
+     * effects (contract 5.4.3: a callee C++ supplies runs Kira code only through them): a
+     * lambda written as the argument, its body's; a function named as a value, its body's;
+     * anything else (a local, a field, a parameter, a call's result, a C++-made closure)
+     * everything, since the analysis cannot see which function it holds.
+     */
+    private fun fxArguments(rc: ResolvedCall): Effects {
+        val e = Effects()
+        for (x in fxArgs(rc)) {
+            val body = when (x) {
+                is LambdaExpr -> x.def.body
+                is Identifier -> (model.symbolOf(x) as? FnSymbol)?.body
+                else -> null
+            }
+            e.addAll(body?.let { summaries[it] } ?: Effects.unknown())
+        }
+        return e
+    }
+
     // ---- queries ---------------------------------------------------------------------------------------
 
     /**
@@ -412,6 +454,8 @@ class CppClassLifetimes(private val program: TypedProgram) {
                     is ForIterationStatement -> loopRefusal(node, fn, owner, keeps)?.let { out += node to it }
                     is FunctionCallExpr -> {
                         out += mutArgRefusals(node, keeps).map { node to it }
+                        out += cppCalleeArgRefusals(node, keeps).map { node to it }
+                        paramReceiverRefusal(node, fn, owner, keeps)?.let { out += node to it }
                         fxCallRefusal(node, keeps)?.let { out += node to it }
                     }
                     is LambdaExpr -> out += lambdaParamRefusals(node, owner)
@@ -554,8 +598,10 @@ class CppClassLifetimes(private val program: TypedProgram) {
         if (shared.isEmpty()) {
             return out
         }
-        // What runs while the callee writes through the argument: the callee. A sibling argument's effect comes before the
-        // binding, since the statement part locates a mut argument's place after its impure siblings (D33).
+        // What runs while the callee writes through the argument: the callee, and for a callee C++ supplies the Fx
+        // arguments it may run (externmut: `bump(mut h.item.count, fx() Void { c.reset() })` wrote into the Item the
+        // callback freed, MSVC ASan heap-use-after-free). A sibling argument's effect comes before the binding, since
+        // the statement part locates a mut argument's place after its impure siblings (D33).
         val during = Walker(summary = true, fn = null, owner = null).calleeEffects(rc, n.name)
         shared.forEachIndexed { i, a ->
             val place = model.place(a.expr)!!
@@ -570,6 +616,86 @@ class CppClassLifetimes(private val program: TypedProgram) {
             }
         }
         return out
+    }
+
+    /**
+     * An argument C++ takes by `const&` that names storage an object holds, passed to a callee
+     * C++ supplies ([suppliedByCpp]) together with an `Fx` argument whose code may change or
+     * free that storage: the C++ callee reads the reference while it runs, after the callback
+     * (externstr's shape with the argument a field, `measure(c.item.label, fx() Void {
+     * h.reset() })`). A Kira callee copies such a parameter at entry ([guard]); a C++ one
+     * copies nothing, and a parameter of the caller passed on is copied at the caller's entry
+     * instead ([Walker.call]). A local copy is what makes it safe.
+     */
+    private fun cppCalleeArgRefusals(n: FunctionCallExpr, keeps: Keeps): List<String> {
+        val rc = model.call(n) ?: return emptyList()
+        if (!suppliedByCpp(rc) || fxArgs(rc).isEmpty()) {
+            return emptyList()
+        }
+        val during = Walker(summary = true, fn = null, owner = null).calleeEffects(rc, n.name)
+        val name = rc.fn?.name ?: KiraUnparser.text(n.name)
+        return rc.args.filterIsInstance<ArgBinding.Given>().mapNotNull { a ->
+            if (a.byRef || a.expr is LambdaExpr) {
+                return@mapNotNull null
+            }
+            val place = model.place(a.expr) ?: return@mapNotNull null
+            val type = model.typeOrNull(a.expr) ?: return@mapNotNull null
+            if (type is KType.Fn || !passedByReference(type) || kindOf(place) != PlaceKind.SHARED || !reaches(during, place, type, keeps)) {
+                return@mapNotNull null
+            }
+            val text = KiraUnparser.text(a.expr)
+            "the argument $text, storage an object holds, passed by const& to $name, whose body C++ supplies and may run the Fx it is given " +
+                "before it reads $text, while that code may change or free it: copy it into a local first (`v: ${type.display()} = $text`, then pass v)"
+        } + listOfNotNull(cppCalleeReceiverRefusal(rc, name, during, keeps))
+    }
+
+    /**
+     * The receiver of such a call ([cppCalleeArgRefusals]) when it names storage an object
+     * holds that the `Fx` arguments may replace or free: C++ runs the method on the object the
+     * slot held when the call began (`c.item.run(fx() Void { h.reset() })`), and a body C++
+     * supplies may read that object after the callback freed it. A Kira override holds itself
+     * for the call where it must ([guard]); a C++ one cannot be made to. A local copy of the
+     * handle keeps the object alive for the call.
+     */
+    private fun cppCalleeReceiverRefusal(rc: ResolvedCall, name: String, during: Effects, keeps: Keeps): String? {
+        val receiver = rc.receiver ?: return null
+        val place = model.place(receiver) ?: return null
+        val type = model.typeOrNull(receiver) ?: return null
+        if (kindOf(place) != PlaceKind.SHARED || place is Place.This || !reaches(during, place, type, keeps)) {
+            return null
+        }
+        val text = KiraUnparser.text(receiver)
+        return "the call to $name on $text, storage an object holds, whose body C++ may supply and may run the Fx it is given while $text still " +
+            "names the object, though that code may replace or free it: copy it into a local first (`v: ${type.display()} = $text`, then v.$name(...))"
+    }
+
+    /**
+     * A call on a receiver of type-parameter type (`kira::deref(x).m(...)`) that names storage
+     * an object holds (a field, an element, anything through a handle, a `mut` parameter),
+     * whose arguments may change or free that storage: C++ reads the receiver after the
+     * arguments, so the call would run on what they left there, or on freed memory (genrecv2:
+     * `x.greet(h.reset())` with x the element `c.kids[0]` reset replaced; g++ threw
+     * std::bad_alloc, MSVC ASan heap-use-after-free). A trait- or class-typed receiver is a
+     * handle the statement part copies before the arguments; a type parameter's is spelled
+     * by reference, and a value parameter so read is copied at entry ([Walker.call]).
+     */
+    private fun paramReceiverRefusal(n: FunctionCallExpr, fn: FnSymbol?, owner: TypeSymbol?, keeps: Keeps): String? {
+        val rc = model.call(n) ?: return null
+        val receiver = rc.receiver ?: return null
+        val type = model.typeOrNull(receiver) as? KType.Param ?: return null
+        val place = model.place(receiver) ?: return null
+        if (kindOf(place) == PlaceKind.LOCAL) {
+            return null
+        }
+        val args = rc.args.mapNotNull { (it as? ArgBinding.Given)?.expr }
+        val w = Walker(summary = false, fn = fn, owner = owner).run(args)
+        if (!reaches(w.all, place, type, keeps)) {
+            return null
+        }
+        val text = KiraUnparser.text(receiver)
+        val name = rc.fn?.name ?: "the method"
+        return "the call to $name on $text, a ${type.display()} an object holds, whose arguments may change or free it before the call runs: " +
+            "C++ reads a type parameter's receiver after the arguments. Copy it into a local first (`v: ${type.display()} = $text`, then v.$name(...))"
     }
 
     /**
@@ -1014,6 +1140,11 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 useThis()
             }
             rc.receiver?.let { r -> if (model.place(r)?.root() is Place.This) useThis() }
+            // A receiver of type-parameter type is `kira::deref(x).m(...)`, x bound by reference: C++
+            // reads it after the arguments (genrecv: `x.greet(h.reset())` ran greet on what reset left
+            // in the caller's slot, a freed Kid under MSVC ASan). A parameter so read is copied at
+            // entry; storage an object holds is refused ([paramReceiverRefusal]).
+            rc.receiver?.let { r -> if (model.typeOrNull(r) is KType.Param) inUse(model.place(r)) }
             val e = callee.copy()
             rc.args.forEach { a ->
                 if (a is ArgBinding.Given && a.byRef) {
@@ -1021,6 +1152,22 @@ class CppClassLifetimes(private val program: TypedProgram) {
                 }
             }
             event(e, n)
+            // A callee C++ supplies reads its arguments while it runs, after the Fx arguments it may
+            // run (externstr: `measure(s, fx() Void { h.reset() })` read s, bound to the Item reset
+            // freed: freed heap bytes on g++, MSVC ASan heap-use-after-free). A parameter so read is
+            // copied at entry; storage an object holds is refused ([cppCalleeArgRefusals]).
+            // Its receiver too: the object it runs on is in use until it returns.
+            if (suppliedByCpp(rc) && fxArgs(rc).isNotEmpty()) {
+                rc.args.forEach { a ->
+                    if (a is ArgBinding.Given && !a.byRef && a.expr !is LambdaExpr) {
+                        inUse(model.place(a.expr))
+                    }
+                }
+                rc.receiver?.let { r -> inUse(model.place(r)) }
+                if (rc.implicitThis) {
+                    useThis()
+                }
+            }
             // A mut argument is written through while the callee runs, so the object it lies in is in use until the call returns.
             rc.args.forEach { a ->
                 if (a is ArgBinding.Given && a.byRef) {
@@ -1051,12 +1198,19 @@ class CppClassLifetimes(private val program: TypedProgram) {
             now = before
         }
 
-        /** What the call [rc] may run; [callee] is its callee expression (for a call through an `Fx` value, the value). */
+        /**
+         * What the call [rc] may run; [callee] is its callee expression (for a call through an
+         * `Fx` value, the value). A callee whose body C++ supplies ([suppliedByCpp]: an
+         * `@_extern`, a bodyless prototype, a C++ override of a virtual or trait method) runs
+         * Kira code only through the `Fx` arguments it is given (contract 5.4.3), so it may run
+         * each of them during the call ([fxArguments]).
+         */
         fun calleeEffects(rc: ResolvedCall, callee: Expr? = null): Effects = when (rc.kind) {
-            CallKind.PRINT, CallKind.EXTERN -> Effects()
+            CallKind.PRINT -> Effects()
+            CallKind.EXTERN -> fxArguments(rc)
             CallKind.MAGIC -> magic(rc)
-            CallKind.FREE, CallKind.METHOD -> rc.fn?.body?.let { summaries[it] } ?: Effects()
-            CallKind.VIRTUAL, CallKind.TRAIT -> Effects().also { e ->
+            CallKind.FREE, CallKind.METHOD -> rc.fn?.body?.let { summaries[it] } ?: fxArguments(rc)
+            CallKind.VIRTUAL, CallKind.TRAIT -> fxArguments(rc).also { e ->
                 val name = rc.fn?.name
                 if (name == null) {
                     e.addAll(Effects.unknown())

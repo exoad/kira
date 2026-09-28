@@ -16,6 +16,9 @@ every view refusal, so the classes part follows no view: its kind 4 (views into 
 and kind 1's `lent` exception are deleted, not patched. What that closed is listed under
 "Closed by the second-class rule". The second-class round measures on a trial of this branch
 with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is written in parallel).
+Second-class round 2 measures on a trial of this branch's working tree with W2.3's re-signed
+head `e355c3e` (the same tree as 9e00cfb) merged the same way; what it fixed is under "Fixed in
+second-class round 2". From round 2 on, decision 4b is read literally (OD-5).
 
 ## Known issues
 
@@ -40,7 +43,12 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
   a00af85 the two messages were the same, and round 3's tree had 2 failures of 1113.) The
   second-class round's trial runs 1117 tests with 5 failures: the same two spill hunks, KI-19's
   routing failure, and the two CppHoisterTest cases on W2.3's `Ref<View<Int32>>` fixture
-  (KI-19); `CppGoldenCompileTest` passes.
+  (KI-19); `CppGoldenCompileTest` passes. Second-class round 2, on a trial with W2.3 9740456:
+  the whole `./gradlew test` runs 1131 tests with 0 failures while the cases stay pending; with
+  `emit: required` set, `CppGoldenEmitTest` fails on exactly these two hunks (sender is
+  byte-identical) and `CppGoldenCompileTest` runs 79 tests with 0 failures. Under decision 4b
+  read literally, `b->id()` is a trait call EffectsPass cannot prove pure, so the spill is
+  W2.3's rule working as intended.
 - **Why it can wait.** The emitted code is correct and compiles. The difference is W2.3's
   rule against expected text written before that rule. W2.3 or the integrator has to either
   keep the rule and regenerate those two `expected/` files, or narrow the rule. Until one of
@@ -85,11 +93,11 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
   the smallest change that lets one analysis guard both. `git apply` of this round's diff onto
   a tree with W2.3 merged, and onto one with W2.3 and W2.5, applied cleanly (measured).
 
-### KI-5. Four commits are unsigned
+### KI-5. Closed: every commit is signed
 
-- **What.** 742d0b4, 80a5212, fa8d963 and 45675ea were made while gpg pinentry timed out.
-- **Why it can wait.** Their content is reviewed and tested. Later commits are signed.
-  Signing the old ones means rewriting this branch's history, which is the user's call.
+- **What.** 742d0b4, 80a5212, fa8d963 and 45675ea were made while gpg pinentry timed out. The
+  branch has since been re-signed with identical trees: `git log --format=%G? cpp-backend..HEAD`
+  gives `G` for all 14 commits before second-class round 2's (measured in round 2).
 
 ### KI-6. What was not measured
 
@@ -234,20 +242,25 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
 - **Where.** `ClassLowering.bodyName`.
 - **Why it can wait.** The result is a loud `-Wshadow` compile error, not a wrong program.
 
-### KI-16. Receiver paths through a handle rely on W2.3 copying the `kira::Rc`
+### KI-16. Class- and trait-typed receiver paths rely on W2.3 copying the `kira::Rc`
 
 - **What.** A call whose receiver lies one handle away from a parameter or a field of `this`
   (`it.labels.add(h.take())`, `other.labels.add(h.take())`), with an argument that frees that
-  object, is safe because W2.3 copies the `kira::Rc` of the receiver path before the
-  arguments run. The classes part guards only `this`, which W2.3 cannot copy: a method whose
-  argument may free its own object holds itself (`recvfree`, `implicitcall`).
+  object, is safe because W2.3 copies the `kira::Rc` of a class- or trait-typed receiver path
+  before the arguments run. The classes part guards `this`, which W2.3 cannot copy (a method
+  whose argument may free its own object holds itself: `recvfree`, `implicitcall`), and, since
+  second-class round 2, a receiver of type-parameter type, which W2.3 does not copy
+  (`kira::deref(x).m(...)`, x bound by reference): a parameter is copied at entry, storage an
+  object holds is refused (genrecv, genrecv2; "Fixed in second-class round 2"). Round 1's
+  "measured safe" was false for that receiver.
 - **Where.** W2.3's receiver ordering (`CppExprEmitter.receiverOperand`) and
-  `CppClassLifetimes.Walker.call`.
+  `CppClassLifetimes.Walker.call`, `paramReceiverRefusal`.
 - **Reproduce.** `recvfree2` and `recvfield` print the right values on g++, zig and MSVC ASan
   on a trial with W2.3 a00af85, and on g++ and zig on one with 9e00cfb (round 4).
 - **Why it can wait.** It is measured safe on the W2.3 this package merges with. If W2.3
   stops copying a handle receiver, the same refusal as a `mut` argument's
-  (`CppClassLifetimes.mutArgRefusals`) extends to it.
+  (`CppClassLifetimes.mutArgRefusals`) extends to it, as `paramReceiverRefusal` already does
+  for a type parameter's.
 
 ### KI-17. A `mut` argument inside another is refused where a lowering could keep it
 
@@ -281,7 +294,11 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
 - **Why it can wait.** It is safe on the W2.3 this package merges with; the entry records the
   order: W2.3 at 9e00cfb or later has to be merged no later than this package.
 
-### KI-19. CppHoisterTest's twelfth `cpp.view-lifetime` refusal, until W2.3's commit B
+### KI-19. Closed: CppHoisterTest's twelfth `cpp.view-lifetime` refusal, until W2.3's commit B
+
+- **Closed in second-class round 2.** W2.3's commit B is in: on trials of this round's tree
+  with W2.3 e355c3e and with 9740456, the whole `./gradlew test` runs 1130 and 1131 tests with
+  0 failures, CppHoisterTest included. What follows is the record.
 
 - **What.** The verifier's `rewire.py` returns from W2.3's `CppExprEmitter.classConstruction`
   into the classes part's `construct` at its first line, above W2.3's
@@ -304,6 +321,20 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
   and `cpp.view-lifetime`, and turns those tests into emission tests; the refused programs move
   to ViewPassTest. The entry closes then.
 
+### KI-22. A field default's lambda that calls a later `pub` function does not compile
+
+- **What.** `sink: Fx<...> = fx(v) { return total(v) }` puts the lambda in the constructor's
+  default argument, in the class body in the header, and the header declares the `pub`
+  function `total` after the class: g++ says 'total' was not declared in this scope, zig 'use
+  of undeclared identifier'. The same shape with a private helper is moved into `impl_` and
+  works (second-class round 1's verifier, minor).
+- **Where.** The header's order (W2.2's design 4.2 placement) against a default argument the
+  classes part spells in the class body.
+- **Why it can wait.** It is a loud compile error, not a wrong program; the rewrite is to
+  declare the function before the class. A construction spilled in a field default (round 2)
+  calls only what a field default could already call, and `CppClassCompileTest`'s `DuoBox`
+  compiles because `bumpSeed` is declared first.
+
 ## Open decisions
 
 ### OD-2. What C++ supplies is taken to leave Kira's objects alone during a call
@@ -318,6 +349,12 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
   receiver, and runs Kira code only through the `Fx` arguments it is given. The classes part
   applies the same contract to the last two, which are C++ code called through a Kira
   signature.
+- **What the contract lets such a callee do (second-class round 2).** Run each `Fx` argument
+  during the call: its `during` (`calleeEffects`) is the union of what they may do, a lambda
+  written there its body's, a function named as a value its body's, any other `Fx` value
+  everything. And read its arguments and its receiver while it runs, after the callbacks: it
+  copies nothing at entry, as a Kira callee does. Round 1 took an extern's and a bodyless
+  prototype's `during` as nothing (externmut, externstr).
 - **The option left for the user.** Take a C++ override or a C++-built `Fx` to do anything.
   Then `Chain::has` (a loop over `loaded` that calls `b->id()`) is refused, and Chain and
   Sender derive `kira::Shared` and hold themselves in `load`, `has` and `send`.
@@ -336,6 +373,24 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
   the enum's 0 unreachable?
 - **Current behaviour kept.** The construction is refused where the value would be a null
   handle or an empty function; the enum case is value-initialized as D38 says.
+
+### OD-5. Decision 4b's "impure" read literally, not as "has hidden writes"
+
+- **What.** 4b: "a full-expression that forms a view of a place must not also mutate that
+  place, or anything that could alias it (any impure call, when the place lies in a mutable
+  class)". `30-second-class.md` 3.2 read "impure" as "has hidden writes" (`HiddenWrites`), so
+  that `t: Int32 = total(this.buf.view())` beside a call that only prints or throws stays
+  allowed. Second-class round 1's verifiers broke that analysis five ways (a `finally` run by a
+  drop, a `MutView` formed inside a callee, an `Fx` nested in an extern argument, an extern's
+  `Fx` arguments, construction order), which is the provenance analysis 4b exists to avoid.
+- **Current behaviour (from round 2).** The literal reading: 3.3's test for a shared place (a
+  field of a mutable class, a `mut` global, anything behind a `Ref` or a handle) is
+  `effect(C) == IMPURE`, and EffectsPass is conservative on each shape round 1 broke. Both are
+  W2.5's; this package writes no view rule. A refusal the literal reading adds is correct, and
+  any test relying on the softer reading is rewritten; none of this package's tests does (its
+  one view fixture, `aViewOfACopiedParameterIsTakenOfTheCopy`, calls only the pure `total`).
+- **The option left for the user.** The softer reading, `hidden(C)` not empty, which 3.2
+  names as a one-line swap. Not implemented.
 
 ## Routed to other packages
 
@@ -356,6 +411,78 @@ with W2.3 9e00cfb merged and `rewire.py` applied (no W2.5: its ViewPass is writt
   the classes part relies on, KI-18 for the range copy it relies on (9e00cfb or later), and
   KI-19 for the CppHoisterTest case its commit B replaces.
 - **W2.5.** KI-13: the classes part is not safe without W2.5's alias rules and ViewPass merged.
+  OD-5: decision 4b read literally (`effect(C) == IMPURE`, EffectsPass conservative on the shapes
+  second-class round 1 broke) is W2.5's to implement; nothing here depends on either reading.
+- **The C backend (no package here).** It prints `new` for ctorwrong2 too, its own
+  argument-order issue: it is not a reference for Kira's left-to-right order, which D33 and
+  W2.5's `rules.exclusivity.order` message are (second-class round 1's verifier, minor).
+
+## Fixed in second-class round 2 (for the record)
+
+Round 1's verdict named four significant issues, each accepted with and without W2.5 1dc7587.
+Each is now fixed with a test of the right result, or refused with a test of the refusal.
+Measured on a trial of this round's final tree with W2.3's newest head `9740456` merged (the
+whole `./gradlew test`: 1131 tests, 0 failures, 0 skipped), and the same probes on an earlier
+state of it with W2.3 `e355c3e` (1130 tests, 0 failures): each probe on g++ 13.2 and zig c++
+0.15 with `-Werror`, and MSVC 14.44 `/fsanitize=address`, with the same output on both trials.
+On this branch alone: 1024 tests, 0 failures, 0 skipped; the oop tests 139 (compile test 4 of
+4 toolchains, none skipped).
+
+- **Construction order (ctorwrong2, ctororder, ctorthis).** `ClassLowering.construction`
+  spilled only when two operands called something impure, so a place or a `const&` parameter
+  was forwarded by reference into `make_shared` and read after an impure sibling. It now ranks
+  every operand as W2.3's call hoister ranks an argument (`CppClassFacts.operandRank`: IMPURE,
+  READS, PURE), and when one is IMPURE and another is not PURE, it copies every operand that
+  is not PURE into a typed temporary in Kira's order: the given values as written, then the
+  skipped middle defaults it fills in (a trailing default is the constructor's default
+  argument, which C++ runs after every argument). The lambda captures `[&]` only when an
+  operand names the body's frame, and `[]` otherwise, which a constructor's default argument
+  also takes (`DuoBox`). IMPURE follows EffectsPass where it recorded an answer, and otherwise
+  takes every call, construction, overloaded operator, assignment, `throw`, `try` and intrinsic
+  but `@_static_assert` to have an effect. ctorwrong2 prints `old` (was `new`), ctororder the
+  label and ctorthis the name (were MSVC ASan heap-use-after-free, and freed heap bytes on g++
+  and zig), with 0 ASan reports. Tests: four `CppClassShapeTest` construction-order cases, and
+  five `CppClassCompileTest` checks, which fail on the old rule (2 of 42 checks on gcc, 5 on
+  clang and MSVC, measured by reverting the rule) and pass on the new one.
+- **`this` under construction or destruction (initcall2, initlam, fincall2).** A method an
+  `initially` or `finally` may run (`CppClassFacts.initializerReach`: what it calls on `this`,
+  on through each override family below the called method) now refuses `this` as a value
+  (`thisValue`) and a lambda that captures `self = shared_from_this()` (`selfCapture`), naming
+  the block and the call that reaches it. The refusal sits where the lowering would spell
+  `shared_from_this()`, so it does not depend on which captures the facts scan counts (initlam's
+  lambda captures only a field). All three probes are refused (they threw std::bad_weak_ptr on
+  g++ and zig; MSVC 0xC0000409). Tests: four refusals (direct, through another method, an
+  escaping lambda, an override a trait default dispatches to) and one method that stays
+  lowered.
+- **A type-parameter receiver (genrecv, genrecv2).** C++ reads `kira::deref(x)` after the
+  arguments, and W2.3 copies only a class- or trait-typed receiver. `Walker.call` now counts a
+  type-parameter receiver as in use after the arguments, so a parameter the arguments may reach
+  is copied at entry (`const T x = xRef_;`), and `paramReceiverRefusal` refuses one in storage
+  an object holds. genrecv prints the name for `callIt<Kid>` (was `other 7`), genrecv2 the name
+  (was std::bad_alloc on g++, MSVC ASan heap-use-after-free), 0 ASan reports. Tests: the copy,
+  no copy where no argument reaches it, the refusal of a field receiver, a local left alone,
+  and a `CppClassCompileTest` check (fails on clang and MSVC without the copy).
+- **What a callee C++ supplies runs during the call (externmut, externstr).** `calleeEffects`
+  gave an `@_extern` and a bodyless prototype nothing. Now its `during` is the union of its
+  `Fx` arguments' effects (everything for an `Fx` value it cannot see into), and so is a
+  virtual or trait call's on top of the Kira overrides (OD-2); such a callee reads its
+  arguments and its receiver after the callbacks, so a parameter it is handed is copied at
+  entry, and storage an object holds is refused (`cppCalleeArgRefusals`,
+  `cppCalleeReceiverRefusal`). externmut is refused as a `mut` argument the call may free (was
+  MSVC ASan heap-use-after-free); externstr prints the label (was freed heap bytes on g++, MSVC
+  ASan heap-use-after-free), 0 ASan reports. Tests: the refusal with a lambda and with an `Fx`
+  value, a harmless callback accepted, the copy at entry, no copy without an `Fx` argument, a
+  field argument refused, a trait receiver refused and a trait receiver parameter copied.
+- **Round 1's `allowed` probe** still prints 6 6 5 12 4 1 12 112 1 on g++, zig and MSVC ASan (0
+  reports): nothing allowed was newly refused.
+- **The killed fixer's partial work.** Kept: the lifetimes half (`suppliedByCpp`, `fxArgs`,
+  `fxArguments`, `cppCalleeArgRefusals`, `paramReceiverRefusal` and the two `Walker.call`
+  uses), reviewed and tested; and `operandRank` with its ranks. Rewritten: `callsImpurely`
+  (it trusts an EffectsPass entry wherever one is recorded, not only at the root). Discarded:
+  `methodThisUses` and `initializerThisReaches`, which never reported anything and missed
+  initlam's field-only capture; the use-site refusal replaces them. Not present in it, added:
+  the construction's use of the ranks, the capture choice, the skipped middle defaults, the
+  receiver of a C++-supplied callee, and every test.
 
 ## Closed by the second-class rule (second-class round 1)
 

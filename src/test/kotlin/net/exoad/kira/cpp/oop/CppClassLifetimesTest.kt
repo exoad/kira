@@ -989,6 +989,268 @@ class CppClassLifetimesTest {
         assertTrue(diagnostics.none { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }, OopTestSupport.render(diagnostics))
     }
 
+    // ---- a type-parameter receiver, read by C++ after the arguments (second-class round 2) ------------
+
+    private val named = """
+        pub trait Named {
+            pub fx greet: (n: Int32) Str;
+        }
+
+        pub class Kid: Named {
+            require pub name: Str
+
+            override pub fx greet: (n: Int32) Str {
+                return name
+            }
+        }
+
+        pub class Holder {
+            pub mut item: Kid = Kid { "short" }
+
+            pub mut fx reset: () Int32 {
+                item = Kid { "other" }
+                return 7
+            }
+        }
+    """.trimIndent()
+
+    @Test
+    fun aTypeParameterReceiverTheArgumentsMayFreeIsCopiedAtEntry() {
+        // genrecv: `x.greet(h.reset())` is kira::deref(x).greet(t0_), x a const T& bound to c.item: C++ reads x
+        // after reset replaced the Kid it named, and ran greet on the new one (genrecv printed `other 7`;
+        // genrecv2, x = c.kids[0], was a heap-use-after-free under MSVC ASan). The copy keeps the Kid passed.
+        // A template's definition is in the header.
+        val (h, _) = both(
+            """
+            $named
+
+            pub fx callIt<T: Named>: (x: T, h: Holder) Str {
+                return x.greet(h.reset())
+            }
+            """
+        )
+        assertContains(h, "(const T& xRef_, const kira::Rc<Holder>& h)\n  {\n      const T x = xRef_;\n")
+    }
+
+    @Test
+    fun aTypeParameterReceiverNoArgumentReachesIsNotCopied() {
+        val (h, s) = both(
+            """
+            $named
+
+            pub fx callIt<T: Named>: (x: T, n: Int32) Str {
+                return x.greet(n)
+            }
+            """
+        )
+        assertLacks(h + s, "xRef_")
+    }
+
+    @Test
+    fun aTypeParameterReceiverAnObjectHoldsIsRefusedWhenTheArgumentsMayReplaceIt() {
+        // The field is the object's, not the body's: no copy at entry reaches it, so the call is refused by name.
+        val messages = unsupported(
+            """
+            $named
+
+            pub class Keep<T: Named> {
+                require pub mut item: T
+
+                pub fx poke: (h: Holder) Str {
+                    return item.greet(h.reset())
+                }
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the call to greet on item, a T an object holds, whose arguments may change or free it") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aTypeParameterReceiverInALocalIsLeftAlone() {
+        val messages = unsupported(
+            """
+            $named
+
+            pub fx callLocal<T: Named>: (x: T, h: Holder) Str {
+                y: T = x
+                return y.greet(h.reset())
+            }
+            """
+        )
+        assertTrue(messages.none { it.contains("greet") }, messages.joinToString("\n"))
+    }
+
+    // ---- a callee C++ supplies runs its Fx arguments during the call (second-class round 2) ------------
+
+    private val externItem = """
+        pub class Item {
+            require pub label: Str
+            pub mut count: Int32 = 0
+        }
+
+        pub class Box {
+            pub mut item: Item = Item { "short" }
+
+            pub mut fx reset: () Void {
+                item = Item { "other" }
+            }
+        }
+
+        pub fx bump: (mut n: Int32, f: Fx<Tuple0, Void>) Void;
+        pub fx measure: (s: Str, f: Fx<Tuple0, Void>) Int32;
+        pub fx plain: (s: Str) Int32;
+    """.trimIndent()
+
+    @Test
+    fun aMutArgumentAnExternsCallbackMayFreeIsRefused() {
+        // externmut: bump runs its callback, then writes n, bound into the Item the callback freed (MSVC ASan
+        // heap-use-after-free). Its during is what its Fx arguments may do (contract 5.4.3), no longer nothing.
+        val messages = unsupported(
+            """
+            $externItem
+
+            pub fx main: () Int32 {
+                h: Box = Box {}
+                c: Box = h
+                bump(mut h.item.count, fx() Void {
+                    c.reset()
+                })
+                return h.item.count
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the mut argument h.item.count, storage an object holds, passed to bump, which may change or free that object") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aMutArgumentAnExternsFxValueMayReachIsRefused() {
+        // An Fx value the analysis cannot see into may do anything: the callee's during is everything.
+        val messages = unsupported(
+            """
+            $externItem
+
+            pub fx apply: (h: Box, f: Fx<Tuple0, Void>) Void {
+                bump(mut h.item.count, f)
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the mut argument h.item.count, storage an object holds, passed to bump") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aMutArgumentAnExternsHarmlessCallbackCannotReachIsAccepted() {
+        val messages = unsupported(
+            """
+            $externItem
+
+            pub fx main: () Int32 {
+                h: Box = Box {}
+                bump(mut h.item.count, fx() Void {
+                })
+                return h.item.count
+            }
+            """
+        )
+        assertTrue(messages.none { it.contains("bump") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aParameterAnExternReadsAfterItsCallbackIsCopiedAtEntry() {
+        // externstr: measure runs its callback, then reads s, a const& bound to c.item.label that the callback
+        // freed (g++ printed freed heap bytes, MSVC ASan heap-use-after-free). A C++ callee copies nothing.
+        val (_, s) = both(
+            """
+            $externItem
+
+            pub fx later: (s: Str, h: Box) Int32 {
+                return measure(s, fx() Void {
+                    h.reset()
+                })
+            }
+            """
+        )
+        assertContains(s, "  std::int32_t later(const kira::Str& sRef_, const kira::Rc<Box>& h)\n  {\n      const kira::Str s = sRef_;\n")
+    }
+
+    @Test
+    fun aParameterAnExternWithoutAnFxArgumentReadsIsNotCopied() {
+        val (_, s) = both(
+            """
+            $externItem
+
+            pub fx direct: (s: Str, h: Box) Int32 {
+                return plain(s)
+            }
+            """
+        )
+        assertLacks(s, "sRef_")
+    }
+
+    @Test
+    fun storageAnObjectHoldsPassedToAnExternWhoseCallbackMayFreeItIsRefused() {
+        // externstr with the argument a field: no copy at entry reaches it.
+        val messages = unsupported(
+            """
+            $externItem
+
+            pub fx later: (c: Box, h: Box) Int32 {
+                return measure(c.item.label, fx() Void {
+                    h.reset()
+                })
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the argument c.item.label, storage an object holds, passed by const& to measure") }, messages.joinToString("\n"))
+    }
+
+    private val runner = """
+        pub trait Runner {
+            pub fx run: (f: Fx<Tuple0, Void>) Int32;
+        }
+
+        pub class Slot {
+            require pub mut r: Runner
+
+            pub mut fx clear: (other: Runner) Void {
+                r = other
+            }
+        }
+    """.trimIndent()
+
+    @Test
+    fun aTraitReceiverAnObjectHoldsThatTheCallbackMayReplaceIsRefused() {
+        // Runner.run may be a C++ override (the chain driver's test double), which runs the callback and then reads
+        // its own object: the callback replaced the slot that was that object's last owner.
+        val messages = unsupported(
+            """
+            $runner
+
+            pub fx go: (s: Slot, spare: Runner) Int32 {
+                return s.r.run(fx() Void {
+                    s.clear(spare)
+                })
+            }
+            """
+        )
+        assertTrue(messages.any { it.startsWith("the call to run on s.r, storage an object holds, whose body C++ may supply") }, messages.joinToString("\n"))
+    }
+
+    @Test
+    fun aTraitReceiverParameterTheCallbackMayFreeIsCopiedAtEntry() {
+        val (_, s) = both(
+            """
+            $runner
+
+            pub fx go: (r: Runner, s: Slot, spare: Runner) Int32 {
+                return r.run(fx() Void {
+                    s.clear(spare)
+                })
+            }
+            """
+        )
+        assertContains(s, "  std::int32_t go(const kira::Rc<Runner>& rRef_, const kira::Rc<Slot>& s, ", "  {\n      const kira::Rc<Runner> r = rRef_;\n")
+    }
+
     // ---- the goldens ------------------------------------------------------------------------------------
 
     @Test
