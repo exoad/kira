@@ -3115,33 +3115,25 @@ Kira uses tuple types to represent variable-length type parameter lists:
 **Tuple Interface:**
 
 ```kira
-pub class Tuple {
+pub trait Tuple<T> {
     pub fx size: () Int32
-    pub fx @get: (index: Int32) Any
 }
 ```
 
 **Concrete Tuple Types:**
 
 ```kira
-pub class Tuple2<A, B>: Tuple {
+pub class Tuple2<A, B>: Tuple<Tuple2<A, B>> {
     require pub first: A
     require pub second: B
 
     override pub fx size: () Int32 {
         return 2
     }
-
-    override pub fx @get: (index: Int32) Any {
-        if index == 0 {
-            return first
-        } else if index == 1 {
-            return second
-        }
-        throw "Index out of bounds"
-    }
 }
 ```
+
+A tuple's elements are its fields, `first`, `second`, `third` and so on up to `ninth`; a tuple has no indexing. Two tuples compare with `==` element by element.
 
 **Usage:**
 
