@@ -381,6 +381,14 @@ class OperatorMemberCollectTest {
         // two disagreeing parents (`T: A, B` here) contributed only `A`'s declaration. A class
         // naming `A` and `B` directly already conflicted; wrapping them in a third trait must not
         // remove the diagnostic (brief step 4, 20-revision 1.3.2: "never first-found").
+        //
+        // Round 4, significant issue #2: `T`'s own trait-level check (below) independently
+        // reports this same disagreement at `T`, regardless of `frontierDeclarers`/`traitAncestors`
+        // -- each of `T`'s two *direct* parents is trivial (neither forks on its own), so that
+        // check alone can never distinguish this fix from a mutant that reverts
+        // `frontierDeclarers` to one candidate per root. Only `C`'s own comparison, which treats
+        // `T` as a single root and must resolve its internal fork, needs the fix; assert the
+        // conflict this test is named for is the one anchored at `C`, not merely present anywhere.
         val program = phasesAAndB {
             snippet(
                 """
@@ -397,7 +405,8 @@ class OperatorMemberCollectTest {
                 """
             )
         }
-        expectDiagnostic(program, "types.member.conflict")
+        val conflicts = program.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(conflicts.any { it.message.startsWith("C inherits") }, render(program))
     }
 
     @Test
@@ -428,6 +437,12 @@ class OperatorMemberCollectTest {
         // `EqBoth` wraps both with no declaration of its own, and `Leaf`'s own override matches
         // only `EqA`. Before the fix, wrapping removed the diagnostic `twoTraitsOfOneOperatorName-
         // WithDifferentSignaturesConflict` (above) pins for the unwrapped shape.
+        //
+        // Round 4, significant issue #2: as above, `EqBoth`'s own trait-level check independently
+        // reports this at `EqBoth` regardless of the fix (neither `EqA` nor `EqB` forks on its
+        // own), so only `Leaf`'s own comparison -- which must resolve `EqBoth`'s internal fork as
+        // a single root -- actually needs `frontierDeclarers` to keep both branches. Assert the
+        // conflict is the one anchored at `Leaf`.
         val program = phasesAAndB {
             snippet(
                 """
@@ -441,6 +456,121 @@ class OperatorMemberCollectTest {
                 }
                 pub class Leaf: EqBoth {
                     override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                }
+                """
+            )
+        }
+        val conflicts = program.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(conflicts.any { it.message.startsWith("Leaf inherits") }, render(program))
+    }
+
+    @Test
+    fun aSuperclassDisagreeingWithOnlyOneForkedTraitBranchConflictsOnlyAtTheClass() {
+        // A case the trait-level check (`traitOverrides`) cannot cover at all: it only ever
+        // compares a trait's parents against each other, never against a class's superclass,
+        // since a trait has none. `Base` agrees with `A`'s branch of `T`'s fork and disagrees only
+        // with `B`'s, so the only diagnostic this specific disagreement can ever produce is `C`'s
+        // own `reportConflictIfAny` call comparing `fromChain` (`Base`) against `fromTraits` (`T`,
+        // as one root). `T` itself still independently reports its own `A` vs `B` disagreement (it
+        // names both directly), but that call never mentions `Base`. If `frontierDeclarers`
+        // regressed to one candidate per root (dropping `B`, since `A` matches `Base` and would be
+        // found first), `C`'s comparison would never see a mismatch, even though `T`'s unrelated
+        // report still exists -- so this asserts the specific diagnostic naming `C`.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait A {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait B {
+                    pub fx m: (x: Int32) Int32 { return x }
+                }
+                pub trait T: A, B {
+                }
+                pub class Base {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub class C: Base, T {
+                }
+                """
+            )
+        }
+        val conflicts = program.diagnostics.filter { it.code == "types.member.conflict" }
+        assertTrue(conflicts.any { it.message.startsWith("C inherits") }, render(program))
+    }
+
+    @Test
+    fun aTraitOverridingTwoDisagreeingParentsConflictsRegardlessOfParentOrder() {
+        // w2-9-1-parse round 4, significant issue #1: `traitOverrides` only ever checked a
+        // trait's own declared method (`m` here) against the *first* parent `traitClosure` finds
+        // (`checkOverride`), and never called `reportConflictIfAny` for `t.methods` at all --
+        // `ownNames` excluded every name `t` redeclares from the `parentNames` loop, so `T: A, B`
+        // declaring `m` itself dropped both `A` and `B` from `types.member.conflict` entirely.
+        // Measured: this snippet gave 0 typer diagnostics before the fix.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait A {
+                    pub fx m: () Int32
+                }
+                pub trait B {
+                    pub fx m: (x: Int32) Int32
+                }
+                pub trait T: A, B {
+                    override pub fx m: () Int32 { return 1 }
+                }
+                pub class C: T {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun aTraitOverridingTwoDisagreeingParentsConflictsWithParentsSwapped() {
+        // Same shape with the parents swapped (`T: B, A`): before the fix, swapping the parent
+        // order changed the result (`types.override.signature` against `B` instead of a
+        // conflict, since `checkOverride` compares only against whichever parent
+        // `traitClosure` visits first) -- the conflict must fire either way.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait A {
+                    pub fx m: () Int32
+                }
+                pub trait B {
+                    pub fx m: (x: Int32) Int32
+                }
+                pub trait T: B, A {
+                    override pub fx m: () Int32 { return 1 }
+                }
+                pub class C: T {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun aTraitOverridingTwoDisagreeingOperatorParentsConflicts() {
+        // The operator form of the two tests above (brief step 4 covers operators equally):
+        // `EqBoth` redeclares `@_op_eq_` itself, matching only `EqA`'s signature. Measured: this
+        // also gave 0 typer diagnostics before the fix.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait EqA {
+                    pub fx @_op_eq_: (other: Int32) Bool;
+                }
+                pub trait EqB {
+                    pub fx @_op_eq_: (other: Str) Bool;
+                }
+                pub trait EqBoth: EqA, EqB {
+                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                }
+                pub class C: EqBoth {
                 }
                 """
             )

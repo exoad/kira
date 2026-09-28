@@ -453,6 +453,9 @@ internal class SignatureResolver(private val program: TypedProgram) {
     }
 
     private fun traitOverrides(t: TraitSymbol) {
+        // `t.parents` are this trait's own roots, exactly as `c.traits` are a class's; used both
+        // below (names `t` redeclares) and in the `parentNames` loop (names it doesn't).
+        val parentRoots = t.parents.map { it to emptyMap<TypeParamSymbol, KType>() }
         for (m in t.methods) {
             m.isVirtual = true
             val inherited = traitClosure(t.parents, emptyMap()).firstNotNullOfOrNull { (pt, sub) ->
@@ -462,14 +465,21 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 m.overrides = inherited.first
                 checkOverride(m, inherited.first, inherited.second, t.name)
             }
+            // Two inherited methods of one name with different signatures are
+            // `types.member.conflict` whether or not `t` redeclares that name (1.3.2), exactly as
+            // `overrides()` checks `c.methods` against `fromTraits`: `checkOverride` above only
+            // ever compares `m` against the *first* parent `traitClosure` finds, so `trait T: A,
+            // B { override pub fx m: () Int32 {..} }` with `A` and `B` disagreeing on `m` must
+            // still conflict even though `T` declares `m` itself (round 4 of this package's bug:
+            // `ownNames` below excluded every name `t` redeclares from the parentNames loop, so
+            // neither loop ever compared `A` and `B` against each other in this case).
+            reportConflictIfAny(t, m.name, m.decl, null, fromTraits(m.name, parentRoots))
         }
         // A trait that names two parents itself inherits their disagreement (1.3.2): `trait T: A,
         // B {}`, with `A` and `B` disagreeing on one name and `T` declaring neither, must not wait
-        // for some later class to surface it. `t.parents` are this trait's own roots, exactly as
-        // `c.traits` are a class's; `fromTraits` already keeps every most-derived declaration a
-        // root's own closure disagrees on.
+        // for some later class to surface it. `fromTraits` already keeps every most-derived
+        // declaration a root's own closure disagrees on.
         val ownNames = t.methods.mapTo(HashSet()) { it.name }
-        val parentRoots = t.parents.map { it to emptyMap<TypeParamSymbol, KType>() }
         val parentNames = traitClosure(t.parents, emptyMap())
             .flatMap { (pt, _) -> pt.methods.map { it.name } }
             .filterTo(LinkedHashSet()) { it != DeclarationCollector.ANONYMOUS && it !in ownNames }
