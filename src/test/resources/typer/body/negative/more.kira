@@ -69,7 +69,7 @@ pub fx more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, k: Kind, p: Pet
     field: Int32 = p.age                   // @error types.member.unknown
     q: Pet = Pet { }                       // @error types.init.missing-required
     r: Point = Point { z = 1 }             // @error types.init.unknown-field
-    view: View<UInt8> = [1, 2]             // @error types.assign.mismatch
+    view: View<UInt8> = [1, 2]             // @error types.assign.mismatch; @error rules.view.local
     shape: Shape = Square { }              // @error types.assign.struct-to-trait
     trace(p)                               // @error types.print.not-showable
     text: Str = "pet=${p}"                 // @error types.interp.not-showable
@@ -127,7 +127,7 @@ pub fx yetMore: (i: Int32, s: Str, xs: List<Int32>, f: Fx<Tuple1<Int32>, Int32>)
     give = give                            // @error types.assign.not-place
     dup: Int32 = 1
     dup: Int32 = 2                         // @error types.local.duplicate
-    v2: View<UInt8> = makeArr()            // @error types.view.temporary
+    v2: View<UInt8> = makeArr()            // @error rules.view.local
     bad: Int32 = i[0]                      // @error types.index.not-indexable
     n: Size = xs.size()(1)                 // @error types.call.not-callable
     len: Size = s.length                   // @error types.member.method-value
@@ -139,7 +139,7 @@ pub fx yetMore: (i: Int32, s: Str, xs: List<Int32>, f: Fx<Tuple1<Int32>, Int32>)
         trace(e)
     }
     r: Int32 = 0..3                        // @error types.range.position
-    v3: View<UInt8> = View<UInt8> { }      // @error types.init.not-constructible
+    v3: View<UInt8> = View<UInt8> { }      // @error types.init.not-constructible; @error rules.view.local
     pt: Point = Point { 1, 2 }             // @error types.init.arity
     pt2: Point = Point { 1, x = 2 }        // @error types.init.duplicate
     y: Int32 = f(x = 1)                    // @error types.call.fn-value-named

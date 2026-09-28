@@ -4,4 +4,6 @@ module app:main  profile=HOSTED ns=main_ imports=[app:ranges, app:checks]
   fn main: () Void  body
 module app:ranges  profile=HOSTED ns=ranges imports=[]
   fn sumTo: (limit: Int32) Int32  body
+diag error rules.visibility.module app/main.kira:12:20  Function 'sumTo' is declared in app:ranges but is not pub, so app:main cannot use it. Mark it `pub`.
+diag error rules.visibility.module app/main.kira:13:18  Function 'parityLabel' is declared in app:checks but is not pub, so app:main cannot use it. Mark it `pub`.
 diag warning types.for.legacy app/ranges.kira:5:5  `for mut i: a..b` includes b and is deprecated (D17); write `for i: T in a..(b + 1)`, whose range excludes its end.
