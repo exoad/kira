@@ -569,7 +569,21 @@ Expression precedence from lowest to highest:
 
 ## Standard Types
 
-Kira employs a nominal type system where types are identified by their declared names rather than structural compatibility. All values in Kira are objects with reference semantics, eliminating the need for explicit boxing operations.
+Kira employs a nominal type system where types are identified by their declared names rather than structural compatibility. All values in Kira are objects, so there is no explicit boxing. Every type is a class, the built-in ones included: `Int32`, `Bool`, `Str` and the containers are classes declared in the standard library, with their methods and their operators (see Operator Overloading).
+
+**Immutable Objects:**
+
+An object is immutable when its class has no `mut` field and no `mut fx` (see Mutable Methods). The implementation may copy an immutable object; copies cannot be told apart. This holds wherever the object goes, including where it is used as a trait-typed value or as `Any`.
+
+**Containers Are Values:**
+
+The containers (`Arr`, `List`, `Map`, `Set`, `Stack`, `Queue`, `Deque`) and `StrBuf` are mutable values. Assigning one copies it, and it changes only through a mutable place: a `mut` variable, a `mut` parameter, or a `mut` field. They are the one kind of mutable value; every other mutable object is shared by reference.
+
+```kira
+a: List<Int32> = List<Int32> { [1, 2] }
+mut b: List<Int32> = a
+b.add(3)  // a is still [1, 2]
+```
 
 ### Primitive Types
 
