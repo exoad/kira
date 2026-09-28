@@ -1822,14 +1822,16 @@ Collections must implement the `Iterable<T>` trait to be used in for loops:
 
 ```kira
 pub trait Iterable<T> {
-    fx iterator: () Iterator<T>
+    pub fx iterator: () Iterator<T>
 }
 
 pub trait Iterator<T> {
-    fx hasNext: () Bool
-    fx next: () T
+    pub fx hasNext: () Bool
+    pub mut fx next: () T
 }
 ```
+
+`for x: T in e`, over anything but a range, calls `e.iterator()`, then `hasNext()` and `next()` until `hasNext()` is false. The built-in containers and the views are `Iterable<T>` through the same trait, and so is any class that implements it. An iterator changes as it advances, so `next` is a `mut fx`, and an iterator is a mutable object.
 
 ### Control Flow Keywords
 
