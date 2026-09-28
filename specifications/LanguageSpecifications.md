@@ -1120,10 +1120,15 @@ y: Bool = 10 != 5    // Inequality
 
 **Type Rules:**
 
--   Operands must have comparable types
--   Reference types compare by reference identity (same object)
--   Value types compare by value equality
--   Returns `Bool` type
+-   `a == b` is `a.@_op_eq_(b)`, and `a < b` is `a.@_op_lt_(b)` (see Operator Overloading); each returns `Bool`
+-   `a != b` is `a.@_op_neq_(b)` when the class declares it, and `!(a == b)` otherwise
+-   A class that declares or inherits no `@_op_eq_` has one supplied:
+    -   an immutable class compares the classes of the two objects, then every field, inherited ones included, each by its own `==`. The answer does not depend on the variables' types: an object never equals one of another class, its parent's included. A field whose type has no `==` makes `==` on the class an error
+    -   a mutable class compares identity: an object equals only itself
+-   A trait-typed value has `==` only when the trait declares one: `trait Shape: Equatable<Shape>`
+-   A built-in has `==` where the standard library declares it: the numbers, `Bool`, `Char` and `Str`, and, element by element, `View`, `MutView`, `Arr`, `List` and the tuples. `Maybe`, `Result`, `Map`, `Set`, `Stack`, `Queue`, `Deque`, `StrBuf`, `Ref`, `Weak` and `Fx` have none
+-   Enums compare their values
+-   `Char` values compare as unsigned code units
 
 ```kira
 // Value comparison
@@ -1131,11 +1136,20 @@ x: Int32 = 10
 y: Int32 = 10
 result: Bool = x == y  // true
 
-// Reference comparison
+// Immutable objects compare their fields
+pub class MyClass { }
 obj1: MyClass = MyClass { }
 obj2: MyClass = MyClass { }
-same: Bool = obj1 == obj2  // false (different objects)
-same: Bool = obj1 == obj1  // true (same object)
+equal: Bool = obj1 == obj2  // true (no field differs)
+
+// Mutable objects compare identity
+pub class Counter {
+    require mut count: Int32
+}
+c1: Counter = Counter { 0 }
+c2: Counter = Counter { 0 }
+same: Bool = c1 == c2  // false (different objects)
+itself: Bool = c1 == c1  // true (same object)
 ```
 
 ### Logical Operators
