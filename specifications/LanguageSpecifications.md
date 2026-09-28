@@ -2591,7 +2591,10 @@ pub class Circle: Shape {
 -   Only single inheritance is permitted
 -   Methods can be overridden in subclasses
 -   Use `override` keyword when overriding methods
--   Final classes cannot be inherited (use `final` modifier)
+-   A class declared `final` (`pub final class Reply { ... }`) cannot be inherited
+-   A mutable class may extend an immutable one; the subclass is mutable, and the parent stays immutable
+-   `copy` on a class that another class extends is an error: it would drop the subclass's fields (see Constructor)
+-   A supplied `==` compares the objects' own classes, so it gives the same answer whatever the variables' types: a `Circle` never equals a `Shape` that is not a `Circle` (see Comparison Operators)
 
 ### Trait Implementation
 
