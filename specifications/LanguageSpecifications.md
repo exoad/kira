@@ -1299,13 +1299,13 @@ result: Str = "hello"
 
 ### Indexing Operator
 
-The bracket operator `[]` accesses elements by index:
+The bracket operator `[]` accesses elements by index. `a[i]` is `a.@_op_get_(i)`, and `a[i] = v` is `a.@_op_set_(i, v)`, resolved on `a`'s class like any method call, so a user class indexes exactly as `List` does:
 
 ```kira
 array: Arr<Int32> = [1, 2, 3, 4, 5]
 element: Int32 = array[0]
 
-map: Map<Str, Int32> = Map<Str, Int32> {}
+mut map: Map<Str, Int32> = Map<Str, Int32> {}
 map["key"] = 42
 value: Int32 = map["key"]
 ```
@@ -1313,8 +1313,15 @@ value: Int32 = map["key"]
 **Index Bounds:**
 
 -   Array indices are zero-based
--   Out-of-bounds access results in runtime error
--   Negative indices are not supported
+-   An index into an `Arr`, a `List`, a `Str` or a view may be any integer type
+-   Out-of-bounds access results in runtime error, and so does a negative index
+-   Reading a missing `Map` key results in runtime error; `map.get(k)` returns a `Maybe` instead
+
+**Writing Through `[]`:**
+
+-   `a[i] = v` needs what `@_op_set_` needs: a mutable place for a container (`mut xs: List<Int32>`); nothing for a `MutView`, whose `@_op_set_` writes the element and never changes the view; and nothing for a mutable object, whose `mut fx` is callable through any reference
+-   A class without `@_op_set_` cannot be written through `[]`: `s[0] = 'x'` on a `Str` is an error
+-   `f(mut xs[i])` passes the element itself for the built-in containers. On a user class it is an error: write `mut t: T = a[i]`, `f(mut t)`, then `a[i] = t`
 
 ### Function Call Operator
 
