@@ -4,3 +4,5 @@ module app:main  profile=HOSTED ns=main_ imports=[app:arrays, app:maps]
   fn main: () Void  body
 module app:maps  profile=HOSTED ns=maps imports=[]
   fn hasAny: (values: Map<Str, Int32>) Bool  body
+diag error rules.visibility.module app/main.kira:8:19  Function 'first' is declared in app:arrays but is not pub, so app:main cannot use it. Mark it `pub`.
+diag error rules.visibility.module app/main.kira:11:21  Function 'hasAny' is declared in app:maps but is not pub, so app:main cannot use it. Mark it `pub`.

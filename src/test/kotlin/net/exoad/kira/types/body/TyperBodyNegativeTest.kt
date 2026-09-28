@@ -223,10 +223,11 @@ class TyperBodyNegativeTest {
             "pub DYN: Arr<Int32> = [1, 2, 3]\npub @_const fx firstOf: (xs: Arr<Int32> = DYN) Int32 {\n    return xs.get(0)\n}\n" +
                 "pub @_const fx addTo: (a: Int32, b: Int32 = 2) Int32 {\n    return a + b\n}\npub FD: Int32 = firstOf()\npub AK: Int32 = addTo(1)",
         )
-        assertEquals(listOf("types.const.not-constant"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        // ConstEligibilityPass (W2.5) also refuses the Arr<Int32> parameter of an @_const function: a std::vector is no literal type.
+        assertEquals(listOf("types.const.not-constant", "rules.const.type"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
         assertTrue(
-            p.diagnostics.single().message.contains("firstOf() is not (the default of 'xs' is DYN ('DYN' is built at run time: Arr<Int32> is no literal type in C++))"),
-            p.diagnostics.single().message,
+            p.diagnostics.first().message.contains("firstOf() is not (the default of 'xs' is DYN ('DYN' is built at run time: Arr<Int32> is no literal type in C++))"),
+            p.diagnostics.first().message,
         )
     }
 

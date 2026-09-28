@@ -181,7 +181,7 @@ class CppDeclFixesTest {
             enum Mode: Int32 { MODE_A = 0 }
             struct Inner { pub v: Int32 = 1 }
             struct Unseen { pub v: Int32 = 2 }
-            fx helper: (v: Int32) Int32 { return v }
+            @_const fx helper: (v: Int32) Int32 { return v }
             fx unseenHelper: (v: Int32) Int32 { return v }
             pub struct S { pub m: Mode = Mode.MODE_A pub n: Int32 = LIMIT pub i: Inner = Inner {} }
             pub fx f: (x: Int32) Int32 { return unseenHelper(x) }
@@ -194,8 +194,8 @@ class CppDeclFixesTest {
         assertContains(
             h,
             "  namespace impl_\n  {\n    inline constexpr std::int32_t LIMIT = 5;\n\n    enum class Mode : std::int32_t\n    {\n        MODE_A = 0,\n    };\n\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      impl_::Mode m = impl_::Mode::MODE_A;\n      std::int32_t n = impl_::LIMIT;\n      impl_::Inner i = impl_::Inner{};\n  };",
-            "  namespace impl_\n  {\n    [[nodiscard]] inline std::int32_t helper(std::int32_t v);\n  }\n  [[nodiscard]] std::int32_t f(std::int32_t x);\n  [[nodiscard]] constexpr std::int32_t c(std::int32_t x);",
-            "  namespace impl_\n  {\n    inline std::int32_t helper(std::int32_t v)\n    {\n        return {}; // body of helper\n    }\n  }\n\n  constexpr std::int32_t c(std::int32_t x)",
+            "  namespace impl_\n  {\n    [[nodiscard]] constexpr std::int32_t helper(std::int32_t v);\n  }\n  [[nodiscard]] std::int32_t f(std::int32_t x);\n  [[nodiscard]] constexpr std::int32_t c(std::int32_t x);",
+            "  namespace impl_\n  {\n    constexpr std::int32_t helper(std::int32_t v)\n    {\n        return {}; // body of helper\n    }\n  }\n\n  constexpr std::int32_t c(std::int32_t x)",
             "  static_assert(<BinaryExpr>, \"limit\");",
         )
         assertTrue(!h.contains("Unseen") && !h.contains("unseenHelper"), "what only the .cxx names stays out of the header:\n$h")
@@ -334,14 +334,14 @@ class CppDeclFixesTest {
         val (emitted, ctx) = emit(
             """
             pub LIMIT: Int32 = 3
-            pub struct Pt { pub x: Int32 = 0 pub mut fx setX: (x: Int32, y: Int32) Void { x = y } }
+            pub struct Pt { pub x: Int32 = 0 pub mut fx setX: (mut x: Int32, y: Int32) Void { x = y } }
             pub fx g: (LIMIT: Int32, other: Int32) Int32 { return LIMIT + other }
             """
         )
         val h = CppWriter.normalize(emitted.header)
         val s = CppWriter.normalize(emitted.source ?: fail("no source"))
-        assertContains(h, "      void setX(std::int32_t x_p, std::int32_t y);", "  [[nodiscard]] std::int32_t g(std::int32_t limit_p, std::int32_t other);")
-        assertContains(s, "  void Pt::setX(std::int32_t x_p, std::int32_t y)", "  std::int32_t g(std::int32_t limit_p, std::int32_t other)")
+        assertContains(h, "      void setX(std::int32_t& x_p, std::int32_t y);", "  [[nodiscard]] std::int32_t g(std::int32_t limit_p, std::int32_t other);")
+        assertContains(s, "  void Pt::setX(std::int32_t& x_p, std::int32_t y)", "  std::int32_t g(std::int32_t limit_p, std::int32_t other)")
         val g = ctx.symbol.members["g"] as FnSymbol
         assertEquals("limit_p", ctx.paramName(g.params[0]))
         assertEquals("other", ctx.paramName(g.params[1]))
@@ -437,18 +437,18 @@ class CppDeclFixesTest {
             """
             pub struct Early { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
             pub struct Queued { pub d: Deque<Later> = Deque<Later> {} }
-            pub struct Viewed { pub v: View<Later> }
             pub struct Later { pub v: Int32 = 0 }
             pub class Node { pub v: Int32 = 0 }
             """,
             usageOf = { CppUsage.NONE },
         )
         // A List or Map value needs only the forward declaration, and its empty default is `xs{}`
-        // (the prvalue form makes libc++ instantiate the temporary's destructor); a Deque, Stack,
-        // Queue or View element must be complete on libc++ and MSVC, so Later moves up.
+        // (the prvalue form makes libc++ instantiate the temporary's destructor); a Deque, Stack or
+        // Queue element must be complete on libc++ and MSVC, so Later moves up. (A View is never a
+        // field: views are second-class, decision 4b.)
         assertContains(
             h,
-            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w{};\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };\n\n  struct Viewed\n  {\n      kira::View<Later> v{};\n  };",
+            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w{};\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };",
         )
     }
 

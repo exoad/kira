@@ -4,7 +4,7 @@
 #include "kira/macro_push.hxx"
 namespace bibo::text
 {
-  [[nodiscard]] kira::Maybe<kira::View<char>> word(kira::View<char> s, kira::View<char> w);
+  [[nodiscard]] kira::Maybe<kira::Size> wordEnd(kira::View<char> s, kira::View<char> w);
   [[nodiscard]] kira::Size trimEnd(kira::View<char> s);
   [[nodiscard]] bool toInt(kira::View<char> s, std::int32_t& out);
   void driveReply(std::int32_t servo, std::int32_t esc, kira::StrBuf<32>& out);

@@ -63,8 +63,80 @@ data class LoopPlan(
     val isLegacy: Boolean,
 )
 
-/** Purity (EffectsPass); an absent entry means [IMPURE]. */
-enum class Effect { PURE, IMPURE }
+/**
+ * Purity (EffectsPass), ordered: what evaluating an expression (or calling a function) does
+ * to its siblings under D33. An absent entry means [IMPURE].
+ *
+ * - [PURE]: no effect, and a value only its own evaluation can change (locals, by-value
+ *   parameters, constants, and what they hold by copy). It may be evaluated in any order
+ *   against any sibling.
+ * - [READS]: no effect, but it observes state a sibling's effect could change: a `mut`
+ *   global or `mut` parameter, a field of a class, the elements of a view, or what a view or
+ *   reference receiver borrows. Two READS siblings need no ordering; a READS beside an
+ *   [IMPURE] sibling does.
+ * - [IMPURE]: an effect: a write outside the writer's own locals, a print, a call of an
+ *   extern, a virtual or an `Fx` value, a magic binding without `pure: true`, or a `throw`.
+ *
+ * The C++ emitter spills the operands of a call or operator into typed temporaries, in
+ * source order, when one of them is IMPURE and another is not PURE (R19). Every non-PURE
+ * operand is copied then, the READS ones included: `add2(G, bump())`, where `bump` writes
+ * `G`, reads `G` first in Kira (D33), and C++ does the same only as `t0 = G; t1 = bump();
+ * add2(t0, t1)`; copying `bump()` alone would run it before `G` is read. PURE says an
+ * evaluation has no effect, not that nothing writes what it reads: a local read beside a
+ * sibling that writes it by name (`sub(x, inc(mut x))`, `pair8(arr[0], fill(arr.view()))`) is
+ * PURE here, and the emitter raises it to READS itself (W2.3's `writtenBy`), so D33 copies it
+ * first. By-value arguments, operator operands and compound targets of an immutable value (a
+ * number, a `Str`, an immutable class: the user's OQ-1, READ FIRST) are all read first that
+ * way. What the emitter cannot copy is ExclusivityPass's (`rules.exclusivity.order`, 40-round3
+ * 3.2): a class receiver a sibling may rebind (C++ holds a raw pointer), a `mut` place a
+ * sibling also writes (a `mut` place is never copied, R19), and, until W2.9.8 lowers Q4, the
+ * receiver of a container or a mutable value beside a write of its place (Q4 reads it when
+ * the call runs; a snapshot would give the answer Q4 rejected).
+ */
+enum class Effect { PURE, READS, IMPURE }
+
+/**
+ * Where the storage a second-class value points into lives (ViewPass, design 30-second-class
+ * 2.3): TypedModel.viewOrigins, keyed by every second-class expression (a `View`, `MutView`,
+ * `CStr` or `Unsafe` value, a place the typer converts to a view, a lambda that captures a
+ * view parameter). The C++ emitter reads it to lower views (30-second-class 3.4) and never
+ * recomputes it.
+ */
+sealed interface ViewOrigin {
+    /** A second-class parameter [param] of the enclosing function or of an enclosing lambda: the caller checked its storage for the whole call. */
+    data class Param(val param: ParamSymbol) : ViewOrigin
+
+    /** A string literal's own text, or a non-`mut` global that is not a `Str` (an `Arr` constant). */
+    data object Static : ViewOrigin
+
+    /**
+     * The storage of the place [place], which the checker keeps from moving while the view
+     * is in use. [within] when the view may point anywhere inside it (a method's result on
+     * its receiver, the object behind a reference) rather than at [place]'s own buffer
+     * (`xs.view()`). [type] is the place's type; [kind] its class (30-second-class 2.3).
+     */
+    data class Stored(
+        val place: Place,
+        val kind: PlaceKind,
+        val within: Boolean,
+        val type: KType?,
+    ) : ViewOrigin
+
+    /** A temporary the full-expression makes, [owner] the expression that owns it (a call result, a construction, an operator, a Str constant). C++ keeps it to the end of the full-expression. */
+    data class Temp(val owner: Expr) : ViewOrigin
+}
+
+/** How far a [ViewOrigin.Stored] place is shared (30-second-class 2.3). */
+enum class PlaceKind {
+    /** Rooted at a local of this body or a by-value parameter through value steps only: nothing else can name it. */
+    PRIVATE,
+
+    /** Rooted at a `mut` global through value steps only. */
+    GLOBAL,
+
+    /** Everything else: a `const&` or `mut` parameter, `this`, or any step through a reference. */
+    SHARED,
+}
 
 /**
  * Every fact the typer establishes, in side tables keyed by AST node **identity**:
@@ -73,8 +145,8 @@ enum class Effect { PURE, IMPURE }
  *
  * Who fills what: phase B (W1.2) fills [typeRefs], [aliasRefs], [declSyms], [refs] for
  * declared names and type names, and [consts] for folded module-level initializers, enum
- * values and defaults. Phase C (W2.1) fills every table but [effects], [fnEffects],
- * [fxEscapes] and [viewEscapes], which the rule passes (W2.5) fill.
+ * values and defaults. Phase C (W2.1) fills every table but [lentPlaces], [effects],
+ * [fnEffects], [fxEscapes] and [viewOrigins], which the rule passes (W2.5) fill.
  */
 class TypedModel {
     /** The type of every expression. */
@@ -102,6 +174,18 @@ class TypedModel {
     /** Assignable locations, keyed by the expression that denotes them. */
     val places: IdentityHashMap<Expr, Place> = IdentityHashMap()
 
+    /**
+     * Lent places (40-round3 R-A; the rules pre-pass `LentPlaces` fills it, read-only): the
+     * result of a stdlib accessor whose C++ binding returns a reference into its receiver
+     * (`xs.get(i)`, `m.unwrap()`, `r.unwrapErr()`: `Rules.ACCESSORS`), on a receiver that is a
+     * place or a view of one, is that place with one step more, exactly as the other spelling
+     * records it (`xs[i]`, `m.value`, `r.error`). So are an index or a field read through such a
+     * result (`xs.view()[0]`, `ks.get(0).child`), which [places] has no receiver for. Never an
+     * assignable place: `mut xs.get(0)` and `xs.get(0) = v` stay refused. Read it through
+     * [readPlace].
+     */
+    val lentPlaces: IdentityHashMap<Expr, Place> = IdentityHashMap()
+
     /** Compile-time values. */
     val consts: IdentityHashMap<Expr, ConstValue> = IdentityHashMap()
     val conversions: IdentityHashMap<TypeCastExpr, ConversionKind> = IdentityHashMap()
@@ -124,10 +208,12 @@ class TypedModel {
     val fxEscapes: IdentityHashMap<ParamSymbol, Boolean> = IdentityHashMap()
 
     /**
-     * Whether a `View`/`MutView` parameter or local escapes (EscapePass); an absent entry
-     * means ESCAPING.
+     * Where each second-class expression points (ViewPass, [ViewOrigin]); also, for a
+     * first-class result of a lending accessor on a second-class receiver (`v.get(0)` on a
+     * view parameter: the receiver's origins with the element step appended, R-A), where
+     * that result's storage lives. Absent for every other first-class expression.
      */
-    val viewEscapes: IdentityHashMap<Symbol, Boolean> = IdentityHashMap()
+    val viewOrigins: IdentityHashMap<Expr, Set<ViewOrigin>> = IdentityHashMap()
 
     fun typeOrNull(e: Expr): KType? = types[e] ?: (e as? Type)?.let { typeRefs[it] }
 
@@ -154,6 +240,14 @@ class TypedModel {
 
     fun place(e: Expr): Place? = places[e]
 
+    /**
+     * Where the storage [e] reads lives, however it is spelled (40-round3 R-A): its lent place
+     * ([lentPlaces]) when it has one, else its assignable place. Every question of where
+     * storage lives (a view's origin, an overlap, a READS rank, a copy at an extern call) asks
+     * this, never the call's syntax; only an assignment or a `mut` argument asks [place].
+     */
+    fun readPlace(e: Expr): Place? = lentPlaces[e] ?: places[e]
+
     fun const(e: Expr): ConstValue? = consts[e]
 
     fun conversion(c: TypeCastExpr): ConversionKind? = conversions[c]
@@ -171,6 +265,6 @@ class TypedModel {
     /** True unless EscapePass proved the parameter does not escape. */
     fun fxEscapes(p: ParamSymbol): Boolean = fxEscapes[p] ?: true
 
-    /** True unless EscapePass proved the view does not escape. */
-    fun viewEscapes(s: Symbol): Boolean = viewEscapes[s] ?: true
+    /** The origins ViewPass recorded for the second-class expression [e]; empty for a first-class one. */
+    fun viewOrigins(e: Expr): Set<ViewOrigin> = viewOrigins[e].orEmpty()
 }

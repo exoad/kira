@@ -92,8 +92,7 @@ pub FIXED: Arr<Int32, 3> = [1, 2, 3]       // @type Arr<Int32, 3>
 pub FN: Size = FIXED.size()                // @type Size call=MAGIC(Arr.size)
 pub F0: Int32 = FIXED.get(0)               // @type Int32 call=MAGIC(Arr.get)
 pub F1: Int32 = FIXED[1]                   // @type Int32
-pub FV: View<Int32> = FIXED.view()         // @type View<Int32> call=MAGIC(Arr.view)
-pub FVN: Size = FV.size()                  // @type Size call=MAGIC(View.size)
+pub FVN: Size = FIXED.view().size()        // @type Size call=MAGIC(View.size); @type View<Int32> call=MAGIC(Arr.view) @ FIXED.view()
 pub DYN: Arr<Int32> = [POS, 2, 3]          // @type Arr<Int32>
 pub mut STATE: List<Int32> = [F0, F1]      // @type List<Int32>
 
@@ -104,7 +103,7 @@ pub struct Bag {
 
 pub BAG: Bag = Bag { n = F0 }              // @type Bag
 @_static_assert(FIXED.size() == 3, "three")
-@_static_assert(FV.size() == FN, "same")
+@_static_assert(FIXED.view().size() == FN, "same")
 
 // A mut global of a run-time type starts from an empty container either way (D49).
 pub mut YS: List<Int32> = List<Int32> { }  // @type List<Int32>
