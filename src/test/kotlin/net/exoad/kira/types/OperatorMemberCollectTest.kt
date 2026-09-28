@@ -2,6 +2,7 @@ package net.exoad.kira.types
 
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
+import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
 import net.exoad.kira.types.TyperTestSupport.expectNoErrors
 import net.exoad.kira.types.TyperTestSupport.phasesAAndB
@@ -576,6 +577,108 @@ class OperatorMemberCollectTest {
             )
         }
         expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun mutMethodMismatchIsAConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 5, significant issue #1: `sameSignature` ignored `isMutMethod`, so
+        // two inherited declarations differing only in `mut fx` compared as "the same" and never
+        // reached `types.member.conflict` -- the class's own diagnostic then depended entirely on
+        // `checkOverride`'s first-found target (`base ?: viaTraits.firstOrNull()`), which flipped
+        // with parent order. Measured: `class C: A, B {}` (bodies in the traits, no override at
+        // all) gave 0 diagnostics in both orders even though one `m` is `mut` and the other is
+        // not. Both orders must now conflict.
+        val bodies = """
+            pub trait A {
+                pub fx m: () Int32 { return 1 }
+            }
+            pub trait B {
+                pub mut fx m: () Int32 { return 2 }
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun mutMethodMismatchOnAMemberOperatorConflictsRegardlessOfParentOrder() {
+        // Same shape as above, for the operator form the brief calls out specifically ("It
+        // matters most for @_op_set_, whose mut-ness 1.3.2 says varies by class").
+        val ops = """
+            pub trait SA {
+                pub fx @_op_set_: (i: Int32, v: Int32) Void { }
+            }
+            pub trait SB {
+                pub mut fx @_op_set_: (i: Int32, v: Int32) Void { }
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$ops\npub class C: SA, SB {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$ops\npub class C: SB, SA {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun typeParameterBoundsMismatchIsAConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 5, significant issue #1: `sameSignature` never compared a method's
+        // own type-parameter bounds, so `A`'s `m<U: X>` and `B`'s `m<U>` (no bound) compared as
+        // "the same" method. Measured: `class C: A, B {}` gave 0 diagnostics in both orders even
+        // though the two `m`s disagree on their bound. Both orders must now conflict.
+        val bounds = """
+            pub trait X {
+            }
+            pub trait A {
+                pub fx m<U: X>: (u: U) U;
+            }
+            pub trait B {
+                pub fx m<U>: (u: U) U;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bounds\npub class C: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun aTraitOverridingAMemberOperatorReplacesItInFlatten() {
+        // w2-9-1-parse round 5, significant issue #2: `SignatureResolver.flatten` must merge a
+        // member operator by name (`m.isFreeOperator`), like any other method -- mutant M7
+        // reverted that one line to `m.isOperator` (always false for a member operator, since
+        // `isOperator` is set on both forms and only `isFreeOperator` tells them apart) and every
+        // one of the suite's 930 tests still passed, because nothing pinned `flatten`'s own
+        // output. With the mutant, `Q`'s closure keeps `P`'s un-overridden `@_op_eq_` *ahead of*
+        // `Q`'s own (appended, never replacing it by name), so `Q.method("_op_eq_")` -- which
+        // reads `flatMethods` first -- silently resolves back to `P`'s declaration.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait P {
+                    pub fx @_op_eq_: (o: Int32) Bool { return false }
+                    pub fx name: () Int32 { return 0 }
+                }
+                pub trait Q: P {
+                    override pub fx @_op_eq_: (o: Int32) Bool { return true }
+                }
+                """
+            )
+        }
+        expectNoErrors(program)
+        val module = assertNotNull(program.module("test:main"))
+        val q = module.members["Q"] as? TraitSymbol ?: error("no trait Q: ${module.members.keys}")
+        val p = module.members["P"] as? TraitSymbol ?: error("no trait P: ${module.members.keys}")
+        val qOwnEq = q.methods.single { it.name == "_op_eq_" }
+        assertTrue(
+            q.flatMethods.count { it.name == "_op_eq_" } == 1,
+            "Q's own @_op_eq_ must replace P's by name in flatten, not sit beside it: ${q.flatMethods.map { it.qualifiedName }}",
+        )
+        assertTrue(
+            q.method("_op_eq_") === qOwnEq,
+            "Q.method(_op_eq_) must resolve to Q's own override, not P.method: ${q.method("_op_eq_")?.qualifiedName}",
+        )
+        assertTrue(q.flatMethods.none { it === p.method("_op_eq_") && it !== qOwnEq })
     }
 
     @Test

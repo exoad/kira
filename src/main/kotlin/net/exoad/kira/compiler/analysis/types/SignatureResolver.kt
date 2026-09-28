@@ -718,15 +718,32 @@ internal class SignatureResolver(private val program: TypedProgram) {
     /**
      * True when [a] (reached under [aSub]) and [b] (reached under [bSub]) declare the same
      * signature once both are read in the inheriting class's own context: same arity, same
-     * parameter types and `mut`-ness in order (own type parameters mapped positionally, as
-     * [checkOverride] does), and the same return type. Used to tell two inherited methods of
-     * one name apart (`types.member.conflict`) from two that happen to agree.
+     * `mut`-ness (`isMutMethod` decides C++ `const`, so a mismatch is a different signature, not
+     * an overload), same parameter types and byRef-ness in order, the same return type, and the
+     * same bounds on the method's own type parameters (own type parameters mapped positionally,
+     * as [checkOverride] does). Used to tell two inherited methods of one name apart
+     * (`types.member.conflict`) from two that happen to agree -- this is where 1.3.2's "never
+     * first-found" rule actually lives: every candidate pair is compared with this, so two
+     * declarations differing only in `mut fx` or in a bound (round 5 of this package's bug: this
+     * function used to ignore both, so `checkOverride`'s first-found target decided the outcome
+     * instead of this order-independent comparison) are correctly seen as a conflict regardless
+     * of which one a caller happens to find first.
      */
     private fun sameSignature(a: FnSymbol, aSub: Map<TypeParamSymbol, KType>, b: FnSymbol, bSub: Map<TypeParamSymbol, KType>): Boolean {
         if (a.typeParams.size != b.typeParams.size || a.params.size != b.params.size) {
             return false
         }
+        if (a.isMutMethod != b.isMutMethod) {
+            return false
+        }
         val ownMap = a.typeParams.zip(b.typeParams).associate { (x, y) -> x to KType.Param(y) }
+        for (i in a.typeParams.indices) {
+            val aBounds = a.typeParams[i].bounds.map { it.substitute(aSub).substitute(ownMap) }.toSet()
+            val bBounds = b.typeParams[i].bounds.map { it.substitute(bSub) }.toSet()
+            if (aBounds != bBounds) {
+                return false
+            }
+        }
         for (i in a.params.indices) {
             val at = a.params[i].type.substitute(aSub).substitute(ownMap)
             val bt = b.params[i].type.substitute(bSub)
