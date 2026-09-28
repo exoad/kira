@@ -799,6 +799,234 @@ class OperatorMemberCollectTest {
     }
 
     @Test
+    fun typeParameterCountMismatchIsAConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 7, significant issue #1: `sameSignature`'s type-parameter *count*
+        // comparison (SignatureResolver.kt:733) has no test at all -- every existing conflict
+        // test compares two methods with the same arity of type parameters. Mutant S1 drops
+        // `a.typeParams.size != b.typeParams.size`, and the suite still passes 937/0: `A`'s
+        // plain `m` and `B`'s `m<U>` (same value parameters) would then fall through to the
+        // bounds loop, which indexes `b.typeParams[i]` up to `a.typeParams.size` -- with `A`
+        // first that reads past the end of `B`'s empty `typeParams` and throws, and with `B`
+        // first it silently drops the conflict (0 bounds either way, so the loop never mismatches
+        // on its own). Both orders must report the conflict, and neither may throw.
+        val bodies = """
+            pub trait A {
+                pub fx m: (x: Int32) Int32;
+            }
+            pub trait B {
+                pub fx m<U>: (x: Int32) Int32;
+            }
+        """.trimIndent()
+        val ab = phasesAAndB { snippet("$bodies\npub class C1: A, B {\n}") }
+        expectDiagnostic(ab, "types.member.conflict")
+        val ba = phasesAAndB { snippet("$bodies\npub class C2: B, A {\n}") }
+        expectDiagnostic(ba, "types.member.conflict")
+    }
+
+    @Test
+    fun aSubstitutedParameterTypeAgreeingWithTheOtherSideIsNoConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 7, significant issue #2: `sameSignature`'s `aSub` substitution on an
+        // ordinary parameter type (SignatureResolver.kt:748) has no test -- the only 'agree' test
+        // (`twoInheritedMethodsOfOneNameAgreeingIsNoConflict`) puts the generic side second (as
+        // `b`, never substituted through `aSub`). Mutant S9 drops `.substitute(aSub)` there, so
+        // `G<T>.m(t: T)`'s parameter stays the unsubstituted type parameter `T` instead of
+        // becoming `Int32`, and a false conflict appears -- but only when `G` is read first
+        // (`aSub` applies to `a`), so both orders are asserted.
+        val bodies = """
+            pub trait G<T> {
+                pub fx m: (t: T) Int32;
+            }
+            pub trait H {
+                pub fx m: (t: Int32) Int32;
+            }
+        """.trimIndent()
+        val gh = phasesAAndB { snippet("$bodies\npub class GH: G<Int32>, H {\n}") }
+        assertFalse(gh.diagnostics.any { it.code == "types.member.conflict" }, render(gh))
+        val hg = phasesAAndB { snippet("$bodies\npub class HG: H, G<Int32> {\n}") }
+        assertFalse(hg.diagnostics.any { it.code == "types.member.conflict" }, render(hg))
+    }
+
+    @Test
+    fun aSubstitutedGenericReturnTypeAgreeingWithTheOtherSideIsNoConflictRegardlessOfParentOrder() {
+        // w2-9-1-parse round 7, significant issue #2: `sameSignature`'s return-type substitutions
+        // (SignatureResolver.kt:754) have no test with a generic return type at all. Mutant S15
+        // drops `.substitute(aSub)` on the return (a false conflict when the generic side is read
+        // first, `a`); mutant S17 drops `.substitute(bSub)` (a false conflict when the generic
+        // side is read second, `b`). `G<T>.m(): T` and `H.m(): Int32` must never conflict once
+        // `G`'s type argument (`Int32`) is substituted in, in either order.
+        val bodies = """
+            pub trait G<T> {
+                pub fx m: () T;
+            }
+            pub trait H {
+                pub fx m: () Int32;
+            }
+        """.trimIndent()
+        val gh = phasesAAndB { snippet("$bodies\npub class GH: G<Int32>, H {\n}") }
+        assertFalse(gh.diagnostics.any { it.code == "types.member.conflict" }, render(gh))
+        val hg = phasesAAndB { snippet("$bodies\npub class HG: H, G<Int32> {\n}") }
+        assertFalse(hg.diagnostics.any { it.code == "types.member.conflict" }, render(hg))
+    }
+
+    @Test
+    fun aGenericSuperclassStillDisagreesWithATraitOnceSubstituted() {
+        // Companion to the two tests above, through a *superclass* rather than two traits (the
+        // verifier's other measured shape): `Base<T>: X<T>` overrides `m` itself, so `C1`'s
+        // `fromChain` finds `Base`'s declaration with its own substitution; it must still be
+        // compared against `Y`'s under `sameSignature`'s substitutions, and must actually
+        // disagree once `T` is substituted to `Str` against `Y`'s `Int32`.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait X<T> {
+                    pub fx m: (t: T) Int32;
+                }
+                pub class Base<T>: X<T> {
+                    override pub fx m: (t: T) Int32 { return 0 }
+                }
+                pub trait Y {
+                    pub fx m: (t: Int32) Int32;
+                }
+                pub class C1: Base<Str>, Y {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun aTraitOverrideMismatchAgainstItsSingleParentIsTypesOverrideSignature() {
+        // w2-9-1-parse round 7, significant issue #3: `traitOverrides`' own `checkOverride` call
+        // (SignatureResolver.kt:466) has no test that isolates it -- mutant T3 deletes the whole
+        // line and the suite still passes 937/0, because `frontierDeclarers`'s ancestor filter
+        // then drops `P` from `TBad`'s own `parentNames` loop too (`TBad` extends `P`, so `P` is
+        // never an unrelated fork), leaving no diagnostic anywhere, not even on `UsesTBad`.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait P {
+                    pub fx m: (x: Int32) Int32;
+                }
+                pub trait TBad: P {
+                    override pub fx m: (x: Str) Int32 { return 1 }
+                }
+                pub class UsesTBad: TBad {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.override.signature")
+    }
+
+    @Test
+    fun aGenericDiamondAcrossTwoRootsStillConflicts() {
+        // w2-9-1-parse round 7, significant issue #4: `fromTraits` keeps one candidate per
+        // (declaration, substitution) -- mutant F6 appends `.distinctBy { it.first }` to line 674
+        // and the suite still passes 937/0, because `X.k` is a *single* trait method symbol
+        // reached twice, through `A` (substituting `T` to `Int32`) and through `B` (substituting
+        // it to `Str`): `it.first` is the same `FnSymbol` both times, so `distinctBy` collapses
+        // them to one candidate and `reportConflictIfAny` never has a second one to compare
+        // against. `A` and `B` disagreeing this way must still refuse `C`.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait X<T> {
+                    pub fx k: (t: T) Int32;
+                }
+                pub trait A: X<Int32> {
+                }
+                pub trait B: X<Str> {
+                }
+                pub class C: A, B {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun aSuperclassChainsOwnTraitStillConflictsWithADirectTrait() {
+        // w2-9-1-parse round 7, significant issue #5 (O3): `overrides`' `traitRoots` includes the
+        // superclass chain's own traits (SignatureResolver.kt:565-566), not just the class's
+        // direct ones -- mutant O3 drops that half of the union and the suite still passes
+        // 937/0. `Base` implements `X` (never overriding `m` itself) and `C` implements `Y`
+        // directly; `C` inherits both and must refuse the disagreement even though `X` only
+        // reaches `C` through `Base`'s chain, never as one of `C`'s own direct traits.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait X {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub class Base: X {
+                }
+                pub trait Y {
+                    pub fx m: () Str { return "y" }
+                }
+                pub class C: Base, Y {
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
+    fun aGenericSuperclassChainTraitAgreesWithADirectTraitOnceSubstituted() {
+        // w2-9-1-parse round 7, significant issue #5 (O4): the substitution `overrides` carries
+        // for a superclass chain's own traits (SignatureResolver.kt:566, the chain's `s`) must
+        // actually be used -- mutant O4 gives those chain roots `emptyMap()` instead, and the
+        // suite still passes 937/0. `Base<T>: X<T>` reaches `C1` with `T` substituted to `Int32`;
+        // with the substitution dropped, `X`'s parameter stays the bare type parameter `T` and a
+        // false conflict appears against `Y`'s already-concrete `Int32`. There must be none.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub trait X<T> {
+                    pub fx m: (t: T) Int32 { return 0 }
+                }
+                pub class Base<T>: X<T> {
+                }
+                pub trait Y {
+                    pub fx m: (t: Int32) Int32 { return 0 }
+                }
+                pub class C1: Base<Int32>, Y {
+                }
+                """
+            )
+        }
+        assertFalse(program.diagnostics.any { it.code == "types.member.conflict" }, render(program))
+    }
+
+    @Test
+    fun aClasssOwnOverrideStillConflictsWithATraitBesideItsSuperclass() {
+        // w2-9-1-parse round 7, significant issue #5 (O8): the per-method loop's own
+        // `reportConflictIfAny` call (SignatureResolver.kt:585) must compare against `base`, not
+        // some name-only lookup -- mutant O8 passes `null` there instead of `base`, and the suite
+        // still passes 937/0. `D` declares its own `m`, matching its superclass `Bs` exactly, but
+        // `Bs` and the trait `Y` disagree; `D`'s own declaration does not resolve which of the two
+        // it means, so the conflict must still fire at `D`, not just silently link to `Bs`.
+        val program = phasesAAndB {
+            snippet(
+                """
+                pub class Bs {
+                    pub fx m: () Int32 { return 1 }
+                }
+                pub trait Y {
+                    pub fx m: () Str { return "y" }
+                }
+                pub class D: Bs, Y {
+                    override pub fx m: () Int32 { return 2 }
+                }
+                """
+            )
+        }
+        expectDiagnostic(program, "types.member.conflict")
+    }
+
+    @Test
     fun finalClassExtendedIsTypesClassFinal() {
         val program = phasesAAndB {
             snippet(
