@@ -5,6 +5,7 @@ import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.PlaceKind
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.ViewOrigin
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.body.BodyTestSupport
@@ -1831,7 +1832,9 @@ class ViewPassTest {
                     })
                 }
                 """,
-                listOf("rules.view.write"),
+                // Round 4's rule M too: GFS is a mut global, and add and clear on it may drop the last Dropper, whose
+                // IMPURE finally may write anything, GFS included, while the binding writes through GFS (not CONFINED).
+                listOf("rules.view.write", "rules.exclusivity.mut", "rules.exclusivity.mut"),
             ),
             "r1-p2f" to Probe(
                 """
@@ -2226,5 +2229,122 @@ class ViewPassTest {
         )
         assertEquals(listOf("rules.view.capture"), view(p), TyperTestSupport.render(p))
         assertTrue(messages(p, "rules.view.capture").single().contains("is passed to 'sink', which keeps it"), messages(p, "rules.view.capture").single())
+    }
+
+    // ---- round 4 (50-round4 2.4, O1 and O2): storage behind a handle that is no place is SHARED --------
+
+    @Test
+    fun storageBehindAReferenceTypedExpressionThatIsNoPlaceIsSharedInBothSpellings() {
+        // w2-5 #0 (round 3, probes a2/a2i, a3b/a3c, mx callref and pickM, tw): a view of storage reached through a call
+        // result of class type was TEMP, so a writer beside it was never checked (gcc printed 515117665 for 16000, MSVC
+        // ASan a heap-use-after-free) while the index spelling was refused. O2: a receiver-less root through a reference
+        // step (pick(h).items) is SHARED, and a lent result on it is a place; O1: the receiver of a view-returning
+        // method that is no place (pick(h)) names the object behind it, a Referent, never TEMP. Every row is refused, in
+        // both spellings, and so is h.itemsView() on a parameter (the a3c control).
+        val p = snippet(
+            """
+            pub class H {
+                pub mut items: List<List<Int32>> = List<List<Int32>> { }
+                pub mut m: Maybe<List<Int32>> = null
+                pub fx itemsView: () View<Int32> {
+                    return items.get(0).view()
+                }
+                pub mut fx wipeThen: (v: View<Int32>) Int32 {
+                    items = List<List<Int32>> { }
+                    return total(v)
+                }
+                pub fx me: () H {
+                    return this
+                }
+                pub mut fx reset: () Int32 {
+                    items = List<List<Int32>> { }
+                    return 0
+                }
+                pub mut fx viaMe: () Int32 {
+                    return sumK(me().items.get(0).view(), reset())
+                }
+                pub mut fx viaMeIdx: () Int32 {
+                    return sumK(me().items[0].view(), reset())
+                }
+                pub mut fx viaThisMe: () Int32 {
+                    return sumK(this.me().items.get(0).view(), reset())
+                }
+            }
+            pub fx total: (v: View<Int32>) Int32 {
+                mut s: Int32 = 0
+                for x: Int32 in v {
+                    s += x
+                }
+                return s
+            }
+            pub fx sumK: (v: View<Int32>, k: Int32) Int32 {
+                return total(v) + k
+            }
+            pub fx wipe: (h: H) Int32 {
+                h.items = List<List<Int32>> { }
+                return 0
+            }
+            pub fx wipeThen: (v: View<Int32>, h: H) Int32 {
+                wipe(h)
+                return total(v)
+            }
+            pub fx pick: (h: H) H {
+                return h
+            }
+            pub fx pickM: (h: H) Maybe<H> {
+                return h
+            }
+            pub fx rows: (h: H) Int32 {
+                a: Int32 = wipeThen(pick(h).items.get(0).view(), h)
+                b: Int32 = wipeThen(pick(h).items[0].view(), h)
+                c: Int32 = wipeThen(pick(h).m.unwrap().view(), h)
+                d: Int32 = wipeThen(pick(h).m.value.view(), h)
+                e: Int32 = h.wipeThen(h.me().items.get(0).view())
+                f: Int32 = h.wipeThen(h.me().items[0].view())
+                g: Int32 = sumK(pick(h).itemsView(), wipe(h))
+                k: Int32 = sumK(h.itemsView(), wipe(h))
+                m: Int32 = sumK(pickM(h).unwrap().items.get(0).view(), wipe(h))
+                n: Int32 = sumK(pickM(h).value.items[0].view(), wipe(h))
+                q: Int32 = wipeThen(pickM(h).unwrap().items.get(0).view(), h)
+                return a + b + c + d + e + f + g + k + m + n + q
+            }
+            """,
+        )
+        assertEquals(List(14) { "rules.view.write" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        // O2 as LentPlaces records it: the call spelling is the index spelling's place, rooted at pick(h).items.
+        val lent = p.model.readPlace(BodyTestSupport.node<Expr>(p, "pick(h).items.get(0)"))
+        val indexed = p.model.readPlace(BodyTestSupport.node<Expr>(p, "pick(h).items[0]"))
+        assertEquals((indexed as Place.Index).container, (lent as Place.Index).container)
+        // O1: the view pick(h).itemsView() forms points into the object behind pick(h).
+        val formed = BodyTestSupport.all<Expr>(p, "pick(h).itemsView()").flatMap { p.model.viewOrigins(it) }
+        assertTrue(formed.any { it is ViewOrigin.Referent }, formed.toString())
+    }
+
+    @Test
+    fun aLentResultOnAValueTemporaryIsStillATemporary() {
+        // O2's other side: mk() returns a struct, so mk().items reaches no handle; a view of it is TEMP and only its own
+        // full-expression names it, which no writer can reach.
+        val p = snippet(
+            """
+            pub struct S {
+                pub items: List<List<Int32>> = List<List<Int32>> { }
+            }
+            pub mut G: Int32 = 0
+            pub fx mk: () S {
+                return S { }
+            }
+            pub fx bump: () Int32 {
+                G += 1
+                return 0
+            }
+            pub fx sumK: (v: View<Int32>, k: Int32) Int32 {
+                return k
+            }
+            pub fx rows: () Int32 {
+                return sumK(mk().items.get(0).view(), bump()) + sumK(mk().items[0].view(), bump())
+            }
+            """,
+        )
+        assertTrue(p.diagnostics.none { it.code.startsWith("rules.view") }, TyperTestSupport.render(p))
     }
 }

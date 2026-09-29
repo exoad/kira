@@ -36,6 +36,12 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
  *    `Field(error)` for `unwrapErr`.
  * 2. Otherwise (a call result, a construction): nothing; the result is the temporary it is.
  *
+ * A receiver-less root (the typer's `Field(null, f)`, a field of a call result or a
+ * construction) aliases nothing only through value steps (`mk().items` of a struct). Through
+ * a reference step it is the object behind a handle, shared storage (50-round4 O2):
+ * `pick(h).items` is a place, the base of `pick(h).items.get(0)`, exactly as the index spelling
+ * `pick(h).items[0]` records it.
+ *
  * An index or a field read through a lent result (`xs.view()[0]`, `ks.get(0).child`,
  * `gll.get(0)[1]`) is a place on the same terms; the typer records none there (or one with no
  * receiver, which aliases nothing).
@@ -49,10 +55,10 @@ internal class LentPlaces : RulePass {
     override val name: String = "lent"
 
     override fun run(program: TypedProgram) {
-        Fill(program.model, TypeFacts(program.builtins)).run(Bodies.of(program))
+        Fill(program.model, TypeFacts(program.builtins), Rules(program)).run(Bodies.of(program))
     }
 
-    private class Fill(val model: TypedModel, val facts: TypeFacts) {
+    private class Fill(val model: TypedModel, val facts: TypeFacts, val r: Rules) {
         fun run(bodies: List<Body>) {
             // Post-order, so an inner lent result is recorded before the access built on it.
             fun visit(n: ASTNode) {
@@ -89,7 +95,7 @@ internal class LentPlaces : RulePass {
             return Place.Field(q, f)
         }
 
-        /** No place, or one rooted at a receiver-less field (a call result's), which aliases nothing. */
+        /** No place, or one rooted at a receiver-less field (a call result's), which a lent receiver may make a real one (`ks.get(0).child` is `ks[0].child`). */
         private fun improvable(p: Place?): Boolean {
             if (p == null) {
                 return true
@@ -123,7 +129,15 @@ internal class LentPlaces : RulePass {
          * lent) place, or, for a view lent from a place (`xs.view()`, `v.from(1)`), that place.
          */
         private fun base(x: Expr): Pair<Place, KType?>? {
-            model.readPlace(x)?.takeUnless { improvable(it) }?.let { return it to model.types[x] }
+            val own = model.readPlace(x)
+            own?.takeUnless { improvable(it) }?.let { return it to model.types[x] }
+            lent(x)?.let { return it }
+            // O2: a receiver-less root through a reference step (`pick(h).items`) is the object behind a handle, shared storage.
+            return own?.takeIf { p -> p.path().any { r.isReferenceStep(it) } }?.let { it to model.types[x] }
+        }
+
+        /** For a view lent from a place (`xs.view()`, `v.from(1)`), that place. */
+        private fun lent(x: Expr): Pair<Place, KType?>? {
             val call = x as? FunctionCallExpr ?: (x as? MemberAccessExpr)?.member as? FunctionCallExpr ?: return null
             val rc = model.calls[call] ?: return null
             if (rc.fn?.foreign !is Foreign.Magic || rc.fn?.name !in Rules.LENDERS) {

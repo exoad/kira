@@ -67,12 +67,77 @@ and `externsPrototypesDispatchInitializersAndMutViewWritesAreImpure`.
 - **F2**: a second-class argument is never a named write (`ViewPass.named`). **F3**: an
   if-expression with a TEMP origin in a branch is `rules.view.position`.
 - Round 2's minors: `Drops` keys its path by the substituted type (PairAB/PairBA); the capture
-  message names an `Fx`-value callee as written; the loop rule counts a node that may run an IMPURE
-  `finally` as a write of every shared place (q7), and a write through another handle of the same
-  class as a write of the iterated field (q6). Each has a test.
+  message names an `Fx`-value callee as written; the loop rule counts a write through another handle
+  of the same class as a write of the iterated field (q6). Each has a test. (Its q7 clause, a node that
+  may run an IMPURE `finally`, went in round 4: the emitter iterates a copy instead.)
 - **Section 4's own four**: CppDeclFixesTest's `helper` is `@_const`, `setX` takes `mut x`;
   TyperBodyCorpusTest allows NamingPass warnings; RulesCorpusTest exempts a golden whose
   `case.yaml` says `pins: spills`. The full suite on this branch: 1059 tests, 0 failures.
+
+**Round 4 (50-round4, COPY BY DEFAULT: the user's choice after round 3). Rules tests 185, full suite
+1070, 0 failures each; `regenerate.sh --check` current.** The lowering copies every
+first-class value unless a whitelisted shape proves the lend safe; this package decides only what
+cannot be copied (views, W4; `mut` places, W7) and answers the one question W2.3's policy asks of a
+callee (CONFINED). Section 6.3's five items:
+
+- **CONFINED** (2.3). `EffectsPass`'s second fixpoint, `Confinement`, fills `TypedModel.fnConfined`,
+  `lambdaConfined` and `defaultConfined` and sets `dropsImpureFinally`; `CallReach.confined(rc, model,
+  receiverType)` answers 2.3's table from them (and `CallReach.construction` a `C { ... }`), and no
+  other file answers it (`SharedPredicatesTest.noOtherFileDefinesWhetherACallMayRunCode`). A body is
+  CONFINED when every node outside its lambdas is a read, a throw, a write of its own storage (its
+  locals, its `mut` parameters, the elements of its `MutView` parameters, a value `mut fx`'s `this`,
+  through value steps), a CONFINED call whose written operands are its own, a call of its own `Fx`
+  parameter (not a `mut` one, which it may have reassigned: `swapRun`), or a CONFINED construction,
+  and nothing may drop the last handle of an object whose `finally` is IMPURE. `RUNS_OPERATORS` and
+  `holdsUserType` moved from EffectsPass into `CallReach`.
+  Tests: `SharedPredicatesTest.confinedOverOneCalleeOfEachKindBothAnswers` (16 callees, both answers
+  where the kind has two), `aConstructionOrADropThatMayRunCodeIsNotConfined`.
+- **Rule M**, `rules.exclusivity.mut` (2.7), moved in from W2.4's `mutArgRefusals`: a `mut` argument
+  or `mut fx` value receiver must be PRIVATE, STABLE, or passed to a CONFINED call with no other
+  written operand that may hold it either way (`Rules.mayHold`, moved from ViewPass as W2.6 did).
+  Tests: `ruleMAcceptsAPrivateOrStableMutPlaceWhateverTheCalleeRuns`,
+  `ruleMAcceptsAGlobalPassedToAConfinedCallAndRefusesItBesideCodeItCannotSee`,
+  `ruleMRefusesW24sExternShapesAndAcceptsAConfinedCallback` (externmut, externarr as a List, a class
+  field and an `Fx` value), `ruleMRefusesTwoMutOperandsOfAConfinedCallWhenOneMayHoldTheOther`.
+- **Deleted**: `rules.exclusivity.alias` (`aliasing`, `Passing`, `passing`), order clause 1
+  (`Role.LIFETIME`, `lifetimeOf`, the lifetime branch of the touch conflict), and `FinallyRuns` with the
+  loop rule's finally clause. The seven tests that asserted them now assert acceptance and, where the
+  copy depends on it, that the callee is not CONFINED (the alias rows of w2-4 #0 included:
+  `theAliasRowsOfW24sVerifierAreAcceptedAndTheirCalleesAreNotConfined`). Kira's value on these
+  programs is W2.3's to run: its policy copies what this package says it may not lend.
+- **O1, O2** (2.4), closing w2-5 #0. O2: `LentPlaces.base` keeps a receiver-less root through a
+  reference step (`pick(h).items`) as the base of a lent result, so `pick(h).items.get(0)` is the place
+  `pick(h).items[0]` records. O1: ViewPass names the storage behind a reference-typed expression that
+  is no place (`pick(h)`, `h.me()`, `me()`, `pickM(h).unwrap()`) as `ViewOrigin.Referent`, shared
+  like a `Stored` place through a handle, never TEMP. Every row of round 3's a2/a2i, a3b/a3c, mx
+  (callref, pickM) and tw is refused in both spellings (14 rows in
+  `ViewPassTest.storageBehindAReferenceTypedExpressionThatIsNoPlaceIsSharedInBothSpellings`; the
+  matrix: 64 of 64 pairs agree, the 4 call rows round 3 accepted are refused). A value temporary
+  (`mk().items` of a struct) stays TEMP (`aLentResultOnAValueTemporaryIsStillATemporary`).
+- **EscapePass reads `opCalls`** (w2-5 minor #1): `Keeper {} + f` hands `f` to `@op_add`'s parameter
+  (`anFxHandedOnAsAnOperatorsOperandEscapesWhenTheOverloadKeepsIt`, probe esc2 now `rules.view.capture`).
+
+Where this branch reads the design differently, each for a reason measured on a probe:
+
+- **STABLE has two more anchors.** 2.7 lists a PRIVATE root, a class `this` and the object behind a
+  PRIVATE handle slot. A `mut` parameter and a value `mut fx`'s `this` are anchors too (`fwd(mut x)`
+  forwarding to a callee that runs hooks): rule M kept that storage still at the caller for the whole
+  call (PRIVATE, STABLE or CONFINED there, and a CONFINED callee's calls are CONFINED), so it moves
+  only through the parameter itself. Without it, every helper that forwards its `mut` parameter to a
+  callee that is not CONFINED is refused. A trait's `this` in a default body is one as well (a class
+  object held for the call, or a value `this` its caller kept still): W2.4's
+  `aStructTakesATraitsDefaultBodyAsItsOwnMember` and CppClassCompileTest's shapes call a `mut fx` on it.
+- **Row 1 of 2.3 reads the declared parameter type.** An `Fx` given for a type parameter
+  (`KEPT.add(f)`, `List<Fx<...>>.add`) can only be kept, not run, by a callee that sees a `T`; only an
+  argument for a parameter declared `Fx` must be a CONFINED lambda literal or named function. The
+  literal reading refused `KEPT.add(f)` on a global (EscapePassTest's fixpoint, ViewPassTest's P5 rows).
+- **An extern handed a CONFINED lambda is CONFINED.** Row 1 applies to every callee, so the extern row
+  asks `mayHoldFx` only of the other arguments and the receiver (W2.4's
+  `aMutArgumentAnExternsHarmlessCallbackCannotReachIsAccepted` keeps its answer).
+- **A stdlib binding that may drop an IMPURE `finally` is not CONFINED** whether or not it is `pure`
+  (the flag is not in the model); only programs with an IMPURE `finally` see it. r1-p2e's
+  `GFS.add(...)`/`GFS.clear()` on a mut global `List<Fx>` whose closures hold a Dropper are refused by
+  rule M now (clear drops the Dropper, whose finally may write `GFS` while `clear` runs on it).
 
 ## Round 3: where this branch reads the design differently, and why
 
@@ -102,35 +167,41 @@ and `externsPrototypesDispatchInitializersAndMutViewWritesAreImpure`.
   (W2.6's CallResolver does, keeping `byRef`); `ViewPassTest.aSecondClassArgumentIsNeverANamedWrite`
   sets `byRef` on the binding as W2.6 does and reruns the passes. The end-to-end test is W2.6's.
 
-## Round 3's sweep of the other three branches
+## Round 4's sweep of the other three branches
 
-Measured in scratch clones, each branch head merged with fe27877 plus this round's rules (W2.3 also
-with the seam's CppHoister hunk, 5.1), full suite:
+Measured in scratch clones (`scratchpad/r4w25/clone-*`): each branch head with this round's diff
+applied (the mayHold hunk W2.6 made the same way resolved to this branch's), full suite:
 
-- **W2.6 (76f9ad2)**: 1173 tests, 11 fail, exactly 40-round3 4.3's CppExternEmitterTest eleven.
-- **W2.4 (4064c26)**: 1195 tests, 9 fail: 4.2's seven, and two loops the checker now refuses first
-  (`CppClassLifetimesTest.aLoopOverAnObjectsListWhoseBodyMayGrowItIsRefused`,
-  `aFieldsDefaultLambdaIsCheckedAsABodyIs`: `for s in b.items { c.grow() }` with `c` another handle,
-  `rules.exclusivity.loop`, round 2's q6). They expect the checker's refusal now, W2.4's staying a
-  backstop tested with the rule passes off, as 4.2 does for the alias case.
-- **W2.3 (9740456)**: 1168 tests, 37 fail: evalorder in three tests (192, 195, 222, 389, 393) plus
-  `noGoldenOperandGroupNeedsASpill` (evalorder's `case.yaml` needs `pins: spills`); 31 CppHoisterTest
-  cases on the shared `hoist:cases` module (98, 102, 253, 257, 273: the five receiver functions move
-  to their own module); `aViewWhereTheRuleAllowsNone...` (rows to rewrite, 4.1); and
-  `aViewOfATemporaryIsFormedInsideTheLambdaThatHoldsItsOwner`, whose `refOwnerSpilled` assertion
-  expects `makeRef()` spilled, which EffectsPass proves PURE (the temporary lives to the end of the
-  full-expression; the lowering is safe). CppExprRowsTest's 37 all pass.
-- Every golden and resource: refused only at evalorder's five lines; the negative fixture
-  `typer/body/negative/captures.kira` keeps its 91 `rules.view.type` and 129 `rules.const.type`.
-- Earlier rounds' probes (156 projects): no line refused before is accepted now except F1's and F2's
-  own (evalorder 143, 231, 233, 236, 259; the hoister cases 245, 362, 367, 373; views 107,
-  optimistic 29; r2v23 m9 24-26, the qualified-global twins R-E makes W2.3 copy; r2v6 a5, a6, c1,
-  the `mut Unsafe<T>` calls W2.6 lowers). Newly refused: R-A's (c2, c2b, c2c, c2d, c4, c4b, q10-q14,
-  r3d q1, q2), q6, q7, and r2v6 b1, b1c, b1u, b1k by `rules.exclusivity.alias`, whose index spelling
-  (`gstrs[0]` beside a lambda that replaces `gstrs`) the rule always refused. b1k is 40-round3 6.2's
-  "Kira-function control, still 82": with W2.4's entry snapshot the alias rule over-refuses a Kira
-  callee handed a direct lambda; narrowing it to C++-supplied callees is a round-4 question, not done
-  here.
+- **W2.3 (09747ae)**: 1190 tests, 0 failures.
+- **W2.6 (d190ada)**: 1191 tests, 1 failure:
+  `CppExternEmitterTest.aByReferenceArgumentThatIsAPlaceIsCopiedWhenTheCallMayWriteIt` asserts the
+  deleted `rules.exclusivity.alias` on the direct lambda (50-round4 6.5 flips it to accepted and
+  copied: W2.6's).
+- **W2.4 (965b682)**: 1220 tests, 5 failures, all `CppClassLifetimesTest`, all W2.4's to delete or move
+  (6.6): four `mutArgRefusals` shapes (externarr as
+  `aMutArgumentAnExternMayFreeThroughAnFxAnArgumentHoldsIsRefused`, externmut, the `Fx` value,
+  `aDispatchedCallGivenAHeldFxMayRunAnything`) now refused first by rule M at the same line, and
+  `aTraitReceiverAnObjectHoldsThatTheCallbackMayReplaceIsRefused`, which expects the deleted alias
+  rule.
+- **The round-3 trial (c10000b)**: 1464 tests, 6 failures: exactly the five W2.4 ones and the W2.6 one.
+  CppClassCompileTest and CppClassShapeTest pass (a trait's `this` is STABLE).
+
+Probes (`r4w25/sweep.py`, 580 projects: w25r3ver/p's 236, the W2.4 verifier's 231, w26r3's 30,
+sc3v23's 79, r4d's 4), emitted with the round-3 trial's CLI and with the trial plus this round's rules,
+every error line compared:
+
+- **Newly refused**: 27 `rules.view.write` lines, all w2-5 #0's family (a1, a1b, a2, a3, a3b, a5,
+  mx and mxa's callref and pickM call rows, tw's two `me()` rows); 2 `rules.view.capture` (esc2, esc3:
+  EscapePass reads `opCalls`); 2 `rules.exclusivity.mut` that nothing refused before (r1-p2e's
+  `GFS.add`, `GFS.clear`: a Dropper's IMPURE `finally`). 61 more `rules.exclusivity.mut` lines are W2.4's
+  `mutArgRefusals` refusals moved to rule M at the same line (the rc_*_b_* matrix, s_mutparam), and 3
+  W2.4 `cpp.unsupported` lines surface where a deleted typer refusal used to stop first (tw1 44, q7 24
+  and 37: W2.4's lifetimes, deleted by W2.4 in this round).
+- **Newly accepted**: 30 `rules.exclusivity.alias` lines (sc3v23 n2, rp1, rp1f2, tw1, al, b1ki, r2v6
+  a1, b1, b1c, b1k, b1u, b9b, b9c, q5), 1 order clause-1 line (f1r 70, `k.plus(rebind(mut k))`) and 2
+  loop lines (q7, the `finally` clause). Each is a copy W2.3's policy must make; r2v6 b1k is 40-round3
+  6.2's Kira-function control again.
+- r4d p1, p3, p4, p5 are accepted by both, as the design expects (their fixes are W2.3's copies).
 
 ## R-C's limit: a callback C++ stored earlier
 
@@ -175,19 +246,19 @@ charged to `sc`, so `sc.k.plus(resetAlias(sc))` types clean); an `@op_*` overloa
 sibling write hidden behind a user `a + b`); and a lambda reached through a field, a global or an
 `Fx` parameter (`for x in LOG { h.f() }` with `h.f` adding to `LOG`). Round 3 closed the loop
 rule's share of the first shape for two handles of one class (`g.items` written while `h.items` is
-iterated, q6) and its miss of a `finally` a drop runs (q7). R-C's `mayRunAnything` would close the
-third for the loop rule, at the cost of refusing every loop over shared storage whose body calls an
-extern or a trait method with an object argument; W2.4's emitter refuses such loops today.
+iterated, q6). Round 4 deleted the `finally` clause (q7). The loop rule treats a receiver-less root
+through a handle (`for x in pick(h).items { g.reset() }`) as a temporary, where it refuses the same
+body over `h.items`; clause 3 likewise sees no write of `pick(h).items` through another handle.
 
 **Where.** `HiddenWrites.of` / `lambdasRun` in `RuleSupport.kt`.
 
-**Why it is safe to defer.** None of the three affects a view: the view rule reads EffectsPass,
-and each is IMPURE there (a write through a local copy of a class reference is not a local
-write, an operator overload has its body's effect, a call through a field, a global or an `Fx`
-value is `FN_VALUE`). What remains is D33/D37's exclusivity of non-view places, where W2.3's
-hoist copies a class-handle receiver into a typed temporary beside an IMPURE sibling
-(`resetAlias` is IMPURE); that dependency has no pin across the two packages and is recorded
-unchanged from rounds 3-5.
+**Why it is safe to defer.** Under copy by default none of these is a memory error: the view rule
+reads EffectsPass, where each is IMPURE (a write through a local copy of a class reference is not a
+local write, an operator overload has its body's effect, a call through a field, a global or an `Fx`
+value is `FN_VALUE`); a loop whose body is IMPURE iterates a copy unless its range is PRIVATE (W6);
+and a receiver handle is copied in Kira's order (50-round4 1.6). What they miss is D37 as a language
+rule: a loop that changes what it iterates out of sight iterates the copy, which is Kira's value
+semantics, and clause 3 goes when W2.9.8 lowers Q4.
 
 ## `rules.view.store` fires only beside a typer mismatch today
 
@@ -222,6 +293,12 @@ the mismatch goes away and the store refusal is the one that stays.
   reason; a view parameter (`sink.write(buf)` with `buf: View<UInt8>`) or a local's view passes.
 - `f(xs.view(), mut xs)` and `sb.add(sb.view())` are refused by both passes:
   `rules.view.write` at the view, `rules.exclusivity.argument`/`receiver` at the operand.
+- Rule M (round 4): a `mut` argument that is a global, an element of a container that is not the
+  caller's own, or storage behind a second handle (`h.item.count`) is refused when the callee is not
+  CONFINED: it runs an `Fx` it was not handed as a CONFINED literal, a dispatched method, an extern
+  given what may hold an `Fx`, a hook from a global list, or a drop that may run an IMPURE
+  `finally`. `bumpAfter(mut G)` with `bumpAfter` running hooks is refused, `inc(mut G)` is not. The
+  remedy is the message's: copy into a local, pass it `mut`, store it back.
 
 ## Conservative approximations in EffectsPass
 
@@ -232,17 +309,29 @@ an `Fx`, a stdlib handle and a generic superclass's fields as any class (only wh
 has an IMPURE `finally`). (2) Any `initially` in a class's ancestry makes its construction
 IMPURE. (3) A pure binding that compares or hashes elements (`contains`, `Map.get`,
 `containsKey`, `containsValue`) over a user class, trait or type parameter is IMPURE, and so is
-a pure binding given an `Fx`. (4) Round 3: in a loop over a shared place, any node that may run an
-IMPURE `finally` (it may drop such a handle, or calls what may, including a call R-C says may run
-anything) is a write of the iterated place, whatever that `finally` writes (`FinallyRuns` in
-ExclusivityPass.kt); and a write through any handle of a class is a write of the same field reached
-through any other handle of it (`mayBeSame`).
+a pure binding given an `Fx`. (4) A write through any handle of a class is, for the loop rule, a
+write of the same field reached through any other handle of it (`mayBeSame`). (5) Round 4's
+CONFINED: a stdlib binding whose receiver or argument may drop the last handle of an object with an
+IMPURE `finally` is not CONFINED, pure or not (`List.add` included), and neither is any method of a
+system handle (`Thread`, `Mutex`, `Suite`, a socket, `Any`, `Exception`); a Kira body is not when it
+writes through any handle, its own locals' included (`h.n = 1` with `h` a local).
 
 **Where.** `Effects` and `Drops` in `EffectsPass.kt`.
 
-**Why it is safe to defer.** Each over-approximates, so it can only refuse a view that is
-safe, or make the C++ emitter spill an operand it need not (D33), never accept a view that is
-not safe. No golden or example has a class with an IMPURE `finally`.
+**Why it is safe to defer.** Each over-approximates, so it can only refuse a view or a `mut`
+argument that is safe, or make the C++ emitter spill or copy an operand it need not (D33, W3), never
+accept one that is not safe. No golden or example has a class with an IMPURE `finally`.
+
+## `return x as Int32 - 1` ends the return at `as` (round 3's minor, not this package's)
+
+**What.** The parser ends the expression after `as T`: `return GL.size() as Int32 - 1` is emitted as
+`return static_cast<std::int32_t>(GL.size()); static_cast<void>(-1);`, a silent wrong value (round 3's
+e1 row 7: 2 for Kira's 1). ReturnPathPass does not flag the unreachable statement after the return.
+
+**Where.** The frontend parser (W2.9.1's); `ReturnPathPass` could report a statement after a `return`.
+
+**Why it is safe to defer.** It is the parser's (W2.9.1), not a rule's; a warning here would only
+surface it. Unmeasured on this branch: whether `(x as Int32) - 1` parses as meant.
 
 ## Round 1's minor findings
 

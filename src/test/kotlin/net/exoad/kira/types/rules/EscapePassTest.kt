@@ -220,4 +220,41 @@ class EscapePassTest {
         assertFalse(cls(p, "Pt").thisEscapes, "a struct's this is a value")
         assertFalse(cls(p, "Tag").thisEscapes, "a trait's default body marks no implementor: W2.4 lowers the trait, not Tag")
     }
+
+    @Test
+    fun anFxHandedOnAsAnOperatorsOperandEscapesWhenTheOverloadKeepsIt() {
+        // w2-5 minor #1 (round 3, probe esc2): `Keeper { } + f` is `Keeper { }.@op_add(f)` (DECISIONS 2), and @op_add
+        // stores f in a global, so viaOp's f escapes; the lambda grab hands it, which captures a view, is then
+        // rules.view.capture. passOn hands its g to an overload that only calls it: no escape.
+        val p = snippet(
+            """
+            mut GF: Maybe<Fx<Tuple0, Int32>> = null
+            pub struct Keeper {
+                pub k: Int32 = 0
+                pub fx @op_add: (f: Fx<Tuple0, Int32>) Int32 {
+                    GF = f
+                    return 0
+                }
+            }
+            pub struct Caller {
+                pub k: Int32 = 0
+                pub fx @op_add: (f: Fx<Tuple0, Int32>) Int32 {
+                    return f()
+                }
+            }
+            pub fx viaOp: (f: Fx<Tuple0, Int32>) Int32 {
+                return Keeper { } + f
+            }
+            pub fx passOn: (g: Fx<Tuple0, Int32>) Int32 {
+                return Caller { } + g
+            }
+            pub fx grab: (v: View<Int32>) Int32 {
+                return viaOp(fx() Int32 { return v[0] })
+            }
+            """,
+        )
+        assertTrue(p.model.fxEscapes(fn(p, "viaOp").params[0]), "viaOp.f goes to an overload that stores it")
+        assertFalse(p.model.fxEscapes(fn(p, "passOn").params[0]), "passOn.g goes to an overload that only calls it")
+        assertTrue(p.diagnostics.map { it.code } == listOf("rules.view.capture"), net.exoad.kira.types.TyperTestSupport.render(p))
+    }
 }

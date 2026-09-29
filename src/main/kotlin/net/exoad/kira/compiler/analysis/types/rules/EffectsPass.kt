@@ -49,7 +49,9 @@ import java.util.WeakHashMap
  * `TypedModel.fnEffects` for every function with a body (and every stdlib binding marked
  * `pure: true`) and `TypedModel.effects` for every expression of every body. ViewPass reads
  * it too ([of]): decision 4b refuses any IMPURE call in the span of a view of a shared or
- * global place, so anything this pass cannot prove pure is IMPURE.
+ * global place, so anything this pass cannot prove pure is IMPURE. Its second fixpoint,
+ * [Confinement], fills the CONFINED tables (`fnConfined`, `lambdaConfined`, `defaultConfined`)
+ * that `CallReach.confined` reads (50-round4 2.3).
  *
  * The answer is three-valued ([Effect], ordered PURE < READS < IMPURE), because D33 asks two
  * things of an operand: does evaluating it change anything a sibling could see, and does a
@@ -149,6 +151,7 @@ internal class EffectsPass : RulePass {
             }
         }
         synchronized(finals) { finals[program] = drops.impure }
+        Confinement(r, effects, drops).solve(bodies)
         val exprs = ExprEffects(effects)
         for (b in bodies) {
             b.roots.forEach { root -> AstTree.walk(root) { n -> if (n is Expr && n !is Type) exprs.of(n) } }
@@ -380,25 +383,14 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         if (CallReach.givenFx(rc, model)) {
             return Effect.IMPURE
         }
-        if ((fn.foreign as? Foreign.Magic)?.key in RUNS_OPERATORS) {
+        if ((fn.foreign as? Foreign.Magic)?.key in CallReach.RUNS_OPERATORS) {
             val recvType = rc.receiver?.let { model.types[it] } as? KType.Nominal
             val typeArgs = rc.substitution.values + (recvType?.typeArgs() ?: emptyList())
-            if (typeArgs.any { holdsUserType(it, HashSet()) }) {
+            if (typeArgs.any { CallReach.holdsUserType(it) }) {
                 return Effect.IMPURE
             }
         }
         return Effect.PURE
-    }
-
-    /** A user class, a trait or a type parameter anywhere in [t]: a binding over it may run its operators. */
-    private fun holdsUserType(t: KType, seen: MutableSet<KType>): Boolean = when (t) {
-        is KType.Param, KType.Error -> true
-        is KType.Nominal -> when (val sym = t.sym) {
-            is TraitSymbol -> true
-            is ClassSymbol -> sym.kind != ClassKind.MAGIC || (seen.add(t) && t.typeArgs().any { holdsUserType(it, seen) })
-            else -> false
-        }
-        else -> false
     }
 
     /**
@@ -502,10 +494,6 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         }
     }
 
-    private companion object {
-        /** The pure bindings that compare or hash their elements (`==`, a hash): over a user type they run its operators. */
-        val RUNS_OPERATORS = setOf("Arr.contains", "List.contains", "Set.contains", "Map.get", "Map.containsKey", "Map.containsValue")
-    }
 }
 
 /**
@@ -617,5 +605,197 @@ internal class Drops(private val r: Rules, assumeEveryFinally: Boolean) {
             }
         }
         return out
+    }
+}
+
+/**
+ * CONFINED (50-round4 2.3), EffectsPass's second fixpoint: which bodies, run, write nothing
+ * their caller can see but through their own `mut` operands, and run no code the checker does
+ * not see. It fills `TypedModel.fnConfined` (every function with a body), `lambdaConfined`
+ * (every lambda literal's body) and `defaultConfined` (every field default), and sets
+ * `dropsImpureFinally`; `CallReach.confined` reads them, and nothing else answers the question.
+ *
+ * A body is CONFINED when every node outside its lambdas (which run only where they are handed
+ * over, and are charged there) is one of: a read (PURE or READS), a throw, a write whose place
+ * is its own ([own]: rooted at one of its locals, one of its `mut` parameters, the elements of
+ * one of its `MutView` parameters, or, in a value class's `mut fx`, its `this`, through value
+ * steps only), a CONFINED call ([CallReach.confined]) whose written operands are its own, a
+ * call of one of its own `Fx` parameters (the call site that handed the `Fx` in charged it),
+ * or a CONFINED construction; and nothing in it, a by-value parameter included, may drop the
+ * last handle of an object whose `finally` is IMPURE. The computation starts from "every body
+ * is CONFINED" and lowers until nothing changes, so mutually recursive functions that write
+ * only their own storage stay CONFINED.
+ */
+internal class Confinement(private val r: Rules, private val effects: Effects, private val drops: Drops) {
+    private val model = r.model
+    private val fns = IdentityHashMap<FnSymbol, Boolean>()
+    private val lambdas = IdentityHashMap<LambdaExpr, Boolean>()
+    private val defaults = IdentityHashMap<FieldSymbol, Boolean>()
+
+    /**
+     * A body being judged: the [body] it is written in (a lambda's is the enclosing one), its own
+     * [params], its own [locals] (null: every local, as in a function body outside its
+     * lambdas), whether its value `this` is its own ([valueThis]: a value class's `mut fx`), and
+     * the type of an implicit `this` ([selfType]).
+     */
+    private inner class Frame(val body: Body, val params: Set<ParamSymbol>, val locals: Set<LocalSymbol>?, val valueThis: Boolean, val selfType: KType?) {
+        val known = CallReach.Known({ fns[it] == true }, { lambdas[it] == true }, { defaults[it] == true }, { drops.mayDrop(it) }, params.filterTo(HashSet()) { it.type is KType.Fn && !it.byRef })
+    }
+
+    fun solve(bodies: List<Body>) {
+        val fnFrames = bodies.filter { it.fn != null }.map { b -> b to functionFrame(b) }
+        fnFrames.forEach { (b, _) -> fns[b.fn!!] = true }
+        val lambdaFrames = mutableListOf<Pair<LambdaExpr, Frame>>()
+        for (b in bodies) {
+            AstScan.walk(b.roots) { n, _ ->
+                if (n is LambdaExpr) {
+                    lambdas[n] = true
+                    lambdaFrames.add(n to lambdaFrame(b, n))
+                }
+            }
+        }
+        val defaultBodies = IdentityHashMap<ASTNode, Body>()
+        bodies.filter { it.kind == BodyKind.FIELD_DEFAULT }.forEach { b -> b.roots.singleOrNull()?.let { defaultBodies[it] = b } }
+        val defaultFrames = mutableListOf<Triple<FieldSymbol, Expr, Frame>>()
+        for (m in r.program.modules) {
+            for (s in m.declarations) {
+                for (f in (s as? ClassSymbol)?.fields.orEmpty()) {
+                    val d = f.default ?: continue
+                    val b = defaultBodies[d] ?: continue
+                    defaults[f] = true
+                    defaultFrames.add(Triple(f, d, Frame(b, emptySet(), emptySet(), false, null)))
+                }
+            }
+        }
+        var changed = true
+        while (changed) {
+            changed = false
+            for ((b, f) in fnFrames) {
+                val fn = b.fn!!
+                if (fns[fn] == true && (fn.params.any { !it.byRef && drops.mayDrop(it.type) } || !runs(b.roots, f))) {
+                    fns[fn] = false
+                    changed = true
+                }
+            }
+            for ((l, f) in lambdaFrames) {
+                if (lambdas[l] == true && !runs(l.def.body.orEmpty(), f)) {
+                    lambdas[l] = false
+                    changed = true
+                }
+            }
+            for ((field, d, f) in defaultFrames) {
+                if (defaults[field] == true && !runs(listOf(d), f)) {
+                    defaults[field] = false
+                    changed = true
+                }
+            }
+        }
+        model.fnConfined.putAll(fns)
+        model.lambdaConfined.putAll(lambdas)
+        model.defaultConfined.putAll(defaults)
+        model.dropsImpureFinally = { drops.mayDrop(it) }
+    }
+
+    private fun functionFrame(b: Body): Frame {
+        val fn = b.fn!!
+        return Frame(b, fn.params.toSet(), null, b.isStructOwner && fn.isMutMethod, (b.owner as? ClassSymbol)?.selfType)
+    }
+
+    /** A lambda's own parameters and the locals declared in its body; its `this` is a capture, never its own. */
+    private fun lambdaFrame(b: Body, l: LambdaExpr): Frame {
+        val params = l.def.parameters.mapNotNullTo(HashSet()) { model.declSyms[it] as? ParamSymbol }
+        val locals = HashSet<LocalSymbol>()
+        AstScan.walk(l.def.body.orEmpty()) { n, _ ->
+            (model.declSyms[n] as? LocalSymbol)?.let { locals.add(it) }
+            ((n as? ForIterationStatement)?.let { model.loops[it]?.variable } as? LocalSymbol)?.let { locals.add(it) }
+        }
+        return Frame(b, params, locals, false, (b.owner as? ClassSymbol)?.selfType)
+    }
+
+    /** Every node of [roots] outside their lambdas keeps [f] CONFINED. */
+    private fun runs(roots: List<ASTNode>, f: Frame): Boolean {
+        var ok = true
+        AstScan.walk(roots) { n, inner ->
+            if (ok && inner.isEmpty() && !node(n, f)) {
+                ok = false
+            }
+        }
+        return ok
+    }
+
+    private fun node(n: ASTNode, f: Frame): Boolean {
+        if (effects.dropsHere(n)) {
+            return false
+        }
+        val e = n as? Expr ?: return true
+        model.opCalls[e]?.let { rc -> if (!call(rc, null, f)) return false }
+        return when (e) {
+            is FunctionCallExpr -> {
+                val rc = model.calls[e] ?: return false
+                call(rc, e.name, f) && writesOwn(e, f)
+            }
+            is IntrinsicExpr -> e.intrinsicKey.name == "_static_assert"
+            is AssignmentExpr -> own(model.places[e.target], f)
+            is CompoundAssignmentExpr -> own(model.places[e.left], f)
+            is PlaceAssignmentExpr -> own(model.places[e.target], f)
+            is ObjectInitExpr -> model.inits[e]?.let { ri ->
+                CallReach.construction(ri.cls, ri.fields.filterIsInstance<FieldInit.Given>().mapTo(HashSet()) { it.field }, f.known)
+            } ?: false
+            else -> true
+        }
+    }
+
+    private fun call(rc: ResolvedCall, callee: Expr?, f: Frame): Boolean {
+        val recvType = if (rc.implicitThis) f.selfType else rc.receiver?.let { model.types[it] }
+        return CallReach.confined(rc, model, recvType, f.known, callee)
+    }
+
+    /** Every operand the call writes is the body's own; a class `mut fx` with a body writes what that body writes, which its own CONFINED answer judged. */
+    private fun writesOwn(e: FunctionCallExpr, f: Frame): Boolean {
+        for (op in r.callOperands(f.body, e)) {
+            if (!op.writes) {
+                continue
+            }
+            if (r.writesObjectOnly(f.body, e, op)) {
+                if (model.calls[e]?.let { r.hasAnalysedBody(it) } == true) {
+                    continue
+                }
+                return false
+            }
+            if (!own(op.place, f)) {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** A place of the body's own storage: rooted at its own local, `mut` parameter, `MutView` parameter's elements or value `this`, through value steps only. */
+    private fun own(p: Place?, f: Frame): Boolean {
+        p ?: return false
+        var steps = p.path()
+        when (val root = p.root()) {
+            is Place.Local -> if (f.locals != null && root.sym !in f.locals) {
+                return false
+            }
+            is Place.Param -> {
+                if (root.sym !in f.params) {
+                    return false
+                }
+                if (!root.sym.byRef) {
+                    // A MutView parameter's elements: the storage its caller lent, which that call site names as written.
+                    if (!r.facts.isMutView(root.sym.type)) {
+                        return false
+                    }
+                    if (steps.firstOrNull() is PathStep.IndexStep) {
+                        steps = steps.drop(1)
+                    }
+                }
+            }
+            is Place.This -> if (!f.valueThis) {
+                return false
+            }
+            else -> return false
+        }
+        return steps.none { r.isReferenceStep(it) }
     }
 }
