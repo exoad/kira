@@ -1825,4 +1825,192 @@ class ExclusivityPassTest {
         expectExactly(ctl, "rules.exclusivity.mut")
         assertEquals(listOf(false), confinedCalls(ctl, "addRun"))
     }
+
+    // ---- round 6 (w2-5 round-5b #1): a construction that runs an Fx it is given (scratchpad w25r5c x/t1, x/t2, gen2) ----
+
+    @Test
+    fun aThreadConstructionRunsItsBodySoItsCallerIsNotConfinedAndRuleMRefuses() {
+        // x/t1 as the verifier wrote it: startAndJoin constructs a Thread, which starts its body there, and drops it,
+        // which joins it. Round 5b charged nothing (the construction row read only initially and the defaults), so
+        // lenAfter and sumAfter were CONFINED and W3 lent gs and gl: 3 for Kira's 47, 100 for 6.
+        val t1 = snippet(
+            """
+            use "kira:sync"
+
+            mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
+            mut gl: List<Int32> = [1, 2, 3]
+
+            fx startAndJoin: () Void {
+                t: Thread = Thread { name = "w", body = fx () Void {
+                    gs = "new"
+                    gl = [100]
+                } }
+            }
+
+            pub fx lenAfter: (s: Str) Int32 {
+                startAndJoin()
+                return s.length() as Int32
+            }
+
+            pub fx sumAfter: (xs: List<Int32>) Int32 {
+                startAndJoin()
+                mut t: Int32 = 0
+                for x: Int32 in xs {
+                    t += x
+                }
+                return t
+            }
+
+            fx main: () Void {
+                trace(lenAfter(gs))
+                gs = "old-text-long-enough-to-live-on-the-heap-000000"
+                gl = [1, 2, 3]
+                trace(sumAfter(gl))
+            }
+            """,
+        )
+        assertTrue(RulesTestSupport.rules(t1).isEmpty(), TyperTestSupport.render(t1))
+        assertEquals(false, t1.model.fnConfined[RulesTestSupport.fn(t1, "startAndJoin")])
+        assertEquals(listOf(false), confinedCalls(t1, "lenAfter"))
+        assertEquals(listOf(false), confinedCalls(t1, "sumAfter"))
+        // x/t2: the body is a hook from a global List, an Fx value row 1 never passes. Round 5b accepted
+        // setAfter(mut gls[0]) (gcc and clang exit 127, an MSVC ASan heap-use-after-free in lenAfter).
+        val t2 = snippet(
+            """
+            use "kira:sync"
+
+            mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
+            mut gls: List<Str> = ["old-text-long-enough-to-live-on-the-heap-000000"]
+            mut hooks: List<Fx<Tuple0, Void>> = []
+
+            fx startAndJoin: () Void {
+                t: Thread = Thread { name = "w", body = hooks[0] }
+            }
+
+            pub fx lenAfter: (s: Str) Int32 {
+                startAndJoin()
+                return s.length() as Int32
+            }
+
+            fx setAfter: (mut s: Str) Void {
+                startAndJoin()
+                s = "written-through-the-reference-after-the-route-000"
+            }
+
+            fx main: () Void {
+                mut hs: List<Fx<Tuple0, Void>> = []
+                hs.add(fx () Void {
+                    gs = "new"
+                    gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"]
+                })
+                hooks = hs
+                trace(lenAfter(gs))
+                gs = "old-text-long-enough-to-live-on-the-heap-000000"
+                trace(lenAfter(gls[0]))
+                gls = ["old-text-long-enough-to-live-on-the-heap-000000"]
+                setAfter(mut gls[0])
+                trace(gls[0])
+            }
+            """,
+        )
+        assertEquals(listOf("rules.exclusivity.mut"), RulesTestSupport.rules(t2), TyperTestSupport.render(t2))
+        assertTrue(message(t2, "rules.exclusivity.mut").startsWith("the mut argument 'gls[0]', "), message(t2, "rules.exclusivity.mut"))
+        assertEquals(false, t2.model.fnConfined[RulesTestSupport.fn(t2, "startAndJoin")])
+        assertEquals(listOf(false, false), confinedCalls(t2, "lenAfter"))
+        assertEquals(listOf(false), confinedCalls(t2, "setAfter"))
+    }
+
+    /** gen2.py's two routes: a Thread constructed with a lambda body, and with a hook from a global List. */
+    private val threadRoutes = mapOf(
+        "thread" to "t: Thread = Thread { name = \"w\", body = fx () Void { clobber() } }",
+        "threadhook" to "t: Thread = Thread { name = \"w\", body = hooks[0] }",
+    )
+
+    @Test
+    fun theThreadRoutesOfTheGeneratorCopyEveryUseAndRuleMRefusesBothMutPlaces() {
+        // gen/thread_* and gen/threadhook_*: 6 of 6 wrong on round 5b (both _val lent all four uses; all four _m1/_m2
+        // were accepted, gcc 139/127 and an ASan use-after-free each).
+        for ((name, body) in threadRoutes) {
+            val p = snippet(
+                "use \"kira:sync\"\n" + genPrelude + genRoute(body) + """
+                pub fx lenAfter: (s: Str) Int32 {
+                    route()
+                    return s.length() as Int32
+                }
+                pub fx sumAfter: (xs: List<Int32>) Int32 {
+                    mut t: Int32 = 0
+                    for x: Int32 in xs {
+                        route()
+                        t += x
+                    }
+                    return t
+                }
+                pub fx drive: () Void {
+                    trace(lenAfter(gs))
+                    trace(sumAfter(gl))
+                    trace(lenAfter(gh.value.name))
+                    trace(lenAfter(gls[0]))
+                }
+                """,
+            )
+            assertTrue(RulesTestSupport.rules(p).isEmpty(), "$name: " + TyperTestSupport.render(p))
+            assertEquals(false, p.model.fnConfined[RulesTestSupport.fn(p, "route")], name)
+            assertEquals(listOf(false, false, false), confinedCalls(p, "lenAfter"), name)
+            assertEquals(listOf(false), confinedCalls(p, "sumAfter"), name)
+            for (place in listOf("gls[0]", "gh.value.name")) {
+                val m = snippet(
+                    "use \"kira:sync\"\n" + genPrelude + genRoute(body) + """
+                    pub fx setAfter: (mut s: Str) Void {
+                        route()
+                        s = "written-through-the-reference-after-the-route-000"
+                    }
+                    pub fx drive: () Void {
+                        setAfter(mut $place)
+                    }
+                    """,
+                )
+                assertEquals(listOf("rules.exclusivity.mut"), RulesTestSupport.rules(m), "$name $place: " + TyperTestSupport.render(m))
+                assertTrue(message(m, "rules.exclusivity.mut").startsWith("the mut argument '$place', "), message(m, "rules.exclusivity.mut"))
+                assertEquals(listOf(false), confinedCalls(m, "setAfter"), "$name $place")
+            }
+        }
+    }
+
+    @Test
+    fun aThreadBodyRowOnePassesIsConfinedAndAnFxParameterIsChargedWhereItIsHandedIn() {
+        // The controls: the charge is row 1's, not "a Thread is never CONFINED". A body that writes only its own local is
+        // CONFINED, so the caller's use is lent as before; a body that is the function's own Fx parameter is charged at
+        // the call that hands it in, as spawn(name, body) is.
+        val p = snippet(
+            """
+            use "kira:sync"
+            pub mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
+            pub fx quiet: () Void {
+                t: Thread = Thread { name = "w", body = fx () Void {
+                    mut k: Int32 = 0
+                    k += 1
+                } }
+            }
+            pub fx startWith: (f: Fx<Tuple0, Void>) Void {
+                t: Thread = Thread { name = "w", body = f }
+            }
+            pub fx lenAfter: (s: Str) Int32 {
+                quiet()
+                return s.length() as Int32
+            }
+            pub fx drive: () Void {
+                trace(lenAfter(gs))
+                startWith(fx () Void { })
+                startWith(fx () Void {
+                    gs = "new"
+                })
+            }
+            """,
+        )
+        expectClean(p)
+        assertEquals(true, p.model.fnConfined[RulesTestSupport.fn(p, "quiet")])
+        assertEquals(true, p.model.fnConfined[RulesTestSupport.fn(p, "startWith")])
+        assertEquals(listOf(true), confinedCalls(p, "lenAfter"))
+        assertEquals(listOf(true, false), confinedCalls(p, "startWith"))
+    }
 }

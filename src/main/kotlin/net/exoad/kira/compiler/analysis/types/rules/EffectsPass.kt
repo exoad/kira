@@ -65,7 +65,8 @@ import java.util.WeakHashMap
  *   `Ref`, a `MutView`), prints, calls an extern or a bodiless prototype, a virtual or
  *   trait-dispatched method or an `Fx` value, calls a function that does any of these, calls
  *   a magic binding without `pure: true` (or a pure one that runs a user type's operators or
- *   is given an `Fx`), constructs an object whose `initially` or field defaults are not pure,
+ *   is given an `Fx`), constructs an object whose `initially` or field defaults are not pure
+ *   or that runs an `Fx` field as it is made (a `Thread` starts its `body`),
  *   may throw (a `throw` is caught by a `try` around the call, so which operand ran first
  *   decides what a sibling's print or write left behind), or may drop the last handle of an
  *   object whose `finally` is IMPURE ([Drops]);
@@ -394,13 +395,15 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
     }
 
     /**
-     * A construction: IMPURE when its class or a superclass has an `initially`, or when the
-     * object may be the last handle of one with an IMPURE `finally` (a temporary is dropped
-     * at the end of its full-expression, a by-value argument in the callee); else the join of
-     * the defaults of the fields it leaves out ([given] are written at the construction).
+     * A construction: IMPURE when its class or a superclass has an `initially`, when it runs an
+     * `Fx` field as it makes the object (`CallReach.runsAtConstruction`: `Thread { name, body }`
+     * starts `body`, as an `Fx` value call would), or when the object may be the last handle of
+     * one with an IMPURE `finally` (a temporary is dropped at the end of its full-expression, a
+     * by-value argument in the callee); else the join of the defaults of the fields it leaves
+     * out ([given] are written at the construction).
      */
     private fun construction(cls: ClassSymbol?, given: Set<FieldSymbol>, type: KType?, listed: List<FieldSymbol> = emptyList()): Effect {
-        if (drops.mayDrop(type)) {
+        if (drops.mayDrop(type) || CallReach.runsAtConstruction(cls).isNotEmpty()) {
             return Effect.IMPURE
         }
         if (cls != null && !constructing.add(cls)) {
@@ -622,7 +625,9 @@ internal class Drops(private val r: Rules, assumeEveryFinally: Boolean) {
  * steps only), a CONFINED call ([CallReach.confined]) whose written operands are its own, a
  * call of one of its own `Fx` parameters (the call site that handed the `Fx` in charged it)
  * whose arguments row 1 passes (a `T` argument never does: it may be an `Fx` no call site saw),
- * or a CONFINED construction; and nothing in it, a by-value parameter included, may drop the
+ * or a CONFINED construction ([CallReach.construction], which charges an `Fx` field the
+ * construction runs, a `Thread`'s `body`, as the call site of a lambda it runs would); and nothing
+ * in it, a by-value parameter included, may drop the
  * last handle of an object whose `finally` is IMPURE. The computation starts from "every body
  * is CONFINED" and lowers until nothing changes, so mutually recursive functions that write
  * only their own storage stay CONFINED.
@@ -740,7 +745,7 @@ internal class Confinement(private val r: Rules, private val effects: Effects, p
             is CompoundAssignmentExpr -> own(model.places[e.left], f)
             is PlaceAssignmentExpr -> own(model.places[e.target], f)
             is ObjectInitExpr -> model.inits[e]?.let { ri ->
-                CallReach.construction(ri.cls, ri.fields.filterIsInstance<FieldInit.Given>().mapTo(HashSet()) { it.field }, f.known)
+                CallReach.construction(ri.cls, ri.fields.filterIsInstance<FieldInit.Given>().associate { it.field to it.expr }, model, f.known)
             } ?: false
             else -> true
         }

@@ -937,16 +937,19 @@ object CallReach {
      * literal or a named function whose body is CONFINED, a dispatched method, an `Fx` value, an
      * extern given what may hold an `Fx`, a system handle's method, a stdlib binding that runs a
      * user type's operators or replaces or removes what may be the last handle of an object whose
-     * `finally` is IMPURE, or a construction's `initially` or impure default. By callee kind:
+     * `finally` is IMPURE, or a construction's `initially`, impure default or an `Fx` field it runs
+     * ([runsAtConstruction]: a `Thread`'s `body`). By callee kind:
      *
      * - an argument for a parameter declared `Fx` (given, or the parameter's default): a lambda
      *   literal whose body is CONFINED (`TypedModel.lambdaConfined`) or a function named as a
      *   value whose body is (`fnConfined`); any other spelling (a variable, a field, a call
      *   result) is not. An `Fx` given for a type parameter (`hooks.add(f)`, `KEPT.add(k)`) is
-     *   not charged here: storing an `Fx` never runs it, and a callee that sees it as a `T` can
+     *   not charged here: storing an `Fx` never runs it, and a Kira body that sees it as a `T` can
      *   run it only by handing it to an `Fx` it calls. That call is an `FN_VALUE` call, which
      *   charges an argument of a type parameter ([mayHoldFx]), so a generic body that hands its
-     *   `T` to its own `Fx` parameter (`pass<T>`, `Box<T>.run`) is not CONFINED;
+     *   `T` to its own `Fx` parameter (`pass<T>`, `Box<T>.run`) is not CONFINED. The one place C++
+     *   runs a stored `Fx` itself is a construction ([runsAtConstruction]: `Thread { name, body }`
+     *   starts `body`), and [construction] charges those fields by this row;
      * - a Kira function with a body called statically (`FREE`, `METHOD`, `OP_OVERLOAD`, `CTOR`):
      *   `TypedModel.fnConfined`, EffectsPass's fixpoint;
      * - a stdlib binding: not one of [RUNS_OPERATORS] over a user type, no method of a system
@@ -967,8 +970,46 @@ object CallReach {
     fun confined(rc: ResolvedCall, model: TypedModel, receiverType: KType? = rc.receiver?.let { model.types[it] }): Boolean =
         confined(rc, model, receiverType, Known.of(model), null)
 
-    /** A construction of [cls] that leaves out every field not in [given]: no `initially` in its chain, and every default it leaves out CONFINED. */
-    fun construction(cls: ClassSymbol?, given: Set<FieldSymbol>, model: TypedModel): Boolean = construction(cls, given, Known.of(model))
+    /**
+     * A construction of [cls] given the fields of [given], each with the expression written for it,
+     * and leaving out every other: no `initially` in its chain, every default it leaves out
+     * CONFINED, and every `Fx` field it runs ([runsAtConstruction]) given (or defaulted to) what
+     * row 1 passes: a lambda literal or a named function whose body is CONFINED.
+     */
+    fun construction(cls: ClassSymbol?, given: Map<FieldSymbol, Expr>, model: TypedModel): Boolean = construction(cls, given, model, Known.of(model))
+
+    /**
+     * The `Fx` fields a construction of [cls] runs as it makes the object, decided from the class's
+     * declaration (its kind, its fields' declared types and its `initially`), never from its name:
+     *
+     * - a `@_magic` class: every field it declares `Fx`. C++ supplies its constructor and hands it
+     *   every field, so, as row 1 charges a binding's parameter declared `Fx`, the constructor may
+     *   run one: kira:sync's `Thread` starts `body` there, on its own thread, joined at the drop. A
+     *   field of a type parameter (`Mutex<T>`'s and `Ref<T>`'s `value`) is only kept, as row 1 keeps
+     *   an `Fx` given for a `T`;
+     * - a class with an `initially` in its chain: every `Fx` field of the chain. The block holds
+     *   `this` and may call a field directly, through a method, or through a lambda it hands on.
+     *
+     * Empty for every other class: its `Fx` fields are only stored, and a later call of one is an
+     * `FN_VALUE` call, charged where it runs. [construction] charges these fields (CONFINED), and
+     * EffectsPass ranks a construction that runs one IMPURE.
+     */
+    fun runsAtConstruction(cls: ClassSymbol?): List<FieldSymbol> {
+        cls ?: return emptyList()
+        if (cls.kind == ClassKind.MAGIC) {
+            return cls.fields.filter { it.type is KType.Fn }
+        }
+        val chain = ArrayList<ClassSymbol>()
+        var c: ClassSymbol? = cls
+        while (c != null && chain.none { it === c }) {
+            chain.add(c)
+            c = c.superclass?.sym as? ClassSymbol
+        }
+        if (chain.none { it.initially != null }) {
+            return emptyList()
+        }
+        return chain.flatMap { k -> k.fields.filter { it.type is KType.Fn } }
+    }
 
     /**
      * What [confined] reads, as EffectsPass's fixpoint sees it while it runs (the model's tables
@@ -1030,7 +1071,7 @@ object CallReach {
                 fn.foreign is Foreign.Magic && fn.body == null -> magic(rc, fn, model, receiverType, k)
                 fn.body == null && rc.kind != CallKind.CTOR -> false
                 else -> (fn.body == null || k.fn(fn)) &&
-                    (rc.kind != CallKind.CTOR || construction((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol, emptySet(), k))
+                    (rc.kind != CallKind.CTOR || construction((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol, emptyMap(), model, k))
             }
         }
     }
@@ -1082,7 +1123,7 @@ object CallReach {
         return rc.args.none { a -> (a as? ArgBinding.Given)?.let { k.drops(model.types[it.expr]) } == true }
     }
 
-    internal fun construction(cls: ClassSymbol?, given: Set<FieldSymbol>, k: Known): Boolean {
+    internal fun construction(cls: ClassSymbol?, given: Map<FieldSymbol, Expr>, model: TypedModel, k: Known): Boolean {
         var c: ClassSymbol? = cls
         val seen = HashSet<ClassSymbol>()
         while (c != null && seen.add(c)) {
@@ -1094,6 +1135,8 @@ object CallReach {
             }
             c = c.superclass?.sym as? ClassSymbol
         }
-        return true
+        // Row 1 at the construction: what a Thread is given for `body` starts running there. A field neither given nor
+        // defaulted is an empty Fx (D38), which runs nothing.
+        return runsAtConstruction(cls).all { f -> (given[f] ?: f.default)?.let { fxConfined(it, model, k) } ?: true }
     }
 }

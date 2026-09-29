@@ -2350,4 +2350,39 @@ class ViewPassTest {
         )
         assertTrue(p.diagnostics.none { it.code.startsWith("rules.view") }, TyperTestSupport.render(p))
     }
+
+    @Test
+    fun aViewBesideACallThatStartsAThreadWritingItsPlaceIsRefused() {
+        // Round 6, scratchpad w25r5c x/t7 as the verifier wrote it: bump constructs a Thread whose body replaces gl, and
+        // joins it at the drop. Round 5b ranked the construction PURE, so the view of gl beside bump() was accepted
+        // (gcc and MSVC 15300; clang formed the view first and read the freed buffer: 6).
+        val p = snippet(
+            """
+            use "kira:sync"
+
+            mut gl: List<Int32> = [1, 2, 3]
+
+            fx bump: () Int32 {
+                t: Thread = Thread { name = "w", body = fx () Void {
+                    gl = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+                } }
+                return 0
+            }
+
+            fx sumView: (v: View<Int32>, n: Int32) Int32 {
+                mut t: Int32 = n
+                for x: Int32 in v {
+                    t += x
+                }
+                return t
+            }
+
+            fx main: () Void {
+                trace(sumView(gl.view(), bump()))
+            }
+            """,
+        )
+        expectView(p, "rules.view.write")
+        assertTrue(messages(p, "rules.view.write").single().contains("gl"), messages(p, "rules.view.write").toString())
+    }
 }

@@ -219,6 +219,71 @@ On the trial, fix 2 also flips W2.4's `CppClassCopyTest.aMutArgumentAnExternsHar
 (an extern handed a lambda that writes nothing), which asserted round 4's reading: now refused by rule M,
 as 2.3's extern row requires.
 
+**Round 6 (narrow: round 5b's w2-5 #0 and #1, one root). Rules tests 196, full suite 1081, 0 failures
+each; `regenerate.sh --check` current.** kira:sync's `Thread { name, body }` starts `body` in its
+constructor and joins it at the drop. The construction row read only `initially` and the defaults, so a
+callee that made a Thread was CONFINED (W3 lent, rule M accepted: x/t1, x/t2, gen2), and EffectsPass
+ranked the construction PURE (D33 left `gi + bump()` unspilled, and `rules.view.write` accepted a view
+beside it: x/t3, x/t7).
+
+- **The rule: `CallReach.runsAtConstruction(cls)`, the `Fx` fields a construction runs, read from the
+  class's declaration, never its name.** A `@_magic` class runs every field it declares `Fx`: C++
+  supplies its constructor and hands it every field, so, as row 1 charges a binding's parameter declared
+  `Fx`, the constructor may run one. A field of a type parameter (`Mutex<T>`'s and `Ref<T>`'s `value`) is
+  only kept, as row 1 keeps an `Fx` given for a `T`. A user class runs every `Fx` field of its chain when
+  an `initially` is in the chain: the block holds `this` and may call a field directly, through a method,
+  or through a lambda it hands on. Any other class only stores its `Fx` fields; a later call of one is an
+  `FN_VALUE` call, charged where it runs. No flag was added: the declaration already says it (the class's
+  kind and the field's declared type), and `Thread.body` is the stdlib's only `Fx` field of a magic
+  class. A future magic class that only stores an `Fx` field would be charged anyway, which costs a copy
+  or a spill, never a wrong value.
+- **CONFINED**: `CallReach.construction(cls, given, model)` takes the expression given for each field (a
+  `Map`; it was a `Set` of fields) and charges each field `runsAtConstruction` names by row 1, from its
+  given expression or its default: a lambda literal or a named function whose body is CONFINED, or the
+  judged body's own `Fx` parameter. Confinement's `ObjectInitExpr` row passes the expressions. Any
+  `initially` still makes a construction not CONFINED, as 2.3 says.
+- **EffectsPass.construction**: IMPURE when `runsAtConstruction` is not empty. A Thread given an empty
+  body is IMPURE too: it starts a thread.
+- Round 5b's minor: row 1's KDoc names the exception (C++ runs a stored `Fx` at a construction). Design
+  2.3's construction row needs the same clause, "and every `Fx` field it runs passes row 1"; that sentence
+  is the design's.
+
+Tests (the verifier's probes as written): `ExclusivityPassTest.aThreadConstructionRunsItsBodySoItsCallerIsNotConfinedAndRuleMRefuses`
+(x/t1 whole with no rule diagnostic and nothing CONFINED; x/t2 whole with one `rules.exclusivity.mut` at
+`setAfter(mut gls[0])`), `theThreadRoutesOfTheGeneratorCopyEveryUseAndRuleMRefusesBothMutPlaces` (gen2's
+`thread` and `threadhook`: `_val` CONFINED at no use, `_m1` and `_m2` refused),
+`aThreadBodyRowOnePassesIsConfinedAndAnFxParameterIsChargedWhereItIsHandedIn` (controls: a body that
+writes only its own local is CONFINED; `startWith(f)` is CONFINED and charged at each call),
+`EffectsPassTest.aConstructionThatRunsAnFxFieldIsImpure` (x/t3; an empty-bodied Thread and x/t4's Runner
+IMPURE, a class that only keeps an `Fx` PURE), `ViewPassTest.aViewBesideACallThatStartsAThreadWritingItsPlaceIsRefused`
+(x/t7), `SharedPredicatesTest.whichFxFieldsAConstructionRunsIsDecidedFromTheClass`. Without the fix, the
+four behaviour tests fail and the controls pass.
+
+Measured on trial a6d2ef5 plus this diff (a scratch clone at scratchpad w25r6; the trial untouched), gcc
+13.2, zig c++ (clang 20), MSVC /O1 and MSVC /fsanitize=address:
+
+- **x/t1** 47/6 on all four (round 5b: 3/100), emitted `lenAfter(kira::Str(gs))` and
+  `sumAfter(kira::List<std::int32_t>(gl))`.
+- **x/t2** refused at probe.kira:39:18 (`rules.exclusivity.mut`). Its two by-value lines on their own
+  (w25r6/x/t2run) print 47/1 on all four, both copied. 1 is Kira's value: the probe resets `gs` but not
+  `gls` before the second call, so `s` is a copy of `"x"` (its comment's 47 is wrong).
+- **x/t3** 47/29/3 on all four, each call spilled in an IIFE. The third line's 3 is Kira's: `gs` is not
+  reset before it (the probe's comment says 47).
+- **x/t7** refused at probe.kira:27:19 (`rules.view.write`, "'bump()' may replace, grow or free 'gl'").
+- **gen2**: `thread_val` and `threadhook_val` 47/6/47/47 on all four, all four uses copied; the four
+  `_m1`/`_m2` refused by `rules.exclusivity.mut`, one each.
+- **w25r6/x/t8** (new: the Thread construction as an operand itself, `both2(gs, Thread { ... })` and
+  `firstOf(gi, Thread { ... })`): 47/29 on all four, `gs` and `gi` spilled into `t0_` before the
+  construction.
+- 6 ASan runs, 0 reports. x/t4 (the control) prints 47/29/47/29 on gcc and clang; MSVC still fails `/WX`
+  there on C4930, the Fx-call parse that is W2.3's (round 5b's third finding).
+- **The 7.1 replay, 830 projects**: 510 accepted and 320 refused, and no project's refusal set changed
+  against round 5b. Emitted C++ is identical, version stamp aside (none of the 830 constructs a Thread).
+  One header, vr3w24 rd3, emitted two prototypes in swapped order in the parallel sweep only; re-emitting
+  it with either CLI gives round 5b's order. gen.py's 51 projects: 19 accepted with identical C++, 32
+  refused with identical codes.
+- **The trial's full suite** with this diff: 1459 tests, 0 failures.
+
 ## Round 3: where this branch reads the design differently, and why
 
 - **Clause 3 covers operators too.** 3.2 lists "(not an operator, not `[]`)". DECISIONS 2 makes `a
