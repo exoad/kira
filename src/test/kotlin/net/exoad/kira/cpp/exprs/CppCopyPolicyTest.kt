@@ -1,5 +1,9 @@
 package net.exoad.kira.cpp.exprs
 
+import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.typeArgs
+import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
+import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.cpp.exprs.CppExprTestSupport.Module
 import net.exoad.kira.cpp.support.CppToolchain
 import org.junit.jupiter.api.DynamicNode
@@ -60,18 +64,22 @@ class CppCopyPolicyTest {
             gl = [1, 2, 3]
             gt = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
             tag: Str = "held-by-the-closure-long-enough-for-the-heap-00"
-            gfs = List<Fx<Tuple0, Int32>> { }
-            gfs.add(fx () Int32 {
+            // Rule M (round 5): a global handed an Fx that is not CONFINED is refused as a
+            // mut receiver, so each list is built in a local and stored back.
+            mut fs: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> { }
+            fs.add(fx () Int32 {
                 runHooks()
                 return tag.length() as Int32
             })
-            hooks = List<Fx<Tuple0, Void>> { }
-            hooks.add(fx () Void {
+            gfs = fs
+            mut hs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
+            hs.add(fx () Void {
                 gs = "new"
                 gl = [100]
                 gt = Tag { name = "new", n = 2 }
                 gfs = List<Fx<Tuple0, Int32>> { }
             })
+            hooks = hs
         }
 
         pub fx lenAfter: (s: Str) Int32 {
@@ -209,7 +217,7 @@ class CppCopyPolicyTest {
         Triple("copyList", "return sumAfter(kira::List<std::int32_t>(gl));", true),
         Triple("copyGeneric", "idAfter<kira::Str>(kira::Str(gs))", true),
         Triple("copyReceiver", "return Tag(gt).describe();", true),
-        Triple("copyCallee", "return kira::Fn<std::int32_t()>(kira::at(gfs, 0))();", true),
+        Triple("copyCallee", "return (kira::Fn<std::int32_t()>(kira::at(gfs, 0)))();", true),
         Triple("copyTernary", "return sumAfter(kira::List<std::int32_t>(c ? gl : gl2));", true),
         Triple("copyRange", "for(const std::int32_t x : kira::List<std::int32_t>(gl))", true),
         Triple("lendParamRow", "return lendParam(kira::List<std::int32_t>(gl));", true),
@@ -276,6 +284,241 @@ class CppCopyPolicyTest {
                     append("    return failures == 0 ? 0 : 1;\n}\n")
                 }
                 val stdout = CppExprTestSupport.compileAndRun(tree, driver, tc) ?: return@dynamicTest
+                assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
+            }
+        }
+
+    /**
+     * Round 4's significant w2-3 findings (sc-round4.json): an assignment's value is a use.
+     * `operator=(const T&)` binds a reference to the value and writes the target while it reads
+     * it, so a value inside the target is freed or overwritten as it is read (#0: `t =
+     * t.kids[0]`, gcc exited 3 and MSVC ASan reported a container-overflow; #1: `t.kids[0] =
+     * t`, every compiler printed `1 one 1 1 2` for Kira's `1 one 1 2 2`). The rows are the
+     * verifier's probes, a3b, c2, c5, c6, c8, c12, c14, c15, c19, c20, a3c1, a3c3 and a3c6:
+     * each value is copied unless it is a prvalue (W1) or a PRIVATE place under another root
+     * (W2). `shape` prints a tree as `v name-length kids` and then each kid's `v/kids`.
+     */
+    private val assign = Module(
+        "copy:assign",
+        """
+        pub struct Tree {
+            pub v: Int32
+            pub name: Str
+            pub kids: List<Tree>
+        }
+
+        fx leaf: (v: Int32, n: Str) Tree {
+            return Tree { v = v, name = n, kids = [] }
+        }
+
+        fx two: () Tree {
+            return Tree { v = 2, name = "two-long-name-that-lives-on-the-heap-000000", kids = [leaf(7, "seven-long-name-that-lives-on-the-heap-0000"), leaf(8, "eight-long-name-that-lives-on-the-heap-0000")] }
+        }
+
+        // One kid, two(), with room for more, so a vector assign takes the no-reallocation path.
+        fx roomy: () Tree {
+            mut t: Tree = Tree { v = 1, name = "one", kids = [] }
+            t.kids.add(two())
+            t.kids.add(leaf(9, "nine"))
+            t.kids.add(leaf(10, "ten"))
+            x: Tree = t.kids.removeAt(2)
+            y: Tree = t.kids.removeAt(1)
+            return t
+        }
+
+        fx shape: (t: Tree) Str {
+            mut out: Str = "${'$'}{t.v} ${'$'}{t.name.length()} ${'$'}{t.kids.size()}"
+            for k: Tree in t.kids {
+                out += " ${'$'}{k.v}/${'$'}{k.kids.size()}"
+            }
+            return out
+        }
+
+        fx flag: () Bool {
+            return true
+        }
+
+        mut gt: Tree = Tree { v = 0, name = "g", kids = [] }
+
+        pub struct Holder {
+            pub t: Tree
+
+            pub mut fx descend: () Void {
+                t = t.kids[0]
+            }
+        }
+
+        pub fx rebindLocal: () Str {
+            mut t: Tree = roomy()
+            t = t.kids[0]
+            return shape(t)
+        }
+
+        pub fx selfIntoElement: () Str {
+            mut t: Tree = roomy()
+            t.kids[0] = t
+            return "${'$'}{shape(t)}|${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
+        }
+
+        pub fx rebindTernary: () Str {
+            mut t: Tree = roomy()
+            t = if flag() { t.kids[0] } else { t }
+            return shape(t)
+        }
+
+        fx descend: (mut t: Tree) Void {
+            t = t.kids[0]
+        }
+
+        pub fx rebindMutParam: () Str {
+            mut t: Tree = roomy()
+            descend(mut t)
+            return shape(t)
+        }
+
+        pub fx fieldFromElement: () Str {
+            mut t: Tree = roomy()
+            t.kids = t.kids[0].kids
+            return shape(t)
+        }
+
+        pub fx elementIntoItsElement: () Str {
+            mut t: Tree = roomy()
+            t.kids[0].kids[0] = t.kids[0]
+            return "${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
+        }
+
+        fx descendGlobal: () Void {
+            gt = gt.kids[0]
+        }
+
+        pub fx rebindGlobal: () Str {
+            gt = roomy()
+            descendGlobal()
+            return shape(gt)
+        }
+
+        pub fx elementFromSibling: () Str {
+            mut xs: List<Str> = ["a-long-string-that-lives-on-the-heap-0000000", "b"]
+            xs[0] = xs[1]
+            xs[1] = xs[0] + xs[0]
+            return "${'$'}{xs[0]} ${'$'}{xs[1]}"
+        }
+
+        pub fx twoNamesOfOneRef: () Str {
+            r1: Ref<Tree> = Ref<Tree> { value = roomy() }
+            r2: Ref<Tree> = r1
+            r1.value = r2.value.kids[0]
+            return shape(r2.value)
+        }
+
+        pub fx listElements: () Str {
+            mut ts: List<Tree> = [roomy(), leaf(5, "five")]
+            ts[1] = ts[0].kids[0]
+            ts[0] = ts[0].kids[0]
+            return "${'$'}{shape(ts[0])}|${'$'}{shape(ts[1])}"
+        }
+
+        pub fx maybePayload: () Str {
+            mut m: Maybe<Tree> = roomy()
+            m = m.unwrap().kids[0]
+            return shape(m.unwrap())
+        }
+
+        pub fx valueThisInMutFx: () Str {
+            mut h: Holder = Holder { t = roomy() }
+            h.descend()
+            return shape(h.t)
+        }
+
+        pub fx nestedElement: () Str {
+            mut t: Tree = leaf(0, "zero")
+            t.kids.add(roomy())
+            t.kids[0] = t.kids[0].kids[0]
+            return shape(t.kids[0])
+        }
+
+        pub fx lendLocal: () Str {
+            u: Tree = roomy()
+            mut t: Tree = leaf(0, "zero")
+            t = u
+            return shape(t)
+        }
+
+        pub fx lendParam: (u: Tree) Str {
+            mut t: Tree = leaf(0, "zero")
+            t = u
+            return shape(t)
+        }
+
+        pub fx lendParamRow: () Str {
+            return lendParam(roomy())
+        }
+        """,
+    )
+
+    private val assignTree by lazy { CppExprTestSupport.emit("copy-assign", listOf(assign)) }
+
+    @Test
+    fun anAssignmentsValueIsCopiedUnlessItIsATemporaryOrAPrivatePlaceUnderAnotherRoot() {
+        val source = assignTree.source(assign)
+        listOf(
+            // #0: the value lies under the root the assignment writes, or is no PRIVATE place.
+            "t = Tree(kira::at(t.kids, 0));",
+            "t = Tree(flag() ? kira::at(t.kids, 0) : t);",
+            "t.kids = kira::List<Tree>(kira::at(t.kids, 0).kids);",
+            "gt = Tree(kira::at(gt.kids, 0));",
+            "r1->value = Tree(kira::at(r2->value.kids, 0));",
+            // A WrapSome is no temporary for std::optional's operator=(U&&).
+            "m = Tree(kira::at(kira::unwrap(m).kids, 0));",
+            // #1: an element written from its own container's root.
+            "kira::at(t.kids, 0) = Tree(t);",
+            "kira::at(kira::at(t.kids, 0).kids, 0) = Tree(kira::at(t.kids, 0));",
+            "kira::at(xs, 0) = kira::Str(kira::at(xs, 1));",
+            "kira::at(ts, 0) = Tree(kira::at(kira::at(ts, 0).kids, 0));",
+            "kira::at(t.kids, 0) = Tree(kira::at(kira::at(t.kids, 0).kids, 0));",
+            // W1: a prvalue is as is.
+            "kira::at(xs, 1) = kira::at(xs, 0) + kira::at(xs, 0);",
+            "gt = roomy();",
+        ).forEach { assertTrue(source.contains(it), "$it:\n$source") }
+        // W2: a PRIVATE place under another root is lent.
+        listOf("lendLocal", "lendParam").forEach { fn ->
+            val b = Regex("\\n  [^\\n ][^\\n]*[ :]$fn\\([^\\n]*\\)[^\\n]*\\n  \\{\\n").find(source)?.let { source.substring(it.range.last, source.indexOf("\n  }\n", it.range.last)) }
+            assertTrue(b != null && b.contains("t = u;") && !b.contains("Tree(u)"), "$fn lends u:\n$b")
+        }
+    }
+
+    @TestFactory
+    fun anAssignmentsValuePrintsKirasValueOnEveryCompiler(): List<DynamicNode> =
+        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
+            DynamicTest.dynamicTest("assign [${tc.id}]") {
+                val kid = "2 43 2 7/0 8/0"
+                val rows = listOf(
+                    "assign::rebindLocal() == \"$kid\"" to "a3b: t = t.kids[0] reads the kid first",
+                    "assign::selfIntoElement() == \"1 3 1 1/1|1 3 1 2/2|$kid\"" to "c2: t.kids[0] = t stores the old t",
+                    "assign::rebindTernary() == \"$kid\"" to "c5: a ternary of the kid",
+                    "assign::rebindMutParam() == \"$kid\"" to "c6: through a mut parameter",
+                    "assign::fieldFromElement() == \"1 3 2 7/0 8/0\"" to "c8: t.kids = t.kids[0].kids",
+                    "assign::elementIntoItsElement() == \"2 43 2 2/2 8/0|$kid\"" to "c12: t.kids[0].kids[0] = t.kids[0]",
+                    "assign::rebindGlobal() == \"$kid\"" to "c14: a global rebound in a function",
+                    "assign::elementFromSibling() == \"b bb\"" to "c15: xs[0] = xs[1]",
+                    "assign::twoNamesOfOneRef() == \"$kid\"" to "c19: two names of one Ref",
+                    "assign::listElements() == \"$kid|$kid\"" to "c20: ts[0] = ts[0].kids[0]",
+                    "assign::maybePayload() == \"$kid\"" to "c20: m = m.unwrap().kids[0]",
+                    "assign::valueThisInMutFx() == \"$kid\"" to "a3c3: the value this of a mut fx",
+                    "assign::nestedElement() == \"$kid\"" to "a3c6: t.kids[0] = t.kids[0].kids[0]",
+                    "assign::lendLocal() == \"1 3 1 2/2\"" to "a PRIVATE local under another root is lent",
+                    "assign::lendParamRow() == \"1 3 1 2/2\"" to "a by-value parameter is lent",
+                )
+                val driver = buildString {
+                    append("#include \"").append(assign.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n")
+                    append(CppExprTestSupport.CHECK_PRELUDE)
+                    append("\nint main()\n{\n")
+                    rows.forEach { (cond, what) -> append("    check($cond, \"$what\");\n") }
+                    append("    std::printf(\"\\n%d checks, %d failed\\n\", checks, failures);\n")
+                    append("    return failures == 0 ? 0 : 1;\n}\n")
+                }
+                val stdout = CppExprTestSupport.compileAndRun(assignTree, driver, tc) ?: return@dynamicTest
                 assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
             }
         }
@@ -493,6 +736,308 @@ class CppCopyPolicyTest {
                     append("    return failures == 0 ? 0 : 1;\n}\n")
                 }
                 val stdout = CppExprTestSupport.compileAndRun(round3Tree, driver, tc) ?: return@dynamicTest
+                assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
+            }
+        }
+
+    /**
+     * Round 5b's `[owner w2-3-emit-exprs]` finding (sc-round5.json, the verifier's x/t5): a copied
+     * `Fx` callee used as a statement, `kira::Fn<void()>(f)();`, is a C++ declaration of a function
+     * `f`, so the call never ran (gcc and clang printed 29, 29 for Kira's 30, 31; MSVC refused the
+     * build with C4930). With an argument, `kira::Fn<void(std::int32_t)>(g)(3);` declares a
+     * variable `g`. The copy is parenthesized wherever it is the callee. The rows are x/t5's forms
+     * this branch lowers: a struct `mut fx` calling its own `Fx` field (implicit `this`, the
+     * caller's `S&`, so the field is copied) and a hook of a global `List` called as a statement.
+     * x/t5's class `initially` and class method are W2.4's classes, checked on the trial.
+     */
+    private val fnCall = Module(
+        "copy:fncall",
+        """
+        mut gi: Int32 = 29
+        mut hooks: List<Fx<Tuple0, Void>> = []
+        mut adds: List<Fx<Tuple1<Int32>, Void>> = []
+
+        pub struct Runner {
+            pub f: Fx<Tuple0, Void>
+            pub g: Fx<Tuple1<Int32>, Void>
+
+            pub mut fx run: () Void {
+                f()
+            }
+
+            pub mut fx runWith: () Void {
+                g(3)
+            }
+
+            pub fx runPlain: () Void {
+                f()
+            }
+        }
+
+        fx runner: () Runner {
+            return Runner { f = fx () Void {
+                gi = gi + 1
+            }, g = fx (n: Int32) Void {
+                gi = gi + n * 100
+            } }
+        }
+
+        pub fx implicitThis: () Int32 {
+            gi = 29
+            mut r: Runner = runner()
+            r.run()
+            r.run()
+            return gi
+        }
+
+        pub fx implicitThisArg: () Int32 {
+            gi = 29
+            mut r: Runner = runner()
+            r.runWith()
+            return gi
+        }
+
+        pub fx lentThis: () Int32 {
+            gi = 29
+            r: Runner = runner()
+            r.runPlain()
+            return gi
+        }
+
+        pub fx statementHook: () Int32 {
+            gi = 29
+            mut hs: List<Fx<Tuple0, Void>> = []
+            hs.add(fx () Void {
+                gi = gi + 100
+            })
+            hooks = hs
+            hooks[0]()
+            return gi
+        }
+
+        pub fx statementHookArg: () Int32 {
+            gi = 29
+            mut xs: List<Fx<Tuple1<Int32>, Void>> = []
+            xs.add(fx (n: Int32) Void {
+                gi = gi + n
+            })
+            adds = xs
+            adds[0](7)
+            return gi
+        }
+        """,
+    )
+
+    private val fnCallTree by lazy { CppExprTestSupport.emit("copy-fncall", listOf(fnCall)) }
+
+    @Test
+    fun aCopiedFxCalleeIsParenthesizedSoAStatementIsNeverADeclaration() {
+        val source = fnCallTree.source(fnCall)
+        listOf(
+            "(kira::Fn<void()>(f))();",
+            "(kira::Fn<void(std::int32_t)>(g))(3);",
+            "(kira::Fn<void()>(kira::at(hooks, 0)))();",
+            "(kira::Fn<void(std::int32_t)>(kira::at(adds, 0)))(7);",
+        ).forEach { assertTrue(source.contains(it), "$it:\n$source") }
+        // The declaration spellings are gone; a PRIVATE callee (a value this outside a mut fx) is lent.
+        assertFalse(Regex("\\n\\s*kira::Fn<[^\\n]*>\\((f|g|kira::at\\(\\w+, 0\\))\\)\\(").containsMatchIn(source), source)
+        assertTrue(Regex("void Runner::runPlain\\(\\) const\\n\\s*\\{\\n\\s*f\\(\\);").containsMatchIn(source), source)
+    }
+
+    @TestFactory
+    fun aCopiedFxCalleeUsedAsAStatementRunsOnEveryCompiler(): List<DynamicNode> =
+        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
+            DynamicTest.dynamicTest("fncall [${tc.id}]") {
+                val rows = listOf(
+                    "fncall::implicitThis() == 31" to "x/t5: a mut fx calls its own Fx field twice (29 + 1 + 1)",
+                    "fncall::implicitThisArg() == 329" to "the same with an argument (29 + 3 * 100)",
+                    "fncall::lentThis() == 30" to "a lent callee (29 + 1)",
+                    "fncall::statementHook() == 129" to "x/t5: hooks[0]() as a statement (29 + 100)",
+                    "fncall::statementHookArg() == 36" to "adds[0](7) as a statement (29 + 7)",
+                )
+                val driver = buildString {
+                    append("#include \"").append(fnCall.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n")
+                    append(CppExprTestSupport.CHECK_PRELUDE)
+                    append("\nint main()\n{\n")
+                    rows.forEach { (cond, what) -> append("    check($cond, \"$what\");\n") }
+                    append("    std::printf(\"\\n%d checks, %d failed\\n\", checks, failures);\n")
+                    append("    return failures == 0 ? 0 : 1;\n}\n")
+                }
+                val stdout = CppExprTestSupport.compileAndRun(fnCallTree, driver, tc) ?: return@dynamicTest
+                assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
+            }
+        }
+
+    /**
+     * Round 5b's w2-3 finding (sc-round5.json, the verifier's f2, f3, f5, f6): C++'s `operator=`
+     * drops the old value partway through the write, so an IMPURE `finally` that drop runs freed
+     * the target's storage (f2 `gl[0] = v`, f5 `gll[0] = v`: MSVC ASan heap-use-after-free) or
+     * rewrote it half-written (f3: `v 99` with the new name). Where the old value's drop may run
+     * one (`CppCopyPolicy.dropsOnWrite`), the write is `kira::replace(place) = value`: stored
+     * whole, then the old value dropped. A `finally` is a class's, and this branch lowers no
+     * class, so the test stands in for W2.5's Drops: every type that holds `Rec` (or a type
+     * parameter) is taken to drop one. The runs show that each spelling stores Kira's value;
+     * kira/cpp/tests/rt_test.cxx's testReplace runs f2 and f3 with a real destructor as the
+     * `finally` and checks it sees the whole new value, and the trial runs the probes themselves.
+     */
+    private val replace = Module(
+        "copy:replace",
+        """
+        pub struct Rec {
+            pub v: Int32
+            pub name: Str
+            pub kids: List<Int32>
+        }
+
+        fx rec: (v: Int32, n: Str) Rec {
+            return Rec { v = v, name = n, kids = [v] }
+        }
+
+        mut gl: List<Rec> = []
+        mut gt: Rec = Rec { v = 0, name = "zero", kids = [] }
+        mut gll: List<List<Rec>> = []
+        mut gm: Maybe<Rec> = null
+        mut mm: Map<Int32, Rec> = Map<Int32, Rec> { }
+        mut gi: Int32 = 0
+        mut gn: List<Int32> = [1, 2]
+
+        pub fx element: () Str {
+            gl = [rec(1, "one")]
+            gl[0] = rec(2, "two")
+            return "${'$'}{gl.size()} ${'$'}{gl[0].v} ${'$'}{gl[0].name}"
+        }
+
+        pub fx whole: () Str {
+            gt = rec(2, "two")
+            return "${'$'}{gt.v} ${'$'}{gt.name} ${'$'}{gt.kids.size()}"
+        }
+
+        pub fx nested: () Str {
+            gll = [[rec(1, "a")], [rec(2, "b")]]
+            gll[0] = [rec(3, "c"), rec(4, "d")]
+            return "${'$'}{gll.size()} ${'$'}{gll[0].size()} ${'$'}{gll[0][1].v}"
+        }
+
+        pub fx maybe: () Str {
+            gm = rec(1, "one")
+            gm = rec(2, "two")
+            s: Str = "${'$'}{gm.unwrap().v}"
+            gm = null
+            return "${'$'}{s} ${'$'}{gm.isSome()}"
+        }
+
+        pub fx mapValue: () Str {
+            mm[1] = rec(1, "one")
+            mm[1] = rec(3, "three")
+            return "${'$'}{mm.size()} ${'$'}{mm.get(1).unwrap().v}"
+        }
+
+        pub fx listSet: () Str {
+            mut xs: List<Rec> = [rec(1, "one")]
+            xs.set(0, rec(2, "two"))
+            return "${'$'}{xs[0].v} ${'$'}{xs[0].name}"
+        }
+
+        pub fx arrSet: () Str {
+            mut a: Arr<Rec, 2> = [rec(1, "a"), rec(2, "b")]
+            a.set(1, rec(5, "e"))
+            return "${'$'}{a[1].v} ${'$'}{a[1].name}"
+        }
+
+        fx setView: (m: MutView<Rec>) Int32 {
+            m.set(0, rec(7, "g"))
+            m[1] = rec(8, "h")
+            return 0
+        }
+
+        pub fx viewSet: () Str {
+            mut xs: List<Rec> = [rec(1, "one"), rec(2, "two")]
+            z: Int32 = setView(xs.from(0))
+            return "${'$'}{xs[0].v} ${'$'}{xs[1].name}"
+        }
+
+        fx setFirst<T>: (mut xs: List<T>, v: T) Void {
+            xs[0] = v
+        }
+
+        pub fx bools: () Str {
+            mut bs: List<Bool> = [false, false]
+            setFirst<Bool>(mut bs, true)
+            return "${'$'}{bs[0]} ${'$'}{bs[1]}"
+        }
+
+        pub fx plain: () Str {
+            gi = 3
+            gn[0] = 5
+            return "${'$'}{gi} ${'$'}{gn[0]}"
+        }
+        """,
+    )
+
+    /** W2.5's Drops, as this test takes it: a type that holds `Rec` or a type parameter may drop an IMPURE `finally`. */
+    private fun holdsRec(t: KType?): Boolean = when (t) {
+        null, is KType.Param -> true
+        is KType.Nominal -> t.sym.name == "Rec" || t.typeArgs().any { holdsRec(it) }
+        else -> false
+    }
+
+    private val replaceTree by lazy {
+        CppExprTestSupport.emit("copy-replace", listOf(replace), emitterFactory = { unit, options ->
+            CppModuleEmitterFactory.create(unit, options).also { e ->
+                (e as? TypedCppModuleEmitter)?.program?.model?.dropsImpureFinally = ::holdsRec
+            }
+        })
+    }
+
+    @Test
+    fun aWriteOverAValueWhoseDropMayRunAFinallyStoresFirstAndDropsAfter() {
+        val source = replaceTree.source(replace)
+        listOf(
+            // f2, f3, f5, f6: an element, a global, a nested element, a Maybe (and its null).
+            "kira::replace(kira::at(gl, 0)) = rec(2, \"two\");",
+            "kira::replace(gt) = rec(2, \"two\");",
+            "kira::replace(kira::at(gll, 0)) = kira::List<Rec>{rec(3, \"c\"), rec(4, \"d\")};",
+            "kira::replace(gm) = rec(2, \"two\");",
+            "kira::replace(gm) = kira::none;",
+            // m[k] = v, and the bindings PLACE = {n}: List.set, Arr.set, MutView.set; m[i] = v through a MutView.
+            "kira::replace(mm[1]) = rec(3, \"three\");",
+            "kira::replace(kira::at(xs, 0)) = rec(2, \"two\");",
+            "kira::replace(kira::at(a, 1)) = rec(5, \"e\");",
+            "kira::replace(m[0]) = rec(7, \"g\");",
+            "kira::replace(kira::at(m, 1)) = rec(8, \"h\");",
+            // A type parameter may be anything; at Bool, kira::at gives a std::vector<bool> proxy.
+            "kira::replace(kira::at(xs, 0)) = v;",
+            // A value whose drop runs no finally is stored in place.
+            "gi = 3;",
+            "kira::at(gn, 0) = 5;",
+        ).forEach { assertTrue(source.contains(it), "$it:\n$source") }
+    }
+
+    @TestFactory
+    fun aWriteThatStoresFirstPrintsKirasValueOnEveryCompiler(): List<DynamicNode> =
+        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
+            DynamicTest.dynamicTest("replace [${tc.id}]") {
+                val rows = listOf(
+                    "replace::element() == \"1 2 two\"" to "f2: gl[0] = v",
+                    "replace::whole() == \"2 two 1\"" to "f3: gt = v",
+                    "replace::nested() == \"2 2 4\"" to "f5: gll[0] = v",
+                    "replace::maybe() == \"2 false\"" to "f6: a Maybe, then null",
+                    "replace::mapValue() == \"1 3\"" to "m[k] = v over a key",
+                    "replace::listSet() == \"2 two\"" to "List.set",
+                    "replace::arrSet() == \"5 e\"" to "Arr.set",
+                    "replace::viewSet() == \"7 h\"" to "MutView.set and m[i] = v",
+                    "replace::bools() == \"true false\"" to "a type parameter at Bool (a std::vector<bool> proxy)",
+                    "replace::plain() == \"3 5\"" to "a store in place",
+                )
+                val driver = buildString {
+                    append("#include \"").append(replace.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n")
+                    append(CppExprTestSupport.CHECK_PRELUDE)
+                    append("\nint main()\n{\n")
+                    rows.forEach { (cond, what) -> append("    check($cond, \"$what\");\n") }
+                    append("    std::printf(\"\\n%d checks, %d failed\\n\", checks, failures);\n")
+                    append("    return failures == 0 ? 0 : 1;\n}\n")
+                }
+                val stdout = CppExprTestSupport.compileAndRun(replaceTree, driver, tc) ?: return@dynamicTest
                 assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
             }
         }

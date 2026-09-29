@@ -12,6 +12,7 @@ import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.analysis.types.rules.Rules
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
@@ -47,12 +48,12 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.Use
  * value; the C++ lowering keeps its signatures (`const T&`, and `T&` for `mut`) and decides at
  * the use. Wherever C++ binds a reference to a first-class expression (a [Use]: an argument, a
  * receiver, an operator's or `kira::cat`'s operand, a `trace` argument, an `Fx` value's callee,
- * an extern's argument; and a `for` range, [rangeLends]), the expression is a temporary or it is
- * copied, `T(e)`, unless a shape of the whitelist proves that nothing writes, moves or frees the
- * storage while the reference lives. A callee never guards: every caller keeps invariant I
- * (each `const&` parameter is bound to storage nothing changes until the call returns, and each
- * class `this` is held for the call), which is what makes a by-value parameter and a value
- * `this` PRIVATE in the callee.
+ * an extern's argument, an assignment's value; and a `for` range, [rangeLends]), the expression
+ * is a temporary or it is copied, `T(e)`, unless a shape of the whitelist proves that nothing
+ * writes, moves or frees the storage while the reference lives. A callee never guards: every
+ * caller keeps invariant I (each `const&` parameter is bound to storage nothing changes until
+ * the call returns, and each class `this` is held for the call), which is what makes a
+ * by-value parameter and a value `this` PRIVATE in the callee.
  *
  * [pass] is the one function that decides, first match wins (2.0):
  *
@@ -98,12 +99,12 @@ class CppCopyPolicy(private val lower: CppLowering) {
     /** Whether the use [use] of [op] may bind a reference to it: a prvalue (W1), or a place W2 or W3 keeps still, or a ternary whose every branch is one. */
     private fun lends(op: Operand, use: Use, ops: List<Operand>, named: Set<Place>, consumer: Consumer?): Boolean {
         val e = op.expr
-        if (e != null && isPrvalue(e)) {
+        if (e != null && isPrvalue(e, use.direct)) {
             return true
         }
         if (e is IfExpr && model.ifShape(e) == true) {
             // `c ? a : b` of two places is an lvalue: lent only when each branch is (w2-6 #1).
-            return branches(e).all { b -> isPrvalue(b) || model.readPlace(b)?.let { placeLends(it, model.typeOrNull(b), ops, named, consumer) } == true }
+            return branches(e).all { b -> isPrvalue(b, use.direct) || model.readPlace(b)?.let { placeLends(it, model.typeOrNull(b), ops, named, consumer) } == true }
         }
         val p = use.place ?: e?.let { model.readPlace(it) } ?: return false
         return placeLends(p, use.type, ops, named, consumer)
@@ -178,6 +179,25 @@ class CppCopyPolicy(private val lower: CppLowering) {
         use != null && use.handle && model.dropsImpureFinally(use.type) && !lends(op, use, ops, named, consumer)
     }
 
+    /**
+     * Whether a write of a new value over an old one of [t] (an assignment, `xs[i] = v`,
+     * `m[k] = v`, and the bindings `PLACE = {n}`: `List.set`, `Arr.set`, `MutView.set`) is spelled
+     * `kira::replace(place) = value`, which stores first and drops the old value after, Kira's
+     * order. C++'s `operator=` drops the old value's parts while it writes the new one, member by
+     * member, so an IMPURE `finally` that drop runs (`Drops.mayDrop`) would free the place's
+     * storage or rewrite it half-written. A class or trait handle, a `Maybe` of one and a `Weak`
+     * are one `std::shared_ptr` or `std::weak_ptr`, whose assignment the standard specifies as
+     * `shared_ptr(r).swap(*this)`: it stores, then drops, already.
+     */
+    fun dropsOnWrite(t: KType?): Boolean {
+        if (!model.dropsImpureFinally(t)) {
+            return false
+        }
+        val n = CppBindingTable.magicName(t)
+        val one = if (n == "Maybe") (t as KType.Nominal).typeArgs().singleOrNull() else t
+        return !(isHandle(one) || n == "Weak")
+    }
+
     // ---- the words of 2.0 ----------------------------------------------------------------------
 
     /**
@@ -188,10 +208,12 @@ class CppCopyPolicy(private val lower: CppLowering) {
      * `kira::Str(branch)`); a class's `this` (`shared_from_this()`, a new handle); a call of a
      * Kira function (every one returns by value). Not a place (a lent result included), not a
      * binding's result, not a value class's `*this` or `kira::deref(...)`: an expression kind
-     * not on the list is copied.
+     * not on the list is copied. For a [direct] use (an assignment's value) a `WrapSome` is no
+     * conversion: C++ spells it implicitly, and `std::optional`'s `operator=(U&&)` binds the
+     * value itself.
      */
-    fun isPrvalue(e: Expr): Boolean {
-        if (converts(e)) {
+    fun isPrvalue(e: Expr, direct: Boolean = false): Boolean {
+        if (converts(e) && !(direct && model.coercion(e) is Coercion.WrapSome)) {
             return true
         }
         if (e is ThisExpr) {
@@ -206,7 +228,7 @@ class CppCopyPolicy(private val lower: CppLowering) {
             is InterpolatedStringLiteral, is ObjectInitExpr, is LambdaExpr, is BinaryExpr, is UnaryExpr, is TypeCastExpr,
             -> true
             is IfExpr -> if (model.ifShape(e) == true) {
-                model.typeOrNull(e) == KType.Str || branches(e).all { isPrvalue(it) }
+                model.typeOrNull(e) == KType.Str || branches(e).all { isPrvalue(it, direct) }
             } else {
                 true
             }

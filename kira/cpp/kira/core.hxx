@@ -483,6 +483,46 @@ namespace kira
       return v[i];
   }
 
+  // `kira::replace(place) = value`: Kira's write over an old value whose drop may run
+  // a `finally`. C++'s operator= drops the old value's parts while it writes the new
+  // one, member by member, so a `finally` run by that drop would see, free or rewrite
+  // a half-written place. Kira stores first and drops the old value after: the old
+  // value is moved out here (a move runs no Kira code), the place takes the new one,
+  // and the old value dies once the store is whole. As for a plain `place = value`,
+  // the right side is evaluated before the place. A proxy place (a std::vector<bool>
+  // element) holds nothing that drops, and is assigned.
+  template<class S>
+  class Replace
+  {
+  public:
+      constexpr explicit Replace(S&& place) noexcept : place_(std::forward<S>(place))
+      {
+      }
+      Replace(const Replace&) = delete;
+      Replace& operator=(const Replace&) = delete;
+      template<class U>
+      constexpr void operator=(U&& value) &&
+      {
+          if constexpr(std::is_lvalue_reference_v<S>)
+          {
+              [[maybe_unused]] std::remove_reference_t<S> old = std::move(place_);
+              place_ = std::forward<U>(value);
+          }
+          else
+          {
+              place_ = std::forward<U>(value);
+          }
+      }
+
+  private:
+      S place_;
+  };
+  template<class S>
+  [[nodiscard]] constexpr Replace<S> replace(S&& place) noexcept
+  {
+      return Replace<S>(std::forward<S>(place));
+  }
+
   // A string literal as a static View<Char>: "abc" is 3 chars, no terminator.
   template<Size N>
   [[nodiscard]] constexpr View<Char> lit(const Char (&s)[N]) noexcept

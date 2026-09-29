@@ -89,13 +89,13 @@ namespace proto
           wordAt(out.line, e, tb, te);
           if(tb < te)
           {
-              out.topic = kira::str::substring(out.line, tb, te);
+              out.topic = kira::Str(kira::str::substring(out.line, tb, te));
               out.rest = tailFrom(out.line, te);
           }
           return out;
       }
       out.kind = Kind::KIND_OTHER;
-      out.rest = out.line;
+      out.rest = kira::Str(out.line);
       return out;
   }
 
@@ -117,7 +117,7 @@ namespace proto
               {
                   to += 1;
               }
-              out = kira::str::substring(text, i + klen, to);
+              out = kira::Str(kira::str::substring(text, i + klen, to));
               return true;
           }
           i += 1;
