@@ -88,7 +88,9 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * the header unwrapped.
  *
  * At a call, [call] spells the C++ name with a leading `::` and the proxies (the expression
- * part hands over the spelled receiver and arguments), converts the result as above, and
+ * part hands over the spelled receiver and arguments), spells an argument the typer converted
+ * as the parameter's type (`kira::Maybe<T>(e)`, `kira::Rc<Base>(e)`: [argument]), so the call
+ * is the one the check states, converts the result as above, and
  * spells the copies the copy policy made (50-round4: W2.3's `CppCopyPolicy` decides which
  * argument is copied, as it does for every call; this part only spells it with the proxy).
  * Every call whose body C++ supplies comes here (R-G): a bodiless `pub` prototype too, which
@@ -489,6 +491,22 @@ object CppExternEmitter : CppExternsPart {
      * as a `kira::Str` made from whatever C++ declared ([constant]: a `std::string` or a `const
      * char*` both pass its check), a temporary, so it takes the buffer.
      *
+     * First of all, an argument the typer converted ([convertsToParam]: a `WrapSome`, `NoneOf`,
+     * `Upcast` or `FnRef`) is spelled as the parameter's type, `P(text)`, so the call passes the
+     * type its check states (`kira::ffi::arg<P>()`, `std::declval<const P&>()`) and resolves the
+     * same overload. Left to C++, the conversion happens only where the C++ parameter is that
+     * type: an overload set took the unconverted value (`pick(gs)` against `pick(const
+     * std::optional<std::string>&)` and `pick(const std::string&)` printed 247 for 147, on g++,
+     * clang and MSVC), and a template bound the Kira storage itself (`lenAfter(gls[0], f)` read
+     * the element after `f` replaced the List: -1971355728 for 47 on g++, a heap-use-after-free
+     * under MSVC ASan; `nameLenAfter(h.kid, f)` with a `Base` parameter bound the `Kid` slot and
+     * printed 1 for 47). The copy policy counts the conversion as a temporary (W1,
+     * `CppCopyPolicy.converts`), and `P(text)` is that temporary: a `Maybe` or a handle made
+     * from the value at the call, which holds its own copy (a `Str`, a list) or the object (a
+     * class) for the whole call. A bodiless prototype declares `P` itself (`const
+     * kira::Maybe<T>&`, `const kira::Rc<Base>&`), so C++ converts at its call as at a Kira
+     * function's, and its text is left as it is.
+     *
      * [proxied] is false for a bodiless `pub` prototype ([proxied]): Kira declared its C++
      * parameters itself, so a `Str` is passed as the `kira::Str` it is and a `mut` argument as
      * the `T&` it binds, with no `kira::ffi::in`/`out`; its `Unsafe<T>` and `CStr` parameters
@@ -513,6 +531,9 @@ object CppExternEmitter : CppExternsPart {
             return text
         }
         val expr = (binding as? ArgBinding.Given)?.expr
+        if (proxied && expr != null && convertsToParam(ctx.model.coercion(expr))) {
+            return "${ctx.spell(p.type, Pos.VALUE)}($text)"
+        }
         if (isUnsafe(p.type)) {
             val given = expr?.let { ctx.model.types[it] }
             val viewLike = given != null && (isMagic(given, VIEW) || isMagic(given, MUT_VIEW))
@@ -549,6 +570,17 @@ object CppExternEmitter : CppExternsPart {
         }
         return text
     }
+
+    /**
+     * Whether [c], the typer's coercion at an argument, makes a value of another C++ type, which
+     * [argument] spells as the parameter's type `P(e)`: a `WrapSome` (`kira::Maybe<T>(e)`, or the
+     * nullable `kira::Rc<Base>(e)` of a class), a `NoneOf` (`kira::Maybe<T>(kira::none)`), an
+     * `Upcast` (`kira::Rc<Base>(e)`, `kira::Rc<Trait>(e)`) and an `FnRef` (`kira::Fn<...>(f)`).
+     * A `ToView` is spelled by the expression part already (`kira::view`), and the `.data()` an
+     * `Unsafe<T>` takes of it is [argument]'s.
+     */
+    private fun convertsToParam(c: Coercion?): Boolean =
+        c is Coercion.WrapSome || c is Coercion.NoneOf || c is Coercion.Upcast || c is Coercion.FnRef
 
     /** The global [e] names, bare (`GS`) or through its module (`w.GS`), or null. */
     private fun globalOf(ctx: CppEmitContextImpl, e: Expr): GlobalSymbol? = when (e) {

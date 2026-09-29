@@ -131,7 +131,12 @@
 //                       pointer is stated as std::declval<const T&>() instead,
 //                       the lvalue the call passes, so that an overload taking T
 //                       itself outranks one taking a type T converts to, as it
-//                       does at the call; a proxy would make the two ambiguous
+//                       does at the call; a proxy would make the two ambiguous.
+//                       A value Kira converts to the parameter's type (a T to a
+//                       Maybe, a class to its base or a trait, null, a named
+//                       function) is passed as that type, T(e), never left for
+//                       C++ to convert: a template or an overload set would take
+//                       the unconverted value where the check stated a T
 //   kira::ffi::CStrBuf  a CStr made from a Str that is neither a literal nor a
 //                       Str constant nor a named Str; its c_str() lives to the
 //                       end of the full-expression

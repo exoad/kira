@@ -419,6 +419,93 @@ class CppExternEmitterTest {
     }
 
     /**
+     * Round 5b (w2-6): an argument the typer converted (`WrapSome`, `NoneOf`, `Upcast`, `FnRef`)
+     * is passed as the parameter's type, so the call is the one its check states: left to C++, an
+     * overload set took the unconverted value and a template bound the Kira storage itself
+     * (ExternCoercionRunTest has the values). An `@_opaque` method's argument too; a bodiless
+     * prototype's is left to its own C++ declaration, which is the parameter's type.
+     */
+    @Test
+    fun anArgumentTheTyperConvertedIsPassedAsTheParametersType() {
+        val c = callsOf(
+            """
+            trait Named {
+                pub fx nm: () Str
+            }
+
+            pub class Base {
+                pub name: Str = "b"
+            }
+
+            pub class Kid: Base {
+            }
+
+            pub class Dog: Named {
+                override pub fx nm: () Str {
+                    return "d"
+                }
+            }
+
+            @_extern(cpp = "m4::nameLen", header = "m4.hxx")
+            pub fx nameLen: (b: Base) Int32;
+
+            @_extern(cpp = "m4::nmLen", header = "m4.hxx")
+            pub fx nmLen: (t: Named) Int32;
+
+            @_extern(cpp = "m4::maybeNameLen", header = "m4.hxx")
+            pub fx maybeNameLen: (b: Maybe<Base>) Int32;
+
+            @_extern(cpp = "m3::pick", header = "m3.hxx")
+            pub fx pick: (m: Maybe<Str>) Int32;
+
+            @_extern(cpp = "m3::pickNull", header = "m3.hxx")
+            pub fx pickNull: (m: Maybe<Str>) Int32;
+
+            @_extern(cpp = "m3::pickN", header = "m3.hxx")
+            pub fx pickN: (m: Maybe<Int32>) Int32;
+
+            @_extern(cpp = "m3::callKind", header = "m3.hxx")
+            pub fx callKind: (f: Fx<Tuple0, Int32>) Int32;
+
+            @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
+            pub class DrawList {
+                @_extern(cpp = "AddText") pub mut fx addText: (text: Maybe<Str>) Void;
+            }
+
+            @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h")
+            pub fx drawList: () DrawList;
+
+            pub fx protoPick: (m: Maybe<Str>) Int32;
+
+            fx two: () Int32 {
+                return 2
+            }
+
+            fx main: () Int32 {
+                k: Kid = Kid { }
+                d: Dog = Dog { }
+                s: Str = "abc"
+                n: Int32 = 5
+                drawList().addText(s)
+                return nameLen(k) + nmLen(d) + maybeNameLen(k) + pick(s) + pickNull(null) + pickN(n) + callKind(two) + protoPick(s)
+            }
+            """
+        )
+        assertEquals("kira::ffi::declared<std::int32_t>(::m4::nameLen(kira::Rc<Base>(k)))", c.text("nameLen", null, "k"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::m4::nmLen(kira::Rc<impl_::Named>(d)))", c.text("nmLen", null, "d"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::m4::maybeNameLen(kira::Maybe<kira::Rc<Base>>(k)))", c.text("maybeNameLen", null, "k"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::m3::pick(kira::Maybe<kira::Str>(s)))", c.text("pick", null, "s"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::m3::pickNull(kira::Maybe<kira::Str>(kira::none)))", c.text("pickNull", null, "kira::none"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::m3::pickN(kira::Maybe<std::int32_t>(n)))", c.text("pickN", null, "n"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::m3::callKind(kira::Fn<std::int32_t()>(two)))", c.text("callKind", null, "two"))
+        // The copy policy counts the conversion as a temporary (W1) and never marks it copied; were it marked, the
+        // conversion is still the one copy made, never a second one around it.
+        assertEquals("kira::ffi::declared<std::int32_t>(::m3::pick(kira::Maybe<kira::Str>(s)))", c.copiedText("pick", setOf(0), null, "s"))
+        assertEquals("::ImGui::GetWindowDrawList()->AddText(kira::Maybe<kira::Str>(s))", c.text("addText", "::ImGui::GetWindowDrawList()", "s"))
+        assertEquals("protoPick(s)", c.text("protoPick", null, "s"))
+    }
+
+    /**
      * The check lets a `const char* name()` pass as `name: () Str` (7.2: a const char*
      * converts to a Str), and the call kept C++'s type: `name() == ABC`, with ABC a Kira Str
      * constant (D12: `inline constexpr const char*`), compared two pointers and printed 0 for

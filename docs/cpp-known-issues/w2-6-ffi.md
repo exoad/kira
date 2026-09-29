@@ -1,7 +1,101 @@
-# Known issues: w2-6-ffi (copy by default, round 4)
+# Known issues: w2-6-ffi (copy by default, round 6)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
+
+## Round 6: an extern argument the typer converted is passed as the parameter's type
+
+### The merges
+
+1. `git merge --no-ff cpp/w2-5-rules` (b706176), signed as 1ab5f6f, no conflict: a
+   construction that runs an Fx it is given is charged and IMPURE (`CallReach.runsAtConstruction`).
+2. `git merge --no-ff cpp/w2-3-emit-exprs` (16f909e), signed as 6c815a5, no conflict: a copied
+   Fx callee is parenthesized, and a write over a value whose drop may run an impure `finally`
+   stores first (`kira::replace`, `CppCopyPolicy.dropsOnWrite`).
+
+### Round 5b's finding (sc-round5.json, round5.w2-6-ffi.verdict)
+
+An extern argument given through `Coercion.WrapSome` or `Coercion.Upcast` reached C++
+unconverted. The check states the declared type (`kira::ffi::arg<kira::Maybe<T>>()`,
+`std::declval<const kira::Rc<Base>&>()`), but the call passed the Kira text as it was, so against
+a C++ overload set or template the emitted call was another call. The copy policy's W1 (rule 3,
+`CppCopyPolicy.converts`: a conversion is a temporary) then lent the Kira storage itself, off the
+whitelist.
+
+The fix is at the root, `CppExternEmitter.argument`: before any proxy, an argument whose
+coercion makes a value of another C++ type (`convertsToParam`: `WrapSome`, `NoneOf`, `Upcast`,
+`FnRef`) is spelled as the parameter's type, `P(e)`: `kira::Maybe<kira::Str>(gs)`,
+`kira::Rc<Base>(h->kid)`, `kira::Rc<impl_::Named>(h->dog)`, `kira::Maybe<kira::Rc<Base>>(h->kid)`
+(a Kid wrapped into a `Maybe<Base>`, the nullable Rc of the parent),
+`kira::Maybe<kira::Str>(kira::none)`, `kira::Fn<std::int32_t()>(two)`. The call then passes the type
+its check states, and the temporary W1 counts really exists: a `Maybe` or a handle made from the
+value at the call, which holds its own copy of a `Str` or list, or holds the object of a class,
+for the whole call. So the policy's count is right as it stands, and `CppCopyPolicy` is unchanged.
+The copy flag never applies to such an argument (it is a prvalue); were it set, `P(e)` is still
+the one copy. It applies wherever the arguments are proxied: an `@_extern` and an `@_opaque`
+method. A bodiless prototype declares `P` itself (`const kira::Maybe<T>&`), so C++ converts there
+as at a Kira function, and its text is unchanged. `NoneOf` and `FnRef` are the same root:
+`kira::none` bound a template as `kira::None` (a compile error), and a function name took a
+function-pointer overload where the check stated a `kira::Fn`. `kira/ffi.hxx`'s proxy notes say
+the same.
+
+### Measured
+
+Scratch trial `scratchpad/w26r6/trial`: `trial/w2-views` (a6d2ef5, which holds W2.4) plus this
+branch merged uncommitted, before (`tbase`) and after (`tfix`) the fix. `run.sh`: g++ 13.2 -O1,
+zig c++ (clang 20), MSVC 14.44 /O1 and /fsanitize=address; `prun.sh` (the verifier's strict
+flags): g++ and clang -O0 -Wconversion -Wsign-conversion -Wshadow -Werror, MSVC ASan /W4 /WX.
+
+| Probe | Before (gcc, clang, MSVC) | After, all four builds |
+|---|---|---|
+| m3 `pick(gm)`, `pick(gs)`, `pickN(n)`, `pickN(mn)` | 147, 247, 205, 105 | 147, 147, 105, 105 |
+| m3 `lenAfter(gs, f)`, `lenAfter(gls[0], f)` | 1; 1325400400, 47, 0, and ASan a heap-use-after-free | 47, 47, ASan 0 |
+| m4 `nameLenAfter(h.kid, f)`, a `Base` parameter | 1 | 47 |
+| m5 a class upcast to a trait, `nmLenAfter(h.dog, f)` | 1 | 47 |
+| m5 a Kid into a `Maybe<Base>`, `maybeNameLenAfter(h.kid, f)` | 1 | 47 |
+| m5 `nameLenAfter(gks[0], f)` over a global List | 47, 47, 0, and ASan a heap-use-after-free | 47, ASan 0 |
+| m5 `callKind(two)`, a named function | 202 | 102 |
+| m5 `pick("ab")`, `sizeOrNeg(null)`, `sizeThen(gs, bumpGs())` | did not compile (an ambiguous call; `kira::None` and `std::string` bound the templates) | 102, -1, 47 |
+| m2, the control (non-template C++ parameters) | 47 47 47, the old text x4 | the same |
+
+Emit diff, `tbase` against `tfix`, over every project of the round-5b verifier (v26r5b: p, atk,
+w26, r4d, w23, w23a, w25atk, w24 and the generator's 51): 278 projects. 181 emit byte-identical
+user code, 93 are refused by both with the same exit, and 4 differ: m2, m3, m4 and p/a1. a1 hands a
+lambda and an Fx local to `Maybe<Fx>` parameters, now `kira::Maybe<kira::Fn<void()>>(...)`, and still
+prints Kira's `82 82 82 6 6` under the strict flags, with ASan 0.
+
+Tests, all run in the worktree unless noted:
+- `ExternCoercionRunTest`: the verifier's m3 probe and m5's Maybe, null and function rows, 10
+  rows checked by text and by value on gcc, clang and msvc. The m4 and m5 class rows (4 rows) run
+  where W2.4's `CppClassesPart` is registered. On this branch they are skipped by that one
+  assumption, 4 tests. On the scratch trial all 8 tests pass. With the fix reverted there, all 8
+  fail: the Maybe build fails on all three compilers, and the class rows print 1 for 47.
+- `CppExternEmitterTest.anArgumentTheTyperConvertedIsPassedAsTheParametersType`: the spelling
+  through the typed model, with no class lowering needed. It covers a parent, a trait, a
+  `Maybe<Base>`, a Str, an Int32, null, a named function, a copied Maybe (one copy, not two), an
+  `@_opaque` method, and a prototype (left as is).
+- The acceptance commands: ffi tests 125, 0 failures, 4 skipped (the class rows above). Full
+  suite: 1357 tests in 101 files, 0 failures, 4 skipped. `examples/regenerate.sh --check`: all
+  snapshots current, C++ leg 2 of 2. ffi-mini ok, 13-ffi-cpp ok. `kira/cpp/tests/run.sh`: 66
+  passed (ffi_test 29/0). `msvc.bat`: all passed (ffi_test 29/0, `KIRA_FFI_DRIFT=1` refused
+  with Kira's message). `goldens.sh`: 18 cases, 71 passed. No golden changed.
+
+### Open
+
+- **A D33-spilled argument of a `Maybe` parameter is copied twice**
+  (`const kira::Str t0_ = gs;` then `kira::Maybe<kira::Str>(t0_)`, m5's `sizeThen`). The value is
+  right. The spill is const, so the wrap cannot move from it. This is a cost, not a hazard.
+- **rb1 (round 4 and 5b minor) is outside contract 5.4.3.** `lenAfterBump(gs, p)` prints 168 for
+  82 because the C++ callee calls `p.bump()`, a method of a Kira value class that writes `gs`.
+  Contract 5.4.3 reads: "An extern runs Kira code only through the `Fx` arguments it is given,
+  and does not otherwise re-enter Kira during the call." Round 4's restatement below dropped the
+  second clause, and it is restored there. A C++ callee that calls a Kira method breaks the
+  contract, as a data race does.
+- **Overloads by value category are not told apart.** A converted argument is a prvalue `P(e)`.
+  The check states a class handle as the lvalue `std::declval<const P&>()`. An overload set
+  that tells `const P&` from `P&&` would resolve differently in the check and in the call. A
+  copied handle argument (`kira::Rc<C>(h)`, round 4) already had this gap, and no header in the
+  goldens has such a set.
 
 ## Round 4 (50-round4 6.5): copy by default at the FFI boundary
 
@@ -114,8 +208,9 @@ Contract 5.4's other lines, which the policy's W3 extern row reads (`!CallReach.
 it; 5.4.2 it writes Kira storage only through its `mut` arguments and its receiver; 5.4.3 it
 runs a Kira `Fx` only during a call that is given it, or given something that may hold it (a
 handle to the C++ object that keeps it, which as a class or `@_opaque` receiver or argument
-always counts). A C++ callback registry is reached through such a handle, never through a free
-function given none.
+always counts), and does not otherwise re-enter Kira during the call (it calls no Kira method
+or function it is not handed as an `Fx`: round 6, rb1). A C++ callback registry is reached
+through such a handle, never through a free function given none.
 
 ### Open
 
