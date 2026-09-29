@@ -939,13 +939,14 @@ object CallReach {
      * user type's operators or replaces or removes what may be the last handle of an object whose
      * `finally` is IMPURE, or a construction's `initially` or impure default. By callee kind:
      *
-     * - every `Fx` argument (given, or the default of a parameter declared `Fx`), one given for
-     *   a type parameter included (`hooks.add(f)`, `pass<Fx<...>>(f, h)`): a lambda literal whose
-     *   body is CONFINED (`TypedModel.lambdaConfined`) or a function named as a value whose body
-     *   is (`fnConfined`); any other spelling (a variable, a field, a call result) is not. A call
-     *   of an `Fx` value also charges an argument of a type parameter, which may be an `Fx`
-     *   ([mayHoldFx]): a generic body that hands its `T` to its own `Fx` parameter runs whatever
-     *   its caller gave for that `T`, so it is not CONFINED;
+     * - an argument for a parameter declared `Fx` (given, or the parameter's default): a lambda
+     *   literal whose body is CONFINED (`TypedModel.lambdaConfined`) or a function named as a
+     *   value whose body is (`fnConfined`); any other spelling (a variable, a field, a call
+     *   result) is not. An `Fx` given for a type parameter (`hooks.add(f)`, `KEPT.add(k)`) is
+     *   not charged here: storing an `Fx` never runs it, and a callee that sees it as a `T` can
+     *   run it only by handing it to an `Fx` it calls. That call is an `FN_VALUE` call, which
+     *   charges an argument of a type parameter ([mayHoldFx]), so a generic body that hands its
+     *   `T` to its own `Fx` parameter (`pass<T>`, `Box<T>.run`) is not CONFINED;
      * - a Kira function with a body called statically (`FREE`, `METHOD`, `OP_OVERLOAD`, `CTOR`):
      *   `TypedModel.fnConfined`, EffectsPass's fixpoint;
      * - a stdlib binding: not one of [RUNS_OPERATORS] over a user type, no method of a system
@@ -995,13 +996,14 @@ object CallReach {
 
     /** [confined] under [k]; [callee] is the called expression of an `FN_VALUE` call, whose own `Fx` parameter [k] may have charged. */
     internal fun confined(rc: ResolvedCall, model: TypedModel, receiverType: KType?, k: Known, callee: Expr?): Boolean {
-        // Row 1: every Fx argument, one given for a type parameter included; and, at a call of an Fx value, an argument
-        // of a type parameter, which may be an Fx: the callee is whatever the caller gave, and may run it.
+        // Row 1: every argument for a parameter the callee declares Fx (or, with no declared parameter, of type Fx): only
+        // there can the callee run it, and one given for a T is only kept (hooks.add(f) stores f). At a call of an Fx
+        // value, also an argument of a type parameter, which may be an Fx: the callee is whatever the caller gave.
         for ((i, a) in rc.args.withIndex()) {
             when (a) {
                 is ArgBinding.Given -> {
                     val t = model.types[a.expr]
-                    val fx = rc.fn?.params?.getOrNull(i)?.type is KType.Fn || t is KType.Fn ||
+                    val fx = (rc.fn?.params?.getOrNull(i)?.type ?: t) is KType.Fn ||
                         rc.kind == CallKind.FN_VALUE && (t == null || t == KType.Error || t is KType.Param)
                     if (fx && !fxConfined(a.expr, model, k)) {
                         return false

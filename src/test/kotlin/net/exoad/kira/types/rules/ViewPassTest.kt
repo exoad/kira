@@ -629,8 +629,9 @@ class ViewPassTest {
             }
             """,
         )
-        // Rule M too (50-round4 2.3 row 1, 2.7): each KEPT.add is handed a lambda that runs a captured Fx value.
-        expectView(p, "rules.view.generic", "rules.view.generic", "rules.exclusivity.mut", "rules.exclusivity.mut")
+        // No rule M (50-round4 2.3 row 1, round 5b): each KEPT.add is handed a lambda that runs a captured Fx value, but
+        // add takes it as a T and only keeps it, so it is not charged.
+        expectView(p, "rules.view.generic", "rules.view.generic")
         val m = messages(p, "rules.view.generic")
         assertTrue(m.any { it.startsWith("'keep' cannot take T = View<Char>: its override in K captures the T 'x' in a lambda that escapes") }, m.joinToString("\n"))
         assertTrue(m.any { it.startsWith("'keep' cannot take T = View<Char>: its override in Sub captures") }, m.joinToString("\n"))

@@ -279,11 +279,12 @@ class SharedPredicatesTest {
     }
 
     @Test
-    fun anFxGivenForATypeParameterIsChargedAndAGenericThatRunsItsTIsNotConfined() {
-        // 2.3 row 1 (w2-5 round-4 #0): every Fx argument is charged, one given for a T included (add's value, keepG's
-        // x). A call of an Fx value charges its T argument too, since a T may be an Fx (mayHoldFx): pass and Box.run
-        // hand their T to their own Fx parameter, so neither is CONFINED, whatever its caller gives. keepG only keeps
-        // its T, and stays CONFINED.
+    fun anFxGivenForATypeParameterIsOnlyKeptAndAGenericThatRunsItsTIsNotConfined() {
+        // 2.3 row 1 (w2-5 round-4 #0, round 5b): an Fx argument is charged where the callee declares the parameter Fx,
+        // and not where it takes it as a T (add's value, keepG's x): storing an Fx never runs it (7.1's r4d/p3, p5). A
+        // call of an Fx value charges its T argument, since a T may be an Fx (mayHoldFx): pass and Box.run hand their T
+        // to their own Fx parameter, so neither is CONFINED, whatever its caller gives. keepG only keeps its T, and
+        // stays CONFINED.
         val p = snippet(
             """
             pub mut G: Int32 = 0
@@ -323,8 +324,8 @@ class SharedPredicatesTest {
         )
         assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
         assertEquals(
-            // add: keepG's own xs.add(x) (a T, which a binding only keeps), then the two in drive.
-            mapOf("keepG" to listOf(false, true, true), "add" to listOf(true, false, true), "pass" to listOf(false)),
+            // add: keepG's own xs.add(x), then the two in drive; each is a T, which a binding only keeps.
+            mapOf("keepG" to listOf(true, true, true), "add" to listOf(true, true, true), "pass" to listOf(false)),
             confined(p, "keepG", "add", "pass"),
         )
         assertEquals(

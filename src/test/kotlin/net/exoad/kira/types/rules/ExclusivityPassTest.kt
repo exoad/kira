@@ -1686,8 +1686,8 @@ class ExclusivityPassTest {
         expectClean(r1)
         assertEquals(listOf(true, true, true), confinedCalls(r1, "add"))
         assertEquals(listOf(true, true), confinedCalls(r1, "size"))
-        // The controls: what replaces or removes may drop the last Res, and an add handed a lambda that writes a global
-        // is handed an Fx that is not CONFINED (row 1 charges an Fx given for a T).
+        // The controls: what replaces or removes may drop the last Res. An add handed a lambda that writes a global stays
+        // accepted (round 5b): add takes it as a T and only keeps it, and storing an Fx never runs it.
         val controls = snippet(
             """
             pub mut count: Int32 = 0
@@ -1707,10 +1707,122 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(controls, *Array(4) { "rules.exclusivity.mut" })
+        expectExactly(controls, *Array(3) { "rules.exclusivity.mut" })
         assertEquals(listOf(false), confinedCalls(controls, "set"))
         assertEquals(listOf(false), confinedCalls(controls, "removeAt"))
         assertEquals(listOf(false), confinedCalls(controls, "clear"))
-        assertEquals(listOf(false), confinedCalls(controls, "add"))
+        assertEquals(listOf(true), confinedCalls(controls, "add"))
+    }
+
+    // ---- round 5b: 2.3 row 1 charges an Fx argument only where the callee can run it (design 7.1's r4d/p3 and p5) ----
+
+    @Test
+    fun r4dP3AndP5AreAcceptedAHookStoredInAMutGlobalIsNeverRunByTheAdd() {
+        // r4d/p3 and p5 (scratchpad r4d): main adds to the mut global hooks a lambda that replaces other globals, and
+        // later calls run it through runHooks. 7.1 says both must run and print Kira's value (47/6/5, and
+        // old-name...:1). The add stores the lambda and never runs it, so it is CONFINED and rule M accepts the mut
+        // global receiver; round 5's literal row 1 refused both at hooks.add. Every call that reaches runHooks is not
+        // CONFINED, so what it reads is copied.
+        val p3 = snippet(
+            """
+            pub mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
+            pub mut gl: List<Int32> = [1, 2, 3]
+            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub fx runHooks: () Void {
+                items: List<Fx<Tuple0, Void>> = hooks
+                for h: Fx<Tuple0, Void> in items {
+                    h()
+                }
+            }
+            pub fx lenAfter: (s: Str) Int32 {
+                runHooks()
+                return s.length() as Int32
+            }
+            pub fx sumAfter: (xs: List<Int32>) Int32 {
+                mut t: Int32 = 0
+                for x: Int32 in xs {
+                    runHooks()
+                    t += x
+                }
+                return t
+            }
+            pub class Node {
+                pub mut n: Int32 = 5
+                pub fx nAfter: () Int32 {
+                    runHooks()
+                    return n
+                }
+            }
+            pub mut gn: Maybe<Node> = null
+            pub fx drive: () Void {
+                hooks.add(fx () Void {
+                    gs = "new"
+                    gl = [100]
+                    gn = Node { n = 9 }
+                })
+                trace(lenAfter(gs))
+                gs = "old-text-long-enough-to-live-on-the-heap-000000"
+                gl = [1, 2, 3]
+                trace(sumAfter(gl))
+                gn = Node {}
+                trace(gn.value.nAfter())
+            }
+            """,
+        )
+        expectClean(p3)
+        assertEquals(listOf(true), confinedCalls(p3, "add"))
+        assertEquals(listOf(false), confinedCalls(p3, "lenAfter"))
+        assertEquals(listOf(false), confinedCalls(p3, "sumAfter"))
+        assertEquals(listOf(false), confinedCalls(p3, "nAfter"))
+        assertEquals(false, p3.model.fnConfined[RulesTestSupport.fn(p3, "runHooks")])
+        // p5 as written (a struct, which W2.9 turns into an immutable class; a class construction cannot start a mut
+        // global, D49): the value receiver gt of describe, which runs the hook.
+        val p5 = snippet(
+            """
+            pub struct Tag {
+                pub name: Str
+                pub n: Int32
+                pub fx describe: () Str {
+                    runHooks()
+                    return "${'$'}{name}:${'$'}{n}"
+                }
+            }
+            pub mut gt: Tag = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
+            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub fx runHooks: () Void {
+                items: List<Fx<Tuple0, Void>> = hooks
+                for h: Fx<Tuple0, Void> in items {
+                    h()
+                }
+            }
+            pub fx drive: () Void {
+                hooks.add(fx () Void {
+                    gt = Tag { name = "new", n = 2 }
+                })
+                trace(gt.describe())
+            }
+            """,
+        )
+        expectClean(p5)
+        assertEquals(listOf(true), confinedCalls(p5, "add"))
+        assertEquals(listOf(false), confinedCalls(p5, "describe"))
+        // The control: an add whose declared parameter IS an Fx (a Kira function that runs it) is still charged.
+        val ctl = snippet(
+            """
+            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub mut gs: Str = "old"
+            pub fx addRun: (mut hs: List<Fx<Tuple0, Void>>, f: Fx<Tuple0, Void>) Void {
+                f()
+                hs.add(f)
+            }
+            pub fx drive: () Void {
+                addRun(mut hooks, fx () Void {
+                    hooks = []
+                })
+            }
+            """,
+        )
+        expectExactly(ctl, "rules.exclusivity.mut")
+        assertEquals(listOf(false), confinedCalls(ctl, "addRun"))
     }
 }
