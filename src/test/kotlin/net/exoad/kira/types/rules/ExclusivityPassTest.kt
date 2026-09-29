@@ -1431,11 +1431,12 @@ class ExclusivityPassTest {
     """
 
     @Test
-    fun ruleMRefusesW24sExternShapesAndAcceptsAConfinedCallback() {
+    fun ruleMRefusesW24sExternShapesAndAnExternHandedAnyLambda() {
         // externmut and externarr (round 2's W2.4 verifier, MSVC ASan heap-use-after-free): the callback frees the Item
         // that h.item.count lies in while the prototype writes through the int&. h.item is a handle step, so the place
-        // is not STABLE, and a prototype handed an Fx that is not CONFINED, or anything that may hold one, is not
-        // CONFINED (contract 5.4.3). A callback that writes nothing is CONFINED, and so is the call.
+        // is not STABLE, and a prototype handed anything that may hold an Fx is not CONFINED (2.3's extern row,
+        // !mayRunAnything): a lambda literal too, even one that writes nothing, since C++ may call it with what it
+        // chooses (round 4's e1: a lambda that runs its own Fx parameter, handed a hook C++ kept).
         val p = snippet(
             externItem + """
             pub fx run: (f: Fx<Tuple0, Void>) Int32 {
@@ -1452,9 +1453,9 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, *Array(4) { "rules.exclusivity.mut" })
+        expectExactly(p, *Array(5) { "rules.exclusivity.mut" })
         assertTrue(p.diagnostics.all { it.message.startsWith("the mut argument 'h.item.count', storage reached through a handle, is passed to 'bump") }, TyperTestSupport.render(p))
-        assertEquals(listOf(false, false, true), confinedCalls(p, "bump"))
+        assertEquals(listOf(false, false, false), confinedCalls(p, "bump"))
     }
 
     @Test
@@ -1539,5 +1540,177 @@ class ExclusivityPassTest {
         )
         expectClean(alb)
         assertEquals(listOf(false, false), confinedCalls(alb, "readAfterH"))
+    }
+
+    // ---- round 5 (w2-5 round-4 #0-#3): the routes round 4's lending-shape generator found (scratchpad w25r4v3/gen) ----
+
+    /** gen.py's prelude: the storages, a writer that replaces every one of them, and the helpers the routes use. */
+    private val genPrelude = """
+        pub mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
+        pub mut gl: List<Int32> = [1, 2, 3]
+        pub mut gls: List<Str> = ["old-text-long-enough-to-live-on-the-heap-000000"]
+        pub mut hooks: List<Fx<Tuple0, Void>> = []
+        pub class Node {
+            pub mut name: Str = "old-text-long-enough-to-live-on-the-heap-000000"
+        }
+        pub mut gh: Maybe<Node> = null
+        pub fx clobber: () Void {
+            gs = "new"
+            gl = [100]
+            gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"]
+            gh = Node { name = "new" }
+        }
+        pub fx callIt: (g: Fx<Tuple0, Void>) Void {
+            g()
+        }
+        pub fx pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
+            f(x)
+        }
+        pub class Box<T> {
+            require pub v: T
+            pub fx run: (f: Fx<Tuple1<T>, Void>) Void {
+                f(this.v)
+            }
+        }
+        @_extern(cpp = "e::callWith", header = "e.hxx")
+        pub fx callWith: (f: Fx<Tuple1<Fx<Tuple0, Void>>, Void>) Void;
+    """
+
+    /** The five routes round 4 lent through (each printed wrong values, with an MSVC ASan heap-use-after-free). */
+    private val genRoutes = mapOf(
+        // An Fx given for pass's T, run by pass through its own Fx parameter.
+        "generic" to "h: Fx<Tuple0, Void> = hooks[0]\n    pass<Fx<Tuple0, Void>>(callIt, h)",
+        "genlambda" to "pass<Fx<Tuple0, Void>>(callIt, fx () Void { clobber() })",
+        // A lambda literal that calls its own Fx parameter, handed pass's T.
+        "genparam" to "h: Fx<Tuple0, Void> = hooks[0]\n    pass<Fx<Tuple0, Void>>(fx (g: Fx<Tuple0, Void>) Void { g() }, h)",
+        // A generic class method handing its T to its Fx parameter: no Fx is given for a T at this call at all.
+        "box" to "b: Box<Fx<Tuple0, Void>> = Box<Fx<Tuple0, Void>> { v = hooks[0] }\n    b.run(callIt)",
+        // An extern handed a CONFINED lambda, which C++ calls with the hook it kept.
+        "extern" to "callWith(fx (g: Fx<Tuple0, Void>) Void { g() })",
+    )
+
+    private fun genRoute(body: String): String = "pub fx route: () Void {\n    $body\n}\n"
+
+    @Test
+    fun aGenericHandingItsTToItsFxAndAnExternHandedALambdaAreNotConfinedSoEveryUseIsCopied() {
+        // gen/<route>_val: the four by-value uses (a global Str, a global List iterated, a field through a global
+        // handle, an element of a global List<Str>) read after the route ran. Kira prints 47/6/47/47; round 4 lent all
+        // four through W3 because route was CONFINED. Row 1 now charges every Fx argument, one given for a T included,
+        // and a call of an Fx value charges its T argument (mayHoldFx); the extern row is !mayRunAnything.
+        for ((name, body) in genRoutes) {
+            val p = snippet(
+                genPrelude + genRoute(body) + """
+                pub fx lenAfter: (s: Str) Int32 {
+                    route()
+                    return s.length() as Int32
+                }
+                pub fx sumAfter: (xs: List<Int32>) Int32 {
+                    mut t: Int32 = 0
+                    for x: Int32 in xs {
+                        route()
+                        t += x
+                    }
+                    return t
+                }
+                pub fx drive: () Void {
+                    trace(lenAfter(gs))
+                    trace(sumAfter(gl))
+                    trace(lenAfter(gh.value.name))
+                    trace(lenAfter(gls[0]))
+                }
+                """,
+            )
+            assertTrue(RulesTestSupport.rules(p).isEmpty(), "$name: " + TyperTestSupport.render(p))
+            assertEquals(false, p.model.fnConfined[RulesTestSupport.fn(p, "route")], name)
+            assertEquals(listOf(false, false, false), confinedCalls(p, "lenAfter"), name)
+            assertEquals(listOf(false), confinedCalls(p, "sumAfter"), name)
+        }
+        // The helpers each route goes through: pass and Box.run hand their T to their own Fx, callIt runs only its own.
+        val p = snippet(genPrelude)
+        assertEquals(false, p.model.fnConfined[RulesTestSupport.fn(p, "pass")])
+        assertEquals(false, p.model.fnConfined[RulesTestSupport.method(p, "Box", "run")])
+        assertEquals(true, p.model.fnConfined[RulesTestSupport.fn(p, "callIt")])
+    }
+
+    @Test
+    fun ruleMRefusesAGlobalElementAndAGlobalHandlesFieldBesideEachRoute() {
+        // gen/<route>_m1 and _m2: `setAfter(mut gls[0])` and `setAfter(mut gh.value.name)`, accepted by round 4 (gcc
+        // exit 139/127, an MSVC ASan heap-use-after-free inside setAfter's assign). Neither place is PRIVATE or STABLE,
+        // and setAfter is not CONFINED, so rule M refuses both, through every route.
+        for ((name, body) in genRoutes) {
+            for (place in listOf("gls[0]", "gh.value.name")) {
+                val p = snippet(
+                    genPrelude + genRoute(body) + """
+                    pub fx setAfter: (mut s: Str) Void {
+                        route()
+                        s = "written-through-the-reference-after-the-route-000"
+                    }
+                    pub fx drive: () Void {
+                        setAfter(mut $place)
+                    }
+                    """,
+                )
+                assertEquals(listOf("rules.exclusivity.mut"), RulesTestSupport.rules(p), "$name $place: " + TyperTestSupport.render(p))
+                assertTrue(message(p, "rules.exclusivity.mut").startsWith("the mut argument '$place', "), message(p, "rules.exclusivity.mut"))
+                assertEquals(listOf(false), confinedCalls(p, "setAfter"), "$name $place")
+            }
+        }
+    }
+
+    @Test
+    fun ruleMAcceptsAnAddToAGlobalThatDropsNothingAndRefusesWhatReplacesOrRemoves() {
+        // atk/r1: with one class whose finally is IMPURE, round 4 refused both adds (it applied the drop test to every
+        // binding). add keeps a copy and drops nothing, and its lambda is CONFINED: 2.3's binding row and 2.7's third
+        // clause accept both.
+        val r1 = snippet(
+            """
+            pub mut count: Int32 = 0
+            pub class Res {
+                pub mut n: Int32 = 0
+                finally {
+                    count += 1
+                }
+            }
+            pub mut gres: List<Res> = []
+            pub mut gfx: List<Fx<Tuple0, Void>> = []
+            pub mut gn: List<Int32> = []
+            pub fx drive: () Void {
+                gres.add(Res { n = 1 })
+                gfx.add(fx () Void { trace(7) })
+                gn.add(1)
+                trace(gres.size())
+                trace(gfx.size())
+            }
+            """,
+        )
+        expectClean(r1)
+        assertEquals(listOf(true, true, true), confinedCalls(r1, "add"))
+        assertEquals(listOf(true, true), confinedCalls(r1, "size"))
+        // The controls: what replaces or removes may drop the last Res, and an add handed a lambda that writes a global
+        // is handed an Fx that is not CONFINED (row 1 charges an Fx given for a T).
+        val controls = snippet(
+            """
+            pub mut count: Int32 = 0
+            pub class Res {
+                pub mut n: Int32 = 0
+                finally {
+                    count += 1
+                }
+            }
+            pub mut gres: List<Res> = []
+            pub mut gfx: List<Fx<Tuple0, Void>> = []
+            pub fx drive: () Void {
+                gres.set(0, Res { n = 2 })
+                gres.removeAt(0)
+                gres.clear()
+                gfx.add(fx () Void { count += 1 })
+            }
+            """,
+        )
+        expectExactly(controls, *Array(4) { "rules.exclusivity.mut" })
+        assertEquals(listOf(false), confinedCalls(controls, "set"))
+        assertEquals(listOf(false), confinedCalls(controls, "removeAt"))
+        assertEquals(listOf(false), confinedCalls(controls, "clear"))
+        assertEquals(listOf(false), confinedCalls(controls, "add"))
     }
 }

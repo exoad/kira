@@ -97,8 +97,9 @@ callee (CONFINED). Section 6.3's five items:
   written operand that may hold it either way (`Rules.mayHold`, moved from ViewPass as W2.6 did).
   Tests: `ruleMAcceptsAPrivateOrStableMutPlaceWhateverTheCalleeRuns`,
   `ruleMAcceptsAGlobalPassedToAConfinedCallAndRefusesItBesideCodeItCannotSee`,
-  `ruleMRefusesW24sExternShapesAndAcceptsAConfinedCallback` (externmut, externarr as a List, a class
-  field and an `Fx` value), `ruleMRefusesTwoMutOperandsOfAConfinedCallWhenOneMayHoldTheOther`.
+  `ruleMRefusesW24sExternShapesAndAnExternHandedAnyLambda` (externmut, externarr as a List, a class
+  field and an `Fx` value; round 5 adds the lambda that writes nothing),
+  `ruleMRefusesTwoMutOperandsOfAConfinedCallWhenOneMayHoldTheOther`.
 - **Deleted**: `rules.exclusivity.alias` (`aliasing`, `Passing`, `passing`), order clause 1
   (`Role.LIFETIME`, `lifetimeOf`, the lifetime branch of the touch conflict), and `FinallyRuns` with the
   loop rule's finally clause. The seven tests that asserted them now assert acceptance and, where the
@@ -127,17 +128,70 @@ Where this branch reads the design differently, each for a reason measured on a 
   callee that is not CONFINED is refused. A trait's `this` in a default body is one as well (a class
   object held for the call, or a value `this` its caller kept still): W2.4's
   `aStructTakesATraitsDefaultBodyAsItsOwnMember` and CppClassCompileTest's shapes call a `mut fx` on it.
-- **Row 1 of 2.3 reads the declared parameter type.** An `Fx` given for a type parameter
-  (`KEPT.add(f)`, `List<Fx<...>>.add`) can only be kept, not run, by a callee that sees a `T`; only an
-  argument for a parameter declared `Fx` must be a CONFINED lambda literal or named function. The
-  literal reading refused `KEPT.add(f)` on a global (EscapePassTest's fixpoint, ViewPassTest's P5 rows).
-- **An extern handed a CONFINED lambda is CONFINED.** Row 1 applies to every callee, so the extern row
-  asks `mayHoldFx` only of the other arguments and the receiver (W2.4's
-  `aMutArgumentAnExternsHarmlessCallbackCannotReachIsAccepted` keeps its answer).
-- **A stdlib binding that may drop an IMPURE `finally` is not CONFINED** whether or not it is `pure`
-  (the flag is not in the model); only programs with an IMPURE `finally` see it. r1-p2e's
-  `GFS.add(...)`/`GFS.clear()` on a mut global `List<Fx>` whose closures hold a Dropper are refused by
-  rule M now (clear drops the Dropper, whose finally may write `GFS` while `clear` runs on it).
+- Round 4's three other readings (row 1 over the declared parameter type only, an extern handed a
+  CONFINED lambda is CONFINED, the drop test on every stdlib binding) were wrong: round 4's verifier
+  measured a heap-use-after-free through the first two and an over-refusal from the third. Round 5
+  replaces them with 2.3 as written (below).
+
+**Round 5 (narrow: round 4's w2-5 #0-#3). Rules tests 189, full suite 1074, 0 failures each;
+`regenerate.sh --check` current.** `CallReach.confined` now matches 2.3's table:
+
+- **Row 1 charges every `Fx` argument**, one given for a type parameter included (`hooks.add(f)`,
+  `pass<Fx<...>>(callIt, h)`), and a call of an `Fx` value also charges an argument of a type parameter
+  (or of an unknown type), which may be an `Fx` (`mayHoldFx`). So a generic body that hands its `T`
+  to its own `Fx` parameter (`pass<T>`'s `f(x)`, `Box<T>.run`'s `f(this.v)`) is not CONFINED: it runs
+  whatever its caller gave for that `T`, and its caller's charge never saw it. Closes #0.
+- **The extern row is `!mayRunAnything`** (what C++ supplies: an extern, a `pub` prototype, an
+  `@_opaque` method): any argument that may hold an `Fx`, a lambda literal included, makes the call not
+  CONFINED, since C++ may call the lambda with an `Fx` it kept (round 4's e1). The private `supplied`
+  is gone. Closes #2.
+- **Rule M follows** (#1): `setAfter(mut gls[0])` and `setAfter(mut gh.value.name)` are refused beside
+  every one of those routes.
+- **The drop test applies only to a binding that replaces or removes** (`CallReach.dropsHeld`: a
+  `mut fx` binding or `MutView.set` not in `ADDS_ONLY`, or a free binding); `add`, `addAll`, `Set.add`,
+  `push`, `enqueue`, `pushFront`, `pushBack` keep a copy and drop nothing, and a method that only reads
+  drops nothing. atk/r1's `gres.add(Res { n = 1 })` and `gfx.add(fx () Void { trace(7) })` are
+  accepted again. Closes #3.
+
+Tests (the verifier's probes): `ExclusivityPassTest.aGenericHandingItsTToItsFxAndAnExternHandedALambdaAreNotConfinedSoEveryUseIsCopied`
+(gen `generic`, `genlambda`, `genparam`, `box`, `extern` `_val`: `route`, `lenAfter` and `sumAfter` not
+CONFINED at any of the four uses), `ruleMRefusesAGlobalElementAndAGlobalHandlesFieldBesideEachRoute`
+(the same routes' `_m1`, `_m2`: 10 programs, one `rules.exclusivity.mut` each),
+`ruleMAcceptsAnAddToAGlobalThatDropsNothingAndRefusesWhatReplacesOrRemoves` (atk/r1 whole, with
+`set`, `removeAt`, `clear` and an `add` of a lambda that writes a global refused),
+`SharedPredicatesTest.anFxGivenForATypeParameterIsChargedAndAGenericThatRunsItsTIsNotConfined`; and
+`confinedOverOneCalleeOfEachKindBothAnswers` flips `extFx` of a CONFINED lambda to false.
+
+Measured on b82cdf0 plus this diff (a scratch clone; the trial untouched), gcc 13.2, zig c++ (clang
+20), MSVC /O1 and MSVC /fsanitize=address:
+
+- **gen.py over all 17 routes, 51 projects**: every route copies or refuses. 16 routes copy all four
+  uses and print 47/6/47/47 (`initially` also prints the route's own `trace(x.n)`, 0, between them);
+  `none` lends all four (the one CONFINED route) and is right; rule M refuses both `_m1` and `_m2` of
+  all 16 writer routes and accepts `none`'s, which prints the written value. 0 ASan reports.
+- **atk**: e1 47/6, r1 1/1, s2, c2 (47 x3; MSVC /WX still fails on the parser's `as Int32 +`), o1 all
+  right with 0 ASan reports. g2 is refused (rule M at `setAfter(mut gl[0])`, and at `hooks.add`).
+- **The 7.1 replay, 830 projects**: 508 accepted, 322 refused (round 4: 510, 320). No project went
+  from refused to accepted. Every must-stay-refused row keeps its code. Changed: r4d_p3 and r4d_p5 are
+  newly refused (below); w25r2 r1_p5a and r1_p5b gain a rule M refusal at `KEPT.add` (already refused);
+  r1_p2e loses its `GFS.add` refusal (#3; `GFS.clear` stays refused); fincall (both copies) loses its
+  rule M refusal at `yard.dead.add(this)`, and stays refused by D37's `rules.exclusivity.receiver`.
+
+What 2.3's row 1, read literally, refuses (a consequence of the design, not a hole): a `mut` global
+container handed an `Fx` that is not CONFINED (`hooks.add(fx () Void { gs = "new" })`, `KEPT.add(k)`)
+is refused by rule M, because `add` is handed an `Fx` value. The refusal is safe but not needed for
+safety, since a binding only keeps what it is given; the programmer's fix is the one the message
+gives (`mut hs = hooks`, `hs.add(...)`, `hooks = hs`). It refuses r4d/p3 and r4d/p5 (7.1 lists both as
+round-4 probes to run), atk g1, g4 and g5 at their `hooks.add` in `main`, and, on the trial, W2.3's
+`CppCopyPolicyTest` program (`gfs.add`, `hooks.add` in `arm`: 4 test cases). Charging such an `Fx` only
+where the callee can run it (row 1 without the `t is KType.Fn` term; the `T` charge at an `Fx`-value
+call and the extern row are what close #0-#2) was measured too: all 51 generated cases right, g1, g4,
+g5 47/6, p3 47/6/5, p5 `old-name...:1`, 0 ASan reports, and `CppCopyPolicyTest` green. The choice is the
+design's to make; this branch follows the task's reading of row 1.
+
+On the trial, fix 2 also flips W2.4's `CppClassCopyTest.aMutArgumentAnExternsHarmlessCallbackCannotReachIsAccepted`
+(an extern handed a lambda that writes nothing), which asserted round 4's reading: now refused by rule M,
+as 2.3's extern row requires.
 
 ## Round 3: where this branch reads the design differently, and why
 

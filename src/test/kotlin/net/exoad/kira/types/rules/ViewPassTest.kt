@@ -629,7 +629,8 @@ class ViewPassTest {
             }
             """,
         )
-        expectView(p, "rules.view.generic", "rules.view.generic")
+        // Rule M too (50-round4 2.3 row 1, 2.7): each KEPT.add is handed a lambda that runs a captured Fx value.
+        expectView(p, "rules.view.generic", "rules.view.generic", "rules.exclusivity.mut", "rules.exclusivity.mut")
         val m = messages(p, "rules.view.generic")
         assertTrue(m.any { it.startsWith("'keep' cannot take T = View<Char>: its override in K captures the T 'x' in a lambda that escapes") }, m.joinToString("\n"))
         assertTrue(m.any { it.startsWith("'keep' cannot take T = View<Char>: its override in Sub captures") }, m.joinToString("\n"))
@@ -1832,9 +1833,10 @@ class ViewPassTest {
                     })
                 }
                 """,
-                // Round 4's rule M too: GFS is a mut global, and add and clear on it may drop the last Dropper, whose
-                // IMPURE finally may write anything, GFS included, while the binding writes through GFS (not CONFINED).
-                listOf("rules.view.write", "rules.exclusivity.mut", "rules.exclusivity.mut"),
+                // Round 4's rule M too: GFS is a mut global, and clear on it may drop the last Dropper, whose IMPURE
+                // finally may write anything, GFS included, while the binding writes through GFS (not CONFINED). add
+                // drops nothing, and its lambda is CONFINED (round 5).
+                listOf("rules.view.write", "rules.exclusivity.mut"),
             ),
             "r1-p2f" to Probe(
                 """

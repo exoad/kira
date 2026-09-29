@@ -170,8 +170,8 @@ class SharedPredicatesTest {
         // 50-round4 2.3's table, each kind with both answers where it has two: an Fx argument (a lambda literal or a
         // function named as a value, CONFINED or not; a variable never), a Kira body (EffectsPass's fixpoint, mutual
         // recursion included, a call of its own Fx parameter charged at its call site), a stdlib binding (a mutator on a
-        // local; RUNS_OPERATORS over a user class), trace, what C++ supplies (given nothing, a CONFINED lambda, an
-        // unseen Fx, a class that may hold one), and the dispatched kinds, which never are.
+        // local; RUNS_OPERATORS over a user class), trace, what C++ supplies (given nothing; a lambda, CONFINED or not,
+        // which C++ may call with what it chooses; a class that may hold an Fx), and the dispatched kinds, which never are.
         val p = snippet(
             """
             pub mut G: Int32 = 0
@@ -261,7 +261,7 @@ class SharedPredicatesTest {
             "apply" to listOf(true, false, true, false, false),
             "m" to listOf(false), "act" to listOf(false), "virt" to listOf(false), "ping" to listOf(true, true), "pong" to listOf(true), "get" to listOf(true),
             "add" to listOf(true), "contains" to listOf(false, true), "trace" to emptyList(),
-            "ext" to listOf(true), "extFx" to listOf(true, false), "extK" to listOf(false),
+            "ext" to listOf(true), "extFx" to listOf(false, false), "extK" to listOf(false),
         )
         assertEquals(want, confined(p, *want.keys.toTypedArray()))
         // trace has no FnSymbol (PRINT), and f() none either (FN_VALUE): judged by kind. apply's own f() is never
@@ -276,6 +276,62 @@ class SharedPredicatesTest {
             mapOf("apply" to true, "writesOwn" to true, "writesG" to false, "virt" to false, "swapRun" to false),
             listOf("apply", "writesOwn", "writesG", "virt", "swapRun").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] },
         )
+    }
+
+    @Test
+    fun anFxGivenForATypeParameterIsChargedAndAGenericThatRunsItsTIsNotConfined() {
+        // 2.3 row 1 (w2-5 round-4 #0): every Fx argument is charged, one given for a T included (add's value, keepG's
+        // x). A call of an Fx value charges its T argument too, since a T may be an Fx (mayHoldFx): pass and Box.run
+        // hand their T to their own Fx parameter, so neither is CONFINED, whatever its caller gives. keepG only keeps
+        // its T, and stays CONFINED.
+        val p = snippet(
+            """
+            pub mut G: Int32 = 0
+            pub fx pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
+                f(x)
+            }
+            pub fx keepG<T>: (mut xs: List<T>, x: T) Void {
+                xs.add(x)
+            }
+            pub class Box<T> {
+                require pub v: T
+                pub fx run: (f: Fx<Tuple1<T>, Void>) Void {
+                    f(this.v)
+                }
+            }
+            pub fx drive: () Void {
+                mut fs: List<Fx<Tuple0, Void>> = []
+                mut ns: List<Int32> = []
+                keepG<Fx<Tuple0, Void>>(mut fs, fx () Void {
+                    G += 1
+                })
+                keepG<Fx<Tuple0, Void>>(mut fs, fx () Void {
+                    trace(1)
+                })
+                keepG<Int32>(mut ns, 1)
+                fs.add(fx () Void {
+                    G += 1
+                })
+                fs.add(fx () Void {
+                    trace(1)
+                })
+                pass<Int32>(fx (n: Int32) Void {
+                    trace(n)
+                }, 1)
+            }
+            """,
+        )
+        assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
+        assertEquals(
+            // add: keepG's own xs.add(x) (a T, which a binding only keeps), then the two in drive.
+            mapOf("keepG" to listOf(false, true, true), "add" to listOf(true, false, true), "pass" to listOf(false)),
+            confined(p, "keepG", "add", "pass"),
+        )
+        assertEquals(
+            mapOf("pass" to false, "keepG" to true),
+            listOf("pass", "keepG").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] },
+        )
+        assertEquals(false, p.model.fnConfined[RulesTestSupport.method(p, "Box", "run")])
     }
 
     @Test

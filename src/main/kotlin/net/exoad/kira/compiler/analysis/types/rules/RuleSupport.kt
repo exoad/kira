@@ -936,23 +936,27 @@ object CallReach {
      * handed), or run code the checker does not see: an `Fx` it is not handed as a lambda
      * literal or a named function whose body is CONFINED, a dispatched method, an `Fx` value, an
      * extern given what may hold an `Fx`, a system handle's method, a stdlib binding that runs a
-     * user type's operators or may drop the last handle of an object whose `finally` is
-     * IMPURE, or a construction's `initially` or impure default. By callee kind:
+     * user type's operators or replaces or removes what may be the last handle of an object whose
+     * `finally` is IMPURE, or a construction's `initially` or impure default. By callee kind:
      *
-     * - an argument for a parameter declared `Fx` (given, or the parameter's default): a
-     *   lambda literal whose body is CONFINED (`TypedModel.lambdaConfined`) or a function named
-     *   as a value whose body is (`fnConfined`); any other spelling (a variable, a field, a call
-     *   result) is not. An `Fx` given for a type parameter (`KEPT.add(f)`) can only be kept, not
-     *   run, by a callee that sees it as a `T`;
+     * - every `Fx` argument (given, or the default of a parameter declared `Fx`), one given for
+     *   a type parameter included (`hooks.add(f)`, `pass<Fx<...>>(f, h)`): a lambda literal whose
+     *   body is CONFINED (`TypedModel.lambdaConfined`) or a function named as a value whose body
+     *   is (`fnConfined`); any other spelling (a variable, a field, a call result) is not. A call
+     *   of an `Fx` value also charges an argument of a type parameter, which may be an `Fx`
+     *   ([mayHoldFx]): a generic body that hands its `T` to its own `Fx` parameter runs whatever
+     *   its caller gave for that `T`, so it is not CONFINED;
      * - a Kira function with a body called statically (`FREE`, `METHOD`, `OP_OVERLOAD`, `CTOR`):
      *   `TypedModel.fnConfined`, EffectsPass's fixpoint;
      * - a stdlib binding: not one of [RUNS_OPERATORS] over a user type, no method of a system
-     *   handle (`Thread`, `Mutex`, `Suite`, a socket: a join or a spawn runs code later), and no
-     *   receiver or argument whose drop may run an IMPURE `finally`;
+     *   handle (`Thread`, `Mutex`, `Suite`, a socket: a join or a spawn runs code later), and,
+     *   when it replaces or removes what it holds ([dropsHeld]: `set`, `clear`, `removeAt`,
+     *   `pop`, `put`; not `add`), no receiver or argument whose drop may run an IMPURE `finally`;
      * - `trace`, `print`: no argument whose type [holdsUserType];
      * - what C++ supplies (an extern, a bodiless `pub` prototype, an `@_opaque` method):
-     *   contract 5.4.2-5.4.3, it runs Kira code only through what it is given, so no receiver or
-     *   argument but a CONFINED `Fx` argument may hold an `Fx` ([mayHoldFx]);
+     *   `!`[mayRunAnything], contract 5.4.2-5.4.3: it runs Kira code only through what it is
+     *   given, so no receiver or argument may hold an `Fx` ([mayHoldFx]), a lambda literal
+     *   included (C++ calls it, handing it what C++ chooses);
      * - `VIRTUAL`, `TRAIT`, `FN_VALUE`: never.
      *
      * [receiverType] is the receiver's type; pass the enclosing class's type for an implicit
@@ -991,13 +995,15 @@ object CallReach {
 
     /** [confined] under [k]; [callee] is the called expression of an `FN_VALUE` call, whose own `Fx` parameter [k] may have charged. */
     internal fun confined(rc: ResolvedCall, model: TypedModel, receiverType: KType?, k: Known, callee: Expr?): Boolean {
-        // Row 1, over the parameters declared `Fx`: a binding or a generic body given an Fx for a `T` can only keep it
-        // (`KEPT.add(f)`); what it does with it is its own row's.
+        // Row 1: every Fx argument, one given for a type parameter included; and, at a call of an Fx value, an argument
+        // of a type parameter, which may be an Fx: the callee is whatever the caller gave, and may run it.
         for ((i, a) in rc.args.withIndex()) {
             when (a) {
                 is ArgBinding.Given -> {
-                    val declared = rc.fn?.params?.getOrNull(i)?.type ?: model.types[a.expr]
-                    if (declared is KType.Fn && !fxConfined(a.expr, model, k)) {
+                    val t = model.types[a.expr]
+                    val fx = rc.fn?.params?.getOrNull(i)?.type is KType.Fn || t is KType.Fn ||
+                        rc.kind == CallKind.FN_VALUE && (t == null || t == KType.Error || t is KType.Param)
+                    if (fx && !fxConfined(a.expr, model, k)) {
                         return false
                     }
                 }
@@ -1014,11 +1020,11 @@ object CallReach {
             CallKind.VIRTUAL, CallKind.TRAIT -> false
             CallKind.FN_VALUE -> ((callee as? Identifier)?.let { model.refs[it] } as? ParamSymbol)?.let { it in k.ownFx } == true
             CallKind.PRINT -> rc.args.all { a -> (a as? ArgBinding.Given)?.let { !holdsUserType(model.types[it.expr]) } ?: true }
-            CallKind.EXTERN -> supplied(rc, model, receiverType)
+            CallKind.EXTERN -> !mayRunAnything(rc, model, receiverType)
             CallKind.MAGIC -> fn != null && magic(rc, fn, model, receiverType, k)
             CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> when {
                 fn == null -> false
-                fn.suppliedByCpp -> supplied(rc, model, receiverType)
+                fn.suppliedByCpp -> !mayRunAnything(rc, model, receiverType)
                 fn.foreign is Foreign.Magic && fn.body == null -> magic(rc, fn, model, receiverType, k)
                 fn.body == null && rc.kind != CallKind.CTOR -> false
                 else -> (fn.body == null || k.fn(fn)) &&
@@ -1036,12 +1042,20 @@ object CallReach {
         return ((e as? Identifier)?.let { model.refs[it] } as? ParamSymbol)?.let { it in k.ownFx } == true
     }
 
-    /** What C++ supplies: given no receiver or argument that may hold an `Fx` beyond the `Fx` arguments [confined] checked (contract 5.4.3). */
-    private fun supplied(rc: ResolvedCall, model: TypedModel, receiverType: KType?): Boolean {
-        if (receiverType != null && mayHoldFx(receiverType) || rc.implicitThis && receiverType == null) {
+    /** The stdlib mutators that only add to their receiver: they keep a copy of what they are given and drop nothing. */
+    val ADDS_ONLY: Set<String> = setOf("List.add", "List.addAll", "Set.add", "Stack.push", "Queue.enqueue", "Deque.pushFront", "Deque.pushBack")
+
+    /**
+     * A stdlib binding that may replace or remove what it holds, and so drop the last handle to it: a
+     * method that writes its receiver (a `mut fx`, or `MutView.set`, which writes the element it views)
+     * and is not one of [ADDS_ONLY], or a free binding. A method that only reads its receiver drops nothing.
+     */
+    fun dropsHeld(rc: ResolvedCall, fn: FnSymbol): Boolean {
+        val key = (fn.foreign as? Foreign.Magic)?.key
+        if (key in ADDS_ONLY) {
             return false
         }
-        return rc.args.none { a -> (a as? ArgBinding.Given)?.let { g -> model.types[g.expr].let { it !is KType.Fn && mayHoldFx(it) } } == true }
+        return rc.receiver == null && !rc.implicitThis || fn.isMutMethod || key == "MutView.set"
     }
 
     private fun magic(rc: ResolvedCall, fn: FnSymbol, model: TypedModel, receiverType: KType?, k: Known): Boolean {
@@ -1056,7 +1070,10 @@ object CallReach {
         if (recvSym != null && recvSym.kind == ClassKind.MAGIC && recvSym.name !in Builtins.NOMINAL_PARAMS) {
             return false
         }
-        // A mutator may drop what it replaces or removes (`xs.clear()`, `xs.set(0, v)`, `m.remove(k)`).
+        // A mutator that replaces or removes may drop what it held (`xs.clear()`, `xs.set(0, v)`, `m.remove(k)`); `xs.add(v)` drops nothing.
+        if (!dropsHeld(rc, fn)) {
+            return true
+        }
         if ((rc.receiver != null || rc.implicitThis) && k.drops(receiverType)) {
             return false
         }
