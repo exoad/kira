@@ -330,10 +330,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /**
      * [ex], the C++ of [e], under the upcast [c] (a class to its superclass or a trait it
      * implements): a `kira::Rc` converts implicitly, a nullable one too. The typer refuses a
-     * struct boxed into a trait value (D43). W2.4's `CppClassesPart.upcast` spells this on its
-     * branch; at the merge this delegates to it.
+     * struct boxed into a trait value (D43). W2.4's `CppClassesPart.upcast` spells it.
      */
-    fun upcast(@Suppress("UNUSED_PARAMETER") e: Expr, @Suppress("UNUSED_PARAMETER") c: Coercion.Upcast, ex: CppEx): CppEx = ex
+    fun upcast(e: Expr, c: Coercion.Upcast, ex: CppEx): CppEx = CppEx(ctx.parts.classes.upcast(ctx, e, c, ex.text), ex.prec, ex.op)
 
     /** [e] as C++, without its coercion. */
     fun raw(e: Expr, role: CppLitRole = CppLitRole.PLAIN): CppEx {
@@ -523,27 +522,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if ((owner as? ClassSymbol)?.isStruct == true) {
             return CppEx("*this", CppPrec.UNARY)
         }
-        return classThis(e, owner)
+        return classThis(e)
     }
 
     /**
      * `this` as a value in a class method: `shared_from_this()` (the class derives
-     * `kira::Shared<C>`, D11), or the `self` an escaping lambda captured. The
-     * `enable_shared_from_this` base is the chain's root, so a subclass casts down to itself,
-     * and a non-`mut` method sees a `const` object whose `shared_from_this()` is a
-     * `shared_ptr<const Root>` (a class is a reference, and D29 lets a `mut fx` run through
-     * any reference). W2.4's `CppClassesPart.thisValue` spells this on its branch; at the merge
-     * this delegates to it.
+     * `kira::Shared<C>`, D11), or the `self` an escaping lambda captured, cast to the class and
+     * from `const` as W2.4's `CppClassesPart.thisValue` spells it (which also refuses it where an
+     * `initially` or `finally` may run the method: no `kira::Rc` owns the object there).
      */
-    fun classThis(e: ThisExpr, owner: TypeSymbol): CppEx {
-        val cls = owner as? ClassSymbol
-        if (cls == null || cls.kind != ClassKind.CLASS) {
-            return unsupported(e, "this as a value in ${owner.name} (only a class has a shared_from_this)")
-        }
-        val source = if (state.frame?.receiverAccess == CppBodyState.ThisCapture.SELF) "self" else "shared_from_this()"
-        val constant = state.frame?.fn?.isMutMethod != true
-        return CppEx(ownRc(cls, source, constant), CppPrec.POSTFIX)
-    }
+    fun classThis(e: ThisExpr): CppEx = CppEx(ctx.parts.classes.thisValue(ctx, e), CppPrec.POSTFIX)
 
     /**
      * The receiver inside a lambda that captured `[self = shared_from_this()]`: `self`, a
@@ -555,8 +543,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (rootOf(cls) === cls) {
             return "self"
         }
-        val constant = state.frame?.fn?.isMutMethod != true
-        return "std::static_pointer_cast<${if (constant) "const " else ""}${ctx.speller.bareClass(cls.selfType)}>(self)"
+        val fn = state.frame?.fn ?: return "self"
+        return ctx.parts.classes.selfReceiver(ctx, cls, fn)
     }
 
     /** The root of [cls]'s superclass chain: the class whose `kira::Shared` base `shared_from_this()` returns. */
@@ -567,18 +555,6 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             root = root.superclass?.sym as? ClassSymbol ?: break
         }
         return root
-    }
-
-    /** [source] (a `shared_ptr` to the chain's root, `const` in a non-`mut` method) as [cls]'s own `kira::Rc`. */
-    fun ownRc(cls: ClassSymbol, source: String, constant: Boolean): String {
-        val root = rootOf(cls)
-        val self = ctx.speller.bareClass(cls.selfType)
-        return when {
-            root === cls && !constant -> source
-            root === cls -> "std::const_pointer_cast<$self>($source)"
-            !constant -> "std::static_pointer_cast<$self>($source)"
-            else -> "std::static_pointer_cast<$self>(std::const_pointer_cast<${ctx.speller.bareClass(root.selfType)}>($source))"
-        }
     }
 
     /** The receiver [e] as the object of `.` or `->` (a `this` receiver is the pointer `this`, or `self`). */
@@ -611,21 +587,21 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /**
      * A receiver whose type is a type parameter: `kira::deref(x)`, so `.m()` reaches a value
-     * and a class alike (design 5.5, [S1]). W2.4's `CppGenericsPart.receiver` spells this on its
-     * branch; at the merge this delegates to it.
+     * and a class alike (design 5.5, [S1]), as W2.4's `CppGenericsPart.receiver` spells it.
      */
-    fun paramReceiver(receiver: Expr): String = paramReceiverText(emit(receiver, CppPrec.ASSIGN))
+    fun paramReceiver(receiver: Expr): String {
+        val text = emit(receiver, CppPrec.ASSIGN)
+        return ctx.parts.generics.receiver(ctx, receiver, text) ?: paramReceiverText(text)
+    }
 
     /** [paramReceiver] over the receiver's C++ text. */
     fun paramReceiverText(text: String): String = "kira::deref($text)"
 
     /**
      * A generic call's explicit type arguments, `<std::int32_t>` (`id<std::int32_t>(7)`), or ""
-     * for none. W2.4's `CppGenericsPart.typeArguments` spells this on its branch; at the merge
-     * this delegates to it.
+     * for none, as W2.4's `CppGenericsPart.typeArguments` spells them.
      */
-    fun explicitTypeArgs(at: Expr, types: List<KType>): String =
-        if (types.isEmpty()) "" else types.joinToString(", ", "<", ">") { ctx.spell(it, Pos.TEMPLATE_ARG, at) }
+    fun explicitTypeArgs(at: Expr, types: List<KType>): String = ctx.parts.generics.typeArguments(ctx, at, types)
 
     fun isPointerLike(t: KType): Boolean {
         val n = t as? KType.Nominal ?: return false
@@ -1237,7 +1213,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val cls = ri.cls ?: return internal(e, "a construction without a class")
         val t = ri.type
         if ((cls.kind == ClassKind.MAGIC && cls.name == "Ref") || cls.kind == ClassKind.CLASS || ctx.speller.isSystemClass(cls)) {
-            return classConstruction(e, ri, cls)
+            return classConstruction(e)
         }
         refuseViewFields(e, ri)
         val given = ri.sourceOrder.map { ri.fields[it] as FieldInit.Given }
@@ -1263,42 +1239,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * skipped earlier one is filled in with its default, or `T{}` for a field without one
      * (D38). `make_shared` forwards through a deduced parameter, so a narrow literal is
      * `T{lit}` (R2). `Ref<T> { value = v }` is `std::make_shared<kira::Box<T>>(v)` (D46), and a
-     * system module's class is its runtime's. Impure arguments are spilled as written (D33).
-     * W2.4's `CppClassesPart.construct` spells this on its branch; at the merge this delegates to it.
+     * system module's class is its runtime's. Every operand that is not PURE is copied in
+     * Kira's order (D33), and a default that is not PURE runs inside the constructor (R-D,
+     * OQ-2). W2.4's `CppClassesPart.construct` spells it, and refuses a field that holds a view.
+     * Its constructor parameters are by value, so a construction's argument is a copy at the
+     * call (50-round4 1.3, `r4d/p1`).
      */
-    fun classConstruction(e: ObjectInitExpr, ri: net.exoad.kira.compiler.analysis.types.ResolvedInit, cls: ClassSymbol): CppEx {
-        refuseViewFields(e, ri)
-        val t = ri.type
-        val target = if (cls.kind == ClassKind.MAGIC && cls.name == "Ref") {
-            "kira::Box<${ctx.spell((t as? KType.Nominal)?.typeArgs()?.firstOrNull() ?: KType.Error, Pos.TEMPLATE_ARG, e)}>"
-        } else {
-            ctx.speller.bareClass(t)
-        }
-        val fields = ri.fields
-        var end = fields.size
-        while (end > 0 && fields[end - 1] is FieldInit.Default && fields[end - 1].field.default != null) {
-            end -= 1
-        }
-        val position = IdentityHashMap<FieldSymbol, Int>()
-        val ops = mutableListOf<CppHoister.Operand>()
-        ri.sourceOrder.forEach { i ->
-            val g = fields[i] as? FieldInit.Given ?: return@forEach
-            if (i < end) {
-                position[g.field] = ops.size
-                ops += operandOf(g.expr) { coerced(g.expr, CppLitRole.TYPED) }
-            }
-        }
-        return hoister.lower(ops, t) { texts ->
-            val args = fields.take(end).map { f ->
-                when (f) {
-                    is FieldInit.Given -> wrap(texts[position[f.field]!!], CppPrec.ASSIGN)
-                    is FieldInit.Default -> f.field.default?.let { emit(it, CppPrec.ASSIGN, CppLitRole.TYPED) }
-                        ?: "${ctx.spell(f.field.type.substitute(ri.substitution), Pos.VALUE, e)}{}"
-                }
-            }
-            CppEx("std::make_shared<$target>(${args.joinToString(", ")})", CppPrec.POSTFIX)
-        }
-    }
+    fun classConstruction(e: ObjectInitExpr): CppEx = CppEx(ctx.parts.classes.construct(ctx, e), CppPrec.POSTFIX)
 
     /** `cpp.internal` at the construction [e] of a type that holds a view (design 30, 1.2: no field, box or container holds one). */
     private fun refuseViewFields(e: ObjectInitExpr, ri: net.exoad.kira.compiler.analysis.types.ResolvedInit) {

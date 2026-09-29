@@ -10,12 +10,12 @@ namespace carrules
 
   ::carlink::LinkResult Sender::send(const kira::Str& line, std::int32_t waitMs)
   {
-      const ::carlink::LinkResult r{write(line, waitMs)};
+      const ::carlink::LinkResult r{kira::Fn<::carlink::LinkResult(const kira::Str&, std::int32_t)>(write)(line, waitMs)};
       if(r != ::carlink::LinkResult::LINK_OK)
       {
           return r;
       }
-      const std::int64_t now{clock()};
+      const std::int64_t now{kira::Fn<std::int64_t()>(clock)()};
       const std::int64_t gap{lastMs >= 0 ? now - lastMs : std::int64_t{0}};
       lastMs = now;
       if(gap > worstMs)

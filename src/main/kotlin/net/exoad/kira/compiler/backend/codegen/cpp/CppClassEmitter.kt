@@ -171,8 +171,6 @@ class CppClassEmitter : CppClassesPart {
 
     override fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String = lowering(ctx).construct(e)
 
-    override fun guards(ctx: CppEmitContextImpl, fn: FnSymbol): CppGuards = lowering(ctx).declGuards(fn)
-
     override fun upcast(ctx: CppEmitContextImpl, e: Expr, c: Coercion.Upcast, text: String): String {
         val from = CppClassFacts.referent(c.from)
         if (from is ClassSymbol && from.isStruct) {
@@ -299,10 +297,6 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             )
         }
         refuseAmbiguous(c)
-        // A field's default is spelled in the constructor's declaration, and a lambda there is
-        // the statement part's as much as one in a body (fielddefault: a Fx field defaulting to
-        // bagloop2's lambda read freed heap bytes on g++; MSVC ASan: heap-use-after-free).
-        c.fields.forEach { f -> f.default?.let { reportRefusals(listOf(it), null, c) } }
     }
 
     /** A diamond whose paths override a trait method differently, and [x] does not: C++ has no final overrider. */
@@ -492,13 +486,15 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return if (node != null && model.typeOf(node) != null) ctx.spell(node, pos) else ctx.spell(p.type, pos, p.decl ?: fn.decl)
     }
 
-    /** Every parameter of [fn], the override spellings applied where [fn] owes them; one in [references] named as it says ([copiedParams]). */
-    private fun paramsText(fn: FnSymbol, withDefault: Boolean, markUnused: Boolean, references: List<Pair<ParamSymbol, String>> = emptyList()): String {
+    /**
+     * Every parameter of [fn], the override spellings applied where [fn] owes them. An override
+     * that takes by `const&` a parameter its own declaration takes by value copies nothing at
+     * entry: its caller reads the C++ spelling of the root declaration and copies the argument
+     * unless nothing can write it during the call (50-round4 1.3, invariant I).
+     */
+    private fun paramsText(fn: FnSymbol, withDefault: Boolean, markUnused: Boolean): String {
         val owed = overrideParams(fn)
-        return fn.params.mapIndexed { i, p ->
-            val name = references.firstOrNull { it.first === p }?.second ?: ctx.paramName(p)
-            paramText(fn, p, withDefault, markUnused, owed?.getOrNull(i), name)
-        }.joinToString(", ")
+        return fn.params.mapIndexed { i, p -> paramText(fn, p, withDefault, markUnused, owed?.getOrNull(i)) }.joinToString(", ")
     }
 
     // ---- what an override owes what it overrides -------------------------------------------------------
@@ -644,149 +640,6 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     /** [p] as [fn]'s own declaration spells it, from its type: `std::int32_t`, `const kira::Str&`, `std::int32_t&`. */
     private fun writtenParam(p: ParamSymbol, fn: FnSymbol): String =
         ctx.spell(p.type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM, p.decl ?: fn.decl)
-
-    /**
-     * The parameters of [fn] that an override takes by `const&` where its own declaration
-     * takes them by value ([overrideParams] against [writtenParam]): a scalar, a `Bool`, an
-     * enum, a view, a pointer. Each is copied into a local of the parameter's own name at the
-     * top of the definition ([valueCopy]), so the body reads the value the caller passed,
-     * as Kira's declaration says, where the reference would alias the argument's place: a
-     * class's plain `fx` may write a field (D29), and `f.take(g.n)` with `take` writing `n`
-     * before it returns `v` gave 101 for the 1 Kira and the JS backend give (measured on
-     * gcc, clang and MSVC). A parameter the body never names needs no copy; the reference
-     * is then `[[maybe_unused]]` as any unnamed parameter is.
-     */
-    private fun copiedParams(fn: FnSymbol): List<ParamSymbol> {
-        val owed = overrideParams(fn) ?: return emptyList()
-        return fn.params.filterIndexed { i, p -> owed[i] != null && !p.byRef && ctx.speller.byValue(p.type) && placement.bodyNames(fn, p) }
-    }
-
-    /**
-     * The parameters of [fn] that C++ takes by `const&` and that some effect of the body may
-     * reach before the body reads them ([CppClassLifetimes.Guard.snapshots]): bound to a field
-     * or an element of an object, the reference would read what the body's own writes left
-     * there, or freed memory (`a.append(b.lines[0])` with `append` growing `lines`; measured on
-     * g++: std::bad_alloc). Each is copied at entry ([copyLine]), which is the value the caller
-     * passed. A template `Fx` parameter (`F_p&& g`) bound to an `Fx` an object holds is
-     * copied the same way ([copyLine]: `const auto g = gRef_;`), since what it runs may replace
-     * that `Fx` (fxparam3: the lambda reassigning `b.f` it runs as freed its own captures;
-     * fxparam2: the body's `b.f = ...` then `g()` ran the replacement where Kira runs the
-     * value passed). [owed] when the definition is spelled as what it overrides spells it
-     * ([overrideParams]); a struct's copy of a trait default is spelled as written.
-     */
-    private fun snapshotParams(fn: FnSymbol, owed: Boolean): List<ParamSymbol> {
-        val snapshots = facts.lifetimes.guard(fn).snapshots
-        if (snapshots.isEmpty()) {
-            return emptyList()
-        }
-        val spelled = if (owed) overrideParams(fn) else null
-        return fn.params.filterIndexed { i, p ->
-            snapshots.any { it === p } && placement.bodyNames(fn, p) && (isTemplateFx(fn, p) || isReference(spelled?.getOrNull(i) ?: ownParam(fn, p)))
-        }
-    }
-
-    /** A parameter spelling that binds a reference: `const kira::Str&`, not `std::int32_t` or a template's `F_p&&` (which [snapshotParams] takes apart). */
-    private fun isReference(text: String): Boolean = text.endsWith("&") && !text.endsWith("&&")
-
-    /**
-     * The parameters [fn]'s definition copies at entry, in parameter order: the ones an
-     * override takes by `const&` where its own declaration takes them by value
-     * ([copiedParams]), and the ones an effect of the body may reach ([snapshotParams]).
-     */
-    private fun copiedAtEntry(fn: FnSymbol, owed: Boolean = true): List<ParamSymbol> {
-        val byValue = if (owed) copiedParams(fn) else emptyList()
-        val snapshots = snapshotParams(fn, owed)
-        return fn.params.filter { p -> byValue.any { it === p } || snapshots.any { it === p } }
-    }
-
-    /**
-     * The name of each copied parameter's reference in the definition being written
-     * ([copiedAtEntry]): `vRef_` for `v`, a name of the classes part's own ([bodyName]).
-     * `v_` was the `t0_` of the statement part's first D33 temporary for a parameter named
-     * `t0`, and the `ex_` of its catch variable for one named `ex`, either of which then
-     * shadowed the parameter (g++ -Werror=shadow, measured); for a synthesized `x_p0_` it
-     * was the reserved `x_p0__`.
-     */
-    private fun referenceNames(fn: FnSymbol, owed: Boolean = true): List<Pair<ParamSymbol, String>> =
-        copiedAtEntry(fn, owed).map { p -> p to bodyName(ctx.paramName(p), "Ref") }
-
-    /**
-     * The local that copies [p] from its reference [reference] at the top of a definition: a
-     * by-value type as [valueCopy] spells it, anything else as a `const` value of its own type,
-     * `const kira::Str s = sRef_;`, `const T v = vRef_;`.
-     */
-    private fun copyLine(fn: FnSymbol, p: ParamSymbol, reference: String): String = when {
-        isTemplateFx(fn, p) -> templateFxCopy(p, reference)
-        ctx.speller.byValue(p.type) -> valueCopy(fn, p, reference)
-        else -> "${constLocal(valueText(fn, p))} ${ctx.paramName(p)} = $reference;"
-    }
-
-    /** `const auto g = gRef_;`: a copy of what a template `Fx` parameter was bound to, a closure or a `kira::Fn`, whose call is `const`. */
-    private fun templateFxCopy(p: ParamSymbol, reference: String): String = "const auto ${ctx.paramName(p)} = $reference;"
-
-    /** [p]'s type as a value, alias-aware from its declaration: `kira::Str`, `kira::Maybe<kira::Rc<Item>>`, `T`. */
-    private fun valueText(fn: FnSymbol, p: ParamSymbol): String {
-        val node = (p.decl as? FunctionDeclParameterExpr)?.typeSpecifier
-        return if (node != null && model.typeOf(node) != null) ctx.spell(node, Pos.VALUE) else ctx.spell(p.type, Pos.VALUE, p.decl ?: fn.decl)
-    }
-
-    /**
-     * `[[maybe_unused]] const auto keepAlive_ = weak_from_this().lock();`: the method holds the
-     * object it runs on for the call ([CppClassLifetimes.Guard.holdsThis]), since its body reads
-     * the receiver after an effect that may drop the object's last other owner
-     * (`t.kids[0].leave()` with `leave` calling `tree.clear()`: the Kid was freed under its own
-     * method, measured on g++). `weak_from_this()` is empty for an object no `kira::Rc` owns (a
-     * C++ caller's stack object), where `shared_from_this()` would throw.
-     */
-    private fun holdLine(owner: ClassSymbol): String {
-        val weak = if (owner.typeParams.isNotEmpty()) "this->weak_from_this()" else "weak_from_this()"
-        return "[[maybe_unused]] const auto ${bodyName("keep", "Alive")} = $weak.lock();"
-    }
-
-    /** Reports what [nodes] (a body, or a field's default) do that no guard makes safe ([CppClassLifetimes.refusals]). */
-    private fun reportRefusals(nodes: List<ASTNode>, fn: FnSymbol?, owner: TypeSymbol?) {
-        facts.lifetimes.refusals(nodes, fn, owner).forEach { (node, message) -> ctx.diag(node, CppModuleEmitterFactory.UNSUPPORTED_CODE, message) }
-    }
-
-    /**
-     * What a free function's or a struct method's definition writes ahead of its body
-     * ([CppClassesPart.guards]): the parameters C++ takes by `const&` that an effect of the
-     * body may reach ([CppClassLifetimes.Guard.snapshots]), each copied at entry. What the body
-     * does that no guard makes safe is reported here. A struct's `this` is the declaration
-     * emitter's, and never held.
-     */
-    fun declGuards(fn: FnSymbol): CppGuards {
-        val body = fn.body
-        if (fn.isConst || body == null) {
-            return CppGuards.NONE
-        }
-        reportRefusals(body, fn, fn.owner)
-        val snapshots = facts.lifetimes.guard(fn).snapshots
-        val copied = fn.params.filter { p ->
-            snapshots.any { it === p } && (placement.isNonEscapingFx(p) || !ctx.speller.byValue(p.type)) && placement.bodyNames(fn, p)
-        }
-        if (copied.isEmpty()) {
-            return CppGuards.NONE
-        }
-        val references = LinkedHashMap<ParamSymbol, String>()
-        copied.forEach { p -> references[p] = bodyName(ctx.paramName(p), "Ref") }
-        return CppGuards(
-            references,
-            references.map { (p, reference) ->
-                if (placement.isNonEscapingFx(p)) templateFxCopy(p, reference) else "${constLocal(valueText(fn, p))} ${ctx.paramName(p)} = $reference;"
-            },
-        )
-    }
-
-    /**
-     * `const std::int32_t v = vRef_;`: the local that copies the reference [reference] of [p],
-     * of the type [fn]'s own declaration gives the parameter (alias-aware), which is a value
-     * type ([copiedParams]); a pointer (`Unsafe<X>`, `CStr`, an opaque class) keeps its own
-     * `const` where the pointee's is, `const std::int32_t* const v`, `Handle* const v`,
-     * never `const const std::int32_t*` or a `const Handle*` the handle's callee refuses.
-     */
-    private fun valueCopy(fn: FnSymbol, p: ParamSymbol, reference: String): String =
-        "${constLocal(ownParam(fn, p))} ${ctx.paramName(p)} = $reference;"
 
     /** [owner] named by its own type parameters, `Source<T>`: the substitution under which its declarations are spelled as written. */
     private fun identityOf(owner: TypeSymbol): KType.Nominal = KType.Nominal(owner, owner.typeParams.map { TypeArg.Ty(KType.Param(it)) })
@@ -975,53 +828,23 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         if (inline && owner.typeParams.isEmpty() && !template) "inline " else ""
 
     /**
-     * `R Owner::name(params) const { ... }`. A class method whose body reads its receiver after
-     * an effect that may free an object holds itself first ([holdLine]); a trait's default
-     * body cannot, and is refused ([refuseTraitHold]). A parameter the definition copies at
-     * entry ([copiedAtEntry]: one the override takes by reference where its own declaration
-     * takes it by value, or one an effect of the body may reach) is named `vRef_` here
-     * ([referenceNames]) and copied into `v` before the body ([copyLine]), so the body sees the
-     * value it was passed, as Kira's parameters are values.
+     * `R Owner::name(params) const { ... }`. The body reads its parameters and its receiver
+     * with no guard: every caller keeps invariant I (50-round4 2.0), binding each `const&`
+     * parameter to storage nothing changes until the call returns and holding the object the
+     * method runs on (W5: `kira::Rc<C>(h)->m(...)` unless the handle is kept still), so a
+     * trait's default body needs no hold either.
      */
     private fun methodDefinition(w: CppWriter, owner: TypeSymbol, fn: FnSymbol, inline: Boolean) {
         val body = fn.body ?: emptyList()
-        reportRefusals(body, fn, owner)
-        val guard = facts.lifetimes.guard(fn)
-        val hold = guard.holdsThis && owner is ClassSymbol && owner.kind == ClassKind.CLASS
-        if (guard.holdsThis && owner is TraitSymbol) {
-            refuseTraitHold(owner, fn, guard)
-        }
         fn.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
         ctx.parts.generics.templateHead(ctx, owner.typeParams)?.let { w.line(it) }
         templateHead(fn).forEach { w.line(it) }
-        val references = referenceNames(fn)
-        val params = paramsText(fn, withDefault = false, markUnused = true, references = references)
+        val params = paramsText(fn, withDefault = false, markUnused = true)
         val constSuffix = constSuffix(fn)
         val head = "${inlineSpecifier(owner, inline, isTemplate(fn))}${returnText(fn)} ${qualifier(owner)}${ctx.names.escape(fn.name)}($params)$constSuffix"
         w.block(head) {
-            if (hold) {
-                line(holdLine(owner as ClassSymbol))
-            }
-            references.forEach { (p, reference) -> line(copyLine(fn, p, reference)) }
             ctx.body(fn, body, this)
         }
-    }
-
-    /**
-     * A trait's default body that reads its receiver after an effect that may free the object
-     * it runs on: a class method holds itself for the call ([holdLine]), but a trait has no
-     * `shared_from_this`, and the object may be freed under the body (a use after free).
-     */
-    private fun refuseTraitHold(t: TraitSymbol, fn: FnSymbol, guard: CppClassLifetimes.Guard) {
-        val node = fn.decl ?: t.decl ?: return
-        val cause = guard.releasedBy?.let { facts.lifetimes.describe(it) } ?: "an effect that may free an object"
-        ctx.diag(
-            node,
-            CppModuleEmitterFactory.UNSUPPORTED_CODE,
-            "the default body of ${t.name}.${fn.name} reads its receiver after $cause, which may free the object it runs on, and a trait has no " +
-                "shared_from_this to keep that object alive for the call: override ${fn.name} in each class that implements ${t.name}, " +
-                "or read what the body needs from this before that call",
-        )
     }
 
     private fun constructorDefinition(c: ClassSymbol, inline: Boolean): (CppWriter.() -> Unit)? {
@@ -1029,7 +852,6 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         if (params.isEmpty() && c.initially == null) {
             return null
         }
-        c.initially?.let { reportRefusals(it, null, c) }
         return {
             c.decl?.let { node -> ctx.lineDirective(node)?.let { line(it) } }
             ctx.parts.generics.templateHead(ctx, c.typeParams)?.let { line(it) }
@@ -1177,21 +999,16 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     private fun inheritedDefinition(w: CppWriter, s: ClassSymbol, m: FnSymbol, inline: Boolean) = ctx.deferringTo(m.module) {
         m.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
         ctx.parts.generics.templateHead(ctx, s.typeParams)?.let { w.line(it) }
-        // The copy overrides nothing, so it is spelled as written; what the body may reach is copied as in the trait's own.
-        val references = referenceNames(m, owed = false)
-        val params = m.params.joinToString(", ") { p ->
-            paramText(m, p, withDefault = false, markUnused = true, name = references.firstOrNull { it.first === p }?.second ?: ctx.paramName(p))
-        }
+        // The copy overrides nothing, so it is spelled as written.
+        val params = m.params.joinToString(", ") { p -> paramText(m, p, withDefault = false, markUnused = true) }
         val head = "${inlineSpecifier(s, inline, template = false)}${returnText(m, owed = false)} ${qualifier(s)}${ctx.names.escape(m.name)}($params)${structConstSuffix(m)}"
         w.block(head) {
-            references.forEach { (p, reference) -> line(copyLine(m, p, reference)) }
             ctx.body(m, m.body ?: emptyList(), this)
         }
     }
 
     private fun destructorDefinition(c: ClassSymbol, inline: Boolean): (CppWriter.() -> Unit)? {
         val statements = c.finally ?: return null
-        reportRefusals(statements, null, c)
         return {
             c.decl?.let { node -> ctx.lineDirective(node)?.let { line(it) } }
             ctx.parts.generics.templateHead(ctx, c.typeParams)?.let { line(it) }
@@ -1560,15 +1377,14 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
         /**
          * A name the classes part declares inside a body, [base] then [mark] then `_`: a
-         * copied parameter's reference (`vRef_`) and a construction's D33 temporaries
-         * (`t0_Arg_`). [mark] starts with an uppercase letter, which no name the statement
+         * construction's D33 temporaries (`t0_Arg_`). [mark] starts with an uppercase letter,
+         * which no name the statement
          * part or [CppNames.fresh] synthesizes has (both lowercase every stem), and the name
          * has an underscore beside a lowercase letter, which no Kira name has (the lexer
          * allows an underscore only in UPPER_SNAKE_CASE). The statement part draws its
          * temporaries from a pool of its own that never sees the context's [CppNames], so a
          * lowercase name of ours could be one of its names: a construction's `t0_` inside a
-         * spilled call's `t0_` shadowed it, as did a reference `t0_` for a parameter `t0`
-         * (g++ -Werror=shadow, measured). A name of this shape can neither shadow nor be
+         * spilled call's `t0_` shadowed it (g++ -Werror=shadow, measured). A name of this shape can neither shadow nor be
          * shadowed by anything the body spells around it, and [base] (a parameter's C++
          * name, or a name [CppNames.fresh] never repeats) keeps two of them apart.
          */
@@ -1635,19 +1451,12 @@ class CppClassFacts(private val program: TypedProgram) {
         }
     }
 
-    /** Where a reference the lowering keeps may meet code that overwrites or frees what it refers to ([CppClassLifetimes]). */
-    val lifetimes: CppClassLifetimes = CppClassLifetimes(program)
-
     init {
         collectNonEscapingLambdas()
         types.forEach { scanBodies(it) }
         types.forEach { t ->
             if (t is ClassSymbol && t.kind == ClassKind.CLASS && (t.thisEscapes || t in escapes)) {
                 t.thisEscapes = true
-                sharedRoots.add(chain(t).first().cls)
-            }
-            // A method that holds itself for the call (weak_from_this) needs the one kira::Shared base too.
-            if (t is ClassSymbol && t.kind == ClassKind.CLASS && t.methods.any { m -> m.body != null && lifetimes.guard(m).holdsThis }) {
                 sharedRoots.add(chain(t).first().cls)
             }
         }
@@ -1720,10 +1529,7 @@ class CppClassFacts(private val program: TypedProgram) {
     /** Whether some body names the field (reads or writes it); a mem-initializer does not count. */
     fun isReferenced(f: FieldSymbol): Boolean = f in referenced
 
-    /**
-     * Whether [c] derives `kira::Shared<C>`: it is the root of a chain in which some class's
-     * `this` escapes, or some method holds itself for its call ([CppClassLifetimes.Guard.holdsThis]).
-     */
+    /** Whether [c] derives `kira::Shared<C>`: it is the root of a chain in which some class's `this` escapes. */
     fun derivesShared(c: ClassSymbol): Boolean = c in sharedRoots
 
     /** Whether the trait is reached twice by some class or trait of the program, so every derivation from it is `virtual`. */

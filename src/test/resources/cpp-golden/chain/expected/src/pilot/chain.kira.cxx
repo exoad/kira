@@ -90,7 +90,7 @@ namespace chain
 
   bool Chain::has(const kira::Str& wanted) const
   {
-      for(const kira::Rc<Behaviour>& b : loaded)
+      for(const kira::Rc<Behaviour>& b : kira::List<kira::Rc<Behaviour>>(loaded))
       {
           if(b->id() == wanted)
           {

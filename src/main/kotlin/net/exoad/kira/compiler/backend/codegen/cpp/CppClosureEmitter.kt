@@ -87,7 +87,16 @@ class CppClosureEmitter : CppLambdaPart {
                 is Capture.This -> list += when (thisCapture) {
                     CppBodyState.ThisCapture.COPY -> "*this"
                     CppBodyState.ThisCapture.POINTER -> "this"
-                    CppBodyState.ThisCapture.SELF -> if (outerAccess == CppBodyState.ThisCapture.SELF) "self" else "self = shared_from_this()"
+                    CppBodyState.ThisCapture.SELF -> {
+                        val cls = owner as? ClassSymbol
+                        val method = outer?.fn
+                        when {
+                            outerAccess == CppBodyState.ThisCapture.SELF -> "self"
+                            // W2.4's CppClassesPart.selfCapture spells it (this->shared_from_this() in a class template).
+                            cls != null && method != null -> "self = ${ctx.parts.classes.selfCapture(ctx, cls, method, l)}"
+                            else -> "self = shared_from_this()"
+                        }
+                    }
                     CppBodyState.ThisCapture.NONE -> "this"
                 }
             }

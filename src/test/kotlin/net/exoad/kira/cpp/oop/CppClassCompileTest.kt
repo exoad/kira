@@ -18,8 +18,10 @@ import kotlin.test.assertTrue
  * constructed class, a destructor from `finally`, a skipped middle default of a narrow
  * type, `mut fx` methods that write their receiver (not `const`), field defaults that are not
  * PURE run in Kira's order inside the constructors (R-D and OQ-2: the given values, then the
- * defaults in declaration order, a superclass's and its `initially` first), and the lifetime
- * guards (a parameter copied at entry, a method that holds itself for its call). The bodies are W2.4's
+ * defaults in declaration order, a superclass's and its `initially` first), and bodies that
+ * read their parameters and receiver with no guard while a C++ caller keeps invariant I
+ * (contract 5.4.4: it copies an argument the call may write and holds the receiver; the Kira
+ * callers' copies are CppClassCopyTest's). The bodies are W2.4's
  * fakes ([OopTestSupport.FakeStmtEmitter]), so the Kira bodies here only return values and
  * assign; the shapes around them are the real classes part.
  */
@@ -609,8 +611,8 @@ class CppClassCompileTest {
             return Loose { n = 1 }
         }
 
-        // A method whose Str parameter names an object the body drops: copied at entry. One
-        // that reads itself after dropping its only owner: holds itself for the call.
+        // A method whose Str parameter names an object the body drops, and one that reads itself
+        // after dropping its only other owner: neither guards, the caller copies and holds (I).
         pub class Link {
             require pub name: Str
             pub mut next: Maybe<Link> = null
@@ -729,7 +731,7 @@ class CppClassCompileTest {
             pub duo: Duo = Duo { a = seed, c = bumpSeed() }
         }
 
-        // A type-parameter receiver the arguments replace in the caller's slot: copied at entry.
+        // A type-parameter receiver the arguments replace in the caller's slot: the caller copies it (I).
         pub trait Greets {
             pub fx greet: (n: Int32) Str;
         }
@@ -951,7 +953,7 @@ class CppClassCompileTest {
             check(shapes::makeNums()->each([](std::int32_t x) { return x * 10; }) == 50, "an Fx parameter of a generic base keeps the base's kira::Fn shape at Int32");
             check(shapes::makeMaker()->make()(41) == 41, "an Fx return of a generic base keeps the base's kira::Fn shape at Int32");
             const kira::Rc<shapes::Alias> alias = shapes::makeAlias();
-            check(alias->take(alias->n) == 1 && alias->n == 100, "an override taken by const& reads the value it was passed, not the field it writes");
+            check(alias->take(std::int32_t(alias->n)) == 1 && alias->n == 100, "an override taken by const& reads the value it was passed: a C++ caller copies what the call may write (contract 5.4.4)");
             const shapes::Tile tile{};
             check(tile.scaled(2) == 2 && tile.unit() == 3, "a trait default's parameter named as the copying struct's field");
             check(shapes::makeHSink()->put(shapes::open()) == 9, "an override at an opaque handle copies it as the pointer it takes");
@@ -962,17 +964,17 @@ class CppClassCompileTest {
             const char* longName = "a name long enough that no standard library keeps it in the string object itself";
             const kira::Rc<shapes::Link> head = shapes::makeLink("head");
             head->next = shapes::makeLink(longName);
-            check(head->cut(kira::unwrap(head->next)->name) == longName && head->next == nullptr, "a parameter naming what the body drops is copied at entry");
+            check(head->cut(kira::Str(kira::unwrap(head->next)->name)) == longName && head->next == nullptr, "a C++ caller copies an argument naming what the body drops (contract 5.4.4)");
             head->next = shapes::makeLink(longName);
-            check(kira::unwrap(head->next)->detach(head) == longName && head->next == nullptr, "a method that reads itself after dropping its only owner holds itself for the call");
+            check(kira::Rc<shapes::Link>(kira::unwrap(head->next))->detach(head) == longName && head->next == nullptr, "a C++ caller holds the receiver of a method that drops its only other owner (contract 5.4.4)");
             head->next = shapes::makeLink(longName);
-            check(shapes::consume(head, kira::unwrap(head->next)->name) == longName && head->next == nullptr, "a free function's parameter naming what the body drops is copied at entry");
+            check(shapes::consume(head, kira::Str(kira::unwrap(head->next)->name)) == longName && head->next == nullptr, "a C++ caller copies a free function's argument naming what the body drops (contract 5.4.4)");
             {
                 shapes::Link stacked("stacked");
-                check(stacked.detach(head) == "stacked", "a method that holds itself runs on an object no Rc owns (weak_from_this is empty)");
+                check(stacked.detach(head) == "stacked", "a method runs on a class C++ constructed on the stack, which no Rc owns");
             }
             const kira::Rc<shapes::Twin<std::int32_t>> twin = shapes::makeTwin(1, 7);
-            check(twin->take(twin->n) == 1 && twin->n == 7, "a template's const T& parameter is copied before the body writes the field it named");
+            check(twin->take(std::int32_t(twin->n)) == 1 && twin->n == 7, "a C++ caller copies a template's const T& argument the body writes (contract 5.4.4)");
             const kira::Rc<shapes::Tag> tag = std::make_shared<shapes::Tag>("old");
             const kira::Rc<shapes::TagPair> tagged = shapes::tagPair(tag, tag);
             check(tagged->a == "old" && tagged->n == 7 && tag->name == "new", "a construction reads a field before the sibling that renames it");
@@ -989,7 +991,7 @@ class CppClassCompileTest {
             check(duo->a == 1 && duo->c == 11 && duo->b == 11, "a skipped middle default is read after the given values");
             const kira::Rc<shapes::Crib> crib = std::make_shared<shapes::Crib>();
             crib->kid = std::make_shared<shapes::Kid>(longName);
-            check(shapes::greetIt(crib->kid, crib) == longName && crib->kid->name == "other", "a type-parameter receiver the arguments replace is copied at entry");
+            check(shapes::greetIt(kira::Rc<shapes::Kid>(crib->kid), crib) == longName && crib->kid->name == "other", "a C++ caller copies a type-parameter argument the arguments replace (contract 5.4.4)");
             shapes::tick = 0;
             const kira::Rc<shapes::Three> three = shapes::makeThree();
             check(three->a == 1 && three->b == 2 && three->c == 3, "defaults that are not pure run in declaration order (ctordefaults2)");

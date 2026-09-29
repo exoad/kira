@@ -2368,22 +2368,24 @@ class CppClassShapeTest {
             "      [[nodiscard]] bool take(const bool& v) const override;\n      void keep(bool& v) const override;",
             "      [[nodiscard]] Mode take(const Mode& v) const override;\n      void keep(Mode& v) const override;",
         )
-        // The definition takes the reference as vRef_ and copies it into v: the body reads the
-        // value the caller passed, never the argument's place (a class's plain fx may write a
-        // field, D29, and f.take(g.n) with take writing n returned the written n; measured).
+        // The definition reads the reference as it is: its caller copies the argument unless
+        // nothing can write it during the call (50-round4 1.3, invariant I; `f.take(g.n)` with
+        // take writing n is copied at the call, CppClassCopyTest), so no entry copy (vRef_).
         assertContains(
             s,
-            "  std::int32_t Five::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }",
+            "  std::int32_t Five::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
             "  void Five::keep(std::int32_t& v) const\n  {\n      static_cast<void>(v = 1);\n  }",
-            "  bool Flag::take(const bool& vRef_) const\n  {\n      const bool v = vRef_;\n      return v;\n  }",
-            "  Mode Which::take(const Mode& vRef_) const\n  {\n      const Mode v = vRef_;\n      return v;\n  }",
+            "  bool Flag::take(const bool& v) const\n  {\n      return v;\n  }",
+            "  Mode Which::take(const Mode& v) const\n  {\n      return v;\n  }",
         )
+        assertLacks(s, "Ref_")
     }
 
     @Test
-    fun anOverrideTakenByReferenceCopiesOnlyWhatItsBodyNames() {
-        // A parameter the body never names is left as the [[maybe_unused]] reference; a
-        // Str is const& on both sides, so nothing is copied; an alias keeps its name in the copy.
+    fun anOverrideTakenByReferenceCopiesNothingAtEntry() {
+        // A parameter the body never names is left as the [[maybe_unused]] reference; a Str
+        // is const& on both sides; a by-value parameter the override takes by const& is read
+        // as it is, since the caller keeps invariant I (50-round4 1.3).
         val (h, s) = both(
             """
             pub alias Count as Int32
@@ -2405,9 +2407,10 @@ class CppClassShapeTest {
         assertContains(h, "      [[nodiscard]] Count take(const std::int32_t& v, const std::int32_t& w) const override;\n      [[nodiscard]] kira::Str name(const kira::Str& s) const override;")
         assertContains(
             s,
-            "  Count Five::take(const std::int32_t& vRef_, [[maybe_unused]] const std::int32_t& w) const\n  {\n      const Count v = vRef_;\n      return v;\n  }",
+            "  Count Five::take(const std::int32_t& v, [[maybe_unused]] const std::int32_t& w) const\n  {\n      return v;\n  }",
             "  kira::Str Five::name(const kira::Str& s) const\n  {\n      return s;\n  }",
         )
+        assertLacks(s, "Ref_")
     }
 
     @Test
@@ -2453,9 +2456,10 @@ class CppClassShapeTest {
         )
         assertContains(
             s,
-            "  std::int32_t Leaf::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }",
-            "  std::int32_t Narrow::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }",
+            "  std::int32_t Leaf::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
+            "  std::int32_t Narrow::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
         )
+        assertLacks(s, "Ref_")
     }
 
     @Test
@@ -2601,7 +2605,8 @@ class CppClassShapeTest {
             "      [[nodiscard]] virtual std::int32_t take(const T& v) const;",
             "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;",
         )
-        assertContains(s, "  std::int32_t IntBase::take(const std::int32_t& vRef_) const\n  {\n      const std::int32_t v = vRef_;\n      return v;\n  }")
+        assertContains(s, "  std::int32_t IntBase::take(const std::int32_t& v) const\n  {\n      return v;\n  }")
+        assertLacks(s, "Ref_")
     }
 
     @Test
@@ -2825,16 +2830,17 @@ class CppClassShapeTest {
             "  class HSink final : public Sink<Handle*>\n",
             "      [[nodiscard]] std::int32_t put(Handle* const& v) const override;",
         )
-        assertContains(s, "  std::int32_t HSink::put(Handle* const& vRef_) const\n  {\n      Handle* const v = vRef_;\n      return useIt(v);\n  }")
+        assertContains(s, "  std::int32_t HSink::put(Handle* const& v) const\n  {\n      return useIt(v);\n  }")
         assertLacks(s, "const const", "const Handle*")
     }
 
     @Test
-    fun aCopiedParametersReferenceIsANameNoOtherPartSpells() {
+    fun aParameterNamedAsAStatementPartsTemporaryKeepsItsName() {
         // The statement part's temporaries are t0_, t1_ and its catch variable ex_, from a pool
-        // that never sees the context's names: a reference named `<param>_` was t0_ for a
-        // parameter t0 and shadowed the body's first D33 temporary (g++ -Werror=shadow,
-        // measured). A body name has an uppercase mark, which no synthesized name has.
+        // that never sees the context's names: a name of the classes part's own `<base>_` was
+        // t0_ for a parameter t0 and shadowed the body's first D33 temporary (g++
+        // -Werror=shadow, measured). No parameter is renamed now (no entry copy), and a body
+        // name has an uppercase mark, which no synthesized name has.
         val s = emit(
             """
             pub trait Src<T> {
@@ -2847,9 +2853,9 @@ class CppClassShapeTest {
             }
             """
         ).source(uri)
-        assertContains(s, "  std::int32_t C::take(const std::int32_t& t0Ref_, [[maybe_unused]] const std::int32_t& ex) const\n  {\n      const std::int32_t t0 = t0Ref_;\n      return t0;\n  }")
-        assertLacks(s, "t0_", "ex_")
-        listOf(ClassLowering.bodyName("v", "Ref"), ClassLowering.bodyName("t0_", "Arg"), ClassLowering.bodyName("x_p0_", "Ref")).forEach { name ->
+        assertContains(s, "  std::int32_t C::take(const std::int32_t& t0, [[maybe_unused]] const std::int32_t& ex) const\n  {\n      return t0;\n  }")
+        assertLacks(s, "t0_", "ex_", "Ref_")
+        listOf(ClassLowering.bodyName("t0_", "Arg"), ClassLowering.bodyName("x_p0_", "Arg")).forEach { name ->
             assertTrue(!CppNames.isSynthesized(name) && name.contains('_') && name.any { it.isLowerCase() } && !name.contains("__"), name)
         }
     }
@@ -2874,7 +2880,7 @@ class CppClassShapeTest {
             "  class L$levels final : public L${levels - 1}\n",
             "      [[nodiscard]] std::int32_t f(const std::int32_t& a, const std::int32_t& b, const std::int32_t& c) const override;",
         )
-        assertContains(s, "  std::int32_t L$levels::f(const std::int32_t& aRef_, [[maybe_unused]] const std::int32_t& b, [[maybe_unused]] const std::int32_t& c) const\n  {\n      const std::int32_t a = aRef_;\n      return a;\n  }")
+        assertContains(s, "  std::int32_t L$levels::f(const std::int32_t& a, [[maybe_unused]] const std::int32_t& b, [[maybe_unused]] const std::int32_t& c) const\n  {\n      return a;\n  }")
     }
 
     @Test

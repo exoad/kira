@@ -173,16 +173,6 @@ interface CppClassesPart {
      */
     fun structsCopying(ctx: CppEmitContextImpl, fn: FnSymbol): List<ClassSymbol> = emptyList()
 
-    /**
-     * What the definition of [fn] (a free function or a struct method, which the declaration
-     * emitter writes) puts ahead of its body: each parameter it copies at entry, under the name
-     * its C++ parameter takes instead, and the lines that copy them. A `const&` parameter
-     * (design 5.1) can be bound to storage an object holds, which the body's own effects may
-     * overwrite or free. The classes part also reports there what the body does that no guard
-     * makes safe. None by default.
-     */
-    fun guards(ctx: CppEmitContextImpl, fn: FnSymbol): CppGuards = CppGuards.NONE
-
     /** A class construction `C { ... }` (R9): `std::make_shared<C>(arguments in constructor order)`. */
     fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String {
         ctx.unsupported(e, "the construction of a class")
@@ -264,17 +254,6 @@ interface CppExternsPart {
         override fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter) {
             sym.decl?.let { ctx.unsupported(it, "the extern declaration '${sym.name}'") }
         }
-    }
-}
-
-/**
- * What a definition writes ahead of its body ([CppClassesPart.guards]): the C++ name each
- * parameter it copies takes instead of its own (`sRef_`), and the lines, in order
- * (`const kira::Str s = sRef_;`).
- */
-data class CppGuards(val references: Map<ParamSymbol, String>, val prologue: List<String>) {
-    companion object {
-        val NONE = CppGuards(emptyMap(), emptyList())
     }
 }
 
