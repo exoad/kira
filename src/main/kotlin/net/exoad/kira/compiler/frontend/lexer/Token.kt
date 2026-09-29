@@ -93,6 +93,7 @@ sealed class Token(
         K_MODIFIER_MUTABLE("'mut' (Mutable)"),
         K_MODIFIER_PUBLIC("'pub' (Public Visibility)"),
         K_MODIFIER_OVERRIDE("'override'"),
+        K_MODIFIER_FINAL("'final'"),
         K_FX("'fx' (Function)"),
 
         // RAW SYMBOLS

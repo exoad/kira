@@ -32,9 +32,11 @@ object IntrinsicRegistry {
             StaticAssertIntrinsic,
             InferIntrinsic,
         ).forEach { put(it.name, it) }
-        // Operator intrinsics (@op_add, @op_sub, ...) are known names the
-        // parser accepts as identifiers; they are not markers.
+        // Operator intrinsics are known names the parser accepts as identifiers; they are not
+        // markers. The member form (@_op_add_, ...) is 1.3.1's table, the one form; the free
+        // form (@op_add, ...) stays registered for C and JS only (1.3.5).
         OperatorIntrinsics.all.forEach { put(it.name, it) }
+        OperatorIntrinsics.allMembers.forEach { put(it.name, it) }
         // Codegen-backed spellings the docs expose with an @ prefix. These are
         // plain callables (handled by the backends, not markers); registering
         // them here lets `@_trace_(...)` parse as an intrinsic identifier.

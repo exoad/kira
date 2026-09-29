@@ -71,15 +71,71 @@ class OperatorOverloadTest {
     }
 
     @Test
-    fun tableNamesAllStartWithOpAndUseUnderscores() {
+    fun freeTableNamesAllStartWithOpAndUseUnderscores() {
         OperatorIntrinsics.all.forEach { intrinsic ->
             assertTrue(
                 intrinsic.name.startsWith("op_"),
-                "operator intrinsic must start with op_: ${intrinsic.name}"
+                "free operator intrinsic must start with op_: ${intrinsic.name}"
             )
             assertTrue(
                 intrinsic.name.count { it == '_' } >= 1,
-                "operator intrinsic must separate words with underscores: ${intrinsic.name}"
+                "free operator intrinsic must separate words with underscores: ${intrinsic.name}"
+            )
+        }
+    }
+
+    @Test
+    fun memberOperatorTableIsExactlyThe1_3_1List() {
+        // w2-9-1-parse round 8, significant issue #4: `memberTableNamesAreUnderscoredOnBothEnds`
+        // below, and the two `OperatorMemberParseTest` parse sweeps, all iterate
+        // `OperatorIntrinsics.allMembers` -- the implementation's own generated list -- so a
+        // mutant that renames one entry (V20: `_op_lte_` -> `_op_le_`) or maps one to null (V21:
+        // `BinaryOp.USHR`; V22: `UnaryOp.POS`) survives every one of them: `allMembers` is built
+        // FROM `memberName`, so it just contains whatever the corrupted table produces, and nothing
+        // compares it against an independent source. This hardcodes 20-revision.md 1.3.1 / the
+        // brief's BUILD step 1's 23 names verbatim and checks each maps back to its operator.
+        val table: List<Pair<String, () -> String?>> = listOf(
+            "_op_add_" to { OperatorIntrinsics.memberName(BinaryOp.ADD) },
+            "_op_sub_" to { OperatorIntrinsics.memberName(BinaryOp.SUB) },
+            "_op_mul_" to { OperatorIntrinsics.memberName(BinaryOp.MUL) },
+            "_op_div_" to { OperatorIntrinsics.memberName(BinaryOp.DIV) },
+            "_op_mod_" to { OperatorIntrinsics.memberName(BinaryOp.MOD) },
+            "_op_eq_" to { OperatorIntrinsics.memberName(BinaryOp.EQUALS) },
+            "_op_neq_" to { OperatorIntrinsics.memberName(BinaryOp.NOT_EQUAL) },
+            "_op_lt_" to { OperatorIntrinsics.memberName(BinaryOp.LESS_THAN) },
+            "_op_gt_" to { OperatorIntrinsics.memberName(BinaryOp.GREATER_THAN) },
+            "_op_lte_" to { OperatorIntrinsics.memberName(BinaryOp.LESS_THAN_OR_EQUAL) },
+            "_op_gte_" to { OperatorIntrinsics.memberName(BinaryOp.GREATER_THAN_OR_EQUAL) },
+            "_op_neg_" to { OperatorIntrinsics.memberName(UnaryOp.NEG) },
+            "_op_get_" to { OperatorIntrinsics.GET },
+            "_op_set_" to { OperatorIntrinsics.SET },
+            "_op_bitand_" to { OperatorIntrinsics.memberName(BinaryOp.CONJUNCTIVE_AND) },
+            "_op_bitor_" to { OperatorIntrinsics.memberName(BinaryOp.CONJUNCTIVE_OR) },
+            "_op_xor_" to { OperatorIntrinsics.memberName(BinaryOp.XOR) },
+            "_op_shl_" to { OperatorIntrinsics.memberName(BinaryOp.SHL) },
+            "_op_shr_" to { OperatorIntrinsics.memberName(BinaryOp.SHR) },
+            "_op_ushr_" to { OperatorIntrinsics.memberName(BinaryOp.USHR) },
+            "_op_bitnot_" to { OperatorIntrinsics.memberName(UnaryOp.BIT_NOT) },
+            "_op_not_" to { OperatorIntrinsics.memberName(UnaryOp.NOT) },
+            "_op_pos_" to { OperatorIntrinsics.memberName(UnaryOp.POS) },
+        )
+        assertEquals(23, table.size, "1.3.1's table has 23 names")
+        for ((expected, actual) in table) {
+            assertEquals(expected, actual(), "1.3.1's member name for $expected")
+        }
+        assertEquals(
+            table.map { it.first }.toSet(),
+            OperatorIntrinsics.allMembers.map { it.name }.toSet(),
+            "OperatorIntrinsics.allMembers must be exactly these 23 names, nothing more or fewer",
+        )
+    }
+
+    @Test
+    fun memberTableNamesAreUnderscoredOnBothEnds() {
+        OperatorIntrinsics.allMembers.forEach { intrinsic ->
+            assertTrue(
+                intrinsic.name.startsWith("_op_") && intrinsic.name.endsWith("_"),
+                "member operator intrinsic must be _op_<word>_: ${intrinsic.name}"
             )
         }
     }
@@ -152,6 +208,63 @@ class OperatorOverloadTest {
         assertTrue(generated.contains("p1 = op_add(p1, p2)"), generated)
         // Primitives keep the native JS operator inside the overload body.
         assertTrue(generated.contains("a.x + b.x"), generated)
+    }
+
+    @Test
+    fun aModuleLevelMemberFormNameFailsTheSemanticPassOnCAndJS() {
+        // w2-9-1-parse significant issue #1: `--target c` and `--target js` run
+        // `KiraSemanticAnalyzer`, never `KiraTyper`/`DeclarationCollector`. A module-level
+        // `@_op_add_` (the *member* spelling) must fail here too, or `Main.kt`'s "backend emit
+        // only after a clean semantic pass" gate never trips and the C/JS emitters run anyway,
+        // each calling a function named `op_add` that this declaration never defines.
+        val badModule = """
+            pub class V2 {
+                pub x: Float32 = 0.0
+            }
+            pub fx @_op_add_: (a: V2, b: V2) V2 {
+                return V2 { a.x + b.x }
+            }
+        """
+        val result = TestCompileSupport.compileSnippet(
+            source = wrap(badModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        val semantics = assertNotNull(result.semanticResults)
+        assertTrue(!semantics.isHealthy, "a module-level @_op_add_ must fail the semantic pass, not silently pass")
+        assertTrue(
+            semantics.diagnostics.any { it.message.contains("_op_add_") },
+            "expected a diagnostic naming '_op_add_', got: ${semantics.diagnostics.map { it.message }}"
+        )
+    }
+
+    @Test
+    fun aModuleLevelMemberFormStubFailsTheSemanticPassOnCAndJS() {
+        // w2-9-1-parse round 2, significant issue #1: the test above uses a *body*, and
+        // `KiraSemanticAnalyzer.visitFunctionDecl` used to return on `functionDecl.isStub()`
+        // before ever reaching the ops.member-scope pump, so a body-less module-level
+        // `@_op_add_` (a plain declaration, no `{ ... }`) passed this pass clean on both C and
+        // JS. `kira --target c`/`--target js` exited 0 with 'Done' and no diagnostic; the C
+        // output called `op_add(a, b)` (gcc: implicit declaration of function 'op_add') and the
+        // JS threw `ReferenceError: op_add is not defined`. The stub must fail here exactly like
+        // the version with a body.
+        val badStubModule = """
+            pub class V2 {
+                pub x: Float32 = 0.0
+            }
+            pub fx @_op_add_: (a: V2, b: V2) V2;
+        """
+        val result = TestCompileSupport.compileSnippet(
+            source = wrap(badStubModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        val semantics = assertNotNull(result.semanticResults)
+        assertTrue(!semantics.isHealthy, "a body-less module-level @_op_add_ must fail the semantic pass too")
+        assertTrue(
+            semantics.diagnostics.any { it.message.contains("_op_add_") },
+            "expected a diagnostic naming '_op_add_', got: ${semantics.diagnostics.map { it.message }}"
+        )
     }
 
     @Test

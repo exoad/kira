@@ -58,6 +58,19 @@ enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<Wrappi
             WrappingContext.FUNCTION,
         )
     ),
+
+    /**
+     * `final class Reply { ... }` (charter: "final forbids inheriting"; spec "use final
+     * modifier"; W2.9 1.8): a class modifier only. `final` on a trait, enum, function or field
+     * is refused with the dedicated `parse.final` diagnostic in [net.exoad.kira.compiler.frontend.parser.KiraParser.expectModifiers],
+     * not the generic wrapping-context message.
+     */
+    FINAL(
+        Token.Type.K_MODIFIER_FINAL,
+        arrayOf(
+            WrappingContext.CLASS,
+        )
+    ),
     ;
 
     companion object {

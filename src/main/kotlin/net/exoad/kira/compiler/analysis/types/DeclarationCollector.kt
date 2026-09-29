@@ -19,6 +19,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParam
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
+import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.source.SourceContext
 
 /**
@@ -118,7 +119,7 @@ internal class DeclarationCollector(
 
     private fun topLevel(module: ModuleSymbol, symbol: Symbol) {
         module.declarations.add(symbol)
-        if (symbol is FnSymbol && symbol.isOperator) {
+        if (symbol is FnSymbol && symbol.isFreeOperator) {
             module.operators.add(symbol)
             return
         }
@@ -212,6 +213,25 @@ internal class DeclarationCollector(
         )
         fn.isPub = Modifier.PUBLIC in decl.modifiers
         fn.isOperator = isOperator
+        // A module-level operator (owner == null) is the pre-W2.9 free form (1.3.5); one
+        // declared in a class, a trait or a magic class (owner != null) is a member operator,
+        // which takes part in every member check (1.3.2) like any other method.
+        fn.isFreeOperator = isOperator && owner == null
+        if (fn.isFreeOperator && OperatorIntrinsics.isMemberOperatorName(name)) {
+            // `@_op_add_` (1.3.1's member spelling) names a method, not the deprecated free
+            // form (`@op_add`, 1.3.5): the free-form lowering on C and JS always emits the free
+            // spelling (`OperatorIntrinsics.binaryName`/`unaryName`), never whatever name the
+            // declaration used, so a module-level `@_op_add_` would otherwise parse, collect and
+            // pass every check here while `a + a` calls a function that does not exist under
+            // that name on either backend (`op_add` undefined). Refused at the one point both
+            // forms are told apart, before that silent mismatch can reach codegen.
+            program.report(
+                "ops.member-scope",
+                "'@$name' is a method (1.3.1): declare it inside a class, e.g. 'pub fx @$name: " +
+                    "(other: T) T' in class T. It cannot be declared at module level.",
+                decl,
+            )
+        }
         fn.markers.addAll(markers)
         typeParams.forEach { it.owner = fn }
         params.forEach { it.fn = fn }
@@ -277,6 +297,7 @@ internal class DeclarationCollector(
     private fun classLike(module: ModuleSymbol, source: SourceContext, decl: ClassDecl): ClassSymbol {
         val markers = markersOf(source, decl)
         val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.CLASS), markers, Modifier.PUBLIC in decl.modifiers)
+        cls.isFinal = Modifier.FINAL in decl.modifiers
         cls.initially = decl.initially
         cls.finally = decl.finally
         members(module, source, cls, decl.members)
@@ -327,7 +348,11 @@ internal class DeclarationCollector(
                     continue
                 }
             }
-            if (sym is FnSymbol && (sym.isOperator || sym.name == ANONYMOUS)) {
+            // A member operator (owner != null, so isFreeOperator is always false here) takes
+            // part in the duplicate check like any method (1.3.2): two `@_op_mul_` in one class
+            // is `types.decl.duplicate`. The free form never reaches `members` (it is only ever
+            // declared at module level), but the skip is kept for symmetry with `topLevel`.
+            if (sym is FnSymbol && (sym.isFreeOperator || sym.name == ANONYMOUS)) {
                 continue
             }
             val prev = names.putIfAbsent(sym.name, sym)
@@ -367,7 +392,8 @@ internal class DeclarationCollector(
         for (member in decl.members) {
             val fn = function(module, source, member, t)
             t.methods.add(fn)
-            if (fn.isOperator || fn.name == ANONYMOUS) {
+            // Same as `members`: a member operator (owner != null) reaches the duplicate check.
+            if (fn.isFreeOperator || fn.name == ANONYMOUS) {
                 continue
             }
             val prev = names.putIfAbsent(fn.name, fn)

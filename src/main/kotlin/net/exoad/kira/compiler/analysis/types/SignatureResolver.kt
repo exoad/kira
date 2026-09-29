@@ -207,7 +207,19 @@ internal class SignatureResolver(private val program: TypedProgram) {
                     "The superclass ${sym.name} must come first in ${c.name}'s parent list; the parents after it are traits.",
                     node,
                 )
-                sym is ClassSymbol -> c.superclass = t
+                sym is ClassSymbol -> {
+                    if (sym.isFinal) {
+                        // charter: "final forbids inheriting" (W2.9, 1.8). The parser's
+                        // `parse.final` refuses `final` anywhere but a class modifier; this is
+                        // its typer-side twin, for the class actually named as a parent.
+                        program.report(
+                            "types.class.final",
+                            "${c.name} cannot extend ${sym.name}: ${sym.name} is final.",
+                            node,
+                        )
+                    }
+                    c.superclass = t
+                }
                 else -> program.report(
                     "types.class.bad-parent",
                     "${c.name} can only inherit from a class or implement a trait; ${t.display()} is neither.",
@@ -424,7 +436,10 @@ internal class SignatureResolver(private val program: TypedProgram) {
             }
         }
         for (m in t.methods) {
-            if (m.isOperator || m.name == DeclarationCollector.ANONYMOUS) {
+            // A member operator (owner != null here, so isFreeOperator is always false) merges
+            // by name like any method (1.3.2): `Comparable<T>`'s own `@_op_lt_` replaces a
+            // parent trait's. The free form never reaches a trait's methods.
+            if (m.isFreeOperator || m.name == DeclarationCollector.ANONYMOUS) {
                 out.add(m)
                 continue
             }
@@ -438,6 +453,9 @@ internal class SignatureResolver(private val program: TypedProgram) {
     }
 
     private fun traitOverrides(t: TraitSymbol) {
+        // `t.parents` are this trait's own roots, exactly as `c.traits` are a class's; used both
+        // below (names `t` redeclares) and in the `parentNames` loop (names it doesn't).
+        val parentRoots = t.parents.map { it to emptyMap<TypeParamSymbol, KType>() }
         for (m in t.methods) {
             m.isVirtual = true
             val inherited = traitClosure(t.parents, emptyMap()).firstNotNullOfOrNull { (pt, sub) ->
@@ -447,6 +465,26 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 m.overrides = inherited.first
                 checkOverride(m, inherited.first, inherited.second, t.name)
             }
+            // Two inherited methods of one name with different signatures are
+            // `types.member.conflict` whether or not `t` redeclares that name (1.3.2), exactly as
+            // `overrides()` checks `c.methods` against `fromTraits`: `checkOverride` above only
+            // ever compares `m` against the *first* parent `traitClosure` finds, so `trait T: A,
+            // B { override pub fx m: () Int32 {..} }` with `A` and `B` disagreeing on `m` must
+            // still conflict even though `T` declares `m` itself (round 4 of this package's bug:
+            // `ownNames` below excluded every name `t` redeclares from the parentNames loop, so
+            // neither loop ever compared `A` and `B` against each other in this case).
+            reportConflictIfAny(t, m.name, m.decl, null, fromTraits(m.name, parentRoots))
+        }
+        // A trait that names two parents itself inherits their disagreement (1.3.2): `trait T: A,
+        // B {}`, with `A` and `B` disagreeing on one name and `T` declaring neither, must not wait
+        // for some later class to surface it. `fromTraits` already keeps every most-derived
+        // declaration a root's own closure disagrees on.
+        val ownNames = t.methods.mapTo(HashSet()) { it.name }
+        val parentNames = traitClosure(t.parents, emptyMap())
+            .flatMap { (pt, _) -> pt.methods.map { it.name } }
+            .filterTo(LinkedHashSet()) { it != DeclarationCollector.ANONYMOUS && it !in ownNames }
+        for (name in parentNames) {
+            reportConflictIfAny(t, name, t.decl, null, fromTraits(name, parentRoots))
         }
     }
 
@@ -469,6 +507,30 @@ internal class SignatureResolver(private val program: TypedProgram) {
             t.parents.forEach { visit(it, s) }
         }
         roots.forEach { visit(it, sub) }
+        return out
+    }
+
+    /**
+     * Every trait [t] extends, directly or transitively -- structural ancestry only, no
+     * substitution, since [fromTraits] only asks "is this declaration overridden by a
+     * more-derived one in the same root's closure", never a typed question. Used to drop a
+     * declaration from [fromTraits]'s frontier when some other declarer in the same closure
+     * extends it (and so replaces it), while keeping two declarers that are unrelated (a fork).
+     */
+    private fun traitAncestors(t: TraitSymbol): Set<TraitSymbol> {
+        val out = mutableSetOf<TraitSymbol>()
+        val seen = IdentityHashMap<TraitSymbol, Boolean>()
+        fun visit(x: TraitSymbol) {
+            if (seen.put(x, true) != null) {
+                return
+            }
+            for (p in x.parents) {
+                val pt = p.sym as? TraitSymbol ?: continue
+                out.add(pt)
+                visit(pt)
+            }
+        }
+        visit(t)
         return out
     }
 
@@ -497,21 +559,32 @@ internal class SignatureResolver(private val program: TypedProgram) {
             n = sc.superclass
         }
         val implemented = traitClosure(c.traits, emptyMap()) + chain.flatMap { (sc, s) -> traitClosure(sc.traits, s) }
+        // Every trait [c] or its superclass chain names directly (`class C: A, B`, or a
+        // superclass's own `class Base: X`), each with the substitution that reaches it: the
+        // roots `fromTraits` compares against each other for `types.member.conflict` (1.3.2).
+        val traitRoots = c.traits.map { it to emptyMap<TypeParamSymbol, KType>() } +
+            chain.flatMap { (sc, s) -> sc.traits.map { it to s } }
         val quiet = c.module.isStdlib
+        val ownNames = c.methods.mapTo(HashSet()) { it.name }
         for (m in c.methods) {
-            if (m.isOperator || m.name == DeclarationCollector.ANONYMOUS) {
+            // A member operator (owner != null here, so isFreeOperator is always false) takes
+            // part in override linking like any method (1.3.2): `override pub fx @_op_add_`
+            // links to its base, and `override` is required. The free form never reaches a
+            // class's own methods.
+            if (m.isFreeOperator || m.name == DeclarationCollector.ANONYMOUS) {
                 continue
             }
-            val base = chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == m.name }?.let { it to s } }
-            // Each trait's own methods, nearest trait first: the closure lists every ancestor
-            // with the substitution that reaches it, so an inherited method is found at the
-            // trait that declares it, under that trait's own type arguments.
-            val viaTrait = if (base == null) {
-                implemented.firstNotNullOfOrNull { (t, s) -> t.methods.firstOrNull { it.name == m.name }?.let { it to s } }
-            } else {
-                null
+            val base = fromChain(m.name, chain)
+            // One candidate per implemented trait root (1.3.2): a trait extending another and
+            // overriding this name contributes only its own declaration, never the ancestor it
+            // replaces, so two roots sharing an un-overridden ancestor's method compare equal
+            // instead of conflicting. Computed even when a superclass already provides `m.name`,
+            // so the two can be compared below.
+            val viaTraits = fromTraits(m.name, traitRoots)
+            if (!quiet) {
+                reportConflictIfAny(c, m.name, m.decl, base, viaTraits)
             }
-            val target = base ?: viaTrait
+            val target = base ?: viaTraits.firstOrNull()
             if (target != null) {
                 m.overrides = target.first
                 if (!c.isStruct) {
@@ -540,6 +613,180 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 )
             }
         }
+        if (quiet) {
+            return
+        }
+        // Two inherited methods of one name with different signatures are `types.member.conflict`
+        // whether or not `c` redeclares that name (1.3.2, the spec's own example: `Leaf` declares
+        // nothing, yet `Base`'s `@_op_eq_(other: Base)` and `Eq<Leaf>`'s `(other: Leaf)` disagree).
+        // The loop above only ever looks at `c.methods`, so a name `c` never declares itself would
+        // otherwise never be checked. `sameSignature` never sees a null on either side here.
+        val inheritedNames = (chain.flatMap { (sc, _) -> sc.methods.map { it.name } } + implemented.flatMap { (t, _) -> t.methods.map { it.name } })
+            .filterTo(LinkedHashSet()) { it != DeclarationCollector.ANONYMOUS && it !in ownNames }
+        for (name in inheritedNames) {
+            reportConflictIfAny(c, name, c.decl, fromChain(name, chain), fromTraits(name, traitRoots))
+        }
+    }
+
+    /** The nearest superclass in [chain] that declares [name], with its substitution. */
+    private fun fromChain(
+        name: String,
+        chain: List<Pair<ClassSymbol, Map<TypeParamSymbol, KType>>>,
+    ): Pair<FnSymbol, Map<TypeParamSymbol, KType>>? =
+        chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == name }?.let { it to s } }
+
+    /**
+     * Every trait [root]'s own closure reaches, each with the substitution that reaches it --
+     * like [traitClosure], but deduplicated by (trait, substitution) rather than by trait alone.
+     * [traitClosure]'s `seen` is an `IdentityHashMap<TraitSymbol, Boolean>`: it visits a trait at
+     * most once regardless of the substitution that reached it, which is right for
+     * [traitOverrides]' own use (linking `m.overrides` to *a* base) but wrong here, where a
+     * generic diamond can reach one trait under two genuinely different substitutions (`trait W:
+     * A, B {}` with `A: X<Int32>` and `B: X<Str>`): whichever parent [traitClosure] visits first
+     * decides which one is kept, so `class C: Base, W {}`'s own conflict check (a *single* root,
+     * `W`) depended on `W`'s internal parent order -- `W: A, B` and `W: B, A` gave different
+     * results for the very same class (round 8's bug). Deduplicating by the pair instead keeps
+     * both: two paths reaching the same trait under the *same* substitution still collapse to
+     * one (an ordinary diamond, not a fork), but two under different substitutions both survive,
+     * exactly as two candidates reached through two different root traits already did.
+     */
+    private fun frontierClosure(
+        root: KType.Nominal,
+        sub: Map<TypeParamSymbol, KType>,
+    ): List<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>> {
+        val out = mutableListOf<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>>()
+        val seen = HashSet<Pair<TraitSymbol, Map<TypeParamSymbol, KType>>>()
+        fun visit(n: KType.Nominal, outer: Map<TypeParamSymbol, KType>) {
+            val t = n.sym as? TraitSymbol ?: return
+            val s = t.typeParams.zip(n.typeArgs().map { it.substitute(outer) }).toMap()
+            if (!seen.add(t to s)) {
+                return
+            }
+            out.add(t to s)
+            t.parents.forEach { visit(it, s) }
+        }
+        visit(root, sub)
+        return out
+    }
+
+    /**
+     * Every most-derived candidate for [name] within one trait root's own closure: the
+     * declarations of [name] in [root]'s closure ([frontierClosure], never [traitClosure] --
+     * see its doc), minus any declarer some *other* declarer in that same closure extends
+     * (transitively) -- that declarer's own declaration replaces the ancestor's for anything
+     * reaching it only through the more-derived one. Two declarers neither of which extends the
+     * other (a fork, `trait T: A, B {}` with neither `A: B` nor `B: A`) both survive, so the
+     * caller sees the disagreement instead of the first-found declaration silently winning
+     * (round 2 of this package's bug: `T` wrapping `A` and `B` gave only `A`'s declaration, so
+     * `class C: T {}` never saw `B`'s).
+     */
+    private fun frontierDeclarers(
+        root: KType.Nominal,
+        sub: Map<TypeParamSymbol, KType>,
+        name: String,
+    ): List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>> {
+        val declarers = frontierClosure(root, sub).mapNotNull { (t, ts) ->
+            t.methods.firstOrNull { it.name == name }?.let { Triple(t, it, ts) }
+        }
+        return declarers
+            .filter { (t, _, _) -> declarers.none { (t2, _, _) -> t2 !== t && t in traitAncestors(t2) } }
+            .map { (_, m, ts) -> m to ts }
+    }
+
+    /**
+     * One candidate per declaration [name] resolves to across [roots], one root per trait a
+     * class or trait names directly (`class C: A, B` gives two roots; `class C: T` where
+     * `T: A, B` gives one, `T`, whose own closure may itself fork into several candidates --
+     * see [frontierDeclarers]). Used by `reportConflictIfAny` to compare every independent
+     * candidate against the others and against a superclass (1.3.2, "never first-found"): two
+     * traits that disagree on one name are both seen, however many roots or how much nesting
+     * separates them from the class, instead of the first one silently winning.
+     */
+    private fun fromTraits(
+        name: String,
+        roots: List<Pair<KType.Nominal, Map<TypeParamSymbol, KType>>>,
+    ): List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>> =
+        roots.flatMap { (root, s) -> frontierDeclarers(root, s, name) }
+
+    /**
+     * `types.member.conflict` (1.3.2): two of [base] (from a superclass; always null for a
+     * trait's own check, since a trait has none) and [viaTraits] (from [fromTraits], one entry
+     * per candidate) name the same method but disagree on signature, and nothing at [anchor] (a
+     * declared member, the class or trait itself when it declares no member of that name) says
+     * which one is meant. Every pair is compared -- not just a superclass against the first
+     * trait -- so two traits that disagree with each other, and neither disagrees with a
+     * superclass (or there is none), still conflict, and [owner] is [ClassSymbol] or
+     * [TraitSymbol]: a trait that names two disagreeing parents inherits the same conflict
+     * (`traitOverrides`), not only the classes that later implement it.
+     */
+    private fun reportConflictIfAny(
+        owner: Symbol,
+        name: String,
+        anchor: ASTNode?,
+        base: Pair<FnSymbol, Map<TypeParamSymbol, KType>>?,
+        viaTraits: List<Pair<FnSymbol, Map<TypeParamSymbol, KType>>>,
+    ) {
+        val candidates = buildList {
+            base?.let { add(it to true) }
+            viaTraits.forEach { add(it to false) }
+        }
+        for (i in candidates.indices) {
+            for (j in i + 1 until candidates.size) {
+                val (a, aIsSuper) = candidates[i]
+                val (b, _) = candidates[j]
+                if (sameSignature(a.first, a.second, b.first, b.second)) {
+                    continue
+                }
+                program.report(
+                    "types.member.conflict",
+                    "${owner.name} inherits two different '$name' methods: ${a.first.qualifiedName} from " +
+                        "${if (aIsSuper) "its superclass" else "a trait it implements"}, and " +
+                        "${b.first.qualifiedName} from a trait it implements. Declare '$name' in ${owner.name} " +
+                        "to say which one it means.",
+                    anchor,
+                )
+                return
+            }
+        }
+    }
+
+    /**
+     * True when [a] (reached under [aSub]) and [b] (reached under [bSub]) declare the same
+     * signature once both are read in the inheriting class's own context: same arity, same
+     * `mut`-ness (`isMutMethod` decides C++ `const`, so a mismatch is a different signature, not
+     * an overload), same parameter types and byRef-ness in order, the same return type, and the
+     * same bounds on the method's own type parameters (own type parameters mapped positionally,
+     * as [checkOverride] does). Used to tell two inherited methods of one name apart
+     * (`types.member.conflict`) from two that happen to agree -- this is where 1.3.2's "never
+     * first-found" rule actually lives: every candidate pair is compared with this, so two
+     * declarations differing only in `mut fx` or in a bound (round 5 of this package's bug: this
+     * function used to ignore both, so `checkOverride`'s first-found target decided the outcome
+     * instead of this order-independent comparison) are correctly seen as a conflict regardless
+     * of which one a caller happens to find first.
+     */
+    private fun sameSignature(a: FnSymbol, aSub: Map<TypeParamSymbol, KType>, b: FnSymbol, bSub: Map<TypeParamSymbol, KType>): Boolean {
+        if (a.typeParams.size != b.typeParams.size || a.params.size != b.params.size) {
+            return false
+        }
+        if (a.isMutMethod != b.isMutMethod) {
+            return false
+        }
+        val ownMap = a.typeParams.zip(b.typeParams).associate { (x, y) -> x to KType.Param(y) }
+        for (i in a.typeParams.indices) {
+            val aBounds = a.typeParams[i].bounds.map { it.substitute(aSub).substitute(ownMap) }.toSet()
+            val bBounds = b.typeParams[i].bounds.map { it.substitute(bSub) }.toSet()
+            if (aBounds != bBounds) {
+                return false
+            }
+        }
+        for (i in a.params.indices) {
+            val at = a.params[i].type.substitute(aSub).substitute(ownMap)
+            val bt = b.params[i].type.substitute(bSub)
+            if (at != bt || a.params[i].byRef != b.params[i].byRef) {
+                return false
+            }
+        }
+        return a.ret.substitute(aSub).substitute(ownMap) == b.ret.substitute(bSub)
     }
 
     /**
