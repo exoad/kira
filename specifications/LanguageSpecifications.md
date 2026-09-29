@@ -569,7 +569,21 @@ Expression precedence from lowest to highest:
 
 ## Standard Types
 
-Kira employs a nominal type system where types are identified by their declared names rather than structural compatibility. All values in Kira are objects with reference semantics, eliminating the need for explicit boxing operations.
+Kira employs a nominal type system where types are identified by their declared names rather than structural compatibility. All values in Kira are objects, so there is no explicit boxing. Every type is a class, the built-in ones included: `Int32`, `Bool`, `Str` and the containers are classes declared in the standard library, with their methods and their operators (see Operator Overloading).
+
+**Immutable Objects:**
+
+An object is immutable when its class has no `mut` field and no `mut fx` (see Mutable Methods). The implementation may copy an immutable object; copies cannot be told apart. This holds wherever the object goes, including where it is used as a trait-typed value or as `Any`.
+
+**Containers Are Values:**
+
+The containers (`Arr`, `List`, `Map`, `Set`, `Stack`, `Queue`, `Deque`) and `StrBuf` are mutable values. Assigning one copies it, and it changes only through a mutable place: a `mut` variable, a `mut` parameter, or a `mut` field. They are the one kind of mutable value; every other mutable object is shared by reference.
+
+```kira
+a: List<Int32> = List<Int32> { [1, 2] }
+mut b: List<Int32> = a
+b.add(3)  // a is still [1, 2]
+```
 
 ### Primitive Types
 
@@ -579,6 +593,28 @@ Kira employs a nominal type system where types are identified by their declared 
 -   `Int16`: 16-bit signed integer (range: -32,768 to 32,767)
 -   `Int32`: 32-bit signed integer (range: -2,147,483,648 to 2,147,483,647)
 -   `Int64`: 64-bit signed integer (range: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807)
+
+**Unsigned Integer Types:**
+
+-   `UInt8`, `UInt16`, `UInt32`, `UInt64`: unsigned integers of 8, 16, 32 and 64 bits. Unsigned arithmetic wraps.
+-   `Size`: the unsigned integer as wide as a pointer on the target. A container's, a view's or a `Str`'s `length()`/`size()` returns a `Size`, and a `Size` mixes with no other integer type: `i < s.length()` needs `i: Size`. A class outside those declares its own `size()`/`length()` return type, such as a tuple's `Int32` (see Variadic Type Parameters and Tuples).
+
+**Character Type:**
+
+-   `Char`: an 8-bit code unit, written `'c'`. `s[i]` on a `Str` is a `Char`. Characters compare (as unsigned code units, so every target agrees) but have no arithmetic; convert with `as`.
+
+**Numbers Are Classes:**
+
+Each number type is a class of `kira:core`, and declares its operators through the traits `Num<T>` (arithmetic, comparison, `abs`), `IntNum<T>` (adding `%`, the bitwise operators and the shifts) and `FloatNum<T>`:
+
+```kira
+pub @_magic class Int32: IntNum<Int32>
+pub @_magic class Size: IntNum<Size>
+pub @_magic class Float64: FloatNum<Float64>
+pub @_magic class Char: Comparable<Char>, Hashable
+```
+
+So `a + b` on two `Int32` values calls `Int32`'s `@_op_add_`, exactly as it calls a user class's, and a generic function bounded by `Num<T>` can use the operators. Every number is a `Num` of itself: both operands and the result have the receiver's own type.
 
 **Floating Point Types:**
 
@@ -695,7 +731,7 @@ Kira provides several core reference types for advanced memory management and ty
 
 **`Any`**
 
-The universal supertype of all classes. Used for dynamic typing scenarios where the specific type is determined at runtime.
+The universal supertype of all classes. Used for dynamic typing scenarios where the specific type is determined at runtime. `Any` is the implicit root of every type, not a parent class: a class declared without `: Parent` has no parent class, and is still usable as `Any`.
 
 ```kira
 value: Any = 42
@@ -722,24 +758,26 @@ value: Ref<Int32> = Ref<Int32> { 42 }
 
 Non-owning reference that does not increment the reference count. Used to break circular reference cycles. Accessing a weak reference requires upgrading to a strong reference, which may fail if the object has been deallocated.
 
+`T` must be a mutable class or a trait. An immutable object has no identity to refer to weakly, since a copy of it is the same object, so `Weak<T>` of an immutable class is an error: take the `Weak` of the mutable object that holds it.
+
 ```kira
-weak: Weak<MyClass> = Weak<MyClass> { strongRef }
+weak: Weak<MyClass> = Weak<MyClass> { strongRef }  // MyClass is a mutable class
 maybeValue: Maybe<MyClass> = weak.upgrade()
 ```
 
 **`Unsafe<T>`**
 
-Raw pointer-like reference without reference counting or lifetime tracking. Intended only for performance-critical FFI code or unsafe optimizations. Using `Unsafe<T>` bypasses Kira's safety guarantees.
+Raw pointer-like reference without reference counting or lifetime tracking, for FFI only. It is the type of an extern function's parameter and nothing else (see Views and Unsafe References).
 
 ```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
+pub fx checksum: (p: Unsafe<UInt8>, n: Size) UInt32;  // an extern: its body is native code
 ```
 
 ### Collection Types
 
 **`Str`**
 
-Immutable Unicode string type. Strings are value types that support interpolation and common string operations.
+Immutable Unicode string type. Strings are immutable objects that support interpolation and common string operations. `s[i]` is the string's i-th code unit, a `Char`; a `Str` cannot be written through `[]`.
 
 ```kira
 greeting: Str = "Hello, ${name}!"
@@ -747,7 +785,7 @@ greeting: Str = "Hello, ${name}!"
 
 **`Arr<A>`**
 
-Fixed-size immutable array. Size is determined at initialization and cannot change. The compiler may optimize array operations using static size information.
+Fixed-size array, with writable elements. Size is determined at initialization and cannot change; an element changes through a mutable place (`mut a: Arr<Int32> = [1, 2]`, then `a[0] = 5`). The compiler may optimize array operations using static size information.
 
 **Array Literals:**
 
@@ -815,15 +853,63 @@ config["bufferSize"] = 4096
 timeout: Int32 = config["timeout"]
 ```
 
-This is similar to Java's Map interface but with operator overloading for cleaner syntax. The indexing operators are syntactic sugar for `get()` and `put()` methods.
+`config[k]` calls the map's `@_op_get_`, and `config[k] = v` calls its `@_op_set_`. Reading a missing key is a runtime error; `config.get(k)` returns a `Maybe<V>` instead. A key is a number, a `Bool`, a `Char`, a `Str` or an enum value.
 
 **`Set<A>`**
 
-Unordered collection of unique values.
+Unordered collection of unique values. An element is a number, a `Bool`, a `Char`, a `Str` or an enum value.
 
 ```kira
 mut uniqueIds: Set<Int32> = Set<Int32> { }
 uniqueIds.add(42)
+```
+
+**Indexing:**
+
+`Arr`, `List`, `Map`, `Str` and the views declare `@_op_get_` in the standard library, and `Arr`, `List`, `Map` and `MutView` declare `@_op_set_`. `xs[i]` calls them exactly as it calls a user class's (see Indexing Operator). An index into an `Arr`, a `List`, a `Str` or a view may be any integer type and is checked at run time.
+
+**`View<T>` and `MutView<T>`**
+
+A view lends a run of elements without copying them: a `View<T>` reads them, and a `MutView<T>` also writes them. `xs.view()`, `xs.from(4)` and `xs.slice(4, 8)` view an `Arr`, a `List` or another view, and `s.view()` views a `Str` as a `View<Char>`. An `Arr<T>`, a `List<T>` or a `MutView<T>` given where a `View<T>` is expected is viewed in place, not copied.
+
+**Views are second-class.** A view is only ever handed on, never kept, so it cannot outlive what it lends:
+
+-   A view may appear only as an argument of a call, as the receiver of a method call, or as the operand of `return` under the rule below. A call whose result is a view is held to the same positions, so `parsePacket(buf.view().from(4))` is allowed.
+-   A view is never bound to a local, and a view type is never the type of a local, a global, a field, a `mut` parameter, or a type argument of a container, `Maybe`, `Result`, a tuple, `Ref`, `Weak` or a generic class. `Maybe<View<Char>>` cannot be written. An `Fx` type may name one in its parameters or result, since those are a signature: `Fx<Tuple1<View<UInt8>>, Void>` receives a view and holds none. A view is never given where `Any` or a trait-typed value is expected either.
+-   A function whose result is a view may return only a view of its own view parameters or of its receiver (`this`), and its callers use the result in the same positions. To return part of a container, take it as a `View<T>` parameter: callers still pass the container.
+-   `for x: T in v` over a view is allowed when the view comes from the function's own view parameters, or from a string literal or a module-level constant that is not a `Str` (`for x: Int32 in TABLE.from(1)`).
+-   A lambda that captures a view may only be passed straight to a parameter that the called function only calls during the call, never storing, returning or passing it on to one that keeps it. Any other lambda never captures a view: pass the view to the lambda as an argument where it is called.
+-   A generic function may take a view type as its `T` only when its result type does not mention `T` and its body keeps no `T`. A generic class is never given a view type.
+-   A view is in use from where it is formed until the call that receives it returns. In that time nothing may change the storage it lends: no assignment to it, and no `mut` argument or `mut fx` receiver that names or contains it. When that storage lies in a mutable object or a `mut` module-level variable, no impure call may run in that time either.
+
+> Note: which calls count as impure for the last rule is still being decided.
+
+An extern function (one whose body is native code) may take a view, a `CStr` (a `Str` or a string literal passed as native text) or an `Unsafe<T>` parameter, whose argument obeys these rules; it never returns one. An extern reads such an argument only during the call and keeps nothing from it, writes Kira storage only through its `mut` arguments and its receiver, and runs Kira code only through the `Fx` arguments it is given. A type holding a view, a `CStr` or an `Unsafe<T>` cannot be written, so no container or class holding one ever reaches an extern.
+
+```kira
+fx total: (xs: View<Int32>) Int32 {
+    mut sum: Int32 = 0
+    for x: Int32 in xs {
+        sum += x
+    }
+    return sum
+}
+
+fx tail: (xs: View<Int32>, at: Size) View<Int32> {
+    return xs.from(at)  // a view of its own view parameter
+}
+
+// append: (from: View<Int32>, mut into: List<Int32>) Void
+mut values: List<Int32> = List<Int32> { [1, 2, 3, 4] }
+sum: Int32 = total(tail(values, 2))  // values is viewed in place
+rest: View<Int32> = tail(values, 2)  // Error: a view is never kept in a local
+append(tail(values, 2), mut values)  // Error: values may change while its view is in use
+```
+
+Each misuse is a compile error that names the view and says what to write instead:
+
+```
+'rest' would hold tail(values, 2), a View<Int32>: a view is never kept in a local. Pass it straight to the call that uses it, total(tail(values, 2)), or take a View parameter.
 ```
 
 ---
@@ -879,18 +965,22 @@ Expressions in Kira evaluate to values and can be composed using various operato
 
 Operators are listed from highest to lowest precedence:
 
-| Precedence | Operator            | Description                      | Associativity |
-| ---------- | ------------------- | -------------------------------- | ------------- |
-| 1          | `.` `[]` `()`       | Member access, indexing, call    | Left to right |
-| 2          | `!` `-` `+` (unary) | Logical NOT, unary minus/plus    | Right to left |
-| 3          | `*` `/` `%`         | Multiplication, division, modulo | Left to right |
-| 4          | `+` `-`             | Addition, subtraction            | Left to right |
-| 5          | `..`                | Range operator                   | Left to right |
-| 6          | `<` `>` `<=` `>=`   | Relational comparison            | Left to right |
-| 7          | `==` `!=`           | Equality comparison              | Left to right |
-| 8          | `&&`                | Logical AND                      | Left to right |
-| 9          | `||`                | Logical OR                       | Left to right |
-| 10         | `=`                 | Assignment                       | Right to left |
+| Precedence | Operator                | Description                              | Associativity |
+| ---------- | ----------------------- | ---------------------------------------- | ------------- |
+| 1          | `.` `[]` `()`           | Member access, indexing, call            | Left to right |
+| 2          | `!` `-` `+` `~` (unary) | Logical NOT, unary minus/plus, bitwise NOT | Right to left |
+| 3          | `*` `/` `%`             | Multiplication, division, modulo         | Left to right |
+| 4          | `+` `-`                 | Addition, subtraction                    | Left to right |
+| 5          | `<<` `>>` `>>>`         | Shift left, shift right, logical shift right | Left to right |
+| 6          | `..`                    | Range operator                           | Left to right |
+| 7          | `<` `>` `<=` `>=`       | Relational comparison                    | Left to right |
+| 8          | `==` `!=`               | Equality comparison                      | Left to right |
+| 9          | `&`                     | Bitwise AND                              | Left to right |
+| 10         | `^`                     | Bitwise XOR                              | Left to right |
+| 11         | `\|`                    | Bitwise OR                               | Left to right |
+| 12         | `&&`                    | Logical AND                              | Left to right |
+| 13         | `\|\|`                  | Logical OR                               | Left to right |
+| 14         | `=`                     | Assignment                               | Right to left |
 
 ### Arithmetic Operators
 
@@ -911,37 +1001,57 @@ x: Int32 = -10
 y: Int32 = +10
 ```
 
+`-x` is `x.@_op_neg_()`, and `+x` is `x.@_op_pos_()`, the identity on numbers. A negative literal such as `-10` is a literal, not a negation.
+
 **Type Rules:**
 
--   Operands must have compatible numeric types
--   No implicit type coercion; explicit casting required for mixed-type operations
+-   Both operands have the same type: `a + b` is `a.@_op_add_(b)`, and each number's `@_op_add_` takes its own type
+-   No implicit type coercion; explicit casting with `as` required for mixed-type operations, `Size` with another integer type included
 -   Integer division truncates toward zero
 -   Division by zero results in runtime error
 
 ### Operator Overloading
 
-Kira supports operator overloading through intrinsic markers. Classes can define methods with specific intrinsic names that map to operators, allowing custom types to work with standard operators.
+Operators are methods. A class or a trait declares an operator as a member method with an intrinsic name, like any `fx`, and the operator calls it: `a + b` is `a.@_op_add_(b)`. The built-in classes declare theirs the same way in the standard library (`Int32`'s `@_op_add_` comes from `Num<Int32>`, `List`'s `@_op_get_` from `List` itself), so a built-in operator and a user one resolve alike. An operator is always a member.
 
-**Operator Intrinsic Mapping:**
+**Operator Methods:**
 
-| Operator | Intrinsic Name | Signature Example                          |
-|----------|----------------|--------------------------------------------|
-| `+`      | `@_op_add_`    | `fx @_op_add_: (other: T) T`                |
-| `-`      | `@_op_sub_`    | `fx @_op_sub_: (other: T) T`                |
-| `*`      | `@_op_mul_`    | `fx @_op_mul_: (other: T) T`                |
-| `/`      | `@_op_div_`    | `fx @_op_div_: (other: T) T`                |
-| `%`      | `@_op_mod_`    | `fx @_op_mod_: (other: T) T`                |
-| `==`     | `@_op_eq_`     | `fx @_op_eq_: (other: T) Bool`              |
-| `!=`     | `@_op_neq_`    | `fx @_op_neq_: (other: T) Bool`             |
-| `<`      | `@_op_lt_`     | `fx @_op_lt_: (other: T) Bool`              |
-| `>`      | `@_op_gt_`     | `fx @_op_gt_: (other: T) Bool`              |
-| `<=`     | `@_op_lte_`    | `fx @_op_lte_: (other: T) Bool`             |
-| `>=`     | `@_op_gte_`    | `fx @_op_gte_: (other: T) Bool`             |
-| `-` (un) | `@_op_neg_`    | `fx @_op_neg_: () T`                        |
-| `[]`     | `@_op_get_`    | `fx @_op_get_: (get: Int32) T`              |
-| `[]=`    | `@_op_set_`    | `fx @_op_set_: (index: Int32, val: T) Void` |
+| Syntax | Method | Arity | Result |
+|---|---|---|---|
+| `a + b`, `a - b`, `a * b`, `a / b`, `a % b` | `@_op_add_` `@_op_sub_` `@_op_mul_` `@_op_div_` `@_op_mod_` | 1 | any |
+| `a == b`, `a != b` | `@_op_eq_` `@_op_neq_` | 1 | `Bool` |
+| `a < b`, `a > b`, `a <= b`, `a >= b` | `@_op_lt_` `@_op_gt_` `@_op_lte_` `@_op_gte_` | 1 | `Bool` |
+| `-a` | `@_op_neg_` | 0 | any |
+| `a[i]` | `@_op_get_` | 1 | any |
+| `a[i] = v` | `@_op_set_` | 2 | `Void` |
+| `a & b`, `a \| b`, `a ^ b` | `@_op_bitand_` `@_op_bitor_` `@_op_xor_` | 1 | any |
+| `a << n`, `a >> n`, `a >>> n` | `@_op_shl_` `@_op_shr_` `@_op_ushr_` | 1 | any |
+| `~a`, `!a`, `+a` | `@_op_bitnot_` `@_op_not_` `@_op_pos_` | 0 | any |
 
-> Note: Function Signatures can vary, but using a different signature means you must explicitly invoke the intrinsic as a function instead.
+-   The arity, and `Bool` for the six comparisons, are the contract. Parameter and result types are the declaring class's choice: `@_op_mul_: (scalar: Float32) Vector2` below is used as `v1 * 2.0`.
+-   A method with another shape, such as `@_op_get_: (row: Int32, col: Int32) T`, is an ordinary method, callable only by name: `m.@_op_get_(r, c)`.
+-   An operator can always be called by name: `a.@_op_add_(b)` is the same call as `a + b`.
+-   `&&`, `||`, `..`, `as`, `is`, `=` and `.` are syntax, not methods.
+-   An operator method follows every rule of a method: `pub`, `mut`, bodies, and `override`, which is required when it overrides, are as for any `fx`, and a class has at most one method of each name, operators included. `@_op_set_` is normally a `mut fx`.
+-   A generic operator method is marked `@_infer`, since operator syntax has nowhere to write type arguments: its type parameters are inferred from its arguments, in operator syntax and in an explicit call alike. `List` declares `pub @_infer fx @_op_get_<I: IntNum<I>>: (index: I) T`, which is what lets any integer type index it. A generic operator method without `@_infer` cannot be used with operator syntax.
+
+**Desugaring and Evaluation:**
+
+The operator is resolved on the left operand's type exactly as `a.name(...)` is: the class, its parents, its traits, or a type parameter's bounds.
+
+| Kira | Is |
+|---|---|
+| `a op b` | `a.@_op_X_(b)` |
+| `-a`, `~a`, `!a`, `+a` | `a.@_op_X_()` |
+| `a[i]` | `a.@_op_get_(i)` |
+| `a[i] = v` | `a.@_op_set_(i, v)` |
+| `a op= b` | `a = a.@_op_X_(b)`, with `a` evaluated once |
+| `a[i] op= v` | `a.@_op_set_(i, a.@_op_get_(i).@_op_X_(v))`, with `a` and `i` evaluated once |
+| `a != b` | `a.@_op_neq_(b)` when the class declares it, `!(a == b)` otherwise |
+
+-   The left operand is evaluated first, then the right. A left operand that is a variable or a field is not copied: the call reads it when it runs, so `xs[next()]` sees what `next` did to `xs`, exactly as `xs.@_op_get_(next())` does.
+-   No operator is derived from another beyond the `!=` rule. (`Comparable<T>` gives `>`, `<=` and `>=` default bodies from `<` and `==`, as library code a class may override.)
+-   A literal on the left takes the other operand's type only when the method found on that type takes its own type. So `v1 * 2.0` works, and `2.0 * v1` is an error: `Float32` has no `@_op_mul_` taking a `Vector2`.
 
 **Example:**
 
@@ -978,8 +1088,7 @@ equal: Bool = v1 == v2
 
 **Notes:**
 
--   Intrinsic markers are just symbol placeholders for the parser
--   Function signatures can differ (return types, parameter types can vary)
+-   Function signatures can differ (return types, parameter types can vary), within the arity rule
 -   Not all operators need to be overloaded
 -   The compiler transforms operator usage into method calls at compile time
 
@@ -1011,10 +1120,17 @@ y: Bool = 10 != 5    // Inequality
 
 **Type Rules:**
 
--   Operands must have comparable types
--   Reference types compare by reference identity (same object)
--   Value types compare by value equality
--   Returns `Bool` type
+-   `a == b` is `a.@_op_eq_(b)`, and `a < b` is `a.@_op_lt_(b)` (see Operator Overloading); each returns `Bool`
+-   `a != b` is `a.@_op_neq_(b)` when the class declares it, and `!(a == b)` otherwise
+-   A class that neither declares an `@_op_eq_` nor inherits a declared one has one supplied. A trait's body-less `@_op_eq_`, such as `Equatable<T>`'s, is not a declared one:
+    -   an immutable class compares the classes of the two objects, then every field, inherited ones included, each by its own `==`. The answer does not depend on the variables' types: an object never equals one of another class, its parent's included. A field whose type has no `==` makes `==` on the class an error
+    -   a mutable class compares identity: an object equals only itself
+-   In a hierarchy, each class that neither declares an `@_op_eq_` nor inherits a declared one has its own supplied one, overriding its parent's: an immutable subclass compares its own fields too, and a mutable subclass compares identity. A declared `@_op_eq_` is inherited like any method, by immutable and mutable subclasses alike
+-   The supplied `@_op_eq_` is a method like any other: `a.@_op_eq_(b)` calls it, and it implements `Equatable<C>`'s `@_op_eq_`, where `C` is the class itself, when the class declares that trait, directly or through a trait that extends it, such as `Comparable<C>`. So a class needs only `@_op_lt_` to be `Comparable<C>`
+-   A trait-typed value has `==` only when the trait declares one: `trait Shape: Equatable<Shape>`
+-   A built-in has `==` where the standard library declares it: the numbers, `Bool`, `Char` and `Str`, and, element by element, `View`, `MutView`, `Arr`, `List` and the tuples. `Maybe`, `Result`, `Map`, `Set`, `Stack`, `Queue`, `Deque`, `StrBuf`, `Ref`, `Weak` and `Fx` have none
+-   Enums compare their values
+-   `Char` values compare as unsigned code units
 
 ```kira
 // Value comparison
@@ -1022,11 +1138,43 @@ x: Int32 = 10
 y: Int32 = 10
 result: Bool = x == y  // true
 
-// Reference comparison
+// Immutable objects compare their fields
+pub class MyClass { }
 obj1: MyClass = MyClass { }
 obj2: MyClass = MyClass { }
-same: Bool = obj1 == obj2  // false (different objects)
-same: Bool = obj1 == obj1  // true (same object)
+equal: Bool = obj1 == obj2  // true (no field differs)
+
+// Mutable objects compare identity
+pub class Counter {
+    require mut count: Int32
+}
+c1: Counter = Counter { 0 }
+c2: Counter = Counter { 0 }
+same: Bool = c1 == c2  // false (different objects)
+itself: Bool = c1 == c1  // true (same object)
+
+// A declared == is inherited: Tagged compares by Money's
+pub class Money {
+    require pub cents: Int64
+
+    pub fx @_op_eq_: (other: Money) Bool {
+        return cents == other.cents
+    }
+}
+pub class Tagged: Money {
+    require pub tag: Str
+}
+sameCents: Bool = Tagged { cents = 1, tag = "a" } == Tagged { cents = 1, tag = "b" }  // true
+
+// The supplied == implements Equatable's, so @_op_lt_ is all Comparable needs
+pub class Version: Comparable<Version> {
+    require pub n: Int32
+
+    override pub fx @_op_lt_: (other: Version) Bool {
+        return n < other.n
+    }
+}
+newer: Bool = Version { 2 } >= Version { 1 }  // true
 ```
 
 ### Logical Operators
@@ -1053,9 +1201,10 @@ result: Bool = true || expensiveCheck()
 -   Operands must be of type `Bool`
 -   No implicit conversion from other types to `Bool`
 -   Always returns `Bool`
+-   `!a` is `a.@_op_not_()`, which `Bool` declares. `&&` and `||` are not methods: no method call can skip evaluating its argument, so they take `Bool` operands only
 
 ```kira
-result: Bool = 5 && 10
+result: Bool = 5 && 10  // Error: && takes Bool operands
 
 result: Bool = (5 > 0) && (10 > 0)
 ```
@@ -1113,9 +1262,11 @@ The `Range` type implements the `Iterable<Int32>` interface and provides array-l
 
 ```kira
 range: Range = 5..10
-length: Int32 = range.length()
+length: Size = range.length()
 element: Int32 = range[0]
 ```
+
+`range[0]` is `range.@_op_get_(0)`, as for any class.
 
 ### Assignment Operator
 
@@ -1143,12 +1294,14 @@ a = b = 10
 
 **Compound Assignment Operators:**
 
-Compound assignment operators are not supported. Use explicit operations:
+Every binary arithmetic and bitwise operator has a compound form: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=` and `>>>=`. `a op= b` is `a = a.@_op_X_(b)`, with `a` evaluated once, so it needs what the assignment needs. `a[i] op= v` gets, operates and sets: `a.@_op_set_(i, a.@_op_get_(i).@_op_X_(v))`, with `a` and `i` evaluated once.
 
 ```kira
-x += 10
+mut x: Int32 = 10
+x += 10  // x = x + 10
 
-x = x + 10
+mut counts: List<Int32> = List<Int32> { [0, 0] }
+counts[1] += 1
 ```
 
 ### Member Access Operator
@@ -1171,13 +1324,13 @@ result: Str = "hello"
 
 ### Indexing Operator
 
-The bracket operator `[]` accesses elements by index:
+The bracket operator `[]` accesses elements by index. `a[i]` is `a.@_op_get_(i)`, and `a[i] = v` is `a.@_op_set_(i, v)`, resolved on `a`'s class like any method call, so a user class indexes exactly as `List` does:
 
 ```kira
 array: Arr<Int32> = [1, 2, 3, 4, 5]
 element: Int32 = array[0]
 
-map: Map<Str, Int32> = Map<Str, Int32> {}
+mut map: Map<Str, Int32> = Map<Str, Int32> {}
 map["key"] = 42
 value: Int32 = map["key"]
 ```
@@ -1185,8 +1338,15 @@ value: Int32 = map["key"]
 **Index Bounds:**
 
 -   Array indices are zero-based
--   Out-of-bounds access results in runtime error
--   Negative indices are not supported
+-   An index into an `Arr`, a `List`, a `Str` or a view may be any integer type
+-   Out-of-bounds access results in runtime error, and so does a negative index
+-   Reading a missing `Map` key results in runtime error; `map.get(k)` returns a `Maybe` instead
+
+**Writing Through `[]`:**
+
+-   `a[i] = v` needs what `@_op_set_` needs: a mutable place for a container (`mut xs: List<Int32>`); nothing for a `MutView`, whose `@_op_set_` writes the element and never changes the view; and nothing for a mutable object, whose `mut fx` is callable through any reference
+-   A class without `@_op_set_` cannot be written through `[]`: `s[0] = 'x'` on a `Str` is an error
+-   `f(mut xs[i])` passes the element itself for the built-in containers. On a user class it is an error: write `mut t: T = a[i]`, `f(mut t)`, then `a[i] = t`
 
 ### Function Call Operator
 
@@ -1687,14 +1847,16 @@ Collections must implement the `Iterable<T>` trait to be used in for loops:
 
 ```kira
 pub trait Iterable<T> {
-    fx iterator: () Iterator<T>
+    pub fx iterator: () Iterator<T>
 }
 
 pub trait Iterator<T> {
-    fx hasNext: () Bool
-    fx next: () T
+    pub fx hasNext: () Bool
+    pub mut fx next: () T
 }
 ```
+
+`for x: T in e`, over anything but a range, calls `e.iterator()`, then `hasNext()` and `next()` until `hasNext()` is false. The built-in containers and the views are `Iterable<T>` through the same trait, and so is any class that implements it. An iterator changes as it advances, so `next` is a `mut fx`, and an iterator is a mutable object.
 
 ### Control Flow Keywords
 
@@ -2110,6 +2272,8 @@ fx processStr: (value: Str) Void { }
 fx process<T>: (value: T) Void { }
 ```
 
+Methods follow the same rule, and operators are methods: a class has at most one method of each name, so it declares one `@_op_add_`, and its `+` takes one type on the right.
+
 ### Function Reference
 
 Since functions are treated as first class citizens, there is no special operator like `::` that is used to get the direct value of a function under a certain container.
@@ -2324,6 +2488,17 @@ pub class Vector2 {
 }
 ```
 
+**Immutable and Mutable Classes:**
+
+This `Vector2` is mutable: it declares `mut` fields. A class is mutable when it or a parent class declares a `mut` field or a `mut fx` (see Mutable Methods). Every other class is immutable: no field of its objects changes after construction, through any variable, and a changed object is built anew, usually with `copy` (see Constructor).
+
+```kira
+pub class Point {
+    require pub x: Float32
+    require pub y: Float32
+}
+```
+
 ### Constructor
 
 Classes use a declarative constructor syntax. The `require` keyword specifies fields that must be provided during construction:
@@ -2376,6 +2551,24 @@ user3: User = User {
               }
 ````
 
+**Copying with Changes (`copy`):**
+
+An immutable class that no class extends, other than a built-in one, has a method `copy`, with one named parameter per field, inherited fields first. Each defaults to the receiver's value of that field, so an argument left out keeps it:
+
+```kira
+p: Point = Point { 1.0, 2.0 }
+q: Point = p.copy(y = 5.0)  // Point { 1.0, 5.0 }
+```
+
+-   A private field is a parameter of `copy` only inside the class
+-   `copy` is construction: the class's `initially` runs again
+-   The receiver is evaluated first and once, then the arguments left to right
+-   A class may not declare its own `copy`. A mutable class and a built-in class, the tuples included, have none, and `copy` on a class that another class extends is an error, since it would drop the subclass's fields
+
+**Construction and `initially`:**
+
+A class's own `initially` block may assign the class's own fields, even in an immutable class, since the object is not visible until construction ends (the `Person` example in Initializers and Finalizers does this). Nothing else assigns a field of an immutable object. Inside `initially`, `this` is used only to read and write the class's fields and as the receiver of its methods that do not pass `this` on: it is never an argument, a returned value, a capture or a stored value.
+
 **Method Implementation During Instantiation:**
 
 Classes can accept method implementations at instantiation time by supplying lambda functions. This eliminates the need for abstract classes since functions are first-class citizens:
@@ -2394,8 +2587,10 @@ handler: Handler = Handler {
 handler.process("test data")
 ````
 
-Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. Any class with
-unimplemented methods can receive implementations during instantiation, allowing for flexible object construction where
+Since functions can be provided at runtime, there is **no concept of abstract classes** in Kira. A body-less method of a
+class is a slot. A construction must fill every slot of the class being built unless that class overrides the method
+or inherits an override of it, so `Handler { }` is an error, and building a `Circle` (see Inheritance) needs no `area`.
+A slot is fixed at construction, so it does not make its class mutable. This allows flexible object construction where
 behavior can be customized without requiring subclassing.
 
 ### Inheritance
@@ -2423,7 +2618,10 @@ pub class Circle: Shape {
 -   Only single inheritance is permitted
 -   Methods can be overridden in subclasses
 -   Use `override` keyword when overriding methods
--   Final classes cannot be inherited (use `final` modifier)
+-   A class declared `final` (`pub final class Reply { ... }`) cannot be inherited
+-   A mutable class may extend an immutable one; the subclass is mutable, and the parent stays immutable
+-   `copy` on a class that another class extends is an error: it would drop the subclass's fields (see Constructor)
+-   A supplied `==` compares the objects' own classes, so it gives the same answer whatever the variables' types: a `Circle` never equals a `Shape` that is not a `Circle` (see Comparison Operators)
 
 ### Trait Implementation
 
@@ -2613,6 +2811,29 @@ pub class Counter {
     }
 }
 ```
+
+**Mutable and Immutable Classes:**
+
+-   A class is mutable when it declares a `mut` field or a `mut fx`, or a parent class does. Implementing a trait's `mut fx` counts, since the class declares it `mut fx` too
+-   A mutable object is shared by reference: every variable holding it sees each change, and its `mut fx` is callable through any of them
+-   Every other class is immutable. Assigning a field of an immutable object is an error, through any variable, except in the class's own `initially`
+-   Immutability is about the class's own fields: a `Box<Counter>` is immutable even though the `Counter` inside it is not
+-   A `mut` variable or a `mut` parameter holding an immutable object may be rebound to a new one:
+
+```kira
+pub class Decoder {
+    require pub ticks: Int32
+
+    pub fx feed: () Decoder {
+        return Decoder { ticks + 1 }
+    }
+}
+
+mut decoder: Decoder = Decoder { 0 }
+decoder = decoder.feed()
+```
+
+-   The containers and `StrBuf` are mutable values (see Standard Types): a `mut fx` on one, such as `List.add`, needs a mutable place
 
 ### Access Modifiers
 
@@ -2892,10 +3113,12 @@ result: Int32 = identity<Int32>(42)
 Constrain type parameters to ensure they implement specific traits:
 
 ```kira
-fx sort<T: Comparable>: (items: List<T>) List<T> {
+fx sort<T: Comparable<T>>: (items: List<T>) List<T> {
     // implementation using T's comparison methods
 }
 ```
+
+An operator on a `T` value resolves through `T`'s bounds like any method: `a < b` needs `T: Comparable<T>`, `a + b` needs `T: Num<T>`, and `a == b` needs `T: Equatable<T>`.
 
 **Multiple Trait Bounds:**
 
@@ -2903,11 +3126,11 @@ When a type parameter must satisfy multiple traits, use **comma-separated** synt
 
 ```kira
 // ✓ Correct: comma-separated bounds
-fx processItem<T: Comparable, Serializable>: (item: T) Str {
-    // T must implement both Comparable and Serializable
+fx processItem<T: Comparable<T>, Serializable>: (item: T) Str {
+    // T must implement both Comparable<T> and Serializable
 }
 
-// Incorrect: not T: Comparable + Serializable
+// Incorrect: not T: Comparable<T> + Serializable
 ```
 
 The type parameter `T` must implement all specified traits.
@@ -2919,33 +3142,25 @@ Kira uses tuple types to represent variable-length type parameter lists:
 **Tuple Interface:**
 
 ```kira
-pub class Tuple {
+pub trait Tuple<T> {
     pub fx size: () Int32
-    pub fx @get: (index: Int32) Any
 }
 ```
 
 **Concrete Tuple Types:**
 
 ```kira
-pub class Tuple2<A, B>: Tuple {
+pub class Tuple2<A, B>: Tuple<Tuple2<A, B>> {
     require pub first: A
     require pub second: B
 
     override pub fx size: () Int32 {
         return 2
     }
-
-    override pub fx @get: (index: Int32) Any {
-        if index == 0 {
-            return first
-        } else if index == 1 {
-            return second
-        }
-        throw "Index out of bounds"
-    }
 }
 ```
+
+A tuple's elements are its fields, `first`, `second`, `third` and so on up to `ninth`; a tuple has no indexing. Two tuples compare with `==` element by element.
 
 **Usage:**
 
@@ -3026,11 +3241,13 @@ fx processValue<T>: (value: Box<T>, handler: Fx<Tuple1<T>, Void>) Void {
 
 Kira employs Automatic Reference Counting (ARC) for deterministic memory management. Every object maintains a reference count that tracks the number of strong references to it.
 
+The implementation may copy an immutable object instead of counting references to it, since no program can tell the difference. An object whose class has `finally` is always counted, since its end is observable.
+
 ### Reference Counting Semantics
 
 **Ownership:**
 
-When a variable holds a reference to an object, it owns that reference and increments the reference count.
+When a variable holds a reference to an object, it owns that reference and increments the reference count. (`MyClass` here is a mutable class.)
 
 ```kira
 obj1: MyClass = MyClass {}  // refCount = 1
@@ -3049,7 +3266,7 @@ When the reference count reaches zero, the object is immediately deallocated.
 
 ### Weak References
 
-Weak references do not increment the reference count, preventing retain cycles:
+Weak references do not increment the reference count, preventing retain cycles. `Weak<T>` needs a mutable class or a trait for `T`: an immutable object has no identity to refer to weakly.
 
 ```kira
 pub class Node {
@@ -3102,41 +3319,14 @@ pub class Child {
 
 ### Unsafe References
 
-`Unsafe<T>` provides raw pointer semantics without reference counting. Use only when necessary for performance or FFI:
+`Unsafe<T>` provides raw pointer semantics without reference counting, for FFI only. It is second-class (see Views) and exists only as the type of an extern function's parameter: `p: Unsafe<T>` takes a `View<T>` argument, and `mut p: Unsafe<T>` takes a `MutView<T>`, whose elements the extern may write. It is never a local, a field, a result or any other parameter, so no Kira code holds a raw pointer:
 
 ```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
+pub fx checksum: (p: Unsafe<UInt8>, n: Size) UInt32;  // an extern: its body is native code
+
+packet: List<UInt8> = List<UInt8> { [1, 2, 3, 4] }
+sum: UInt32 = checksum(packet.view(), packet.size())
 ```
-
-**Type Conversion:**
-
-There is **no way to convert between safe and unsafe types** directly. However, you can dereference an `Unsafe<T>` pointer to get the underlying value:
-
-```kira
-ptr: Unsafe<Int32> = Unsafe<Int32> { rawPointer }
-value: Int32 = @dereference(ptr)  // Get value from unsafe pointer
-
-// Cannot convert safe to unsafe or vice versa directly
-safeRef: Ref<Int32> = ptr  // Not allowed
-unsafePtr: Unsafe<Int32> = safeRef  // Not allowed
-```
-
-Additionally, unsafe references only exist in certain transpilation targets that supports direct memory access such as compiling to machine code or transpiling to C/C++. Thus manipulation of the `Unsafe` type requires the usage of intrinsics:
-
-```kira
-@_trace_(ptr.@acquire_value()) // returns an Int32 representing the real memory location
-
-array: List<Int32> = mut []
-
-// <Type>, <Dest>, <Location>
-ptr.@read_offset(@_type_of_(array), array, ptr.@aquire_value() + 10)
-
-// Used to directly write memory information
-ptr.@store_offset(@_type_of_(array), array, ptr.@acquire_value() + 10)
-
-```
-
-> Note: Modifying unsafe references are not yet implemented and are still in triage.
 
 ---
 
@@ -3233,6 +3423,8 @@ pub sealed class Maybe<T> {
     pub value: T
 }
 ```
+
+These are the API's only spellings. A `Maybe` has no `==`: test it with `isSome()` or `isNull()`, and read it with `value` or `unwrapOr`.
 
 **Usage Examples:**
 
