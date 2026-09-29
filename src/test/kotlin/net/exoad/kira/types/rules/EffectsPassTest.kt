@@ -509,4 +509,80 @@ class EffectsPassTest {
         assertEquals(Effect.READS, p.model.effect(BodyTestSupport.node<net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr>(p, "GL.get(0)")))
         assertEquals(Effect.PURE, p.model.effect(fn(p, "l")))
     }
+
+    @Test
+    fun aConstructionThatRunsAnFxFieldIsImpure() {
+        // Round 6, scratchpad w25r5c x/t3 as the verifier wrote it: bump's only write is the body of a Thread it
+        // constructs (which starts it) and drops (which joins it). Round 5b ranked the construction PURE, so D33 left
+        // `gi + bump()` unspilled (30 on gcc and MSVC for OQ-1's 29) and both(gs, bump()) lent gs (3 for 47).
+        val p = snippet(
+            """
+            use "kira:sync"
+
+            mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
+            mut gi: Int32 = 29
+
+            fx bump: () Int32 {
+                t: Thread = Thread { name = "w", body = fx () Void {
+                    gs = "new"
+                    gi = 30
+                } }
+                return 0
+            }
+
+            pub fx both: (s: Str, n: Int32) Int32 {
+                return (s.length() as Int32) + n
+            }
+
+            fx main: () Void {
+                trace(both(gs, bump()))
+                gs = "old-text-long-enough-to-live-on-the-heap-000000"
+                gi = 29
+                trace(gi + bump())
+                gi = 29
+                trace((gs.length() as Int32) + bump())
+            }
+            """,
+        )
+        assertEquals(Effect.IMPURE, p.model.effect(fn(p, "bump")))
+        assertEquals(Effect.IMPURE, p.model.effect(BodyTestSupport.node<BinaryExpr>(p, "gi + bump()")))
+        assertEquals(Effect.IMPURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "both(gs, bump())")))
+        // Decided from the class: a Thread starts whatever it is given, even a body that writes nothing (it runs on
+        // another thread); a user class whose initially calls its Fx field runs it (x/t4's control, IMPURE since round
+        // 2 by its initially); a class that only stores an Fx field runs nothing at its construction.
+        val c = snippet(
+            """
+            use "kira:sync"
+            pub mut G: Int32 = 0
+            pub class Runner {
+                require pub f: Fx<Tuple0, Void>
+                initially {
+                    f()
+                }
+            }
+            pub class Keeper {
+                require pub f: Fx<Tuple0, Void>
+            }
+            pub fx idle: () Int32 {
+                t: Thread = Thread { name = "w", body = fx () Void { } }
+                return 0
+            }
+            pub fx viaInitially: () Int32 {
+                r: Runner = Runner { f = fx () Void {
+                    G = 30
+                } }
+                return 0
+            }
+            pub fx kept: () Int32 {
+                k: Keeper = Keeper { f = fx () Void {
+                    G = 30
+                } }
+                return 0
+            }
+            """,
+        )
+        assertEquals(Effect.IMPURE, c.model.effect(fn(c, "idle")))
+        assertEquals(Effect.IMPURE, c.model.effect(fn(c, "viaInitially")))
+        assertEquals(Effect.PURE, c.model.effect(fn(c, "kept")))
+    }
 }

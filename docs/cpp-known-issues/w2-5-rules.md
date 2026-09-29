@@ -128,19 +128,21 @@ Where this branch reads the design differently, each for a reason measured on a 
   callee that is not CONFINED is refused. A trait's `this` in a default body is one as well (a class
   object held for the call, or a value `this` its caller kept still): W2.4's
   `aStructTakesATraitsDefaultBodyAsItsOwnMember` and CppClassCompileTest's shapes call a `mut fx` on it.
-- Round 4's three other readings (row 1 over the declared parameter type only, an extern handed a
-  CONFINED lambda is CONFINED, the drop test on every stdlib binding) were wrong: round 4's verifier
-  measured a heap-use-after-free through the first two and an over-refusal from the third. Round 5
-  replaces them with 2.3 as written (below).
+- Round 4's three other readings (row 1 with no charge at an `Fx`-value call for a `T` argument, an
+  extern handed a CONFINED lambda is CONFINED, the drop test on every stdlib binding) were wrong: round
+  4's verifier measured a heap-use-after-free through the first two and an over-refusal from the third.
+  Round 5 replaces them with 2.3 (below); round 5b narrows round 5's row 1 back to the declared
+  parameter, keeping the `Fx`-value `T` charge that closes the first.
 
 **Round 5 (narrow: round 4's w2-5 #0-#3). Rules tests 189, full suite 1074, 0 failures each;
 `regenerate.sh --check` current.** `CallReach.confined` now matches 2.3's table:
 
-- **Row 1 charges every `Fx` argument**, one given for a type parameter included (`hooks.add(f)`,
-  `pass<Fx<...>>(callIt, h)`), and a call of an `Fx` value also charges an argument of a type parameter
-  (or of an unknown type), which may be an `Fx` (`mayHoldFx`). So a generic body that hands its `T`
-  to its own `Fx` parameter (`pass<T>`'s `f(x)`, `Box<T>.run`'s `f(this.v)`) is not CONFINED: it runs
-  whatever its caller gave for that `T`, and its caller's charge never saw it. Closes #0.
+- **Row 1 charged every `Fx` argument**, one given for a type parameter included (`hooks.add(f)`,
+  `pass<Fx<...>>(callIt, h)`; round 5b drops that part, below), and a call of an `Fx` value also charges
+  an argument of a type parameter (or of an unknown type), which may be an `Fx` (`mayHoldFx`). So a
+  generic body that hands its `T` to its own `Fx` parameter (`pass<T>`'s `f(x)`, `Box<T>.run`'s
+  `f(this.v)`) is not CONFINED: it runs whatever its caller gave for that `T`, and its caller's charge
+  never saw it. Closes #0.
 - **The extern row is `!mayRunAnything`** (what C++ supplies: an extern, a `pub` prototype, an
   `@_opaque` method): any argument that may hold an `Fx`, a lambda literal included, makes the call not
   CONFINED, since C++ may call the lambda with an `Fx` it kept (round 4's e1). The private `supplied`
@@ -158,9 +160,10 @@ Tests (the verifier's probes): `ExclusivityPassTest.aGenericHandingItsTToItsFxAn
 CONFINED at any of the four uses), `ruleMRefusesAGlobalElementAndAGlobalHandlesFieldBesideEachRoute`
 (the same routes' `_m1`, `_m2`: 10 programs, one `rules.exclusivity.mut` each),
 `ruleMAcceptsAnAddToAGlobalThatDropsNothingAndRefusesWhatReplacesOrRemoves` (atk/r1 whole, with
-`set`, `removeAt`, `clear` and an `add` of a lambda that writes a global refused),
-`SharedPredicatesTest.anFxGivenForATypeParameterIsChargedAndAGenericThatRunsItsTIsNotConfined`; and
-`confinedOverOneCalleeOfEachKindBothAnswers` flips `extFx` of a CONFINED lambda to false.
+`set`, `removeAt` and `clear` refused; round 5 refused an `add` of a lambda that writes a global too,
+which 5b accepts),
+`SharedPredicatesTest.anFxGivenForATypeParameterIsOnlyKeptAndAGenericThatRunsItsTIsNotConfined` (5b's
+name); and `confinedOverOneCalleeOfEachKindBothAnswers` flips `extFx` of a CONFINED lambda to false.
 
 Measured on b82cdf0 plus this diff (a scratch clone; the trial untouched), gcc 13.2, zig c++ (clang
 20), MSVC /O1 and MSVC /fsanitize=address:
@@ -177,21 +180,109 @@ Measured on b82cdf0 plus this diff (a scratch clone; the trial untouched), gcc 1
   r1_p2e loses its `GFS.add` refusal (#3; `GFS.clear` stays refused); fincall (both copies) loses its
   rule M refusal at `yard.dead.add(this)`, and stays refused by D37's `rules.exclusivity.receiver`.
 
-What 2.3's row 1, read literally, refuses (a consequence of the design, not a hole): a `mut` global
-container handed an `Fx` that is not CONFINED (`hooks.add(fx () Void { gs = "new" })`, `KEPT.add(k)`)
-is refused by rule M, because `add` is handed an `Fx` value. The refusal is safe but not needed for
-safety, since a binding only keeps what it is given; the programmer's fix is the one the message
-gives (`mut hs = hooks`, `hs.add(...)`, `hooks = hs`). It refuses r4d/p3 and r4d/p5 (7.1 lists both as
-round-4 probes to run), atk g1, g4 and g5 at their `hooks.add` in `main`, and, on the trial, W2.3's
-`CppCopyPolicyTest` program (`gfs.add`, `hooks.add` in `arm`: 4 test cases). Charging such an `Fx` only
-where the callee can run it (row 1 without the `t is KType.Fn` term; the `T` charge at an `Fx`-value
-call and the extern row are what close #0-#2) was measured too: all 51 generated cases right, g1, g4,
-g5 47/6, p3 47/6/5, p5 `old-name...:1`, 0 ASan reports, and `CppCopyPolicyTest` green. The choice is the
-design's to make; this branch follows the task's reading of row 1.
+Round 5 read 2.3's row 1 literally ("every `Fx` argument is charged", one given for a `T` included).
+That refused, by rule M, every `mut` global container handed an `Fx` that is not CONFINED
+(`hooks.add(fx () Void { gs = "new" })`, `KEPT.add(k)`): safe, but not needed, and it refused r4d/p3
+and r4d/p5, which 7.1 says must run and print Kira's value, atk g1, g4 and g5 at their `hooks.add`, and
+W2.3's `CppCopyPolicyTest` program until W2.3 rewrote its `arm` through locals.
+
+**Round 5b (the main session's decision, 2026-09-29: the design-true row 1). Rules tests 190, full
+suite 1075, 0 failures each; `regenerate.sh --check` current.** Row 1 charges an `Fx` argument only
+where the callee can run it: `(rc.fn?.params?.getOrNull(i)?.type ?: t) is KType.Fn`, the declared
+parameter's type, or the argument's own type when there is no declared parameter. Why: storing an `Fx`
+in a container never runs it (7.1), and a callee that takes it as a `T` can run it only by handing it
+to an `Fx` it calls. That call is an `FN_VALUE` call, whose `T` charge (`mayHoldFx`) stays, so
+`pass<T>` and `Box<T>.run` are still not CONFINED; the extern row (`!mayRunAnything`) stays too. Those
+two are what close round 4's #0-#2, so dropping the `t is KType.Fn` term reopens none of them.
+
+Tests: `ExclusivityPassTest.r4dP3AndP5AreAcceptedAHookStoredInAMutGlobalIsNeverRunByTheAdd` (p3 and p5
+whole, 0 diagnostics, `add` CONFINED, every call that reaches `runHooks` not; a control where the
+callee declares the `Fx` and runs it is refused once). Flipped to the design's answer:
+`EscapePassTest.escapingIsAFixpointThroughEveryCallee` is clean again, ViewPassTest's P5 row loses its
+two rule M refusals, `SharedPredicatesTest`'s keepG/add expectations are all CONFINED, and atk/r1's
+`gfx.add` control of a lambda that writes a global is accepted (3 refusals, not 4).
+
+Measured on the round-5 trial 5fce93e plus this diff (a scratch clone at scratchpad w25r5b; the
+trial untouched), gcc 13.2, zig c++ (clang 20), MSVC /O1 and MSVC /fsanitize=address:
+
+- **gen.py over all 17 routes, 51 projects**: every route copies or refuses. 16 writer routes copy
+  all four uses (47/6/47/47; `initially` interleaves its own `trace` 0s, gencheck's WRONG there is
+  that artefact) and rule M refuses both `_m1` and `_m2`; `none` lends and prints the written value. 19
+  ASan runs, 0 reports.
+- **atk and 7.1's probes**: g1 and g4 47/6, g5 47, e1 47/6, all Kira's; g2 refused only at
+  `setAfter(mut gl[0])` (its `hooks.add` is accepted); r4d/p3 47/6/5 and r4d/p5
+  `old-name-long-enough-for-the-heap-00000000:1`, the values p3fix and p5fix print. 0 ASan reports.
+- **The trial's full suite** with this diff: 1453 tests, 0 failures (W2.3's `CppCopyPolicyTest` and
+  the trial's seam `CppClassCopyTest` green; the extern row is unchanged).
 
 On the trial, fix 2 also flips W2.4's `CppClassCopyTest.aMutArgumentAnExternsHarmlessCallbackCannotReachIsAccepted`
 (an extern handed a lambda that writes nothing), which asserted round 4's reading: now refused by rule M,
 as 2.3's extern row requires.
+
+**Round 6 (narrow: round 5b's w2-5 #0 and #1, one root). Rules tests 196, full suite 1081, 0 failures
+each; `regenerate.sh --check` current.** kira:sync's `Thread { name, body }` starts `body` in its
+constructor and joins it at the drop. The construction row read only `initially` and the defaults, so a
+callee that made a Thread was CONFINED (W3 lent, rule M accepted: x/t1, x/t2, gen2), and EffectsPass
+ranked the construction PURE (D33 left `gi + bump()` unspilled, and `rules.view.write` accepted a view
+beside it: x/t3, x/t7).
+
+- **The rule: `CallReach.runsAtConstruction(cls)`, the `Fx` fields a construction runs, read from the
+  class's declaration, never its name.** A `@_magic` class runs every field it declares `Fx`: C++
+  supplies its constructor and hands it every field, so, as row 1 charges a binding's parameter declared
+  `Fx`, the constructor may run one. A field of a type parameter (`Mutex<T>`'s and `Ref<T>`'s `value`) is
+  only kept, as row 1 keeps an `Fx` given for a `T`. A user class runs every `Fx` field of its chain when
+  an `initially` is in the chain: the block holds `this` and may call a field directly, through a method,
+  or through a lambda it hands on. Any other class only stores its `Fx` fields; a later call of one is an
+  `FN_VALUE` call, charged where it runs. No flag was added: the declaration already says it (the class's
+  kind and the field's declared type), and `Thread.body` is the stdlib's only `Fx` field of a magic
+  class. A future magic class that only stores an `Fx` field would be charged anyway, which costs a copy
+  or a spill, never a wrong value.
+- **CONFINED**: `CallReach.construction(cls, given, model)` takes the expression given for each field (a
+  `Map`; it was a `Set` of fields) and charges each field `runsAtConstruction` names by row 1, from its
+  given expression or its default: a lambda literal or a named function whose body is CONFINED, or the
+  judged body's own `Fx` parameter. Confinement's `ObjectInitExpr` row passes the expressions. Any
+  `initially` still makes a construction not CONFINED, as 2.3 says.
+- **EffectsPass.construction**: IMPURE when `runsAtConstruction` is not empty. A Thread given an empty
+  body is IMPURE too: it starts a thread.
+- Round 5b's minor: row 1's KDoc names the exception (C++ runs a stored `Fx` at a construction). Design
+  2.3's construction row needs the same clause, "and every `Fx` field it runs passes row 1"; that sentence
+  is the design's.
+
+Tests (the verifier's probes as written): `ExclusivityPassTest.aThreadConstructionRunsItsBodySoItsCallerIsNotConfinedAndRuleMRefuses`
+(x/t1 whole with no rule diagnostic and nothing CONFINED; x/t2 whole with one `rules.exclusivity.mut` at
+`setAfter(mut gls[0])`), `theThreadRoutesOfTheGeneratorCopyEveryUseAndRuleMRefusesBothMutPlaces` (gen2's
+`thread` and `threadhook`: `_val` CONFINED at no use, `_m1` and `_m2` refused),
+`aThreadBodyRowOnePassesIsConfinedAndAnFxParameterIsChargedWhereItIsHandedIn` (controls: a body that
+writes only its own local is CONFINED; `startWith(f)` is CONFINED and charged at each call),
+`EffectsPassTest.aConstructionThatRunsAnFxFieldIsImpure` (x/t3; an empty-bodied Thread and x/t4's Runner
+IMPURE, a class that only keeps an `Fx` PURE), `ViewPassTest.aViewBesideACallThatStartsAThreadWritingItsPlaceIsRefused`
+(x/t7), `SharedPredicatesTest.whichFxFieldsAConstructionRunsIsDecidedFromTheClass`. Without the fix, the
+four behaviour tests fail and the controls pass.
+
+Measured on trial a6d2ef5 plus this diff (a scratch clone at scratchpad w25r6; the trial untouched), gcc
+13.2, zig c++ (clang 20), MSVC /O1 and MSVC /fsanitize=address:
+
+- **x/t1** 47/6 on all four (round 5b: 3/100), emitted `lenAfter(kira::Str(gs))` and
+  `sumAfter(kira::List<std::int32_t>(gl))`.
+- **x/t2** refused at probe.kira:39:18 (`rules.exclusivity.mut`). Its two by-value lines on their own
+  (w25r6/x/t2run) print 47/1 on all four, both copied. 1 is Kira's value: the probe resets `gs` but not
+  `gls` before the second call, so `s` is a copy of `"x"` (its comment's 47 is wrong).
+- **x/t3** 47/29/3 on all four, each call spilled in an IIFE. The third line's 3 is Kira's: `gs` is not
+  reset before it (the probe's comment says 47).
+- **x/t7** refused at probe.kira:27:19 (`rules.view.write`, "'bump()' may replace, grow or free 'gl'").
+- **gen2**: `thread_val` and `threadhook_val` 47/6/47/47 on all four, all four uses copied; the four
+  `_m1`/`_m2` refused by `rules.exclusivity.mut`, one each.
+- **w25r6/x/t8** (new: the Thread construction as an operand itself, `both2(gs, Thread { ... })` and
+  `firstOf(gi, Thread { ... })`): 47/29 on all four, `gs` and `gi` spilled into `t0_` before the
+  construction.
+- 6 ASan runs, 0 reports. x/t4 (the control) prints 47/29/47/29 on gcc and clang; MSVC still fails `/WX`
+  there on C4930, the Fx-call parse that is W2.3's (round 5b's third finding).
+- **The 7.1 replay, 830 projects**: 510 accepted and 320 refused, and no project's refusal set changed
+  against round 5b. Emitted C++ is identical, version stamp aside (none of the 830 constructs a Thread).
+  One header, vr3w24 rd3, emitted two prototypes in swapped order in the parallel sweep only; re-emitting
+  it with either CLI gives round 5b's order. gen.py's 51 projects: 19 accepted with identical C++, 32
+  refused with identical codes.
+- **The trial's full suite** with this diff: 1459 tests, 0 failures.
 
 ## Round 3: where this branch reads the design differently, and why
 
