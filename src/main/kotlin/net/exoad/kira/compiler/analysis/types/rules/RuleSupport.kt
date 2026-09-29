@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -16,6 +17,7 @@ import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
+import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.PathStep
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -291,8 +293,9 @@ internal class Rules(val program: TypedProgram) {
     /**
      * A value of [t] may hold the storage of a place of type [q] (30-second-class 3.3): it is
      * one, holds one by value, or holds any reference. The one answer ViewPass (a write through
-     * a `mut` parameter that may be bound to a viewed place) and W2.6's R-B copy (condition 2: a
-     * `mut` argument of an extern that may hold a by-reference argument's storage) read.
+     * a `mut` parameter that may be bound to a viewed place), rule M (two `mut` operands of one
+     * CONFINED call, 50-round4 2.7) and W2.3's W3 (a lent place against the consumer's own `mut`
+     * operands, both ways) read.
      */
     fun mayHold(t: KType?, q: KType?): Boolean = t == null || q == null || holdsType(t, q, HashSet())
 
@@ -908,5 +911,170 @@ object CallReach {
             return true
         }
         return rc.args.any { a -> (a as? ArgBinding.Given)?.let { mayHoldFx(model.types[it.expr]) } == true }
+    }
+
+    /** The pure bindings that compare or hash their elements (`==`, a hash): over a user type they run its operators. */
+    val RUNS_OPERATORS: Set<String> = setOf("Arr.contains", "List.contains", "Set.contains", "Map.get", "Map.containsKey", "Map.containsValue")
+
+    /** A user class or struct, a trait or a type parameter anywhere in [t]: formatting, comparing or hashing it may run its code. */
+    fun holdsUserType(t: KType?): Boolean = userType(t, HashSet())
+
+    private fun userType(t: KType?, seen: MutableSet<KType>): Boolean = when (t) {
+        null, is KType.Param, KType.Error -> true
+        is KType.Nominal -> when (val sym = t.sym) {
+            is TraitSymbol -> true
+            is ClassSymbol -> sym.kind != ClassKind.MAGIC || (seen.add(t) && t.typeArgs().any { userType(it, seen) })
+            else -> false
+        }
+        else -> false
+    }
+
+    /**
+     * CONFINED (50-round4 2.3), the one answer to "may this call run code that writes what its
+     * caller can see": false when, while [rc] runs, it may write anything but its own `mut`
+     * operands (a `mut` argument, its `mut fx` receiver, the source of a `MutView` it is
+     * handed), or run code the checker does not see: an `Fx` it is not handed as a lambda
+     * literal or a named function whose body is CONFINED, a dispatched method, an `Fx` value, an
+     * extern given what may hold an `Fx`, a system handle's method, a stdlib binding that runs a
+     * user type's operators or may drop the last handle of an object whose `finally` is
+     * IMPURE, or a construction's `initially` or impure default. By callee kind:
+     *
+     * - an argument for a parameter declared `Fx` (given, or the parameter's default): a
+     *   lambda literal whose body is CONFINED (`TypedModel.lambdaConfined`) or a function named
+     *   as a value whose body is (`fnConfined`); any other spelling (a variable, a field, a call
+     *   result) is not. An `Fx` given for a type parameter (`KEPT.add(f)`) can only be kept, not
+     *   run, by a callee that sees it as a `T`;
+     * - a Kira function with a body called statically (`FREE`, `METHOD`, `OP_OVERLOAD`, `CTOR`):
+     *   `TypedModel.fnConfined`, EffectsPass's fixpoint;
+     * - a stdlib binding: not one of [RUNS_OPERATORS] over a user type, no method of a system
+     *   handle (`Thread`, `Mutex`, `Suite`, a socket: a join or a spawn runs code later), and no
+     *   receiver or argument whose drop may run an IMPURE `finally`;
+     * - `trace`, `print`: no argument whose type [holdsUserType];
+     * - what C++ supplies (an extern, a bodiless `pub` prototype, an `@_opaque` method):
+     *   contract 5.4.2-5.4.3, it runs Kira code only through what it is given, so no receiver or
+     *   argument but a CONFINED `Fx` argument may hold an `Fx` ([mayHoldFx]);
+     * - `VIRTUAL`, `TRAIT`, `FN_VALUE`: never.
+     *
+     * [receiverType] is the receiver's type; pass the enclosing class's type for an implicit
+     * `this`. A C++ runtime operator (`Str` `+`, `==`) is CONFINED when no operand type
+     * [holdsUserType]; a construction written as `C { ... }` is [construction]'s.
+     */
+    fun confined(rc: ResolvedCall, model: TypedModel, receiverType: KType? = rc.receiver?.let { model.types[it] }): Boolean =
+        confined(rc, model, receiverType, Known.of(model), null)
+
+    /** A construction of [cls] that leaves out every field not in [given]: no `initially` in its chain, and every default it leaves out CONFINED. */
+    fun construction(cls: ClassSymbol?, given: Set<FieldSymbol>, model: TypedModel): Boolean = construction(cls, given, Known.of(model))
+
+    /**
+     * What [confined] reads, as EffectsPass's fixpoint sees it while it runs (the model's tables
+     * afterwards): [fn] for a Kira body, [lambda] for a lambda literal's, [default] for a field's
+     * default, [drops] for a value's drop, and [ownFx], the `Fx` parameters of the body being
+     * judged, whose calls the call site that handed them in has charged already (not a `mut`
+     * one, which the body may have reassigned to anything).
+     */
+    internal class Known(
+        val fn: (FnSymbol) -> Boolean,
+        val lambda: (LambdaExpr) -> Boolean,
+        val default: (FieldSymbol) -> Boolean,
+        val drops: (KType?) -> Boolean,
+        val ownFx: Set<ParamSymbol> = emptySet(),
+    ) {
+        companion object {
+            fun of(model: TypedModel): Known = Known(
+                { model.fnConfined[it] == true },
+                { model.lambdaConfined[it] == true },
+                { model.defaultConfined[it] == true },
+                model.dropsImpureFinally,
+            )
+        }
+    }
+
+    /** [confined] under [k]; [callee] is the called expression of an `FN_VALUE` call, whose own `Fx` parameter [k] may have charged. */
+    internal fun confined(rc: ResolvedCall, model: TypedModel, receiverType: KType?, k: Known, callee: Expr?): Boolean {
+        // Row 1, over the parameters declared `Fx`: a binding or a generic body given an Fx for a `T` can only keep it
+        // (`KEPT.add(f)`); what it does with it is its own row's.
+        for ((i, a) in rc.args.withIndex()) {
+            when (a) {
+                is ArgBinding.Given -> {
+                    val declared = rc.fn?.params?.getOrNull(i)?.type ?: model.types[a.expr]
+                    if (declared is KType.Fn && !fxConfined(a.expr, model, k)) {
+                        return false
+                    }
+                }
+                is ArgBinding.Default -> {
+                    val d = a.param.default ?: continue
+                    if (a.param.type is KType.Fn && !fxConfined(d, model, k)) {
+                        return false
+                    }
+                }
+            }
+        }
+        val fn = rc.fn
+        return when (rc.kind) {
+            CallKind.VIRTUAL, CallKind.TRAIT -> false
+            CallKind.FN_VALUE -> ((callee as? Identifier)?.let { model.refs[it] } as? ParamSymbol)?.let { it in k.ownFx } == true
+            CallKind.PRINT -> rc.args.all { a -> (a as? ArgBinding.Given)?.let { !holdsUserType(model.types[it.expr]) } ?: true }
+            CallKind.EXTERN -> supplied(rc, model, receiverType)
+            CallKind.MAGIC -> fn != null && magic(rc, fn, model, receiverType, k)
+            CallKind.FREE, CallKind.METHOD, CallKind.OP_OVERLOAD, CallKind.CTOR -> when {
+                fn == null -> false
+                fn.suppliedByCpp -> supplied(rc, model, receiverType)
+                fn.foreign is Foreign.Magic && fn.body == null -> magic(rc, fn, model, receiverType, k)
+                fn.body == null && rc.kind != CallKind.CTOR -> false
+                else -> (fn.body == null || k.fn(fn)) &&
+                    (rc.kind != CallKind.CTOR || construction((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol, emptySet(), k))
+            }
+        }
+    }
+
+    /** An `Fx` argument or default: a lambda literal or a named function whose body is CONFINED, or (inside a body being judged) that body's own `Fx` parameter. */
+    private fun fxConfined(e: Expr, model: TypedModel, k: Known): Boolean {
+        if (e is LambdaExpr) {
+            return k.lambda(e)
+        }
+        (model.coercions[e] as? Coercion.FnRef)?.let { return it.fn.body != null && k.fn(it.fn) }
+        return ((e as? Identifier)?.let { model.refs[it] } as? ParamSymbol)?.let { it in k.ownFx } == true
+    }
+
+    /** What C++ supplies: given no receiver or argument that may hold an `Fx` beyond the `Fx` arguments [confined] checked (contract 5.4.3). */
+    private fun supplied(rc: ResolvedCall, model: TypedModel, receiverType: KType?): Boolean {
+        if (receiverType != null && mayHoldFx(receiverType) || rc.implicitThis && receiverType == null) {
+            return false
+        }
+        return rc.args.none { a -> (a as? ArgBinding.Given)?.let { g -> model.types[g.expr].let { it !is KType.Fn && mayHoldFx(it) } } == true }
+    }
+
+    private fun magic(rc: ResolvedCall, fn: FnSymbol, model: TypedModel, receiverType: KType?, k: Known): Boolean {
+        if ((fn.foreign as? Foreign.Magic)?.key in RUNS_OPERATORS) {
+            val typeArgs = rc.substitution.values + ((receiverType as? KType.Nominal)?.typeArgs() ?: emptyList())
+            if (typeArgs.any { holdsUserType(it) }) {
+                return false
+            }
+        }
+        // A system handle's method (Thread, Mutex, Suite, a socket, Any): it may run code later, or on another thread.
+        val recvSym = (receiverType as? KType.Nominal)?.sym as? ClassSymbol
+        if (recvSym != null && recvSym.kind == ClassKind.MAGIC && recvSym.name !in Builtins.NOMINAL_PARAMS) {
+            return false
+        }
+        // A mutator may drop what it replaces or removes (`xs.clear()`, `xs.set(0, v)`, `m.remove(k)`).
+        if ((rc.receiver != null || rc.implicitThis) && k.drops(receiverType)) {
+            return false
+        }
+        return rc.args.none { a -> (a as? ArgBinding.Given)?.let { k.drops(model.types[it.expr]) } == true }
+    }
+
+    internal fun construction(cls: ClassSymbol?, given: Set<FieldSymbol>, k: Known): Boolean {
+        var c: ClassSymbol? = cls
+        val seen = HashSet<ClassSymbol>()
+        while (c != null && seen.add(c)) {
+            if (c.initially != null) {
+                return false
+            }
+            if (c.fields.any { f -> f !in given && f.default != null && !k.default(f) }) {
+                return false
+            }
+            c = c.superclass?.sym as? ClassSymbol
+        }
+        return true
     }
 }

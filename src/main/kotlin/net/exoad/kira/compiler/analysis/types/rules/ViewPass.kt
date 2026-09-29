@@ -85,7 +85,9 @@ import java.util.IdentityHashMap
  * - `rules.view.write` (3.3): a view of a place formed while a later operand of its consuming
  *   call, or the call itself, may move that place: a named write that may be it, or, when the
  *   place is shared or a `mut` global, any IMPURE call or node (decision 4b read literally:
- *   "any impure call, when the place lies in a mutable class"; [Effects]).
+ *   "any impure call, when the place lies in a mutable class"; [Effects]). Storage behind a
+ *   handle that is no place is shared too (50-round4 O1, O2): `pick(h).items.get(0).view()`,
+ *   and the receiver `pick(h)` of a view-returning method, whose object any handle may write.
  * - `rules.view.extern` (5.2): an extern that returns a pointer.
  * - `rules.view.unsafe` (1.4): an `Unsafe<T>` anywhere but an extern's parameter.
  *
@@ -790,7 +792,7 @@ internal class ViewPass : RulePass {
             // order it against a sibling, and C++ cannot spill one branch's owner without making the other's; like a
             // for over a temporary, it is refused where it stands. A returned one is the return rule's.
             if (e is IfExpr && ctx !is Ctx.Return && ctx != Ctx.Branch && ctx != Ctx.BranchWithStatements) {
-                val bad = origins(e).firstOrNull { it is ViewOrigin.Temp }
+                val bad = origins(e).firstOrNull { it is ViewOrigin.Temp || it is ViewOrigin.Referent }
                 if (bad != null) {
                     report(e, POSITION, "$text chooses a view of ${describe(bad)} in an if-expression: a view of a temporary is only an argument, a receiver or a return " +
                         "written straight at its call (decision 4b), and C++ cannot keep one branch's temporary without making the other's. " +
@@ -879,7 +881,7 @@ internal class ViewPass : RulePass {
                     is ViewOrigin.Param -> o.param !in frame.params
                     ViewOrigin.Static -> false
                     is ViewOrigin.Stored -> !(frame.lambda == null && frame.method && o.place.root() is Place.This)
-                    is ViewOrigin.Temp -> true
+                    is ViewOrigin.Temp, is ViewOrigin.Referent -> true
                 }
             } ?: return
             val who = if (frame.lambda != null) "This lambda" else b.what
@@ -897,11 +899,13 @@ internal class ViewPass : RulePass {
             ViewOrigin.Static -> "a literal"
             is ViewOrigin.Stored -> (if (o.within) "storage inside " else "") + "'${r.describe(o.place)}'"
             is ViewOrigin.Temp -> "the temporary ${KiraUnparser.text(o.owner)}"
+            is ViewOrigin.Referent -> "storage inside the object behind '${KiraUnparser.text(o.owner)}'"
         }
 
         private fun ownerText(o: ViewOrigin): String = when (o) {
             is ViewOrigin.Stored -> r.describe(o.place)
             is ViewOrigin.Temp -> KiraUnparser.text(o.owner)
+            is ViewOrigin.Referent -> KiraUnparser.text(o.owner)
             is ViewOrigin.Param -> o.param.name
             ViewOrigin.Static -> "the literal"
         }
@@ -1061,13 +1065,19 @@ internal class ViewPass : RulePass {
             else -> IndexKind.OTHER
         }
 
-        /** The storage a first-class expression [x] owns or names, viewed (2.3); a lent result is a place (R-A, `readPlace`). */
+        /**
+         * The storage a first-class expression [x] owns or names, viewed (2.3); a lent result is a
+         * place (R-A, `readPlace`). An expression of reference type that is no place (`pick(h)`,
+         * `h.me()`, a construction, a ternary of handles) names the object behind it, shared
+         * storage (O1, 50-round4 2.4), never a temporary; a place with a receiver-less root through
+         * a reference step (`pick(h).items`) is SHARED by [kindOf] (O2).
+         */
         private fun storage(x: Expr, within: Boolean): ViewOrigin {
             if (x is StringLiteral) {
                 return ViewOrigin.Static
             }
             val t = model.types[x]
-            val place = model.readPlace(x) ?: return ViewOrigin.Temp(x)
+            val place = model.readPlace(x) ?: return if (t != null && r.isReference(t)) ViewOrigin.Referent(x, t) else ViewOrigin.Temp(x)
             val root = place.root()
             val throughRef = place.path().any { r.isReferenceStep(it) }
             if (!throughRef && root is Place.Global && !root.sym.isMut) {
@@ -1093,13 +1103,14 @@ internal class ViewPass : RulePass {
             }
         }
 
-        /** The places formed at [v] itself (3.1): a converted place, or a call's receiver; with whether the call is itself in the span (it forms the view of its receiver). */
-        private fun formed(v: Expr): Pair<List<ViewOrigin.Stored>, Boolean> {
+        /** The storage formed at [v] itself (3.1): a converted place, or a call's receiver (a place, or the object behind a handle that is none, O1); with whether the call is itself in the span (it forms the view of its receiver). */
+        private fun formed(v: Expr): Pair<List<ViewOrigin>, Boolean> {
+            fun checked(os: Set<ViewOrigin>): List<ViewOrigin> = os.filter { it is ViewOrigin.Stored || it is ViewOrigin.Referent }
             if (model.coercions[v] is Coercion.ToView && !isSc(model.types[v])) {
-                return storages(v, within = false).filterIsInstance<ViewOrigin.Stored>() to false
+                return checked(storages(v, within = false)) to false
             }
-            val (_, rc) = callOf(v) ?: return emptyList<ViewOrigin.Stored>() to false
-            val os = receiverOrigins(rc).filterIsInstance<ViewOrigin.Stored>()
+            val (_, rc) = callOf(v) ?: return emptyList<ViewOrigin>() to false
+            val os = checked(receiverOrigins(rc))
             if (os.isEmpty()) {
                 return os to false
             }
@@ -1119,9 +1130,10 @@ internal class ViewPass : RulePass {
                 for (ev in events) {
                     val how = conflict(q, ev) ?: continue
                     val by = ev.by
+                    val what = ownerText(q)
                     report(v, WRITE, "The view of ${describe(q)} formed here is still in use until its consuming call returns, and $by may replace, grow or free " +
-                        "'${r.describe(q.place)}' ($how) (decision 4b). Call it in its own statement first, or pass a view parameter so the caller checks it.",
-                        "writes '${r.describe(q.place)}' while its view is in use")
+                        "'$what' ($how) (decision 4b). Call it in its own statement first, or pass a view parameter so the caller checks it.",
+                        "writes '$what' while its view is in use")
                     return
                 }
             }
@@ -1315,8 +1327,22 @@ internal class ViewPass : RulePass {
             }
         }
 
-        /** Why [ev] may move the viewed place [q] (3.3), or null when it cannot. */
-        private fun conflict(q: ViewOrigin.Stored, ev: Event): String? = when (ev) {
+        /** Why [ev] may move the viewed storage [q] (3.3), or null when it cannot. */
+        private fun conflict(q: ViewOrigin, ev: Event): String? = when (q) {
+            is ViewOrigin.Stored -> storedConflict(q, ev)
+            // O1: the object behind a handle that is no place is shared storage, as a place through a handle is.
+            is ViewOrigin.Referent -> when (ev) {
+                is Event.Named -> if (kindOf(ev.w.place) != PlaceKind.PRIVATE && mayHold(ev.w.type, q.type)) {
+                    "'mut ${r.describe(ev.w.place)}', which may be the same storage"
+                } else {
+                    null
+                }
+                is Event.Impure -> "it is impure, and the object behind '${KiraUnparser.text(q.owner)}' is shared storage any impure call may write"
+            }
+            else -> null
+        }
+
+        private fun storedConflict(q: ViewOrigin.Stored, ev: Event): String? = when (ev) {
             is Event.Named -> {
                 val w = ev.w
                 when {
@@ -1372,7 +1398,7 @@ internal class ViewPass : RulePass {
             return false
         }
 
-        /** A value of [t] may hold the storage of a place of type [q] (3.3): [Rules.mayHold], the one predicate W2.6's R-B copy reads too. */
+        /** A value of [t] may hold the storage of a place of type [q] (3.3): [Rules.mayHold], the one predicate rule M and W2.3's W3 read too. */
         private fun mayHold(t: KType?, q: KType?): Boolean = r.mayHold(t, q)
     }
 }

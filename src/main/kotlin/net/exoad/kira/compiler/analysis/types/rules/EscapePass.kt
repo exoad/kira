@@ -36,7 +36,8 @@ import java.util.IdentityHashMap
  * - An `Fx` parameter escapes when it is stored (in a local, field or global), returned, put
  *   in a container (an array literal or a construction), captured by a lambda, or passed to a
  *   parameter that escapes, to an extern, magic, virtual or trait-dispatched callee, or
- *   through an `Fx` value. The parameters of a virtual method always escape (a vtable has no
+ *   through an `Fx` value; an operator an `@op_*` overload implements passes its operand the
+ *   same way (`Keeper {} + f`). The parameters of a virtual method always escape (a vtable has no
  *   templates), and so do the `Fx` parameters of a function that is itself taken as a value
  *   (`h: Fx<...> = applyTo`, [Coercion.FnRef]): a function whose `Fx` parameter is a template
  *   parameter (design 5.1) is a template, and a template converts to no `kira::Fn`. The rest
@@ -123,6 +124,8 @@ internal class EscapePass : RulePass {
         }
 
         private fun node(n: ASTNode) {
+            // An operator an `@op_*` overload implements is a call of it (DECISIONS 2): its operand is an argument.
+            (n as? Expr)?.let { e -> model.opCalls[e]?.let { args(it) } }
             when (n) {
                 is ReturnStatement -> AstScan.values(n.expr).forEach { sink(it, Flow.Return) }
                 is VariableDecl -> n.value?.let { v -> AstScan.values(v).forEach { sink(it, Flow.Store) } }
@@ -148,6 +151,11 @@ internal class EscapePass : RulePass {
                 e.namedParameters.forEach { p -> AstScan.values(p.value).forEach { sink(it, Flow.Arg(null, true)) } }
                 return
             }
+            args(rc)
+        }
+
+        /** Every given argument of [rc] flows to its parameter. */
+        private fun args(rc: ResolvedCall) {
             val fn = rc.fn
             rc.args.forEachIndexed { i, a ->
                 val given = a as? ArgBinding.Given ?: return@forEachIndexed
