@@ -10,18 +10,17 @@ import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
-import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
-import net.exoad.kira.compiler.analysis.types.rules.CallReach
-import net.exoad.kira.compiler.analysis.types.rules.Rules
 import net.exoad.kira.compiler.analysis.types.suppliedByCpp
-import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.core.intrinsics.ExternIntrinsic
 
@@ -90,9 +89,11 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  *
  * At a call, [call] spells the C++ name with a leading `::` and the proxies (the expression
  * part hands over the spelled receiver and arguments), converts the result as above, and
- * copies a by-reference argument the call may write while it runs (R-B, [copiedArguments]).
+ * spells the copies the copy policy made (50-round4: W2.3's `CppCopyPolicy` decides which
+ * argument is copied, as it does for every call; this part only spells it with the proxy).
  * Every call whose body C++ supplies comes here (R-G): a bodiless `pub` prototype too, which
- * Kira declared itself and so is spelled and typed as the module's own function.
+ * Kira declared itself and so is spelled and typed as the module's own function, with no
+ * proxy ([proxied]).
  * An extern constant is read by its C++ name exactly as the marker spells it, with no `::`
  * added ([constant]), converted the same way: a C constant
  * reached through `c =` is usually an object-like macro (`#define LIMIT 42`, and ImGui's
@@ -345,7 +346,7 @@ object CppExternEmitter : CppExternsPart {
 
     // ---- calls and constants (the expression part calls these) --------------------------------------
 
-    override fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String {
+    override fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int>): String {
         val fn = call.fn ?: return "/* extern call without a callee */"
         val owner = fn.owner
         // R-G (40-round3): every function whose body C++ supplies comes here, not only an
@@ -355,6 +356,7 @@ object CppExternEmitter : CppExternsPart {
         // Kira call, and `peek(w, v)` / `plen(loc)` failed in g++: 'cannot convert
         // kira::View<int> to const int32_t*', 'cannot convert kira::Str to const char*').
         val marked = externOf(fn) != null
+        val proxy = proxied(fn)
         val callee = when {
             owner == null || receiver == null -> if (marked) globalName(fn) else ctx.qualified(fn)
             else -> receiver + accessor(owner) + cppName(fn)
@@ -379,108 +381,35 @@ object CppExternEmitter : CppExternsPart {
         // (5.2, 5.3, refused at the declaration by ViewPass's `rules.view.extern`/`rules.view.type`),
         // so a temporary `Str` buffer fed to any argument of this call is safe for the call's own
         // full-expression, whatever the call hands back.
-        val copied = copiedArguments(ctx, call, fn)
-        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied) }
+        //
+        // Which argument is copied is the copy policy's (50-round4 1.2, 2.3): W2.3's
+        // `CppCopyPolicy` asks the same question for every call, an extern's included (W3's
+        // extern row is `!CallReach.mayRunAnything`, and its overlap test reads `Rules.mayHold`
+        // both ways against every own `mut` operand: w2-6 #0), and hands the answer over as
+        // [copied]. Round 3's R-B (`copiedArguments`) asked it here, one way only, and is gone.
+        // What lets the policy lend to an extern at all is contract 5.4: an extern writes only
+        // its `mut` arguments and receiver, and runs a Kira `Fx` only during a call that is given
+        // it or given something that may hold it (a handle to the C++ object that keeps it,
+        // which as a class or opaque receiver or argument always counts); a C++ callback
+        // registry is reached through such a handle, never through a free function taking none.
+        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied, proxy) }
         val text = "$callee(${texts.joinToString(", ")})"
         return if (marked) declared(ctx, fn.ret, text) else text
     }
 
     /**
-     * R-B (40-round3 2, group B): the indices of the given arguments this call passes as a copy
-     * made at the call, because Kira passes them by value, C++ may receive them by reference or
-     * pointer, and the call may write their storage while it runs.
-     *
-     * C++ binds a `Str` (`kira::ffi::in`, a `const std::string&`), a `Str` given to a `CStr`
-     * parameter (`.c_str()`, a pointer into it), a container, a `Maybe`, `Result` or tuple, a
-     * value class, a class or trait handle and an `Fx` (the checks state them `std::declval<const
-     * T&>()`) straight to the argument's own storage: [Rules.aliasesCaller], the rule for which
-     * types a Kira parameter takes by `const&`, is the rule here too, plus the `Str`-to-`CStr`
-     * pointer. A scalar, an enum, an opaque handle, a second-class argument (a `View`, a
-     * `MutView`, an `Unsafe`, a `CStr` value: its own pointer, which moves nothing) and a `mut`
-     * argument (`kira::ffi::out`, which the callee is meant to write) are passed as they are.
-     *
-     * Such an argument is copied when it is a place ([TypedModel.readPlace]: a variable, a
-     * field, an element, a lent result such as `gstrs.get(0)` (R-A), a qualified global) that
-     * something may write during the call:
-     *
-     * 1. the call may run any Kira code ([CallReach.mayRunAnything], R-C: an argument or the
-     *    receiver may hold an `Fx`, which the callee may call and which may write anything); or
-     * 2. a `mut` argument, or the receiver of a `mut fx`, has a type that may hold the
-     *    argument's storage ([Rules.mayHold], 30-second-class 3.3; the pointee `T` for a `mut
-     *    Unsafe<T>`): the callee writes it, and the two may be one storage (`appendLen(gs, mut
-     *    o)` inside `viaMut(mut gs)`, `appendLen(h1.name, mut h2.name)` with `h2 = h1`). No
-     *    disjointness proof is attempted.
-     *
-     * Otherwise the argument is lent as it always was: by contract 5.4.2 and 5.4.3 nothing of
-     * Kira's runs during the call and the call writes only its `mut` arguments. A literal, a
-     * computed temporary and a Kira constant (an immutable global reached through no reference:
-     * nothing can write it, and a `Str` one is the `const char*` literal itself, D12) are never
-     * copied.
-     *
-     * Measured before this rule (round-2 verdict, g++/clang/MSVC ASan): `lenAfter(gstrs.get(0),
-     * fs)` 0 or a heap-use-after-free for 82; `sumListL(gl, fs)` 21 for 6; `lenAfterCL(gs, fs)`
-     * and `appendLenC(gs, mut o)` 6 for 82 and a heap-use-after-free in strlen; `appendLen(gs,
-     * mut o)` inside `viaMut(mut gs)` 1 for 82. Round 1 copied only a `Str` that was a
-     * `model.places` entry, and only beside an `Fx`.
-     *
-     * The contract line R-C cannot see past (W2.5's ledger, "R-C's limit"): an extern that keeps
-     * an `Fx` it was given and runs it during a LATER call runs Kira code that call's arguments
-     * say nothing of. The FFI contract (5.4) therefore reads: an extern runs a Kira `Fx` only
-     * during a call that is given it, or given something that may hold it (a handle to the C++
-     * object that keeps it, which as a class or opaque receiver or argument always counts); a
-     * C++ callback registry is reached through such a handle, never through a free function
-     * taking none.
+     * Whether a call of [fn] passes its arguments through `kira::ffi`'s proxies (`in`, `out`):
+     * C++ declared its signature, which the proxies are written to meet whatever it is (a
+     * `const std::string&`, a `std::string_view`, a `const char*`; a `T&` or a `T*`). That is an
+     * `@_extern` function or member, and a method of an `@_opaque` class (the C++ class Kira
+     * names only as `C*`). A bodiless `pub` prototype is the other callee C++ supplies (R-G), but
+     * Kira declares it, in its module's header, in Kira's own C++ types (`const kira::Str&`, `T&`
+     * for `mut`, `const char*` for `CStr`, `const T*` for `Unsafe<T>`): its arguments are the
+     * module's own spelling, and a prototype's module need not include `kira/ffi.hxx` at all
+     * (round 3's t13: `::w::lenS2(kira::ffi::in(loc))` in a module with no `@_extern` failed on
+     * g++, clang and MSVC with "'kira::ffi' has not been declared").
      */
-    private fun copiedArguments(ctx: CppEmitContextImpl, call: ResolvedCall, fn: FnSymbol): Set<Int> {
-        val model = ctx.model
-        val rules = Rules(ctx.program)
-        val candidates = call.args.withIndex().filter { (i, b) ->
-            val given = b as? ArgBinding.Given ?: return@filter false
-            val p = fn.params.getOrNull(i) ?: return@filter false
-            !p.byRef && lentByReference(rules, p.type, model.types[given.expr]) && writable(rules, model.readPlace(given.expr))
-        }
-        if (candidates.isEmpty()) {
-            return emptySet()
-        }
-        if (CallReach.mayRunAnything(call, model)) {
-            return candidates.map { it.index }.toSet()
-        }
-        val written = buildList {
-            call.args.forEachIndexed { i, b ->
-                val p = fn.params.getOrNull(i)
-                if (b is ArgBinding.Given && p != null && p.byRef) {
-                    add(if (isUnsafe(p.type)) (p.type as KType.Nominal).typeArgs().firstOrNull() else p.type)
-                }
-            }
-            if (fn.isMutMethod) {
-                call.receiver?.let { add(model.types[it]) }
-            }
-        }
-        return candidates.filter { (_, b) ->
-            val t = model.types[(b as ArgBinding.Given).expr]
-            written.any { rules.mayHold(it, t) }
-        }.map { it.index }.toSet()
-    }
-
-    /**
-     * An argument of type [given] bound to a parameter of type [param] that C++ receives by
-     * reference or pointer into the argument's own storage ([copiedArguments]).
-     */
-    private fun lentByReference(rules: Rules, param: KType, given: KType?): Boolean = when {
-        isCStr(param) -> given == KType.Str
-        else -> rules.aliasesCaller(param)
-    }
-
-    /**
-     * Whether [place] is storage something may write during a call: any place but one rooted
-     * at an immutable global and reached through no reference (a Kira constant, or a value
-     * inside one). Null (a literal, a computed temporary) is no storage anything else names.
-     */
-    private fun writable(rules: Rules, place: Place?): Boolean {
-        place ?: return false
-        val root = place.root()
-        return !(root is Place.Global && !root.sym.isMut && place.path().none { rules.isReferenceStep(it) })
-    }
+    fun proxied(fn: FnSymbol): Boolean = externOf(fn) != null || (fn.owner as? ClassSymbol)?.kind == ClassKind.OPAQUE
 
     /**
      * [text], a C++ value the check proved matches the Kira type [t], as that type: itself
@@ -500,6 +429,22 @@ object CppExternEmitter : CppExternsPart {
 
     private fun keepsCppType(t: KType): Boolean =
         t == KType.Void || t == KType.Never || isUnsafe(t) || isCStr(t) || isOpaque(t)
+
+    /**
+     * A call's result is a prvalue (50-round4 2.0, W1) when this part makes it one: an
+     * `@_extern` result converted by `kira::ffi::declared<T>`, which returns a `T` by value
+     * ([declared]), and a bodiless `pub` prototype's, which Kira declared returning by value.
+     * So `car.scan().ahead()` is the method of a temporary, never copied again (forward's
+     * golden). A result kept as C++ gave it (a pointer, or an `@_opaque` method's, whose
+     * signature nothing checks) may be a reference into storage and is no prvalue.
+     */
+    override fun resultIsTemporary(call: ResolvedCall): Boolean {
+        val fn = call.fn ?: return false
+        return when {
+            externOf(fn) != null -> !keepsCppType(fn.ret)
+            else -> !proxied(fn)
+        }
+    }
 
     /**
      * A field read of an extern struct as the declared type ([CppExternsPart.field]):
@@ -535,12 +480,19 @@ object CppExternEmitter : CppExternsPart {
      * exact-type case a bare or `mut p: Unsafe<T>` local still takes directly, table 5.1 - or a
      * struct's `Unsafe<T>` field); `kira::ffi::out(x)` for any other `mut` parameter;
      * `kira::ffi::in(s)` for a `Str` one; and for a `CStr` parameter given a `Str` (7.2): a
-     * literal passes through, a named `Str` becomes `.c_str()`, anything else
-     * `kira::ffi::CStrBuf(expr).c_str()`, which lives to the end of the full-expression. A named
+     * literal passes through, a place the copy policy lends becomes `.c_str()` of its own
+     * buffer however it is spelled (`label`, `gp.name`, `kira::at(gstrs, 0)`: round 3 gave every
+     * spelling but a bare name a `CStrBuf`, a copy with no writer, w2-6 minor #0), anything
+     * else `kira::ffi::CStrBuf(expr).c_str()`, which lives to the end of the full-expression. A
      * `Str` that is a Kira `Str` constant is already a `const char*` (D12: `inline constexpr
      * const char*`), so it passes through as the literal does; an extern `Str` constant is read
      * as a `kira::Str` made from whatever C++ declared ([constant]: a `std::string` or a `const
      * char*` both pass its check), a temporary, so it takes the buffer.
+     *
+     * [proxied] is false for a bodiless `pub` prototype ([proxied]): Kira declared its C++
+     * parameters itself, so a `Str` is passed as the `kira::Str` it is and a `mut` argument as
+     * the `T&` it binds, with no `kira::ffi::in`/`out`; its `Unsafe<T>` and `CStr` parameters
+     * are the same pointers as an extern's, so `.data()`, `.c_str()` and `CStrBuf` stay.
      *
      * A temporary `Str` buffer built here for a `Str`/`CStr` argument (`kira::ffi::in`,
      * `kira::ffi::CStrBuf`) needs no check against what this call might hand back any more
@@ -549,14 +501,14 @@ object CppExternEmitter : CppExternsPart {
      * to the end of the call's own full-expression - is always long enough, whatever a literal,
      * a named `Str`, a constant or a computed expression builds it from.
      *
-     * When [copy] ([copiedArguments], R-B) the argument is a place the call may write while it
-     * runs, and it is handed over as a copy made at the call instead of its own storage:
+     * When [copy] (the copy policy's rule 6: the argument is no temporary and no whitelisted
+     * lend) it is handed over as a copy made at the call instead of its own storage:
      * `kira::ffi::in(kira::Str(text))` for a `Str`, `kira::ffi::CStrBuf(text).c_str()` for a
      * `Str` given to a `CStr` (CStrBuf holds its own `std::string`), and `T(text)` for any other
      * by-reference type (`kira::List<std::int32_t>(gl)`, `kira::Rc<ns::C>(h)`, a value class's
      * copy constructor). Each copy lives to the end of the call's full-expression.
      */
-    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, copy: Boolean = false): String {
+    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, copy: Boolean, proxied: Boolean): String {
         if (p == null) {
             return text
         }
@@ -572,26 +524,23 @@ object CppExternEmitter : CppExternsPart {
             return if (viewLike || toView) "($text).data()" else text
         }
         if (p.byRef) {
-            return "kira::ffi::out($text)"
+            return if (proxied) "kira::ffi::out($text)" else text
         }
         if (p.type == KType.Str) {
-            return if (copy) "kira::ffi::in(kira::Str($text))" else "kira::ffi::in($text)"
+            val s = if (copy) "kira::Str($text)" else text
+            return if (proxied) "kira::ffi::in($s)" else s
         }
         if (isCStr(p.type)) {
             if (expr == null || ctx.model.types[expr] != KType.Str) {
                 return text
             }
+            val global = globalOf(ctx, expr)
             return when {
                 copy -> "kira::ffi::CStrBuf($text).c_str()"
                 expr is StringLiteral -> text
-                expr is Identifier && expr !is IntrinsicExpr -> when (val sym = ctx.model.symbolOf(expr)) {
-                    is GlobalSymbol -> when {
-                        externOf(sym) != null -> "kira::ffi::CStrBuf($text).c_str()"
-                        sym.isConstant -> text
-                        else -> "$text.c_str()"
-                    }
-                    else -> "$text.c_str()"
-                }
+                global != null && externOf(global) != null -> "kira::ffi::CStrBuf($text).c_str()"
+                global != null && global.isConstant && !global.isMut -> text
+                ctx.model.readPlace(expr) != null -> "${postfix(text)}.c_str()"
                 else -> "kira::ffi::CStrBuf($text).c_str()"
             }
         }
@@ -600,6 +549,19 @@ object CppExternEmitter : CppExternsPart {
         }
         return text
     }
+
+    /** The global [e] names, bare (`GS`) or through its module (`w.GS`), or null. */
+    private fun globalOf(ctx: CppEmitContextImpl, e: Expr): GlobalSymbol? = when (e) {
+        is IntrinsicExpr -> null
+        is Identifier -> ctx.model.symbolOf(e) as? GlobalSymbol
+        is MemberAccessExpr -> (ctx.model.member(e) as? MemberRef.ModuleMember)?.symbol as? GlobalSymbol
+        else -> null
+    }
+
+    /** [text] as the operand of a member access: itself when it is a name or a chain of member accesses, else parenthesized. */
+    private fun postfix(text: String): String = if (MEMBER_CHAIN.matches(text)) text else "($text)"
+
+    private val MEMBER_CHAIN = Regex("(::)?[A-Za-z_][A-Za-z0-9_]*((::|\\.|->)[A-Za-z_][A-Za-z0-9_]*)*")
 
     /** `CStr`, the FFI `const char*` (design 7.2, a magic class of the builtins). */
     private fun isCStr(t: KType): Boolean = isMagic(t, CSTR)

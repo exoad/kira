@@ -216,9 +216,15 @@ class CppCopyPolicy(private val lower: CppLowering) {
         }
     }
 
-    /** A call of a Kira function, which returns by value (a binding's and an extern's may not). */
+    /**
+     * A call of a Kira function, which returns by value (a binding's may not), or a call whose
+     * body C++ supplies when the extern part makes its result a prvalue (W2.6's
+     * `CppExternsPart.resultIsTemporary`: an `@_extern` result through `kira::ffi::declared<T>`,
+     * a prototype Kira declared).
+     */
     private fun kiraCall(rc: ResolvedCall?): Boolean = rc != null && when (rc.kind) {
         CallKind.FREE, CallKind.METHOD, CallKind.VIRTUAL, CallKind.TRAIT, CallKind.FN_VALUE, CallKind.OP_OVERLOAD -> true
+        CallKind.EXTERN -> lower.ctx.parts.externs.resultIsTemporary(rc)
         else -> false
     }
 

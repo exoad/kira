@@ -481,7 +481,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         } else {
             ctx.qualified(sym)
         }
-        is FnSymbol -> if (sym.foreign is Foreign.Extern) externName(sym) else functionValue(sym, at)
+        is FnSymbol -> if (sym.foreign is Foreign.Extern) CppExternEmitter.globalName(sym) else functionValue(sym, at)
         else -> null
     }
 
@@ -499,15 +499,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         return ctx.qualified(fn)
     }
 
-    /**
-     * An `@_extern` constant read by its C++ name, from the global namespace (design 7.2).
-     * W2.6's `CppExternsPart.constant` spells this on its branch; at the merge this delegates to it.
-     */
-    fun externConstant(sym: GlobalSymbol): String {
-        val params = (sym.foreign as? Foreign.Extern)?.params.orEmpty()
-        val name = params["cpp"] ?: params["symbol"] ?: sym.name
-        return if (name.startsWith("::")) name else "::$name"
-    }
+    /** An `@_extern` constant's read (design 7.2), as W2.6's `CppExternsPart.constant` spells it: the marker's name, as the declared type. */
+    fun externConstant(sym: GlobalSymbol): String = ctx.parts.externs.constant(ctx, sym)
 
     /** A field of the implicit receiver: bare in a method, its copy (`c_k`) or `self->k` in a lambda. */
     fun implicitField(f: FieldSymbol): String {
@@ -674,7 +667,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 return CppEx("$r.${if (f.name == "error") "unwrapErr" else "unwrap"}()", CppPrec.POSTFIX)
             }
         }
-        return CppEx(accessWith(origin, text, t) + name, CppPrec.POSTFIX)
+        // A field of an extern struct reads as the type Kira declared (W2.6's CppExternsPart.field).
+        return CppEx(ctx.parts.externs.field(ctx, f, accessWith(origin, text, t) + name), CppPrec.POSTFIX)
     }
 
     // ---- places (5.4) -----------------------------------------------------------------------
@@ -1591,45 +1585,23 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     }
 
     /**
-     * The text of an extern call (design 7.2): the C++ name the declaration gives, `->` or `.`
-     * after [receiver] (null for a free function) as the owner's kind says, a `Str` argument
-     * through `kira::ffi::in`, a `mut` argument through `kira::ffi::out`. [args] holds one text
-     * per entry of [ResolvedCall.args] the call fills, in parameter order, as written; [copied]
-     * holds the indices of those the copy policy copies (50-round4 1.2, 6.1), spelled here:
-     * `kira::ffi::in(kira::Str(e))` for a `Str`, `T(e)` for anything else. A trailing default
-     * is the C++ header's own. W2.6's `CppExternsPart.call` takes exactly these on its branch
-     * and makes this text there; at the merge this delegates to it.
+     * The text of an extern call (design 7.2): W2.6's `CppExternsPart.call` spells it from the
+     * receiver and the argument texts written here ([args], one per entry of
+     * [ResolvedCall.args] the call fills, in parameter order) and from [copied], the indices the
+     * copy policy copies (50-round4 1.2, 6.1), which it spells with the argument's proxy.
+     *
+     * Any spelling of `kira::ffi::` asks for `kira/ffi.hxx` where it is written (50-round4 6.5;
+     * w2-6 #2, w2-4 #1): a bodiless prototype's `CStrBuf` or an `@_opaque` method's proxies in a
+     * module no `@_extern` brings the header to failed on every compiler ("'kira::ffi' has not
+     * been declared"). An `@_extern` callee's own module asks for it in its header, which every
+     * caller includes, so its calls ask for nothing more.
      */
-    fun externCallText(rc: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int> = emptySet()): String {
-        val fn = rc.fn!!
-        val proxied = args.mapIndexed { i, written ->
-            val binding = rc.args.getOrNull(i) as? ArgBinding.Given
-            val type = binding?.let { model.typeOrNull(it.expr) }
-            val a = if (i in copied && type != null) policy.copy(CppEx(written, CppPrec.ASSIGN), type, binding.expr).text else written
-            when {
-                binding?.byRef == true -> "kira::ffi::out($a)"
-                type == KType.Str -> "kira::ffi::in($a)"
-                else -> a
-            }
+    fun externCallText(rc: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int>): String {
+        val text = ctx.parts.externs.call(ctx, rc, receiver, args, copied)
+        if (FFI_SPELLING in text && rc.fn?.foreign !is Foreign.Extern) {
+            includeWhereWritten(CppExternEmitter.FFI_HEADER)
         }
-        val callee = when {
-            receiver == null -> externName(fn)
-            rc.receiver == null || rc.receiver is ThisExpr || isPointerLike(typeOf(rc.receiver)) -> "$receiver->${externMemberName(fn)}"
-            else -> "$receiver.${externMemberName(fn)}"
-        }
-        return "$callee(${proxied.joinToString(", ")})"
-    }
-
-    /** The C++ name of an extern free function: its `cpp =` or positional symbol, from the global namespace. */
-    fun externName(fn: FnSymbol): String {
-        val params = (fn.foreign as? Foreign.Extern)?.params.orEmpty()
-        val name = params["cpp"] ?: params["symbol"] ?: fn.name
-        return if (name.startsWith("::")) name else "::$name"
-    }
-
-    private fun externMemberName(fn: FnSymbol): String {
-        val params = (fn.foreign as? Foreign.Extern)?.params.orEmpty()
-        return params["cpp"] ?: params["symbol"] ?: fn.name
+        return text
     }
 
     /** R21: `trace(x)` is `kira::trace(x)` (the C prelude's formats, D42); kira:io's print family likewise. */
@@ -1671,12 +1643,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * types brought in) is not repeated in the source, which includes the header first.
      */
     fun use(binding: CppBinding) {
-        binding.includes.forEach { inc ->
-            val name = CppBindingTable.includeName(inc)
-            when {
-                state.headerPlaced || ctx.isHeaderOnly -> ctx.includeInHeader(name)
-                !headerIncludes(name) -> ctx.includeInSource(name)
-            }
+        binding.includes.forEach { inc -> includeWhereWritten(CppBindingTable.includeName(inc)) }
+    }
+
+    /** Asks for the header [name] where the code being written is placed: the header, or the source unless the header already includes it. */
+    private fun includeWhereWritten(name: String) {
+        when {
+            state.headerPlaced || ctx.isHeaderOnly -> ctx.includeInHeader(name)
+            !headerIncludes(name) -> ctx.includeInSource(name)
         }
     }
 
@@ -2004,6 +1978,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
 
         private val POINTER_MAGIC = setOf("Ref", "Unsafe")
+
+        /** What an extern call's text spells when it needs `kira/ffi.hxx` ([externCallText]). */
+        private const val FFI_SPELLING = "kira::ffi::"
 
         /** The calls whose handle receiver runs with a raw `this` the caller must hold (50-round4 W5). */
         private val HANDLE_CALLS = setOf(CallKind.METHOD, CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN)

@@ -162,8 +162,20 @@ interface CppExternsPart {
      * extern parameter has no Kira default ([check] refuses the declaration), so every entry
      * is a given argument and every declared parameter is passed; the C++ header's own
      * default arguments fill the parameters the Kira declaration leaves out.
+     *
+     * [copied] holds the indices of [ResolvedCall.args] the copy policy copies (50-round4 2.0,
+     * W2.3's `CppCopyPolicy`, which decides it); this part spells the copy with the argument's
+     * proxy (`kira::ffi::in(kira::Str(e))`, `kira::ffi::CStrBuf(e).c_str()`, `T(e)`) and decides
+     * nothing about it.
      */
-    fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String
+    fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int>): String
+
+    /**
+     * Whether [call]'s text ([call]) is an object made for its use, a prvalue the copy policy
+     * never copies again (50-round4 2.0 PRVALUE, W1): false unless the part knows it returns by
+     * value.
+     */
+    fun resultIsTemporary(call: ResolvedCall): Boolean = false
 
     /** The C++ text an extern constant is read by: its C++ name as the marker spells it (`ImGuiWindowFlags_None`; a macro takes no `::`). */
     fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String
@@ -185,7 +197,7 @@ interface CppExternsPart {
             sym.decl?.let { ctx.unsupported(it, "the extern declaration '${sym.name}'") }
         }
 
-        override fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>): String {
+        override fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int>): String {
             val fn = call.fn
             fn?.decl?.let { ctx.unsupported(it, "the extern call '${fn.name}'") }
             return "/* extern ${fn?.name} */"

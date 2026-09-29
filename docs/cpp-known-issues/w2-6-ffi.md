@@ -1,97 +1,166 @@
-# Known issues: w2-6-ffi (second-class views, round 3)
+# Known issues: w2-6-ffi (copy by default, round 4)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
 
-## Round 3 (40-round3 5.6): R-B, R-G's typer switch and dispatch, F2's typer half
+## Round 4 (50-round4 6.5): copy by default at the FFI boundary
 
-`cpp/w2-5-rules` f86261f is merged first (04cc00f, clean, signed), so every test here runs
-against the rules. Measured after the merge, before this round's change: 1173 tests, 11 fail,
-exactly 40-round3 4.3's eleven. After: 1180 tests, 0 failures, 1 skipped (ExternDelegationTest's
-own skip).
+### The merges
 
-### Closed (round 2's verdict, sc-round2.json)
+1. `git merge --no-ff cpp/w2-5-rules` (b5910b6), signed as b2b0b2f. Two conflicts, both in the
+   comment on the shared `Rules.mayHold` (RuleSupport.kt, and ViewPass's one-line delegate):
+   both sides carried the same body since round 3 moved it there. W2.5's comment is kept
+   (readers: ViewPass, rule M, W2.3's W3), because the R-B copy the old comment named is
+   deleted this round. `rules/` is then byte-identical to w2-5's tip.
+2. `git merge --no-ff cpp/w2-3-emit-exprs` (c06e011), signed as 879c819. One conflict, in
+   `CppDeclEmitter.assembleHeader`: this branch's `extern "C" { }` block for `c =` headers, its
+   tail of part includes (`kira/ffi.hxx`) and its extern checks after the module's own
+   declarations are kept, and every include line goes through W2.3's new `includeLine`, so a
+   binding's `<cmath>` is spelled with angle brackets in each of the three lists.
 
-| Finding | End | Test |
+On the two merges alone: 1320 tests, 3 failures, each one this round changes on purpose:
+`CppExternEmitterTest.aByReferenceArgumentThatIsAPlaceIsCopiedWhenTheCallMayWriteIt` (asserted
+the deleted `rules.exclusivity.alias` on the direct lambda), and both `ExternDelegationTest`
+tests (bodies lower now, so the body check runs and forward must be `emit: required`).
+
+### What changed
+
+- **Deleted: `copiedArguments`, `lentByReference`, `writable`** (round 3's R-B). The copy
+  policy (W2.3's `CppCopyPolicy`) decides for an extern call as for every call, and
+  `CppExternsPart.call(ctx, rc, receiver, args, copied)` takes its answer (the `copied` set,
+  indices of `rc.args`) and spells it: `kira::ffi::in(kira::Str(e))`, `kira::ffi::CStrBuf(e).c_str()`,
+  `T(e)` (`kira::Rc<C>(h)` for a handle). The parameter has no default, so no caller can forget it.
+- **The extern half of the merge seam** (the trial did it in c10000b; W2.3's hooks said "at the
+  merge this delegates"): `CppExprEmitter.externCallText`, `externConstant`, every field read
+  (`CppExternsPart.field`) and an extern function named as a value (`CppExternEmitter.globalName`)
+  go through the part. `externName` and `externMemberName` are gone from W2.3's file. The class
+  and generic seams are W2.4's and the integrator's, untouched.
+- **A bodiless `pub` prototype is called in Kira's own spelling** (`CppExternEmitter.proxied`):
+  Kira declared its C++ parameters (`const kira::Str&`, `T&`, `const char*`, `const T*`), so a
+  `Str` is passed as the `kira::Str` it is and a `mut` argument as the `T&` it binds, with no
+  `kira::ffi::in`/`out`. Its `Unsafe<T>` and `CStr` parameters keep `.data()`, `.c_str()` and
+  `CStrBuf`. `@_extern` callees and `@_opaque` methods keep the proxies (C++ declared those).
+- **`kira/ffi.hxx` is asked for where `kira::ffi::` is spelled** (`externCallText`, through the
+  new `includeWhereWritten`, which `use(binding)` now shares): the header when the code is
+  header-placed, the source otherwise. A call of an `@_extern` asks for nothing more, because
+  its own module's header asks for the file (its checks do) and every caller includes that
+  header; this is what keeps forward's `forward.kira.cxx` byte-identical.
+- **A `Str` place lent to a `CStr` is `.c_str()` of its own buffer however it is spelled**
+  (`(kira::at(NAMES, 0)).c_str()`, `gp.name.c_str()`): w2-6 minor #0. A copy is `CStrBuf`.
+- **An extern's result is a prvalue** (`CppExternsPart.resultIsTemporary`, read by W2.3's
+  `CppCopyPolicy.kiraCall`, the one line this package adds to W2.3's file): an `@_extern` result
+  through `kira::ffi::declared<T>`, which returns a `T` by value, and a prototype's, which Kira
+  declared by value. A result kept as C++ gave it (a pointer; an `@_opaque` method's) is not.
+  Without it forward gained `::bibo::Scan(kira::ffi::declared<::bibo::Scan>(car->scan())).ahead()`,
+  a copy of a temporary (measured, CppGoldenEmitTest). A reading beyond 2.0's PRVALUE list,
+  which names "a call of a Kira function".
+- **forward is `emit: required`**, byte-identical, as ExternDelegationTest asks once bodies lower.
+
+### Round 3's findings (sc-round3.json, round3.w2-6-ffi.verdict)
+
+| Finding | End (50-round4 5.1) | Test, and the value measured |
 |---|---|---|
-| w2-6 #4, a `Str` argument that is a lent result (`gstrs.get(0)`, b1c/b1u/b7c) | fixed: R-B reads `readPlace`, `kira::ffi::in(kira::Str(kira::at(gstrs, 0)))`, 82 | `ExternCallRunTest` sLent; `CppExternEmitterTest.aByReferenceArgumentThatIsAPlaceIsCopiedWhenTheCallMayWriteIt` |
-| w2-6 #5, only `Str` was copied (`sumListL(gl, fs)`, b9: 21 for 6) | fixed: every kind C++ takes by `const&` (`Rules.aliasesCaller`) plus `Str` into `CStr`: `List`, `Arr`, `Maybe`, a value struct, a class handle, a struct holding an `Fx` | rows cList 6, cArr 6, cMaybe 82, cStruct 82, cClass 82, sStructFx 82 |
-| w2-6 #6, a `Str` beside a `mut` argument of the same storage (b2b/b2e/b2f/b2g: 1 for 82) | fixed: R-B condition 2 (`Rules.mayHold`) | rows mViaMut 82, mCStr 82; nUnrelated (a `mut Int32`) is not copied |
-| w2-6 #7, a bodiless `pub` prototype lowered as a Kira call (a5b, a5c: g++ errors) | fixed: R-G, below | rows gPeek 10, gPlen 4; `aBodylessPubPrototypeIsAnExternForTheUnsafeConventionToo`; `everyCalleeWhoseBodyCppSuppliesIsCalledAsAnExternAndNoOther` |
-| w2-6 #8, this package's tests red on the integration | fixed: the 11 of 4.3 rewritten over locals, first-class results and `@_opaque` handles; `aStrIsNoCStrAnywhereElse` expects its two refusals | `CppExternEmitterTest` 25/0 |
-| [owner w2-5] #0, a `mut Unsafe<T>` never given a `MutView` of a place | fixed (W2.5's F2 checker half; this branch's end-to-end test) | `aMutUnsafeTakesAMutViewOfALocalAndAMutViewOfACaptureIsRefused`: four locals accepted, a global refused `rules.view.write`, lowered `(kira::mutView(xs)).data()` |
-| [owner w2-5] #1, a `Str` given to a `CStr` is no view (b7 6 for 82, b8b; ASan UAF in strlen) | fixed by R-B's copy, `kira::ffi::CStrBuf(gs).c_str()`, as R-B says (not by the literal-4b refusal, which would refuse `ImGui::Text(this.label)`) | rows cCStr 82, mCStr 82 |
-| [owner w2-6] w2-4 minor #3, externnested2: a check naming the module's own class at the top of the header | fixed: the checks follow the module's declarations and name its own types from the global scope (`CppEmitContextImpl.atGlobalScope`) | `theChecksFollowTheModulesOwnDeclarationsAndNameThemFromTheGlobalScope`; ExternCallRunTest compiles checks naming `w::Pt`, `w::Cb` |
-| r1 minor #3 and round-2 minor u11, a `MutView` of a capture into `mut Unsafe<T>` | refused: `types.lambda.assign-capture` (F2's typer half) | the same F2 test, also through `zero(xs.view().from(1))` |
-| round-2 minor, "Fix 1 copies whenever the call carries an Fx" | superseded by R-B's two conditions; the direct lambda is `rules.exclusivity.alias` | the direct-lambda assertion in the R-B test |
-| W2.5's "R-C's limit" (a callback C++ stored in an earlier call) | settled by a contract line, below | - |
+| #0, R-B's `mayHold` one way only (t1 `ptNAfterMut(gp, mut o)` 5 for 1; t1u a heap-use-after-free) | correct: the policy's W3 tests `mayHold` both ways against every own `mut` operand, so `GP`, `GL`, `GLL` are copied | ExternCallRunTest rows viaN 1, viaL 1, viaS 82, viaI 1; `CppExternEmitterTest.aByReference...` (`Pt(GP)`) |
+| #1, an if-expression over places reaches an extern by reference (t5 63 for 6; t11 a heap-use-after-free, 2 for 1) | correct: a ternary is no place and no prvalue, so it is `T(c ? a : b)` unless both branches are PRIVATE | rows r1L 6, r1F 1, r1P 1; r1S 82 and r1C 82 (a `Str` ternary is a prvalue); r1Local 6, lent `c ? a : b` |
+| #2, a prototype's call spells `kira::ffi::in` where nothing includes `kira/ffi.hxx` (t13, t13b: no compiler built them) | correct: no proxy at a prototype, and the header asked for where `kira::ffi::` is spelled | `aPrototypeIsCalledInItsOwnSpellingAndAsksForFfiOnlyWhereItSpellsIt`; `everyPrototypeRowPrintsKirasValueOnEveryCompiler`: t13 24, t13b 4, a copied `Str` 82, a copied `CStr` 82 (its module includes `kira/ffi.hxx`), a `mut` 2 |
+| [owner w2-4] #3, the kind-1 entry snapshot depends on an unrelated class (t20, t15, t7v, t7k, t7u, t18k) | W2.4's to delete (kind 1); W2.3's policy copies at the call instead, and the class-free probes are right here | t20 82 (round 3: 168), t7k 82 (168), t7u `6 6` and t7v 6 (heap-use-after-free), t18k 82 (1), and t18 164 (83: the value receiver is the copy Kira read); t15 and t20b need classes |
+| w2-4 #1 [owner w2-6], the same missing `kira/ffi.hxx` (proto1, externstr, externnested, externfnval) | correct by #2's fix | as #2 |
+| minor #0, a `Str` place that is no bare name always got `CStrBuf` | correct, above | `aCStrParameterTakesAStrAsSection72Says` (`(kira::at(::ext::NAMES, 0)).c_str()`) |
+| minor #1, a spilled argument copied twice | correct: a spilled temporary is W1 (the policy's), never copied again | row sSpilled 82: `const kira::Str t0_ = GS;` then `lenAfterL(kira::ffi::in(t0_), t1_)` |
+| minor #2, ExternCallRunTest ran hand-written texts | correct: every row is a Kira function lowered by the real expression emitter, checked by text and by value | ExternCallRunTest, 33 rows and 5 prototype rows |
+| minor #3, `viaMutP(mut g, w)` refused naming "storage an object holds" | W2.5's rule M names the storage now | W2.5's ExclusivityPassTest |
+| minor #4, the alias refusal set depends on the `Fx`'s spelling | gone with the alias rule: the direct lambda is accepted and copied | row sDirect 82, `lenAfterF(kira::ffi::in(kira::Str(GS)), []() -> void ...` |
+| minors #5, #6, #7 | unchanged, below (not lowering questions) | - |
 
-Every copy row was checked to bite: with `copiedArguments` returning nothing, 15 of the 17 copy
-rows print another value on each of g++, clang and MSVC (sGlobal 168, cList 21, mViaMut 1,
-cStruct 1; cCStr 0 on g++, 6 on MSVC).
+### Measured
 
-End to end, on a scratch integration (trial 3e76959 + 04cc00f + this diff, W2.3's expression
-emitter doing the lowering): 29 probes of 6.2's matrix (a `mut` global, a qualified `ctr.G`, a
-lent place, a field through a handle, `Ref.value`, `this.name`, a `const&` and a `mut` parameter,
-a local, a literal, a computed value; a `List`, `Arr`, `Maybe`, struct and class argument; the
-`Fx` in a `List` or a struct field; the `mut` twins; a5b, a5c; F2), each prints Kira's value on
-g++ 13.2 and zig clang 20, and the 28 accepted ones on MSVC 14.44 `/fsanitize=address` with 0
-reports. The one refused is F2's capture. The same integration's full suite: 1419 tests and 57
-failures before this diff, 1426 and 46 after; the 11 fewer are 4.3's, and no test of W2.3 or
-W2.4 changed state (the 46 are theirs, 40-round3 4.1 and 4.2).
+- `ExternCallRunTest` (the real emitter, 33 rows in `app:w` plus 5 in two modules with no
+  `@_extern`): every row's call text is the policy's (a copy where it copies, none where it
+  lends), and every value is Kira's on gcc 13.2, zig clang 20 and MSVC 14.44.
+- The same programs as scratch probes (`scratchpad/w26r4/p/ecall`, `eproto`), with MSVC
+  `/fsanitize=address`: `82 82 82 82 3 2 83 82 82 82 82 6 6 82 82 82 82 82 82 82 10 24 1 1 82 1 82
+  82 6 1 1 6 82` and `24 4 82 82 2` on all three compilers, 0 ASan reports.
+- Round 3's own probes on this branch's CLI, g++ | clang | MSVC ASan: t1 without its class rows
+  (t1s) `1 1 82`, t1u `1`, t5 `82 82 82 82 6`, t11 `6 6 6 1 1`, t13 `4 2`, t13b `4`, each the
+  same on all three, 0 ASan reports. Round 3 printed `5 5 102`, `1662156576`, `.. 63`, `63 21 6
+  1672576912 2`, and t13/t13b did not compile.
+- The rest of round 3's w2-6 probes on this CLI: t5b 82, t6 `82 82`, t22 `82 82`, the same on all
+  three with 0 ASan reports. Refused as in round 3: t4 (`types.init.not-constructible`), t7
+  (`types.fn.foreign-value`), t9 (`cpp.no-body`), t10a-e (`types.lambda.assign-capture`; t10c
+  now also `rules.view.write` and rule M's `rules.exclusivity.mut` for `viaMutParam(mut gl)`,
+  a global passed `mut` to a call that runs an `Fx`), t16, t1b and t1c (D37's
+  `rules.exclusivity.argument`), t17v (`rules.view.write`), t21 (rule M, naming "a global": minor
+  #3). Not lowered here (classes): t2, t2k, t3, t14, t15, t17, t19, t20b. t5c is a parse panic
+  in round 3 and here alike (the probe's own syntax).
+- ffi tests: 116, 0 failures, 0 skipped (round 3: 112, 1 skipped, ExternDelegationTest's).
+  Full suite: 1325 tests, 0 failures, 0 skipped. `examples/regenerate.sh --check`: all snapshots
+  current, the C++ leg 2 of 2. `examples/ffi-mini/run.sh` ok; `examples/cpp/13-ffi-cpp/run.sh`
+  ok. `kira/cpp/tests/run.sh` 66 passed, 0 failed (ffi_test 29/0); `msvc.bat` all passed
+  (ffi_test 29/0, `KIRA_FFI_DRIFT=1` refused with Kira's message); `goldens.sh` 18 cases, 71
+  passed, 0 failed (forward 6/0 and imgui-shape 12/0 on gcc, clang and msvc, and a zig-aarch64
+  link each).
 
-### R-B, as built
+### Contract 5.4.4 (new): C++ that calls Kira keeps invariant I
 
-`CppExternEmitter.copiedArguments`. A given argument is in scope when its parameter is not
-`mut` and C++ receives it by reference or pointer: `Rules.aliasesCaller(paramType)` (the rule
-for what a Kira parameter takes by `const&`, design 5.1) or a `Str` given to a `CStr`. It is
-copied when it is a place (`TypedModel.readPlace`) and (1) `CallReach.mayRunAnything` (R-C) or
-(2) a `mut` argument, or a `mut fx` receiver, has a type that `Rules.mayHold` its type (the
-pointee for a `mut Unsafe<T>`). Spelled `kira::ffi::in(kira::Str(x))`, `kira::ffi::CStrBuf(x).c_str()`,
-or `T(x)` from the type speller. `mayHoldFx` of this file is gone.
+C++ that calls a Kira function or an `Fx` passes each non-`mut` argument as storage nothing
+changes until the call returns, and holds the receiver (a class's handle) for the call. That is
+what lets a Kira callee read its parameters and its `this` with no guard (50-round4 2.0), and
+what makes a by-value parameter PRIVATE in the callee. A C++ callback that hands Kira a
+reference into storage it then changes from another path during the call (a C++ container the
+same callback clears) breaks the contract, as a data race does: Kira cannot see it.
 
-### Decisions beyond the design's letter
+Contract 5.4's other lines, which the policy's W3 extern row reads (`!CallReach.mayRunAnything`):
+5.4.1 an extern reads a second-class argument only during the call and keeps no pointer from
+it; 5.4.2 it writes Kira storage only through its `mut` arguments and its receiver; 5.4.3 it
+runs a Kira `Fx` only during a call that is given it, or given something that may hold it (a
+handle to the C++ object that keeps it, which as a class or `@_opaque` receiver or argument
+always counts). A C++ callback registry is reached through such a handle, never through a free
+function given none.
 
-- **An `Fx` argument and a class or trait handle are in scope.** 2's list ends at "a value
-  class" and puts `Fx` arguments out of scope; `aliasesCaller` holds both, and each is the same
-  hazard (a handle or `std::function` bound by `const&` to a variable the callback rebinds). The
-  cost is a refcount or a `std::function` copy. `scanOf(car)` is now `scanOf(kira::Rc<::bibo::Car>(car))`.
-- **A class receiver counts for condition 1** (R-C: a class may hold an `Fx`), so an extern
-  class's method copies its place arguments. A free function given nothing that may hold an
-  `Fx` (`ImGui::Text(this.label)`) copies nothing.
-- **A Kira constant is never copied:** an immutable global reached through no reference step.
-  Nothing can write it, and a `Str` one is the `const char*` literal itself (D12).
-- **3.3's "T may hold q" moved into `Rules.mayHold`** (RuleSupport.kt), and ViewPass's private
-  copy now calls it: one predicate for the two readers (group G). A W2.5 file; its owner may
-  move it again.
-- **A `View` of a captured variable is a `View`.** The typer made `xs.view()` a `MutView` for a
-  captured `mut` local, and a read `sumV(xs.view())` inside a lambda was lowered `kira::mutView(xs)`
-  over the lambda's const copy: g++ and clang rejected it (measured on the integration, probe
-  f_viewcap). It is a `View` now; handing it to a writer is F2's refusal.
-- **The contract line for R-C's limit.** An extern runs a Kira `Fx` only during a call given it,
-  or given something that may hold it (a handle of the C++ object that keeps it, which as a class
-  or `@_opaque` receiver or argument always counts). A C++ callback registry is reached through
-  such a handle, never through a free function given none. Written at `copiedArguments`.
+### Open
+
+- **The class half is not run on this branch.** Classes do not lower here (W2.4's): round 3's
+  t1 rows `ptNAfterMut(h.p, mut h2.p.n)` and `firstAfterMut(h.xs, mut h2.xs[0])` (a `mut`
+  operand through a second handle: rule M's STABLE accepts it, and the policy copies `h.p`
+  because `h2.p.n` may lie in it, Kira's 1 1), t14, t17, t18k, t20/t20b, t22 and the
+  `@_opaque` matrix. Their text is emitted by this code; the runs are the trial's.
+- **A pure `@_opaque` class with no `@_extern(header = ...)` cannot be called.** Kira emits only
+  `class Gauge;`, so `newGauge().lenOf(s)` is "invalid use of incomplete type" (measured, g++, the
+  scratch probe eproto). Nothing names the header that defines the class. The call's text is
+  right (`t0_->lenOf(kira::ffi::in(t1_))`, and the source includes `kira/ffi.hxx`). An opaque
+  class is declared with `@_extern(cpp = ..., header = ...)` today (imgui-shape's `DrawList`).
+- **A header-placed prototype call that spells `kira::ffi::`** asks for the include in the
+  header (`includeWhereWritten`'s first branch); no test has such a call (a generic function's
+  body calling a prototype with a copied `Str` for a `CStr`).
+- **MSVC ASan is not in the gradle harness.** The 0-report figures are the scratch runs above.
+
+## Round 3 (40-round3 5.6): R-G's typer switch and dispatch, F2's typer half
+
+Round 3's R-B (`copiedArguments`, a copy made at an extern call on two conditions) is deleted in
+round 4 (above); its rows are ExternCallRunTest's, now decided by the copy policy. What round 3
+built and round 4 keeps:
 
 ### R-G, as built
 
 `CallResolver.isExternLike` is `suppliedByCpp`, and `kindFor`/`free` give every such call
 `CallKind.EXTERN`, which the expression part dispatches on, so it reaches `CppExternEmitter.call`
 without a change to W2.3's file. `isExternCall` is `suppliedByCpp` too. A markerless prototype is
-spelled as the module spells its functions (`ctx.qualified`), keeps Kira's own defaults, and gets
-no `declared<T>` (Kira declared its C++ type). A bodiless method of a class is a slot, not an
-extern (round 2's `isExternLike` counted any bodiless `pub` method).
+spelled as the module spells its functions (`ctx.qualified`), keeps Kira's own defaults, gets
+no `declared<T>` (Kira declared its C++ type) and, since round 4, no proxy. A bodiless method of
+a class is a slot, not an extern (round 2's `isExternLike` counted any bodiless `pub` method).
 
-### Open
+### Kept from round 3's decisions
 
-- **The stdlib half of R-B** ("a stdlib binding given an `Fx`") is W2.3's binding lowering, not
-  this emitter. Today's such bindings are `spawn(name, body)`, `Mutex.lock(body)` and
-  `Mutex.waitUntil(pred, timeoutMs)`; the only by-reference argument beside the `Fx` is `spawn`'s
-  `name`, which `kira::sync::Thread` captures by copy before the thread starts (sync.hxx), so
-  nothing needs a copy. A future binding with one must ask the same question.
-- **Bodies are still not lowered on this branch.** ExternCallRunTest runs the call texts over a
-  hand-written driver; the end-to-end numbers above are from the scratch integration.
-- **MSVC ASan is not in the gradle harness.** The 0-report figure is the scratch run above.
+- **3.3's "T may hold q" is `Rules.mayHold`** (RuleSupport.kt), one predicate for ViewPass, rule
+  M and W2.3's W3.
+- **A `View` of a captured variable is a `View`.** The typer made `xs.view()` a `MutView` for a
+  captured `mut` local, and a read `sumV(xs.view())` inside a lambda was lowered `kira::mutView(xs)`
+  over the lambda's const copy: g++ and clang rejected it (measured, probe f_viewcap). It is a
+  `View` now; handing it to a writer is F2's refusal.
+- **F2's typer half**: a `MutView` of a capture into `mut Unsafe<T>` is `types.lambda.assign-capture`
+  (`aMutUnsafeTakesAMutViewOfALocalAndAMutViewOfACaptureIsRefused`).
+- **The stdlib half of round 3's question** ("a stdlib binding given an `Fx`") is the copy
+  policy's now (a `MAGIC` consumer given an `Fx` is not CONFINED), not this emitter's.
 
 ## Second-class views round 2: the two significant findings of round 1's verdict
 
@@ -463,18 +532,8 @@ results.
 
 ### The pending-on-W2.3 entry did not name `13-ffi-cpp`
 
-**What.** `examples/cpp/13-ffi-cpp/run.sh` fails on this branch alone with `cpp.unsupported:
-the body of 'main' is not lowered yet`, and passes on a trial merge with W2.3
-(`13-ffi-cpp: ok`) — the same W2.3-lowers-bodies dependency the round-2 ledger entry below
-("The forward golden and ExternDelegationTest's body check are pending on W2.3") already
-names for the forward golden and `ExternDelegationTest`, just without this example.
-
-**Where.** `examples/cpp/13-ffi-cpp/run.sh`; the round-2 entry, updated in this edit to
-name it too.
-
-**Why it is safe to defer.** Same reasoning as that entry: nothing in this package's own
-code needs to change, and the example passes once `cpp-backend` has both packages merged
-(measured this round on the trial merge).
+**Resolved in round 4.** With W2.3 merged into this branch, `examples/cpp/13-ffi-cpp/run.sh`
+prints `13-ffi-cpp: ok` on the branch itself (measured), and regenerate.sh's C++ leg runs 2 of 2.
 
 ### The round report's CppExternEmitterTest count was off by one
 
@@ -656,25 +715,11 @@ touches only those three). Doing it mid-round would rewrite commits an earlier v
 already reviewed; it belongs right before the `cpp-backend` merge, once no more rounds are
 expected to add commits underneath it.
 
-### The forward golden, ExternDelegationTest's body check, and `13-ffi-cpp` are `pending` on W2.3
+### The forward golden, ExternDelegationTest's body check, and `13-ffi-cpp` were `pending` on W2.3
 
-**What.** The forward golden's `case.yaml` still states `emit: pending`,
-`ExternDelegationTest`'s body-check case is skipped (1 skipped of 991, then 995 once round
-4's tests are added, in `./gradlew test`), and `examples/cpp/13-ffi-cpp/run.sh` fails with
-`cpp.unsupported: the body of 'main' is not lowered yet` — all three because they need
-classes W2.3 lowers bodies for; this package's own branch does not have them yet. (Round 4
-added `13-ffi-cpp` to this entry; the first two are unchanged from round 2.)
-
-**Where.** `src/test/resources/cpp-golden/forward/case.yaml`;
-`src/test/kotlin/net/exoad/kira/cpp/ffi/ExternDelegationTest.kt`;
-`examples/cpp/13-ffi-cpp/run.sh`.
-
-**Why it is safe to defer (policy 5).** A trial merge of this round's head with W2.3
-`7c0fb42` (round 2: `a60ab54` with W2.3 `41575c6`) makes all three pass: the forward golden
-emits byte for byte, `ExternDelegationTest` runs 2/0 with the body check included, and
-`13-ffi-cpp: ok`. Nothing in this package's own code needs to change for that; the golden,
-the test and the example are already written to expect it. They resolve automatically once
-`cpp-backend` has both packages merged.
+**Resolved in round 4.** W2.3 is merged into this branch: forward is `emit: required` and emits
+byte for byte (CppGoldenEmitTest; goldens.sh forward 6/0 on gcc, clang and msvc),
+`ExternDelegationTest` runs 2/0 with the body check, and `13-ffi-cpp: ok`.
 
 ### The W2.3 merge-conflict entry named a moved head; the resolution still applies
 

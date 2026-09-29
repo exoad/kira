@@ -279,7 +279,7 @@ class FfiDriftCompileTest {
         val errors = emitted.diagnostics.filter { it.isError && !it.message.contains("is not lowered yet") }
         assertTrue(errors.isEmpty(), "errors:\n" + errors.joinToString("\n") { it.render() })
         val call = ctx.model.calls.values.firstOrNull { it.fn?.name == name } ?: fail("no call of $name() in the model")
-        return CppExternEmitter.call(ctx, call, null, emptyList()) to CppWriter.normalize(emitted.header)
+        return CppExternEmitter.call(ctx, call, null, emptyList(), emptySet()) to CppWriter.normalize(emitted.header)
     }
 
     private fun runProbe(tc: CppToolchain, name: String, files: Map<String, String>, what: String) {
@@ -531,7 +531,7 @@ class FfiDriftCompileTest {
         val errors = emitted.diagnostics.filter { it.isError && !it.message.contains("is not lowered yet") }
         assertTrue(errors.isEmpty(), "errors:\n" + errors.joinToString("\n") { it.render() })
         val call = ctx.model.calls.values.firstOrNull { it.fn?.name == "name" } ?: fail("no call of name() in the model")
-        val text = CppExternEmitter.call(ctx, call, null, emptyList())
+        val text = CppExternEmitter.call(ctx, call, null, emptyList(), emptySet())
         assertEquals("kira::ffi::declared<kira::Str>(::probe::name())", text)
         val main = """
             #include "sc.kira.hxx"
