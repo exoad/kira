@@ -249,6 +249,25 @@ namespace kira
     {
         return l;
     }
+    // Arr<T, N>.contains and Arr<T, N>.clone: the same bindings over a std::array. A clone
+    // of an Arr<T, N> is an Arr<T> (a List), as collections.kira declares it.
+    template<class T, std::size_t N>
+    [[nodiscard]] constexpr bool contains(const std::array<T, N>& a, const std::type_identity_t<T>& v)
+    {
+        for(const T& x : a)
+        {
+            if(x == v)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    template<class T, std::size_t N>
+    [[nodiscard]] std::vector<T> clone(const std::array<T, N>& a)
+    {
+        return std::vector<T>(a.begin(), a.end());
+    }
   }
 
   // Deque.popFront() and popBack(): a Maybe, none when empty.

@@ -74,7 +74,7 @@ namespace bibo::text
 
   bool isCommand(kira::View<char> s, kira::View<char> verb)
   {
-      return kira::isSome(wordEnd(s, verb));
+      return !!kira::isSome(wordEnd(s, verb));
   }
 }
 #include "kira/macro_pop.hxx"
