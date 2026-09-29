@@ -194,6 +194,10 @@ class CppBindingTable : CppBindingsPart {
         fun repeated(binding: CppBinding): List<String> =
             PLACEHOLDER.findAll(binding.expr).map { it.groupValues[1] }.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.toList()
 
+        /** The operand placeholders [binding]'s expression names (`self`, `0`, ...), each once. */
+        fun placeholders(binding: CppBinding): Set<String> =
+            PLACEHOLDER.findAll(binding.expr).map { it.groupValues[1] }.toSet()
+
         private val PLACEHOLDER = Regex("\\{(self|[0-9]+)}")
 
         /** Whether the binding is member-style on its receiver: `{self}.size()`, `{self}[{0}]`, `{self}->bind(...)`. */

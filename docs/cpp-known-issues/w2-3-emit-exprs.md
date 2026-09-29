@@ -2,11 +2,116 @@
 
 The C++ backend's expression, statement, closure and binding lowering: `CppExprEmitter.kt`,
 `CppStmtEmitter.kt`, `CppClosureEmitter.kt`, `CppHoister.kt` (with `CppEscapes`, now only the
-`Fx` escape fallback) and `CppBindingTable.kt`, the tests under
+`Fx` escape fallback), `CppCopyPolicy.kt` (round 4) and `CppBindingTable.kt`, the tests under
 `src/test/kotlin/net/exoad/kira/cpp/exprs/` and the `evalorder` golden. Each entry says what the
 issue is, where it lives, how to reproduce it, and why it is safe to leave for now. "Measured"
 means built with the goldens' warning flags and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC
 `/W4 /WX`, and run.
+
+## Copy by default, round 4
+
+This round merges `cpp/w2-5-rules` (b5910b6, merge 1d605d8, no conflict), so the policy reads
+round 4's rules (`CallReach.confined`, `TypedModel.fnConfined`, rule M, O1/O2), and then does
+50-round4's W2.3 plan (6.4). On the merge alone `./gradlew test` ran 1190 tests, 0 failures.
+
+- **The policy, one function (`CppCopyPolicy.pass`, 50-round4 2.0).** Wherever C++ binds a
+  reference to a first-class operand (a `CppHoister.Use`), the operand is a temporary or it is
+  copied, `T(e)`, unless W1-W3 (W6 for a range) keeps it still. The uses:
+  - a given argument, where the root declaration's unsubstituted parameter is spelled by
+    reference (`CppCopyPolicy.argByRef`: `!byValue`, so a generic `T` at `Int32` is a use; a
+    binding's, `trace`'s and an `Fx` value's by the Kira type; an extern's also a class handle;
+    a `Str` given to a second-class parameter);
+  - a receiver: a value receiver read as `const S&` (a struct's `this`, an implicit `this`, a
+    binding's `{self}`), and a class or trait handle of a method or extern call (`h->m(...)`,
+    copied as `kira::Rc<C>(h)->m(...)`);
+  - an `Fx` value's callee (`kira::Fn<...>(f)(...)`), never CONFINED, so lent only when PRIVATE;
+  - the operands of `Str` `+` and `==`, a container's `==`, and `kira::cat`'s holes, whose
+    consumer is CONFINED when no operand type holds a user class, trait or `T`
+    (`CppCopyPolicy.runtimeConsumer`);
+  - an extern's argument: the policy decides and `externCallText(rc, receiver, args, copied)`
+    spells it (`kira::ffi::in(kira::Str(e))`, `T(e)`); `copied` is the set W2.6 receives;
+  - a `for` range: `rangeLends` (W6), else `for(const T& x : T(r))`.
+  A use D33 spilled is its typed temporary, already the copy (W1): no second copy.
+- **PRVALUE, PRIVATE, NAMED, W3.** `isPrvalue` is a positive list (a literal, an interpolation,
+  a construction, a lambda, an operator, a cast, an IIFE-lowered if-expression, a ternary of
+  prvalues, a call of a Kira function, a converting coercion); `isPrivate` a local, a by-value
+  parameter, a value `this` in a plain `fx` (or a lambda's `[*this]`), or a value temporary,
+  through value steps (`Rules.isReferenceStep`); NAMED is `writtenBy` plus the consumer's own
+  `mut` operands, and `writtenBy` no longer names the receiver of a class `mut fx`
+  (`Rules.writesObjectOnly`); W3 is `CallReach.confined`, no IMPURE operand, and `Rules.mayHold`
+  both ways against every own `mut` operand not PRIVATE with another root.
+- **A binding's result is no prvalue (2.0, literally).** A binding the `LEND` pin misses is
+  copied, never lent. The cost is text only (C++17 elides `T(e)` of a prvalue): numerics and
+  proto gain `kira::Str(kira::str::padStart(...))` and `kira::Str(kira::str::substring(...))`,
+  three lines. 50-round4 4.1's count classed a non-accessor binding's result as W1, so these
+  three lines are beyond its prediction; every other `expected/` tree on this branch is
+  byte-identical, evalorder's included.
+- **R-PURE (2.8).** `CppHoister.rank` is IMPURE when EffectsPass or the scan says so, PURE only
+  on the positive list (a literal, a constant, a PRIVATE non-view place no sibling writes, a
+  lambda whose captures are such reads, a node EffectsPass calls PURE on its own with PURE
+  children), else READS. Deleted: `sharedRead`, `readsThrough`, `readsAny`, the `ThisExpr`
+  READS case and the READS half of `modelRank`. A by-value parameter and a value `this` are
+  PURE now (invariant I), so `b.pair(next(), next())` with `b: Box` no longer copies `b`
+  (`CppHoisterTest.anImpureReceiverIsCopiedBeforeTheArgumentsAndAStructParameterIsNot`).
+- **P1, P2, O3.** An inner element step through a reallocating container is a leaf in every
+  mode, and a lent accessor's receiver is bound (its own element step counts), so both
+  spellings of `gll[0][growGll()]` locate `gll[0]` after the index. A `Str` receiver of `[]` is
+  a by-value operand. A view owner that is no place and no prvalue is copied
+  (`total((if c { la } else { lb }).view())` is `kira::view(kira::List<std::int32_t>(c ? la : lb))`).
+- **The binding-drop fix (w2-3 #3).** An operand a binding never names is evaluated anyway,
+  unless it is PURE: `(static_cast<void>(mkT()), static_cast<std::int32_t>(2))`.
+  `CppBindingTableTest.everyBindingThatLeavesOutAnOperandIsListed` pins the list, measured as
+  the ten `TupleN.size` receivers.
+- **Deleted**: `rangeMayDangle`, `isTemporary`, `isCopiedPlace` and the syntax READS clauses
+  above. KI-10's old range rule is W6 now.
+- **Measured** (scratchpad `w23r4`, this branch's CLI, g++ 13.2 | zig clang 20 | MSVC 14.44,
+  plus MSVC `/fsanitize=address`):
+
+  | Probe | Kira | Round 3 | Now, all three | ASan |
+  |---|---|---|---|---|
+  | n1 (w2-3 #0) | 501, 501, old:2, 503 | 1501, 501, 1501 and the like | 501, 501, old:2, 503 | 0 |
+  | n7, n8 (w2-3 #1) | 88; 77 5 99, 77 89 99 | clang -2, clang exit 127 | 88; 77 5 99, 77 89 99 | 0 |
+  | n5, n7 (w2-3 #2) | b, b | Y on all three, Y b Y | b, b | 0 |
+  | n11 (w2-3 #3) | 2 1, 4 3, 4 4 | 2 0, 4 0 | 2 1, 4 3, 4 4 | 0 |
+  | r4d/p3 (a), (b) | 47, 6 | 3 on all three; 183960230, 6, 6 | 47, 6, the C++ of p3fix | 0 |
+  | r4d/p5 | old-name...:1 | new:2 | old-name...:1, byte for byte p5fix | 0 |
+
+  W2.5's round-4 sweep names 16 probes its deleted refusals now accept. n2, rp1 and rp1f2 run
+  here and print Kira's value on the three compilers with 0 ASan reports; f1r and q5 stay
+  refused by rules that remain (`rules.exclusivity.order`, `rules.view.write`); the other 11
+  (al, b1ki, r2v6 a1, b1, b1c, b1k, b1u, b9b, b9c, tw1, q7) and r4d/p1 declare a class or a
+  trait, which this branch does not lower (KI-18).
+- **Tests.** `CppCopyPolicyTest` (new): 20 text rows (each whitelist entry lends with no copy
+  in the body, each rule-6 use and O3 is `T(...)`), 16 run rows and round 3's 12 run rows, each
+  on gcc, clang and msvc. `CppBindingTableTest` gains the omitted-operand pin; `CppHoisterTest`'s
+  `localReceiver` and `lentIndexArg` assertions follow R-PURE and P1.
+
+### KI-18. The class half of the policy is emitted but not run on this branch
+
+- **What.** A class handle receiver's copy (`kira::Rc<C>(h)->m(...)`, W5), E-DROP
+  (`CppCopyPolicy.dropsOnCopy`: a copied handle whose drop may run an IMPURE `finally` spills
+  its call alone) and every probe with a class or a trait (r4d/p3 (c), the 11 above) need
+  W2.4's class lowering, which this branch lacks (`cpp.unsupported: the class ... is not
+  lowered yet`).
+- **Why it can wait.** The integration trial has classes; W2.4's run tests and the verifiers'
+  replay (50-round4 7.1) run them. The text is the same `T(e)` as every other copy.
+
+### KI-19. A binding's result is copied where it is used by reference
+
+- **What.** `T(binding(...))` wherever a first-class binding result binds a `const&` (above).
+- **Why it can wait.** It is the safe reading of 2.0 (a missed accessor is a copy) and costs
+  nothing at run time; a binding flag saying "returns by value" would let the text go.
+
+### Round 3's minors, ledgered
+
+- #0 A `return`, `break` or `continue` in a branch of an if-expression that is no ternary is
+  `cpp.unsupported` (`CppStmtEmitter.ifExprLambda`), though the rules accept it (r2v23/i1).
+  Loud, not a wrong value.
+- #1 `gv.view().get(0)` is `kira::mutView(gv)[0]` and `gv.view()[0]` is
+  `kira::at(kira::mutView(gv), 0)`: both checked, one value, two spellings.
+- #3 A `Map` `[]` read is `types.index.map-read`, so R-A's Map row cannot be written.
+- #4 (the parser's) `xs.get(0) = 1` panics in `KiraParser.parsePrimaryExpr`; refused either way.
+- #5 MSVC's ASan cannot see a left-to-right hazard: every run row here runs on clang too.
 
 ## Views are second-class, round 3: one place however it is spelled
 
@@ -396,16 +501,14 @@ A cost left (round 2's note): a user function returning a view of its view param
 (`tail(v, at)`) is READS (EffectsPass's read of a view), never PURE, so such a chain beside an
 effect is copied into a `const kira::View` temporary. Correct (round 2's b1), not the cheapest.
 
-### KI-10. A `for` range is copied unless it is proved not to dangle
+### KI-10. A `for` range is iterated as a copy unless W6 keeps it still
 
-- **What.** `CppHoister.rangeMayDangle` copies a range that may be a reference into a
-  temporary (`kira::List<std::int32_t>(kira::at(makeLists(), 0))`, `makeRef()->value`) in its
-  own range expression. It copies unless the range is a place found through a variable or a
-  value C++ returns by value, including a stdlib call given a temporary whose binding returns a
-  new container. A view range is never copied: its storage is a view parameter's or a
-  literal's (design 30 E5).
-- **Why it can wait.** A copy of a prvalue is elided, so the cost falls only on a real
-  reference, and it is never a refusal.
+- **What.** `CppCopyPolicy.rangeLends` (round 4, W6) lends a prvalue range, or a place no named
+  write of the loop overlaps whose root is no temporary and which is PRIVATE or whose body
+  EffectsPass ranks at most READS; anything else is `for(const T& x : T(r))`, the copy the
+  loop's reference keeps alive (`kira::at(makeLists(), 0)`, `makeRef()->value`, a global the
+  body may replace). A view range is never copied (design 30 E5).
+- **Why it can wait.** A copy of a prvalue is elided; a real copy costs one container per loop.
 
 ### KI-11. The CLI cannot reach R6's skipped middle default, so only the rows test covers it
 

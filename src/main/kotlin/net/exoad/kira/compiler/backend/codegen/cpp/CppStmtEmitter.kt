@@ -208,14 +208,17 @@ class CppStmtEmitter : CppStmtPart {
                         ctx.speller.byValue(plan.element) -> "const $typeText $name"
                         else -> "const $typeText& $name"
                     }
-                    val range = lower.emit(fe.target, CppPrec.NONE)
+                    val range = lower.coerced(fe.target)
                     val rangeType = model.typeOrNull(fe.target)
-                    // A range that may be a reference into a temporary (`kira::at(makeLists(), 0)`,
-                    // `makeRef()->value`) is copied while the temporary lives, and the loop's
-                    // reference keeps the copy alive. A converted range is a view (ToView), and a
-                    // view's copy points where the view did.
-                    val copy = rangeType != null && model.coercion(fe.target) == null && !CppHoister.isSecondClass(rangeType) && lower.hoister.rangeMayDangle(fe.target)
-                    val text = if (copy && rangeType != null) "${ctx.spell(rangeType, Pos.VALUE, fe.target)}($range)" else range
+                    // Copy by default (50-round4 L5): the range-for keeps `begin`/`end` into its range
+                    // for the whole loop, so a range W6 does not keep still (a range the body may
+                    // write, move or free, a place rooted at a temporary, anything that is no
+                    // prvalue) is iterated as a copy, `T(r)`, which the loop's reference keeps alive.
+                    // A view is lent (W4: a view parameter's or a literal's storage, design 30 E5),
+                    // and so is a converted range (ToView).
+                    val lends = rangeType == null || model.coercion(fe.target) != null || CppHoister.isSecondClass(rangeType) ||
+                        lower.policy.rangeLends(fe.target, s.body, plan.element)
+                    val text = if (lends || rangeType == null) lower.wrap(range, CppPrec.NONE) else lower.policy.copy(range, rangeType, fe.target).text
                     "$unused$decl : $text"
                 }
             }

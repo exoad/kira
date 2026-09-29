@@ -1,8 +1,13 @@
 package net.exoad.kira.cpp.exprs
 
+import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.FnSymbol
+import net.exoad.kira.compiler.analysis.types.Foreign
+import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBinding
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBindingTable
 import net.exoad.kira.compiler.backend.codegen.cpp.CppPrec
+import net.exoad.kira.types.TyperTestSupport
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Path
@@ -159,5 +164,47 @@ class CppBindingTableTest {
         } finally {
             scratch.deleteRecursively()
         }
+    }
+
+    // ---- operands a binding never names (w2-3 #3) ----------------------------------------------
+
+    /**
+     * Every stdlib binding whose expansion leaves out an operand its callee takes: the receiver
+     * (`{self}`) of a method, or an argument (`{i}`). The emitter evaluates such an operand
+     * anyway, in order, unless it is a literal, a constant or a PRIVATE read
+     * (`(static_cast<void>(mkT()), static_cast<std::int32_t>(2))`, round 3's n11: `mkT().size()`
+     * dropped `mkT()`'s `ticks += 1`). The list is pinned, so a binding added that drops an
+     * operand is seen here, and CppCopyPolicyTest's `bindingDrop` rows run the emitted form.
+     */
+    @Test
+    fun everyBindingThatLeavesOutAnOperandIsListed() {
+        val program = TyperTestSupport.snippet("fx main: () Void {}")
+        val omitted = sortedSetOf<String>()
+        var checked = 0
+        program.modules.filter { it.isStdlib }.forEach { m ->
+            m.declarations.forEach { s ->
+                val fns = when (s) {
+                    is FnSymbol -> listOf(s)
+                    is ClassSymbol -> s.methods
+                    is TraitSymbol -> s.methods
+                    else -> emptyList()
+                }
+                fns.forEach { fn ->
+                    val key = (fn.foreign as? Foreign.Magic)?.key?.takeIf { it.isNotEmpty() } ?: return@forEach
+                    val b = table.lookup(key) ?: return@forEach
+                    checked += 1
+                    val named = CppBindingTable.placeholders(b)
+                    val taken = (if (fn.owner != null) listOf("self") else emptyList()) + fn.params.indices.map { "$it" }
+                    taken.filter { it !in named }.forEach { omitted += "$key {$it}" }
+                }
+            }
+        }
+        assertTrue(checked > 150, "expected the stdlib's bindings, checked $checked")
+        assertEquals(OMITTED, omitted.toList(), "a binding that leaves out an operand: the emitter evaluates it (CppLowering.magicCall)")
+    }
+
+    private companion object {
+        /** Measured: only the tuples' `size`, a constant of the type (`static_cast<std::int32_t>(N)`). */
+        val OMITTED: List<String> = (0..9).map { "Tuple$it.size {self}" }
     }
 }

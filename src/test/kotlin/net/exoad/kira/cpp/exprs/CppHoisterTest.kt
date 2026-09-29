@@ -521,13 +521,14 @@ class CppHoisterTest {
     }
 
     @Test
-    fun anImpureReceiverIsCopiedBeforeTheArgumentsAndSoIsAStructParameter() {
+    fun anImpureReceiverIsCopiedBeforeTheArgumentsAndAStructParameterIsNot() {
         val b = body("receiverFirst")
         assertTrue(b.contains("const Box t0_ = makeBox();\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return t0_.pair(t1_, t2_);"), b)
-        // A struct parameter is a const& to the caller's object, which next() may write: D33
-        // reads the receiver first, so it is copied before the arguments run.
+        // A struct parameter is PRIVATE (50-round4 R-PURE, invariant I): every caller bound it to
+        // storage nothing writes until this call returns (a temporary, a PRIVATE place of its
+        // own, or a copy), so next() cannot change it and it is read in place.
         val local = body("localReceiver")
-        assertTrue(local.contains("const Box t0_ = b;\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return t0_.pair(t1_, t2_);"), local)
+        assertTrue(local.contains("const std::int32_t t0_ = next();\n          const std::int32_t t1_ = next();\n          return b.pair(t0_, t1_);"), local)
     }
 
     @Test
@@ -1879,7 +1880,8 @@ class CppHoisterTest {
         }
         assertTrue(bodyIn(source, "lentScalar").contains("const std::int32_t t0_ = kira::at(gl, 0);\n          const std::int32_t t1_ = resetL();\n          return sub(t0_, t1_);"), bodyIn(source, "lentScalar"))
         assertTrue(bodyIn(source, "lentView").contains("const std::int32_t t0_ = setAt(kira::at(kira::at(ll, 0), 0));\n          return minus(kira::at(ll, 0), t0_);"), bodyIn(source, "lentView"))
-        assertTrue(bodyIn(source, "lentIndexArg").contains("return kira::at(kira::at(gll, 0), nextSize());"), bodyIn(source, "lentIndexArg"))
+        // P1 (50-round4 2.8): the inner element is located after the index runs, in both spellings.
+        assertTrue(bodyIn(source, "lentIndexArg").contains("const kira::Size t0_ = nextSize();\n          return kira::at(kira::at(gll, 0), t0_);"), bodyIn(source, "lentIndexArg"))
         assertFalse(source.contains("const kira::List<std::int32_t> t"), "no List is copied:\n$source")
     }
 

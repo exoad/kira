@@ -59,7 +59,7 @@ namespace proto
         const std::int32_t whole{scaled / 1000};
         const std::int32_t frac{scaled % 1000};
         const kira::Str sign = neg ? kira::Str("-") : kira::Str("");
-        return kira::cat(sign, whole, ".", kira::str::padStart(kira::text(frac), 3, '0'));
+        return kira::cat(sign, whole, ".", kira::Str(kira::str::padStart(kira::text(frac), 3, '0')));
     }
   }
 
@@ -110,7 +110,7 @@ namespace proto
       while(i + klen <= kira::str::length(text))
       {
           const bool boundary{i == 0 || isSpace(kira::str::at(text, i - 1))};
-          if(boundary && kira::str::substring(text, i, i + klen) == key)
+          if(boundary && kira::Str(kira::str::substring(text, i, i + klen)) == key)
           {
               kira::Size to{i + klen};
               while(to < kira::str::length(text) && !isSpace(kira::str::at(text, to)))

@@ -18,6 +18,7 @@ import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
+import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.Prim
 import net.exoad.kira.compiler.analysis.types.Profile
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -264,6 +265,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     val state: CppBodyState = CppBodyState.of(ctx)
     val model: TypedModel get() = ctx.model
     val hoister: CppHoister = CppHoister(this)
+
+    /** Copy by default (50-round4): what every by-reference use of an operand is passed as, lent or copied ([CppCopyPolicy.pass]). */
+    val policy: CppCopyPolicy = CppCopyPolicy(this)
     private val program get() = ctx.program
 
     /** The binding table, loaded with the manifests beside this program's stdlib. */
@@ -708,16 +712,6 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     fun isLentCall(e: Expr): Boolean = model.lentPlaces[e] != null && hoister.callNode(e)?.let { model.lentPlaces[it] != null } == true
 
     /**
-     * Whether the place [e] reaches its use in C++ as a copy made for it, which dies with the
-     * full expression: a `Str` constant (a `const char*` that a `const kira::Str&` binds as a
-     * fresh `kira::Str`: [isCharPtr]), or a value that owns storage which the typer wraps in a
-     * `Maybe` (`WrapSome`: a `const kira::Maybe<T>&` parameter binds a `kira::Maybe<T>` copy of
-     * it, and `m.value.view()` in the callee points into the copy, not into [e]).
-     */
-    fun isCopiedPlace(e: Expr): Boolean =
-        isCharPtr(e) || (model.coercion(e) is Coercion.WrapSome && isPlaceExpr(e) && model.typeOrNull(e)?.let { CppHoister.ownsStorage(it) } == true)
-
-    /**
      * [e] as an operand of a call, an operator or a construction that reads it: a place C++
      * holds by reference is a snapshot [CppHoister.Operand.Place] (D33 reads it before a
      * sibling's effect, so the hoister copies it first), unless a view is formed of it ([lent]:
@@ -732,18 +726,33 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (isPlaceExpr(e) && heldByReference(typeOf(e)) && !(lent && isCharPtr(e))) {
             placeOperand(e, emit, if (lent) CppHoister.PlaceMode.LENT else CppHoister.PlaceMode.SNAPSHOT)
         } else {
-            valueOperand(e, emit = emit)
+            valueOperand(e, owner = lent, emit = emit)
         }
+
+    /**
+     * [e] as the operand of a by-reference use (50-round4 2.0): [operandOf], carrying a
+     * [CppHoister.Use] of [e]'s type when [byRef] says C++ binds a reference to it and no view is
+     * formed of it ([lent]). The consumer's [CppHoister.lower] passes it through the copy policy.
+     */
+    fun usedOperand(e: Expr, byRef: Boolean, lent: Boolean = false, emit: () -> CppEx): CppHoister.Operand {
+        val op = operandOf(e, lent, emit)
+        if (byRef && !lent) {
+            model.typeOrNull(e)?.let { op.use = CppHoister.Use(it) }
+        }
+        return op
+    }
 
     /**
      * [e], which is no place, as an operand: a [CppHoister.Operand.Chain] when it is a call
      * whose result is second-class (its receiver and arguments are leaves of the enclosing
      * spill, so a view is never copied out of the lambda that holds its owner: design 30, E2
-     * and E3), else a [CppHoister.Operand.Value] that [emit] spells.
+     * and E3), else a [CppHoister.Operand.Value] that [emit] spells. An [owner] is a
+     * first-class value a view is formed of (O3: made a prvalue unless it is one).
      */
-    private fun valueOperand(e: Expr, mutable: Boolean = false, emit: () -> CppEx): CppHoister.Operand {
-        val node = if (!isPlaceExpr(e) && CppHoister.isSecondClass(model.typeOrNull(e))) hoister.callNode(e) else null
-        return if (node != null) hoister.chain(e, node, emit) else CppHoister.Operand.Value(e, mutable, emit)
+    private fun valueOperand(e: Expr, mutable: Boolean = false, owner: Boolean = false, emit: () -> CppEx): CppHoister.Operand {
+        val second = CppHoister.isSecondClass(model.typeOrNull(e))
+        val node = if (!isPlaceExpr(e) && second) hoister.callNode(e) else null
+        return if (node != null) hoister.chain(e, node, emit) else CppHoister.Operand.Value(e, mutable, owner && !second, emit)
     }
 
     /**
@@ -751,8 +760,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * a place C++ holds by reference is the place itself, never a copy, so a write through the
      * path lands where Kira wrote it; anything else (a call's result, a handle) is a value.
      */
-    private fun pathOperand(e: Expr): CppHoister.Operand =
-        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e) else valueOperand(e) { coerced(e) }
+    private fun pathOperand(e: Expr, mode: CppHoister.PlaceMode = CppHoister.PlaceMode.PATH): CppHoister.Operand =
+        if (isPlaceExpr(e) && heldByReference(typeOf(e))) placeOperand(e, mode = mode) else valueOperand(e) { coerced(e) }
 
     /**
      * [target] as a place operand: an element is `kira::at(c, i)` (`c[i]` on a Map, `kira::str::at`
@@ -770,7 +779,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         target is ArrayIndexExpr -> {
             val origin = target.originExpr
             val ct = typeOf(origin)
-            val container = pathOperand(origin)
+            // P2 (50-round4 2.8, OQ-1): a Str is an immutable value, read before a sibling runs
+            // (a by-value operand, copied in order); a container is a step of the path, read
+            // when the access runs (Q4).
+            val container = if (ct == KType.Str) operandOf(origin) { coerced(origin) } else pathOperand(origin)
             val index = CppHoister.Operand.Value(target.indexExpr) { coerced(target.indexExpr, CppLitRole.PLAIN) }
             val map = CppBindingTable.magicName(ct) == "Map"
             val at = if (ct == KType.Str) "kira::str::at" else "kira::at"
@@ -915,8 +927,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             // A view is formed of an operand the typer converts, or of a receiver whose overload returns one (E1).
             val left = if (member) CppHoister.isSecondClass(rc.returnType) else model.coercion(e.leftExpr) is Coercion.ToView
             val right = model.coercion(e.rightExpr) is Coercion.ToView
+            val lt = typeOf(e.leftExpr)
+            val leftOp = operand(e.leftExpr, lent = left)
+            val rightOp = operand(e.rightExpr, lent = right)
+            // Uses (50-round4 L3, L6): a member overload's left operand is its `const S&` this, a free one's its first argument.
+            if (!left && (if (member) heldByReference(lt) else policy.argByRef(rc, 0, e.leftExpr))) leftOp.use = CppHoister.Use(lt)
+            if (!right && policy.argByRef(rc, if (member) 0 else 1, e.rightExpr)) rightOp.use = CppHoister.Use(typeOf(e.rightExpr))
             return hoister.lower(
-                listOf(operand(e.leftExpr, lent = left), operand(e.rightExpr, lent = right)), typeOf(e), node = e,
+                listOf(leftOp, rightOp), typeOf(e), node = e, consumer = policy.callConsumer(rc, if (member) lt else null),
             ) { (l, r) -> CppEx("${wrap(l, precOf(op))} $sym ${wrap(r, precOf(op) + 1)}", precOf(op), sym) }
         }
         return when (op) {
@@ -933,6 +951,22 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     private fun operand(e: Expr, other: Expr? = null, role: CppLitRole? = null, lent: Boolean = false): CppHoister.Operand {
         val r = role ?: if (other != null && bareLiteral(e) != null && isLiteralOnly(other)) CppLitRole.TYPED else CppLitRole.OPERAND
         return operandOf(e, lent) { coerced(e, r) }
+    }
+
+    /**
+     * The operands of a C++ runtime operator or function ([ops], of [exprs]) as uses where C++
+     * binds a reference ([heldByReference]: `Str` `+` and `==`, a container's `==`,
+     * `kira::cat`'s holes), and their consumer (50-round4 L8): CONFINED when no operand type
+     * holds a user class, trait or type parameter.
+     */
+    private fun runtimeUses(ops: List<CppHoister.Operand>, exprs: List<Expr?>): CppHoister.Consumer {
+        ops.forEachIndexed { i, op ->
+            val t = exprs[i]?.let { model.typeOrNull(it) }
+            if (t != null && heldByReference(t) && op.use == null) {
+                op.use = CppHoister.Use(t)
+            }
+        }
+        return policy.runtimeConsumer(exprs.filterNotNull().map { model.typeOrNull(it) })
     }
 
     /** [child] as an operand of the C++ operator [parentOp] at [need], with the `-Wparentheses` rules. */
@@ -967,7 +1001,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val lt = typeOf(e.leftExpr)
         val sym = CPP_OPS[op]!!
         val prec = precOf(op)
-        return hoister.lower(listOf(operand(e.leftExpr, e.rightExpr), operand(e.rightExpr, e.leftExpr)), KType.BOOL) { (l, r) ->
+        val ops = listOf(operand(e.leftExpr, e.rightExpr), operand(e.rightExpr, e.leftExpr))
+        val consumer = runtimeUses(ops, listOf(e.leftExpr, e.rightExpr))
+        return hoister.lower(ops, KType.BOOL, consumer = consumer) { (l, r) ->
             when {
                 lt == KType.CHAR && op in ORDERING -> {
                     // R17: char is signed on x86 and unsigned on ARM; compare the code units.
@@ -1004,7 +1040,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** R14: `a + b` on Str; a `const char*` on the left becomes a `kira::Str` first. */
     private fun concat(e: BinaryExpr): CppEx {
         val charPtr = isCharPtr(e.leftExpr)
-        return hoister.lower(listOf(operand(e.leftExpr), operand(e.rightExpr)), KType.Str) { (l, r) ->
+        val ops = listOf(operand(e.leftExpr), operand(e.rightExpr))
+        val consumer = runtimeUses(ops, listOf(e.leftExpr, e.rightExpr))
+        return hoister.lower(ops, KType.Str, consumer = consumer) { (l, r) ->
             val left = if (charPtr) CppEx("kira::Str(${l.text})", CppPrec.POSTFIX) else l
             infix(left, "+", r, CppPrec.ADD)
         }
@@ -1153,7 +1191,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 is InterpolationPart.Hole -> operandOf(part.expr) { coerced(part.expr) }
             }
         }
-        return hoister.lower(operands, KType.Str) { texts ->
+        val consumer = runtimeUses(operands, e.parts.map { (it as? InterpolationPart.Hole)?.expr })
+        return hoister.lower(operands, KType.Str, consumer = consumer) { texts ->
             CppEx("kira::cat(${texts.joinToString(", ") { wrap(it, CppPrec.ASSIGN) }})", CppPrec.POSTFIX)
         }
     }
@@ -1340,7 +1379,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         rc.sourceOrder.forEach { i ->
             val a = rc.args[i] as? ArgBinding.Given ?: return@forEach
             indexOf[i] = operands.size
-            operands += argumentOperand(a)
+            operands += argumentOperand(rc, i, a)
         }
         val slots = mutableListOf<Slot>()
         rc.args.forEachIndexed { i, a ->
@@ -1349,7 +1388,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                     val op = indexOf[i] ?: run {
                         // A written argument missing from sourceOrder: keep it, in parameter order.
                         indexOf[i] = operands.size
-                        operands += argumentOperand(a)
+                        operands += argumentOperand(rc, i, a)
                         indexOf[i]!!
                     }
                     slots += Slot.Given(op, i, a.byRef)
@@ -1364,16 +1403,19 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     }
 
     /**
-     * A written argument: a `mut` one is a bound place (its path applied at the call, never
-     * copied: R19; C++ may bind the reference before a sibling runs, so a sibling that may move
-     * its container is ordered first), any other an [operandOf], lent where the typer converts
-     * it to a `View` (design 30, E1: the view is of the place, never of a copy).
+     * A written argument for parameter [i] of [rc]: a `mut` one is a bound place (its path
+     * applied at the call, never copied: R19, W7; C++ may bind the reference before a sibling
+     * runs, so a sibling that may move its container is ordered first), any other a
+     * [usedOperand], lent where the typer converts it to a `View` (design 30, E1: the view is of
+     * the place, never of a copy), and else passed by the copy policy wherever the parameter
+     * binds a reference ([CppCopyPolicy.argByRef]).
      */
-    private fun argumentOperand(a: ArgBinding.Given): CppHoister.Operand {
+    private fun argumentOperand(rc: ResolvedCall, i: Int, a: ArgBinding.Given): CppHoister.Operand {
         if (a.byRef) {
             return placeOperand(a.expr, mode = CppHoister.PlaceMode.BOUND)
         }
-        return operandOf(a.expr, lent = model.coercion(a.expr) is Coercion.ToView) { coerced(a.expr) }
+        val lent = model.coercion(a.expr) is Coercion.ToView
+        return usedOperand(a.expr, policy.argByRef(rc, i, a.expr), lent) { coerced(a.expr) }
     }
 
     /** The text of a struct's `this` as a receiver the hoister may copy: [accessWith] knows this instance as the uncopied one. */
@@ -1402,16 +1444,27 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             if (rc == null || rc.kind == CallKind.EXTERN || !heldByReference(t)) {
                 return null
             }
-            return CppHoister.Operand.Place(receiver, emptyList(), receiverMode(rc, fn, lending, t)) { thisLeaf }
+            val mode = receiverMode(rc, fn, lending, t)
+            return CppHoister.Operand.Place(receiver, emptyList(), mode) { thisLeaf }.also { if (mode == CppHoister.PlaceMode.SNAPSHOT) it.use = CppHoister.Use(t) }
         }
         val t = typeOf(receiver)
         val isPlace = isPlaceExpr(receiver)
         val lent = lending || (rc != null && fn?.isMutMethod != true && CppHoister.isSecondClass(rc.returnType))
         if (isPlace && heldByReference(t) && !(lent && isCharPtr(receiver))) {
-            return placeOperand(receiver, emit, receiverMode(rc, fn, lending, t))
+            // A value receiver read as a `const S&` (a struct's `this`, a binding's `{self}`) is a use (50-round4 L6).
+            val mode = receiverMode(rc, fn, lending, t)
+            return placeOperand(receiver, emit, mode).also { if (mode == CppHoister.PlaceMode.SNAPSHOT) it.use = CppHoister.Use(t) }
         }
         // A fresh receiver a view is formed of (`makeList().from(k)`) is the view's owner, spilled into a typed temporary of the lambda that uses the view (E2).
-        return valueOperand(receiver, mutable = writes || (memberStyle && !isPlace)) { emit() }
+        val op = valueOperand(receiver, mutable = writes || (memberStyle && !isPlace), owner = lent) { emit() }
+        if (rc != null && !lent) {
+            when {
+                // `h->m(...)` runs with a raw `this`: the caller holds the object (W5), a copied handle when h is not kept still.
+                policy.isHandle(t) && rc.kind in HANDLE_CALLS -> op.use = CppHoister.Use(t, handle = true)
+                !writes && heldByReference(t) -> op.use = CppHoister.Use(t)
+            }
+        }
+        return op
     }
 
     /** How a receiver place of type [t] is ordered ([receiverOperand]): lent, written through a bound reference, or a snapshot. */
@@ -1438,7 +1491,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (!heldByReference(t)) {
             return null
         }
-        return CppHoister.Operand.Place(null, emptyList(), receiverMode(rc, fn, false, t), type = t, rank = CppHoister.READS) { thisLeaf }
+        val place = Place.This(owner)
+        // R-PURE: the receiver of a method that is no `mut fx` is PRIVATE (I); a `mut fx`'s is the caller's `S&`.
+        val rank = if (policy.isPrivate(place)) CppHoister.PURE else CppHoister.READS
+        val mode = receiverMode(rc, fn, false, t)
+        return CppHoister.Operand.Place(null, emptyList(), mode, type = t, rank = rank) { thisLeaf }.also {
+            if (mode == CppHoister.PlaceMode.SNAPSHOT) it.use = CppHoister.Use(t, place = place)
+        }
     }
 
     private fun argList(slots: List<Slot>, texts: List<CppEx>): String = slots.joinToString(", ") { s ->
@@ -1452,7 +1511,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val fn = rc.fn ?: return internal(e, "a free call without its function")
         val (ops, slots) = arguments(rc)
         val name = ctx.qualified(fn) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
-        return hoister.lower(ops, rc.returnType, node = e) { texts -> CppEx("$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        return hoister.lower(ops, rc.returnType, node = e, consumer = policy.callConsumer(rc, null)) { texts -> CppEx("$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
     private fun methodCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
@@ -1467,7 +1526,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             else -> null
         }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType, node = e) { texts ->
+        val receiverType = receiver?.let { typeOf(it) } ?: (state.frame?.owner as? ClassSymbol)?.takeIf { rc.implicitThis }?.selfType
+        return hoister.lower(ops, rc.returnType, node = e, consumer = policy.callConsumer(rc, receiverType)) { texts ->
             val callee = when {
                 receiver != null -> accessWith(receiver, if (recvOp != null) texts[0] else null, typeOf(receiver)) + name
                 recvOp != null && texts[0] !== thisLeaf -> "${wrap(texts[0], CppPrec.POSTFIX)}.$name"
@@ -1484,13 +1544,20 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         return (listOf(receiver) + args) to slots.map { if (it is Slot.Given) it.copy(operand = it.operand + 1) else it }
     }
 
-    /** A call through an `Fx` value: a local, a parameter (a template's `F_p&&` too), or a field. */
+    /**
+     * A call through an `Fx` value: a local, a parameter (a template's `F_p&&` too), or a field.
+     * C++ runs the closure where it is stored, so the callee is a use (50-round4 L6): an `Fx`
+     * value call is never CONFINED, so a callee that is no PRIVATE place is copied,
+     * `kira::Fn<...>(f)(...)`.
+     */
     private fun fnValueCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val (argOps, argSlots) = arguments(rc)
         // The callee is evaluated first (D33); as an operand it is spilled with the arguments.
-        val calleeOp = operandOf(e.name) { coerced(e.name) }
+        val calleeOp = usedOperand(e.name, byRef = true) { coerced(e.name) }
         val (ops, slots) = withReceiver(calleeOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType, node = e) { texts -> CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        return hoister.lower(ops, rc.returnType, node = e, consumer = policy.callConsumer(rc, null)) { texts ->
+            CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX)
+        }
     }
 
     /**
@@ -1500,10 +1567,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     private fun externCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "an extern call without its function")
         val (argOps, argSlots) = arguments(rc)
+        // The policy decides which argument is copied; the extern's proxies spell the copy (externCallText, W2.6's).
+        argOps.forEach { op -> op.use?.let { u -> op.use = CppHoister.Use(u.type, u.place, u.handle) { it } } }
         val receiver = rc.receiver
         val recvOp = receiver?.let { receiverOperand(it, rc, fn, memberStyle = false, lending = false) { coerced(it) } }
         val (ops, slots) = withReceiver(recvOp, argOps, argSlots)
-        return hoister.lower(ops, rc.returnType, node = e) { texts ->
+        val receiverType = receiver?.let { typeOf(it) } ?: (state.frame?.owner as? ClassSymbol)?.takeIf { rc.implicitThis }?.selfType
+        return hoister.lower(ops, rc.returnType, node = e, consumer = policy.callConsumer(rc, receiverType)) { texts ->
+            val copied = argSlots.mapNotNull { s -> (s as? Slot.Given)?.takeIf { argOps[it.operand].copied }?.param }.toSet()
             val recv = when {
                 receiver != null -> if (recvOp != null) wrap(texts[0], CppPrec.POSTFIX) else receiverText(receiver)
                 rc.implicitThis -> if (state.frame?.receiverAccess == CppBodyState.ThisCapture.SELF) selfPointer() else "this"
@@ -1515,7 +1586,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                     is Slot.Filled -> s.text
                 }
             }
-            CppEx(externCallText(rc, recv, args), CppPrec.POSTFIX)
+            CppEx(externCallText(rc, recv, args, copied), CppPrec.POSTFIX)
         }
     }
 
@@ -1523,17 +1594,21 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * The text of an extern call (design 7.2): the C++ name the declaration gives, `->` or `.`
      * after [receiver] (null for a free function) as the owner's kind says, a `Str` argument
      * through `kira::ffi::in`, a `mut` argument through `kira::ffi::out`. [args] holds one text
-     * per entry of [ResolvedCall.args] the call fills, in parameter order; a trailing default
+     * per entry of [ResolvedCall.args] the call fills, in parameter order, as written; [copied]
+     * holds the indices of those the copy policy copies (50-round4 1.2, 6.1), spelled here:
+     * `kira::ffi::in(kira::Str(e))` for a `Str`, `T(e)` for anything else. A trailing default
      * is the C++ header's own. W2.6's `CppExternsPart.call` takes exactly these on its branch
      * and makes this text there; at the merge this delegates to it.
      */
-    fun externCallText(rc: ResolvedCall, receiver: String?, args: List<String>): String {
+    fun externCallText(rc: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int> = emptySet()): String {
         val fn = rc.fn!!
-        val proxied = args.mapIndexed { i, a ->
+        val proxied = args.mapIndexed { i, written ->
             val binding = rc.args.getOrNull(i) as? ArgBinding.Given
+            val type = binding?.let { model.typeOrNull(it.expr) }
+            val a = if (i in copied && type != null) policy.copy(CppEx(written, CppPrec.ASSIGN), type, binding.expr).text else written
             when {
                 binding?.byRef == true -> "kira::ffi::out($a)"
-                binding != null && model.typeOrNull(binding.expr) == KType.Str -> "kira::ffi::in($a)"
+                type == KType.Str -> "kira::ffi::in($a)"
                 else -> a
             }
         }
@@ -1564,7 +1639,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return unsupported(e, "$name in a freestanding module (kira/core.hxx has no output; the board's serial seam prints)")
         }
         val (ops, slots) = arguments(rc)
-        return hoister.lower(ops, KType.Void) { texts -> CppEx("kira::$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
+        return hoister.lower(ops, KType.Void, consumer = policy.callConsumer(rc, null)) { texts -> CppEx("kira::$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
     }
 
     private fun intrinsic(e: IntrinsicExpr): CppEx {
@@ -1662,7 +1737,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val receiverIndex = if (receiver != null) {
             // A lent result's receiver (R-A: `gl.get(i)` is `gl[i]`) is a step of the path, as an
             // element's container is: located where the accessor runs, never copied before it.
-            val op = (if (model.lentPlaces[e] != null) pathOperand(receiver) else null)
+            // The accessor binds a reference to it before its index runs, so an element step of
+            // its own is a leaf (P1: `gll.get(0).get(growGll())` as `gll[0][growGll()]`).
+            val op = (if (model.lentPlaces[e] != null) pathOperand(receiver, CppHoister.PlaceMode.BOUND) else null)
                 ?: receiverOperand(receiver, rc, fn, memberStyle, lending) { receiverEx(receiver, memberStyle) }
                 ?: CppHoister.Operand.Value(null) { receiverEx(receiver, memberStyle) }
             ops += op
@@ -1678,7 +1755,15 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val op = if (name == "self") ops.getOrNull(receiverIndex) else slots.getOrNull(name.toInt()).let { s -> (s as? Slot.Given)?.let { ops[it.operand + shift] } }
             op != null && hoister.rankOf(op) != CppHoister.PURE
         }
-        return hoister.lower(ops, rc.returnType, force, node = e) { texts ->
+        // w2-3 #3: an operand the expansion never names (`Tuple2.size` is
+        // `static_cast<std::int32_t>(2)`) is still evaluated, in Kira's order, unless evaluating it
+        // does nothing a sibling or the program could see (a literal, a constant, a PRIVATE read).
+        val named = CppBindingTable.placeholders(binding)
+        val dropped = buildList {
+            if (receiverIndex >= 0 && "self" !in named) add(receiverIndex)
+            slots.forEachIndexed { i, s -> if (s is Slot.Given && "$i" !in named) add(s.operand + shift) }
+        }.filter { hoister.rankOf(ops[it]) != CppHoister.PURE }
+        return hoister.lower(ops, rc.returnType, force, node = e, consumer = policy.callConsumer(rc, recvType)) { texts ->
             val argTexts = slots.map { s ->
                 when (s) {
                     is Slot.Given -> texts[s.operand + shift]
@@ -1690,6 +1775,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             if (lending) {
                 // A mutable Arr or List lends a MutView (the typer's MutView lending): `kira::mutView(p).from(4)`.
                 text = text.replaceFirst("kira::view(", "kira::mutView(")
+            }
+            if (dropped.isNotEmpty()) {
+                val evaluated = dropped.joinToString(", ") { "static_cast<void>(${wrap(texts[it], CppPrec.ASSIGN)})" }
+                return@lower CppEx("($evaluated, ${wrap(bindingEx(text), CppPrec.ASSIGN)})", CppPrec.PRIMARY)
             }
             bindingEx(text)
         }
@@ -1915,6 +2004,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
 
         private val POINTER_MAGIC = setOf("Ref", "Unsafe")
+
+        /** The calls whose handle receiver runs with a raw `this` the caller must hold (50-round4 W5). */
+        private val HANDLE_CALLS = setOf(CallKind.METHOD, CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN)
 
         /** The methods that lend a MutView from a mutable Arr or List (the typer's MutView lending). */
         private val LENDERS = setOf("from", "slice", "view")
