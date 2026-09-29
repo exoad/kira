@@ -151,6 +151,8 @@ class EscapePassTest {
             }
             """,
         )
+        // No rule M (50-round4 2.3 row 1, round 5b): KEPT is a mut global, but add takes its Fx as a T and only keeps it,
+        // so the Fx is not charged and add is CONFINED.
         expectClean(p)
         assertTrue(p.model.fxEscapes(fn(p, "keep").params[0]), "keep.k goes into a container")
         assertTrue(p.model.fxEscapes(fn(p, "middle").params[0]), "middle.m goes to keep.k")

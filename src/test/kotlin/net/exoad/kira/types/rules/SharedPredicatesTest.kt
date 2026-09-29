@@ -1,11 +1,13 @@
 package net.exoad.kira.types.rules
 
 import net.exoad.kira.compiler.analysis.types.Effect
+import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.body.BodyTestSupport
 import net.exoad.kira.types.rules.RulesTestSupport.snippet
@@ -170,8 +172,8 @@ class SharedPredicatesTest {
         // 50-round4 2.3's table, each kind with both answers where it has two: an Fx argument (a lambda literal or a
         // function named as a value, CONFINED or not; a variable never), a Kira body (EffectsPass's fixpoint, mutual
         // recursion included, a call of its own Fx parameter charged at its call site), a stdlib binding (a mutator on a
-        // local; RUNS_OPERATORS over a user class), trace, what C++ supplies (given nothing, a CONFINED lambda, an
-        // unseen Fx, a class that may hold one), and the dispatched kinds, which never are.
+        // local; RUNS_OPERATORS over a user class), trace, what C++ supplies (given nothing; a lambda, CONFINED or not,
+        // which C++ may call with what it chooses; a class that may hold an Fx), and the dispatched kinds, which never are.
         val p = snippet(
             """
             pub mut G: Int32 = 0
@@ -261,7 +263,7 @@ class SharedPredicatesTest {
             "apply" to listOf(true, false, true, false, false),
             "m" to listOf(false), "act" to listOf(false), "virt" to listOf(false), "ping" to listOf(true, true), "pong" to listOf(true), "get" to listOf(true),
             "add" to listOf(true), "contains" to listOf(false, true), "trace" to emptyList(),
-            "ext" to listOf(true), "extFx" to listOf(true, false), "extK" to listOf(false),
+            "ext" to listOf(true), "extFx" to listOf(false, false), "extK" to listOf(false),
         )
         assertEquals(want, confined(p, *want.keys.toTypedArray()))
         // trace has no FnSymbol (PRINT), and f() none either (FN_VALUE): judged by kind. apply's own f() is never
@@ -276,6 +278,63 @@ class SharedPredicatesTest {
             mapOf("apply" to true, "writesOwn" to true, "writesG" to false, "virt" to false, "swapRun" to false),
             listOf("apply", "writesOwn", "writesG", "virt", "swapRun").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] },
         )
+    }
+
+    @Test
+    fun anFxGivenForATypeParameterIsOnlyKeptAndAGenericThatRunsItsTIsNotConfined() {
+        // 2.3 row 1 (w2-5 round-4 #0, round 5b): an Fx argument is charged where the callee declares the parameter Fx,
+        // and not where it takes it as a T (add's value, keepG's x): storing an Fx never runs it (7.1's r4d/p3, p5). A
+        // call of an Fx value charges its T argument, since a T may be an Fx (mayHoldFx): pass and Box.run hand their T
+        // to their own Fx parameter, so neither is CONFINED, whatever its caller gives. keepG only keeps its T, and
+        // stays CONFINED.
+        val p = snippet(
+            """
+            pub mut G: Int32 = 0
+            pub fx pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
+                f(x)
+            }
+            pub fx keepG<T>: (mut xs: List<T>, x: T) Void {
+                xs.add(x)
+            }
+            pub class Box<T> {
+                require pub v: T
+                pub fx run: (f: Fx<Tuple1<T>, Void>) Void {
+                    f(this.v)
+                }
+            }
+            pub fx drive: () Void {
+                mut fs: List<Fx<Tuple0, Void>> = []
+                mut ns: List<Int32> = []
+                keepG<Fx<Tuple0, Void>>(mut fs, fx () Void {
+                    G += 1
+                })
+                keepG<Fx<Tuple0, Void>>(mut fs, fx () Void {
+                    trace(1)
+                })
+                keepG<Int32>(mut ns, 1)
+                fs.add(fx () Void {
+                    G += 1
+                })
+                fs.add(fx () Void {
+                    trace(1)
+                })
+                pass<Int32>(fx (n: Int32) Void {
+                    trace(n)
+                }, 1)
+            }
+            """,
+        )
+        assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
+        assertEquals(
+            // add: keepG's own xs.add(x), then the two in drive; each is a T, which a binding only keeps.
+            mapOf("keepG" to listOf(true, true, true), "add" to listOf(true, true, true), "pass" to listOf(false)),
+            confined(p, "keepG", "add", "pass"),
+        )
+        assertEquals(
+            mapOf("pass" to false, "keepG" to true),
+            listOf("pass", "keepG").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] },
+        )
+        assertEquals(false, p.model.fnConfined[RulesTestSupport.method(p, "Box", "run")])
     }
 
     @Test
@@ -323,10 +382,80 @@ class SharedPredicatesTest {
             """,
         )
         assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
-        val built = listOf("Init", "Kid", "Plain", "Defaulted").associateWith { CallReach.construction(RulesTestSupport.cls(p, it), emptySet(), p.model) }
+        val built = listOf("Init", "Kid", "Plain", "Defaulted").associateWith { CallReach.construction(RulesTestSupport.cls(p, it), emptyMap(), p.model) }
         assertEquals(mapOf("Init" to false, "Kid" to false, "Plain" to true, "Defaulted" to false), built)
         assertEquals(mapOf("clear" to listOf(false), "add" to listOf(true)), confined(p, "clear", "add"))
         assertEquals(mapOf("keep" to false, "clearAll" to false, "count" to true), listOf("keep", "clearAll", "count").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] })
+    }
+
+    @Test
+    fun whichFxFieldsAConstructionRunsIsDecidedFromTheClass() {
+        // Round 6: CallReach.runsAtConstruction, read by the construction row of CONFINED and by EffectsPass. A magic class
+        // runs every field it declares Fx (C++ supplies the constructor; kira:sync's Thread starts body there), and keeps a
+        // field of a type parameter (Mutex's value). A user class runs its chain's Fx fields only when an initially is in
+        // the chain; one that only stores an Fx field runs nothing until a later call of it, charged where it runs.
+        val p = snippet(
+            """
+            use "kira:sync"
+            pub class Runner {
+                require pub f: Fx<Tuple0, Void>
+                initially {
+                    f()
+                }
+            }
+            pub class Kid: Runner {
+                require pub g: Fx<Tuple0, Void>
+                pub n: Int32 = 0
+            }
+            pub class Keeper {
+                require pub f: Fx<Tuple0, Void>
+            }
+            pub class Counted {
+                pub mut n: Int32 = 0
+                initially {
+                    n = 1
+                }
+            }
+            """,
+        )
+        assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
+        val names = { cls: String, uri: String -> CallReach.runsAtConstruction(RulesTestSupport.cls(p, cls, uri)).map { it.name } }
+        assertEquals(listOf("body"), names("Thread", "kira:sync"))
+        assertEquals(emptyList(), names("Mutex", "kira:sync"))
+        assertEquals(emptyList(), names("Atomic", "kira:sync"))
+        assertEquals(listOf("f"), names("Runner", "test:main"))
+        assertEquals(listOf("g", "f"), names("Kid", "test:main"))
+        assertEquals(emptyList(), names("Keeper", "test:main"))
+        assertEquals(emptyList(), names("Counted", "test:main"))
+        // The construction row still refuses any initially, and charges what a Thread is given for body as row 1 does: a
+        // lambda literal or a named function whose body is CONFINED passes, a hook from a List never does.
+        assertEquals(true, CallReach.construction(RulesTestSupport.cls(p, "Keeper"), emptyMap(), p.model))
+        assertEquals(false, CallReach.construction(RulesTestSupport.cls(p, "Runner"), emptyMap(), p.model))
+        val t = snippet(
+            """
+            use "kira:sync"
+            pub mut G: Int32 = 0
+            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub fx quiet: () Void {
+            }
+            pub fx loud: () Void {
+                G = 1
+            }
+            pub fx drive: () Void {
+                a: Thread = Thread { name = "a", body = fx () Void { } }
+                b: Thread = Thread { name = "b", body = fx () Void { G = 1 } }
+                c: Thread = Thread { name = "c", body = hooks[0] }
+                d: Thread = Thread { name = "d", body = quiet }
+                e: Thread = Thread { name = "e", body = loud }
+            }
+            """,
+        )
+        assertTrue(t.diagnostics.none { it.isError }, TyperTestSupport.render(t))
+        val built = BodyTestSupport.every<ObjectInitExpr>(t).mapNotNull { e ->
+            val ri = t.model.inits[e]?.takeIf { it.cls?.name == "Thread" } ?: return@mapNotNull null
+            CallReach.construction(ri.cls, ri.fields.filterIsInstance<FieldInit.Given>().associate { it.field to it.expr }, t.model)
+        }
+        assertEquals(listOf(true, false, false, true, false), built)
     }
 
     @Test
