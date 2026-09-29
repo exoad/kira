@@ -15,9 +15,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The predicates one package writes and the others read (40-round3 R-C, R-G): which `Fx` a call
- * may run ([CallReach]) and whether C++ supplies a function's body ([suppliedByCpp]). Each is a
- * table here, and each reader in this package is checked to agree with it.
+ * The predicates one package writes and the others read (40-round3 R-C, R-G; 50-round4 2.3): which
+ * `Fx` a call may run ([CallReach]), whether it is CONFINED ([CallReach.confined]) and whether C++
+ * supplies a function's body ([suppliedByCpp]). Each is a table here, and each reader in this
+ * package is checked to agree with it.
  */
 class SharedPredicatesTest {
     @Test
@@ -154,5 +155,185 @@ class SharedPredicatesTest {
             rc.fn?.name?.takeIf { it in setOf("a", "b", "c", "d", "k") }?.let { it to CallReach.mayRunAnything(rc, p.model) }
         }.toMap()
         assertEquals(mapOf("a" to false, "b" to true, "c" to true, "d" to true, "k" to false), runs)
+    }
+
+    /** CONFINED of every call of each callee [names] in [p] (the whole program), in source order. */
+    private fun confined(p: TypedProgram, vararg names: String): Map<String, List<Boolean>> = names.associateWith { name ->
+        BodyTestSupport.every<FunctionCallExpr>(p).mapNotNull { call ->
+            val rc = p.model.calls[call]?.takeIf { it.fn?.name == name } ?: return@mapNotNull null
+            CallReach.confined(rc, p.model)
+        }
+    }
+
+    @Test
+    fun confinedOverOneCalleeOfEachKindBothAnswers() {
+        // 50-round4 2.3's table, each kind with both answers where it has two: an Fx argument (a lambda literal or a
+        // function named as a value, CONFINED or not; a variable never), a Kira body (EffectsPass's fixpoint, mutual
+        // recursion included, a call of its own Fx parameter charged at its call site), a stdlib binding (a mutator on a
+        // local; RUNS_OPERATORS over a user class), trace, what C++ supplies (given nothing, a CONFINED lambda, an
+        // unseen Fx, a class that may hold one), and the dispatched kinds, which never are.
+        val p = snippet(
+            """
+            pub mut G: Int32 = 0
+            pub class K {
+                pub n: Int32 = 0
+                pub fx get: () Int32 {
+                    return n
+                }
+            }
+            pub class Base {
+                pub fx act: () Int32 {
+                    return 0
+                }
+            }
+            pub class Sub: Base {
+                override pub fx act: () Int32 {
+                    G += 1
+                    return 1
+                }
+            }
+            pub trait T {
+                pub fx m: () Int32;
+            }
+            pub fx pure: () Int32 {
+                return 1
+            }
+            pub fx writesG: () Int32 {
+                G += 1
+                return 1
+            }
+            pub fx writesOwn: (mut x: Int32) Int32 {
+                x += 1
+                return x
+            }
+            pub fx apply: (f: Fx<Tuple0, Int32>) Int32 {
+                return f()
+            }
+            pub fx swapRun: (mut f: Fx<Tuple0, Int32>) Int32 {
+                f = writesG
+                return f()
+            }
+            pub fx ping: (n: Int32) Int32 {
+                if n > 0 {
+                    return pong(n - 1)
+                }
+                return 0
+            }
+            pub fx pong: (n: Int32) Int32 {
+                mut k: Int32 = n
+                k += 1
+                return ping(k - 2)
+            }
+            pub fx virt: (b: Base) Int32 {
+                return b.act()
+            }
+            pub fx ext: (n: Int32, s: Str) Int32;
+            pub fx extFx: (f: Fx<Tuple0, Int32>) Int32;
+            pub fx extK: (k: K) Int32;
+            pub fx caller: (f: Fx<Tuple0, Int32>, t: T, k: K, b: Base) Int32 {
+                mut x: Int32 = 0
+                mut xs: List<Int32> = List<Int32> { values = [1] }
+                ks: List<K> = List<K> { values = [k] }
+                a: Int32 = pure() + writesG() + writesOwn(mut x)
+                c: Int32 = apply(fx() Int32 {
+                    return 1
+                }) + apply(fx() Int32 {
+                    G += 1
+                    return 1
+                }) + apply(pure) + apply(writesG) + apply(f)
+                d: Int32 = f() + t.m() + virt(b) + ping(3) + k.get()
+                xs.add(1)
+                e: Bool = ks.contains(k) || xs.contains(1)
+                trace(a)
+                g: Int32 = ext(1, "s") + extFx(fx() Int32 {
+                    return 1
+                }) + extFx(fx() Int32 {
+                    G += 1
+                    return 1
+                }) + extK(k)
+                return a + c + d + g
+            }
+            """,
+        )
+        assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
+        val want = mapOf(
+            "pure" to listOf(true), "writesG" to listOf(false), "writesOwn" to listOf(true),
+            "apply" to listOf(true, false, true, false, false),
+            "m" to listOf(false), "act" to listOf(false), "virt" to listOf(false), "ping" to listOf(true, true), "pong" to listOf(true), "get" to listOf(true),
+            "add" to listOf(true), "contains" to listOf(false, true), "trace" to emptyList(),
+            "ext" to listOf(true), "extFx" to listOf(true, false), "extK" to listOf(false),
+        )
+        assertEquals(want, confined(p, *want.keys.toTypedArray()))
+        // trace has no FnSymbol (PRINT), and f() none either (FN_VALUE): judged by kind. apply's own f() is never
+        // CONFINED at a call site either; only apply's fixpoint counts it, charged where apply is handed its Fx.
+        val byKind = BodyTestSupport.every<FunctionCallExpr>(p).mapNotNull { call ->
+            val rc = p.model.calls[call]?.takeIf { it.fn == null } ?: return@mapNotNull null
+            rc.kind.name to CallReach.confined(rc, p.model)
+        }
+        assertEquals(listOf("FN_VALUE" to false, "FN_VALUE" to false, "FN_VALUE" to false, "PRINT" to true), byKind)
+        // A mut Fx parameter is no charge of the call site's: swapRun reassigns it before it runs it.
+        assertEquals(
+            mapOf("apply" to true, "writesOwn" to true, "writesG" to false, "virt" to false, "swapRun" to false),
+            listOf("apply", "writesOwn", "writesG", "virt", "swapRun").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] },
+        )
+    }
+
+    @Test
+    fun aConstructionOrADropThatMayRunCodeIsNotConfined() {
+        // A class construction runs its chain's initially and the defaults it leaves out; a drop may run an IMPURE
+        // finally (the local d in keep, the elements clear drops), which may write anything.
+        val p = snippet(
+            """
+            pub mut G: Int32 = 0
+            pub class Init {
+                pub n: Int32 = 0
+                initially {
+                    G += 1
+                }
+            }
+            pub class Kid: Init {
+                pub k: Int32 = 0
+            }
+            pub class Plain {
+                pub n: Int32 = 0
+            }
+            pub fx bumped: () Int32 {
+                G += 1
+                return G
+            }
+            pub class Defaulted {
+                pub n: Int32 = bumped()
+            }
+            pub class Dropper {
+                pub n: Int32 = 0
+                finally {
+                    G += 1
+                }
+            }
+            pub fx keep: () Int32 {
+                d: Dropper = Dropper {}
+                return d.n
+            }
+            pub fx clearAll: (mut ds: List<Dropper>) Void {
+                ds.clear()
+            }
+            pub fx count: (mut xs: List<Int32>) Void {
+                xs.add(1)
+            }
+            """,
+        )
+        assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
+        val built = listOf("Init", "Kid", "Plain", "Defaulted").associateWith { CallReach.construction(RulesTestSupport.cls(p, it), emptySet(), p.model) }
+        assertEquals(mapOf("Init" to false, "Kid" to false, "Plain" to true, "Defaulted" to false), built)
+        assertEquals(mapOf("clear" to listOf(false), "add" to listOf(true)), confined(p, "clear", "add"))
+        assertEquals(mapOf("keep" to false, "clearAll" to false, "count" to true), listOf("keep", "clearAll", "count").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] })
+    }
+
+    @Test
+    fun noOtherFileDefinesWhetherACallMayRunCode() {
+        // 50-round4 7.3: CallReach.confined is the one answer; EffectsPass's fixpoint fills the tables it reads.
+        val main = File("src/main/kotlin")
+        val defs = main.walkTopDown().filter { it.name.endsWith(".kt") }.filter { f -> Regex("""fun\s+(confined|isConfined|fnConfined)\b""").containsMatchIn(f.readText()) }
+        assertEquals(listOf("RuleSupport.kt"), defs.map { it.name }.toList())
     }
 }

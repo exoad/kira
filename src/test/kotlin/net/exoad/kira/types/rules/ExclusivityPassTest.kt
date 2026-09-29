@@ -1,7 +1,10 @@
 package net.exoad.kira.types.rules
 
 import net.exoad.kira.compiler.analysis.types.Effect
+import net.exoad.kira.compiler.analysis.types.TypedProgram
+import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.body.BodyTestSupport
 import net.exoad.kira.types.rules.RulesTestSupport.expectClean
@@ -558,10 +561,10 @@ class ExclusivityPassTest {
     }
 
     @Test
-    fun aByValueArgumentMustNotAliasWhatTheCalleeWrites() {
-        // Round 3, issue 9: design 5.1 passes a struct, a Str or a container by `const&`, so `f(GS)` hands f a
-        // reference to the global it writes: Kira's p is a copy that stays 0, C++'s p sees the bump. A scalar
-        // is copied in both, and a place the callee never writes is fine.
+    fun aByValueArgumentTheCalleeWritesIsAcceptedAndItsCalleeIsNotConfined() {
+        // Round 4 (50-round4 1.3) deletes rules.exclusivity.alias: f(GS) hands f a copy in Kira, and the emitter now
+        // copies GS at the call (T(e), W2.3's policy) because f is not CONFINED: it writes a global, so its caller may
+        // not lend it the global. g and h write a global too. What the policy reads is CallReach.confined.
         val p = snippet(
             """
             pub struct S {
@@ -591,8 +594,8 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.alias")
-        assertTrue(message(p, "rules.exclusivity.alias").startsWith("'f' writes 'GS.a', and the argument 'GS' is passed to it by reference (design 5.1)"))
+        expectClean(p)
+        assertEquals(mapOf("f" to listOf(false, false), "g" to listOf(false), "h" to listOf(false)), listOf("f", "g", "h").associateWith { confinedCalls(p, it) })
     }
 
     @Test
@@ -635,14 +638,11 @@ class ExclusivityPassTest {
     }
 
     @Test
-    fun aClassReceiverIsReadAsAReferenceAndRebindingItIsTheOneHazard() {
-        // Round 4, issue 1: `k->plus(rebind(k))` evaluates `k.operator->()` to a raw K* before the argument
-        // (C++17), and rebind drops the last reference, so plus runs on a freed object (MSVC ASan: heap-use-
-        // after-free). Kira keeps the reference alive until the call returns. A write of the variable holding
-        // the reference, or of a place around it, is the hazard: a mut argument, an assignment inside an
-        // if-expression, a mut fx on a struct holding it. A class mut fx on the same place writes the object,
-        // which both languages read after the arguments, and what the receiver expression reads on the way
-        // is sequenced before the arguments in both. A call result is kept alive by its own temporary.
+    fun aClassReceiverASiblingMayRebindIsAcceptedItsHandleIsCopiedFirst() {
+        // Round 4 (50-round4 1.6) deletes order clause 1: `k.plus(rebind(mut k))` evaluated `k.operator->()` to a raw K*
+        // before the argument (round-4-of-convergence issue 1, MSVC ASan heap-use-after-free); the emitter now copies
+        // the handle in Kira's order, kira::Rc<K>(k)->plus(...), which holds the object for the call, so every row
+        // below is accepted and runs on the object Kira read (W2.3's policy tests run them).
         val p = snippet(
             """
             pub class K {
@@ -724,25 +724,14 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.startsWith("'mut k' writes 'k' while one operand of 'plus' is evaluated, and 'k' is the receiver, a reference read before the arguments") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'k = K { n = 5 }' writes 'k' while one operand of 'plus' is evaluated, and 'k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'k = K { n = 5 }' writes 'k' while one operand of 'add' is evaluated, and 'k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'mut st' writes 'st' while one operand of 'plus' is evaluated, and 'st.k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'st.swap()' writes 'st' while one operand of 'plus' is evaluated, and 'st.k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.all { it.contains("C++ holds only a raw pointer, and rebinding the last reference destroys the object") }, messages.joinToString("\n"))
+        expectClean(p)
     }
 
     @Test
-    fun aClassArgumentOrReceiverAliasesOnlyWhenTheCalleeRebindsIt() {
-        // Round 4, issue 5: a class is shared by Kira and C++ alike, so a callee writing the fields of the object
-        // an argument refers to (Scene.read calling bump, which writes this.child.n) is seen the same way on
-        // both sides: no alias. Only rebinding the place diverges: readSwapped(child), where readSwapped rebinds
-        // this.child, reads the new object through its `const Rc<Node>&` in C++ and the old one in Kira. The
-        // receiver of a class `mut fx` with a body (readSwapped itself, `mut fx` as the spec asks, round 5
-        // issue 8) is no object passed by reference twice: its body's writes decide (bump's `child.n` beside
-        // the argument `child` is fine).
+    fun aClassArgumentTheCalleeRebindsIsAcceptedAndItsCalleeIsNotConfined() {
+        // Round 4 deletes rules.exclusivity.alias: readSwapped(child), whose body rebinds this.child, is handed a copy
+        // of the handle at the call (kira::Rc<Node>(child)), because readSwapped is not CONFINED (it writes a field of
+        // a class object). The emitter decides that from CallReach.confined, asserted here.
         val p = snippet(
             """
             pub class Node {
@@ -782,21 +771,16 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.alias", "rules.exclusivity.alias")
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.startsWith("'readSwapped' writes 'this.child', and the argument 'child' is that reference (design 5.1): Kira hands 'readSwapped' the reference as it was, but C++ passes a `const Rc&` to the variable itself, and after the write 'readSwapped' reads the new object") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'readSwapped' writes 'sc.child', and the argument 'sc.child' is that reference") }, messages.joinToString("\n"))
+        expectClean(p)
+        assertEquals(listOf(false, false), confinedCalls(p, "readSwapped"))
+        assertEquals(listOf(false, false), confinedCalls(p, "read"))
     }
 
     @Test
-    fun aSiblingThatRebindsTheClassReceiversPlaceOutOfSightIsCaught() {
-        // Round 5, issues 3, 9 and 10: the object a class receiver names is destroyed by any rebind of its place
-        // during the arguments, not only a visible one. resetVia(sc) rebinds sc.k through sc.resetK() (a class
-        // mut fx on a by-value parameter, D29), resetDirect(sc) assigns sc.k straight, sc.swapOut() rebinds
-        // this.k, g() is a lambda that captured sc, and inside the class k.plus(swapOut()) does the same. g++
-        // runs plus on the destroyed K (hidden_rebind.cxx: -776 where Kira gives 1). A class mut fx with a body
-        // writes what its body writes, so sc.bumpC(), which writes only c, is in order (issue 9), and
-        // readAfter(sc.k, sc), which rebinds sc.k through its second parameter, aliases the first (issue 10).
+    fun aSiblingThatRebindsTheClassReceiversPlaceOutOfSightIsAccepted() {
+        // Round 4 deletes order clause 1 and rules.exclusivity.alias: each receiver handle (sc.k, k) is copied first in
+        // Kira's order and holds its K for the call (g++ ran plus on the destroyed K when it was not: -776 for Kira's
+        // 1), and readAfter(sc.k, sc) is handed a copy of sc.k because readAfter is not CONFINED.
         val p = snippet(
             """
             pub class K {
@@ -868,27 +852,15 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(
-            p,
-            "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order",
-            "rules.exclusivity.order", "rules.exclusivity.alias",
-        )
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.startsWith("'swapOut()' writes 'this.k' inside its callee while one operand of 'plus' is evaluated, and 'k' is the receiver, a reference read before the arguments") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'resetVia(sc)' writes 'sc.k' inside its callee while one operand of 'plus' is evaluated, and 'sc.k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'resetDirect(sc)' writes 'sc.k' inside its callee while one operand of 'plus' is evaluated, and 'sc.k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'sc.swapOut()' writes 'sc.k' inside its callee while one operand of 'plus' is evaluated, and 'sc.k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'g()' writes 'sc.k' inside its callee while one operand of 'plus' is evaluated, and 'sc.k' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'readAfter' writes 'sc.k', and the argument 'sc.k' is that reference") }, messages.joinToString("\n"))
+        expectClean(p)
+        assertEquals(listOf(false, false), confinedCalls(p, "readAfter"))
     }
 
     @Test
-    fun aReferenceReceiverReturnedByAMagicCallLivesAsLongAsItsReceiversPlace() {
-        // Round 5, issue 1: m.unwrap() is kira::unwrap(const std::shared_ptr<U>&), which returns that const&, and
-        // ks.get(0) is kira::at, a reference into the list, so the raw K* C++17 takes before the arguments dies
-        // with the rebind (unwrap_rebind.cxx: plus runs on K(-777)). A Kira function returns its Rc by value,
-        // so mk().plus(rebind(mut k)) is kept alive by the temporary, and a scalar argument the magic call took
-        // by value (i) is no part of that lifetime.
+    fun aReferenceReceiverReturnedByAMagicCallIsAcceptedItsHandleIsCopiedFirst() {
+        // Round 4: m.unwrap() and ks.get(0) are lent results, places (R-A), of class type; the emitter copies the
+        // handle they name before the sibling runs (kira::Rc<K>(kira::unwrap(m))), so the rebind no longer frees
+        // the object plus runs on (unwrap_rebind.cxx: plus ran on K(-777) before clause 1 existed).
         val p = snippet(
             """
             pub class K {
@@ -946,21 +918,13 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.startsWith("'mut m' writes 'm' while one operand of 'plus' is evaluated, and 'm.unwrap()' is the receiver, a reference read before the arguments") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'mut ks' writes 'ks' while one operand of 'plus' is evaluated, and 'ks.get(0 as Size)' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'ks.add(K { })' writes 'ks' while one operand of 'plus' is evaluated, and 'ks.get(0 as Size)' is the receiver") }, messages.joinToString("\n"))
+        expectClean(p)
     }
 
     @Test
-    fun aFieldReadThroughAMagicCallsReferenceLivesAsLongAsThatReferences() {
-        // Convergence round 1, issue 1 (still open after round 5): lifetimeOf.placesOf followed a receiver only
-        // when the receiver ITSELF was a magic call, so a field one step further out (`ks.get(0).child`, the
-        // emitter's `kira::at(ks,0)->child`) got no lifetime touch at all: g++ prints the child's value after
-        // rebindList frees it. A field access has no place of its own here, so the walk must keep going into its
-        // origin exactly as it does for a magic call's own receiver: the field lives exactly as long as the
-        // reference it was read through.
+    fun aFieldReadThroughAMagicCallsReferenceIsAcceptedItsHandleIsCopiedFirst() {
+        // Round 4: ks.get(0).child, m.unwrap().child and hs.get(0).k are receivers of class type, their handles copied
+        // first in Kira's order (50-round4 1.6), so rebinding the container no longer frees what plus runs on.
         val p = snippet(
             """
             pub class K {
@@ -1003,11 +967,7 @@ class ExclusivityPassTest {
             }
             """,
         )
-        expectExactly(p, "rules.exclusivity.order", "rules.exclusivity.order", "rules.exclusivity.order")
-        val messages = p.diagnostics.map { it.message }
-        assertTrue(messages.any { it.startsWith("'mut ks' writes 'ks' while one operand of 'plus' is evaluated, and 'ks.get(0 as Size).child' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'mut m' writes 'm' while one operand of 'plus' is evaluated, and 'm.unwrap().child' is the receiver") }, messages.joinToString("\n"))
-        assertTrue(messages.any { it.startsWith("'mut hs' writes 'hs' while one operand of 'plus' is evaluated, and 'hs.get(0 as Size).k' is the receiver") }, messages.joinToString("\n"))
+        expectClean(p)
     }
 
     @Test
@@ -1242,9 +1202,10 @@ class ExclusivityPassTest {
     // ---- round 2's loop minors (w2-5 minor #2): a finally a drop runs, and two handles of one object ------
 
     @Test
-    fun aLoopOverSharedStorageWhoseBodyMayRunAnImpureFinallyIsRefused() {
-        // q7: dropping GD's Dropper runs a finally that replaces GL while GL is iterated, directly (GD = null) or in
-        // a callee (drop()). A loop over a local, or in a program whose finally is pure, is untouched.
+    fun aLoopWhoseBodyMayRunAnImpureFinallyIsAcceptedTheEmitterIteratesACopy() {
+        // q7 (round 2): dropping GD's Dropper runs a finally that replaces GL while GL is iterated. Round 4 deletes
+        // FinallyRuns, which existed only to keep the C++ iterators valid: the body is IMPURE, so W6 does not hold
+        // and the emitter iterates a copy of GL (W2.3). The loop rule stays D37's over named and hidden writes.
         val p = snippet(
             """
             pub mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
@@ -1300,8 +1261,8 @@ class ExclusivityPassTest {
             """,
         )
         // A temporary's field (makeItem().labels) is iterated through the copy W2.3's statement part makes: not refused.
-        expectExactly(p, "rules.exclusivity.loop", "rules.exclusivity.loop")
-        assertTrue(message(p, "rules.exclusivity.loop").contains("may drop the last handle of an object whose `finally` is impure"), message(p, "rules.exclusivity.loop"))
+        expectClean(p)
+        assertEquals(Effect.IMPURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "drop()")))
     }
 
     @Test
@@ -1344,5 +1305,239 @@ class ExclusivityPassTest {
         // The third loop iterates a temporary's field, through the copy W2.3's statement part makes: not refused.
         expectExactly(p, "rules.exclusivity.loop")
         assertTrue(message(p, "rules.exclusivity.loop").contains("calls 'reset', which writes 'g.items'"), message(p, "rules.exclusivity.loop"))
+    }
+
+    // ---- round 4 (50-round4 2.7): rule M, a mut place is bound only where nothing can move or free it ----
+
+    /** CONFINED (CallReach.confined, what W2.3's policy and rule M read) of every call of [name] in [p], in source order. */
+    private fun confinedCalls(p: TypedProgram, name: String): List<Boolean> =
+        BodyTestSupport.every<FunctionCallExpr>(p).mapNotNull { call ->
+            val rc = p.model.calls[call]?.takeIf { it.fn?.name == name } ?: return@mapNotNull null
+            CallReach.confined(rc, p.model)
+        }
+
+    private val hooks = """
+        pub mut HOOKS: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> {}
+        pub fx runHooks: () Void {
+            for h: Fx<Tuple0, Void> in HOOKS {
+                h()
+            }
+        }
+        pub fx bumpAfter: (mut x: Int32) Void {
+            runHooks()
+            x += 1
+        }
+        pub fx inc: (mut x: Int32) Void {
+            x += 1
+        }
+    """
+
+    @Test
+    fun ruleMAcceptsAPrivateOrStableMutPlaceWhateverTheCalleeRuns() {
+        // bumpAfter runs the Fx of a global List, which may do anything, so it is not CONFINED; each place here is
+        // PRIVATE (a local, an element of one) or STABLE (a value-class field at a fixed offset in an object held for
+        // the call: this of a class, the object behind a local or by-value handle; or the caller's own mut place,
+        // which rule M kept still at the caller; or a trait's this, a held object or a value kept still). A hook can
+        // overwrite such storage in place, which is what mut means (R19), but cannot move or free it.
+        val p = snippet(
+            hooks + """
+            pub struct Pose {
+                pub mut x: Int32 = 0
+            }
+            pub class H {
+                pub mut pose: Pose = Pose {}
+                pub mut n: Int32 = 0
+                pub mut fx step: () Void {
+                    bumpAfter(mut this.n)
+                    bumpAfter(mut pose.x)
+                }
+            }
+            pub struct S {
+                pub mut n: Int32 = 0
+                pub mut fx own: () Void {
+                    bumpAfter(mut n)
+                }
+            }
+            pub fx fwd: (mut x: Int32, mut q: Pose) Void {
+                bumpAfter(mut x)
+                bumpAfter(mut q.x)
+            }
+            pub trait Poker {
+                pub mut fx poke: () Void;
+                pub fx nudge: () Void {
+                    runHooks()
+                    poke()
+                }
+            }
+            pub fx f: (p: H) Void {
+                mut a: Int32 = 0
+                bumpAfter(mut a)
+                mut xs: List<Int32> = List<Int32> { values = [1] }
+                bumpAfter(mut xs[0])
+                h: H = H {}
+                bumpAfter(mut h.n)
+                bumpAfter(mut h.pose.x)
+                bumpAfter(mut p.pose.x)
+            }
+            """,
+        )
+        expectClean(p)
+        assertTrue(confinedCalls(p, "bumpAfter").none { it }, "bumpAfter runs the hooks: not CONFINED")
+    }
+
+    @Test
+    fun ruleMAcceptsAGlobalPassedToAConfinedCallAndRefusesItBesideCodeItCannotSee() {
+        // A global and an element of a global List are neither PRIVATE nor STABLE: a hook run from a global List may
+        // replace or clear them while the callee writes through the T&. inc and List.add run no such code.
+        val p = snippet(
+            hooks + """
+            pub mut G: Int32 = 0
+            pub mut GL: List<Int32> = List<Int32> { values = [1] }
+            pub fx f: () Void {
+                inc(mut G)
+                GL.add(1)
+                inc(mut GL[0])
+                bumpAfter(mut G)
+                bumpAfter(mut GL[0])
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.mut", "rules.exclusivity.mut")
+        val messages = p.diagnostics.map { it.message }
+        assertTrue(messages.any { it.startsWith("the mut argument 'G', a global, is passed to 'bumpAfter', which may run code that moves or frees it") }, messages.joinToString("\n"))
+        assertTrue(messages.any { it.startsWith("the mut argument 'GL[0]', an element of a list, is passed to 'bumpAfter'") }, messages.joinToString("\n"))
+        assertEquals(listOf(true, true), confinedCalls(p, "inc"))
+        assertEquals(listOf(true), confinedCalls(p, "add"))
+    }
+
+    private val externItem = """
+        pub class Item {
+            require pub label: Str
+            pub mut count: Int32 = 0
+            pub mut xs: List<Int32> = List<Int32> {}
+        }
+        pub class Box {
+            pub mut item: Item = Item { "short" }
+            pub mut fx reset: () Void {
+                item = Item { "other" }
+            }
+        }
+        pub class Wrap {
+            require pub f: Fx<Tuple0, Void>
+        }
+        pub fx bump: (mut n: Int32, f: Fx<Tuple0, Void>) Void;
+        pub fx bumpList: (mut n: Int32, fs: List<Fx<Tuple0, Void>>) Void;
+        pub fx bumpWrap: (mut n: Int32, w: Wrap) Void;
+    """
+
+    @Test
+    fun ruleMRefusesW24sExternShapesAndAcceptsAConfinedCallback() {
+        // externmut and externarr (round 2's W2.4 verifier, MSVC ASan heap-use-after-free): the callback frees the Item
+        // that h.item.count lies in while the prototype writes through the int&. h.item is a handle step, so the place
+        // is not STABLE, and a prototype handed an Fx that is not CONFINED, or anything that may hold one, is not
+        // CONFINED (contract 5.4.3). A callback that writes nothing is CONFINED, and so is the call.
+        val p = snippet(
+            externItem + """
+            pub fx run: (f: Fx<Tuple0, Void>) Int32 {
+                h: Box = Box {}
+                c: Box = h
+                bump(mut h.item.count, fx() Void {
+                    c.reset()
+                })
+                bumpList(mut h.item.count, List<Fx<Tuple0, Void>> { values = [fx() Void { c.reset() }] })
+                bumpWrap(mut h.item.count, Wrap { f = fx() Void { c.reset() } })
+                bump(mut h.item.count, f)
+                bump(mut h.item.count, fx() Void { })
+                return h.item.count
+            }
+            """,
+        )
+        expectExactly(p, *Array(4) { "rules.exclusivity.mut" })
+        assertTrue(p.diagnostics.all { it.message.startsWith("the mut argument 'h.item.count', storage reached through a handle, is passed to 'bump") }, TyperTestSupport.render(p))
+        assertEquals(listOf(false, false, true), confinedCalls(p, "bump"))
+    }
+
+    @Test
+    fun ruleMRefusesTwoMutOperandsOfAConfinedCallWhenOneMayHoldTheOther() {
+        // g and h may name one Box: swapItem replaces the Item through `it` while C++ still holds a List& into the old
+        // Item's xs. swapItem is CONFINED (it writes only its own mut parameters), so the other operand decides: an Item
+        // may hold a List. Two locals of their own are PRIVATE with different roots and pass.
+        val p = snippet(
+            externItem + """
+            pub fx swapItem: (mut xs: List<Int32>, mut it: Item) Void {
+                it = Item { "new" }
+                xs.add(1)
+            }
+            pub fx f: () Void {
+                g: Box = Box {}
+                h: Box = g
+                swapItem(mut g.item.xs, mut h.item)
+                mut ys: List<Int32> = List<Int32> {}
+                mut other: Item = Item { "o" }
+                swapItem(mut ys, mut other)
+            }
+            """,
+        )
+        expectExactly(p, "rules.exclusivity.mut")
+        assertTrue(message(p, "rules.exclusivity.mut").startsWith("the mut argument 'g.item.xs', storage reached through a handle, is passed to 'swapItem' beside 'h.item'"), message(p, "rules.exclusivity.mut"))
+        assertEquals(listOf(true, true), confinedCalls(p, "swapItem"))
+    }
+
+    @Test
+    fun theAliasRowsOfW24sVerifierAreAcceptedAndTheirCalleesAreNotConfined() {
+        // w2-4 #0 [owner w2-5] (rp1e 'new', rp1b and rp1g heap-use-after-free): the alias rule missed a function named
+        // as a value and an Fx inside a List. Round 4 deletes the rule; the emitter copies gs and gl[0] at the call
+        // because neither viaFx nor viaList is CONFINED, whatever spelling hands the hook over.
+        val p = snippet(
+            """
+            pub mut gs: Str = "old"
+            pub mut gl: List<Str> = List<Str> { values = ["a long list element, past the small buffer"] }
+            pub fx rewrite: () Void {
+                gs = "new"
+                gl = List<Str> {}
+            }
+            pub fx viaFx: (s: Str, f: Fx<Tuple0, Void>) Str {
+                f()
+                return s
+            }
+            pub fx viaList: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
+                for f: Fx<Tuple0, Void> in fs {
+                    f()
+                }
+                return s
+            }
+            pub fx both: () Str {
+                a: Str = viaFx(gs, rewrite)
+                b: Str = viaList(gl[0], List<Fx<Tuple0, Void>> { values = [rewrite] })
+                c: Str = viaFx(gs, fx() Void { })
+                return a + b + c
+            }
+            """,
+        )
+        expectClean(p)
+        assertEquals(listOf(false, true), confinedCalls(p, "viaFx"))
+        assertEquals(listOf(false), confinedCalls(p, "viaList"))
+        // w2-5 minor #0 (probe alb): readAfterH frees h.items before it reads its const& parameter, safe in round 3
+        // only by W2.4's entry snapshot, which round 4 deletes. Both spellings are accepted, and readAfterH is not
+        // CONFINED (it writes through a handle), so the element is copied at the call.
+        val alb = snippet(
+            """
+            pub class H {
+                pub mut items: List<Str> = List<Str> { values = ["a long list element, past the small buffer"] }
+            }
+            pub fx pick: (h: H) H {
+                return h
+            }
+            pub fx readAfterH: (s: Str, h: H) Int32 {
+                h.items = List<Str> {}
+                return s.length() as Int32
+            }
+            pub fx both: (h: H) Int32 {
+                return readAfterH(pick(h).items.get(0), h) + readAfterH(pick(h).items[0], h)
+            }
+            """,
+        )
+        expectClean(alb)
+        assertEquals(listOf(false, false), confinedCalls(alb, "readAfterH"))
     }
 }
