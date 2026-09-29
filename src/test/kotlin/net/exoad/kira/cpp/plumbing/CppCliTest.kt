@@ -63,40 +63,38 @@ class CppCliTest {
 
     private fun snapshot(dir: File): List<String> = PlumbingTestSupport.listFiles(dir.toPath())
 
-    // Until the expression and statement parts (W2.3) land, every function body is
-    // `cpp.unsupported: ... is not lowered yet`, so a program with a body, and the
-    // Kira-written stdlib (kira:math's clamp) in every unit, still exits 1 and writes
-    // nothing. W2.3 flips these to assert success.
-    private val bodyUnsupported = "cpp.unsupported: the body of 'main' is not lowered yet"
+    // The expression and statement parts (W2.3) lower every body, so the program's
+    // `trace("cpp-cli")` reaches the generated source and the run exits 0.
+    private val tracedLine = "      kira::trace(\"cpp-cli\");"
+
+    private fun generatedSource(dir: File): String = File(dir, "src/app/main.kira.cxx").readText().replace("\r\n", "\n")
 
     @Test
-    fun targetCppExitsOneWithUnsupportedAndWritesNothing() {
+    fun targetCppLowersTheProgramAndWritesTheTree() {
         val dir = tempProject("unsupported")
-        val before = snapshot(dir)
         val result = runCli(dir, "--target", "cpp")
-        assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains(bodyUnsupported), result.all)
+        assertEquals(0, result.exitCode, result.all)
         assertTrue(!result.all.contains("Exception"), "a diagnostic, not a stack trace:\n${result.all}")
-        assertEquals(before, snapshot(dir), "no file may be written")
+        val after = snapshot(dir)
+        assertTrue("src/app/main.kira.hxx" in after && "src/app/main.kira.cxx" in after && "kira.gen.manifest" in after, after.toString())
+        assertTrue(generatedSource(dir).contains(tracedLine), generatedSource(dir))
     }
 
     @Test
     fun targetCPlusPlusIsAnAlias() {
         val dir = tempProject("alias")
         val result = runCli(dir, "--target", "c++")
-        assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains(bodyUnsupported), result.all)
+        assertEquals(0, result.exitCode, result.all)
+        assertTrue(generatedSource(dir).contains(tracedLine), generatedSource(dir))
     }
 
     @Test
     fun manifestTargetCppIsAccepted() {
         val dir = tempProject("manifest-target", target = "cpp")
-        val before = snapshot(dir)
         val result = runCli(dir)
-        assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains(bodyUnsupported), result.all)
+        assertEquals(0, result.exitCode, result.all)
         assertTrue(!result.all.contains("Manifest validation failed"), result.all)
-        assertEquals(before, snapshot(dir))
+        assertTrue(generatedSource(dir).contains(tracedLine), generatedSource(dir))
     }
 
     @Test
@@ -119,13 +117,18 @@ class CppCliTest {
     }
 
     @Test
-    fun checkWithCppTargetStillReportsUnsupported() {
+    fun checkWithCppTargetNamesTheMissingTreeThenPassesOnceWritten() {
         val dir = tempProject("check-cpp")
         val before = snapshot(dir)
-        val result = runCli(dir, "--target", "cpp", "--check")
-        assertEquals(1, result.exitCode, result.all)
-        assertTrue(result.all.contains(bodyUnsupported), result.all)
-        assertEquals(before, snapshot(dir))
+        val fresh = runCli(dir, "--target", "cpp", "--check")
+        assertEquals(1, fresh.exitCode, fresh.all)
+        assertTrue(fresh.stdout.lines().any { it == "drift: src/app/main.kira.cxx (missing)" }, fresh.all)
+        assertEquals(before, snapshot(dir), "--check never writes")
+        assertEquals(0, runCli(dir, "--target", "cpp").exitCode)
+        val written = snapshot(dir)
+        val check = runCli(dir, "--target", "cpp", "--check")
+        assertEquals(0, check.exitCode, check.all)
+        assertEquals(written, snapshot(dir))
     }
 
     /** The brief's acceptance: a declaration-only project, emitted twice, then checked, exits 0 each time. */

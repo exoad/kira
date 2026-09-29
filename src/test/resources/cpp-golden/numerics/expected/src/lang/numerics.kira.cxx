@@ -51,7 +51,7 @@ namespace numerics
       const std::int32_t whole{scaled / 1000};
       const std::int32_t frac{scaled % 1000};
       const kira::Str sign = neg ? kira::Str("-") : kira::Str("");
-      return kira::cat(sign, whole, ".", kira::str::padStart(kira::text(frac), 3, '0'));
+      return kira::cat(sign, whole, ".", kira::Str(kira::str::padStart(kira::text(frac), 3, '0')));
   }
 
   std::int32_t toInt(double v)

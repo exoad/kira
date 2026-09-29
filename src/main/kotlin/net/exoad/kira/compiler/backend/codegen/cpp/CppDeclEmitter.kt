@@ -214,13 +214,13 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val tail = LinkedHashSet(ctx.headerIncludes)
         tail.removeAll(includes)
         tail.removeAll(cIncludes)
-        includes.forEach { sb.append("#include \"").append(it).append("\"\n") }
+        includes.forEach { sb.append(includeLine(it)) }
         if (cIncludes.isNotEmpty()) {
             sb.append("extern \"C\" {\n")
-            cIncludes.forEach { sb.append("#include \"").append(it).append("\"\n") }
+            cIncludes.forEach { sb.append(includeLine(it)) }
             sb.append("}\n")
         }
-        tail.forEach { sb.append("#include \"").append(it).append("\"\n") }
+        tail.forEach { sb.append(includeLine(it)) }
         sb.append("#include \"$MACRO_PUSH\"\n")
         if (body.isNotEmpty()) {
             val w = CppWriter()
@@ -238,6 +238,10 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return sb.toString()
     }
 
+    /** `#include <name>` for a system header named with its angle brackets (a binding's `<cmath>`), `#include "name"` for a path. */
+    private fun includeLine(name: String): String =
+        if (name.startsWith("<") && name.endsWith(">")) "#include $name\n" else "#include \"$name\"\n"
+
     private fun assembleSource(body: String): String {
         val sb = StringBuilder()
         sb.append(banner()).append('\n')
@@ -245,7 +249,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         if (main != null) {
             sb.append("#include \"kira/main.hxx\"\n")
         }
-        ctx.sourceIncludes.forEach { sb.append("#include \"").append(it).append("\"\n") }
+        ctx.sourceIncludes.forEach { sb.append(includeLine(it)) }
         sb.append("#include \"$MACRO_PUSH\"\n")
         if (body.isNotEmpty()) {
             val w = CppWriter()
