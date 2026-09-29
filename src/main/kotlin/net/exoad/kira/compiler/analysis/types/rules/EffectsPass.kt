@@ -620,7 +620,8 @@ internal class Drops(private val r: Rules, assumeEveryFinally: Boolean) {
  * is its own ([own]: rooted at one of its locals, one of its `mut` parameters, the elements of
  * one of its `MutView` parameters, or, in a value class's `mut fx`, its `this`, through value
  * steps only), a CONFINED call ([CallReach.confined]) whose written operands are its own, a
- * call of one of its own `Fx` parameters (the call site that handed the `Fx` in charged it),
+ * call of one of its own `Fx` parameters (the call site that handed the `Fx` in charged it)
+ * whose arguments row 1 passes (a `T` argument never does: it may be an `Fx` no call site saw),
  * or a CONFINED construction; and nothing in it, a by-value parameter included, may drop the
  * last handle of an object whose `finally` is IMPURE. The computation starts from "every body
  * is CONFINED" and lowers until nothing changes, so mutually recursive functions that write
