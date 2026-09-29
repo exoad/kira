@@ -201,8 +201,11 @@ class CppHoister(private val lower: CppLowering) {
      * operand with no expression (an implicit `this`); [handle] marks a class or trait handle
      * receiver, whose copy holds the object for the call (W5, E-DROP); [spell] replaces the
      * copy's spelling (an extern's argument: W2.6 spells its proxy from [Operand.copied]).
+     * [direct] marks a consumer that binds the value before its `WrapSome` (an assignment:
+     * `std::optional`'s `operator=(U&&)` assigns the payload from the unconverted reference), so
+     * that coercion makes no temporary there.
      */
-    class Use(val type: KType, val place: Place? = null, val handle: Boolean = false, val spell: ((CppEx) -> CppEx)? = null)
+    class Use(val type: KType, val place: Place? = null, val handle: Boolean = false, val direct: Boolean = false, val spell: ((CppEx) -> CppEx)? = null)
 
     /**
      * What binds the [Use]s among one [lower]'s operands (50-round4 2.0): whether it is

@@ -8,6 +8,81 @@ issue is, where it lives, how to reproduce it, and why it is safe to leave for n
 means built with the goldens' warning flags and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC
 `/W4 /WX`, and run.
 
+## Copy by default, round 5: an assignment's value is a use
+
+This round merges `cpp/w2-5-rules` at 18d3f42 (round 5's CONFINED; merge 6ec4252, signed, no
+conflict), then fixes round 4's two significant w2-3 findings (sc-round4.json) at one root.
+
+- **The finding.** `CppExprEmitter.assignment` built its value with `operandOf` and no `Use`, so
+  `CppCopyPolicy.pass` never saw it. C++'s `operator=(const T&)` binds a reference to the value
+  and writes the target while it reads it, so a value inside the target is freed or overwritten
+  as it is read. 50-round4 section 1 has no row for this lending point (1.1-1.8), and 7.2's
+  generator had no such use. #0 is `t = t.kids[0]` (a3b: gcc exited 3, MSVC ASan reported a
+  container-overflow). #1 is `a[i] = v` with `v` under the receiver's root (c2 `t.kids[0] = t`:
+  all three compilers printed `1 one 1 1 2` for Kira's `1 one 1 2 2`). Both are this path, since
+  `a[i] = v` is an assignment to the place `kira::at(a, i)`, the same text as `List.set`'s binding.
+- **The fix.** The value is a `Use`. The assignment is its consumer: never CONFINED, with its
+  target as its own `mut` operand, so the target's root is NAMED. The value is therefore lent only
+  as a prvalue (W1) or as a PRIVATE place under another root (W2). Anything else is `T(e)`, copied
+  before the target is written: `t = Tree(kira::at(t.kids, 0));` and `kira::at(t.kids, 0) = Tree(t);`.
+  `t = u` with `u` a local or a by-value parameter stays `t = u;`.
+- **One more thing the fix needed: `WrapSome` is no temporary for an assignment**
+  (`CppHoister.Use.direct`). `kira::Maybe` is `std::optional`, and its `operator=(U&&)` assigns
+  the payload from the unconverted reference. So c20's `m = m.unwrap().kids[0]`, which counted as
+  W1 through `CppCopyPolicy.converts`, still gave a container-overflow. It is now
+  `m = Tree(kira::at(kira::unwrap(m).kids, 0));`. `Upcast` stays W1, because `std::shared_ptr`'s
+  converting assignment is specified as `shared_ptr(r).swap(*this)`: it makes its own copy first.
+- **The binding form is covered already.** `t.kids.set(0, t)`, `ts.set(0, ts[0].kids[0])`,
+  `arr.set(...)`, `mv.set(0, mv[0].kids[0])` and `gl.set(0, gl[0].kids[0])` are refused by D37's
+  `rules.exclusivity.receiver` (probe `w23r5/p/b1`: 5 refusals). A binding writer whose value
+  shares no root with its receiver is decided by W3's `mayHold` test against the `mut fx`
+  receiver. `r1.value.kids.set(0, r2.value)` (two names of one `Ref`) emits `Tree(r2->value)` and
+  prints Kira's `1 one 1 2 2` (probe `b2`).
+- **The golden this changes.** proto gains three wrappers: `out.topic =
+  kira::Str(kira::str::substring(...))` and `out = kira::Str(kira::str::substring(...))` (binding
+  prvalues, free: KI-19), and one real copy, `out.rest = kira::Str(out.line)`. That is a copy
+  because `out.line`'s root is the target's root, and the rule is decided by root. It runs once
+  per parse, outside any loop. Every other `expected/` tree that emits on this branch is byte
+  identical (decls, evalorder, hall, macros, numerics, strings, sysdecls, text, unilidar,
+  modules, sys; evalorder's `expected.txt` too). The class goldens do not emit here (KI-18). Their
+  `expected/` assignments are all prvalues or scalars (`why = kira::cat(...)`,
+  `c->value = c->value + 1`, `lastMs = now`), so the trial should keep them byte-identical.
+- **Round 5's rule M in this package's test.** `CppCopyPolicyTest`'s `arm` added hooks to the
+  globals `gfs` and `hooks` directly, and 2.3's row 1 now refuses that (W2.5 round 5, 4 test
+  cases). It now builds each list in a local and stores it back (`gfs = fs`, `hooks = hs`), as
+  the refusal message says to. No row's text or value changes.
+- **Measured** (scratchpad `w23r5`, this branch's CLI, jar md5 c357f0d5; g++ 13.2 | zig clang
+  20 | MSVC 14.44 | MSVC `/fsanitize=address`). Each probe below prints Kira's value on all
+  four builds, with 0 ASan reports: a3b `1 2 two-long 2 7 8 19`; c2 `1 one 1 1 1`, `1 one 1 2 2`,
+  `2 two-long 2 7 0 8 0`; c5, c6, c14, c19 and a3c1-3 `2 two-long 2 ...`; c8 `1 one 2 7 0 8 0`;
+  c12; c15 `88 b bb`; c20 (List and Maybe); a3c6; atk a3; c18; d3. a3c4 (a class field) and
+  c16, c17, c21, cl1, d1, d2, d4, d5 declare a class (KI-18). c3, c4 and c13 stay refused by
+  D37's receiver rule, c7 by `types.index.map-read`, and a3c5 by the typer, as on the trial.
+- **Tests.** `CppCopyPolicyTest.anAssignmentsValueIsCopiedUnlessItIsATemporaryOrAPrivatePlaceUnderAnotherRoot`
+  has 13 copy texts from the verifier's probes, 2 W1 texts, and 2 W2 lends with no copy.
+  `anAssignmentsValuePrintsKirasValueOnEveryCompiler` has 15 run rows (a3b, c2, c5, c6, c8, c12,
+  c14, c15, c19, c20 twice, a3c3, a3c6, and the two lends), run on gcc, clang and msvc.
+- **Acceptance.** `./gradlew test` ran 1207 tests: 0 failures, 0 errors, 0 skipped.
+  `examples/regenerate.sh --check`: all snapshots current. goldens.sh: 17 cases, 67 passed, 0
+  failed. run.sh: 57 passed. sys.sh: 18 passed. msvc.bat: all passed.
+
+### Round 4's minors this package owns, ledgered
+
+- **The design and the generator.** 50-round4's lending points (1.1-1.8) and 7.2's generator
+  table have no assignment-value use. The next generator should add that dimension: target =
+  own element, element = owner, field = own element's field; through a local, a `mut`
+  parameter, a global, a List element, a value `this`, a class field, a `Ref` and a `Maybe`.
+  `CppCopyPolicyTest`'s assignment module covers each of these but the class field, which is
+  W2.4's to run (KI-18).
+- **Not written yet: 7.3's PRVALUE node-class walk test and the CONFINED table test.** Neither
+  is a one-line fix. The round-4 verifier read `isPrvalue` and found no hole: it is a positive
+  list, and every `TypeCastExpr` kind lowers to a numeric, char, enum or TO_STR conversion.
+- **A compound assignment's value is not a use.** `s += e` on a `Str` is `std::string`'s
+  append, which the standard defines as appending a copy of the range, so it is safe even when
+  `e` aliases `s` (c15's `s += s` gives 88 on every build). A user type's `op=` lowers to
+  `a = a.op(b)`, a call, and a numeric operand is taken by value. Neither finding named this
+  path, so it is unchanged.
+
 ## Copy by default, round 4
 
 This round merges `cpp/w2-5-rules` (b5910b6, merge 1d605d8, no conflict), so the policy reads

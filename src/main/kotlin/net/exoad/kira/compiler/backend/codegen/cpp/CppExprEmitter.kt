@@ -808,6 +808,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * the value has an effect and locating the target reads anything, or the other way round,
      * the target's parts and the value are ordered inside an IIFE, and the path is written at
      * the end (`kira::at(s, t0_) = t1_`).
+     *
+     * The value is a use (50-round4 2.0): `operator=(const T&)` binds a reference to it and
+     * writes the target while it reads it, so a value inside the target (`t = t.kids[0]`,
+     * `t.kids[0] = t`, `xs[0] = xs[1]`) is freed or overwritten as it is read. The assignment
+     * is its consumer: never CONFINED, its target its own `mut` operand, so the value is lent
+     * only as a prvalue (W1) or a PRIVATE place under another root (W2), and copied otherwise,
+     * `T(e)`, before the target is written. A `WrapSome` is no prvalue here
+     * ([CppHoister.Use.direct]: `m = m.unwrap().kids[0]` assigns the payload from the element).
      */
     private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
         val tt = typeOf(target)
@@ -815,8 +823,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             // No variable, field or element holds a view (design 30, 1.2).
             hoister.internalView(node, "this assignment stores a view in a ${tt.display()}", "type")
         }
-        val ops = listOf(placeOperand(target), operandOf(value) { coerced(value) })
-        return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void) { (l, r) ->
+        val vt = typeOf(value)
+        val valueOp = operandOf(value) { coerced(value) }
+        if (heldByReference(vt)) {
+            valueOp.use = CppHoister.Use(vt, direct = true)
+        }
+        val ops = listOf(placeOperand(target), valueOp)
+        val consumer = CppHoister.Consumer(confined = false, mutOperands = listOf(CppHoister.MutOperand(model.readPlace(target), tt)))
+        return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void, consumer = consumer) { (l, r) ->
             CppEx("${wrap(l, CppPrec.UNARY)} = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
         }
     }

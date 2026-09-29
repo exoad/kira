@@ -60,18 +60,22 @@ class CppCopyPolicyTest {
             gl = [1, 2, 3]
             gt = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
             tag: Str = "held-by-the-closure-long-enough-for-the-heap-00"
-            gfs = List<Fx<Tuple0, Int32>> { }
-            gfs.add(fx () Int32 {
+            // Rule M (round 5): a global handed an Fx that is not CONFINED is refused as a
+            // mut receiver, so each list is built in a local and stored back.
+            mut fs: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> { }
+            fs.add(fx () Int32 {
                 runHooks()
                 return tag.length() as Int32
             })
-            hooks = List<Fx<Tuple0, Void>> { }
-            hooks.add(fx () Void {
+            gfs = fs
+            mut hs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
+            hs.add(fx () Void {
                 gs = "new"
                 gl = [100]
                 gt = Tag { name = "new", n = 2 }
                 gfs = List<Fx<Tuple0, Int32>> { }
             })
+            hooks = hs
         }
 
         pub fx lenAfter: (s: Str) Int32 {
@@ -276,6 +280,241 @@ class CppCopyPolicyTest {
                     append("    return failures == 0 ? 0 : 1;\n}\n")
                 }
                 val stdout = CppExprTestSupport.compileAndRun(tree, driver, tc) ?: return@dynamicTest
+                assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
+            }
+        }
+
+    /**
+     * Round 4's significant w2-3 findings (sc-round4.json): an assignment's value is a use.
+     * `operator=(const T&)` binds a reference to the value and writes the target while it reads
+     * it, so a value inside the target is freed or overwritten as it is read (#0: `t =
+     * t.kids[0]`, gcc exited 3 and MSVC ASan reported a container-overflow; #1: `t.kids[0] =
+     * t`, every compiler printed `1 one 1 1 2` for Kira's `1 one 1 2 2`). The rows are the
+     * verifier's probes, a3b, c2, c5, c6, c8, c12, c14, c15, c19, c20, a3c1, a3c3 and a3c6:
+     * each value is copied unless it is a prvalue (W1) or a PRIVATE place under another root
+     * (W2). `shape` prints a tree as `v name-length kids` and then each kid's `v/kids`.
+     */
+    private val assign = Module(
+        "copy:assign",
+        """
+        pub struct Tree {
+            pub v: Int32
+            pub name: Str
+            pub kids: List<Tree>
+        }
+
+        fx leaf: (v: Int32, n: Str) Tree {
+            return Tree { v = v, name = n, kids = [] }
+        }
+
+        fx two: () Tree {
+            return Tree { v = 2, name = "two-long-name-that-lives-on-the-heap-000000", kids = [leaf(7, "seven-long-name-that-lives-on-the-heap-0000"), leaf(8, "eight-long-name-that-lives-on-the-heap-0000")] }
+        }
+
+        // One kid, two(), with room for more, so a vector assign takes the no-reallocation path.
+        fx roomy: () Tree {
+            mut t: Tree = Tree { v = 1, name = "one", kids = [] }
+            t.kids.add(two())
+            t.kids.add(leaf(9, "nine"))
+            t.kids.add(leaf(10, "ten"))
+            x: Tree = t.kids.removeAt(2)
+            y: Tree = t.kids.removeAt(1)
+            return t
+        }
+
+        fx shape: (t: Tree) Str {
+            mut out: Str = "${'$'}{t.v} ${'$'}{t.name.length()} ${'$'}{t.kids.size()}"
+            for k: Tree in t.kids {
+                out += " ${'$'}{k.v}/${'$'}{k.kids.size()}"
+            }
+            return out
+        }
+
+        fx flag: () Bool {
+            return true
+        }
+
+        mut gt: Tree = Tree { v = 0, name = "g", kids = [] }
+
+        pub struct Holder {
+            pub t: Tree
+
+            pub mut fx descend: () Void {
+                t = t.kids[0]
+            }
+        }
+
+        pub fx rebindLocal: () Str {
+            mut t: Tree = roomy()
+            t = t.kids[0]
+            return shape(t)
+        }
+
+        pub fx selfIntoElement: () Str {
+            mut t: Tree = roomy()
+            t.kids[0] = t
+            return "${'$'}{shape(t)}|${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
+        }
+
+        pub fx rebindTernary: () Str {
+            mut t: Tree = roomy()
+            t = if flag() { t.kids[0] } else { t }
+            return shape(t)
+        }
+
+        fx descend: (mut t: Tree) Void {
+            t = t.kids[0]
+        }
+
+        pub fx rebindMutParam: () Str {
+            mut t: Tree = roomy()
+            descend(mut t)
+            return shape(t)
+        }
+
+        pub fx fieldFromElement: () Str {
+            mut t: Tree = roomy()
+            t.kids = t.kids[0].kids
+            return shape(t)
+        }
+
+        pub fx elementIntoItsElement: () Str {
+            mut t: Tree = roomy()
+            t.kids[0].kids[0] = t.kids[0]
+            return "${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
+        }
+
+        fx descendGlobal: () Void {
+            gt = gt.kids[0]
+        }
+
+        pub fx rebindGlobal: () Str {
+            gt = roomy()
+            descendGlobal()
+            return shape(gt)
+        }
+
+        pub fx elementFromSibling: () Str {
+            mut xs: List<Str> = ["a-long-string-that-lives-on-the-heap-0000000", "b"]
+            xs[0] = xs[1]
+            xs[1] = xs[0] + xs[0]
+            return "${'$'}{xs[0]} ${'$'}{xs[1]}"
+        }
+
+        pub fx twoNamesOfOneRef: () Str {
+            r1: Ref<Tree> = Ref<Tree> { value = roomy() }
+            r2: Ref<Tree> = r1
+            r1.value = r2.value.kids[0]
+            return shape(r2.value)
+        }
+
+        pub fx listElements: () Str {
+            mut ts: List<Tree> = [roomy(), leaf(5, "five")]
+            ts[1] = ts[0].kids[0]
+            ts[0] = ts[0].kids[0]
+            return "${'$'}{shape(ts[0])}|${'$'}{shape(ts[1])}"
+        }
+
+        pub fx maybePayload: () Str {
+            mut m: Maybe<Tree> = roomy()
+            m = m.unwrap().kids[0]
+            return shape(m.unwrap())
+        }
+
+        pub fx valueThisInMutFx: () Str {
+            mut h: Holder = Holder { t = roomy() }
+            h.descend()
+            return shape(h.t)
+        }
+
+        pub fx nestedElement: () Str {
+            mut t: Tree = leaf(0, "zero")
+            t.kids.add(roomy())
+            t.kids[0] = t.kids[0].kids[0]
+            return shape(t.kids[0])
+        }
+
+        pub fx lendLocal: () Str {
+            u: Tree = roomy()
+            mut t: Tree = leaf(0, "zero")
+            t = u
+            return shape(t)
+        }
+
+        pub fx lendParam: (u: Tree) Str {
+            mut t: Tree = leaf(0, "zero")
+            t = u
+            return shape(t)
+        }
+
+        pub fx lendParamRow: () Str {
+            return lendParam(roomy())
+        }
+        """,
+    )
+
+    private val assignTree by lazy { CppExprTestSupport.emit("copy-assign", listOf(assign)) }
+
+    @Test
+    fun anAssignmentsValueIsCopiedUnlessItIsATemporaryOrAPrivatePlaceUnderAnotherRoot() {
+        val source = assignTree.source(assign)
+        listOf(
+            // #0: the value lies under the root the assignment writes, or is no PRIVATE place.
+            "t = Tree(kira::at(t.kids, 0));",
+            "t = Tree(flag() ? kira::at(t.kids, 0) : t);",
+            "t.kids = kira::List<Tree>(kira::at(t.kids, 0).kids);",
+            "gt = Tree(kira::at(gt.kids, 0));",
+            "r1->value = Tree(kira::at(r2->value.kids, 0));",
+            // A WrapSome is no temporary for std::optional's operator=(U&&).
+            "m = Tree(kira::at(kira::unwrap(m).kids, 0));",
+            // #1: an element written from its own container's root.
+            "kira::at(t.kids, 0) = Tree(t);",
+            "kira::at(kira::at(t.kids, 0).kids, 0) = Tree(kira::at(t.kids, 0));",
+            "kira::at(xs, 0) = kira::Str(kira::at(xs, 1));",
+            "kira::at(ts, 0) = Tree(kira::at(kira::at(ts, 0).kids, 0));",
+            "kira::at(t.kids, 0) = Tree(kira::at(kira::at(t.kids, 0).kids, 0));",
+            // W1: a prvalue is as is.
+            "kira::at(xs, 1) = kira::at(xs, 0) + kira::at(xs, 0);",
+            "gt = roomy();",
+        ).forEach { assertTrue(source.contains(it), "$it:\n$source") }
+        // W2: a PRIVATE place under another root is lent.
+        listOf("lendLocal", "lendParam").forEach { fn ->
+            val b = Regex("\\n  [^\\n ][^\\n]*[ :]$fn\\([^\\n]*\\)[^\\n]*\\n  \\{\\n").find(source)?.let { source.substring(it.range.last, source.indexOf("\n  }\n", it.range.last)) }
+            assertTrue(b != null && b.contains("t = u;") && !b.contains("Tree(u)"), "$fn lends u:\n$b")
+        }
+    }
+
+    @TestFactory
+    fun anAssignmentsValuePrintsKirasValueOnEveryCompiler(): List<DynamicNode> =
+        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
+            DynamicTest.dynamicTest("assign [${tc.id}]") {
+                val kid = "2 43 2 7/0 8/0"
+                val rows = listOf(
+                    "assign::rebindLocal() == \"$kid\"" to "a3b: t = t.kids[0] reads the kid first",
+                    "assign::selfIntoElement() == \"1 3 1 1/1|1 3 1 2/2|$kid\"" to "c2: t.kids[0] = t stores the old t",
+                    "assign::rebindTernary() == \"$kid\"" to "c5: a ternary of the kid",
+                    "assign::rebindMutParam() == \"$kid\"" to "c6: through a mut parameter",
+                    "assign::fieldFromElement() == \"1 3 2 7/0 8/0\"" to "c8: t.kids = t.kids[0].kids",
+                    "assign::elementIntoItsElement() == \"2 43 2 2/2 8/0|$kid\"" to "c12: t.kids[0].kids[0] = t.kids[0]",
+                    "assign::rebindGlobal() == \"$kid\"" to "c14: a global rebound in a function",
+                    "assign::elementFromSibling() == \"b bb\"" to "c15: xs[0] = xs[1]",
+                    "assign::twoNamesOfOneRef() == \"$kid\"" to "c19: two names of one Ref",
+                    "assign::listElements() == \"$kid|$kid\"" to "c20: ts[0] = ts[0].kids[0]",
+                    "assign::maybePayload() == \"$kid\"" to "c20: m = m.unwrap().kids[0]",
+                    "assign::valueThisInMutFx() == \"$kid\"" to "a3c3: the value this of a mut fx",
+                    "assign::nestedElement() == \"$kid\"" to "a3c6: t.kids[0] = t.kids[0].kids[0]",
+                    "assign::lendLocal() == \"1 3 1 2/2\"" to "a PRIVATE local under another root is lent",
+                    "assign::lendParamRow() == \"1 3 1 2/2\"" to "a by-value parameter is lent",
+                )
+                val driver = buildString {
+                    append("#include \"").append(assign.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n")
+                    append(CppExprTestSupport.CHECK_PRELUDE)
+                    append("\nint main()\n{\n")
+                    rows.forEach { (cond, what) -> append("    check($cond, \"$what\");\n") }
+                    append("    std::printf(\"\\n%d checks, %d failed\\n\", checks, failures);\n")
+                    append("    return failures == 0 ? 0 : 1;\n}\n")
+                }
+                val stdout = CppExprTestSupport.compileAndRun(assignTree, driver, tc) ?: return@dynamicTest
                 assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
             }
         }
