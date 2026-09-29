@@ -25,7 +25,7 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 
-    // The C++ harness (src/test/kotlin/net/exoad/kira/cpp, see TESTING.md) is
+    // The C++ harness (src/test/kotlin/net/exoad/kira/cpp) is
     // steered by these knobs. `-Dkira.*` on the gradlew command line lands on
     // the build JVM, not the forked test JVM, so forward it; and register both
     // the properties and the environment variables as task inputs, so a

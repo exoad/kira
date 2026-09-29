@@ -5,9 +5,7 @@ globs: kira/*.kira, examples/**/*.kira, test_kira/**/*.kira
 
 # Kira language surface
 
-Facts that trip up new writers. The full reference is
-`specifications/LanguageSpecifications.md`; the tutorial stays inside what the
-C backend lowers today.
+Facts that trip up new writers.
 
 ## Syntax facts
 

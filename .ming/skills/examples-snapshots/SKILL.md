@@ -66,9 +66,7 @@ What is committed per example:
    cd ../.. && ./examples/regenerate.sh 0N-name
    ```
 
-5. Add the row to `examples/README.md` ladder table (number, project, shows,
-   expected output) and bump the `01..NN` range in README.md if it names one.
-6. Commit sources + `generated.user.c` + `expected.txt` together.
+5. Commit sources + `generated.user.c` + `expected.txt` together.
 
 ## Foreign edge and tour (not in the numbered ladder)
 

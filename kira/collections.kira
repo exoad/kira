@@ -1,7 +1,7 @@
 module "kira:collections"
 
 // Container types. `Arr`, `List` and `Map` are the three the C backend lowers
-// today (see docs/backend-c.md); `Set` / `Stack` / `Queue` / `Deque` are
+// today; `Set` / `Stack` / `Queue` / `Deque` are
 // declared so signatures typecheck but still resolve prelude-side.
 //
 // Containers are values (D44): assigning copies, and every method that
