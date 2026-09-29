@@ -124,6 +124,16 @@ sealed interface ViewOrigin {
 
     /** A temporary the full-expression makes, [owner] the expression that owns it (a call result, a construction, an operator, a Str constant). C++ keeps it to the end of the full-expression. */
     data class Temp(val owner: Expr) : ViewOrigin
+
+    /**
+     * The object behind [owner], an expression of reference type (a class, trait, `@_opaque`,
+     * `Ref` or stdlib handle) that is no place: a call result `pick(h)`, `h.me()`, a
+     * construction, a ternary of handles (50-round4 O1). Shared storage, as SHARED as a
+     * `Stored` place through a handle: any handle to the object may write it, and any impure
+     * call may. Its handle is a temporary of the full-expression as well, so it is never
+     * returned, iterated or picked in an if-expression either. [type] is [owner]'s type.
+     */
+    data class Referent(val owner: Expr, val type: KType?) : ViewOrigin
 }
 
 /** How far a [ViewOrigin.Stored] place is shared (30-second-class 2.3). */
@@ -146,7 +156,8 @@ enum class PlaceKind {
  * Who fills what: phase B (W1.2) fills [typeRefs], [aliasRefs], [declSyms], [refs] for
  * declared names and type names, and [consts] for folded module-level initializers, enum
  * values and defaults. Phase C (W2.1) fills every table but [lentPlaces], [effects],
- * [fnEffects], [fxEscapes] and [viewOrigins], which the rule passes (W2.5) fill.
+ * [fnEffects], [fnConfined], [lambdaConfined], [defaultConfined], [fxEscapes] and
+ * [viewOrigins], which the rule passes (W2.5) fill.
  */
 class TypedModel {
     /** The type of every expression. */
@@ -200,6 +211,26 @@ class TypedModel {
 
     /** Purity per function (EffectsPass); an absent entry means [Effect.IMPURE]. */
     val fnEffects: IdentityHashMap<FnSymbol, Effect> = IdentityHashMap()
+
+    /**
+     * Whether a function with a body is CONFINED (EffectsPass, 50-round4 2.3): while it runs it
+     * writes nothing its caller can see but through its own `mut` operands, and runs no code
+     * the checker does not see. An absent entry means not CONFINED. The one reader is
+     * `CallReach.confined`, which answers for every kind of callee.
+     */
+    val fnConfined: IdentityHashMap<FnSymbol, Boolean> = IdentityHashMap()
+
+    /** The same for a lambda literal's body (EffectsPass): whether running it is CONFINED. An absent entry means not. */
+    val lambdaConfined: IdentityHashMap<LambdaExpr, Boolean> = IdentityHashMap()
+
+    /** Whether evaluating a field's default is CONFINED (EffectsPass), for a construction that leaves the field out. An absent entry means not. */
+    val defaultConfined: IdentityHashMap<FieldSymbol, Boolean> = IdentityHashMap()
+
+    /**
+     * Whether dropping a value of a type may run an IMPURE `finally` (EffectsPass sets it to its
+     * `Drops`; before that pass runs, any value may).
+     */
+    var dropsImpureFinally: (KType?) -> Boolean = { true }
 
     /** The symbol each declaring node introduces (declarations, fields, parameters, entries, type parameters). */
     val declSyms: IdentityHashMap<ASTNode, Symbol> = IdentityHashMap()
