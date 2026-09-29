@@ -12,6 +12,7 @@ import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.analysis.types.rules.Rules
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
@@ -176,6 +177,25 @@ class CppCopyPolicy(private val lower: CppLowering) {
     fun dropsOnCopy(ops: List<Operand>, named: Set<Place>, consumer: Consumer?): Boolean = ops.any { op ->
         val use = op.use
         use != null && use.handle && model.dropsImpureFinally(use.type) && !lends(op, use, ops, named, consumer)
+    }
+
+    /**
+     * Whether a write of a new value over an old one of [t] (an assignment, `xs[i] = v`,
+     * `m[k] = v`, and the bindings `PLACE = {n}`: `List.set`, `Arr.set`, `MutView.set`) is spelled
+     * `kira::replace(place) = value`, which stores first and drops the old value after, Kira's
+     * order. C++'s `operator=` drops the old value's parts while it writes the new one, member by
+     * member, so an IMPURE `finally` that drop runs (`Drops.mayDrop`) would free the place's
+     * storage or rewrite it half-written. A class or trait handle, a `Maybe` of one and a `Weak`
+     * are one `std::shared_ptr` or `std::weak_ptr`, whose assignment the standard specifies as
+     * `shared_ptr(r).swap(*this)`: it stores, then drops, already.
+     */
+    fun dropsOnWrite(t: KType?): Boolean {
+        if (!model.dropsImpureFinally(t)) {
+            return false
+        }
+        val n = CppBindingTable.magicName(t)
+        val one = if (n == "Maybe") (t as KType.Nominal).typeArgs().singleOrNull() else t
+        return !(isHandle(one) || n == "Weak")
     }
 
     // ---- the words of 2.0 ----------------------------------------------------------------------

@@ -631,6 +631,78 @@ namespace
       check(blank.isErr() && blank.unwrapErr().empty(), "a default Result is an error");
   }
 
+  // kira::replace: a write over an old value whose drop runs a Kira `finally` stores first
+  // and drops after (round 5b's w2-3 finding, the verifier's f2 and f3, as the emitter writes
+  // them). Dropped's destructor stands in for the IMPURE finally: it reads the place it was
+  // replaced from, then frees or rewrites it. A plain operator= runs it after `v` and before
+  // `name` is written: it would read the old name, and f2 would write into the freed buffer.
+  struct Dropped;
+  struct Held
+  {
+      std::int32_t v = 0;
+      kira::Rc<Dropped> r;
+      kira::Str name;
+      kira::List<std::int32_t> kids;
+  };
+  kira::List<Held> heldList;
+  Held heldOne{.v = 0, .r = nullptr, .name = "zero", .kids = {}};
+  kira::Map<std::int32_t, Held> heldMap;
+  kira::Str seenName;
+  struct Dropped
+  {
+      std::int32_t mode = 0;
+      Dropped() = default;
+      Dropped(const Dropped&) = delete;
+      Dropped& operator=(const Dropped&) = delete;
+      ~Dropped()
+      {
+          if(mode == 1)
+          {
+              seenName = kira::at(heldList, 0).name;
+              heldList = {Held{.v = 99, .r = nullptr, .name = "fin-long-name-that-lives-on-the-heap-00000", .kids = {}}};
+          }
+          else if(mode == 2)
+          {
+              seenName = heldOne.name;
+              heldOne = Held{.v = 99, .r = nullptr, .name = "fin", .kids = {}};
+          }
+          else if(mode == 3)
+          {
+              seenName = heldMap.at(1).name;
+              heldMap = kira::Map<std::int32_t, Held>{};
+          }
+      }
+  };
+  [[nodiscard]] kira::Rc<Dropped> dropping(std::int32_t mode)
+  {
+      kira::Rc<Dropped> d = std::make_shared<Dropped>();
+      d->mode = mode;
+      return d;
+  }
+
+  void testReplace()
+  {
+      heldList = {Held{.v = 1, .r = dropping(1), .name = "one-long-name-that-lives-on-the-heap-000000", .kids = {1, 2, 3}}};
+      kira::replace(kira::at(heldList, 0)) = Held{.v = 2, .r = nullptr, .name = "two-long-name-that-lives-on-the-heap-000000", .kids = {4, 5}};
+      check(same(seenName, "two-long-name-that-lives-on-the-heap-000000") && heldList.size() == 1 && kira::at(heldList, 0).v == 99,
+            "f2: xs[i] = v stores the whole value, then the finally replaces xs");
+
+      heldOne = Held{.v = 1, .r = dropping(2), .name = "one-long-name-that-lives-on-the-heap-000000", .kids = {1, 2, 3}};
+      kira::replace(heldOne) = Held{.v = 2, .r = nullptr, .name = "two-long-name-that-lives-on-the-heap-000000", .kids = {4, 5}};
+      check(same(seenName, "two-long-name-that-lives-on-the-heap-000000") && heldOne.v == 99 && same(heldOne.name, "fin") && heldOne.kids.empty(),
+            "f3: x = v stores the whole value, then the finally's write is last, never a mix");
+
+      heldMap.put(1, Held{.v = 1, .r = dropping(3), .name = "one-long-name-that-lives-on-the-heap-000000", .kids = {}});
+      heldMap.put(1, Held{.v = 3, .r = nullptr, .name = "three-long-name-that-lives-on-the-heap-0000", .kids = {}});
+      check(same(seenName, "three-long-name-that-lives-on-the-heap-0000") && heldMap.isEmpty(), "Map.put over a key stores, then drops the old value");
+
+      kira::List<bool> flags{false, false};
+      kira::replace(kira::at(flags, 1)) = true;
+      std::optional<Held> maybe = Held{.v = 1, .r = nullptr, .name = "m", .kids = {}};
+      kira::replace(maybe) = kira::none;
+      check(kira::at(flags, 1) && !kira::at(flags, 0) && !maybe.has_value(), "a proxy place (List<Bool>) and a Maybe");
+  }
+
   std::int32_t argsSeen = 0;
   [[nodiscard]] std::int32_t mainWithArgs(const kira::List<kira::Str>& args)
   {
@@ -772,6 +844,7 @@ int main(int argc, char** argv)
     testStr();
     testContainers();
     testClasses();
+    testReplace();
     testMain();
     testLocale();
     std::printf("\n%d checks, %d failed\n", checks, failures);

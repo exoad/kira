@@ -816,6 +816,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * only as a prvalue (W1) or a PRIVATE place under another root (W2), and copied otherwise,
      * `T(e)`, before the target is written. A `WrapSome` is no prvalue here
      * ([CppHoister.Use.direct]: `m = m.unwrap().kids[0]` assigns the payload from the element).
+     *
+     * Kira stores the new value, then drops the old one. Where that drop may run an IMPURE
+     * `finally` ([CppCopyPolicy.dropsOnWrite]), the write is `kira::replace(place) = value`: the
+     * old value is moved out, the place takes the new one, and the old value dies after the
+     * store is whole. A plain `operator=` would run the `finally` partway through the write,
+     * which may free the place's storage (`gl[0] = v` while the `finally` replaces `gl`) or
+     * rewrite it half-written.
      */
     private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
         val tt = typeOf(target)
@@ -830,8 +837,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val ops = listOf(placeOperand(target), valueOp)
         val consumer = CppHoister.Consumer(confined = false, mutOperands = listOf(CppHoister.MutOperand(model.readPlace(target), tt)))
+        val replace = policy.dropsOnWrite(tt)
         return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void, consumer = consumer) { (l, r) ->
-            CppEx("${wrap(l, CppPrec.UNARY)} = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
+            val place = if (replace) "kira::replace(${wrap(l, CppPrec.ASSIGN)})" else wrap(l, CppPrec.UNARY)
+            CppEx("$place = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
         }
     }
 
@@ -1562,7 +1571,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * A call through an `Fx` value: a local, a parameter (a template's `F_p&&` too), or a field.
      * C++ runs the closure where it is stored, so the callee is a use (50-round4 L6): an `Fx`
      * value call is never CONFINED, so a callee that is no PRIVATE place is copied,
-     * `kira::Fn<...>(f)(...)`.
+     * `(kira::Fn<...>(f))(...)`. A callee spelled as a functional cast to its `kira::Fn` type
+     * (that copy, or a conversion) is parenthesized wherever the call stands: as a statement,
+     * `kira::Fn<void()>(f)();` is a declaration of a function `f` (and `kira::Fn<void(int)>(f)(3);`
+     * one of a variable `f`), so the call would never run.
      */
     private fun fnValueCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val (argOps, argSlots) = arguments(rc)
@@ -1570,7 +1582,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val calleeOp = usedOperand(e.name, byRef = true) { coerced(e.name) }
         val (ops, slots) = withReceiver(calleeOp, argOps, argSlots)
         return hoister.lower(ops, rc.returnType, node = e, consumer = policy.callConsumer(rc, null)) { texts ->
-            CppEx("${wrap(texts[0], CppPrec.POSTFIX)}(${argList(slots, texts)})", CppPrec.POSTFIX)
+            val c = texts[0]
+            val callee = if (calleeOp.copied || c.text.startsWith("kira::Fn<")) "(${c.text})" else wrap(c, CppPrec.POSTFIX)
+            CppEx("$callee(${argList(slots, texts)})", CppPrec.POSTFIX)
         }
     }
 
@@ -1721,7 +1735,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             return unsupported(e, "the magic call '${fn.qualifiedName}' (no cpp binding under ${CppBindingTable.keysFor(fn, recvType, program)})")
         }
-        val (_, binding) = found
+        val original = found.second
+        // A write over an element whose drop may run an IMPURE `finally` stores first (CppCopyPolicy.dropsOnWrite).
+        val binding = replacing(original, fn, rc)
         if (isLiteralView(rc)) {
             // `"abc".view()` views the literal's static storage, as the implicit conversion does
             // (kira::lit): kira::str::view("abc") would view a temporary kira::Str.
@@ -1732,8 +1748,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val pieces = strBufPieces(receiver, fn, (rc.args.first() as ArgBinding.Given).expr as InterpolatedStringLiteral)
             return CppEx("(${pieces.joinToString(", ")})", CppPrec.PRIMARY)
         }
-        use(binding)
-        val memberStyle = CppBindingTable.isMemberStyle(binding)
+        use(original)
+        val memberStyle = CppBindingTable.isMemberStyle(original)
         val typeArgs = buildList {
             if (fn.owner != null && recvType is KType.Nominal) {
                 addAll(recvType.typeArgs())
@@ -1796,6 +1812,21 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             bindingEx(text)
         }
+    }
+
+    /**
+     * [binding], or, when its expression is a write `PLACE = {n}` (`List.set`, `Arr.set`,
+     * `MutView.set`) over an element whose drop may run an IMPURE `finally`
+     * ([CppCopyPolicy.dropsOnWrite]), the same write as `kira::replace(PLACE) = {n}`, which stores
+     * first and drops the old element after, as [assignment] spells `xs[i] = v`.
+     */
+    private fun replacing(binding: CppBinding, fn: FnSymbol, rc: ResolvedCall): CppBinding {
+        val m = WRITE_TEMPLATE.matchEntire(binding.expr) ?: return binding
+        val element = fn.params.getOrNull(m.groupValues[2].toInt())?.type?.substitute(rc.substitution)
+        if (!policy.dropsOnWrite(element)) {
+            return binding
+        }
+        return binding.copy(expr = "kira::replace(${m.groupValues[1]}) = {${m.groupValues[2]}}")
     }
 
     /** Whether [rc] is `Str.view` on a string literal: a view of static storage (`kira::lit`), no temporary. */
@@ -2024,6 +2055,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
         /** The methods that lend a MutView from a mutable Arr or List (the typer's MutView lending). */
         private val LENDERS = setOf("from", "slice", "view")
+
+        /** A binding whose expression writes its argument `{n}` over a place: `kira::at({self}, {0}) = {1}`. */
+        private val WRITE_TEMPLATE = Regex("(.+) = \\{([0-9]+)}")
 
         val ARITH_OR_BITS = setOf(
             BinaryOp.ADD, BinaryOp.SUB, BinaryOp.MUL, BinaryOp.DIV, BinaryOp.MOD,

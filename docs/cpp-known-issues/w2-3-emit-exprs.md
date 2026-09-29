@@ -8,6 +8,90 @@ issue is, where it lives, how to reproduce it, and why it is safe to leave for n
 means built with the goldens' warning flags and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC
 `/W4 /WX`, and run.
 
+## Copy by default, round 6: a copied `Fx` callee is parenthesized, and a write stores first
+
+This round merges `cpp/w2-5-rules` at b706176 (rounds 5b and 6: row 1 charges an `Fx` only
+where the callee can run it, and a construction that runs an `Fx` it is given, a `Thread`, is
+charged and IMPURE; merge ef38303, signed, no conflict), then fixes round 5b's two findings that
+name this package (sc-round5.json).
+
+- **Finding 1 (w2-5-rules' verdict, `[owner w2-3-emit-exprs]`).** `fnValueCall` spelled a copied
+  callee at postfix precedence, so as a statement `kira::Fn<void()>(f)();` was a C++ declaration
+  of a function `f` (and `kira::Fn<void(std::int32_t)>(g)(3);` one of a variable `g`): the call
+  never ran. x/t5 printed 29, 29 for Kira's 30, 31 on gcc and clang, and MSVC refused the build
+  (C4930). **Fix:** a callee spelled as a functional cast to its `kira::Fn` type (the copy, or
+  any conversion) is parenthesized wherever the call stands, `(kira::Fn<void()>(f))();`. A lent
+  callee keeps its spelling (`f()`, `h->f()` where lent), so no golden changes.
+- **Finding 2 (w2-3-emit-exprs' verdict).** An assignment's `operator=` drops the old value's
+  parts while it writes the new one, member by member. When that drop ran an IMPURE `finally`,
+  the `finally` freed the target's storage (f2 `gl[0] = v` and f5 `gll[0] = v`, MSVC ASan
+  heap-use-after-free) or rewrote it half-written (f3: `99` with the new name `two`). **Fix:** where
+  `CppCopyPolicy.dropsOnWrite(t)` holds (`Drops.mayDrop`, less the types whose assignment already
+  stores first: a class or trait handle, a `Maybe` of one and a `Weak`, each one
+  `std::shared_ptr`/`std::weak_ptr`, whose `operator=` the standard specifies as
+  `shared_ptr(r).swap(*this)`), the write is `kira::replace(place) = value`. The new runtime
+  primitive (`kira/core.hxx`) moves the old value out (a move runs no Kira code), stores the new
+  one, and destroys the old one once the store is whole, so the `finally` runs after the write, as
+  Kira's reference counts order it. The right side is still evaluated before the place, as for a
+  plain `place = value` (C++17 sequences an overloaded `=`'s operands as the built-in's), so D33's
+  spills are unchanged. A proxy place (a `std::vector<bool>` element, reachable through a type
+  parameter) is assigned.
+- **The same write through the bindings.** `a[i] = v` and `m[k] = v` are assignments
+  (`kira::replace(kira::at(a, i)) = v`, `kira::replace(m[k]) = v`). A binding whose expression is
+  `PLACE = {n}` (`List.set`, `Arr.set`, `MutView.set`) is spelled `kira::replace(PLACE) = {n}` when
+  the element's drop may run one (`CppExprEmitter.replacing`). `Map.put` over an existing key
+  writes inside the runtime, so `kira::Map::put` stores first itself (a number or a `Str` value is
+  assigned in place).
+- **Measured on a trial** (scratchpad `w23r6/trial`: trial a6d2ef5 + this branch, uncommitted, in
+  a scratch clone; the real trial is untouched; g++ 13.2 | zig clang 20 | MSVC 14.44 | MSVC
+  `/fsanitize=address`). Every probe prints Kira's value on all four builds with 0 ASan reports:
+  - x/t5 `30 31 131 1131` (the class `initially`, the class method and both statement forms;
+    the base trial fails to build on all four, `-Wvexing-parse` and C4930);
+  - f2 `finally ran 1 99 fin 0` (base: gcc and clang exit 127, ASan heap-use-after-free);
+  - f3 `finally ran 99 fin 0` (base: `99 two 2` on all three, a mix);
+  - f5 four `finally ran`, then `0` (base: clang exit 127, MSVC two lines, ASan heap-use-after-free);
+  - f6 `finally ran 0 done` (base: gcc and clang exit 127);
+  - f8 `2 fin` (base: `2 two` on all three);
+  - f11 (new: `m[k] = v` on a global Map, `List.set` and `Map.put` on a STABLE `this.items` and
+    `this.m` whose `finally` replaces them through a global alias, `Arr.set` whose `finally`
+    rewrites the element, `xs[0] = v` at `T = Bool`) `fin 1, 0, fin 2, 1 90, fin 3, 0, 4, 4 fin,
+    true` (base: gcc and clang exit 127 and ASan reports a heap-use-after-free at `gm[1] = v`;
+    with that part cut, ASan reports one in `kira::Map::put`, and all three print `4 four` for
+    `Arr.set`);
+  - f7 stays refused by `rules.exclusivity.mut`.
+- **The same trial's suite** ran 1467 tests with one failure: W2.4's
+  `CppClassCopyTest.noDefinitionGuardsAndEachCallerCopiesWhereTheDesignSays` expects
+  `return kira::Fn<std::int32_t()>(f)();`, which is now `return (kira::Fn<std::int32_t()>(f))();`.
+  The trial updates that one text. Every golden, W2.4's class goldens included, is unchanged.
+- **Tests.** `CppCopyPolicyTest`: `aCopiedFxCalleeIsParenthesizedSoAStatementIsNeverADeclaration`
+  (4 texts: a struct `mut fx` calling its own field with and without an argument, a global hook
+  statement with and without one; no declaration spelling left; a lent callee stays `f();`) and
+  `aCopiedFxCalleeUsedAsAStatementRunsOnEveryCompiler` (5 rows on gcc, clang and msvc).
+  `aWriteOverAValueWhoseDropMayRunAFinallyStoresFirstAndDropsAfter` (13 texts: f2, f3, f5, f6 and
+  its null, `m[k] = v`, `List.set`, `Arr.set`, `MutView.set`, `m[i] = v` through a MutView, a type
+  parameter, and two plain stores) and `aWriteThatStoresFirstPrintsKirasValueOnEveryCompiler`
+  (10 rows). A `finally` is a class's and no class lowers on this branch (KI-18), so the test
+  stands in for W2.5's Drops (a type that holds `Rec` or a type parameter drops one).
+  `kira/cpp/tests/rt_test.cxx`'s `testReplace` runs f2, f3 and `Map.put` with a C++ destructor as
+  the `finally`: it sees the whole new value (4 checks; with a plain `operator=` in place of
+  `kira::replace`, f2 and f3 fail). The x/t5 class forms and the probes run on the trial above.
+  `copyCallee`'s text row now reads `return (kira::Fn<std::int32_t()>(kira::at(gfs, 0)))();`.
+- **Acceptance.** `./gradlew test --continue`: 1222 tests, 0 failures, 0 errors, 0 skipped.
+  `examples/regenerate.sh --check`: all snapshots current. goldens.sh: 17 cases, 67 passed.
+  run.sh: 57 passed (rt_test 129 checks). sys.sh: 18 passed. msvc.bat: all passed.
+
+### KI-20. A mutator that drops what it held, on a STABLE receiver, is W2.5's (rule M)
+
+- **What.** f12: `items.clear()` in a class `mut fx` (`this.items`, STABLE), where an element's
+  `finally` adds to the same List through a global alias. `std::vector::clear` is not reentrant:
+  gcc exits 127, clang 139, MSVC prints `finally ran 0` for Kira's two lines and `2`, and ASan
+  reports a heap-use-after-free. It is no write over a place, so `kira::replace` does not apply.
+- **Where.** Rule M (2.7) accepts a STABLE receiver whatever the callee runs; `CallReach.magic`
+  already ranks such a call not CONFINED (`dropsHeld`).
+- **Why it can wait.** It is W2.5's refusal to add (a STABLE receiver of a binding that drops what
+  it held, whose element may run an IMPURE `finally`), and no `[]=` shape needs one after this
+  round. Probe: scratchpad `w23r6/p/f12`.
+
 ## Copy by default, round 5: an assignment's value is a use
 
 This round merges `cpp/w2-5-rules` at 18d3f42 (round 5's CONFINED; merge 6ec4252, signed, no
