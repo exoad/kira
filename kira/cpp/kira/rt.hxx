@@ -249,6 +249,25 @@ namespace kira
     {
         return l;
     }
+    // Arr<T, N>.contains and Arr<T, N>.clone: the same bindings over a std::array. A clone
+    // of an Arr<T, N> is an Arr<T> (a List), as collections.kira declares it.
+    template<class T, std::size_t N>
+    [[nodiscard]] constexpr bool contains(const std::array<T, N>& a, const std::type_identity_t<T>& v)
+    {
+        for(const T& x : a)
+        {
+            if(x == v)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    template<class T, std::size_t N>
+    [[nodiscard]] std::vector<T> clone(const std::array<T, N>& a)
+    {
+        return std::vector<T>(a.begin(), a.end());
+    }
   }
 
   // Deque.popFront() and popBack(): a Maybe, none when empty.
@@ -724,12 +743,21 @@ namespace kira
           return items_.empty();
       }
       // A new key goes last; an existing key keeps its place and takes the value.
+      // The old value is dropped after the store (kira::replace), where its drop
+      // may run a Kira `finally`; a number or a Str drops nothing.
       void put(const K& key, const V& value)
       {
           const auto hit = index_.find(key);
           if(hit != index_.end())
           {
-              items_[hit->second].second = value;
+              if constexpr(std::is_trivially_destructible_v<V> || std::is_same_v<V, Str>)
+              {
+                  items_[hit->second].second = value;
+              }
+              else
+              {
+                  ::kira::replace(items_[hit->second].second) = value;
+              }
               return;
           }
           index_.emplace(key, items_.size());

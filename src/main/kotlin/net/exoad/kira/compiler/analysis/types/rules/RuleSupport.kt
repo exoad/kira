@@ -1104,7 +1104,7 @@ object CallReach {
     /**
      * The [dropsHeld] bindings whose C++ is a write `PLACE = {n}`. The emitter spells each one
      * `kira::replace(PLACE) = {n}` whenever the old value's drop may run an IMPURE `finally` (W2.3,
-     * `CppCopyPolicy.dropsOnWrite`); a handle's own `=` is `shared_ptr(r).swap(*this)`. Either way the
+     * `CppCopyPolicy.dropsOnWrite`), a class or trait handle's included. So the
      * new value is stored first and the old one dropped last, after the binding has finished with the
      * container, so a `finally` that re-enters the container meets a whole one (w25r6v2/x/m1: 3/91/fin).
      */

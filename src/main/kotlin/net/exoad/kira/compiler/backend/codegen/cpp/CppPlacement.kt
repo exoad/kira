@@ -169,8 +169,13 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         else -> false
     }
 
-    /** An `Fx` parameter EscapePass proved local to the call (design 5.1); an absent entry means escaping. */
-    fun isNonEscapingFx(p: ParamSymbol): Boolean = p.type is KType.Fn && !p.byRef && !model.fxEscapes(p)
+    private val escapes by lazy { CppEscapes(model) }
+
+    /**
+     * An `Fx` parameter EscapePass proved local to the call (design 5.1), or, where the model
+     * has no entry (an absent one means escaping), one [CppEscapes] sees called and nothing else.
+     */
+    fun isNonEscapingFx(p: ParamSymbol): Boolean = p.type is KType.Fn && !p.byRef && !escapes.fxEscapes(p)
 
     // ---- what a declaration names ----------------------------------------------------------------
 

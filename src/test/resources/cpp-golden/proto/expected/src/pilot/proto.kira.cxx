@@ -59,7 +59,7 @@ namespace proto
         const std::int32_t whole{scaled / 1000};
         const std::int32_t frac{scaled % 1000};
         const kira::Str sign = neg ? kira::Str("-") : kira::Str("");
-        return kira::cat(sign, whole, ".", kira::str::padStart(kira::text(frac), 3, '0'));
+        return kira::cat(sign, whole, ".", kira::Str(kira::str::padStart(kira::text(frac), 3, '0')));
     }
   }
 
@@ -89,13 +89,13 @@ namespace proto
           wordAt(out.line, e, tb, te);
           if(tb < te)
           {
-              out.topic = kira::str::substring(out.line, tb, te);
+              out.topic = kira::Str(kira::str::substring(out.line, tb, te));
               out.rest = tailFrom(out.line, te);
           }
           return out;
       }
       out.kind = Kind::KIND_OTHER;
-      out.rest = out.line;
+      out.rest = kira::Str(out.line);
       return out;
   }
 
@@ -110,14 +110,14 @@ namespace proto
       while(i + klen <= kira::str::length(text))
       {
           const bool boundary{i == 0 || isSpace(kira::str::at(text, i - 1))};
-          if(boundary && kira::str::substring(text, i, i + klen) == key)
+          if(boundary && kira::Str(kira::str::substring(text, i, i + klen)) == key)
           {
               kira::Size to{i + klen};
               while(to < kira::str::length(text) && !isSpace(kira::str::at(text, to)))
               {
                   to += 1;
               }
-              out = kira::str::substring(text, i + klen, to);
+              out = kira::Str(kira::str::substring(text, i + klen, to));
               return true;
           }
           i += 1;

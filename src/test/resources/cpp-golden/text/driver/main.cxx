@@ -29,8 +29,8 @@ namespace
   void run()
   {
       const kira::View<char> esc = kira::lit("ESC 1541");
-      const kira::Maybe<kira::Size> end = bibo::text::wordEnd(esc, kira::lit("ESC"));
-      check(kira::isSome(end) && esc.from(kira::unwrap(end)) == kira::lit("1541"), "word splits the argument off");
+      const kira::Maybe<kira::Size> arg = bibo::text::wordEnd(esc, kira::lit("ESC"));
+      check(kira::isSome(arg) && esc.from(kira::unwrap(arg)) == kira::lit("1541"), "word splits the argument off");
       const kira::View<char> ping = kira::lit("PING");
       check(kira::isSome(bibo::text::wordEnd(ping, kira::lit("PING"))) &&
                 ping.from(kira::unwrap(bibo::text::wordEnd(ping, kira::lit("PING")))).isEmpty(),

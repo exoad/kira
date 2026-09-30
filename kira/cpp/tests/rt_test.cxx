@@ -43,6 +43,23 @@
 #include <cstdlib>
 #include <cstring>
 #include <locale>
+
+// ---- R-A's LEND (40-round3 2): which accessors lend their receiver's storage --
+// The rules make the result of each of these a place of its receiver
+// (Rules.ACCESSORS), because C++ hands back a reference into it; the emitter
+// pins the same set against the *.bind.yaml manifests (CppBindingTableTest).
+// Each half is checked against the other: the lenders return an lvalue
+// reference, and the accessors the set leaves out return a fresh value.
+static_assert(std::is_lvalue_reference_v<decltype(kira::at(std::declval<const kira::List<int>&>(), 0))>, "List.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(kira::at(std::declval<const std::array<int, 2>&>(), 0))>, "Arr.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::View<int>&>()[0])>, "View.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::MutView<int>&>()[0])>, "MutView.get lends");
+static_assert(std::is_lvalue_reference_v<decltype(kira::unwrap(std::declval<const std::optional<kira::List<int>>&>()))>, "Maybe.unwrap lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::Result<kira::Str, kira::Str>&>().unwrap())>, "Result.unwrap lends");
+static_assert(std::is_lvalue_reference_v<decltype(std::declval<const kira::Result<kira::Str, kira::Str>&>().unwrapErr())>, "Result.unwrapErr lends");
+static_assert(!std::is_reference_v<decltype(std::declval<const kira::Stack<int>&>().peek())>, "Stack.peek copies");
+static_assert(!std::is_reference_v<decltype(std::declval<const kira::Queue<int>&>().peek())>, "Queue.peek copies");
+static_assert(!std::is_reference_v<decltype(std::declval<const kira::Map<int, int>&>().get(0))>, "Map.get copies");
 #endif
 
 // ---- a module inside the macro guard, as the emitter writes one --------------
@@ -558,6 +575,10 @@ namespace
       check(kira::list::clone(xs) == kira::List<std::int32_t>{40, 6, 70} && kira::view(xs).size() == 3, "List place and view");
       const kira::View<std::int32_t> fromList = xs;
       check(fromList[2] == 70 && kira::mutView(xs).size() == 3, "View from a List");
+      const std::array<std::int32_t, 3> fixed{1, 2, 3};
+      static_assert(kira::list::contains(std::array<std::int32_t, 2>{1, 2}, 2), "Arr<T, N>.contains is constexpr");
+      check(kira::list::contains(fixed, 2) && !kira::list::contains(fixed, 4), "Arr<T, N>.contains");
+      check(kira::list::clone(fixed) == kira::List<std::int32_t>{1, 2, 3}, "Arr<T, N>.clone is a List");
       kira::List<bool> flags{true, false};
       kira::at(flags, 1) = true;
       check(kira::at(flags, 1) && kira::list::get(flags, 0), "List<Bool> places");
@@ -608,6 +629,157 @@ namespace
       check(bad.isErr() && kira::isErr(bad) && bad.unwrapErr() == "no" && kira::unwrap(ok) == 5, "Result.error");
       const kira::Result<kira::Str, kira::Str> blank;
       check(blank.isErr() && blank.unwrapErr().empty(), "a default Result is an error");
+  }
+
+  // kira::replace: a write over an old value whose drop runs a Kira `finally` stores first
+  // and drops after (round 5b's w2-3 finding, the verifier's f2 and f3, as the emitter writes
+  // them). Dropped's destructor stands in for the IMPURE finally: it reads the place it was
+  // replaced from, then frees or rewrites it. A plain operator= runs it after `v` and before
+  // `name` is written: it would read the old name, and f2 would write into the freed buffer.
+  struct Dropped;
+  struct Held
+  {
+      std::int32_t v = 0;
+      kira::Rc<Dropped> r;
+      kira::Str name;
+      kira::List<std::int32_t> kids;
+  };
+  kira::List<Held> heldList;
+  Held heldOne{.v = 0, .r = nullptr, .name = "zero", .kids = {}};
+  kira::Map<std::int32_t, Held> heldMap;
+  kira::Str seenName;
+  struct Dropped
+  {
+      std::int32_t mode = 0;
+      Dropped() = default;
+      Dropped(const Dropped&) = delete;
+      Dropped& operator=(const Dropped&) = delete;
+      ~Dropped()
+      {
+          if(mode == 1)
+          {
+              seenName = kira::at(heldList, 0).name;
+              heldList = {Held{.v = 99, .r = nullptr, .name = "fin-long-name-that-lives-on-the-heap-00000", .kids = {}}};
+          }
+          else if(mode == 2)
+          {
+              seenName = heldOne.name;
+              heldOne = Held{.v = 99, .r = nullptr, .name = "fin", .kids = {}};
+          }
+          else if(mode == 3)
+          {
+              seenName = heldMap.at(1).name;
+              heldMap = kira::Map<std::int32_t, Held>{};
+          }
+      }
+  };
+  [[nodiscard]] kira::Rc<Dropped> dropping(std::int32_t mode)
+  {
+      kira::Rc<Dropped> d = std::make_shared<Dropped>();
+      d->mode = mode;
+      return d;
+  }
+
+  void testReplace()
+  {
+      heldList = {Held{.v = 1, .r = dropping(1), .name = "one-long-name-that-lives-on-the-heap-000000", .kids = {1, 2, 3}}};
+      kira::replace(kira::at(heldList, 0)) = Held{.v = 2, .r = nullptr, .name = "two-long-name-that-lives-on-the-heap-000000", .kids = {4, 5}};
+      check(same(seenName, "two-long-name-that-lives-on-the-heap-000000") && heldList.size() == 1 && kira::at(heldList, 0).v == 99,
+            "f2: xs[i] = v stores the whole value, then the finally replaces xs");
+
+      heldOne = Held{.v = 1, .r = dropping(2), .name = "one-long-name-that-lives-on-the-heap-000000", .kids = {1, 2, 3}};
+      kira::replace(heldOne) = Held{.v = 2, .r = nullptr, .name = "two-long-name-that-lives-on-the-heap-000000", .kids = {4, 5}};
+      check(same(seenName, "two-long-name-that-lives-on-the-heap-000000") && heldOne.v == 99 && same(heldOne.name, "fin") && heldOne.kids.empty(),
+            "f3: x = v stores the whole value, then the finally's write is last, never a mix");
+
+      heldMap.put(1, Held{.v = 1, .r = dropping(3), .name = "one-long-name-that-lives-on-the-heap-000000", .kids = {}});
+      heldMap.put(1, Held{.v = 3, .r = nullptr, .name = "three-long-name-that-lives-on-the-heap-0000", .kids = {}});
+      check(same(seenName, "three-long-name-that-lives-on-the-heap-0000") && heldMap.isEmpty(), "Map.put over a key stores, then drops the old value");
+
+      kira::List<bool> flags{false, false};
+      kira::replace(kira::at(flags, 1)) = true;
+      std::optional<Held> maybe = Held{.v = 1, .r = nullptr, .name = "m", .kids = {}};
+      kira::replace(maybe) = kira::none;
+      check(kira::at(flags, 1) && !kira::at(flags, 0) && !maybe.has_value(), "a proxy place (List<Bool>) and a Maybe");
+  }
+
+  // Round 6's w2-3 finding (v23r6x/atk hx1, hx2, k_c1): a write over a class handle is a
+  // std::shared_ptr assignment, whose order is the library's. libstdc++'s copy-assignment
+  // releases the old count before it stores the new one, so a finally that re-entered the
+  // handle met the new pointer beside the dying count (hx1: Res 1 destroyed twice; hx2: a
+  // control block stored into a freed buffer). kira::replace stores whole, then drops.
+  struct HandleRes;
+  kira::Rc<HandleRes> handleSlot;
+  kira::List<kira::Rc<HandleRes>> handleList;
+  kira::List<std::int64_t> handleAfter;
+  std::int32_t handleDrops = 0;
+  std::int32_t handleSeen = 0;
+  struct HandleRes
+  {
+      std::int32_t n = 0;
+      std::int32_t mode = 0;
+      HandleRes(std::int32_t n_, std::int32_t mode_) : n(n_), mode(mode_)
+      {
+      }
+      HandleRes(const HandleRes&) = delete;
+      HandleRes& operator=(const HandleRes&) = delete;
+      ~HandleRes()
+      {
+          if(mode == 1)
+          {
+              // hx1: copy the handle the slot holds into a local, and read it.
+              ++handleDrops;
+              const kira::Rc<HandleRes> x = handleSlot;
+              handleSeen = x ? x->n : -1;
+          }
+          else if(mode == 2)
+          {
+              // hx2: replace the list, then allocate a list of the same byte size.
+              ++handleDrops;
+              handleList = {};
+              handleAfter = {11, 22};
+          }
+          else if(mode == 3)
+          {
+              // k_c1: read the slot, then write it again.
+              ++handleDrops;
+              handleSeen = handleSlot ? handleSlot->n : -1;
+              kira::replace(handleSlot) = std::make_shared<HandleRes>(3, 0);
+          }
+      }
+  };
+
+  void testReplaceHandle()
+  {
+      handleSlot = std::make_shared<HandleRes>(1, 1);
+      {
+          const kira::Rc<HandleRes> b = std::make_shared<HandleRes>(2, 0);
+          kira::replace(handleSlot) = b;
+          check(handleDrops == 1 && handleSeen == 2 && handleSlot == b && b.use_count() == 2,
+                "hx1: gm = b stores b, then Res 1 drops once and sees Res 2");
+      }
+      kira::replace(handleSlot) = kira::none;
+
+      handleDrops = 0;
+      handleList = {std::make_shared<HandleRes>(1, 2)};
+      {
+          const kira::Rc<HandleRes> b = std::make_shared<HandleRes>(2, 0);
+          kira::replace(kira::at(handleList, 0)) = b;
+          check(handleDrops == 1 && handleList.empty() && handleAfter.size() == 2 && kira::at(handleAfter, 0) == 11 &&
+                    kira::at(handleAfter, 1) == 22 && b.use_count() == 1,
+                "hx2: xs[0] = b stores whole, then the finally replaces xs and its writes are last");
+      }
+
+      handleDrops = 0;
+      handleSeen = 0;
+      handleSlot = std::make_shared<HandleRes>(1, 3);
+      {
+          const kira::Rc<HandleRes> b = std::make_shared<HandleRes>(2, 0);
+          kira::replace(handleSlot) = b;
+          check(handleDrops == 1 && handleSeen == 2 && handleSlot && handleSlot->n == 3 && b.use_count() == 1,
+                "k_c1: the finally sees b, and its own write over the same handle is last");
+      }
+      kira::replace(handleSlot) = kira::none;
   }
 
   std::int32_t argsSeen = 0;
@@ -751,6 +923,8 @@ int main(int argc, char** argv)
     testStr();
     testContainers();
     testClasses();
+    testReplace();
+    testReplaceHandle();
     testMain();
     testLocale();
     std::printf("\n%d checks, %d failed\n", checks, failures);
