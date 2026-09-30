@@ -256,7 +256,8 @@ internal class ExclusivityPass : RulePass {
          * Rule M (50-round4 2.7, `rules.exclusivity.mut`): each `mut` operand `w` of [e] (a `mut`
          * argument whose slot is no second-class type, F2; the value receiver of a `mut fx`) is
          * bound `T&` and never copied, so it is accepted only when nothing [e] runs can move or
-         * free its storage: it is PRIVATE ([isPrivate]) or STABLE ([stable]), or [e] is CONFINED
+         * free its storage: it is PRIVATE ([isPrivate]), STABLE ([stable]) and [e] is no binding
+         * that drops what it held mid-operation (`CallReach.dropsMidCall`, KI-20), or [e] is CONFINED
          * (`CallReach.confined`) and no other operand [e] writes (a `mut` argument, the `mut fx`
          * receiver, the source of a `MutView` it is lent) may hold `w` or lie inside it
          * (`Rules.mayHold` both ways) unless both are PRIVATE with different roots. D37's
@@ -271,13 +272,28 @@ internal class ExclusivityPass : RulePass {
             }
             val recvType = if (rc.implicitThis) (b.owner as? ClassSymbol)?.selfType else rc.receiver?.let { model.types[it] }
             val confined = CallReach.confined(rc, model, recvType)
+            // STABLE keeps the storage from being moved or freed by anything but the callee itself; a binding that drops
+            // what it held partway through its own C++ can run a finally that re-enters the very container (KI-20).
+            val dropsMid = CallReach.dropsMidCall(rc, model, recvType)
             val fnName = rc.fn?.name ?: KiraUnparser.text(e.name)
             for (w in muts) {
-                if (isPrivate(w.place) || stable(w.place)) {
+                if (isPrivate(w.place)) {
                     continue
                 }
                 val what = if (w.isReceiver) "the receiver '${w.text}' of the mut fx" else "the mut argument '${w.text}'"
                 val storage = storageOf(w.place)
+                if (stable(w.place)) {
+                    if (dropsMid) {
+                        r.report(
+                            "rules.exclusivity.mut",
+                            "$what, $storage, is passed to '$fnName', which drops what it held while it still works on the container, " +
+                                "and that drop may run a finally that reaches the same container and changes it mid-operation " +
+                                "(a stdlib container is not reentrant). Write the container whole instead, or work on a local and store it back.",
+                            w.at,
+                        )
+                    }
+                    continue
+                }
                 if (!confined) {
                     r.report(
                         "rules.exclusivity.mut",
@@ -348,6 +364,12 @@ internal class ExclusivityPass : RulePass {
          *   storage it is bound to moves only through it;
          * - a trait's `this` in a default body: a class object held for the call, or a value
          *   class's `this`, PRIVATE or kept still by rule M at the caller.
+         *
+         * The proof covers every write but the callee's own drops. A stdlib binding that drops what
+         * it held while its C++ still holds pointers into the container (`CallReach.dropsMidCall`:
+         * `items.clear()` over elements whose `finally` may be IMPURE) can run a `finally` that adds
+         * to or replaces that same container through an alias, so [mutOperands] refuses it at a
+         * STABLE place too (KI-20). `List.set` stores first and drops after, and stays STABLE.
          */
         private fun stable(p: Place): Boolean {
             val steps = p.path()

@@ -1101,6 +1101,41 @@ object CallReach {
         return rc.receiver == null && !rc.implicitThis || fn.isMutMethod || key == "MutView.set"
     }
 
+    /**
+     * The [dropsHeld] bindings whose C++ is a write `PLACE = {n}`. The emitter spells each one
+     * `kira::replace(PLACE) = {n}` whenever the old value's drop may run an IMPURE `finally` (W2.3,
+     * `CppCopyPolicy.dropsOnWrite`); a handle's own `=` is `shared_ptr(r).swap(*this)`. Either way the
+     * new value is stored first and the old one dropped last, after the binding has finished with the
+     * container, so a `finally` that re-enters the container meets a whole one (w25r6v2/x/m1: 3/91/fin).
+     */
+    val STORES_FIRST: Set<String> = setOf("List.set", "Arr.set", "MutView.set")
+
+    /**
+     * A stdlib binding that may drop, partway through its own C++, the last handle of an object whose
+     * `finally` is IMPURE. It is a [dropsHeld] binding, not one of [STORES_FIRST], with a receiver or
+     * argument that may hold such an object: `clear`, `removeAt`, `put`, `remove`, `pop`, `dequeue`,
+     * `popFront` and `popBack` on `List`, `Map`, `Deque`, `Stack` and `Queue`. Their C++
+     * (`std::vector::clear`, `erase`, `Map::put`'s element assignment) keeps pointers into the
+     * container's buffer across that drop, and none of it is reentrant. A `finally` that reaches the
+     * same container through an alias would add, replace or read it mid-operation: a use-after-free,
+     * or a size Kira never has (KI-20: w23r6/p/f12, w25r6v2/x/m2-m4, v23r6x/atk/k_a4 and k_a6c).
+     * A `Set` holds only keys, which drop nothing. It is [magic]'s drop condition, less [STORES_FIRST],
+     * and rule M's STABLE bullet does not cover such a call.
+     */
+    fun dropsMidCall(rc: ResolvedCall, model: TypedModel, receiverType: KType?): Boolean {
+        val fn = rc.fn ?: return false
+        val binding = rc.kind == CallKind.MAGIC || fn.foreign is Foreign.Magic && fn.body == null && !fn.suppliedByCpp
+        if (!binding || (fn.foreign as? Foreign.Magic)?.key in STORES_FIRST || !dropsHeld(rc, fn)) {
+            return false
+        }
+        return heldMayDrop(rc, model, receiverType, model.dropsImpureFinally)
+    }
+
+    /** The receiver of [rc] (when it has one) or one of its given arguments may hold the last handle of an object whose `finally` is IMPURE, under [drops]. */
+    private fun heldMayDrop(rc: ResolvedCall, model: TypedModel, receiverType: KType?, drops: (KType?) -> Boolean): Boolean =
+        (rc.receiver != null || rc.implicitThis) && drops(receiverType) ||
+            rc.args.any { a -> (a as? ArgBinding.Given)?.let { drops(model.types[it.expr]) } == true }
+
     private fun magic(rc: ResolvedCall, fn: FnSymbol, model: TypedModel, receiverType: KType?, k: Known): Boolean {
         if ((fn.foreign as? Foreign.Magic)?.key in RUNS_OPERATORS) {
             val typeArgs = rc.substitution.values + ((receiverType as? KType.Nominal)?.typeArgs() ?: emptyList())
@@ -1114,13 +1149,7 @@ object CallReach {
             return false
         }
         // A mutator that replaces or removes may drop what it held (`xs.clear()`, `xs.set(0, v)`, `m.remove(k)`); `xs.add(v)` drops nothing.
-        if (!dropsHeld(rc, fn)) {
-            return true
-        }
-        if ((rc.receiver != null || rc.implicitThis) && k.drops(receiverType)) {
-            return false
-        }
-        return rc.args.none { a -> (a as? ArgBinding.Given)?.let { k.drops(model.types[it.expr]) } == true }
+        return !dropsHeld(rc, fn) || !heldMayDrop(rc, model, receiverType, k.drops)
     }
 
     internal fun construction(cls: ClassSymbol?, given: Map<FieldSymbol, Expr>, model: TypedModel, k: Known): Boolean {

@@ -284,6 +284,71 @@ Measured on trial a6d2ef5 plus this diff (a scratch clone at scratchpad w25r6; t
   refused with identical codes.
 - **The trial's full suite** with this diff: 1459 tests, 0 failures.
 
+**Round 7 (narrow: round 6's w2-5 #0, which is W2.3's KI-20). Rules tests 199, full suite 1084, 0
+failures each; `regenerate.sh --check` current.**
+Rule M let a STABLE `mut fx` receiver skip CONFINED entirely (`if (isPrivate(w.place) || stable(w.place))
+continue`). STABLE's proof (2.7: another write "can overwrite it in place but cannot move or free it")
+holds against every write but the callee's own drops. A stdlib binding that drops what it held while its
+C++ still holds pointers into the container (`std::vector::clear`, `erase`, `Map::put`'s element
+assignment) runs the element's `finally` mid-operation, and a `finally` that reaches the same container
+through an alias adds, replaces or reads it there: f12, m2, m3, m4 and k_a4 were use-after-frees on
+every compiler, and k_a6c printed `seen 2` for Kira's `seen 0`.
+
+- **The rule: `CallReach.dropsMidCall(rc, model, receiverType)`**, `magic()`'s drop condition less
+  `STORES_FIRST`. It holds for a stdlib binding that `dropsHeld` (`clear`, `removeAt`, `put`, `remove`,
+  `pop`, `dequeue`, `popFront`, `popBack`) whose receiver or an argument may hold the last handle of an
+  object whose `finally` is IMPURE (`dropsImpureFinally`). At a STABLE `mut` operand of such a call, rule
+  M now refuses (`rules.exclusivity.mut`, "which drops what it held while it still works on the
+  container"). PRIVATE is unchanged, since no `finally` can name a caller's local. A non-STABLE place was
+  already refused through CONFINED, which `magic()` answers with the same condition.
+- **`STORES_FIRST` = `List.set`, `Arr.set`, `MutView.set`**, the bindings whose C++ is `PLACE = {n}`.
+  W2.3 spells each of them `kira::replace(PLACE) = {n}` when the old element may drop an IMPURE `finally`
+  (`CppCopyPolicy.dropsOnWrite`); a handle's `=` is a swap. Either way the binding stores first and drops
+  last, so m1 stays STABLE and accepted. That lowering belongs to W2.3, so if it changes, this set has to
+  change with it.
+- A `Set` holds only keys (a scalar, `Str` or enum), which drop nothing. The KI-20 minor about
+  `Set.remove` cannot arise.
+- Design 2.7's STABLE bullet needs the matching clause, and it is the design's to add: "and `C` is no
+  stdlib binding that drops what it held mid-operation over a value that may run an IMPURE `finally`
+  (`clear`, `removeAt`, `put`, `remove`, `pop`, ...; `set` stores first)".
+- The remedy the message names works: write the container whole (`items = []`, `m = Map<K, V> { }`),
+  which W2.3 lowers to store first and drop after, or work on a local and store it back.
+
+Tests (the verifier's probes as written, less the `module` line):
+- `ExclusivityPassTest.ruleMRefusesAStableReceiverOfAListBindingThatDropsWhatItHeldMidOperation` covers
+  f12 whole (one refusal, at `items.clear()`), m3 (`h.items.clear()` in main, plus its unused
+  `wipe`) and m2 (`removeAt`, then `clear`).
+- `ruleMRefusesAStableReceiverOfEveryContainerBindingThatDropsMidOperation` covers m4 (three `put`s and
+  a `clear`), k_a4 with a `take` added (`popFront`, `popBack`, `pop`, `dequeue`, `Map.remove`; its adds
+  stay accepted) and k_a6c.
+- `ruleMKeepsListSetAndEveryQuietDropOnAStablePlace` covers m1 whole, clean with `set` not CONFINED,
+  plus the quiet cases: scalars, `Str`, a value holding a class with no `finally`, a `Set`, the adds, a
+  whole write, and a PRIVATE local holding a loud element.
+- `SharedPredicatesTest.aConstructionOrADropThatMayRunCodeIsNotConfined` now expects its one new
+  refusal: `clearAll(mut ds: List<Dropper>) { ds.clear() }`, a `mut` parameter, which is STABLE, and a
+  caller may pass it `mut h.ds`. Its CONFINED answers are unchanged.
+- Without the fix, the two refusal tests fail and the control passes.
+
+Measured on trial 355c8eb plus this diff (a scratch export at scratchpad w25r7; the trial untouched),
+with gcc 13.2, zig c++ (clang 20), MSVC /O1 and MSVC /fsanitize=address:
+- f12, m2, m3, m4, k_a4 and k_a6c are refused at every mutator named above, and nothing else in them is
+  refused.
+- m1 prints Kira's 3/91/fin on all four.
+- The same probes rewritten with the remedy print Kira's values on all four:
+  - f12w and m3w: finally ran twice, then 2;
+  - m2w: finally/2/finally/1;
+  - m4w: finally/0/finally/0;
+  - k_a4w: m 0, m after 0, and likewise for d, s and q;
+  - k_a6cw: seen 0, after 0.
+- 7 ASan runs, 0 reports.
+- The 7.1 refusal replay over 830 projects: 510 accepted and 320 refused, as in round 6. No project's
+  exit code, refusal set or emitted state changed, and 509 of the 510 emitted trees are byte-identical
+  (the version stamp aside). The one other, vr3w24 rd3, swaps two prototypes against round 6's parallel
+  sweep; it matches round 5c's header exactly and re-emits alike on its own, so round 6's copy was the
+  known sweep artefact. None of the 830 pairs a dropping mutator on a STABLE place with an IMPURE
+  `finally` (r1_p2e's `GFS.clear()` is a global, refused already).
+- The trial's full suite with this diff: 1553 tests, 0 failures.
+
 ## Round 3: where this branch reads the design differently, and why
 
 - **Clause 3 covers operators too.** 3.2 lists "(not an operator, not `[]`)". DECISIONS 2 makes `a

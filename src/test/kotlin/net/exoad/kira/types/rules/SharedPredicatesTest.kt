@@ -381,7 +381,10 @@ class SharedPredicatesTest {
             }
             """,
         )
-        assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
+        // Round 7 (KI-20): ds is a mut parameter, STABLE, and clear drops Droppers mid-operation, so rule M refuses it
+        // there (its caller may pass `mut h.ds`, which a finally could reach). The CONFINED answers are unchanged.
+        assertEquals(listOf("rules.exclusivity.mut"), p.diagnostics.filter { it.isError }.map { it.code }, TyperTestSupport.render(p))
+        assertTrue(RulesTestSupport.message(p, "rules.exclusivity.mut").startsWith("the receiver 'ds' of the mut fx, storage inside the caller's mut place, is passed to 'clear', which drops"))
         val built = listOf("Init", "Kid", "Plain", "Defaulted").associateWith { CallReach.construction(RulesTestSupport.cls(p, it), emptyMap(), p.model) }
         assertEquals(mapOf("Init" to false, "Kid" to false, "Plain" to true, "Defaulted" to false), built)
         assertEquals(mapOf("clear" to listOf(false), "add" to listOf(true)), confined(p, "clear", "add"))
