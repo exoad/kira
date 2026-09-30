@@ -508,15 +508,21 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 out += positionOf(fn.decl) to render { definition(this, fn, p, owner = s) }
             }
         }
-        (orderedTraits() + orderedClasses()).forEach { t ->
+        // A struct is asked too: the classes part defines the trait default bodies it inherits
+        // (CppClassesPart.structInherited), which its own methods above never list.
+        (orderedTraits() + orderedClasses() + structs).forEach { t ->
             val p = placement.type(t)
-            if (p.def != home) {
+            // An exported class of a source module keeps its template members in the header
+            // (design 5.5: bodies go in the .kira.cxx, except templates), so the classes part
+            // is asked for the header as well and writes only those there.
+            val templatesInHeader = home == Home.HEADER && p.decl == Home.HEADER && p.def == Home.SOURCE
+            if (p.def != home && !templatesInHeader) {
                 return@forEach
             }
             if (exported != null && placement.isExported(t) != exported) {
                 return@forEach
             }
-            val text = render { ctx.inScopeOf(t) { parts.classes.defineMembers(ctx, t, this, inline = p.inlineDefinition) } }
+            val text = render { ctx.inScopeOf(t) { parts.classes.defineMembers(ctx, t, this, inline = home != Home.SOURCE) } }
             if (text.isNotEmpty()) {
                 out += positionOf(t.decl) to text
             }
@@ -735,10 +741,13 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             w.block("struct ${ctx.names.escape(s.name)}", ";") {
                 s.fields.forEach { f -> line(field(f)) }
                 val methods = s.methods.filter { !ctx.isMagic(it) }
-                if (methods.isNotEmpty() || equality) {
+                // The trait default bodies the struct inherits are its own members (static dispatch, design 5.5).
+                val inherited = parts.classes.structInherited(ctx, s)
+                if (methods.isNotEmpty() || inherited.isNotEmpty() || equality) {
                     blank()
                 }
                 methods.forEach { fn -> prototype(fn, owner = s).forEach { line(it) } }
+                inherited.forEach { line(it) }
                 if (equality) {
                     line("bool operator==(const ${ctx.names.escape(s.name)}&) const = default;")
                 }
@@ -801,6 +810,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return if (node != null && model.typeOf(node) != null) ctx.spell(node, Pos.RETURN) else ctx.spell(fn.ret, Pos.RETURN, fn.decl)
     }
 
+    /** One parameter, under its own name. */
     private fun paramText(p: ParamSymbol, withDefault: Boolean, markUnused: Boolean, fn: FnSymbol): String {
         val name = ctx.paramName(p)
         val unused = if (markUnused && !placement.bodyNames(fn, p)) "[[maybe_unused]] " else ""
@@ -848,6 +858,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             p.inlineDefinition && !placement.isTemplate(fn, owner) -> "inline "
             else -> ""
         }
+        // No parameter is copied at entry: every caller keeps invariant I (50-round4 2.0).
         val params = fn.params.joinToString(", ") { paramText(it, withDefault = false, markUnused = true, fn) }
         val constSuffix = if (owner != null && !fn.isMutMethod) " const" else ""
         fn.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }

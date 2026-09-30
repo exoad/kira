@@ -55,7 +55,12 @@ namespace classes
 
   kira::Str Animal::describe() const
   {
-      return kira::cat(name, " says ", sound());
+      return [&]() -> kira::Str
+      {
+          const kira::Str t0_ = name;
+          const kira::Str t1_ = sound();
+          return kira::cat(t0_, " says ", t1_);
+      }();
   }
 
   Dog::Dog(kira::Str name_, std::int32_t tricks_)

@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
@@ -26,6 +27,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.source.SourceContext
@@ -92,7 +95,7 @@ interface CppLambdaPart {
     }
 }
 
-/** Classes and traits (W2.4, design 5.5). Structs are the declaration emitter's. */
+/** Classes and traits (W2.4, design 5.5). Structs are the declaration emitter's, but for the trait default bodies one inherits ([structInherited]). */
 interface CppClassesPart {
     /**
      * Section 8 of the header (or the source's anonymous namespace for a private one): the
@@ -103,9 +106,90 @@ interface CppClassesPart {
     /**
      * The out-of-line members of [sym] (constructor, destructor, methods, trait default
      * bodies), each an Allman definition with a blank line between them. [inline] when they
-     * go into a header (a header-only module, a template).
+     * go into a header (a header-only module, a template). An exported class of a source
+     * module is asked for its header and for its source; only its template members go in
+     * the header.
      */
     fun defineMembers(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter, inline: Boolean)
+
+    /**
+     * `this` used as a value (design 5.5, D11): `*this` in a struct method, the class's
+     * `kira::Rc` from `shared_from_this()` in a class method (the class then derives
+     * `kira::Shared`). `this.f` is a member access, never this.
+     */
+    fun thisValue(ctx: CppEmitContextImpl, e: ThisExpr): String {
+        ctx.unsupported(e, "this as a value")
+        return "/* this */"
+    }
+
+    /**
+     * What a lambda escaping [method] of the class [owner] captures as `self` (design 5.6,
+     * `[self = ...]`): `shared_from_this()`, a `shared_ptr` to the root of the superclass chain,
+     * which holds the one `kira::Shared` base (`this->shared_from_this()` in a class template).
+     */
+    fun selfCapture(ctx: CppEmitContextImpl, owner: ClassSymbol, method: FnSymbol, at: ASTNode): String {
+        ctx.unsupported(at, "a lambda capturing a class's this")
+        return "shared_from_this()"
+    }
+
+    /**
+     * Whether [method] of a class or trait is `const` in C++: the one fact every spelling of
+     * the receiver follows (the method's head, `this` as a value, the captured `self`). The
+     * default reads the modifier; the classes part decides from the body and the override
+     * family, since the typer lets a plain `fx` of a class write its receiver (D29).
+     */
+    fun isConstMethod(ctx: CppEmitContextImpl, method: FnSymbol): Boolean = !method.isMutMethod
+
+    /**
+     * The receiver inside a lambda that captured `[self = ...]` ([selfCapture]) in [method]
+     * of [owner], as the object of `->`: `self`, a `shared_ptr` to the chain's root, cast
+     * down to [owner] when the root is another class (`std::static_pointer_cast<Sub>(self)`,
+     * `<const Sub>` in a `const` method, [isConstMethod]), so `self->k` reaches a subclass's
+     * field and `self->reset()` a method that writes.
+     */
+    fun selfReceiver(ctx: CppEmitContextImpl, owner: ClassSymbol, method: FnSymbol): String {
+        var root: ClassSymbol = owner
+        val seen = java.util.Collections.newSetFromMap(IdentityHashMap<ClassSymbol, Boolean>())
+        while (seen.add(root)) {
+            root = root.superclass?.sym as? ClassSymbol ?: break
+        }
+        if (root === owner) {
+            return "self"
+        }
+        val constant = if (isConstMethod(ctx, method)) "const " else ""
+        return "std::static_pointer_cast<$constant${ctx.speller.bareClass(owner.selfType)}>(self)"
+    }
+
+    /**
+     * The prototypes the body of the struct [s] holds for the trait methods it inherits with a
+     * default body (design 5.5: a struct implementing a trait gets static dispatch only, so
+     * each such body has to be a member of the struct); their definitions come through
+     * [defineMembers] for the struct. Empty when it inherits none.
+     */
+    fun structInherited(ctx: CppEmitContextImpl, s: ClassSymbol): List<String> = emptyList()
+
+    /**
+     * The structs that take the trait default body [fn] as a member of their own
+     * ([structInherited]). Its parameters and locals are spelled in each one's class scope as
+     * well as the trait's, so a name of theirs shadows a field of the struct too
+     * ([CppEmitContextImpl.paramName]). Empty when no struct copies it.
+     */
+    fun structsCopying(ctx: CppEmitContextImpl, fn: FnSymbol): List<ClassSymbol> = emptyList()
+
+    /** A class construction `C { ... }` (R9): `std::make_shared<C>(arguments in constructor order)`. */
+    fun construct(ctx: CppEmitContextImpl, e: ObjectInitExpr): String {
+        ctx.unsupported(e, "the construction of a class")
+        return "/* construction */"
+    }
+
+    /**
+     * [text], the C++ of [e], under the upcast [c] (a class to its superclass or a trait): a
+     * `kira::Rc` converts implicitly. A struct boxed into a trait value is refused (D43).
+     */
+    fun upcast(ctx: CppEmitContextImpl, e: Expr, c: Coercion.Upcast, text: String): String {
+        ctx.unsupported(e, "an upcast")
+        return text
+    }
 
     object Unsupported : CppClassesPart {
         override fun define(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter) {
@@ -116,6 +200,13 @@ interface CppClassesPart {
 
         override fun defineMembers(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter, inline: Boolean) {
             // Reported once, by define().
+        }
+
+        override fun structInherited(ctx: CppEmitContextImpl, s: ClassSymbol): List<String> {
+            if (s.traits.isNotEmpty()) {
+                s.decl?.let { ctx.unsupported(it, "the trait methods struct '${s.name}' inherits") }
+            }
+            return emptyList()
         }
     }
 }
@@ -128,6 +219,27 @@ interface CppGenericsPart {
             return null
         }
         return params.joinToString(", ", prefix = "template<", postfix = ">") { "typename ${ctx.names.escape(it.name)}" }
+    }
+
+    /** A generic call's explicit type arguments, `<std::int32_t>` (`id<std::int32_t>(7)`), or "" for none. */
+    fun typeArguments(ctx: CppEmitContextImpl, at: ASTNode, typeArgs: List<KType>): String {
+        if (typeArgs.isEmpty()) {
+            return ""
+        }
+        ctx.unsupported(at, "explicit type arguments")
+        return "</* type arguments */>"
+    }
+
+    /**
+     * The receiver of a member access on [receiver] (spelled [text]) when its type is a type
+     * parameter: `kira::deref(x)`, so `.m()` reaches a value and a class alike (design 5.5,
+     * [S1]). Null for any other receiver, whose access form R4 decides.
+     */
+    fun receiver(ctx: CppEmitContextImpl, receiver: Expr, text: String): String? {
+        if (ctx.model.typeOrNull(receiver) is KType.Param) {
+            ctx.unsupported(receiver, "a member access on a type parameter")
+        }
+        return null
     }
 
     object Plain : CppGenericsPart
@@ -251,8 +363,8 @@ data class CppEmitParts(
             lambdas = CppClosureEmitter(),
             bindings = CppBindingTable(),
             // W2.4 (classes, traits, generics) registers on these two lines:
-            classes = CppClassesPart.Unsupported,
-            generics = CppGenericsPart.Plain,
+            classes = CppClassEmitter(),
+            generics = CppGenericsEmitter,
             // W2.6 (FFI) registers on this line:
             externs = CppExternEmitter,
         )
@@ -394,9 +506,44 @@ class CppEmitContextImpl(
         report(diagnosticAt(node, code, message, severity))
     }
 
-    /** Adds [d] to this module's [diagnostics]. */
+    /** The module whose diagnostics are being left to its own emission ([deferringTo]), if any. */
+    private var deferredTo: ModuleSymbol? = null
+
+    /**
+     * Runs [block] with every diagnostic placed in [other]'s file dropped, [other] being a
+     * module whose text this module is spelling again (a trait default body a struct of
+     * this module takes as a member, W2.4): [other]'s own emission spells that text too and
+     * reports what it refuses, at the same place, so the program reports one construct once
+     * rather than once per module that copies it. This module's own diagnostics (at its own
+     * declarations) are kept. A no-op when [other] is this module.
+     */
+    fun <T> deferringTo(other: ModuleSymbol, block: () -> T): T {
+        if (other === symbol) {
+            return block()
+        }
+        val before = deferredTo
+        deferredTo = other
+        try {
+            return block()
+        } finally {
+            deferredTo = before
+        }
+    }
+
+    /**
+     * Adds [d] to this module's [diagnostics], unless the same diagnostic (code, message and
+     * place) is already there: one construct refused once, however many times its body is
+     * spelled (a trait default body, and the copy each struct takes of it); or unless it is
+     * placed in a module this one is [deferringTo].
+     */
     fun report(d: CppDiagnostic) {
-        reported += d
+        val other = deferredTo
+        if (other != null && d.file == other.source.file) {
+            return
+        }
+        if (d !in reported) {
+            reported += d
+        }
     }
 
     /** A diagnostic placed at [node] (its file and line), not yet reported. */
@@ -545,21 +692,34 @@ class CppEmitContextImpl(
 
     /**
      * The C++ name of the parameter [p]: its Kira name, unless that would shadow (under
-     * `-Wshadow -Werror`) a field or method of the owning struct or a declaration of this
-     * module, in which case a synthesized `name_p` (lowercase with an underscore, which no
-     * Kira name can be). Stable per parameter, so the prototype, the definition and the
+     * `-Wshadow -Werror`) a field or method of the owning struct, of a struct that copies
+     * the trait default it belongs to, or a declaration of this module, in which case a
+     * synthesized `name_p` (lowercase with an underscore, which no Kira name can be).
+     * Stable per parameter, so the prototype, the definition, every struct's copy and the
      * statement part (W2.3) spell it alike.
      */
     fun paramName(p: ParamSymbol): String = paramNames.getOrPut(p) {
         if (shadows(p)) names.fresh(p.name.lowercase() + "_p") else names.escape(p.name)
     }
 
+    /** A struct derives nothing in C++ (its traits are static dispatch, D1): its class scope is its own fields and methods. */
+    private fun structMember(s: ClassSymbol, name: String): Boolean = s.fields.any { it.name == name } || s.methods.any { it.name == name }
+
     private fun shadows(p: ParamSymbol): Boolean {
-        when (val owner = p.fn?.owner) {
-            is ClassSymbol -> if (owner.fields.any { it.name == p.name } || owner.methods.any { it.name == p.name }) {
+        val fn = p.fn
+        when (val owner = fn?.owner) {
+            is ClassSymbol -> if (owner.isStruct) {
+                if (structMember(owner, p.name)) {
+                    return true
+                }
+            } else if (p.name in memberNames(owner)) {
+                // g++ -Wshadow names a base's members too, private ones included ("shadows a
+                // member of 'B'" for a field of B's superclass, measured): the whole class scope.
                 return true
             }
-            is TraitSymbol -> if (owner.methods.any { it.name == p.name }) {
+            // A trait default's body is a member of every struct that copies it (design 5.5,
+            // CppClassesPart.structInherited), spelled in that struct's class scope as well.
+            is TraitSymbol -> if (p.name in memberNames(owner) || parts.classes.structsCopying(this, fn).any { structMember(it, p.name) }) {
                 return true
             }
             else -> {}
