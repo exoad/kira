@@ -2046,15 +2046,16 @@ class CppClassShapeTest {
     @Test
     fun aSiblingTraitsDefaultSatisfiesAnothersRequirementInAClassByAForwarder() {
         // C++ ties Abs::f and Def::f to nothing: C would stay abstract and c.f() ambiguous.
-        // C declares f, overriding both at once, and forwards to Def's body; the two are then
-        // one const family, so a mut requirement takes the const off the default it ties to.
+        // C declares f, overriding both at once, and forwards to Def's body; a mut requirement
+        // ties to a mut default the same way, non-const. A default that is not mut does not
+        // satisfy a mut requirement: the two differ in mut-ness, types.member.conflict (1.3.2).
         val (h, s) = both(
             siblings + """
             pub trait MutAbs {
                 pub mut fx g: () Int32;
             }
             pub trait MutDef {
-                pub fx g: () Int32 {
+                pub mut fx g: () Int32 {
                     return 8
                 }
             }

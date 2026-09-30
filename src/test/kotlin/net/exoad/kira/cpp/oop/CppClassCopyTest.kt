@@ -728,7 +728,7 @@ class CppClassCopyTest {
             "return kira::Rc<Leaf>(kira::unwrap(h->leaf))->leave();",
             "return relabelParam(kira::Rc<Item>(kira::unwrap(h->item)), h);",
             // an Fx value's callee, and an Fx place given to a template parameter
-            "return kira::Fn<std::int32_t()>(f)();",
+            "return (kira::Fn<std::int32_t()>(f))();",
             "const kira::Str first = callIt(kira::Fn<kira::Str()>(b->f));",
             // a range the body may disturb (W6 fails): a copy, once per loop
             "for(const kira::Rc<Behaviour>& b : kira::List<kira::Rc<Behaviour>>(loaded))",
@@ -849,9 +849,12 @@ class CppClassCopyTest {
     }
 
     @Test
-    fun aMutArgumentAnExternsHarmlessCallbackCannotReachIsAccepted() {
-        // A lambda literal whose body is CONFINED keeps the extern CONFINED (W2.5's reading (c)).
-        val body = """
+    fun aMutArgumentAnExternHandedAnEmptyLambdaIsRefusedByRuleM() {
+        // An extern given a lambda is given an Fx, so it is not CONFINED however empty the body
+        // (50-round4 2.3: "an extern (unless it is given nothing that may hold an Fx)"; W2.5 round 5).
+        assertRefusedBy(
+            "rules.exclusivity.mut",
+            """
             $externItem
 
             pub fx main: () Int32 {
@@ -860,9 +863,8 @@ class CppClassCopyTest {
                 })
                 return h.item.count
             }
-            """
-        assertEquals(emptyList(), typerErrors(body))
-        assertTrue(unsupported(body).none { it.contains("bump") })
+            """,
+        )
     }
 
     /** The five holders of an `Fx` 40-round3 5.5 names, each as a value the call is given, whose callback runs `c.reset()`. */

@@ -1155,7 +1155,7 @@ class CppHoister(private val lower: CppLowering) {
 /**
  * Whether an `Fx` parameter must be a `kira::Fn` rather than a template parameter (design 5.1).
  * `TypedModel.fxEscapes` (EscapePass, W2.5) answers where it has an entry; where it has none
- * this approximates the pass (KI-2 of docs/cpp-known-issues/w2-3-emit-exprs.md): the parameter
+ * this approximates the pass rather than taking the parameter as escaping (KI-2): the parameter
  * does not escape when the body mentions it only as the callee of a call
  * (`each(buf.slice(at, n))`), outside any lambda, in a non-virtual, non-trait method. A
  * parameter of a function used as a value (`g: Fx<...> = applyTo`, a `FnRef`) escapes whatever
