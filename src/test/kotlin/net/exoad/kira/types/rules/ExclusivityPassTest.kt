@@ -2013,4 +2013,409 @@ class ExclusivityPassTest {
         assertEquals(listOf(true), confinedCalls(p, "lenAfter"))
         assertEquals(listOf(true, false), confinedCalls(p, "startWith"))
     }
+
+    // ---- round 7 (w2-5 round-6 #1, W2.3's KI-20): a STABLE receiver of a binding that drops what it held mid-operation ----
+
+    /** The mut-operand refusals of [p], as (the receiver or argument text, the callee's name). */
+    private fun dropRefusals(p: TypedProgram): List<Pair<String, String>> =
+        p.diagnostics.filter { it.code == "rules.exclusivity.mut" }.map { d ->
+            assertTrue(d.message.contains("which drops what it held while it still works on the container"), d.message)
+            Regex("^the (?:receiver|mut argument) '([^']+)'.*? is passed to '([^']+)'").find(d.message)!!.let { it.groupValues[1] to it.groupValues[2] }
+        }
+
+    /** `CallReach.dropsMidCall` at every call of [name] in [p], in source order. */
+    private fun dropsMid(p: TypedProgram, name: String): List<Boolean> =
+        BodyTestSupport.every<FunctionCallExpr>(p).mapNotNull { call ->
+            val rc = p.model.calls[call]?.takeIf { it.fn?.name == name } ?: return@mapNotNull null
+            CallReach.dropsMidCall(rc, p.model, rc.receiver?.let { p.model.types[it] })
+        }
+
+    /** The round-6 verifier's element: a Rec whose Res runs a finally that adds to the Holder's List through a global alias. */
+    private val reentrant = """
+        pub class Res {
+            pub n: Int32 = 0
+
+            finally {
+                gh.unwrap().items.add(Rec { v = 90 + n, r = null, name = "fin-long-name-that-lives-on-the-heap-00000" })
+                trace("finally ran")
+            }
+        }
+
+        pub struct Rec {
+            pub v: Int32
+            pub r: Maybe<Res>
+            pub name: Str
+        }
+    """
+
+    @Test
+    fun ruleMRefusesAStableReceiverOfAListBindingThatDropsWhatItHeldMidOperation() {
+        // w23r6/p/f12 (W2.3's KI-20) and w25r6v2/x/m3, as their authors wrote them: items.clear() on this.items in a
+        // class mut fx, and h.items.clear() on the object behind a local handle. Both places are STABLE, and round 6
+        // accepted both: std::vector::clear runs Res's finally, whose add reallocates the buffer clear is still
+        // destroying (gcc 127, clang 139/127, MSVC 'finally ran' then 0 for Kira's two lines then 2, an ASan
+        // heap-use-after-free in vector::clear).
+        val f12 = snippet(
+            reentrant + """
+            pub class Holder {
+                pub mut items: List<Rec> = []
+
+                pub mut fx wipe: () Void {
+                    items.clear()
+                }
+            }
+
+            mut gh: Maybe<Holder> = null
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = Res { n = 2 }, name = "two-long-name-that-lives-on-the-heap-000000" }]
+                h.wipe()
+                trace(h.items.size())
+                gh = null
+            }
+            """,
+        )
+        assertEquals(listOf("items" to "clear"), dropRefusals(f12), TyperTestSupport.render(f12))
+        assertEquals(listOf("rules.exclusivity.mut"), RulesTestSupport.rules(f12))
+        assertTrue(message(f12, "rules.exclusivity.mut").startsWith("the receiver 'items' of the mut fx, storage reached through a handle, is passed to 'clear'"))
+        val m3 = snippet(
+            reentrant + """
+            pub class Holder {
+                pub mut items: List<Rec> = []
+
+                pub mut fx wipe: () Void {
+                    items.clear()
+                }
+            }
+
+            mut gh: Maybe<Holder> = null
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = Res { n = 2 }, name = "two-long-name-that-lives-on-the-heap-000000" }]
+                h.items.clear()
+                trace(h.items.size())
+                gh = null
+            }
+            """,
+        )
+        assertEquals(listOf("items" to "clear", "h.items" to "clear"), dropRefusals(m3), TyperTestSupport.render(m3))
+        assertEquals(listOf(true, true), dropsMid(m3, "clear"))
+        // w25r6v2/x/m2: removeAt, then clear, on this.items. MSVC printed finally/2/finally/0 for Kira's finally/2/finally/1.
+        val m2 = snippet(
+            reentrant + """
+            pub class Holder {
+                pub mut items: List<Rec> = []
+
+                pub mut fx dropFirst: () Void {
+                    items.removeAt(0)
+                }
+
+                pub mut fx wipe: () Void {
+                    items.clear()
+                }
+            }
+
+            mut gh: Maybe<Holder> = null
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = null, name = "two-long-name-that-lives-on-the-heap-000000" }]
+                h.dropFirst()
+                trace(h.items.size())
+                h.items[0] = Rec { v = 3, r = Res { n = 3 }, name = "three-long-name-that-lives-on-the-heap-0000" }
+                h.wipe()
+                trace(h.items.size())
+                gh = null
+            }
+            """,
+        )
+        assertEquals(listOf("items" to "removeAt", "items" to "clear"), dropRefusals(m2), TyperTestSupport.render(m2))
+        assertEquals(listOf("rules.exclusivity.mut", "rules.exclusivity.mut"), RulesTestSupport.rules(m2))
+    }
+
+    @Test
+    fun ruleMRefusesAStableReceiverOfEveryContainerBindingThatDropsMidOperation() {
+        // w25r6v2/x/m4: Map.put, which may replace a value (Map::put assigns the element member by member), and
+        // Map.clear on the object behind a local handle; the finally replaces the Map (gcc, clang and MSVC 127, an ASan
+        // heap-use-after-free in the Tuple2 destructor).
+        val m4 = snippet(
+            """
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    gh.unwrap().m = Map<Str, Rec> { values = [] }
+                    trace("finally ran")
+                }
+            }
+
+            pub struct Rec {
+                pub v: Int32
+                pub r: Maybe<Res>
+                pub name: Str
+            }
+
+            pub class Holder {
+                pub mut m: Map<Str, Rec> = Map<Str, Rec> { values = [] }
+            }
+
+            mut gh: Maybe<Holder> = null
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.m.put("a", Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" })
+                h.m.put("a", Rec { v = 2, r = null, name = "two-long-name-that-lives-on-the-heap-000000" })
+                trace(h.m.size())
+                h.m.put("b", Rec { v = 3, r = Res { n = 3 }, name = "three-long-name-that-lives-on-the-heap-0000" })
+                h.m.clear()
+                trace(h.m.size())
+                gh = null
+            }
+            """,
+        )
+        assertEquals(listOf("h.m" to "put", "h.m" to "put", "h.m" to "put", "h.m" to "clear"), dropRefusals(m4), TyperTestSupport.render(m4))
+        // v23r6x/atk/k_a4 (Map, Deque, Stack and Queue on a class's own fields; the finally only counts the container:
+        // every build crashed) and k_a6c (the finally only reads items.size(): 'seen 2' on all four for Kira's 'seen 0').
+        // The adds (pushBack, push, enqueue) drop nothing and stay accepted.
+        val a4 = snippet(
+            """
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        trace("m ${'$'}{gh.unwrap().m.size()}")
+                    }
+                    if n == 2 {
+                        trace("d ${'$'}{gh.unwrap().d.size()}")
+                    }
+                    if n == 3 {
+                        trace("s ${'$'}{gh.unwrap().s.size()}")
+                    }
+                    if n == 4 {
+                        trace("q ${'$'}{gh.unwrap().q.size()}")
+                    }
+                }
+            }
+
+            pub struct Rec {
+                pub v: Int32
+                pub r: Maybe<Res>
+            }
+
+            pub class Holder {
+                pub mut m: Map<Int32, Rec> = Map<Int32, Rec> { }
+                pub mut d: Deque<Rec> = Deque<Rec> { }
+                pub mut s: Stack<Rec> = Stack<Rec> { }
+                pub mut q: Queue<Rec> = Queue<Rec> { }
+
+                pub mut fx fill: () Void {
+                    m.put(1, Rec { v = 1, r = Res { n = 1 } })
+                    m.put(2, Rec { v = 2, r = null })
+                    d.pushBack(Rec { v = 1, r = Res { n = 2 } })
+                    d.pushBack(Rec { v = 2, r = null })
+                    s.push(Rec { v = 1, r = Res { n = 3 } })
+                    s.push(Rec { v = 2, r = null })
+                    q.enqueue(Rec { v = 1, r = Res { n = 4 } })
+                    q.enqueue(Rec { v = 2, r = null })
+                }
+
+                pub mut fx wipeM: () Void {
+                    m.clear()
+                }
+
+                pub mut fx wipeD: () Void {
+                    d.clear()
+                }
+
+                pub mut fx wipeS: () Void {
+                    s.clear()
+                }
+
+                pub mut fx wipeQ: () Void {
+                    q.clear()
+                }
+
+                pub mut fx take: () Void {
+                    d.popFront()
+                    d.popBack()
+                    s.pop()
+                    q.dequeue()
+                    m.remove(1)
+                }
+            }
+
+            mut gh: Maybe<Holder> = null
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.fill()
+                h.wipeM()
+                trace("m after ${'$'}{h.m.size()}")
+                h.wipeD()
+                trace("d after ${'$'}{h.d.size()}")
+                h.wipeS()
+                trace("s after ${'$'}{h.s.size()}")
+                h.wipeQ()
+                trace("q after ${'$'}{h.q.size()}")
+                gh = null
+            }
+            """,
+        )
+        assertEquals(
+            listOf("m" to "put", "m" to "put", "m" to "clear", "d" to "clear", "s" to "clear", "q" to "clear") +
+                listOf("d" to "popFront", "d" to "popBack", "s" to "pop", "q" to "dequeue", "m" to "remove"),
+            dropRefusals(a4),
+            TyperTestSupport.render(a4),
+        )
+        assertEquals(listOf(false, false), dropsMid(a4, "pushBack"))
+        val a6c = snippet(
+            """
+            pub class Res {
+                pub n: Int32 = 0
+                pub h: Holder
+
+                finally {
+                    if n == 2 {
+                        trace("seen ${'$'}{h.items.size()}")
+                    }
+                }
+            }
+
+            pub struct Rec {
+                pub v: Int32
+                pub r: Maybe<Res>
+                pub name: Str
+            }
+
+            pub class Holder {
+                pub mut items: List<Rec> = []
+
+                pub mut fx wipe: () Void {
+                    items.clear()
+                }
+            }
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                h.items = [Rec { v = 1, r = null, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = Res { n = 2, h = h }, name = "two-long-name-that-lives-on-the-heap-000000" }]
+                h.wipe()
+                trace("after ${'$'}{h.items.size()}")
+            }
+            """,
+        )
+        assertEquals(listOf("items" to "clear"), dropRefusals(a6c), TyperTestSupport.render(a6c))
+    }
+
+    @Test
+    fun ruleMKeepsListSetAndEveryQuietDropOnAStablePlace() {
+        // w25r6v2/x/m1, the control: List.set stores first and drops the old element after (the emitter's
+        // kira::replace), so a finally that replaces the whole List meets a whole one: Kira's 3/91/fin with 0 ASan
+        // reports on round 6. It stays STABLE and accepted.
+        val m1 = snippet(
+            """
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    gh.unwrap().items = [Rec { v = 90 + n, r = null, name = "fin-long-name-that-lives-on-the-heap-00000" }, Rec { v = 80, r = null, name = "fin-long-name-that-lives-on-the-heap-00001" }, Rec { v = 70, r = null, name = "fin-long-name-that-lives-on-the-heap-00002" }]
+                    trace("finally ran")
+                }
+            }
+
+            pub struct Rec {
+                pub v: Int32
+                pub r: Maybe<Res>
+                pub name: Str
+            }
+
+            pub class Holder {
+                pub mut items: List<Rec> = []
+            }
+
+            mut gh: Maybe<Holder> = null
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }]
+                h.items.set(0, Rec { v = 2, r = null, name = "two-long-name-that-lives-on-the-heap-000000" })
+                trace(h.items.size())
+                trace(h.items[0].v)
+                trace(h.items[0].name)
+                gh = null
+            }
+            """,
+        )
+        expectClean(m1)
+        assertEquals(listOf(false), dropsMid(m1, "set"))
+        assertEquals(listOf(false), confinedCalls(m1, "set"), "set may drop a Res: not CONFINED, which STABLE does not need")
+        // The quiet cases: an element whose drop runs no IMPURE finally (a scalar, a Str, a value holding a class with
+        // no finally), a PRIVATE local whatever it holds (no finally can name it), a Set (keys only), the adds, and the
+        // container written whole. Each stays accepted on a STABLE place.
+        val quiet = snippet(
+            """
+            pub class Quiet {
+                pub mut n: Int32 = 0
+            }
+
+            pub class Loud {
+                pub n: Int32 = 0
+
+                finally {
+                    trace("loud")
+                }
+            }
+
+            pub struct Cell {
+                pub q: Maybe<Quiet>
+                pub name: Str
+            }
+
+            pub class Holder {
+                pub mut ints: List<Int32> = []
+                pub mut names: List<Str> = []
+                pub mut cells: List<Cell> = []
+                pub mut louds: List<Loud> = []
+                pub mut tags: Set<Str> = Set<Str> { }
+                pub mut byName: Map<Str, Cell> = Map<Str, Cell> { }
+                pub mut stack: Stack<Int32> = Stack<Int32> { }
+
+                pub mut fx churn: () Void {
+                    ints.clear()
+                    names.removeAt(0)
+                    cells.clear()
+                    tags.remove("a")
+                    tags.clear()
+                    byName.put("k", Cell { q = null, name = "x" })
+                    byName.remove("k")
+                    stack.pop()
+                    louds.add(Loud { n = 1 })
+                    louds = []
+                }
+            }
+
+            fx main: () Void {
+                h: Holder = Holder { }
+                h.ints.clear()
+                h.cells.removeAt(0)
+                h.churn()
+                mut xs: List<Loud> = [Loud { n = 2 }]
+                xs.clear()
+                mut ys: List<Loud> = [Loud { n = 3 }]
+                ys.removeAt(0)
+            }
+            """,
+        )
+        expectClean(quiet)
+        assertTrue(listOf("remove", "pop", "put").all { n -> dropsMid(quiet, n).none { it } })
+        assertEquals(listOf(false, false, false, false, true), dropsMid(quiet, "clear"), "ints, cells, tags, h.ints: quiet; xs holds a Loud but is PRIVATE")
+    }
 }
