@@ -183,20 +183,16 @@ class CppCopyPolicy(private val lower: CppLowering) {
      * Whether a write of a new value over an old one of [t] (an assignment, `xs[i] = v`,
      * `m[k] = v`, and the bindings `PLACE = {n}`: `List.set`, `Arr.set`, `MutView.set`) is spelled
      * `kira::replace(place) = value`, which stores first and drops the old value after, Kira's
-     * order. C++'s `operator=` drops the old value's parts while it writes the new one, member by
-     * member, so an IMPURE `finally` that drop runs (`Drops.mayDrop`) would free the place's
-     * storage or rewrite it half-written. A class or trait handle, a `Maybe` of one and a `Weak`
-     * are one `std::shared_ptr` or `std::weak_ptr`, whose assignment the standard specifies as
-     * `shared_ptr(r).swap(*this)`: it stores, then drops, already.
+     * order. C++'s `operator=` drops the old value while it writes the new one, so an IMPURE
+     * `finally` that drop runs (`Drops.mayDrop`) would free the place's storage or rewrite it
+     * half-written. That holds for a class or trait handle and a `Maybe` of one too, a
+     * `std::shared_ptr`: its order is the library's, and libstdc++'s copy-assignment releases the
+     * old count before it stores the new one, so the old object's `finally` meets the new pointer
+     * beside its own dying count (v23r6x/atk hx1, hx2: the object destroyed twice, a store into
+     * freed memory). Only a `Weak` is written in place: releasing a `std::weak_ptr` never
+     * destroys its object, so it runs no `finally`.
      */
-    fun dropsOnWrite(t: KType?): Boolean {
-        if (!model.dropsImpureFinally(t)) {
-            return false
-        }
-        val n = CppBindingTable.magicName(t)
-        val one = if (n == "Maybe") (t as KType.Nominal).typeArgs().singleOrNull() else t
-        return !(isHandle(one) || n == "Weak")
-    }
+    fun dropsOnWrite(t: KType?): Boolean = model.dropsImpureFinally(t) && CppBindingTable.magicName(t) != "Weak"
 
     // ---- the words of 2.0 ----------------------------------------------------------------------
 

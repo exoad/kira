@@ -703,6 +703,85 @@ namespace
       check(kira::at(flags, 1) && !kira::at(flags, 0) && !maybe.has_value(), "a proxy place (List<Bool>) and a Maybe");
   }
 
+  // Round 6's w2-3 finding (v23r6x/atk hx1, hx2, k_c1): a write over a class handle is a
+  // std::shared_ptr assignment, whose order is the library's. libstdc++'s copy-assignment
+  // releases the old count before it stores the new one, so a finally that re-entered the
+  // handle met the new pointer beside the dying count (hx1: Res 1 destroyed twice; hx2: a
+  // control block stored into a freed buffer). kira::replace stores whole, then drops.
+  struct HandleRes;
+  kira::Rc<HandleRes> handleSlot;
+  kira::List<kira::Rc<HandleRes>> handleList;
+  kira::List<std::int64_t> handleAfter;
+  std::int32_t handleDrops = 0;
+  std::int32_t handleSeen = 0;
+  struct HandleRes
+  {
+      std::int32_t n = 0;
+      std::int32_t mode = 0;
+      HandleRes(std::int32_t n_, std::int32_t mode_) : n(n_), mode(mode_)
+      {
+      }
+      HandleRes(const HandleRes&) = delete;
+      HandleRes& operator=(const HandleRes&) = delete;
+      ~HandleRes()
+      {
+          if(mode == 1)
+          {
+              // hx1: copy the handle the slot holds into a local, and read it.
+              ++handleDrops;
+              const kira::Rc<HandleRes> x = handleSlot;
+              handleSeen = x ? x->n : -1;
+          }
+          else if(mode == 2)
+          {
+              // hx2: replace the list, then allocate a list of the same byte size.
+              ++handleDrops;
+              handleList = {};
+              handleAfter = {11, 22};
+          }
+          else if(mode == 3)
+          {
+              // k_c1: read the slot, then write it again.
+              ++handleDrops;
+              handleSeen = handleSlot ? handleSlot->n : -1;
+              kira::replace(handleSlot) = std::make_shared<HandleRes>(3, 0);
+          }
+      }
+  };
+
+  void testReplaceHandle()
+  {
+      handleSlot = std::make_shared<HandleRes>(1, 1);
+      {
+          const kira::Rc<HandleRes> b = std::make_shared<HandleRes>(2, 0);
+          kira::replace(handleSlot) = b;
+          check(handleDrops == 1 && handleSeen == 2 && handleSlot == b && b.use_count() == 2,
+                "hx1: gm = b stores b, then Res 1 drops once and sees Res 2");
+      }
+      kira::replace(handleSlot) = kira::none;
+
+      handleDrops = 0;
+      handleList = {std::make_shared<HandleRes>(1, 2)};
+      {
+          const kira::Rc<HandleRes> b = std::make_shared<HandleRes>(2, 0);
+          kira::replace(kira::at(handleList, 0)) = b;
+          check(handleDrops == 1 && handleList.empty() && handleAfter.size() == 2 && kira::at(handleAfter, 0) == 11 &&
+                    kira::at(handleAfter, 1) == 22 && b.use_count() == 1,
+                "hx2: xs[0] = b stores whole, then the finally replaces xs and its writes are last");
+      }
+
+      handleDrops = 0;
+      handleSeen = 0;
+      handleSlot = std::make_shared<HandleRes>(1, 3);
+      {
+          const kira::Rc<HandleRes> b = std::make_shared<HandleRes>(2, 0);
+          kira::replace(handleSlot) = b;
+          check(handleDrops == 1 && handleSeen == 2 && handleSlot && handleSlot->n == 3 && b.use_count() == 1,
+                "k_c1: the finally sees b, and its own write over the same handle is last");
+      }
+      kira::replace(handleSlot) = kira::none;
+  }
+
   std::int32_t argsSeen = 0;
   [[nodiscard]] std::int32_t mainWithArgs(const kira::List<kira::Str>& args)
   {
@@ -845,6 +924,7 @@ int main(int argc, char** argv)
     testContainers();
     testClasses();
     testReplace();
+    testReplaceHandle();
     testMain();
     testLocale();
     std::printf("\n%d checks, %d failed\n", checks, failures);

@@ -8,6 +8,74 @@ issue is, where it lives, how to reproduce it, and why it is safe to leave for n
 means built with the goldens' warning flags and `-Werror` on g++ 13.2, zig c++ (clang) and MSVC
 `/W4 /WX`, and run.
 
+## Copy by default, round 7: a write over a handle stores first too
+
+This round merges `cpp/w2-5-rules` at a7f0a29 (round 7: rule M refuses a STABLE receiver of a
+stdlib binding that drops what it held mid-operation, KI-20; merge 9e2df83, signed, no
+conflict), then fixes round 6's finding that names this package (sc-round6.json).
+
+- **The finding.** `CppCopyPolicy.dropsOnWrite` left a write over a class or trait handle, or a
+  `Maybe` of one, to `std::shared_ptr`'s own `operator=`, on round 6's premise that the standard
+  specifies it as `shared_ptr(r).swap(*this)`. libstdc++ does not: its copy-assignment is
+  memberwise (`bits/shared_ptr_base.h`, `__shared_count::operator=`), and it releases the old
+  count, running the old object's `finally`, before it stores the new one. A lent value (a PRIVATE
+  local or by-value parameter, W2) is a C++ lvalue, so `gm = b;`, `kira::at(gl, 0) = b;`,
+  `gmap[1] = b;`, `h->child = b;`, `gt = b;` (the Upcast), `kira::at(items, 0) = v;` (`List.set`)
+  and `slot = v;` (a `mut` parameter) all copy-assign. On g++ the `finally` met the new pointer
+  beside its own dying count: hx1, hx5, hx7 and hx8 printed `count 2` (the object destroyed twice),
+  hx2 and hx3 stored a control block into a freed buffer (`gk 11 1514687397712`, no `fin2`), and
+  hx4 and k_c1 never ran Res 3's `finally`. Clang, MSVC and MSVC ASan were right, since their
+  libraries swap, so ASan could not see it.
+- **Fix.** `dropsOnWrite(t)` is now `Drops.mayDrop(t)` less a `Weak` only: every write whose old
+  value's drop may run an IMPURE `finally`, a handle's included, is `kira::replace(place) = value`
+  on every compiler, and no write relies on a library's assignment order. `kira::replace` moves the
+  old handle out (the place is null, no Kira code runs), assigns the new one into the null place,
+  and drops the old one once the store is whole. A `Weak` is written in place because releasing a
+  `std::weak_ptr` never destroys its object, so it runs no `finally`. A prvalue value (hx1c's
+  `gm = Res { n = 2 }`) goes through `kira::replace` the same way, though libstdc++'s
+  move-assignment swaps. `RuleSupport.STORES_FIRST`'s KDoc, which repeated the premise, now says a
+  handle is stored first too.
+- **Measured on a trial** (scratchpad `w23r7/trial`: the round-6 trial 355c8eb plus this branch's
+  diff since 16f909e, W2.5's round 7 included, in a scratch export; g++ 13.2 | zig clang 20 | MSVC
+  14.44 /O1 | MSVC `/fsanitize=address`). The verifier's own probes (v23r6x/atk) print Kira's
+  value on all four builds, with 0 ASan reports:
+  - hx1, hx5, hx7 and hx8: `fin1 sees 2, count 1, after 2, end, fin2`;
+  - hx1c (the control): `fin1 sees 2, count 1, after 2, fin2, end`;
+  - hx2: `fin1, fin2, size 0, gk 11 22, end`. `fin2` comes before `size 0` because put's by-value
+    parameter drops at its return, as the verifier's minor says;
+  - hx3: `fin1, size 0, gk 11 22 33, end, fin2`;
+  - hx4: `fin1 sees 2, child 3, fin3, end, fin2`;
+  - k_c1: `fin1 sees 2, after 3, fin3, end, fin2`.
+- **KI-20 is closed by the merge.** On the same trial, rules.exclusivity.mut refuses f12
+  (w23r6p_f12) at 28:9, k_a4 at 39:9, 40:9, 50:9, 54:9, 58:9 and 62:9, and k_a6c at 29:9: W2.5's
+  numbers.
+- **Tests.** `CppCopyPolicyTest.aWriteOverAHandleWhoseOldObjectMayRunAFinallyStoresFirst` emits
+  the nine probes verbatim, less the module line and `fx main`, with `run` public. It checks ten
+  texts: each probe's write, the `finally`'s own write in k_c1 and hx1c's prvalue, each
+  `kira::replace(...)`. No class lowers on this branch (KI-18), so a stand-in classes part
+  (`ClassBodies`) writes each class as `class C {};`. Each method and `finally` body goes through
+  this branch's own statement emitter, and the text is never compiled. With round 6's exemption
+  restored, the test fails at hx1. `aWriteOverAHandlePrintsKirasValueOnEveryCompiler` runs the
+  nine probes on gcc, clang and msvc against the verifier's values. Here it is skipped (3
+  skipped, "no class lowers on this branch"). Where W2.4's classes part is merged, both tests use
+  the real part: on the scratch trial the text test and all 3 runs pass, and with round 6's
+  exemption restored the text test and the gcc run fail, while clang and msvc pass, as the
+  verifier measured. `rt_test.cxx`'s `testReplaceHandle` runs hx1, hx2 and k_c1
+  through `kira::replace` over a `std::shared_ptr`, with a C++ destructor as the `finally`
+  (3 checks). A negative control in scratch (`w23r7/neg.cxx`, g++ 13.2) prints `drops 2` for a
+  plain `slot = b;` and `drops 1` through `kira::replace`.
+- **Acceptance.** `./gradlew test --continue`: 1229 tests, 0 failures, 0 errors, 3 skipped (the
+  handle runs above), 94 files. On the scratch trial, the full suite ran 1554 tests with one
+  failure, an earlier draft of the text test whose stand-in hid W2.4's part. With the final test
+  file, CppCopyPolicyTest ran 24 tests with 0 failures. `regenerate.sh --check` reported all
+  snapshots current, and goldens.sh passed 71 of 71 in 18 cases, so no text of W2.4's or W2.6's
+  changed.
+  Here, `examples/regenerate.sh --check`: all snapshots current. goldens.sh: 17 cases, 67 passed.
+  run.sh: 57 passed (rt_test 132 checks on gcc, clang and musl). msvc.bat: all passed (rt_test 132
+  checks).
+- **Round 6's minor about rt_test** (no runtime test covered a handle write whose old object's
+  destructor re-enters the handle) is closed by `testReplaceHandle`.
+
 ## Copy by default, round 6: a copied `Fx` callee is parenthesized, and a write stores first
 
 This round merges `cpp/w2-5-rules` at b706176 (rounds 5b and 6: row 1 charges an `Fx` only
@@ -29,7 +97,8 @@ name this package (sc-round5.json).
   `CppCopyPolicy.dropsOnWrite(t)` holds (`Drops.mayDrop`, less the types whose assignment already
   stores first: a class or trait handle, a `Maybe` of one and a `Weak`, each one
   `std::shared_ptr`/`std::weak_ptr`, whose `operator=` the standard specifies as
-  `shared_ptr(r).swap(*this)`), the write is `kira::replace(place) = value`. The new runtime
+  `shared_ptr(r).swap(*this)`; wrong on libstdc++, and fixed in round 7), the write is
+  `kira::replace(place) = value`. The new runtime
   primitive (`kira/core.hxx`) moves the old value out (a move runs no Kira code), stores the new
   one, and destroys the old one once the store is whole, so the `finally` runs after the write, as
   Kira's reference counts order it. The right side is still evaluated before the place, as for a
@@ -80,7 +149,7 @@ name this package (sc-round5.json).
   `examples/regenerate.sh --check`: all snapshots current. goldens.sh: 17 cases, 67 passed.
   run.sh: 57 passed (rt_test 129 checks). sys.sh: 18 passed. msvc.bat: all passed.
 
-### KI-20. A mutator that drops what it held, on a STABLE receiver, is W2.5's (rule M)
+### KI-20. Closed in round 7 by W2.5's rule M: a mutator that drops what it held, on a STABLE receiver
 
 - **What.** f12: `items.clear()` in a class `mut fx` (`this.items`, STABLE), where an element's
   `finally` adds to the same List through a global alias. `std::vector::clear` is not reentrant:
