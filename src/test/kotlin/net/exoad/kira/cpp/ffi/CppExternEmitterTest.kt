@@ -406,15 +406,16 @@ class CppExternEmitterTest {
         assertTrue(c.source.contains("::bibo::scanOf(car)"), c.source)
         assertEquals("kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(kira::Rc<::bibo::Car>(car)))", c.copiedText("scanOf", setOf(0), null, "car"))
         assertEquals("kira::ffi::declared<bool>(car->arm())", c.text("arm", "car"))
-        assertEquals("car->Drive(0.1f, 0.0f)", c.text("drive", "car", "0.1f", "0.0f"))
+        // A literal is spelled as the declared type, the call its check states (round 6, w2-6).
+        assertEquals("car->Drive(float{0.1f}, float{0.0f})", c.text("drive", "car", "0.1f", "0.0f"))
         assertEquals("kira::ffi::declared<float>(kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car)).ahead())", c.text("ahead", "kira::ffi::declared<::bibo::Scan>(::bibo::scanOf(car))"))
-        assertEquals("kira::ffi::declared<bool>(::ImGui::SliderFloat(kira::ffi::in(\"throttle\"), kira::ffi::out(v), 0.0f, 1.0f))", c.text("sliderFloat", null, "\"throttle\"", "v", "0.0f", "1.0f"))
-        assertEquals("::ImGui::GetWindowDrawList()->AddLine(7u)", c.text("addLine", "::ImGui::GetWindowDrawList()", "7u"))
-        assertEquals("kira::ffi::declared<std::int32_t>(::c_hypot(3, 4))", c.text("hypot", null, "3", "4"))
+        assertEquals("kira::ffi::declared<bool>(::ImGui::SliderFloat(kira::ffi::in(\"throttle\"), kira::ffi::out(v), float{0.0f}, float{1.0f}))", c.text("sliderFloat", null, "\"throttle\"", "v", "0.0f", "1.0f"))
+        assertEquals("::ImGui::GetWindowDrawList()->AddLine(std::uint32_t{7u})", c.text("addLine", "::ImGui::GetWindowDrawList()", "7u"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::c_hypot(std::int32_t{3}, std::int32_t{4}))", c.text("hypot", null, "3", "4"))
         // A C name (7.3) and a mut Unsafe<T>, which is the T* itself: no out(...) around it; a
         // MutView of a local gives it its pointer (an Unsafe<T> result or local is refused, 4b).
-        assertEquals("kira::ffi::declared<std::int32_t>(::c_only_fn(1))", c.text("cOnly", null, "1"))
-        assertEquals("::fill_buf((kira::mutView(bytes)).data(), 4u)", c.text("fill", null, "kira::mutView(bytes)", "4u"))
+        assertEquals("kira::ffi::declared<std::int32_t>(::c_only_fn(std::int32_t{1}))", c.text("cOnly", null, "1"))
+        assertEquals("::fill_buf((kira::mutView(bytes)).data(), kira::Size{4u})", c.text("fill", null, "kira::mutView(bytes)", "4u"))
         assertTrue(c.ctx.model.calls.values.filter { it.fn?.name == "arm" }.all { CppExternEmitter.isExternCall(it) })
     }
 
@@ -699,7 +700,7 @@ class CppExternEmitterTest {
         fun named(name: String): (Expr) -> Boolean = { it is Identifier && it.value == name }
         fun calling(name: String): (Expr) -> Boolean = { it is FunctionCallExpr && (it.name as? Identifier)?.value == name }
         assertEquals("::ImGui::Text(version)", given("version", pick = named("version")))
-        assertEquals("::ImGui::Text(\"literal\")", given("\"literal\"") { it is StringLiteral })
+        assertEquals("::ImGui::Text(static_cast<const char*>(\"literal\"))", given("\"literal\"") { it is StringLiteral })
         assertEquals("::ImGui::Text(label.c_str())", given("label", pick = named("label")))
         assertEquals("::ImGui::Text(::ext::GREETING)", given("::ext::GREETING", pick = named("GREETING")))
         assertEquals("::ImGui::Text(::ext::TITLE.c_str())", given("::ext::TITLE", pick = named("TITLE")))
@@ -875,11 +876,11 @@ class CppExternEmitterTest {
         // refused both with types.assign.mismatch/types.call.mut-missing before); the emitter
         // wraps `.data()` around whatever text the expression part already produced for them.
         assertEquals(
-            "kira::ffi::declared<std::int64_t>(::probe::readBuf((v).data(), 4u))",
+            "kira::ffi::declared<std::int64_t>(::probe::readBuf((v).data(), kira::Size{4u}))",
             c.text("readBuf", null, "v", "4u"),
         )
         assertEquals(
-            "::probe::fillBuf((v).data(), 4u)",
+            "::probe::fillBuf((v).data(), kira::Size{4u})",
             c.text("fillBuf", null, "v", "4u"),
         )
         val readArg = (c.of("readBuf").args[0] as ArgBinding.Given).expr
@@ -1380,7 +1381,7 @@ class CppExternEmitterTest {
             }
             """.trimIndent()
         )
-        assertEquals("::probe::fillP((kira::mutView(xs)).data(), n, 7)", c.text("fillP", null, "kira::mutView(xs)", "n", "7"))
+        assertEquals("::probe::fillP((kira::mutView(xs)).data(), n, std::int32_t{7})", c.text("fillP", null, "kira::mutView(xs)", "n", "7"))
 
         val shared = codes(
             """

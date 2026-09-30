@@ -136,7 +136,10 @@
 //                       Maybe, a class to its base or a trait, null, a named
 //                       function) is passed as that type, T(e), never left for
 //                       C++ to convert: a template or an overload set would take
-//                       the unconverted value where the check stated a T
+//                       the unconverted value where the check stated a T. A
+//                       literal is passed as T too, T{5} (a Str literal at a
+//                       CStr as a const char*), since C++ gives it its own type:
+//                       5 is an int, and even an Int32 is a long on arm-none-eabi
 //   kira::ffi::CStrBuf  a CStr made from a Str that is neither a literal nor a
 //                       Str constant nor a named Str; its c_str() lives to the
 //                       end of the full-expression

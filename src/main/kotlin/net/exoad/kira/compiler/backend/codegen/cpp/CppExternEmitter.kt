@@ -19,8 +19,13 @@ import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.core.intrinsics.ExternIntrinsic
 
@@ -507,6 +512,13 @@ object CppExternEmitter : CppExternsPart {
      * kira::Maybe<T>&`, `const kira::Rc<Base>&`), so C++ converts at its call as at a Kira
      * function's, and its text is left as it is.
      *
+     * A literal is the same case with no coercion recorded ([typedLiteral]): the typer gives
+     * `5` the parameter's type, but C++ reads it as an `int`, so the call and the check were
+     * two calls again (round 6: `w(5)` against `w(std::int32_t)` and `w(std::int64_t)`
+     * printed 32 for 64 on g++, clang and MSVC, and a `width(T)` template 4 for 8). Every
+     * literal argument is spelled as the parameter's type: `std::int64_t{5}`, and
+     * `static_cast<const char*>("s")` for a `Str` literal at a `CStr`.
+     *
      * [proxied] is false for a bodiless `pub` prototype ([proxied]): Kira declared its C++
      * parameters itself, so a `Str` is passed as the `kira::Str` it is and a `mut` argument as
      * the `T&` it binds, with no `kira::ffi::in`/`out`; its `Unsafe<T>` and `CStr` parameters
@@ -533,6 +545,9 @@ object CppExternEmitter : CppExternsPart {
         val expr = (binding as? ArgBinding.Given)?.expr
         if (proxied && expr != null && convertsToParam(ctx.model.coercion(expr))) {
             return "${ctx.spell(p.type, Pos.VALUE)}($text)"
+        }
+        if (proxied && expr != null && !p.byRef) {
+            typedLiteral(ctx, p.type, expr, text)?.let { return it }
         }
         if (isUnsafe(p.type)) {
             val given = expr?.let { ctx.model.types[it] }
@@ -581,6 +596,35 @@ object CppExternEmitter : CppExternsPart {
      */
     private fun convertsToParam(c: Coercion?): Boolean =
         c is Coercion.WrapSome || c is Coercion.NoneOf || c is Coercion.Upcast || c is Coercion.FnRef
+
+    /**
+     * [text], the C++ of [e], spelled as the parameter type [t] when [e] is a literal ([isLiteral])
+     * at a scalar parameter (`std::int64_t{5}`, `float{1.5f}`, `bool{true}`) or a `Str` literal at
+     * a `CStr` one (`static_cast<const char*>("s")`, not the `const char[2]` a `const T&`
+     * template would bind); null for any other argument. The braces refuse a narrowing C++ would
+     * otherwise make silently. On arm-none-eabi even an `Int32` needs this: `std::int32_t` is
+     * `long` there, and `5` is an `int`.
+     */
+    private fun typedLiteral(ctx: CppEmitContextImpl, t: KType, e: Expr, text: String): String? = when {
+        t is KType.Scalar && isLiteral(ctx, e) -> "${ctx.spell(t, Pos.VALUE)}{$text}"
+        isCStr(t) && e is StringLiteral -> "static_cast<${ctx.spell(t, Pos.VALUE)}>($text)"
+        else -> null
+    }
+
+    /**
+     * Whether [e] is built of literals only: a number, a character, `true` or `false`, or a sign,
+     * `!`, `~` or arithmetic over such operands (`-5`, `2 + 3`). Its C++ type is then C++'s own
+     * (`int`, `double`, `char`), whatever type the typer gave it.
+     */
+    private fun isLiteral(ctx: CppEmitContextImpl, e: Expr): Boolean = when (e) {
+        is IntegerLiteral, is FloatLiteral, is CharLiteral -> true
+        is UnaryExpr -> isLiteral(ctx, e.operand)
+        is BinaryExpr -> e.operator in CppLowering.ARITH_OR_BITS && isLiteral(ctx, e.leftExpr) && isLiteral(ctx, e.rightExpr)
+        is Identifier -> (ctx.model.symbolOf(e) as? GlobalSymbol)?.let { g ->
+            g.foreign is Foreign.Magic && g.module.isStdlib && (g.name == "true" || g.name == "false")
+        } == true
+        else -> false
+    }
 
     /** The global [e] names, bare (`GS`) or through its module (`w.GS`), or null. */
     private fun globalOf(ctx: CppEmitContextImpl, e: Expr): GlobalSymbol? = when (e) {

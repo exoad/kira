@@ -1,7 +1,92 @@
-# Known issues: w2-6-ffi (copy by default, round 6)
+# Known issues: w2-6-ffi (copy by default, round 7)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
+
+## Round 7: a literal given to an extern is passed as the parameter's type
+
+### The merges
+
+1. `git merge --no-ff cpp/w2-5-rules` (a7f0a29), signed as 3f58b77, no conflict: rule M refuses a
+   STABLE receiver of a stdlib binding that drops what it held mid-operation (KI-20).
+2. `git merge --no-ff cpp/w2-3-emit-exprs` (d68160e), signed as 9f516d3, no conflict: a write over
+   a class or trait handle, or a Maybe of one, stores first through `kira::replace`.
+
+### Round 6's finding (sc-round6.json, round6.w2-6-ffi.verdict)
+
+A literal given to an `@_extern` or `@_opaque` argument reached C++ as C++'s own literal: `5` is an
+`int`, `1.5` a `double`, `"s"` a `const char[2]`. The check states the declared type
+(`KIRA_EXTERN_CHECK(q::w(kira::ffi::arg<std::int64_t>()), ...)`), but the call was `::q::w(5)`, so
+against an overload set or a template the emitted call was another call than the checked one.
+Round 6's `convertsToParam` covers only the coercions the typer records (`WrapSome`, `NoneOf`,
+`Upcast`, `FnRef`), and a literal carries none: the typer just gives it the parameter's type.
+
+The fix is at the root, `CppExternEmitter.argument`: wherever the arguments are proxied (an
+`@_extern` and an `@_opaque` method), a by-value argument built of literals only (`isLiteral`: an
+integer, float or Char literal, `true`/`false`, and a sign, `!`, `~` or arithmetic over those) at a
+scalar parameter is spelled `T{text}` (`std::int64_t{5}`, `kira::Size{4u}`, `float{1.5f}`,
+`bool{true}`, `char{'a'}`), and a `Str` literal at a `CStr` parameter is
+`static_cast<const char*>("s")`. The call then passes the type its check states. The braces cannot
+narrow: the typer bounds every literal by its type (`types.literal.range`), measured at both edges
+of Int8, UInt8, Int16 and Int64. A `Str` literal at a `Str` parameter needed nothing:
+`kira::ffi::in` takes a `const std::string&`, so the proxy is the same `In` the check states. A
+literal wrapped into a `Maybe` was typed already (`kira::Maybe<std::int64_t>(std::int64_t{5})`), as
+were an if-expression's literal branches, and a named value or arithmetic over one is the declared
+type. A bodiless prototype declares its own parameters and has no overloads, and its text is
+unchanged. `kira/ffi.hxx`'s proxy notes say the same. On arm-none-eabi even an Int32 literal needed
+this, since `std::int32_t` is `long` there (the round-6 verifier's static_assert).
+
+### Uncommitted edits reviewed
+
+A first round-7 fixer was stopped mid-work. Its edits were right and are kept: `typedLiteral` and
+`isLiteral` in `CppExternEmitter`, the forward golden (`float{0.0f}`), three updated expectations in
+`CppExternEmitterTest`, and `ExternLiteralRunTest`. Finished here: three more expectations in
+`aCallSpellsTheCppNameAndTheProxies` (`float{0.0f}`, `std::uint32_t{7u}`, `std::int32_t{3}`,
+`std::int32_t{1}`, `kira::Size{4u}`) and one in the Unsafe test, which had stopped its full run at
+two failures; all 20 of lit's rows and lit2's own `l2::w`/`l2::width` in the run test (it had 12 and
+used `q::` for lit2); the edge rows; a printed value per row; and the ffi.hxx note.
+
+### Measured
+
+`ExternLiteralRunTest` holds 42 rows: the round-6 verifier's lit (20 rows) and lit2 (6 rows) over
+its own q.hxx and l2.hxx, verbatim, the `@_opaque` method of its a2_fx (`r3.w(5)`, as `bx.w(5)`
+over an `l3::Box` with the same int32/int64 overloads and a width template), round 7's l3 kinds
+(Float64, an integer at a Float64, Bool, Char, CStr, UInt8, arithmetic of literals), and 7 edge
+rows. Every row checks the value on g++, clang (zig c++) and MSVC, and every literal row checks the
+text. With the fix taken out, the same test failed 19 rows on all three compilers, each with the
+value its reason states: w, u, b, ub, h and sz printed 32 for their widths, width(T) 4 for 8, 1
+and 2, `bx.w(5)` 32 for 64, `isCStr("abc")` and `isU8(200)` 0 for 1, and the largest Int64 into
+`u` did not compile (`u(long long)` is ambiguous). The other 23 rows, the controls, printed the
+same before and after.
+
+Probes, run with `prun.sh` (g++ 13.2 and zig c++ -O0 -Wall -Wextra -Wconversion -Wsign-conversion
+-Wshadow -Werror, MSVC /fsanitize=address /W4 /WX), scratchpad w26r7:
+
+| Probe | Before (g++, clang, MSVC) | After, all three, ASan 0 |
+|---|---|---|
+| lit (the verifier's 20 rows) | 32 x6, f 32 (right), 4 4 4, then the 10 controls right | 64 64 8 8 16 64 32 8 1 2, 64 8 64 8 8 16 1 8 8 1 |
+| lit2 | `w(-5)` 32, `width64(7)` 4 | 64 64 64 33 8 8 |
+| lit3 (14 rows) | `w(-5)` 32, `isCStr` 0, `isU8` 0, `bx.w` 32, `bx.width` 4 | 64 64 64 1 64 1 1 1 1 1 64 8 64 1 |
+| rng (9 edge literals) | not run before | 8 8 8 64 64 64 32 64 16 |
+
+Acceptance, all on this branch: the ffi tests, 130 in 8 files, 0 failures, 4 skipped (the class
+rows of `ExternCoercionRunTest`). The full suite, 1369 tests in 102 files, 0 failures, 7 skipped:
+those 4 and `CppCopyPolicyTest`'s 3 handle runs, which need W2.4. `examples/regenerate.sh --check`:
+all snapshots current, C++ leg 2 of 2. ffi-mini ok, 13-ffi-cpp ok. `run.sh` 66 passed (ffi_test
+29/0). `msvc.bat` all passed (ffi_test 29/0, `KIRA_FFI_DRIFT=1` refused with Kira's message).
+`goldens.sh` 18 cases, 71 passed. `sys.sh` 18 passed. The one golden that changed is forward:
+`car->drive(blocked ? 0.0f : CREEP, float{0.0f})`.
+
+### Open
+
+- **The lexer reads no integer literal past Int64's largest.** `u(18446744073709551615)` fails
+  with "Unable to read '18446744073709551615' as an integer literal" (a NumberFormatException), so
+  a UInt64 literal above 2^63-1 cannot be written. It is the frontend's, not this package's; the
+  run test uses `u(9223372036854775807)`.
+- **The spelling is chosen by the argument's shape, not by its C++ type.** A non-literal argument
+  is trusted to be the declared type already, which the expression part keeps (a named value, the
+  cast arithmetic of a narrow type, a typed if-expression). A future expression whose C++ type is
+  not its Kira type would need the same treatment here.
 
 ## Round 6: an extern argument the typer converted is passed as the parameter's type
 

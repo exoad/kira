@@ -34,7 +34,7 @@ namespace forward
           {
               blocked = false;
           }
-          car->drive(blocked ? 0.0f : CREEP, 0.0f);
+          car->drive(blocked ? 0.0f : CREEP, float{0.0f});
       }
       return kira::ffi::declared<std::int32_t>(car->finish());
   }
