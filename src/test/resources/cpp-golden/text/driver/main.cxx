@@ -28,14 +28,17 @@ namespace
 
   void run()
   {
-      const kira::Maybe<kira::View<char>> arg = bibo::text::word(kira::lit("ESC 1541"), kira::lit("ESC"));
-      check(kira::isSome(arg) && kira::unwrap(arg) == kira::lit("1541"), "word splits the argument off");
-      check(kira::isSome(bibo::text::word(kira::lit("PING"), kira::lit("PING"))) &&
-                kira::unwrap(bibo::text::word(kira::lit("PING"), kira::lit("PING"))).isEmpty(),
+      const kira::View<char> esc = kira::lit("ESC 1541");
+      const kira::Maybe<kira::Size> end = bibo::text::wordEnd(esc, kira::lit("ESC"));
+      check(kira::isSome(end) && esc.from(kira::unwrap(end)) == kira::lit("1541"), "word splits the argument off");
+      const kira::View<char> ping = kira::lit("PING");
+      check(kira::isSome(bibo::text::wordEnd(ping, kira::lit("PING"))) &&
+                ping.from(kira::unwrap(bibo::text::wordEnd(ping, kira::lit("PING")))).isEmpty(),
             "a bare command is an empty view, not none");
-      check(!kira::isSome(bibo::text::word(kira::lit("ESCAPE 1"), kira::lit("ESC"))), "a longer word does not match");
-      check(!kira::isSome(bibo::text::word(kira::lit("ES"), kira::lit("ESC"))), "nor does a shorter one");
-      check(kira::unwrap(bibo::text::word(kira::lit("LED    on"), kira::lit("LED"))) == kira::lit("on"),
+      check(!kira::isSome(bibo::text::wordEnd(kira::lit("ESCAPE 1"), kira::lit("ESC"))), "a longer word does not match");
+      check(!kira::isSome(bibo::text::wordEnd(kira::lit("ES"), kira::lit("ESC"))), "nor does a shorter one");
+      const kira::View<char> led = kira::lit("LED    on");
+      check(led.from(kira::unwrap(bibo::text::wordEnd(led, kira::lit("LED")))) == kira::lit("on"),
             "every space after the word is skipped");
       check(bibo::text::isCommand(kira::lit("STOP\r"), kira::lit("STOP")) == false, "a CR is not a space");
       check(bibo::text::trimEnd(kira::lit("PING\r\n")) == 4 && bibo::text::trimEnd(kira::lit(" \t")) == 0,

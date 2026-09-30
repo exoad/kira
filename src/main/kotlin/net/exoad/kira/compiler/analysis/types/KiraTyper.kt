@@ -55,7 +55,7 @@ interface RulePass {
 object KiraTyper {
     internal var bodyTyper: BodyTyper = KiraBodyTyper
 
-    internal val rulePasses: MutableList<RulePass> = mutableListOf()
+    internal val rulePasses: MutableList<RulePass> = net.exoad.kira.compiler.analysis.types.rules.RulePasses.default()
 
     /**
      * Types [unit]. Never throws: an internal failure becomes a `types.internal` diagnostic,

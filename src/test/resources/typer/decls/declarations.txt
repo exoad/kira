@@ -62,6 +62,7 @@ module fixture:declarations  profile=HOSTED ns=declarations imports=[]
   fn intrinsicClock: () Int64  pub magic=intrinsicClock
   opaque Handle  pub @_opaque
   op op_add: (a: Animal, b: Animal) Animal  body
+diag warning rules.naming.constant fixture/declarations.kira:22:5  Constant 'nowhere' does not conform to UPPER_SNAKE_CASE (a module-level binding without `mut` is a constant); did you mean 'NOWHERE'?
 diag warning types.override.missing fixture/declarations.kira:80:9  Dog.describe replaces Animal.describe; mark it `override` (spec: Inheritance).
 diag warning types.override.missing fixture/declarations.kira:84:9  Dog.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
 diag warning types.override.missing fixture/declarations.kira:88:9  Dog.shout replaces Shouter.shout; mark it `override` (spec: Inheritance).

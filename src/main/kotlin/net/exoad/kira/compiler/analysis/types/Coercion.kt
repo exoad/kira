@@ -17,7 +17,7 @@ sealed interface Coercion {
     /** A named function used as a value (`adder: Fx<...> = add`). */
     data class FnRef(val fn: FnSymbol) : Coercion
 
-    /** An `Arr<T, N>`, `Arr<T>` or `List<T>` place, or a `MutView<T>`, becoming a `View<T>`. [from] is the source type. */
+    /** An `Arr<T, N>`, `Arr<T>` or `List<T>` (a place or a temporary), or a `MutView<T>`, becoming a `View<T>`. [from] is the source type. */
     data class ToView(val from: KType) : Coercion
 
     /** A literal `Str` constant (a `const char*` in C++) as the receiver of a member-style binding (R5). */
