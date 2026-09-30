@@ -971,7 +971,7 @@ class CppExternEmitterTest {
         lowered("::probe::lenAfterL(kira::ffi::in(\"hi\"), fs)", "a literal")
         lowered("::probe::lenAfterL(kira::ffi::in(GREETING), fs)", "a Kira constant")
         lowered("::probe::lenAfterCb(kira::ffi::in(kira::Str(GS)), c)", "an Fx in a struct field")
-        lowered("::probe::lenAfter(kira::ffi::in(kira::Str(GS)), []() -> void", "a direct lambda")
+        lowered("::probe::lenAfter(kira::ffi::in(kira::Str(GS)), kira::Fn<void()>([]() -> void", "a direct lambda, passed as the kira::Fn its check states")
         // CONFINED: a mut Str may be GS itself, a mut Int32 may lie in a Pt (w2-6 #0, the other
         // direction), a mut Int32 cannot hold a Str, and a call given nothing lends the global.
         lowered("::probe::appendLen(kira::ffi::in(kira::Str(GS)), kira::ffi::out(o))", "a mut Str may hold the Str")

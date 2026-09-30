@@ -389,7 +389,7 @@ class ExternCallRunTest {
         Row("sSpilled", "sSpilled()", 82, "::nat::lenAfterL(kira::ffi::in(t0_), t1_)", "an argument D33 spills before an IMPURE sibling is its typed temporary, the copy (W1), never copied again (w2-6 minor #1)"),
         Row("sStructFx", "sStructFx()", 82, "::nat::lenAfterCb(kira::ffi::in(kira::Str(GS)), c)", "an Fx in a struct field makes the call not CONFINED"),
         Row("sReceiver", "sReceiver()", 82, "pump->lenAfter(kira::ffi::in(kira::Str(GS)))", "a handle receiver may hold an Fx (contract 5.4.3): not CONFINED"),
-        Row("sDirect", "sDirect()", 82, "::nat::lenAfterF(kira::ffi::in(kira::Str(GS)), []() -> void", "a direct lambda that writes the argument is accepted and the argument copied (the alias rule is deleted)"),
+        Row("sDirect", "sDirect()", 82, "::nat::lenAfterF(kira::ffi::in(kira::Str(GS)), kira::Fn<void()>([]() -> void", "a direct lambda that writes the argument is accepted and the argument copied (the alias rule is deleted); the lambda is the kira::Fn its check states"),
         Row("cCStr", "cCStr()", 82, "::nat::lenAfterCL(kira::ffi::CStrBuf(GS).c_str(), fs)", "a Str copied for a CStr is a CStrBuf"),
         Row("cList", "cList()", 6, "::nat::sumListL(kira::List<std::int32_t>(GL), fs)", "a global List is copied"),
         Row("cArr", "cArr()", 6, "::nat::sumArrL(std::array<std::int32_t, 3>(GA), fs)", "a global Arr is copied"),

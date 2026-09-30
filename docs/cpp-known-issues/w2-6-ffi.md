@@ -1,7 +1,108 @@
-# Known issues: w2-6-ffi (copy by default, round 7)
+# Known issues: w2-6-ffi (copy by default, round 7b)
 
 One entry per deferred issue: what, where, how to reproduce it, and why leaving it is safe.
 Fixed issues from the last verdict are not listed here (see the round's commit message).
+
+## Round 7b: an Fx argument that is no kira::Fn is passed as the parameter's type
+
+### Round 7's finding (sc-round7.json, round7.w2-4-emit-oop.verdict, owned here)
+
+A lambda literal given to an `@_extern` or `@_opaque` argument of type `Fx<...>` reached C++ as
+its closure type. The check states `kira::ffi::arg<kira::Fn<...>>()`, a `std::function`
+(`KIRA_EXTERN_CHECK(r::callKind(kira::ffi::arg<kira::Fn<std::int32_t()>>()), ...)`), but the call
+was `::r::callKind([]() -> std::int32_t { ... })`. So a template or an overload set ran another
+function than the checked one: the round-6 probe v26r6v/myatk/a2_fx's first row,
+`callKind(fx () Int32 { return 2 })` against `template<class F> callKind(const F&)`, printed 202
+where Kira's value is 102, on g++, clang and MSVC alike. It is round 6's root again (an argument
+not passed as the parameter's declared type), reached by a lambda where round 7 fixed literals.
+
+The fix is in `CppExternEmitter.argument`, beside round 7's literals: wherever the arguments are
+proxied (an `@_extern` and an `@_opaque` method), a by-value `Fx` argument whose C++ is not a
+`kira::Fn` already (`isFnValue`) is spelled `kira::Fn<...>(text)`, the type the check states.
+`isFnValue` lists what is one already, and anything else is converted rather than trusted:
+- a place: Kira stores every `Fx` it names as a `kira::Fn`. A non-escaping `Fx` parameter is a
+  template parameter, but one passed to an extern escapes (EscapePass), so it is a `kira::Fn` here.
+- a call: a Kira function or a function value returns the `kira::Fn` it declares, and an extern's
+  result is `kira::ffi::declared<kira::Fn<...>>`.
+- a named function: round 6's `FnRef` path spells it `kira::Fn<...>(f)` first.
+- an if-expression: its IIFE returns the declared type, and a ternary is a `kira::Fn` when one of
+  its branches is one.
+
+What is left is a lambda literal, and a ternary of two lambdas. Two captureless lambdas meet as a
+function pointer (`gc ? []{...} : []{...}`), which printed 207 for 107 before the fix.
+
+The copy policy is unchanged. It counts a lambda literal as a temporary, so `kira::Fn<...>(lambda)`
+is that temporary, and it lends or copies a place (`P(text)`) exactly as before. No value that
+already has the type is wrapped twice: a local, a parameter, an element, a Maybe's value and a
+call's result are passed as they were. A bodiless prototype declares `const kira::Fn<...>&` itself,
+so C++ converts there as at a Kira function, and its text is unchanged. A method is no value in
+Kira: `callKind(bx.get)` is refused with `types.member.method-value`, so the method-reference
+variant is a lambda over the call. `kira/ffi.hxx`'s proxy note says the same.
+
+### Measured
+
+`ExternFxRunTest` holds 38 rows, each checked by value on g++, clang (zig c++) and MSVC and by
+its text. The rows are a2_fx's row 1 and its variants, against a2_fx's `callKind` template
+verbatim, a forwarding `F&&` template, an overload set of the `std::function` and a template, and
+one of the `std::function` and a function pointer:
+- a lambda, a capturing one, and one of one parameter;
+- two lambdas in an if-expression;
+- a method through a lambda, over an `@_opaque` method and over a Kira class's method;
+- a lambda over a class's own field (`[self = shared_from_this()]`);
+- an `@_opaque` template method and an overload set given a lambda;
+- a named function, bare and through its module;
+- and the controls, which were right before too: a local, a parameter passed on, a Kira function's
+  result, a List element, a Maybe's value, a function value's result, three if-expressions, and a
+  lambda wrapped into a Maybe.
+
+The 4 class rows are skipped on this branch, which has no W2.4, and they pass on the trial.
+
+With the fix taken out, the test failed on all three compilers:
+- 12 lambda rows printed the values their reasons state: 202 x3, 205 x2, 206 x2, 207 x3, 204 x2;
+- a captureless lambda beside the function-pointer overload did not compile on any of the three
+  (an ambiguous call);
+- on a scratch clone of trial fae899a with this diff applied, the 4 class rows printed 205;
+- the other 21 rows (10 named-function rows and 11 controls) printed the same before and after.
+
+Probes, run with prun.sh (g++ 13.2 and zig c++ -O0 -Wall -Wextra -Wconversion
+-Wsign-conversion -Wshadow -Werror, MSVC /fsanitize=address /W4 /WX), scratchpad w26r7b. The
+"before" column is the round-7 trial CLI (fae899a). a2_fx and a4_def need W2.4, so they ran on
+the fae899a clone with this diff; the rest ran with this branch's CLI:
+
+| Probe | Before (g++, clang, MSVC) | After, all three, ASan 0 |
+|---|---|---|
+| a2_fx, whole (round 7's finding) | 202 88 5 47 -1 47 47 47 64 | 102 88 5 47 -1 47 47 47 64 |
+| fx1 (27 rows) | 11 lambda rows wrong: 202 202 202 205 205 207 207 204 204 206 206 | all 27 right |
+| fx2 (7 rows) | `ptr(lambda)` ambiguous on all three; two lambdas in an if 207 | 102 107 103 109 104 106 105 |
+| lit, lit2, lit3, rng (round 7) | 64 64 8 8 16 64 32 8 1 2 64 8 64 8 8 16 1 8 8 1 / 64 64 64 33 8 8 / 64 64 64 1 64 1 1 1 1 1 64 8 64 1 / 8 8 8 64 64 64 32 64 16 | the same |
+| a4_def | 202 103 5 | 202 103 5 |
+
+a4_def's 202 is Kira's own value (named arguments run in source order: `pair(b = bump(), a =
+gi)`), not this shape as round 7's verifier guessed.
+
+Two expectations changed to the new text: `CppExternEmitterTest`'s direct lambda and
+`ExternCallRunTest`'s sDirect, now `kira::Fn<void()>([]() -> void`. The goldens and examples pass
+no lambda to an extern, and their text is unchanged.
+
+Acceptance on this branch:
+- the full suite: 1383 tests in 103 files, 0 failures, 11 skipped. The skips are the 8 class rows
+  of `ExternCoercionRunTest` and `ExternFxRunTest`, and `CppCopyPolicyTest`'s 3 handle runs, all
+  of which need W2.4.
+- the ffi tests: 144 in 9 files, 0 failures, 8 skipped. On the fae899a clone with this diff: 144,
+  0 failures, 0 skipped.
+- `examples/regenerate.sh --check`: all snapshots current. ffi-mini ok, 13-ffi-cpp ok.
+- `run.sh` 66 passed (ffi_test 29/0). `goldens.sh` 18 cases, 71 passed. `sys.sh` 18 passed.
+- `msvc.bat` all passed (ffi_test 29/0, and `KIRA_FFI_DRIFT=1` refused with Kira's message).
+
+### Open
+
+- **[owner the closure emitter, W2.3; pre-existing] clang -Werror refuses a lambda that
+  captures a constant local.** `k: Int32 = 5` then `fx () Int32 { return k }` is emitted as
+  `const std::int32_t k = 5;` and `[k]() -> std::int32_t { return k; }`. clang reports
+  "lambda capture 'k' is not required to be captured for this use" (-Wunused-lambda-capture), since
+  a constant-initialized const int is not odr-used. g++ and MSVC build it. It is the same with the
+  round-7 trial CLI, and at a Kira function (`apply(...)`) as well as at an extern
+  (scratchpad w26r7b/cap). The run tests capture `two() + 3` instead.
 
 ## Round 7: a literal given to an extern is passed as the parameter's type
 
@@ -86,7 +187,9 @@ all snapshots current, C++ leg 2 of 2. ffi-mini ok, 13-ffi-cpp ok. `run.sh` 66 p
 - **The spelling is chosen by the argument's shape, not by its C++ type.** A non-literal argument
   is trusted to be the declared type already, which the expression part keeps (a named value, the
   cast arithmetic of a narrow type, a typed if-expression). A future expression whose C++ type is
-  not its Kira type would need the same treatment here.
+  not its Kira type would need the same treatment here. Round 7b turns this round for `Fx`: an `Fx`
+  argument is converted unless it is a shape known to be a `kira::Fn` (`isFnValue`). Scalars still
+  trust every non-literal shape.
 
 ## Round 6: an extern argument the typer converted is passed as the parameter's type
 

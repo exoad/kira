@@ -139,7 +139,9 @@
 //                       the unconverted value where the check stated a T. A
 //                       literal is passed as T too, T{5} (a Str literal at a
 //                       CStr as a const char*), since C++ gives it its own type:
-//                       5 is an int, and even an Int32 is a long on arm-none-eabi
+//                       5 is an int, and even an Int32 is a long on arm-none-eabi.
+//                       So is a lambda at an Fx: kira::Fn<...>(lambda), never
+//                       its closure type, which a template binds as itself
 //   kira::ffi::CStrBuf  a CStr made from a Str that is neither a literal nor a
 //                       Str constant nor a named Str; its c_str() lives to the
 //                       end of the full-expression

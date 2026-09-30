@@ -20,6 +20,8 @@ import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
@@ -519,6 +521,14 @@ object CppExternEmitter : CppExternsPart {
      * literal argument is spelled as the parameter's type: `std::int64_t{5}`, and
      * `static_cast<const char*>("s")` for a `Str` literal at a `CStr`.
      *
+     * An `Fx` argument that is no `kira::Fn` in C++ ([isFnValue]) is the same case once more: a
+     * lambda literal is its closure type, which the check's `kira::ffi::arg<kira::Fn<...>>()` is
+     * not, so it is spelled `kira::Fn<...>(lambda)`, the temporary the copy policy already counts
+     * it as (round 7: `callKind(fx () Int32 { return 2 })` against `template<class F>
+     * callKind(const F&)` printed 202 for 102). A named function is the `FnRef` above; a place, a
+     * call's result and an if-expression are a `kira::Fn` already, and a place stays the copy
+     * policy's to lend or copy.
+     *
      * [proxied] is false for a bodiless `pub` prototype ([proxied]): Kira declared its C++
      * parameters itself, so a `Str` is passed as the `kira::Str` it is and a `mut` argument as
      * the `T&` it binds, with no `kira::ffi::in`/`out`; its `Unsafe<T>` and `CStr` parameters
@@ -544,6 +554,9 @@ object CppExternEmitter : CppExternsPart {
         }
         val expr = (binding as? ArgBinding.Given)?.expr
         if (proxied && expr != null && convertsToParam(ctx.model.coercion(expr))) {
+            return "${ctx.spell(p.type, Pos.VALUE)}($text)"
+        }
+        if (proxied && expr != null && !p.byRef && p.type is KType.Fn && !isFnValue(ctx, expr)) {
             return "${ctx.spell(p.type, Pos.VALUE)}($text)"
         }
         if (proxied && expr != null && !p.byRef) {
@@ -596,6 +609,35 @@ object CppExternEmitter : CppExternsPart {
      */
     private fun convertsToParam(c: Coercion?): Boolean =
         c is Coercion.WrapSome || c is Coercion.NoneOf || c is Coercion.Upcast || c is Coercion.FnRef
+
+    /**
+     * Whether [e], an argument at a by-value `Fx` parameter, is a `kira::Fn` in C++ already, so that
+     * [argument] passes it as it is: a place (Kira stores every `Fx` it names as a `kira::Fn`; a
+     * non-escaping `Fx` parameter is a template parameter, but one passed to an extern escapes,
+     * EscapePass), which the copy policy lends or copies (`P(text)`) as it does any place; a call
+     * (a Kira function and a function value return the `kira::Fn` they declare, an extern's result
+     * is `kira::ffi::declared<kira::Fn<...>>`); a named function, which is spelled `kira::Fn<...>(f)`
+     * wherever it is converted; and an if-expression, whose IIFE returns the declared type and
+     * whose ternary is a `kira::Fn` when one branch is. Anything else is not: a lambda literal is
+     * its closure type, which a C++ template binds as itself and an overload set resolves as
+     * itself (round 7: `callKind(fx () Int32 { return 2 })` against `template<class F>
+     * callKind(const F&)` printed 202 for 102 on g++, clang and MSVC), and a shape this list does
+     * not know is converted rather than trusted.
+     */
+    private fun isFnValue(ctx: CppEmitContextImpl, e: Expr): Boolean = when {
+        ctx.model.readPlace(e) != null -> true
+        ctx.model.coercion(e) is Coercion.FnRef -> true
+        e is FunctionCallExpr -> true
+        e is MemberAccessExpr -> e.member is FunctionCallExpr
+        e is IfExpr -> ctx.model.ifShape(e) != true || branches(ctx, e).any { isFnValue(ctx, it) }
+        else -> false
+    }
+
+    /** The values an if-expression's two branches end in. */
+    private fun branches(ctx: CppEmitContextImpl, e: IfExpr): List<Expr> {
+        val lower = CppLowering.of(ctx)
+        return listOfNotNull(lower.branchValue(e.thenBranch), lower.branchValue(e.elseBranch))
+    }
 
     /**
      * [text], the C++ of [e], spelled as the parameter type [t] when [e] is a literal ([isLiteral])
