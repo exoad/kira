@@ -1,15 +1,23 @@
 package net.exoad.kira.cpp.exprs
 
+import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.typeArgs
+import net.exoad.kira.compiler.backend.codegen.cpp.CppClassesPart
+import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitContextImpl
+import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitParts
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
+import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.cpp.exprs.CppExprTestSupport.Module
 import net.exoad.kira.cpp.support.CppToolchain
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.DynamicNode
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -1039,6 +1047,503 @@ class CppCopyPolicyTest {
                 }
                 val stdout = CppExprTestSupport.compileAndRun(replaceTree, driver, tc) ?: return@dynamicTest
                 assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
+            }
+        }
+
+    /**
+     * Round 6's w2-3 finding (sc-round6.json, the verifier's v23r6x/atk hx1-hx8 and k_c1): a write
+     * over a class or trait handle, or a `Maybe` of one, was left to `std::shared_ptr`'s own
+     * assignment, and libstdc++'s copy-assignment releases the old count before it stores the new
+     * one. The old object's IMPURE `finally` met the new pointer beside its own dying count: on g++
+     * hx1's Res 1 was destroyed twice (`count 2`), hx2 stored a control block into a freed buffer,
+     * and hx4's Res 3 never ran its `finally`. Every such write is now `kira::replace(place) =
+     * value` (`CppCopyPolicy.dropsOnWrite`) on every compiler: stored whole, then the old object
+     * dropped. The probes are the verifier's, less the module line and `fx main`, with `run`
+     * public; hx1c (a prvalue) is the verifier's control. This branch lowers no class, so here
+     * the text test emits them through [ClassBodies] and the runs are skipped;
+     * kira/cpp/tests/rt_test.cxx's testReplaceHandle runs hx1, hx2 and k_c1 with a real
+     * destructor as the `finally`. Where W2.4's classes part is merged, the real part emits the
+     * probes and both tests check them, the runs on gcc, clang and msvc.
+     */
+    private val handleProbes: List<Module> = listOf(
+        Module(
+            "handle:hx1",
+            """
+            // hx1: gm = b, with b a local handle (PRIVATE, so the value is lent and C++ copy-assigns the
+            // std::shared_ptr; dropsOnWrite leaves a Maybe of a class to shared_ptr's own assignment).
+            // The old object's IMPURE finally copies the handle it finds in gm into a local and reads it.
+            // Kira: the write stores b, then Res 1 drops once: its finally sees Res 2.
+            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
+
+            mut gm: Maybe<Res> = null
+            mut gc: Int32 = 0
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        gc = gc + 1
+                        if gc == 1 {
+                            x: Res = gm.unwrap()
+                            trace("fin1 sees ${'$'}{x.n}")
+                        }
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                }
+            }
+
+            pub fx run: () Void {
+                gm = Res { n = 1 }
+                b: Res = Res { n = 2 }
+                gm = b
+                trace("count ${'$'}{gc}")
+                trace("after ${'$'}{gm.unwrap().n}")
+                gm = null
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:hx1c",
+            """
+            // hx1c (control for hx1): gm = Res { n = 2 }, a prvalue (C++ move-assigns, which swaps). Was: gm = b, with b a local handle (PRIVATE, so the value is lent and C++ copy-assigns the
+            // std::shared_ptr; dropsOnWrite leaves a Maybe of a class to shared_ptr's own assignment).
+            // The old object's IMPURE finally copies the handle it finds in gm into a local and reads it.
+            // Kira: the write stores b, then Res 1 drops once: its finally sees Res 2.
+            // Kira prints: fin1 sees 2, count 1, after 2, fin2, end
+
+            mut gm: Maybe<Res> = null
+            mut gc: Int32 = 0
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        gc = gc + 1
+                        if gc == 1 {
+                            x: Res = gm.unwrap()
+                            trace("fin1 sees ${'$'}{x.n}")
+                        }
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                }
+            }
+
+            pub fx run: () Void {
+                gm = Res { n = 1 }
+                gm = Res { n = 2 }
+                trace("count ${'$'}{gc}")
+                trace("after ${'$'}{gm.unwrap().n}")
+                gm = null
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:hx2",
+            """
+            // hx2: xs[0] = b over a global List of class handles, b a by-value parameter (PRIVATE, lent).
+            // The old element's IMPURE finally replaces the global List (freeing its buffer) and then
+            // allocates a List<Int64> of the same byte size.
+            // Kira: the element takes b, then the old element drops: the finally's writes come last.
+            // Kira prints: fin1, size 0, gk 11 22, end, fin2
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        gl = []
+                        gk = [11, 22]
+                        trace("fin1")
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                }
+            }
+
+            mut gl: List<Res> = []
+            mut gk: List<Int64> = []
+
+            fx put: (b: Res) Void {
+                gl[0] = b
+            }
+
+            pub fx run: () Void {
+                gl = [Res { n = 1 }]
+                put(Res { n = 2 })
+                trace("size ${'$'}{gl.size()}")
+                trace("gk ${'$'}{gk[0]} ${'$'}{gk[1]}")
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:hx3",
+            """
+            // hx3: gmap[1] = b over a global Map of class handles, b a local handle (lent). The old value's
+            // IMPURE finally replaces the global Map (freeing its storage) and then allocates Lists of the
+            // sizes the freed blocks had.
+            // Kira: the entry takes b, then the old value drops: the finally's writes come last.
+            // Kira prints: fin1, size 0, gk 11 22 33, end, fin2
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        gmap = Map<Int32, Res> { }
+                        gk = [11, 22, 33]
+                        gk2 = [44, 55]
+                        trace("fin1")
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                }
+            }
+
+            mut gmap: Map<Int32, Res> = Map<Int32, Res> { }
+            mut gk: List<Int64> = []
+            mut gk2: List<Int64> = []
+
+            pub fx run: () Void {
+                gmap[1] = Res { n = 1 }
+                b: Res = Res { n = 2 }
+                gmap[1] = b
+                trace("size ${'$'}{gmap.size()}")
+                trace("gk ${'$'}{gk[0]} ${'$'}{gk[1]} ${'$'}{gk[2]}")
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:hx4",
+            """
+            // hx4: h.child = b, a class field through a local handle (the object is held by h), with b a
+            // local handle (lent). The old child's IMPURE finally rewrites the same field through a global
+            // alias of h.
+            // Kira: the field takes b, then the old child drops; its finally sees b (2) and its own write
+            // (Res 3) is last. Res 3 drops when the field is cleared, Res 2 when b goes.
+            // Kira prints: fin1 sees 2, child 3, fin3, end, fin2
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        trace("fin1 sees ${'$'}{gh.unwrap().child.unwrap().n}")
+                        gh.unwrap().child = Res { n = 3 }
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                    if n == 3 {
+                        trace("fin3")
+                    }
+                }
+            }
+
+            pub class Holder {
+                pub mut child: Maybe<Res> = null
+            }
+
+            mut gh: Maybe<Holder> = null
+
+            pub fx run: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.child = Res { n = 1 }
+                b: Res = Res { n = 2 }
+                h.child = b
+                trace("child ${'$'}{h.child.unwrap().n}")
+                h.child = null
+                gh = null
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:hx5",
+            """
+            // hx5: a trait-typed global assigned a local class handle (an Upcast, C++'s converting
+            // shared_ptr assignment). The old object's IMPURE finally copies what the global holds into a
+            // local and asks it for its id.
+            // Kira: the global takes b, then Res 1 drops once: its finally sees Res 2.
+            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
+
+            pub trait Tagged {
+                pub fx id: () Int32
+            }
+
+            pub class Res: Tagged {
+                pub n: Int32 = 0
+
+                pub fx id: () Int32 {
+                    return n
+                }
+
+                finally {
+                    if n == 1 {
+                        gc = gc + 1
+                        if gc == 1 {
+                            x: Tagged = gt.unwrap()
+                            trace("fin1 sees ${'$'}{x.id()}")
+                        }
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                }
+            }
+
+            mut gt: Maybe<Tagged> = null
+            mut gc: Int32 = 0
+
+            pub fx run: () Void {
+                gt = Res { n = 1 }
+                b: Res = Res { n = 2 }
+                gt = b
+                trace("count ${'$'}{gc}")
+                trace("after ${'$'}{gt.unwrap().id()}")
+                gt = null
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:hx7",
+            """
+            // hx7: the binding List.set(i, v) on a STABLE receiver (this.items in a class mut fx) with a
+            // class-handle element, v a by-value parameter (lent). The old element's IMPURE finally copies
+            // the element it finds at items[0] through a global alias.
+            // Kira: the element takes v, then Res 1 drops once: its finally sees Res 2.
+            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        gc = gc + 1
+                        if gc == 1 {
+                            x: Res = gh.unwrap().items[0]
+                            trace("fin1 sees ${'$'}{x.n}")
+                        }
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                }
+            }
+
+            pub class Holder {
+                pub mut items: List<Res> = []
+
+                pub mut fx swapIn: (v: Res) Void {
+                    items.set(0, v)
+                }
+            }
+
+            mut gh: Maybe<Holder> = null
+            mut gc: Int32 = 0
+
+            pub fx run: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.items = [Res { n = 1 }]
+                b: Res = Res { n = 2 }
+                h.swapIn(b)
+                trace("count ${'$'}{gc}")
+                trace("after ${'$'}{h.items[0].n}")
+                h.items = []
+                gh = null
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:hx8",
+            """
+            // hx8: a write through a mut parameter, `slot = v`, where the caller passes the STABLE field of
+            // an object held by a local handle (mut h.child) and v a by-value parameter (lent). The old
+            // child's IMPURE finally copies the child it finds in the same field through a global alias.
+            // Kira: the field takes v, then Res 1 drops once: its finally sees Res 2.
+            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        gc = gc + 1
+                        if gc == 1 {
+                            x: Res = gh.unwrap().child.unwrap()
+                            trace("fin1 sees ${'$'}{x.n}")
+                        }
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                }
+            }
+
+            pub class Holder {
+                pub mut child: Maybe<Res> = null
+            }
+
+            mut gh: Maybe<Holder> = null
+            mut gc: Int32 = 0
+
+            fx setVia: (mut slot: Maybe<Res>, v: Res) Void {
+                slot = v
+            }
+
+            pub fx run: () Void {
+                h: Holder = Holder { }
+                gh = h
+                h.child = Res { n = 1 }
+                b: Res = Res { n = 2 }
+                setVia(mut h.child, b)
+                trace("count ${'$'}{gc}")
+                trace("after ${'$'}{h.child.unwrap().n}")
+                h.child = null
+                gh = null
+                trace("end")
+            }
+            """,
+        ),
+        Module(
+            "handle:k_c1",
+            """
+            // c1: the handle writes dropsOnWrite leaves to std::shared_ptr's own assignment, with a lent
+            // (PRIVATE local) handle as the value, so C++ copy-assigns. The old object's IMPURE finally
+            // rewrites the same handle. Kira stores, then drops: the finally sees the new object (2), its
+            // own write (Res 3) is last, and Res 3's finally runs when gm lets it go; Res 2's runs when b does.
+            // Kira prints: fin1 sees 2, after 3, fin3, end, fin2
+
+            pub class Res {
+                pub n: Int32 = 0
+
+                finally {
+                    if n == 1 {
+                        trace("fin1 sees ${'$'}{gm.unwrap().n}")
+                        gm = Res { n = 3 }
+                    }
+                    if n == 2 {
+                        trace("fin2")
+                    }
+                    if n == 3 {
+                        trace("fin3")
+                    }
+                }
+            }
+
+            mut gm: Maybe<Res> = null
+
+            pub fx run: () Void {
+                gm = Res { n = 1 }
+                b: Res = Res { n = 2 }
+                gm = b
+                trace("after ${'$'}{gm.unwrap().n}")
+                gm = null
+                trace("end")
+            }
+            """,
+        ),
+    )
+
+    /**
+     * A stand-in for W2.4's classes part, which this branch does not have: each class or trait a
+     * bare `class C {};`, and each method and `finally` a block whose statements this branch's
+     * own statement emitter writes, so every write the probes make is spelled as the trial
+     * spells it. The text is checked, never compiled. Once W2.4's part is merged
+     * ([classesLower]), the real part emits the probes and they run.
+     */
+    private object ClassBodies : CppClassesPart {
+        override fun define(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter) {
+            w.line("class ${sym.name} {};")
+        }
+
+        override fun defineMembers(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter, inline: Boolean) {
+            val c = sym as? ClassSymbol ?: return
+            ctx.inScopeOf(c) {
+                c.methods.forEach { fn -> w.block("void ${c.name}::${fn.name}()") { ctx.body(fn, fn.body ?: emptyList(), this) } }
+                c.finally?.let { statements -> w.block("${c.name}::~${c.name}()") { ctx.body(null, statements, this) } }
+            }
+        }
+    }
+
+    /** Whether the compiler's own parts lower a class: false on this branch, true once W2.4's classes part is merged. */
+    private val classesLower: Boolean = CppEmitParts.standard().classes != CppClassesPart.Unsupported
+
+    private val handleTree by lazy {
+        CppExprTestSupport.emit("copy-handles", handleProbes, emitterFactory = { unit, options ->
+            val parts = CppEmitParts.standard()
+            CppModuleEmitterFactory.create(unit, options, if (classesLower) parts else parts.copy(classes = ClassBodies))
+        })
+    }
+
+    /** What Kira prints for each probe's `run()`, the verifier's values (hx2's `fin2` before `size 0`: put's by-value parameter drops at its return). */
+    private val handleKira: Map<String, String> = mapOf(
+        "hx1" to "fin1 sees 2|count 1|after 2|end|fin2",
+        "hx1c" to "fin1 sees 2|count 1|after 2|fin2|end",
+        "hx2" to "fin1|fin2|size 0|gk 11 22|end",
+        "hx3" to "fin1|size 0|gk 11 22 33|end|fin2",
+        "hx4" to "fin1 sees 2|child 3|fin3|end|fin2",
+        "hx5" to "fin1 sees 2|count 1|after 2|end|fin2",
+        "hx7" to "fin1 sees 2|count 1|after 2|end|fin2",
+        "hx8" to "fin1 sees 2|count 1|after 2|end|fin2",
+        "k_c1" to "fin1 sees 2|after 3|fin3|end|fin2",
+    )
+
+    @Test
+    fun aWriteOverAHandleWhoseOldObjectMayRunAFinallyStoresFirst() {
+        val probe = handleProbes.associateBy { it.uri.substringAfter(':') }
+        listOf(
+            // A lent value (a PRIVATE local or by-value parameter) is a C++ lvalue: shared_ptr copy-assignment.
+            "hx1" to "kira::replace(gm) = b;",
+            "hx2" to "kira::replace(kira::at(gl, 0)) = b;",
+            "hx3" to "kira::replace(gmap[1]) = b;",
+            "hx4" to "kira::replace(h->child) = b;",
+            // The Upcast: the converting assignment.
+            "hx5" to "kira::replace(gt) = b;",
+            // The binding List.set, and a mut parameter's slot.
+            "hx7" to "kira::replace(kira::at(items, 0)) = v;",
+            "hx8" to "kira::replace(slot) = v;",
+            "k_c1" to "kira::replace(gm) = b;",
+            // The finally's own write over the same handle.
+            "k_c1" to "kira::replace(gm) = std::make_shared<Res>(3);",
+            // A prvalue stores first the same way: the order is never the library's.
+            "hx1c" to "kira::replace(gm) = std::make_shared<Res>(2);",
+        ).forEach { (name, text) ->
+            val source = handleTree.source(probe.getValue(name))
+            assertTrue(source.contains(text), "$name: $text:\n$source")
+        }
+    }
+
+    @TestFactory
+    fun aWriteOverAHandlePrintsKirasValueOnEveryCompiler(): List<DynamicNode> =
+        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
+            DynamicTest.dynamicTest("handles [${tc.id}]") {
+                Assumptions.assumeTrue(classesLower, "no class lowers on this branch (KI-18): the trial runs the probes")
+                val names = handleProbes.map { it.uri.substringAfter(':') }
+                val driver = buildString {
+                    handleProbes.forEach { append("#include \"").append(it.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n") }
+                    append("#include <cstdio>\n\nint main()\n{\n")
+                    names.forEach { append("    std::printf(\"[$it]\\n\");\n    $it::run();\n") }
+                    append("    return 0;\n}\n")
+                }
+                val stdout = CppExprTestSupport.compileAndRun(handleTree, driver, tc) ?: return@dynamicTest
+                val expected = names.joinToString("") { "[$it]\n" + handleKira.getValue(it).replace('|', '\n') + "\n" }
+                assertEquals(expected, stdout.replace("\r\n", "\n"), tc.id)
             }
         }
 }
