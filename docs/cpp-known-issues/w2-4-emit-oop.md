@@ -10,6 +10,63 @@ Round 4 (copy by default, `50-round4.md`) deleted the lifetimes analysis, `CppCl
 Every entry that described it is closed below in one line; the history sections at the end
 keep the rounds that built it.
 
+## Round 7: a Maybe of a Maybe keeps both levels
+
+- **The finding (round 6, significant, D32).** A `Maybe` of a `Maybe` of a class collapsed to one
+  level. rt.hxx made `Maybe<C>` the very `std::shared_ptr<C>` that `C` is
+  (`MaybeOf<std::shared_ptr<U>>::type`), so `kira::Maybe<kira::Maybe<kira::Rc<Node>>>` was one
+  shared_ptr, and a stored null (Some(None)) read as nothing there (None). The verifier's b10
+  (`Map<Str, Maybe<Node>>.get` of a key mapped to null) printed 0/1/0, then "unwrap of an empty
+  Maybe", exit 127, on g++, zig c++, MSVC and MSVC ASan. Kira's value is 1/1/0/1. Stack.pop and
+  peek, Queue.dequeue, Deque.popFront and popBack, Map.remove and a generic `Maybe<T>` at
+  `T = Maybe<C>` return the same type.
+- **Fix, in the runtime; the emitter's spelling is unchanged.**
+  - rt.hxx: `Maybe<C>` is `kira::MaybeRc<C>`, the nullable Rc as a type of its own. It derives
+    from `std::shared_ptr<C>` and adds no member, so one level is still a null handle of the
+    same size, which reads, compares, unwraps, upcasts and converts to and from `kira::Rc<C>` as
+    before. A Maybe of it is `kira::Nested<kira::MaybeRc<C>>`.
+  - core.hxx: `kira::Nested<M>`, a `std::optional<M>` with a constructor and an assignment from
+    `kira::none` that are not templates, so `none` is the OUTER empty Maybe. A plain optional
+    takes `none` as an M through its converting template. `Maybe<Maybe<T>>` of a value is
+    `Nested` too: `Maybe<Maybe<Int32>> x = null` did not build on any compiler ("conversion from
+    'const kira::None' ... is ambiguous"), the same finding's value twin.
+- **Kept and dropped from the stopped round-7 fixer's edits.** Kept: `Nested` (core.hxx),
+  `MaybeRc` and its `MaybeOf` (rt.hxx), and its rt_test rows, reworked. Dropped: `kira::MaybeArg`
+  and CppTypeSpeller's `kira::MaybeArg<...>` around every Maybe template argument. It changed
+  the emitted text, and it still collapsed wherever C++ deduces T from a `Maybe<C>` value, which
+  was still a plain shared_ptr.
+- **Tests.** New `CppMaybeNestingTest` has 4 tests. The text test checks that the spelling is
+  unchanged. The run test builds b10 verbatim (its `fx main` made `pub fx run`) and two twins
+  on gcc, clang and msvc, with static_asserts on the two C++ types:
+  - b10s covers Stack peek and pop, Queue.dequeue, a generic `some<Maybe<Node>>`, `x = null`
+    and Map.remove, and expects 2 2 1 0 / 1 0 / 1 2 / 0 1 2 0 / 1 0.
+  - b10v is the value twin and expects 1 2 0 / 0 1 2 0.
+
+  rt_test goes from 125 to 139 checks and gains 6 static_asserts, one of which replaces the old
+  "`Maybe<C>` is `std::shared_ptr<C>`". They cover Map.get, Map.remove, Stack, Queue and Deque
+  of `Maybe<C>`, assignments, upcast, Weak, dynamic_pointer_cast, and `Maybe<Maybe<Int32>>`
+  with `none`. Mutation check: with `MaybeOf<std::shared_ptr<U>>::type` set back to the shared_ptr, 3
+  of the 4 tests fail (the gcc, clang and msvc runs).
+- **Measured** with this branch's CLI and runtime, through the verifier's probe.sh on g++ -O1,
+  zig c++ -O1, MSVC /O1 and MSVC ASan. b10 prints 1/1/0/1, b10s
+  2/2/1/0/1/0/1/2/0/1/2/0/1/0 and b10v 1/2/0/0/1/2/0 on all four, with 0 ASan reports. Before
+  the fix, b10s printed 2/2/0/0/0/0/0/2/0/0/2/0/0/0 and b10v did not build. Before and after,
+  the emitted `.kira.cxx` files are byte-identical. rt_test under MSVC ASan: 139 checks, 0
+  failed, 0 reports.
+- **No regression.** The 65 projects of round 6's replay that spell `kira::Maybe<kira::Rc<` or
+  `kira::Maybe<kira::Maybe` were rebuilt from their emitted text against the trial runtime with
+  this fix applied. On g++ -O1 -Werror and zig c++ -O1 -Werror, 62 print exactly what the replay
+  recorded. The other 3 on each compiler did not build in the replay either:
+  - gcc: k_edrop (W2.3's `-Wmaybe-uninitialized` minor), k_q7 and x5q_q7;
+  - clang: k_q7, x5q_q7 and z_asg3.
+- **Acceptance, on the branch.**
+  - `./gradlew test --rerun-tasks --continue`: 1322 tests in 99 classes, 0 failures, 0
+    skipped. That includes the oop classes' 121, CppGoldenEmitTest 13 and CppGoldenCompileTest
+    79.
+  - `bash examples/regenerate.sh --check`: all snapshots current.
+  - `run.sh`: 57 passed. `goldens.sh`: 17 cases, 67 passed. `sys.sh`: 18 passed. `msvc.bat`:
+    all passed.
+
 ## Copy by default, round 4
 
 - **Merges.** `cpp/w2-5-rules` b5910b6 as 3165df3, then `cpp/w2-3-emit-exprs` c06e011 as
@@ -208,6 +265,18 @@ keep the rounds that built it.
   `structdefaults` probe prints `1 2` on g++, zig and MSVC; R-D's order is a=2, b=1.
 - **Where.** W2.2's `CppDeclEmitter` struct lowering, not this package's.
 - **Why it can wait.** It exists only in struct code: superseded by W2.9 (no struct).
+
+### KI-26. A prvalue class receiver whose finally is impure dies after the full-expression
+
+- **What (round 6 minor, pre-existing).** E-DROP spills only COPIED receivers. In
+  `gs = mk().name()`, where Res's finally sets `gs = "fin"`, the temporary dies after the store,
+  so the program prints fin, where the design (2.5) gives made.... In the same way,
+  `mk().name().length() > 0 && mark()` logs mF where the design gives Fm. This is the receiver
+  twin of KI-16's prvalue argument row.
+- **Reproduce.** scratchpad/v6w24r/atk/b3 prints fin on all four builds.
+- **Why it can wait.** The value is deterministic, the same on every compiler, and ASan is
+  clean. Only the order of a finally against the end of the statement is late. Not in round 7's
+  narrow scope.
 
 ### Closed in round 4
 

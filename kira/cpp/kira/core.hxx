@@ -492,9 +492,9 @@ namespace kira
 
   // ---- Maybe -------------------------------------------------------------------
   // One C++ spelling for generic code: Maybe<T> is std::optional<T> for a value
-  // and, hosted, a nullable std::shared_ptr for a class (rt.hxx specialises it).
-  // kira::none converts to both; isSome, unwrap and unwrapOr are overloaded for
-  // both.
+  // and, hosted, a nullable std::shared_ptr for a class (rt.hxx's kira::MaybeRc);
+  // a Maybe of a Maybe is a Nested. kira::none converts to each; isSome, unwrap
+  // and unwrapOr are overloaded for both kinds.
   template<class T>
   struct MaybeOf
   {
@@ -519,6 +519,51 @@ namespace kira
 #endif
   };
   inline constexpr None none{};
+
+  // A Maybe of a Maybe: std::optional<M> plus a constructor and an assignment from
+  // kira::none that are not templates, so none is the outer empty Maybe, as
+  // std::nullopt is. A plain std::optional<M> takes none as an M (its converting
+  // constructor is viable, since an M is made from none): `x = kira::none` would
+  // give Some(None), and `Maybe<M> x = kira::none` would not build.
+  template<class M>
+  class Nested : public std::optional<M>
+  {
+  public:
+      using std::optional<M>::optional;
+      constexpr Nested() noexcept = default;
+      constexpr Nested(None) noexcept
+      {
+      }
+      constexpr Nested(const std::optional<M>& m)
+          : std::optional<M>(m)
+      {
+      }
+      constexpr Nested(std::optional<M>&& m)
+          : std::optional<M>(std::move(m))
+      {
+      }
+      constexpr Nested& operator=(None) noexcept
+      {
+          this->reset();
+          return *this;
+      }
+      // As two std::optional<M>: std's own templates also match an optional against
+      // a Nested as its value, which is ambiguous.
+      [[nodiscard]] friend constexpr bool operator==(const Nested& a, const Nested& b)
+      {
+          return static_cast<const std::optional<M>&>(a) == static_cast<const std::optional<M>&>(b);
+      }
+  };
+  template<class T>
+  struct MaybeOf<std::optional<T>>
+  {
+      using type = Nested<std::optional<T>>;
+  };
+  template<class M>
+  struct MaybeOf<Nested<M>>
+  {
+      using type = Nested<Nested<M>>;
+  };
 
   template<class T>
   [[nodiscard]] constexpr bool isSome(const std::optional<T>& m) noexcept

@@ -60,10 +60,39 @@ namespace kira
   };
 
   // ---- Maybe<class>: a nullable Rc ------------------------------------------
+  // Maybe<C> is kira::MaybeRc<C>: the nullable Rc as a type of its own. Were it the
+  // std::shared_ptr<C> that C is, no template could tell Maybe<C> from C, and a Maybe
+  // of a Maybe<C> (Map<K, Maybe<C>>.get, Stack.pop, a generic Maybe<T> at T = Maybe<C>)
+  // would collapse into one shared_ptr, where Some(None) and None are one value.
+  // A MaybeRc IS the shared_ptr (a base, no member of its own), so it reads, compares
+  // and unwraps as one, and each converts to the other; a Maybe of it is a Nested.
+  template<class U>
+  class MaybeRc : public std::shared_ptr<U>
+  {
+  public:
+      using std::shared_ptr<U>::shared_ptr;
+      constexpr MaybeRc() noexcept = default;
+      constexpr MaybeRc(None) noexcept
+      {
+      }
+      MaybeRc(const std::shared_ptr<U>& p) noexcept
+          : std::shared_ptr<U>(p)
+      {
+      }
+      MaybeRc(std::shared_ptr<U>&& p) noexcept
+          : std::shared_ptr<U>(std::move(p))
+      {
+      }
+  };
   template<class U>
   struct MaybeOf<std::shared_ptr<U>>
   {
-      using type = std::shared_ptr<U>;
+      using type = MaybeRc<U>;
+  };
+  template<class U>
+  struct MaybeOf<MaybeRc<U>>
+  {
+      using type = Nested<MaybeRc<U>>;
   };
 
   template<class U>

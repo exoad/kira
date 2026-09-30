@@ -234,6 +234,7 @@ namespace
   static_assert(kira::unwrap(kira::Maybe<std::int32_t>(9)) == 9);
   static_assert(kira::Tuple2<std::int32_t, bool>{.first = 1, .second = true} == kira::Tuple2<std::int32_t, bool>{1, true});
   static_assert(std::is_same_v<kira::Maybe<std::int32_t>, std::optional<std::int32_t>>);
+  static_assert(std::is_same_v<kira::Maybe<kira::Maybe<std::int32_t>>, kira::Nested<std::optional<std::int32_t>>>);
   static_assert(level::fromInside() == 7 + 4 + 2);
   static_assert(kira::Callable<std::int32_t (*)(std::int32_t), std::int32_t, std::int32_t>);
   static_assert(!kira::Callable<std::int32_t (*)(std::int32_t), std::int32_t, kira::View<std::uint8_t>>);
@@ -372,6 +373,15 @@ namespace
       const kira::Maybe<std::int32_t> some = opaque(3);
       check(!kira::isSome(none) && kira::isSome(some), "Maybe: none and some");
       check(kira::unwrap(some) == 3 && kira::unwrapOr(none, 8) == 8, "unwrap and unwrapOr");
+      // A Maybe of a Maybe keeps both levels, and kira::none is the outer empty one, however
+      // it arrives (round 6, W2.4): a plain optional<optional<T>> took none as Some(None).
+      kira::Maybe<kira::Maybe<std::int32_t>> nested = none;
+      const bool someNone = kira::isSome(nested) && !kira::isSome(kira::unwrap(nested));
+      nested = kira::none;
+      const kira::Maybe<kira::Maybe<std::int32_t>> outer = kira::none;
+      check(someNone && !kira::isSome(nested) && !kira::isSome(outer) && nested == outer, "Maybe<Maybe<T>>: Some(None) is not None");
+      nested = some;
+      check(kira::unwrap(kira::unwrap(nested)) == 3 && nested != outer, "Maybe<Maybe<T>>: Some(Some)");
       check(kira::unwrap(kira::enumOf<Mood>(opaque(std::int32_t{0}))) == Mood::MOOD_CALM, "enumOf finds an entry");
       check(!kira::enumOf<Mood>(opaque(std::int64_t{70000})).has_value(), "enumOf: no entry is none");
       const kira::Tuple3<std::int32_t, float, bool> t{.first = 1, .second = 2.5f, .third = true};
@@ -588,13 +598,61 @@ namespace
   {
       kira::Maybe<kira::Rc<Behaviour>> none = kira::none;
       const kira::Maybe<kira::Rc<Behaviour>> stop = std::make_shared<Stop>();
-      static_assert(std::is_same_v<kira::Maybe<kira::Rc<Behaviour>>, std::shared_ptr<Behaviour>>);
+      static_assert(std::is_same_v<kira::Maybe<kira::Rc<Behaviour>>, kira::MaybeRc<Behaviour>>);
+      static_assert(std::is_base_of_v<std::shared_ptr<Behaviour>, kira::MaybeRc<Behaviour>>);
+      static_assert(sizeof(kira::MaybeRc<Behaviour>) == sizeof(std::shared_ptr<Behaviour>));
       check(none == nullptr && !kira::isSome(none) && kira::isSome(stop), "Maybe<class> is a nullable Rc");
       check(kira::unwrap(stop)->id() == "stop" && kira::unwrapOr(none, stop)->id() == "stop", "unwrap, unwrapOr");
       check(kira::unwrapOr(none, std::make_shared<Stop>()) != nullptr, "unwrapOr takes a derived default");
       std::unique_ptr<Behaviour> owned = std::make_unique<Stop>();
       none = std::move(owned);
       check(none != nullptr && none->id() == "stop", "an Rc adopts a unique_ptr");
+
+      // A Maybe of a Maybe<C> keeps both levels, spelled as the emitter spells it (round 6, W2.4,
+      // the verifier's b10: Map<Str, Maybe<C>>.get of a key mapped to null was None, one shared_ptr).
+      using MaybeB = kira::Maybe<kira::Rc<Behaviour>>;
+      static_assert(std::is_same_v<kira::Maybe<MaybeB>, kira::Nested<kira::MaybeRc<Behaviour>>>);
+      static_assert(std::is_same_v<kira::Maybe<kira::Maybe<MaybeB>>, kira::Nested<kira::Nested<kira::MaybeRc<Behaviour>>>>);
+      const MaybeB nul = kira::none;
+      kira::Map<kira::Str, MaybeB> byName{};
+      byName["gone"] = kira::none;
+      byName["stop"] = std::make_shared<Stop>();
+      const kira::Maybe<MaybeB> mappedNull = byName.get("gone");
+      const kira::Maybe<MaybeB> absent = byName.get("absent");
+      check(kira::isSome(mappedNull) && !kira::isSome(kira::unwrap(mappedNull)) && !kira::isSome(absent),
+            "Map<K, Maybe<C>>.get: a key mapped to null is Some(None), a missing key None");
+      check(kira::unwrap(kira::unwrap(byName.get("stop")))->id() == "stop" && byName.containsValue(nul),
+            "and Some(Some) reads through as the class");
+      check(kira::isSome(byName.remove("gone")) && !kira::isSome(byName.remove("gone")), "Map<K, Maybe<C>>.remove of a null is Some(None)");
+      kira::Stack<MaybeB> stack;
+      stack.push(nul);
+      check(kira::isSome(stack.peek()) && kira::isSome(stack.pop()) && !kira::isSome(stack.pop()), "Stack<Maybe<C>>.pop of a pushed null is Some(None)");
+      kira::Queue<MaybeB> queue;
+      queue.enqueue(nul);
+      check(kira::isSome(queue.dequeue()) && !kira::isSome(queue.dequeue()), "Queue<Maybe<C>>.dequeue of a null is Some(None)");
+      kira::Deque<MaybeB> deque{nul, stop};
+      check(kira::isSome(kira::popFront(deque)) && kira::isSome(kira::popBack(deque)) && !kira::isSome(kira::popBack(deque)),
+            "Deque<Maybe<C>> popFront of a null is Some(None)");
+      kira::Maybe<MaybeB> slot = kira::unwrap(mappedNull);
+      slot = kira::none;
+      const kira::Maybe<MaybeB> empty = kira::none;
+      check(!kira::isSome(slot) && slot == empty && mappedNull != empty, "Maybe<Maybe<C>> = none is the outer None");
+      slot = nul;
+      check(kira::isSome(slot) && slot == mappedNull, "Maybe<Maybe<C>> = a null Maybe<C> is Some(None)");
+      slot = stop;
+      check(kira::unwrap(kira::unwrap(slot))->id() == "stop", "Maybe<Maybe<C>> = a Maybe<C> is Some(Some)");
+      slot = std::make_shared<Stop>();
+      check(kira::isSome(slot) && kira::isSome(kira::unwrap(slot)), "Maybe<Maybe<C>> = a class value is Some(Some)");
+      kira::List<MaybeB> items{nul};
+      items.push_back(std::make_shared<Stop>());
+      const kira::Rc<Behaviour> second = kira::unwrap(kira::at(items, 1));
+      check(!kira::isSome(kira::at(items, 0)) && second == kira::at(items, 1) && second->id() == "stop",
+            "a MaybeRc is the nullable Rc: it reads, compares and converts as one");
+      const kira::Maybe<kira::Rc<Stop>> derived = std::make_shared<Stop>();
+      const MaybeB upcast = derived;
+      const kira::Weak<Behaviour> weakB = upcast;
+      check(upcast == derived && kira::upgrade(weakB) == upcast && std::dynamic_pointer_cast<Stop>(upcast) == derived,
+            "Maybe<Derived> upcasts to Maybe<Base>, and a Weak and a pointer cast take a MaybeRc");
 
       const Pet pet{.name = "mochi"};
       const kira::Rc<Pet> rc = std::make_shared<Pet>(Pet{.name = "rex"});
