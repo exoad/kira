@@ -540,16 +540,25 @@ class CodegenSuiteTest {
         // A marker keeps its argument on the declaration it marks (design
         // 2.5); it used to spill into a stray `"fopen";` statement, and a
         // bare marker with no declaration after it is now a parse error
-        // (ParserGrowthTest). Known gap, pinned: the C backend still emits
-        // the Kira name, not the "fopen" the mark carries -- W2.6 reads it.
+        // (ParserGrowthTest). The C symbol is the mark's string (design 7.3):
+        // the prototype and every call spell `fopen`, never the Kira name,
+        // on this semantic-free emit path as on the CLI's (the mark is read
+        // from the parser's stored invocation, not from apply()).
         val output = emit(
             """
             @_opaque class FileHandle { }
 
             @_extern("fopen") fx openFile: (path: Str) FileHandle;
+
+            fx main: () Int32 {
+                h: FileHandle = openFile("x")
+                return 0
+            }
             """
         )
-        assertTrue(output.contains("FileHandle* openFile(Str path)"), output)
+        assertTrue(output.contains("extern FileHandle* fopen(Str path);"), output)
+        assertTrue(output.contains("fopen(\"x\")"), output)
+        assertFalse(output.contains("openFile"), output)
         assertFalse(output.contains("\"fopen\";"), output)
     }
 

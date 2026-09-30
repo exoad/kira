@@ -6,11 +6,11 @@ import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnParam
-import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Prim
+import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
@@ -288,15 +288,22 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         is TypeArg.Const -> arg.n.toString()
     }
 
-    /** `@_extern(cpp = "bibo::Car")`: the C++ name, fully qualified from the global namespace. */
+    /**
+     * `@_extern(cpp = "bibo::Car")`, or `@_extern(c = "cnt_state")`: the name the marker gives
+     * the type, fully qualified from the global namespace. [CppExternEmitter.cppName] is the
+     * one reading of the marker (`cpp =`, the positional symbol, then `c =`), so a type
+     * reached through a C header is spelled the same in a signature, a check and a body as
+     * in its sizeof and field checks. Reading `cpp =` alone here spelled a `c = "cnt_state"`
+     * struct as its Kira name wherever the type appeared, and the module's header failed
+     * with 'CntState was not declared' instead of building (measured, g++ 13.2).
+     */
     private fun externName(sym: TypeSymbol): String? {
-        val foreign = when (sym) {
-            is ClassSymbol -> sym.foreign
-            is TraitSymbol -> sym.foreign
-            else -> null
-        } as? Foreign.Extern ?: return null
-        val name = foreign.params["cpp"] ?: foreign.params["symbol"] ?: sym.name
-        return if (name.startsWith("::")) name else "::$name"
+        val s: Symbol = when (sym) {
+            is ClassSymbol -> sym
+            is TraitSymbol -> sym
+            else -> return null
+        }
+        return if (CppExternEmitter.externOf(s) == null) null else CppExternEmitter.globalName(s)
     }
 
     private fun magic(sym: ClassSymbol, t: KType.Nominal, args: List<ArgText>): String {

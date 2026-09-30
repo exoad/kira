@@ -9,6 +9,7 @@ import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
@@ -22,6 +23,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 import net.exoad.kira.core.NamedArguments
 import net.exoad.kira.core.OperatorIntrinsics
+import net.exoad.kira.core.intrinsics.ExternIntrinsic
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -739,8 +741,28 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     /**
+     * The C symbol the `@_extern` mark on [node] names (design 7.3): its positional string
+     * (`@_extern("fopen")`), else its `c =`, else the Kira name. Read from the parser's stored
+     * invocation, so the symbol reaches this backend whether or not the semantic pass ran
+     * [ExternIntrinsic.apply] (a `runSemantic = false` emit skips it).
+     */
+    private fun externCSymbolOf(source: SourceContext, node: ASTNode, kiraName: String): String {
+        val invocation = runCatching { source.intrinsicInvocationsOf(node) }.getOrNull()
+            ?.firstOrNull { it.intrinsicKey.name == ExternIntrinsic.name }
+            ?: return kiraName
+        return ExternIntrinsic.cSymbolOf(invocation) ?: kiraName
+    }
+
+    /**
      * Pull @_opaque / @_extern from parser marks into CompilationUnit registries.
      * Semantic apply() may not run on all stub shapes; emit must still see them.
+     *
+     * An `@_extern` function is a C function only when it is a module-level declaration: the
+     * marks map holds every marked node, a method of an extern class included, and reading a
+     * method from it registered `count` as a free C extern, so a user's own `fx count` lost its
+     * body to `extern Int32 count(Void);` and the link failed (measured). The semantic pass
+     * refuses every other target of `@_extern` under `--target c` ([ExternIntrinsic.apply]);
+     * this backend reads the top-level statements only, whether or not that pass ran.
      */
     private fun harvestForeignMarks() {
         compilationUnit.allSources().forEach { source ->
@@ -758,16 +780,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                         else -> {}
                     }
                 }
-                if ("_extern" in names && node is FunctionDecl) {
-                    val kiraName = functionLikeName(node.name)
-                    // Optional C symbol not recovered from mark alone; default to Kira name.
-                    // Full apply() path can override via registerExternFunction.
-                    if (compilationUnit.externCNameOrNull(kiraName) == null) {
-                        compilationUnit.registerExternFunction(kiraName, kiraName)
-                    }
-                }
             }
-            // Also walk AST for class/function decls that carry marks only on nested nodes
+            // The module-level declarations: an @_opaque class, an @_extern function.
             source.ast.statements.forEach { stmt ->
                 val expr: Any? = when (stmt) {
                     is ClassDecl, is FunctionDecl -> stmt
@@ -784,7 +798,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                         if (marked) {
                             val kiraName = functionLikeName(expr.name)
                             if (compilationUnit.externCNameOrNull(kiraName) == null) {
-                                compilationUnit.registerExternFunction(kiraName, kiraName)
+                                compilationUnit.registerExternFunction(kiraName, externCSymbolOf(source, expr, kiraName))
                             }
                         }
                     }

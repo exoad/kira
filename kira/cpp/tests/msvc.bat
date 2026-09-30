@@ -2,7 +2,8 @@
 REM msvc.bat - the Kira C++ runtime under MSVC: cl /std:c++20 /W4 /WX /EHsc /permissive-.
 REM
 REM     kira\cpp\tests\msvc.bat              build and run rt_test, the must-not-compile
-REM                                          cases, the panic modes and the exit-70 mode
+REM                                          cases, the panic modes and the exit-70 mode,
+REM                                          then ffi_test and its must-not-compile drift case
 REM     kira\cpp\tests\msvc.bat cl ARGS...   one cl with the flags above and the runtime
 REM                                          on the include path (goldens.sh uses this)
 REM
@@ -101,11 +102,55 @@ set "TRC=!errorlevel!"
 findstr /x /c:"kira: boom" "%OUT%\throw.err" > nul
 if "!TRC!"=="70" if not errorlevel 1 (
     echo ok    an uncaught kira::Error exits 70 with its message
-    goto :done
+    goto :ffi
 )
 echo FAIL  throw mode exited !TRC!
 type "%OUT%\throw.err"
 set /a FAILS+=1
+
+:ffi
+REM ffi_test (kira/ffi.hxx): the proxies and the drift check. A stale exe never passes.
+set "FFITEST=%ROOT%\kira\cpp\tests\ffi_test.cxx"
+if exist "%OUT%\ffi_test.exe" del /q "%OUT%\ffi_test.exe"
+%KCL% "%FFITEST%" /Fo"%OUT%\\" /Fe"%OUT%\ffi_test.exe" > "%OUT%\ffi_build.log" 2>&1
+if errorlevel 1 (
+    type "%OUT%\ffi_build.log"
+    echo FAIL  ffi_test does not build under MSVC
+    set /a FAILS+=1
+    goto :ffidrift
+)
+if not exist "%OUT%\ffi_test.exe" (
+    echo FAIL  cl reported success and wrote no ffi_test.exe
+    set /a FAILS+=1
+    goto :ffidrift
+)
+"%OUT%\ffi_test.exe" > "%OUT%\ffi_test.out" 2> "%OUT%\ffi_test.err"
+set "FRC=!errorlevel!"
+findstr /r /c:"^[0-9]* checks, 0 failed" "%OUT%\ffi_test.out" > nul
+if "!FRC!"=="0" if not errorlevel 1 (
+    for /f "delims=" %%l in ('findstr /r /c:"^[0-9]* checks, 0 failed" "%OUT%\ffi_test.out"') do echo ok    ffi_test: %%l
+    goto :ffidrift
+)
+type "%OUT%\ffi_test.out"
+echo FAIL  ffi_test exited !FRC!
+set /a FAILS+=1
+
+:ffidrift
+REM A deliberately wrong extern signature must not compile, and must fail with Kira's message.
+%KCL% /DKIRA_FFI_DRIFT=1 /c "%FFITEST%" /Fo"%OUT%\ffi_drift.obj" > "%OUT%\ffi_drift.log" 2>&1
+if errorlevel 1 (
+    findstr /c:"no longer matches its C++ header" "%OUT%\ffi_drift.log" > nul
+    if errorlevel 1 (
+        type "%OUT%\ffi_drift.log"
+        echo FAIL  KIRA_FFI_DRIFT=1 failed to compile for another reason
+        set /a FAILS+=1
+    ) else (
+        echo ok    KIRA_FFI_DRIFT=1 does not compile: Kira's Car.finish no longer matches its C++ header
+    )
+) else (
+    echo FAIL  KIRA_FFI_DRIFT=1 compiled: a wrong extern signature passed KIRA_EXTERN_CHECK
+    set /a FAILS+=1
+)
 
 :done
 if !FAILS! neq 0 (

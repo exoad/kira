@@ -206,16 +206,33 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         includes.add(runtimeInclude())
         includes.addAll(moduleHeaders)
         externs.forEach { includes.addAll(parts.externs.includes(ctx, it)) }
-        includes.addAll(ctx.headerIncludes)
+        // A C header reached through `c =` (design 7.3) is included with C linkage, after the
+        // C++ ones and before what the parts added (kira/ffi.hxx), which ctx.headerIncludes holds.
+        val cIncludes = LinkedHashSet<String>()
+        externs.forEach { cIncludes.addAll(parts.externs.cIncludes(ctx, it)) }
+        cIncludes.removeAll(includes)
+        val tail = LinkedHashSet(ctx.headerIncludes)
+        tail.removeAll(includes)
+        tail.removeAll(cIncludes)
         includes.forEach { sb.append(includeLine(it)) }
-        sb.append("#include \"$MACRO_PUSH\"\n")
-        if (externChecks.isNotEmpty()) {
-            sb.append(externChecks)
+        if (cIncludes.isNotEmpty()) {
+            sb.append("extern \"C\" {\n")
+            cIncludes.forEach { sb.append(includeLine(it)) }
+            sb.append("}\n")
         }
+        tail.forEach { sb.append(includeLine(it)) }
+        sb.append("#include \"$MACRO_PUSH\"\n")
         if (body.isNotEmpty()) {
             val w = CppWriter()
             w.namespace(ctx.namespace) { lines(body) }
             sb.append(w.toString())
+        }
+        // The extern checks go after the module's own declarations: a check may name a Kira
+        // class, struct or enum this module declares (an extern taking a `Wrap`), and at the
+        // top of the header g++ said "'Wrap' was not declared in this scope" (w2-4 round-2
+        // minor #3, externnested2). Nothing in the body reads a check.
+        if (externChecks.isNotEmpty()) {
+            sb.append(externChecks)
         }
         sb.append("#include \"$MACRO_POP\"\n")
         return sb.toString()

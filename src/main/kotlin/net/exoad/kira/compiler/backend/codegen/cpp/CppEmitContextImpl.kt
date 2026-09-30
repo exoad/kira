@@ -1,9 +1,11 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
+import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
+import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
@@ -12,6 +14,7 @@ import net.exoad.kira.compiler.analysis.types.ModuleGraph
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Prim
+import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeParamSymbol
@@ -132,15 +135,77 @@ interface CppGenericsPart {
 
 /** `@_extern` declarations (W2.6, design 7.2). */
 interface CppExternsPart {
-    /** The headers an extern declaration needs (`header = ...` files, then `kira/ffi.hxx`), once each. */
+    /**
+     * The headers an extern declaration needs: its `header = ...` files, once each. The
+     * declaration emitter writes them after the module includes; the part adds `kira/ffi.hxx`
+     * through [CppEmitContextImpl.includeInHeader] from [check], so it follows every one of them.
+     */
     fun includes(ctx: CppEmitContextImpl, sym: Symbol): List<String> = emptyList()
+
+    /**
+     * The headers an extern declaration reaches with C linkage (`@_extern(c = "sym", header =
+     * "lib.h")` with no `cpp =`, design 7.3), once each. The declaration emitter writes them
+     * after [includes], inside one `extern "C" { }` block: a C header with its own
+     * `__cplusplus` guard tolerates it, one without needs it.
+     */
+    fun cIncludes(ctx: CppEmitContextImpl, sym: Symbol): List<String> = emptyList()
 
     /** The drift checks (`KIRA_EXTERN_CHECK`) for [sym], written at global scope after `kira/macro_push.hxx`. */
     fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter)
 
+    /**
+     * The C++ text of a call of [CallKind.EXTERN] (design 7.2): the C++ name, `kira::ffi::in`
+     * around a `Str` argument, `kira::ffi::out` around a `mut` one (a `mut` `Unsafe<T>` is the
+     * `T*` itself), a `CStr` argument from a `Str`, and `->` or `.` after [receiver] as the
+     * owner's kind says. The expression part (W2.3) spells [receiver] (null for a free
+     * function) and [args], one text per entry of [ResolvedCall.args] in parameter order. An
+     * extern parameter has no Kira default ([check] refuses the declaration), so every entry
+     * is a given argument and every declared parameter is passed; the C++ header's own
+     * default arguments fill the parameters the Kira declaration leaves out.
+     *
+     * [copied] holds the indices of [ResolvedCall.args] the copy policy copies (50-round4 2.0,
+     * W2.3's `CppCopyPolicy`, which decides it); this part spells the copy with the argument's
+     * proxy (`kira::ffi::in(kira::Str(e))`, `kira::ffi::CStrBuf(e).c_str()`, `T(e)`) and decides
+     * nothing about it.
+     */
+    fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int>): String
+
+    /**
+     * Whether [call]'s text ([call]) is an object made for its use, a prvalue the copy policy
+     * never copies again (50-round4 2.0 PRVALUE, W1): false unless the part knows it returns by
+     * value.
+     */
+    fun resultIsTemporary(call: ResolvedCall): Boolean = false
+
+    /** The C++ text an extern constant is read by: its C++ name as the marker spells it (`ImGuiWindowFlags_None`; a macro takes no `::`). */
+    fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String
+
+    /**
+     * The read of field [f], spelled [text] by the expression part (`r.c`, `p->x`), as the
+     * type Kira declared. A field of an extern struct is a boundary crossing like a result:
+     * its C++ type may be a same-size twin of the declared one (a C `int` on arm-none-eabi,
+     * an unscoped enum), which the field check accepts and Kira's own operations do not. The
+     * expression part (W2.3) hands every field read here from its `field(origin, f)`; a
+     * field of a Kira type, of a pointer type, or on a build without the extern part comes
+     * back unchanged. The text it returns is an lvalue whenever the C++ member has the
+     * declared type, so an assignment target or a `mut` argument goes through it too.
+     */
+    fun field(ctx: CppEmitContextImpl, f: FieldSymbol, text: String): String = text
+
     object Unsupported : CppExternsPart {
         override fun check(ctx: CppEmitContextImpl, sym: Symbol, w: CppWriter) {
             sym.decl?.let { ctx.unsupported(it, "the extern declaration '${sym.name}'") }
+        }
+
+        override fun call(ctx: CppEmitContextImpl, call: ResolvedCall, receiver: String?, args: List<String>, copied: Set<Int>): String {
+            val fn = call.fn
+            fn?.decl?.let { ctx.unsupported(it, "the extern call '${fn.name}'") }
+            return "/* extern ${fn?.name} */"
+        }
+
+        override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String {
+            sym.decl?.let { ctx.unsupported(it, "the extern constant '${sym.name}'") }
+            return "/* extern ${sym.name} */"
         }
     }
 }
@@ -189,7 +254,7 @@ data class CppEmitParts(
             classes = CppClassesPart.Unsupported,
             generics = CppGenericsPart.Plain,
             // W2.6 (FFI) registers on this line:
-            externs = CppExternsPart.Unsupported,
+            externs = CppExternEmitter,
         )
     }
 }
@@ -391,7 +456,7 @@ class CppEmitContextImpl(
         val owner: ModuleSymbol = sym.module
         if (owner === symbol) {
             val inImpl = placement.inImpl(sym)
-            if (hiddenByScope(sym.name)) {
+            if (outsideNamespace || hiddenByScope(sym.name)) {
                 return if (inImpl) "::$namespace::$IMPL_NAMESPACE::$name" else "::$namespace::$name"
             }
             return if (inImpl) "$IMPL_NAMESPACE::$name" else name
@@ -399,6 +464,25 @@ class CppEmitContextImpl(
         referencedModules.add(owner)
         val ns = layout.namespaceFor(owner.uri)
         return if (placementOf(owner).inImpl(sym)) "::$ns::$IMPL_NAMESPACE::$name" else "::$ns::$name"
+    }
+
+    /**
+     * True while text written at global scope, outside this module's namespace, is spelled
+     * ([atGlobalScope]): the extern checks (W2.6), which may name a class this module declares
+     * (`KIRA_EXTERN_CHECK(w::boxLenL(std::declval<const kira::Rc<::w::Box>&>()...))`), and
+     * spelled bare it was "'Box' was not declared in this scope".
+     */
+    private var outsideNamespace: Boolean = false
+
+    /** Runs [block] with this module's own names spelled from the global namespace ([qualified]), restoring after. */
+    fun <T> atGlobalScope(block: () -> T): T {
+        val before = outsideNamespace
+        outsideNamespace = true
+        try {
+            return block()
+        } finally {
+            outsideNamespace = before
+        }
     }
 
     /**

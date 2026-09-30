@@ -264,7 +264,11 @@ internal class CallResolver(private val c: PhaseC) {
      * [CallKind.TRAIT], a class bound the class's own kind.
      */
     fun kindFor(recv: KType, fn: FnSymbol, hit: MemberResolver.MethodHit? = null): CallKind = when {
-        fn.foreign is Foreign.Extern -> CallKind.EXTERN
+        // R-G (40-round3): every function whose body C++ supplies is called as an extern, so
+        // the C++ lowering routes it through CppExternEmitter.call (`.data()`, `.c_str()`,
+        // `kira::ffi::in`/`out`), whether its marker is `@_extern` or it is a bodiless method of
+        // an `@_opaque` class.
+        fn.suppliedByCpp -> CallKind.EXTERN
         recv is KType.Scalar || recv == KType.Str || facts.magicName(recv) != null -> CallKind.MAGIC
         fn.foreign is Foreign.Magic -> CallKind.MAGIC
         recv is KType.Param && hit != null && facts.magicName(hit.through) != null -> CallKind.MAGIC
@@ -292,10 +296,14 @@ internal class CallResolver(private val c: PhaseC) {
         val paramTypes = fn.params.indices.map { hit.paramType(it).substitute(own) }
         var ret = hit.returnType.substitute(own)
         // An Arr or List that is a mutable place lends a MutView: `p.from(4)` on `mut p: Frame`
-        // writes through, and reads convert to a View implicitly (ToView).
-        if (receiver != null && fn.name in setOf("from", "slice", "view") && (facts.isArr(recv) || facts.isList(recv)) && facts.isView(ret)) {
+        // writes through, and reads convert to a View implicitly (ToView). Inside a lambda, a
+        // variable it captured is an immutable copy (spec), so it lends a View: typed a MutView,
+        // a read `sumV(xs.view())` was lowered `kira::mutView(xs)` over the lambda's const copy
+        // and g++ and clang rejected it ('no matching function for call to mutView', measured
+        // on the round-3 integration); a write through it is [lendsCapture]'s refusal.
+        if (receiver != null && fn.name in LENDERS && (facts.isArr(recv) || facts.isList(recv)) && facts.isView(ret)) {
             val place = model.places[receiver]
-            if (place != null && c.isMutablePlace(place, ctx)) {
+            if (place != null && c.isMutablePlace(place, ctx) && !c.writesCapture(place, ctx)) {
                 ret = facts.mutViewOf(facts.elementOf(ret) ?: KType.Error)
             }
         }
@@ -303,7 +311,11 @@ internal class CallResolver(private val c: PhaseC) {
             argsOnly(e, ctx, scope)
             return ret
         }
-        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, IdentityHashMap(), ctx, scope, strBufText = facts.isStrBuf(recv) && fn.name in setOf("set", "add"))
+        typeGiven(
+            e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, IdentityHashMap(), ctx, scope,
+            strBufText = facts.isStrBuf(recv) && fn.name in setOf("set", "add"),
+            externCallee = isExternLike(fn),
+        )
         if (receiver != null && recv == KType.Str && isLiteralStrConstant(receiver)) {
             // R5: a literal Str constant is a `const char*` in C++; as a Str method's receiver it
             // is wrapped when the binding is member-style.
@@ -364,10 +376,11 @@ internal class CallResolver(private val c: PhaseC) {
                 fn.name in printNames && fn.module.uri == "kira:io" -> return print(e, fn, ctx, scope)
             }
         }
-        val kind = when (fn.foreign) {
-            is Foreign.Magic -> CallKind.MAGIC
-            is Foreign.Extern -> CallKind.EXTERN
-            null -> CallKind.FREE
+        // R-G: a bodiless `pub` prototype is supplied by C++ as an `@_extern` is, and is called as one.
+        val kind = when {
+            fn.suppliedByCpp -> CallKind.EXTERN
+            fn.foreign is Foreign.Magic -> CallKind.MAGIC
+            else -> CallKind.FREE
         }
         val bound = bind(e, fn.name, fn.params) ?: run {
             ownTypeArgs(e, fn, fn.name, allowInfer = false)
@@ -378,7 +391,7 @@ internal class CallResolver(private val c: PhaseC) {
         val sub: Map<TypeParamSymbol, KType> = ownTypeArgs(e, fn, fn.name, allowInfer = true) ?: infer(e, fn, bound, hint, pre, ctx, scope)
         val paramTypes = fn.params.map { it.type.substitute(sub) }
         val ret = fn.ret.substitute(sub)
-        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, pre, ctx, scope)
+        typeGiven(e, bound, paramTypes, fn.params.map { it.byRef }, fn.params.map { it.name }, pre, ctx, scope, externCallee = isExternLike(fn))
         model.calls[e] = ResolvedCall(kind, fn, null, false, fn.typeParams.map { sub[it] ?: KType.Error }, bound.args, bound.order, ret, sub)
         return ret
     }
@@ -592,7 +605,21 @@ internal class CallResolver(private val c: PhaseC) {
      * site `mut` and a mutable place of exactly its type, never a converted value. [pre] holds
      * arguments already typed (by inference). With [strBufText] an interpolation or a string
      * literal argument is text appended to a StrBuf: typed as the `View<Char>` it is read as, no
-     * Str is built (design section 10).
+     * Str is built (design section 10). With [externCallee] a `CStr` parameter takes a `Str`
+     * argument as itself (design 7.2: a literal passes through, a named Str becomes `.c_str()`,
+     * anything else a `kira::ffi::CStrBuf`; the C++ extern emitter spells which, from the
+     * argument's recorded `Str` type, so no coercion is recorded here). Only an extern function
+     * has a `CStr` parameter to fill; anywhere else a `Str` is no `CStr`.
+     *
+     * With [externCallee], an `Unsafe<T>` parameter (design 1.4, 5.5: the FFI pointer type,
+     * extern-parameter-only) takes a `View<T>` argument as itself, and a `mut Unsafe<T>`
+     * parameter (`T*` by value, not an out-parameter: table 5.1) a `MutView<T>`, needing neither
+     * a call-site `mut` nor a place - it hands the callee the view's own pointer, not a
+     * reference the callee writes back through. Either is recorded as-is, exactly like the
+     * `CStr` case: the C++ extern emitter reads the argument's own `View`/`MutView` type and
+     * lowers it `.data()`. An `Unsafe<T>` argument that already is one (the exact-type case a
+     * `mut p: Unsafe<T>` local still takes, table 5.1's other way of calling into a C buffer)
+     * is unaffected: [mutArgument]'s exact-type check still applies to it.
      */
     private fun typeGiven(
         e: FunctionCallExpr,
@@ -604,6 +631,7 @@ internal class CallResolver(private val c: PhaseC) {
         ctx: BodyContext,
         scope: Scope,
         strBufText: Boolean = false,
+        externCallee: Boolean = false,
     ) {
         val siteMut = IdentityHashMap<Expr, Boolean>()
         e.positionalParameters.forEach { siteMut[it.value] = it.isMut }
@@ -616,6 +644,17 @@ internal class CallResolver(private val c: PhaseC) {
             val isMut = siteMut[arg] == true
             if (byRef.getOrElse(i) { false }) {
                 val t = pre[arg] ?: c.exprs.synth(arg, ctx, scope)
+                if (externCallee && facts.isMagic(expected, UNSAFE) && lendsCapture(arg, ctx)) {
+                    return@forEachIndexed
+                }
+                if (externCallee && facts.isMagic(expected, UNSAFE) && t != expected &&
+                    facts.isMutView(t) && facts.elementOf(t) == facts.elementOf(expected)
+                ) {
+                    // `mut p: Unsafe<T>` is `T*` by value, not an out-parameter (table 5.1): the
+                    // caller hands over a MutView's own pointer, so no call-site `mut` and no
+                    // place are needed, unlike every other `mut` parameter.
+                    return@forEachIndexed
+                }
                 mutArgument(arg, t, expected, isMut, names.getOrElse(i) { "#${i + 1}" }, ctx)
                 return@forEachIndexed
             }
@@ -632,6 +671,53 @@ internal class CallResolver(private val c: PhaseC) {
                 return@forEachIndexed
             }
             val known = pre[arg]
+            if (externCallee && facts.isMagic(expected, CSTR)) {
+                val t = known ?: c.exprs.synth(arg, ctx, scope)
+                if (t != KType.Str) {
+                    c.coercions.assign(arg, t, expected, what)
+                }
+                return@forEachIndexed
+            }
+            if (externCallee && facts.isMagic(expected, UNSAFE)) {
+                val t = known ?: c.exprs.synth(arg, ctx, scope)
+                val element = facts.elementOf(expected)
+                if (t != expected && element != null && (facts.isView(t) || facts.isMutView(t)) && facts.elementOf(t) == element) {
+                    // Given as itself (table 5.1: a `View<T>`/`MutView<T>` converts to the `const
+                    // T*`/`T*` the extern emitter lowers it to, `.data()`); anything else falls
+                    // through to the ordinary mismatch below.
+                    return@forEachIndexed
+                }
+                // Design 1.4: a non-mut `p: Unsafe<T>` also takes "anything the typer converts
+                // to" a `View<T>` - an `Arr`/`List` place, or a `Str` literal when `T` is `Char`
+                // (`Coercion.ToView`, `CoercionRules.fit`'s own `facts.isView(expected)` branch,
+                // the same conversion an ordinary `View<T>` parameter accepts). Tried before the
+                // plain mismatch below, so `sumP(ys, ...)` (`ys: List<Int32>`) and `lenBuf("abc")`
+                // fit, and the `mut Unsafe<T>` case (still `MutView<T>`-only above, table 5.1) is
+                // untouched. The coercion is recorded exactly as it would be for a `View<T>`
+                // parameter, so the emitter's `.data()` wrap (`isUnsafe(p.type)`, which now also
+                // reads this coercion) is all that is new at the boundary.
+                if (element != null) {
+                    when (val f = c.coercions.fit(arg, t, facts.viewOf(element))) {
+                        is CoercionRules.Fit.Coerce -> {
+                            model.coercions[arg] = f.coercion
+                            return@forEachIndexed
+                        }
+                        CoercionRules.Fit.Same -> return@forEachIndexed
+                        is CoercionRules.Fit.No -> {}
+                    }
+                }
+                c.coercions.assign(arg, t, expected, what)
+                return@forEachIndexed
+            }
+            if (known == null && facts.isMutView(expected)) {
+                // ExprTyper.check, with the refusal of a MutView lent from a capture in place of
+                // the View-for-MutView mismatch it would report ([lendsCapture]).
+                val actual = c.exprs.type(arg, expected, ctx, scope)
+                if (!lendsCapture(arg, ctx)) {
+                    c.coercions.assign(arg, actual, expected, what)
+                }
+                return@forEachIndexed
+            }
             if (known != null) {
                 c.coercions.assign(arg, known, expected, what)
             } else {
@@ -639,6 +725,68 @@ internal class CallResolver(private val c: PhaseC) {
             }
         }
     }
+
+    /**
+     * F2's typer half (40-round3 R-F): an argument lent from a variable the enclosing lambda
+     * captured, given where a `MutView` is taken (a `MutView<T>` parameter, or an extern's `mut
+     * p: Unsafe<T>`, which takes a MutView's pointer), is `types.lambda.assign-capture`; reports
+     * it and returns true. Forming a `MutView` of a place is a write access (it needs a `mut`
+     * binding), and a capture is an immutable copy (spec), so the lambda's `xs.view()` is a
+     * `View` ([method]) and handing it to a writer would write the capture: the same rule as
+     * passing the capture as `mut`. Round 1's u11, `run(fx() Void { fillP(xs.view(), 3, 0) })`,
+     * reached g++ ('no matching function for call to mutView'); round 2 refused it only by a
+     * false rules.view.write. Walks a chain of lenders (`xs.view().from(1)`) back to the `Arr`
+     * or `List` place they lend from; a view parameter's own `from` lends its pointer and writes
+     * no capture.
+     */
+    private fun lendsCapture(arg: Expr, ctx: BodyContext): Boolean {
+        if (ctx.lambda == null) {
+            return false
+        }
+        var e: Expr = arg
+        while (true) {
+            val rc = (e as? FunctionCallExpr)?.let { model.calls[it] } ?: return false
+            val recv = rc.receiver ?: return false
+            val recvType = model.types[recv] ?: return false
+            if (rc.fn?.name !in LENDERS) {
+                return false
+            }
+            val place = model.places[recv]
+            if (place != null) {
+                if (!(facts.isArr(recvType) || facts.isList(recvType)) || !c.isMutablePlace(place, ctx) || !c.writesCapture(place, ctx)) {
+                    return false
+                }
+                c.report(
+                    "types.lambda.assign-capture",
+                    "'${KiraUnparser.text(recv)}' is captured by this lambda, and a capture is an immutable copy: " +
+                        "'${KiraUnparser.text(arg)}' would lend a MutView of it, which writes it. Share mutable state through a Ref<T> instead.",
+                    arg,
+                )
+                return true
+            }
+            e = recv
+        }
+    }
+
+    /** The magic methods that lend a view of their receiver (a `MutView` of a mutable `Arr`/`List` place). */
+    private val LENDERS = setOf("from", "slice", "view")
+
+    /** `CStr`, the FFI `const char*` (design 7.2, a magic class of the builtins). */
+    private val CSTR = "CStr"
+
+    /** `Unsafe<T>`, the FFI `const T*`/`T*` (design 1.4, table 5.1, a magic class of the builtins). */
+    private val UNSAFE = "Unsafe"
+
+    /**
+     * Whether [fn]'s body C++ supplies: R-G's one predicate, [suppliedByCpp] (an `@_extern`
+     * function or method, a bodiless `pub` free prototype a C++ file defines, a bodiless method
+     * of an `@_opaque` class). Both conventions this file gives such a callee - `CStr` taking a
+     * `Str` (design 7.2) and `Unsafe<T>` taking a `View<T>`/`MutView<T>` (design 1.4) - apply to
+     * each the same way, since none has a body of its own to fill a parameter differently. A
+     * bodiless method of a class is a slot a construction fills, not a prototype, so it is none
+     * of these (round 2 counted any bodiless `pub` method).
+     */
+    private fun isExternLike(fn: FnSymbol): Boolean = fn.suppliedByCpp
 
     private fun mutArgument(arg: Expr, t: KType, expected: KType, isMut: Boolean, name: String, ctx: BodyContext) {
         if (!isMut) {

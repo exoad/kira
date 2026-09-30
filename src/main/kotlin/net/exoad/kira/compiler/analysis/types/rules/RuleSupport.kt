@@ -824,8 +824,9 @@ internal class HiddenWrites private constructor(
 
 /**
  * Which `Fx` a call may run (40-round3 R-C): the one answer W2.4 (`calleeEffects`, in place of
- * `fxArgs`/`fxArguments`), W2.6 (R-B's condition 1, in place of `CppExternEmitter.mayHoldFx`)
- * and EffectsPass read. Nobody else defines such a predicate.
+ * `fxArgs`/`fxArguments`), W2.3's copy policy (W3's extern row, through [confined]; round 3's
+ * R-B in `CppExternEmitter` asked it before round 4 moved the question to the policy) and
+ * EffectsPass read. Nobody else defines such a predicate.
  *
  * A call whose body is not known at the call ([bodyUnknown]) runs, while it runs, everything
  * ([mayRunAnything]) when an argument or its receiver [mayHoldFx], and otherwise only its named

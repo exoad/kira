@@ -1,0 +1,61 @@
+module "ui:imgui"
+
+// Kira's view of Dear ImGui (design 7.5): drift checks against imgui.h, never a
+// copy of it. The viewer's real one is written by tools/kira_imgui_bind.py from
+// the names it uses; this is the shape of what it writes, one of each kind.
+
+// ImVec2 is a value: an extern struct with fields gets a sizeof check too.
+@_extern(cpp = "ImVec2", header = "imgui.h")
+pub struct Vec2 {
+    pub x: Float32 = 0.0
+    pub y: Float32 = 0.0
+}
+
+// ImDrawList* is a handle C++ owns: opaque, with extern methods under their C++ names.
+@_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
+pub class DrawList {
+    @_extern(cpp = "AddLine") pub mut fx addLine: (a: Vec2, b: Vec2, color: UInt32) Void;
+    @_extern(cpp = "AddRectFilled") pub mut fx addRectFilled: (a: Vec2, b: Vec2, color: UInt32) Void;
+    @_extern(cpp = "VtxCount") pub fx vertexCount: () Int32;
+}
+
+// Button(label, size = ImVec2()): the C++ default fills what Kira leaves out.
+@_extern(cpp = "ImGui::Button", header = "imgui.h")
+pub fx button: (label: Str) Bool;
+
+@_extern(cpp = "ImGui::Button", header = "imgui.h")
+pub fx buttonSized: (label: Str, size: Vec2) Bool;
+
+// SliderFloat(label, float*, lo, hi, fmt = "%.3f", flags = 0): mut v goes out as float*.
+@_extern(cpp = "ImGui::SliderFloat", header = "imgui.h")
+pub fx sliderFloat: (label: Str, mut v: Float32, lo: Float32, hi: Float32) Bool;
+
+@_extern(cpp = "ImGui::SliderFloat", header = "imgui.h")
+pub fx sliderFloatFmt: (label: Str, mut v: Float32, lo: Float32, hi: Float32, format: CStr, flags: Int32) Bool;
+
+// Checkbox is overloaded: (label, bool*) and (label, int* flags, int value).
+@_extern(cpp = "ImGui::Checkbox", header = "imgui.h")
+pub fx checkbox: (label: Str, mut v: Bool) Bool;
+
+@_extern(cpp = "ImGui::Checkbox", header = "imgui.h")
+pub fx checkboxFlags: (label: Str, mut flags: Int32, value: Int32) Bool;
+
+// InputText(label, char* buf, size_t buf_size, flags = 0): a mut Unsafe<Char> is the
+// writable char* itself (table 5.1), passed by value with no proxy.
+@_extern(cpp = "ImGui::InputText", header = "imgui.h")
+pub fx inputText: (label: Str, mut buf: Unsafe<Char>, size: Size) Bool;
+
+@_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h")
+pub fx getWindowDrawList: () DrawList;
+
+// ImGui's flag values are extern constants, read by their C++ names as the marker
+// spells them: an enumerator here, and IM_COL32_WHITE, which is a macro (a `::` in
+// front of it would not compile).
+@_extern(cpp = "ImGuiWindowFlags_None", header = "imgui.h")
+pub WINDOW_FLAGS_NONE: Int32;
+
+@_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h")
+pub WINDOW_FLAGS_NO_TITLE_BAR: Int32;
+
+@_extern(cpp = "IM_COL32_WHITE", header = "imgui.h")
+pub COL_WHITE: UInt32;
