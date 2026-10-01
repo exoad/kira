@@ -1,0 +1,32 @@
+module "app:main"
+
+// copy's receiver is evaluated first and once, then the arguments left to right (1.2.3).
+
+pub class Acc {
+    require pub an: Int32
+    require pub atag: Str
+}
+
+fx make: () Acc {
+    trace("make")
+    return Acc { 1, "t" }
+}
+
+fx tagv: () Str {
+    trace("tag")
+    return "m"
+}
+
+fx num: (x: Int32) Int32 {
+    trace(x)
+    return x
+}
+
+fx main: () Void {
+    a: Acc = make().copy(atag = tagv())
+    trace(a.atag)
+    b: Acc = make().copy(an = num(9))
+    trace(b.an)
+    c: Acc = make().copy(an = make().copy(an = num(3)).an)
+    trace(c.an)
+}

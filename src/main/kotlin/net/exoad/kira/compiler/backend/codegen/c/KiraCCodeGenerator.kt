@@ -2546,13 +2546,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val params = classTable.allFields(cls).mapIndexed { i, f ->
             "Bool has$i, ${mapTypeName(typeNameOf(f.type))} v$i"
         }
-        return "$cls* ${cls}__copy($cls* r${params.joinToString("") { ", $it" }})"
+        return "$cls* ${cls}__copy(${params.joinToString(", ").ifEmpty { "void" }})"
     }
 
     /** `copy` (1.2.3): construct from the receiver's fields, overridden by the named arguments. */
     private fun emitCopyHelper(cls: String) {
         buffer.appendLine(copyHelperSignature(cls))
         buffer.appendLine("{")
+        buffer.appendLine("    $cls* r = ($cls*)kira_copy_pop();")
         val args = classTable.allFields(cls).mapIndexed { i, f ->
             val type = typeNameOf(f.type)
             val kept = if (userClassNames.contains(type)) {
@@ -2583,12 +2584,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             if (values[at] != null) throw IllegalStateException("copy: field '${n.name.value}' given twice")
             values[at] = n.value
         }
+        // The receiver is evaluated first and once: C runs call arguments in no fixed order.
+        buffer.append("(kira_copy_push(")
+        receiver.accept(this)
+        buffer.append("), ")
         buffer.append(copyHelperName(cls))
         buffer.append("(")
-        receiver.accept(this)
         fields.forEachIndexed { i, f ->
             val type = typeNameOf(f.type)
-            buffer.append(", ")
+            if (i > 0) buffer.append(", ")
             val v = values[i]
             if (v != null) {
                 buffer.append("true, ")
@@ -2597,7 +2601,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 buffer.append("false, (${mapTypeName(type)}){0}")
             }
         }
-        buffer.append(")")
+        buffer.append("))")
         return true
     }
 
@@ -2690,8 +2694,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             throw UnsupportedConstruct(target, "a[i] op= v on a computed container", TARGET_NAME)
         }
         val serial = tempSerial++
-        val originTemp = "kira_ix_a$serial"
-        val indexTemp = "kira_ix_i$serial"
+        val originTemp = "kiraIxA$serial"
+        val indexTemp = "kiraIxI$serial"
         buffer.append("{ ")
         var o: Expr = origin
         var i: Expr = index

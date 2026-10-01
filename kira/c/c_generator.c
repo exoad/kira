@@ -115,6 +115,29 @@ simple Void* kira_rc_retained(Void* obj)
 }
 
 /*
+ * `recv.copy(...)` evaluates its receiver before its arguments, which C's own argument order
+ * does not do. The receiver is pushed first (a comma expression), the arguments run, and the
+ * copy helper pops it: nested copies in the arguments push and pop in balance.
+ */
+static Void* kira_copy_stack[256];
+static int kira_copy_top = 0;
+
+simple Void kira_copy_push(Void* recv)
+{
+    if (kira_copy_top >= 256)
+    {
+        fprintf(stderr, "kira: copy nested too deeply\n");
+        exit(1);
+    }
+    kira_copy_stack[kira_copy_top++] = recv;
+}
+
+simple Void* kira_copy_pop(Void)
+{
+    return kira_copy_stack[--kira_copy_top];
+}
+
+/*
  * Store a *borrowed* reference into an owning slot: retain the incoming value
  * before releasing the outgoing one, so self-assignment (`a = a`) and aliased
  * stores cannot free the object mid-swap.

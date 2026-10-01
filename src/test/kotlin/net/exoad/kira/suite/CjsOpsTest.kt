@@ -87,6 +87,34 @@ class CjsOpsTest {
     }
 
     @Test
+    fun aComputedIndexOrOriginCompoundAssignmentRunsOnC() {
+        val run = assertNotNull(runC(source("computed-index.kira")).runResult)
+        assertEquals(0, run.exitCode, run.stderr)
+        assertEquals(source("computed-index.expected.txt"), run.stdout)
+    }
+
+    @Test
+    fun aComputedIndexOrOriginCompoundAssignmentRunsOnJS() {
+        val run = runJS(source("computed-index.kira"))
+        assertEquals(0, run.exitCode, run.stderr)
+        assertEquals(source("computed-index.expected.txt"), run.stdout)
+    }
+
+    @Test
+    fun copyEvaluatesItsReceiverFirstOnC() {
+        val run = assertNotNull(runC(source("copy-order.kira")).runResult)
+        assertEquals(0, run.exitCode, run.stderr)
+        assertEquals(source("copy-order.expected.txt"), run.stdout)
+    }
+
+    @Test
+    fun copyEvaluatesItsReceiverFirstOnJS() {
+        val run = runJS(source("copy-order.kira"))
+        assertEquals(0, run.exitCode, run.stderr)
+        assertEquals(source("copy-order.expected.txt"), run.stdout)
+    }
+
+    @Test
     fun theSameMessageOnBothBackendsAsTheCppRuntime() {
         // 20-revision.md 1.3.3 (Q12): "no such key in the Map" is the C++ runtime's text
         // (kira/cpp/kira/rt.hxx); C and JS say it with the same words.

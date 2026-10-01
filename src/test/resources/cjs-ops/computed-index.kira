@@ -1,0 +1,37 @@
+module "app:main"
+
+// a[i] op= v with a computed index or origin: a, i evaluated once, in that order.
+
+pub class Grid {
+    require pub w: Int32
+    require pub mut cells: Arr<Int32>
+
+    pub mut fx hit: (r: Int32, c: Int32) Void {
+        cells[r * w + c] += 1
+    }
+}
+
+fx num: (x: Int32) Int32 {
+    trace(x)
+    return x
+}
+
+fx main: () Void {
+    mut counts: List<Int32> = List<Int32> { }
+    counts.add(0)
+    counts.add(0)
+    counts.add(0)
+    mut i: Int32 = 0
+    while i < 2 {
+        counts[i + 1] += 5
+        i = i + 1
+    }
+    trace(counts[1])
+    trace(counts[2])
+    g: Grid = Grid { 2, [0, 0, 0, 0] }
+    g.hit(1, 1)
+    g.hit(1, 1)
+    trace(g.cells[3])
+    counts[num(1)] += 4
+    trace(counts[1])
+}
