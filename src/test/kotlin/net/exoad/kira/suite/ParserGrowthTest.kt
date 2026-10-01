@@ -799,7 +799,8 @@ class ParserGrowthTest {
         "struct declaration" to "struct S { x: Int32 = 1 }",
         "if-expression" to "fx f: (c: Bool) Int32 { return if c { 1 } else { 2 } }",
         "lambda expression" to "fx f: () Void { g: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 { return x } }",
-        "member or index place" to "class P { mut x: Int32 = 0 }\nfx f: (p: P) Void { p.x = 1 }",
+        // `p.x = 1` and `a[i] = v` are no longer here: w2-9-4-ops-cjs lowers a member place and an
+        // index place on C and JS (CjsOpsTest runs them).
         "'this' expression" to "class P { mut x: Int32 = 0\n pub fx get: () Int32 { return this.x } }",
         "char literal" to "fx f: () Void { c: Char = 'a' }",
         "interpolated string literal" to "fx f: (n: Int32) Str { return \"n=\${n}\" }",
@@ -912,7 +913,6 @@ class ParserGrowthTest {
         "struct declaration" to "struct S { x: Int32 = 1 }\nfx main: () Int32 { return 0 }",
         "if-expression" to "fx main: () Int32 { x: Int32 = 1\n return if x > 0 { 1 } else { 2 } }",
         "lambda expression" to "fx main: () Int32 { trace(fx (x: Int32) Int32 { return x })\n return 0 }",
-        "member or index place" to "class P { mut x: Int32 = 0 }\nfx main: () Int32 { p: P = P { 0 }\n p.x = 1\n return p.x }",
         "'this' expression" to "class P {\n mut x: Int32 = 0\n pub fx get: () Int32 { return this.x }\n}\nfx main: () Int32 { p: P = P { 0 }\n return p.get() }",
         "char literal" to "fx main: () Int32 { trace('a')\n return 0 }",
         "interpolated string literal" to "fx main: () Int32 { n: Int32 = 3\n s: Str = \"n=\${n}\"\n trace(s)\n return 0 }",

@@ -283,4 +283,199 @@ class OperatorOverloadTest {
         assertNotNull(result.runResult)
         assertEquals("4\n6\n-1\n4\n", result.runResult!!.stdout)
     }
+
+    // --- the member form (w2-9-4-ops-cjs): `pub fx @_op_add_: (other: V) V` in the class -------------
+
+    private val memberModule = """
+        pub class V2 {
+            require pub x: Int32
+            require pub y: Int32
+
+            pub fx @_op_add_: (other: V2) V2 {
+                return V2 { x + other.x, y + other.y }
+            }
+
+            pub fx @_op_neg_: () V2 {
+                return V2 { 0 - x, 0 - y }
+            }
+
+            pub fx @_op_eq_: (other: V2) Bool {
+                return x == other.x && y == other.y
+            }
+        }
+
+        fx main: () Void {
+            mut p1: V2 = V2 { 1, 2 }
+            p2: V2 = V2 { 3, 4 }
+            p3: V2 = p1 + p2
+            n: V2 = -p1
+            p1 += p2
+            e: V2 = p3.@_op_add_(p2)
+            trace(p3.x)
+            trace(p3.y)
+            trace(n.x)
+            trace(p1.x)
+            trace(e.y)
+            if p1 == p3 {
+                trace("same")
+            }
+            if p1 != n {
+                trace("apart")
+            }
+        }
+    """
+
+    private val memberExpected = "4\n6\n-1\n4\n10\nsame\napart\n"
+
+    @Test
+    fun memberOperatorsLowerAsMethodCallsInC() {
+        val generated = TestCompileSupport.transpileSnippetToC(
+            source = wrap(memberModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+
+        // The member lowers to the class's method (`Class_method`), never to a free `op_add`.
+        assertTrue(generated.contains("V2__op_add_(p1, p2)"), generated)
+        assertTrue(generated.contains("V2__op_neg_(p1)"), generated)
+        assertTrue(!generated.contains("op_add(p1"), "no free op_add call: $generated")
+        // `p1 += p2` is `p1 = p1.op(p2)`, stored through the ARC helper.
+        assertTrue(generated.contains("kira_rc_store_owned"), generated)
+        // The explicit call is the same method.
+        assertTrue(generated.contains("V2__op_add_(p3, p2)"), generated)
+        // `==` is the declared member; `!=` without `@_op_neq_` is its negation.
+        assertTrue(generated.contains("V2__op_eq_(p1, p3)"), generated)
+        assertTrue(generated.contains("(!V2__op_eq_(p1, n))"), generated)
+    }
+
+    @Test
+    fun memberOperatorsLowerAsMethodCallsInJS() {
+        val generated = TestCompileSupport.transpileSnippetToJS(
+            source = wrap(memberModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+
+        assertTrue(generated.contains("p1._op_add_(p2)"), generated)
+        assertTrue(generated.contains("p1._op_neg_()"), generated)
+        assertTrue(generated.contains("p1 = p1._op_add_(p2)"), generated)
+        assertTrue(generated.contains("p3._op_add_(p2)"), generated)
+        assertTrue(generated.contains("p1._op_eq_(p3)"), generated)
+        assertTrue(generated.contains("(!p1._op_eq_(n))"), generated)
+        assertTrue(!generated.contains("op_add(p1"), "no free op_add call: $generated")
+    }
+
+    @Test
+    fun memberOperatorsCompileAndRunInC() {
+        val cCompiler = TestCompileSupport.findCCompiler()
+        assumeTrue(cCompiler != null, "needs a C compiler")
+
+        val generated = TestCompileSupport.transpileSnippetToC(
+            source = wrap(memberModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+
+        val result = TestCompileSupport.compileAndRunC(generated, cCompiler!!)
+        assertEquals(0, result.compileResult.exitCode, result.compileResult.stderr)
+        assertNotNull(result.runResult)
+        assertEquals(memberExpected, result.runResult!!.stdout)
+    }
+
+    @Test
+    fun memberOperatorsRunInJS() {
+        val node = TestCompileSupport.findNode()
+        assumeTrue(node != null, "needs node")
+
+        val generated = TestCompileSupport.transpileSnippetToJS(
+            source = wrap(memberModule),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+
+        val result = TestCompileSupport.runJS(generated, node!!)
+        assertEquals(0, result.exitCode, result.stderr)
+        assertEquals(memberExpected, result.stdout)
+    }
+
+    @Test
+    fun theMemberFormWinsAndTheFreeFormStillLowersBesideIt() {
+        // A class with a member `+` and another with only the free form, in one program: each keeps
+        // its own lowering.
+        val both = """
+            pub class A {
+                require pub ax: Int32
+                pub fx @_op_add_: (o: A) A { return A { ax + o.ax } }
+            }
+            pub class B {
+                require pub bx: Int32
+            }
+            pub fx @op_add: (a: B, b: B) B {
+                return B { a.bx + b.bx }
+            }
+            fx main: () Void {
+                a1: A = A { 1 }
+                b1: B = B { 2 }
+                a2: A = a1 + a1
+                b2: B = b1 + b1
+                trace(a2.ax)
+                trace(b2.bx)
+            }
+        """
+        val c = TestCompileSupport.transpileSnippetToC(
+            source = wrap(both),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        assertTrue(c.contains("A__op_add_(a1, a1)"), c)
+        assertTrue(c.contains("op_add(b1, b1)"), c)
+        val js = TestCompileSupport.transpileSnippetToJS(
+            source = wrap(both),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        assertTrue(js.contains("a1._op_add_(a1)"), js)
+        assertTrue(js.contains("op_add(b1, b1)"), js)
+    }
+
+    @Test
+    fun anImmutableClassWithoutAnEqSynthesizesOneAndAMutableOneComparesIdentity() {
+        val module = """
+            pub class P {
+                require pub px: Int32
+            }
+            pub class M {
+                require pub mut mx: Int32
+            }
+            fx main: () Void {
+                p1: P = P { 1 }
+                p2: P = P { 1 }
+                m1: M = M { 1 }
+                m2: M = M { 1 }
+                if p1 == p2 {
+                    trace("p")
+                }
+                if m1 == m2 {
+                    trace("m")
+                }
+            }
+        """
+        val c = TestCompileSupport.transpileSnippetToC(
+            source = wrap(module),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        // The immutable class gets a generated `P__op_eq_` over its fields; the mutable one is the pointer compare.
+        assertTrue(c.contains("Bool P__op_eq_(P* this, P* other)"), c)
+        assertTrue(c.contains("P__op_eq_(p1, p2)"), c)
+        assertTrue(c.contains("(m1 == m2)"), c)
+        assertTrue(!c.contains("M__op_eq_"), c)
+        val js = TestCompileSupport.transpileSnippetToJS(
+            source = wrap(module),
+            logicalPath = TestCompileSupport.logicalPathForModule(moduleUri),
+            runSemantic = true
+        )
+        assertTrue(js.contains("p1._op_eq_(p2)"), js)
+        assertTrue(js.contains("(m1 === m2)"), js)
+    }
 }

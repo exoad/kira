@@ -267,6 +267,11 @@ class KiraMap {
     return kira_some(v);
   }
   containsKey(key) { return this._m.has(key); }
+  // `m[k]`: the value, or a panic on a missing key (the same text as the C and C++ runtimes).
+  at(key) {
+    if (!this._m.has(key)) throw new Error("kira: no such key in the Map");
+    return this._m.get(key);
+  }
   containsValue(value) {
     for (const v of this._m.values()) if (v === value) return true;
     return false;

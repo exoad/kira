@@ -863,6 +863,19 @@ simple Maybe Map_get(Map* m, KiraSlot key)
     return i < 0 ? Maybe_none() : Maybe_some(m->values[i]);
 }
 
+/* `m[k]`: the value, or a panic on a missing key (the same text as the C++ and JS runtimes). */
+simple KiraSlot Map_at(Map* m, KiraSlot key)
+{
+    Int32 i = Map_indexOf(m, key);
+    if (i < 0)
+    {
+        fflush(stdout);
+        fprintf(stderr, "kira: no such key in the Map\n");
+        abort();
+    }
+    return m->values[i];
+}
+
 simple Maybe Map_remove(Map* m, KiraSlot key)
 {
     Int32 i = Map_indexOf(m, key);

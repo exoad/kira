@@ -1,0 +1,94 @@
+-- binary
+17
+7
+60
+2
+2
+4
+13
+9
+384
+0
+0
+22
+-- unary
+-12
+1012
+243
+7
+-- comparison
+no
+yes
+no
+yes
+no
+yes
+yes
+no
+-- compound
+17
+12
+60
+12
+5
+4
+7
+6
+48
+24
+12
+-- explicit
+17
+-12
+no
+yes
+-- class index
+4
+9
+14
+8
+8
+-- == by fields
+yes
+no
+no
+yes
+yes
+yes
+no
+-- == by identity
+yes
+no
+yes
+yes
+-- == in a hierarchy
+no
+no
+yes
+no
+yes
+yes
+-- copy
+6
+q
+7
+z
+5
+make
+1
+m
+yes
+-- List, Arr, Map
+6
+9
+10
+7
+6
+36
+37
+50
+42
+-- free form
+11
+22
+-11

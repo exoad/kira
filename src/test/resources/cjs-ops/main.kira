@@ -1,0 +1,274 @@
+module "app:main"
+
+// Every member operator of 20-revision.md 1.3.1 on a class, the synthesized `==` (an immutable
+// class, a mutable one, a hierarchy compared both ways), `copy`, the index forms on a class, a
+// List, an Arr and a Map, and the free form. C and JS must print expected.txt.
+
+pub class N {
+    require pub v: Int32
+
+    pub fx @_op_add_: (o: N) N { return N { v + o.v } }
+    pub fx @_op_sub_: (o: N) N { return N { v - o.v } }
+    pub fx @_op_mul_: (o: N) N { return N { v * o.v } }
+    pub fx @_op_div_: (o: N) N { return N { v / o.v } }
+    pub fx @_op_mod_: (o: N) N { return N { v % o.v } }
+    pub fx @_op_bitand_: (o: N) N { return N { v & o.v } }
+    pub fx @_op_bitor_: (o: N) N { return N { v | o.v } }
+    pub fx @_op_xor_: (o: N) N { return N { v ^ o.v } }
+    pub fx @_op_shl_: (o: N) N { return N { v << o.v } }
+    pub fx @_op_shr_: (o: N) N { return N { v >> o.v } }
+    pub fx @_op_ushr_: (o: N) N { return N { v >>> o.v } }
+    pub fx @_op_neg_: () N { return N { 0 - v } }
+    pub fx @_op_pos_: () N { return N { v + 1000 } }
+    pub fx @_op_bitnot_: () N { return N { v ^ 255 } }
+    pub fx @_op_not_: () N { return N { 7 } }
+    // `==` compares the last digit; `!=` is declared on its own and compares v mod 7, so a
+    // `!=` that went through `!(a == b)` instead would print differently.
+    pub fx @_op_eq_: (o: N) Bool { return v % 10 == o.v % 10 }
+    pub fx @_op_neq_: (o: N) Bool { return v % 7 != o.v % 7 }
+    pub fx @_op_lt_: (o: N) Bool { return v < o.v }
+    pub fx @_op_gt_: (o: N) Bool { return v > o.v }
+    pub fx @_op_lte_: (o: N) Bool { return v <= o.v }
+    pub fx @_op_gte_: (o: N) Bool { return v >= o.v }
+}
+
+// A mutable class: `[]` reads and `[] =` writes through its member operators.
+pub class Cells {
+    require pub mut c0: Int32
+    require pub mut c1: Int32
+
+    pub fx @_op_get_: (i: Int32) Int32 {
+        if i == 0 {
+            return c0
+        }
+        return c1
+    }
+
+    pub mut fx @_op_set_: (i: Int32, x: Int32) Void {
+        if i == 0 {
+            c0 = x
+        } else {
+            c1 = x
+        }
+    }
+}
+
+// An immutable class with no `==` of its own: fields, each by its own `==`.
+pub class P {
+    require pub px: Int32
+    require pub pname: Str
+}
+
+pub class Line {
+    require pub from: P
+    require pub len: Int32
+}
+
+// A mutable class with none: identity.
+pub class Counter {
+    require pub mut cnt: Int32
+}
+
+// A hierarchy: both immutable, compared by dynamic class and every field, inherited ones included.
+pub class Base {
+    require pub ba: Int32
+}
+
+pub class Leaf: Base {
+    require pub lb: Int32
+}
+
+// An immutable class that `copy` rebuilds; `make` has an effect, so the receiver must be evaluated once.
+pub class Acc {
+    require pub an: Int32
+    require pub atag: Str
+}
+
+// The free form: deprecated, still lowered.
+pub class Pt {
+    require pub qx: Int32
+    require pub qy: Int32
+}
+
+pub fx @op_add: (a: Pt, b: Pt) Pt {
+    return Pt { a.qx + b.qx, a.qy + b.qy }
+}
+
+pub fx @op_neg: (a: Pt) Pt {
+    return Pt { 0 - a.qx, 0 - a.qy }
+}
+
+fx yesno: (b: Bool) Str {
+    if b {
+        return "yes"
+    }
+    return "no"
+}
+
+fx make: () Acc {
+    trace("make")
+    return Acc { 1, "t" }
+}
+
+fx main: () Void {
+    a: N = N { 12 }
+    b: N = N { 5 }
+
+    trace("-- binary")
+    trace((a + b).v)
+    trace((a - b).v)
+    trace((a * b).v)
+    trace((a / b).v)
+    trace((a % b).v)
+    trace((a & b).v)
+    trace((a | b).v)
+    trace((a ^ b).v)
+    trace((a << b).v)
+    trace((a >> b).v)
+    trace((a >>> b).v)
+    trace((a + b + b).v)
+
+    trace("-- unary")
+    trace((-a).v)
+    trace((+a).v)
+    trace((~a).v)
+    trace((!a).v)
+
+    trace("-- comparison")
+    c: N = N { 22 }
+    trace(yesno(a == b))
+    trace(yesno(a == c))
+    trace(yesno(a != b))
+    trace(yesno(a != c))
+    trace(yesno(a < b))
+    trace(yesno(a > b))
+    trace(yesno(a <= c))
+    trace(yesno(a >= c))
+
+    trace("-- compound")
+    mut m: N = N { 12 }
+    m += b
+    trace(m.v)
+    m -= b
+    trace(m.v)
+    m *= b
+    trace(m.v)
+    m /= b
+    trace(m.v)
+    m %= N { 7 }
+    trace(m.v)
+    mut bits: N = N { 12 }
+    bits &= b
+    trace(bits.v)
+    bits |= N { 3 }
+    trace(bits.v)
+    bits ^= N { 1 }
+    trace(bits.v)
+    bits <<= N { 3 }
+    trace(bits.v)
+    bits >>= N { 1 }
+    trace(bits.v)
+    bits >>>= N { 1 }
+    trace(bits.v)
+
+    trace("-- explicit")
+    trace(a.@_op_add_(b).v)
+    trace(a.@_op_neg_().v)
+    trace(yesno(a.@_op_lt_(b)))
+    trace(yesno(a.@_op_eq_(c)))
+
+    trace("-- class index")
+    mut cells: Cells = Cells { 4, 5 }
+    trace(cells[0])
+    cells[1] = 9
+    trace(cells[1])
+    cells[0] += 10
+    trace(cells[0])
+    cells[1] -= 1
+    trace(cells[1])
+    trace(cells.@_op_get_(1))
+
+    trace("-- == by fields")
+    p1: P = P { 1, "ada" }
+    p2: P = P { 1, "ada" }
+    p3: P = P { 1, "bob" }
+    trace(yesno(p1 == p2))
+    trace(yesno(p1 == p3))
+    trace(yesno(p1 != p2))
+    trace(yesno(p1 != p3))
+    trace(yesno(p1.@_op_eq_(p2)))
+    l1: Line = Line { P { 2, "x" }, 3 }
+    l2: Line = Line { P { 2, "x" }, 3 }
+    l3: Line = Line { P { 2, "y" }, 3 }
+    trace(yesno(l1 == l2))
+    trace(yesno(l1 == l3))
+
+    trace("-- == by identity")
+    k1: Counter = Counter { 1 }
+    k2: Counter = Counter { 1 }
+    k3: Counter = k1
+    trace(yesno(k1 == k1))
+    trace(yesno(k1 == k2))
+    trace(yesno(k1 == k3))
+    trace(yesno(k1 != k2))
+
+    trace("-- == in a hierarchy")
+    bs: Base = Base { 1 }
+    lf: Leaf = Leaf { 1, 2 }
+    lf2: Leaf = Leaf { 1, 2 }
+    lf3: Leaf = Leaf { 1, 3 }
+    bs2: Base = Base { 1 }
+    trace(yesno(bs == lf))
+    trace(yesno(lf == bs))
+    trace(yesno(lf == lf2))
+    trace(yesno(lf == lf3))
+    trace(yesno(bs == bs2))
+    trace(yesno(bs != lf))
+
+    trace("-- copy")
+    q: Acc = Acc { 5, "q" }
+    q2: Acc = q.copy(an = 6)
+    trace(q2.an)
+    trace(q2.atag)
+    q3: Acc = q.copy(atag = "z", an = 7)
+    trace(q3.an)
+    trace(q3.atag)
+    trace(q.an)
+    q4: Acc = make().copy(atag = "m")
+    trace(q4.an)
+    trace(q4.atag)
+    trace(yesno(q.copy() == q))
+
+    trace("-- List, Arr, Map")
+    mut nums: List<Int32> = List<Int32> { }
+    nums.add(5)
+    nums.add(6)
+    trace(nums[1])
+    nums[0] = 9
+    trace(nums[0])
+    nums[1] += 4
+    trace(nums[1])
+    mut arr: Arr<Int32> = [1, 2, 3]
+    arr[2] = 7
+    arr[0] += 5
+    trace(arr[2])
+    trace(arr[0])
+    mut ages: Map<Str, Int32> = Map<Str, Int32> { }
+    ages["ada"] = 36
+    trace(ages["ada"])
+    ages["ada"] += 1
+    trace(ages["ada"])
+    ages["ada"] = 50
+    trace(ages["ada"])
+    ages["bob"] = 2
+    ages["bob"] *= 21
+    trace(ages["bob"])
+
+    trace("-- free form")
+    f1: Pt = Pt { 1, 2 }
+    f2: Pt = Pt { 10, 20 }
+    f3: Pt = f1 + f2
+    trace(f3.qx)
+    trace(f3.qy)
+    trace((-f3).qx)
+}

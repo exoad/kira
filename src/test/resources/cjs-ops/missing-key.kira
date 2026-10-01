@@ -1,0 +1,11 @@
+module "app:main"
+
+// `m[k] op= v` is get, operate, set: a missing key panics (Q12) instead of inserting a default.
+fx main: () Void {
+    mut hits: Map<Str, Int32> = Map<Str, Int32> { }
+    hits["a"] = 1
+    hits["a"] += 1
+    trace(hits["a"])
+    hits["b"] += 1
+    trace("unreachable")
+}

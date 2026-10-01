@@ -8,6 +8,7 @@ import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
 import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
+import net.exoad.kira.compiler.backend.codegen.UserClassTable
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
@@ -166,6 +167,15 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
      * the walk must still know what `shout` returns before `main` uses it).
      */
     private fun collectSignatures() {
+        val tableDecls = mutableListOf<ClassDecl>()
+        try {
+            collectSignaturesInto(tableDecls)
+        } finally {
+            classTable = UserClassTable(tableDecls)
+        }
+    }
+
+    private fun collectSignaturesInto(tableDecls: MutableList<ClassDecl>) {
         emittableSources().forEach { source ->
             source.ast.statements.forEach { stmt ->
                 val expr: Any? = when (stmt) {
@@ -181,6 +191,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                             knownValueTypes[name] = typeNameOf(expr.def.returnTypeSpecifier)
                             functionParamNames[name] = expr.def.parameters.map { it.name.value }
                             if (name == "main") hasMain = true
+                            if (expr.isIntrinsicOverload() && OperatorIntrinsics.isFreeOperatorName(name)) {
+                                freeOperatorFns.add(name)
+                            }
                         }
                     }
                     is ClassDecl -> {
@@ -188,6 +201,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                         val base = baseTypeNameOf(expr.name)
                         if (isOpaqueTypeName(base)) return@forEach
                         userClassNames.add(base)
+                        tableDecls.add(expr)
                         expr.members.filterIsInstance<VariableDecl>().forEach { field ->
                             fieldTypes[field.name.value] = typeNameOf(field.type)
                             recordContainerTypeArgs(field.name.value, field.type)
@@ -614,13 +628,29 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 if (n is MemberAccessExpr) {
                     val m = (n.member as? Identifier)?.value ?: return null
                     val recv = receiverTypeOf(n.origin) ?: return null
-                    methodReturnTypes["$recv.$m"]?.let { return it }
+                    if (m == "copy" && classTable.hasCopy(recv)) return recv
+                    // A method may be inherited: the nearest class that declares it answers.
+                    val lineage = if (classTable.has(recv)) classTable.lineage(recv) else listOf(recv)
+                    for (cls in lineage) {
+                        methodReturnTypes["$cls.$m"]?.let { return it }
+                    }
                 }
                 null
             }
             is ObjectInitExpr -> typeNameOf(expr.typeName)
             // `xs[i]` has the container's declared element type.
-            is ArrayIndexExpr -> elementTypeOf(expr.originExpr)
+            is ArrayIndexExpr -> indexElementType(expr)
+            // A member operator's result is its method's declared result.
+            is BinaryExpr -> userClassOf(expr.leftExpr)?.let { cls ->
+                when (expr.operator) {
+                    BinaryOp.EQUALS, BinaryOp.NOT_EQUAL, BinaryOp.LESS_THAN, BinaryOp.GREATER_THAN,
+                    BinaryOp.LESS_THAN_OR_EQUAL, BinaryOp.GREATER_THAN_OR_EQUAL -> "Bool"
+                    else -> OperatorIntrinsics.memberName(expr.operator)?.let { memberResultType(cls, it) }
+                }
+            } ?: freeOperatorResultType(OperatorIntrinsics.binaryName(expr.operator), expr.leftExpr, expr.rightExpr)
+            is UnaryExpr -> userClassOf(expr.operand)?.let { cls ->
+                OperatorIntrinsics.memberName(expr.operator)?.let { memberResultType(cls, it) }
+            } ?: freeOperatorResultType(OperatorIntrinsics.unaryName(expr.operator), expr.operand)
             else -> null
         }
     }
@@ -675,6 +705,256 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             arg.accept(this)
         }
         buffer.append(")")
+    }
+
+    // ---- member operators, the synthesized `==`, `copy` and the index forms --------------------
+    //
+    // This backend reads the AST, not the typer's model: a receiver's class is the name-based
+    // guess [receiverTypeOf] makes, and what a class declares or inherits comes from [classTable].
+    // JS dispatches natively, so a member operator is a plain method call.
+
+    private var classTable = UserClassTable(emptyList())
+
+    /** The free operator functions the program declares (`fx @op_add: (a, b)`), by name. */
+    private val freeOperatorFns = mutableSetOf<String>()
+    private var tempSerial = 0
+
+    /** True once the unit carries the `kira_eq_` helper the synthesized `_op_eq_` bodies call. */
+    private var emittedEqHelper = false
+
+    private fun userClassOf(expr: Expr): String? = receiverTypeOf(expr)?.takeIf { classTable.has(it) }
+
+    private fun hasMemberOp(cls: String, member: String): Boolean =
+        classTable.findMethod(cls, member)?.second?.isStub() == false
+
+    private fun emitMemberCall(cls: String, method: String, receiver: Expr, args: List<Expr>): Boolean {
+        if (!hasMemberOp(cls, method)) return false
+        receiver.accept(this)
+        buffer.append(".")
+        buffer.append(method)
+        buffer.append("(")
+        args.forEachIndexed { i, arg ->
+            if (i > 0) buffer.append(", ")
+            arg.accept(this)
+        }
+        buffer.append(")")
+        return true
+    }
+
+    /** The result of a free-form operator (`fx @op_add: (a, b)`) the program declares, for a non-primitive operand. */
+    private fun freeOperatorResultType(freeName: String?, vararg operands: Expr): String? {
+        if (freeName == null || freeName !in freeOperatorFns) return null
+        if (operands.none { isKnownNonPrimitive(it) }) return null
+        return knownValueTypes[freeName]
+    }
+
+    private fun memberResultType(cls: String, member: String): String? {
+        val (decl, fn) = classTable.findMethod(cls, member) ?: return null
+        if (fn.isStub()) return null
+        return methodReturnTypes["$decl.$member"]
+    }
+
+    /** `a op b` where `a`'s class declares or inherits the member operator, or `==` by 1.2.5. */
+    private fun tryEmitMemberBinary(op: BinaryOp, left: Expr, right: Expr): Boolean {
+        val cls = userClassOf(left) ?: return false
+        if (isNullValue(left) || isNullValue(right)) return false
+        if (op == BinaryOp.EQUALS || op == BinaryOp.NOT_EQUAL) {
+            val negated = op == BinaryOp.NOT_EQUAL
+            if (negated && hasMemberOp(cls, UserClassTable.NEQ)) {
+                return emitMemberCall(cls, UserClassTable.NEQ, left, listOf(right))
+            }
+            if (!hasMemberOp(cls, UserClassTable.EQ)) {
+                // The free form keeps its lowering when the program still declares it.
+                val free = OperatorIntrinsics.binaryName(op)
+                if (free != null && free in freeOperatorFns) return false
+                if (negated && "op_eq" in freeOperatorFns) {
+                    buffer.append("(!")
+                    emitOperatorCall("op_eq", listOf(left, right))
+                    buffer.append(")")
+                    return true
+                }
+            }
+            if (negated) buffer.append("(!")
+            if (hasMemberOp(cls, UserClassTable.EQ) || classTable.synthesizesEq(cls)) {
+                // Every class that has a `==` carries it as `_op_eq_`: declared, or synthesized in its body.
+                left.accept(this)
+                buffer.append("._op_eq_(")
+                right.accept(this)
+                buffer.append(")")
+            } else {
+                // A mutable class compares identity.
+                buffer.append("(")
+                left.accept(this)
+                buffer.append(" === ")
+                right.accept(this)
+                buffer.append(")")
+            }
+            if (negated) buffer.append(")")
+            return true
+        }
+        val member = OperatorIntrinsics.memberName(op) ?: return false
+        if (!hasMemberOp(cls, member)) return false
+        return emitMemberCall(cls, member, left, listOf(right))
+    }
+
+    private fun tryEmitMemberUnary(op: UnaryOp, operand: Expr): Boolean {
+        val cls = userClassOf(operand) ?: return false
+        val member = OperatorIntrinsics.memberName(op) ?: return false
+        if (!hasMemberOp(cls, member)) return false
+        return emitMemberCall(cls, member, operand, emptyList())
+    }
+
+    /** `recv.copy(field = value, ...)` (1.2.3) on an immutable class nothing extends. */
+    private fun tryEmitCopy(call: FunctionCallExpr, receiver: Expr): Boolean {
+        val cls = userClassOf(receiver) ?: return false
+        if (!classTable.hasCopy(cls)) return false
+        val fields = classTable.allFields(cls)
+        val values = arrayOfNulls<Expr>(fields.size)
+        call.positionalParameters.forEachIndexed { i, p ->
+            if (i >= fields.size) throw IllegalStateException("copy: '$cls' has only ${fields.size} fields")
+            values[i] = p.value
+        }
+        call.namedParameters.forEach { n ->
+            val at = fields.indexOfFirst { it.name.value == n.name.value }
+            if (at < 0) throw IllegalStateException("copy: '$cls' has no field '${n.name.value}'")
+            if (values[at] != null) throw IllegalStateException("copy: field '${n.name.value}' given twice")
+            values[at] = n.value
+        }
+        // The receiver is evaluated first and once, as the arrow's argument; the new values after it.
+        buffer.append("((kira_r) => Object.assign(Object.create(Object.getPrototypeOf(kira_r)), kira_r, { ")
+        var first = true
+        fields.forEachIndexed { i, f ->
+            val v = values[i] ?: return@forEachIndexed
+            if (!first) buffer.append(", ")
+            first = false
+            buffer.append(f.name.value)
+            buffer.append(": ")
+            v.accept(this)
+        }
+        buffer.append(" }))(")
+        receiver.accept(this)
+        buffer.append(")")
+        return true
+    }
+
+    /** The type arguments recorded for a container-typed name (`Map<Str, Int32>` -> [Str, Int32]). */
+    private fun containerArgsOf(expr: Expr): List<String> {
+        val name = when (expr) {
+            is Identifier -> expr.value
+            is MemberAccessExpr -> (expr.member as? Identifier)?.value
+            else -> null
+        } ?: return emptyList()
+        return containerTypeArgs[name] ?: emptyList()
+    }
+
+    /** The element type `xs[i]` reads: a class's `@_op_get_` result, a Map's value, a List's or Arr's element. */
+    private fun indexElementType(index: ArrayIndexExpr): String? {
+        val ot = receiverTypeOf(index.originExpr)
+        if (ot != null && classTable.has(ot)) {
+            val (decl, _) = classTable.findMethod(ot, UserClassTable.GET) ?: return null
+            return methodReturnTypes["$decl.${UserClassTable.GET}"]
+        }
+        val targs = containerArgsOf(index.originExpr)
+        return if (ot == "Map") targs.getOrNull(1) else targs.firstOrNull()
+    }
+
+    private fun isPureLocation(e: Expr): Boolean = when (e) {
+        is Identifier -> true
+        is MemberAccessExpr -> e.member is Identifier && isPureLocation(e.origin)
+        else -> false
+    }
+
+    private fun isPureIndex(e: Expr): Boolean =
+        e is IntegerLiteral || e is StringLiteral || isPureLocation(e)
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        val target = placeAssignmentExpr.target
+        val op = placeAssignmentExpr.operator
+        val value = placeAssignmentExpr.value
+        when (target) {
+            is ArrayIndexExpr -> if (op == null) emitIndexStore(target, value) else emitIndexCompound(target, op, value)
+            is MemberAccessExpr -> {
+                if (op == null) {
+                    target.accept(this)
+                    buffer.append(" = ")
+                    value.accept(this)
+                } else {
+                    visitCompoundAssignmentExpr(CompoundAssignmentExpr(target, op, value))
+                }
+            }
+            else -> super.visitPlaceAssignmentExpr(placeAssignmentExpr)
+        }
+    }
+
+    /** `a[i] = v`: the class's `@_op_set_`, or the built-in container's store. */
+    private fun emitIndexStore(target: ArrayIndexExpr, value: Expr) {
+        val origin = target.originExpr
+        val ot = receiverTypeOf(origin)
+        if (ot != null && classTable.has(ot)) {
+            if (!emitMemberCall(ot, UserClassTable.SET, origin, listOf(target.indexExpr, value))) {
+                throw UnsupportedConstruct(target, "a[i] = v on '$ot', which has no @_op_set_", TARGET_NAME)
+            }
+            return
+        }
+        origin.accept(this)
+        when (ot) {
+            "Map" -> buffer.append(".put(")
+            "List" -> buffer.append(".set(")
+            else -> buffer.append("[")
+        }
+        target.indexExpr.accept(this)
+        if (ot == "Map" || ot == "List") {
+            buffer.append(", ")
+            value.accept(this)
+            buffer.append(")")
+        } else {
+            buffer.append("] = ")
+            value.accept(this)
+        }
+    }
+
+    /** `a[i] op= v` is `a[i] = a[i] op v`, with `a` and `i` evaluated once. */
+    private fun emitIndexCompound(target: ArrayIndexExpr, op: BinaryOp, value: Expr) {
+        val origin = target.originExpr
+        val index = target.indexExpr
+        val ot = receiverTypeOf(origin)
+        val pureOrigin = isPureLocation(origin)
+        val pureIndex = isPureIndex(index)
+        if (pureOrigin && pureIndex) {
+            emitSynthesizedIndexCompound(origin, index, op, value)
+            return
+        }
+        val serial = tempSerial++
+        val originTemp = "kira_ix_a$serial"
+        val indexTemp = "kira_ix_i$serial"
+        buffer.append("{ ")
+        var o: Expr = origin
+        var i: Expr = index
+        if (!pureOrigin) {
+            buffer.append("const $originTemp = ")
+            origin.accept(this)
+            buffer.append("; ")
+            if (ot != null) knownValueTypes[originTemp] = ot
+            containerArgsOf(origin).takeIf { it.isNotEmpty() }?.let { containerTypeArgs[originTemp] = it }
+            o = Identifier(originTemp)
+        }
+        if (!pureIndex) {
+            buffer.append("const $indexTemp = ")
+            index.accept(this)
+            buffer.append("; ")
+            i = Identifier(indexTemp)
+        }
+        emitSynthesizedIndexCompound(o, i, op, value)
+        buffer.append("; }")
+        knownValueTypes.remove(originTemp)
+        containerTypeArgs.remove(originTemp)
+    }
+
+    private fun emitSynthesizedIndexCompound(origin: Expr, index: Expr, op: BinaryOp, value: Expr) {
+        val read = ArrayIndexExpr(origin, index)
+        visitPlaceAssignmentExpr(
+            PlaceAssignmentExpr(ArrayIndexExpr(origin, index), null, BinaryExpr(read, value, op))
+        )
     }
 
     /** True when an expression is statically a float-typed scalar. */
@@ -977,6 +1257,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
         val op = binaryExpr.operator
+        if (tryEmitMemberBinary(op, binaryExpr.leftExpr, binaryExpr.rightExpr)) return
         // Non-primitive operands desugar to the op_* overload.
         if (OperatorIntrinsics.binaryName(op) != null &&
             (isKnownNonPrimitive(binaryExpr.leftExpr) || isKnownNonPrimitive(binaryExpr.rightExpr))
@@ -1008,6 +1289,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
+        if (tryEmitMemberUnary(unaryExpr.operator, unaryExpr.operand)) return
         val opName = OperatorIntrinsics.unaryName(unaryExpr.operator)
         if (opName != null && isKnownNonPrimitive(unaryExpr.operand)) {
             emitOperatorCall(opName, listOf(unaryExpr.operand))
@@ -1056,7 +1338,30 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
+        if (nameExpr is MemberAccessExpr) {
+            val called = (nameExpr.member as? Identifier)?.value
+            if (called == "copy" && tryEmitCopy(functionCallExpr, nameExpr.origin)) return
+        }
         val args = boundArguments(functionCallExpr)
+        // `a.@_op_eq_(b)` on a class that declares none is the synthesized `==` (1.2.5).
+        if (nameExpr is MemberAccessExpr && (nameExpr.member as? Identifier)?.value == UserClassTable.EQ &&
+            args.size == 1
+        ) {
+            val cls = userClassOf(nameExpr.origin)
+            if (cls != null && !hasMemberOp(cls, UserClassTable.EQ)) {
+                if (classTable.synthesizesEq(cls)) {
+                    nameExpr.origin.accept(this)
+                    buffer.append("._op_eq_(")
+                } else {
+                    buffer.append("(")
+                    nameExpr.origin.accept(this)
+                    buffer.append(" === ")
+                }
+                args[0].accept(this)
+                buffer.append(")")
+                return
+            }
+        }
 
         // Method call: receiver.method(args)
         if (nameExpr is MemberAccessExpr) {
@@ -1255,6 +1560,16 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
+        // `a op= b` is `a = a.op(b)` when a's class declares or inherits the member operator.
+        val memberCls = userClassOf(compoundAssignmentExpr.left)
+        val member = OperatorIntrinsics.memberName(compoundAssignmentExpr.operator)
+        if (memberCls != null && member != null && hasMemberOp(memberCls, member)) {
+            val target = compoundAssignmentExpr.left
+            target.accept(this)
+            buffer.append(" = ")
+            emitMemberCall(memberCls, member, target, listOf(compoundAssignmentExpr.right))
+            return
+        }
         val opName = OperatorIntrinsics.binaryName(compoundAssignmentExpr.operator)
         // a += b on a non-primitive becomes a = op_add(a, b).
         if (opName != null && isKnownNonPrimitive(compoundAssignmentExpr.left)) {
@@ -1344,6 +1659,22 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {
+        val originType = receiverTypeOf(arrayIndexExpr.originExpr)
+        // A class's `a[i]` is its `@_op_get_`.
+        if (originType != null && classTable.has(originType)) {
+            if (!emitMemberCall(originType, UserClassTable.GET, arrayIndexExpr.originExpr, listOf(arrayIndexExpr.indexExpr))) {
+                throw UnsupportedConstruct(arrayIndexExpr, "a[i] on '$originType', which has no @_op_get_", TARGET_NAME)
+            }
+            return
+        }
+        // `m[k]` reads the key or panics (Q12); the same text as C and C++.
+        if (originType == "Map") {
+            arrayIndexExpr.originExpr.accept(this)
+            buffer.append(".at(")
+            arrayIndexExpr.indexExpr.accept(this)
+            buffer.append(")")
+            return
+        }
         // Arr is a native array: index directly. A List is a KiraList
         // wrapper, so it reads through get() (range-checked, like C).
         if (receiverTypeOf(arrayIndexExpr.originExpr) == "List") {
@@ -1679,23 +2010,52 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         userSymbols.add(className)
         methods.forEach { userSymbols.add(functionLikeName(it.name)) }
 
+        val parent = classTable.parentOf(className)
+        // A synthesized `==` (1.2.5) reads each field through `kira_eq_`; the helper lives in the
+        // user layer (the prelude is never renamed, `_op_eq_` is), once, before the first class
+        // that needs it.
+        val synthesizesEq = classTable.has(className) && classTable.synthesizesEq(className)
+        if (synthesizesEq && !emittedEqHelper) {
+            emittedEqHelper = true
+            appendIndentedLine("function kira_eq_(a, b) {")
+            appendIndentedLine("    if (a !== null && typeof a === \"object\" && typeof a._op_eq_ === \"function\") return a._op_eq_(b);")
+            appendIndentedLine("    return a === b;")
+            appendIndentedLine("}")
+        }
         appendIndented("class ")
         buffer.append(className)
+        if (parent != null) {
+            buffer.append(" extends ")
+            buffer.append(parent)
+        }
         buffer.appendLine(" {")
         indentLevel++
 
-        // Constructor: require fields become positional params; defaulted
+        // Constructor: require fields become positional params, inherited ones first; defaulted
         // fields are set from their initializer inside the body.
+        val parentRequire = if (parent != null) {
+            classTable.allFields(parent).filter { f -> f.modifiers.any { it == Modifier.REQUIRE } }
+        } else {
+            emptyList()
+        }
         appendIndented("constructor(")
-        requireFields.forEachIndexed { i, field ->
+        (parentRequire + requireFields).forEachIndexed { i, field ->
             if (i > 0) buffer.append(", ")
             buffer.append(field.name.value)
         }
-        if (requireFields.isEmpty() && defaultFields.isEmpty()) {
+        if (parent == null && requireFields.isEmpty() && defaultFields.isEmpty()) {
             buffer.appendLine(") {}")
         } else {
             buffer.appendLine(") {")
             indentLevel++
+            if (parent != null) {
+                appendIndented("super(")
+                parentRequire.forEachIndexed { i, field ->
+                    if (i > 0) buffer.append(", ")
+                    buffer.append(field.name.value)
+                }
+                buffer.appendLine(");")
+            }
             requireFields.forEach { field ->
                 appendIndented("this.")
                 buffer.append(field.name.value)
@@ -1742,10 +2102,31 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             appendIndentedLine("}")
         }
 
+        // 1.2.5: an immutable class that declares or inherits no `@_op_eq_` compares its dynamic
+        // class and every field; a mutable subclass of one compares identity.
+        if (synthesizesEq) {
+            userSymbols.add(UserClassTable.EQ)
+            appendIndentedLine("${UserClassTable.EQ}(other) {")
+            val fieldTests = classTable.allFields(className).joinToString("") { f ->
+                " && kira_eq_(this.${f.name.value}, other.${f.name.value})"
+            }
+            appendIndentedLine("    return other !== null && other !== undefined && other.constructor === this.constructor$fieldTests;")
+            appendIndentedLine("}")
+        } else if (classTable.has(className) && parent != null && !hasOwnEq(className) &&
+            classTable.synthesizesEq(parent)
+        ) {
+            userSymbols.add(UserClassTable.EQ)
+            appendIndentedLine("${UserClassTable.EQ}(other) {")
+            appendIndentedLine("    return this === other;")
+            appendIndentedLine("}")
+        }
+
         indentLevel--
         appendIndentedLine("}")
         buffer.appendLine()
     }
+
+    private fun hasOwnEq(cls: String): Boolean = classTable.info(cls)?.methods?.containsKey(UserClassTable.EQ) == true
 
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {
         appendIndentedLine("// module \"${moduleDecl.uri.value}\"")
