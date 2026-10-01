@@ -1261,12 +1261,36 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (cls.kind == ClassKind.MAGIC) {
             return magicConstruction(e, cls, t, typeText, ri.fields, byField, ops)
         }
-        return hoister.lower(ops, t) { texts ->
+        return hoister.lower(ops, t, force = cls.isValueClass && defaultOvertakes(ri)) { texts ->
             val inits = ri.fields.filterIsInstance<FieldInit.Given>().map { f ->
                 ".${ctx.names.escape(f.field.name)} = ${wrap(texts[byField[f.field]!!], CppPrec.ASSIGN)}"
             }
             CppEx("$typeText{${inits.joinToString(", ")}}", CppPrec.POSTFIX)
         }
+    }
+
+    /**
+     * Whether the aggregate of [ri] would run a left-out field's default ahead of a given value.
+     * Kotlin's order (OQ-2) runs the given values first, in source order, then the defaults; C++
+     * runs a default member initializer in declaration order among the designated ones. So a
+     * left-out field whose default is not PURE, declared before a given field whose value is not
+     * PURE, one of the two IMPURE, spills the given values first (`Order { c = note("c") }` with
+     * `a` and `b` defaulted by `note` logs `cAB`, as a reference class's constructor does).
+     */
+    private fun defaultOvertakes(ri: net.exoad.kira.compiler.analysis.types.ResolvedInit): Boolean {
+        var before = CppHoister.PURE
+        ri.fields.forEach { f ->
+            when (f) {
+                is FieldInit.Default -> f.field.default?.let { before = maxOf(before, hoister.rank(it)) }
+                is FieldInit.Given -> {
+                    val given = hoister.rank(f.expr)
+                    if (before != CppHoister.PURE && given != CppHoister.PURE && (before == CppHoister.IMPURE || given == CppHoister.IMPURE)) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
     }
 
     /**

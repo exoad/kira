@@ -885,17 +885,26 @@ class CppUsage private constructor(
          * The first field of [s] whose type has no `==` in C++ (an `Fx`, a `Weak`, a `Stack`,
          * `Queue` or `Result`), or null when a defaulted `operator==` is well-formed.
          */
-        fun fieldWithoutEquality(s: ClassSymbol): FieldSymbol? = s.fields.firstOrNull { !supportsEquality(it.type) }
+        fun fieldWithoutEquality(s: ClassSymbol): FieldSymbol? {
+            val seen: MutableSet<ClassSymbol> = Collections.newSetFromMap(IdentityHashMap())
+            seen.add(s)
+            return s.fields.firstOrNull { !supportsEquality(it.type, seen) }
+        }
 
-        private fun supportsEquality(t: KType): Boolean = when (t) {
+        /**
+         * Whether [t] has `==` in C++. A value already in [seen] is the one being decided (a
+         * `Tree` holding a `List<Tree>`, a `Map<Str, Self>`): its `==` is the defaulted one being
+         * declared, well-formed unless another field says not, so it is not walked again.
+         */
+        private fun supportsEquality(t: KType, seen: MutableSet<ClassSymbol>): Boolean = when (t) {
             is KType.Fn -> false
             is KType.Nominal -> when (val sym = t.sym) {
                 is ClassSymbol -> when {
                     sym.kind == ClassKind.MAGIC -> when (sym.name) {
                         "Weak", "Stack", "Queue", "Result", Builtins.STRBUF -> false
-                        else -> t.typeArgs().all { supportsEquality(it) }
+                        else -> t.typeArgs().all { supportsEquality(it, seen) }
                     }
-                    sym.isValue -> sym.fields.all { supportsEquality(it.type) }
+                    sym.isValue -> !seen.add(sym) || sym.fields.all { supportsEquality(it.type, seen) }
                     else -> true   // a class or trait value is an identity: shared_ptr ==
                 }
                 else -> true

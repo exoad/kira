@@ -357,6 +357,11 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             is MemberAccessExpr -> {
                 calleeName = (callee.member as? Identifier)?.value ?: "(member)"
                 val candidates = methodParameterNames[calleeName].orEmpty()
+                // `copy(field = value)` (1.2.3) is synthesized, not declared: its names are the
+                // receiver's fields, which this pass cannot see. The C and JS backends bind them.
+                if (calleeName == "copy" && candidates.isEmpty()) {
+                    return
+                }
                 if (candidates.size > 1) {
                     pump(
                         "Named arguments cannot be used with '$calleeName' here: it is declared by more than one " +
