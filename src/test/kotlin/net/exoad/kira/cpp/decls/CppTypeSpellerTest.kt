@@ -25,7 +25,7 @@ class CppTypeSpellerTest {
 
         pub struct Pt { pub x: Int32 = 0 }
 
-        pub class Node { pub v: Int32 = 0 }
+        pub class Node { pub mut v: Int32 = 0 }
 
         pub trait Shape { pub fx area: () Int32; }
 
@@ -36,7 +36,7 @@ class CppTypeSpellerTest {
         pub struct Scan { }
 
         @_extern(cpp = "bibo::Car", header = "car.hxx")
-        pub class Car { }
+        pub class Car { pub mut fx drive: () Void; }
 
         pub alias Frame as Arr<UInt8, 32>
 

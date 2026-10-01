@@ -121,7 +121,7 @@ class CppClassCompileTest {
         }
 
         pub class Box<T> {
-            require pub value: T
+            require pub mut value: T
 
             pub fx get: () T {
                 return value
@@ -247,7 +247,7 @@ class CppClassCompileTest {
         // A skipped middle default of a narrow type: typed, or MSVC /W4 /WX sees an int
         // narrowed inside make_shared (C4244).
         pub class Band {
-            require pub lo: Int32
+            require pub mut lo: Int32
             pub mid: UInt8 = 5
             require pub hi: Int32
         }
@@ -594,12 +594,12 @@ class CppClassCompileTest {
 
         // A construction's D33 temporaries of pointer type, and pointer fields value-initialized.
         pub class PtrHolder {
-            require pub g: Handle
+            require pub mut g: Handle
             require pub h: Handle
         }
 
         pub class Loose {
-            pub h: Handle
+            pub mut h: Handle
             require pub n: Int32
         }
 
@@ -670,7 +670,7 @@ class CppClassCompileTest {
         }
 
         pub class TagPair {
-            require pub a: Str
+            require pub mut a: Str
             require pub n: Int32
         }
 
@@ -701,7 +701,7 @@ class CppClassCompileTest {
         }
 
         pub class Twig {
-            require pub name: Str
+            require pub mut name: Str
             require pub nest: Nest
 
             pub fx leave: () TagPair {
@@ -717,7 +717,7 @@ class CppClassCompileTest {
         }
 
         pub class Duo {
-            require pub a: Int32
+            require pub mut a: Int32
             pub b: Int32 = seed
             require pub c: Int32
         }
@@ -728,7 +728,7 @@ class CppClassCompileTest {
 
         // The same spill in a field's default, a constructor's default argument: its lambda captures nothing.
         pub class DuoBox {
-            pub duo: Duo = Duo { a = seed, c = bumpSeed() }
+            pub mut duo: Duo = Duo { a = seed, c = bumpSeed() }
         }
 
         // A type-parameter receiver the arguments replace in the caller's slot: the caller copies it (I).
@@ -769,7 +769,7 @@ class CppClassCompileTest {
         }
 
         pub class Three {
-            pub a: Int32 = next()
+            pub mut a: Int32 = next()
             pub b: Int32 = next()
             pub c: Int32 = next()
         }
@@ -792,7 +792,7 @@ class CppClassCompileTest {
         }
 
         pub class Low {
-            pub a: Int32 = next()
+            pub mut a: Int32 = next()
         }
 
         pub class High: Low {
@@ -800,7 +800,7 @@ class CppClassCompileTest {
         }
 
         pub class Mix {
-            pub x: Int32 = next()
+            pub mut x: Int32 = next()
             require pub y: Int32
             pub z: Int32 = next()
             pub w: Int32 = next()

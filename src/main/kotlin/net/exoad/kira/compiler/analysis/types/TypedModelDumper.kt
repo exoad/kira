@@ -244,7 +244,7 @@ object TypedModelDumper {
 
         private fun classLine(indent: Int, c: ClassSymbol) {
             val parents = listOfNotNull(c.superclass?.display()) + c.traits.map { it.display() }
-            val head = "${c.kind.name.lowercase()} ${c.name}${typeParams(c.typeParams)}${if (parents.isEmpty()) "" else " : ${parents.joinToString(", ")}"}"
+            val head = "${if (c.kind == ClassKind.USER) "class" else c.kind.name.lowercase()} ${c.name}${typeParams(c.typeParams)}${if (parents.isEmpty()) "" else " : ${parents.joinToString(", ")}"}"
             val flags = common(c.isPub, c.markers, c.foreign)
             if (c.isSubclassed) flags.add("subclassed")
             if (c.initially != null) flags.add("initially")

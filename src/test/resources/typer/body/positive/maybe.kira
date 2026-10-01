@@ -8,7 +8,7 @@ pub struct Frame {
 }
 
 pub class Pet {
-    require pub name: Str
+    require pub mut name: Str
 }
 
 pub fx find: (i: Int32) Maybe<Int32> {

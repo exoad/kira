@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.analysis.types.rules
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Shape
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
@@ -94,8 +95,14 @@ internal class ProfilePass : RulePass {
             when (n) {
                 is ClassDecl -> {
                     val cls = model.declSyms[n] as? ClassSymbol
-                    if (cls != null && cls.kind == ClassKind.CLASS) {
-                        r.report("rules.profile.class", "A class is a heap reference (an Rc), which the Pico profile has no allocator for: make ${cls.name} a struct.", n.name)
+                    // A value class is allowed (W2.9 1.2.9); a reference class is refused with the reason it is one.
+                    if (cls != null && cls.isRef) {
+                        r.report(
+                            "rules.profile.class",
+                            "${cls.valueWhyNot ?: "${cls.name} is a class"}, so it is a shared reference, which needs the heap the Pico profile has no allocator for: " +
+                                "make ${cls.name} immutable and update it by rebinding (`d = d.copy(...)`).",
+                            n.name,
+                        )
                     }
                 }
                 is Type -> if (n !is ConstTypeArg && !notValues.containsKey(n)) typeNode(r, n, paramTypes[n])
@@ -171,10 +178,12 @@ internal class ProfilePass : RulePass {
         is KType.Fn -> "an Fx held as a value is a std::function (heap); pass it as a parameter that is only called, which lowers to a template."
         is KType.Nominal -> when (val sym = t.sym) {
             is TraitSymbol -> "a trait-typed value is a heap reference; take a generic parameter <T: ${sym.name}> and call through the bound."
-            is ClassSymbol -> when (sym.kind) {
-                ClassKind.CLASS, ClassKind.OPAQUE -> "a class is a heap reference (an Rc); make ${sym.name} a struct."
-                ClassKind.STRUCT -> null
-                ClassKind.MAGIC -> when (sym.name) {
+            is ClassSymbol -> when (sym.shape) {
+                // A value (a struct, a value class) is allowed (W2.9 1.2.9); a reference is refused with the reason it is one.
+                Shape.VALUE -> null
+                Shape.REF -> "${sym.valueWhyNot ?: "${sym.name} is a class"}, so it is a shared reference (an Rc), which needs the heap."
+                Shape.OPAQUE -> "a class is a heap reference (an Rc); make ${sym.name} a struct."
+                Shape.MAGIC -> when (sym.name) {
                     "List", "Deque", "Stack", "Queue" -> "${sym.name}<T> allocates; use Arr<T, N> with a fixed count."
                     "Map", "Set" -> "${sym.name} allocates; use Arr<T, N> with a fixed count and search it."
                     "Ref", "Weak", "Unsafe" -> "${sym.name}<T> is a heap reference; keep the value in a struct."

@@ -271,7 +271,7 @@ class CppCopyPolicy(private val lower: CppLowering) {
         val rootPrivate = when (val r = p.root()) {
             is Place.Local -> true
             is Place.Param -> !r.sym.byRef
-            is Place.This -> (r.owner as? ClassSymbol)?.isStruct == true && thisIsValue()
+            is Place.This -> (r.owner as? ClassSymbol)?.isValue == true && thisIsValue()
             is Place.Field -> r.receiver == null
             else -> false
         }
@@ -289,7 +289,7 @@ class CppCopyPolicy(private val lower: CppLowering) {
         val n = t as? KType.Nominal ?: return false
         return when (val sym = n.sym) {
             is TraitSymbol -> true
-            is ClassSymbol -> sym.kind == ClassKind.CLASS
+            is ClassSymbol -> sym.isRef
             else -> false
         }
     }
@@ -359,6 +359,8 @@ class CppCopyPolicy(private val lower: CppLowering) {
             CallKind.FN_VALUE -> !lower.ctx.speller.byValue(t)
             CallKind.MAGIC, CallKind.PRINT -> lower.heldByReference(t)
             CallKind.EXTERN -> lower.heldByReference(t) || isHandle(t)
+            // A copy's arguments initialize its fields (an aggregate's, a constructor's by-value parameters, Copy_'s optionals): copies.
+            CallKind.COPY -> false
         }
     }
 

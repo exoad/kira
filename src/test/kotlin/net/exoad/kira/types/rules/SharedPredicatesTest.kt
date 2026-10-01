@@ -42,7 +42,7 @@ class SharedPredicatesTest {
                 pub t: Maybe<T> = null
             }
             pub class C {
-                pub a: Int32 = 0
+                pub mut a: Int32 = 0
             }
             pub trait T {
                 pub fx m: () Int32;
@@ -178,7 +178,7 @@ class SharedPredicatesTest {
             """
             pub mut G: Int32 = 0
             pub class K {
-                pub n: Int32 = 0
+                pub mut n: Int32 = 0
                 pub fx get: () Int32 {
                     return n
                 }

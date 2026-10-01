@@ -161,7 +161,26 @@ class ModuleSymbol(
     }
 }
 
-enum class ClassKind { CLASS, STRUCT, MAGIC, OPAQUE }
+/**
+ * What a class DECLARATION is: a user's `class` (or `variant`), a `struct` (until W2.9's
+ * no-struct removes it), a `@_magic` builtin, an `@_opaque` handle. A reader that means the
+ * C++ representation reads [ClassSymbol.shape] instead (W2.9 1.2.1); `USER` is the old
+ * `CLASS`, renamed so that every reader had to decide which of the two it meant.
+ */
+enum class ClassKind { USER, STRUCT, MAGIC, OPAQUE }
+
+/**
+ * How a class is represented (W2.9 1.2.1), set once at the end of phase B ([ClassShapes]):
+ * - [VALUE]: a plain C++ value (an aggregate, or a class with `initially`'s constructors):
+ *   a struct, or an immutable user class with no class parent, no subclass, no trait
+ *   (interim, until boxing), no `finally` and no by-value cycle, or an immutable extern class;
+ * - [REF]: a shared reference, `kira::Rc<C>`;
+ * - [MAGIC]: its binding's C++ type; [OPAQUE]: an `@_opaque` handle (`T*`).
+ * Kira's semantics never read it (they read [ClassSymbol.isImmutable] and
+ * [ClassSymbol.isSubclassed]); the `View` field rule, the freestanding profile and the C++
+ * backend do.
+ */
+enum class Shape { VALUE, REF, MAGIC, OPAQUE }
 
 class ClassSymbol(
     override val name: String,
@@ -188,7 +207,56 @@ class ClassSymbol(
     override var isPub: Boolean = false
     val markers: MutableList<Marker> = mutableListOf()
 
+    /** A `struct` DECLARATION (its own Kira rules until W2.9's no-struct); its shape is always [Shape.VALUE]. */
     val isStruct: Boolean get() = kind == ClassKind.STRUCT
+
+    private var shapeSet: Shape? = null
+
+    /**
+     * The representation (W2.9 1.2.1). A magic, opaque or struct declaration has one from its
+     * kind; a user class gets its own at the end of phase B, once parents, overrides and
+     * [isSubclassed] are known, and reading it earlier throws.
+     */
+    var shape: Shape
+        get() = when (kind) {
+            ClassKind.MAGIC -> Shape.MAGIC
+            ClassKind.OPAQUE -> Shape.OPAQUE
+            ClassKind.STRUCT -> Shape.VALUE
+            ClassKind.USER -> shapeSet ?: throw IllegalStateException("the shape of class $qualifiedName was read before phase B set it")
+        }
+        set(value) {
+            shapeSet = value
+        }
+
+    /** Whether [shape] has been decided (always, for a magic, opaque or struct declaration). */
+    val hasShape: Boolean get() = kind != ClassKind.USER || shapeSet != null
+
+    /** A C++ value ([Shape.VALUE]): a struct, or a value class. */
+    val isValue: Boolean get() = shape == Shape.VALUE
+
+    /** A shared reference ([Shape.REF]); only a user class is one. */
+    val isRef: Boolean get() = shape == Shape.REF
+
+    /** A value class: a user class of shape [Shape.VALUE] (a struct is a value too, with its own rules). */
+    val isValueClass: Boolean get() = kind == ClassKind.USER && shape == Shape.VALUE
+
+    /**
+     * A value whose declared fields are all it holds: a struct or a value class Kira lays out. An
+     * immutable `@_extern` class is a value too, but C++ lays it out, so what it holds is unknown.
+     */
+    val holdsOnlyItsFields: Boolean get() = isValue && !(kind == ClassKind.USER && foreign is Foreign.Extern)
+
+    /**
+     * No `mut` field and no `mut fx`, inherited ones included (W2.9 1.1); a phase-B fact.
+     * Type arguments do not count: `Box<Counter>` is immutable.
+     */
+    var isImmutable: Boolean = false
+
+    /** Why a user class is a reference, in words a diagnostic can quote ("Decoder is mutable (field `ticks` is `mut`)"); null for a value. */
+    var valueWhyNot: String? = null
+
+    /** The synthesized `copy` (W2.9 1.2.3, Q7): set at the end of phase B for an immutable user class that nothing extends. */
+    var copyMethod: FnSymbol? = null
 
     /** This class as a type over its own type parameters: `Box<T>` inside `class Box<T>`. */
     val selfType: KType.Nominal get() = KType.Nominal(this, typeParams.map { TypeArg.Ty(KType.Param(it)) })

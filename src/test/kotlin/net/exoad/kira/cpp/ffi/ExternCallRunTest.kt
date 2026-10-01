@@ -97,7 +97,7 @@ class ExternCallRunTest {
 
         @_extern(cpp = "nat::Box", header = "nat.hxx")
         pub class Box {
-            pub fx size: () Int32;
+            pub mut fx size: () Int32;
         }
 
         @_extern(cpp = "nat::Pump", header = "nat.hxx")

@@ -58,7 +58,8 @@ class CppClosureEmitter : CppLambdaPart {
         }
         val outer = state.frame
         val owner = outer?.owner ?: ctx.scope
-        val struct = (owner as? ClassSymbol)?.isStruct == true
+        // A value's lambda (a struct's, a value class's: W2.9 1.2.2) copies the object, `[*this]`, and its fields `[c_k = k]`.
+        val struct = (owner as? ClassSymbol)?.isValue == true
         val capturesThis = captures.any { it is Capture.This }
         val outerAccess = outer?.receiverAccess ?: CppBodyState.ThisCapture.NONE
         val thisCapture = when {
@@ -104,7 +105,7 @@ class CppClosureEmitter : CppLambdaPart {
         if (thisCapture == CppBodyState.ThisCapture.SELF && outerAccess != CppBodyState.ThisCapture.SELF) {
             val cls = owner as? ClassSymbol
             when {
-                cls == null || cls.kind != ClassKind.CLASS ->
+                cls == null || !cls.isRef ->
                     ctx.unsupported(l, "an escaping lambda capturing the receiver of ${owner?.name ?: "no class"} (only a class has a shared_from_this)")
                 outer?.fn == null ->
                     ctx.unsupported(l, "an escaping lambda capturing this in an initially or finally block of ${cls.name} (C++ has no shared_ptr to an object under construction or destruction)")
@@ -163,7 +164,7 @@ class CppClosureEmitter : CppLambdaPart {
         for (m in program.modules) {
             for (sym in m.declarations) {
                 val cls = sym as? ClassSymbol ?: continue
-                if (cls.kind != ClassKind.CLASS) {
+                if (!cls.isRef) {
                     continue
                 }
                 val bodies = cls.methods.flatMap { it.body.orEmpty() } + cls.initially.orEmpty() + cls.finally.orEmpty()

@@ -275,7 +275,7 @@ class CppDeclFixesTest {
     fun anEmptyClassConstructionGoesThroughMakeShared() {
         val h = header(
             """
-            pub class Reg { pub n: Int32 = 0 }
+            pub class Reg { pub mut n: Int32 = 0 }
             pub struct Holder { pub r: Reg = Reg {} pub p: Pt = Pt {} }
             pub struct Pt { pub x: Int32 = 0 }
             """
@@ -438,7 +438,7 @@ class CppDeclFixesTest {
             pub struct Early { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
             pub struct Queued { pub d: Deque<Later> = Deque<Later> {} }
             pub struct Later { pub v: Int32 = 0 }
-            pub class Node { pub v: Int32 = 0 }
+            pub class Node { pub mut v: Int32 = 0 }
             """,
             usageOf = { CppUsage.NONE },
         )

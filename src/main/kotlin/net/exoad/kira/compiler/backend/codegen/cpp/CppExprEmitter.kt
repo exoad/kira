@@ -2,8 +2,10 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.CallKind
+import net.exoad.kira.compiler.analysis.types.ClassShapes
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Shape
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.ConversionKind
@@ -512,7 +514,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** `this` as a value (design 5.5): `*this` in a struct method, the class's own `kira::Rc` in a class method ([classThis]). */
     private fun thisValue(e: ThisExpr): CppEx {
         val owner = state.frame?.owner ?: ctx.scope ?: return internal(e, "`this` outside a method")
-        if ((owner as? ClassSymbol)?.isStruct == true) {
+        if ((owner as? ClassSymbol)?.isValue == true) {
             return CppEx("*this", CppPrec.UNARY)
         }
         return classThis(e)
@@ -600,10 +602,11 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val n = t as? KType.Nominal ?: return false
         return when (val sym = n.sym) {
             is TraitSymbol -> true
-            is ClassSymbol -> when (sym.kind) {
-                ClassKind.CLASS, ClassKind.OPAQUE -> true
-                ClassKind.STRUCT -> false
-                ClassKind.MAGIC -> sym.name in POINTER_MAGIC || ctx.speller.isSystemClass(sym)
+            is ClassSymbol -> when (sym.shape) {
+                // A reference class is reached with `->`, a value (a struct, a value class: W2.9 1.2.2) with `.`.
+                Shape.REF, Shape.OPAQUE -> true
+                Shape.VALUE -> false
+                Shape.MAGIC -> sym.name in POINTER_MAGIC || ctx.speller.isSystemClass(sym)
             }
             else -> false
         }
@@ -1229,10 +1232,27 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val ri = model.init(e) ?: return internal(e, "no construction was recorded")
         val cls = ri.cls ?: return internal(e, "a construction without a class")
         val t = ri.type
-        if ((cls.kind == ClassKind.MAGIC && cls.name == "Ref") || cls.kind == ClassKind.CLASS || ctx.speller.isSystemClass(cls)) {
+        // A reference class, and a value class with `initially` (its constructor, braced: W2.9 1.2.3), are the classes part's.
+        if ((cls.kind == ClassKind.MAGIC && cls.name == "Ref") || (cls.isRef || cls.isValueClass && cls.initially != null) || ctx.speller.isSystemClass(cls)) {
             return classConstruction(e)
         }
         refuseViewFields(e, ri)
+        if (cls.isValueClass) {
+            // D38 for a value class (W2.9 1.2.3): a field left out with no default is `T f{};`, which is a Kira value only
+            // where T has an empty one; a reference class's or an Fx's would be a null handle the first use dereferences.
+            val skipped = ri.fields.filter { it is FieldInit.Default && it.field.default == null }
+                .firstOrNull { !ClassLowering.hasEmptyValue(it.field.type.substitute(ri.substitution), ctx.speller) }
+            if (skipped != null) {
+                val type = skipped.field.type.substitute(ri.substitution)
+                ctx.diag(
+                    e,
+                    CppModuleEmitterFactory.UNSUPPORTED_CODE,
+                    "constructing ${cls.name} leaves the field ${skipped.field.name}: ${type.display()} without a value, and ${type.display()} has no empty value in C++ " +
+                        "(it would be a null handle or an empty function): give ${skipped.field.name} a value here, or declare it with a default",
+                )
+                return CppEx("/* ${cls.name} */", CppPrec.PRIMARY)
+            }
+        }
         val given = ri.sourceOrder.map { ri.fields[it] as FieldInit.Given }
         val ops = given.map { g -> operandOf(g.expr) { coerced(g.expr) } }
         val byField = IdentityHashMap<FieldSymbol, Int>()
@@ -1319,6 +1339,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             CallKind.METHOD, CallKind.VIRTUAL, CallKind.TRAIT -> methodCall(e, rc)
             CallKind.EXTERN -> externCall(e, rc)
             CallKind.FN_VALUE -> fnValueCall(e, rc)
+            CallKind.COPY -> copyCall(e, rc)
             CallKind.OP_OVERLOAD, CallKind.CTOR -> unsupported(e, "a ${rc.kind} call")
         }
     }
@@ -1448,7 +1469,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      */
     private fun implicitThisOperand(rc: ResolvedCall, fn: FnSymbol): CppHoister.Operand? {
         val owner = state.frame?.owner as? ClassSymbol ?: return null
-        if (!owner.isStruct) {
+        if (!owner.isValue) {
             return null
         }
         val t = owner.selfType
@@ -1500,6 +1521,67 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             CppEx("$callee(${argList(slots, texts)})", CppPrec.POSTFIX)
         }
+    }
+
+    /**
+     * `x.copy(f = v, ...)` (W2.9 1.2.3, Q7): a new object of x's class, each field given or kept
+     * from x. Kira evaluates the receiver first and once, then the arguments as written (D33).
+     *
+     * - A value class: `V{.f = v, .g = x.g}`, every field named in declaration order (with
+     *   `initially`, its constructor, `V{v, x.g}`). The receiver is read once per kept field,
+     *   so unless it is a PURE place and every argument PURE it is copied into a typed
+     *   temporary first (`const V t0_ = next();`): `next().copy(a = 0)` calls `next()` once,
+     *   and `G.copy(a = bumpG())` keeps G's fields as they were before `bumpG()` ran.
+     * - A reference class: `x->copy_({.f = v})`, the member the classes part generates for a
+     *   class the program copies; the object expression is sequenced before the argument.
+     */
+    private fun copyCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
+        val receiver = rc.receiver ?: return internal(e, "a copy without its receiver")
+        val t = rc.returnType as? KType.Nominal ?: return internal(e, "a copy of no class")
+        val cls = t.sym as? ClassSymbol ?: return internal(e, "a copy of no class")
+        val fields = ClassShapes.chainFields(cls).map { it.first }
+        val (argOps, argSlots) = arguments(rc)
+        val given = HashMap<Int, Int>()
+        argSlots.forEach { if (it is Slot.Given) given[it.param] = it.operand }
+        val recvType = typeOf(receiver)
+        if (!cls.isValue) {
+            val recvOp = receiverOperand(receiver, rc, rc.fn, memberStyle = false, lending = false) { coerced(receiver) }
+            val (ops, _) = withReceiver(recvOp, argOps, argSlots)
+            val shift = if (recvOp != null) 1 else 0
+            return hoister.lower(ops, t, node = e, consumer = policy.callConsumer(rc, recvType)) { texts ->
+                val inits = fields.mapIndexedNotNull { i, f -> given[i]?.let { op -> ".${ctx.names.escape(f.name)} = ${copyArgument(texts[op + shift], f, rc)}" } }
+                CppEx("${accessWith(receiver, if (recvOp != null) texts[0] else null, recvType)}${CppClassEmitter.COPY_MEMBER}({${inits.joinToString(", ")}})", CppPrec.POSTFIX)
+            }
+        }
+        val simple = isPlaceExpr(receiver) && hoister.rank(receiver) == CppHoister.PURE && argOps.all { hoister.rankOf(it) == CppHoister.PURE }
+        // Kept by every field the call leaves out: a typed temporary unless reading the place again is the same read.
+        val recvOp = if (simple) {
+            CppHoister.Operand.Value(receiver) { coerced(receiver) }
+        } else {
+            CppHoister.Operand.Place(null, emptyList(), CppHoister.PlaceMode.SNAPSHOT, type = t, rank = CppHoister.IMPURE) { coerced(receiver) }
+        }
+        val typeText = ctx.spell(t, Pos.VALUE, e)
+        val constructed = cls.isValueClass && cls.initially != null
+        return hoister.lower(listOf(recvOp) + argOps, t, force = !simple, node = e, consumer = policy.callConsumer(rc, recvType)) { texts ->
+            val r = wrap(texts[0], CppPrec.POSTFIX)
+            val values = fields.mapIndexed { i, f ->
+                val name = ctx.names.escape(f.name)
+                val value = given[i]?.let { wrap(texts[it + 1], CppPrec.ASSIGN) } ?: "$r.$name"
+                if (constructed) value else ".$name = $value"
+            }
+            CppEx("$typeText{${values.joinToString(", ")}}", CppPrec.POSTFIX)
+        }
+    }
+
+    /** A given argument of a reference class's `copy_`: an integer literal narrower than `int` is `T{lit}`, as `std::optional<T>` takes it through a template (MSVC C4244). */
+    private fun copyArgument(text: CppEx, f: FieldSymbol, rc: ResolvedCall): String {
+        val prim = f.type.substitute(rc.substitution).prim
+        val raw = wrap(text, CppPrec.ASSIGN)
+        val literal = raw.toBigIntegerOrNull() != null || (raw.startsWith("-") && raw.drop(1).toBigIntegerOrNull() != null)
+        if (!literal || prim == null || !prim.isInteger || prim == Prim.INT32 || prim == Prim.UINT32) {
+            return raw
+        }
+        return "${ctx.speller.scalarName(prim)}{$raw}"
     }
 
     /** [receiver] first among the operands, when it is one, with the argument slots shifted past it. */

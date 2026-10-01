@@ -73,7 +73,11 @@ internal class Body(
     val what: String,
     val at: ASTNode?,
 ) {
+    /** A `struct`'s body: its own Kira rules (a `mut fx`, fields written through a mutable place) until W2.9's no-struct. */
     val isStructOwner: Boolean get() = (owner as? ClassSymbol)?.kind == ClassKind.STRUCT
+
+    /** A value's body (a struct's or a value class's, W2.9 1.2.1): its `this` is the caller's `const T&`, never a handle. */
+    val isValueOwner: Boolean get() = (owner as? ClassSymbol)?.let { it.hasShape && it.isValue } == true
 }
 
 /** Every [Body] of a program, in module and source order. */
@@ -307,14 +311,14 @@ internal class Rules(val program: TypedProgram) {
             is KType.Scalar, KType.Str, KType.Void, KType.Never, KType.NullT -> false
             is KType.Param, is KType.Fn, KType.Error -> true
             is KType.Nominal -> when (val sym = t.sym) {
-                is ClassSymbol -> when (sym.kind) {
-                    ClassKind.STRUCT -> path.add(t) && run {
+                is ClassSymbol -> when {
+                    sym.holdsOnlyItsFields -> path.add(t) && run {
                         val sub = sym.typeParams.zip(t.typeArgs()).toMap()
                         val found = sym.fields.any { holdsType(it.type.substitute(sub), q, path) }
                         path.remove(t)
                         found
                     }
-                    ClassKind.MAGIC -> isReference(t) || t.typeArgs().any { holdsType(it, q, path) }
+                    sym.kind == ClassKind.MAGIC -> isReference(t) || t.typeArgs().any { holdsType(it, q, path) }
                     else -> true
                 }
                 is TraitSymbol -> true
@@ -323,10 +327,10 @@ internal class Rules(val program: TypedProgram) {
         }
     }
 
-    /** Whether the owner of a field is a reference type, so writing the field writes shared state. */
+    /** Whether the owner of a field is a reference type, so writing the field writes shared state: a reference class (a value class's field is a value step, W2.9 1.2.1), a trait, a handle. */
     fun ownerIsReference(f: FieldSymbol): Boolean = when (val o = f.owner) {
         is TraitSymbol -> true
-        is ClassSymbol -> o.kind == ClassKind.CLASS || o.kind == ClassKind.OPAQUE ||
+        is ClassSymbol -> (o.isRef) || o.kind == ClassKind.OPAQUE ||
             (o.kind == ClassKind.MAGIC && (o.name !in Builtins.NOMINAL_PARAMS || o.name == "Ref" || o.name == "Weak" || o.name == "Unsafe"))
         else -> false
     }
@@ -376,8 +380,8 @@ internal class Rules(val program: TypedProgram) {
     /** A second-class type (30-second-class 1.1): a `View`, `MutView`, `CStr` or `Unsafe`. */
     fun isSecondClass(t: KType?): Boolean = t != null && (isView(t) || facts.isMagic(t, "CStr") || facts.isMagic(t, "Unsafe"))
 
-    /** A user or extern class (D29): held by `kira::Rc`, so a parameter or a plain local copies the same handle, not the object. A struct is a value type and never this. */
-    fun isClass(t: KType?): Boolean = t != null && facts.isClass(t)
+    /** A reference class (D29, W2.9 1.2.1): held by `kira::Rc`, so a parameter or a plain local copies the same handle, not the object. A struct or a value class is a value type and never this. */
+    fun isClass(t: KType?): Boolean = t != null && facts.isRefClass(t)
 
     /** The first `MutView` a value of [t] carries (itself, a struct's field, a container's element, a tuple's, a `Maybe`'s), or null. */
     fun mutViewInside(t: KType?): KType? = inside(t, HashSet()) { facts.isMutView(it) }
@@ -410,14 +414,14 @@ internal class Rules(val program: TypedProgram) {
         KType.Str, is KType.Param, is KType.Fn -> true
         is KType.Nominal -> when (val sym = t.sym) {
             is EnumSymbol -> false
-            is ClassSymbol -> when (sym.kind) {
-                ClassKind.STRUCT -> path.add(t) && run {
+            is ClassSymbol -> when {
+                sym.holdsOnlyItsFields -> path.add(t) && run {
                     val sub = sym.typeParams.zip(t.typeArgs()).toMap()
                     val found = sym.fields.any { holdsStorage(it.type.substitute(sub), path) }
                     path.remove(t)
                     found
                 }
-                ClassKind.MAGIC -> if (sym.name == "Maybe" || sym.name == "Result" || sym.name.startsWith("Tuple")) {
+                sym.kind == ClassKind.MAGIC -> if (sym.name == "Maybe" || sym.name == "Result" || sym.name.startsWith("Tuple")) {
                     t.typeArgs().any { holdsStorage(it, path) }
                 } else {
                     true
@@ -448,9 +452,10 @@ internal class Rules(val program: TypedProgram) {
         }
         val nominal = t as? KType.Nominal ?: return null
         val sym = nominal.sym as? ClassSymbol ?: return null
-        return when (sym.kind) {
-            ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, wanted) }
-            ClassKind.STRUCT -> {
+        // A value class is looked into as a struct is (W2.9 1.2.1, review 1 #6): a reference class's fields are its object's.
+        return when {
+            sym.kind == ClassKind.MAGIC -> nominal.typeArgs().firstNotNullOfOrNull { inside(it, path, wanted) }
+            sym.isValue -> {
                 if (!path.add(t)) {
                     return null
                 }
@@ -852,15 +857,17 @@ object CallReach {
         is KType.Nominal -> when (val sym = t.sym) {
             is EnumSymbol -> false
             is TraitSymbol -> true
-            is ClassSymbol -> when (sym.kind) {
-                ClassKind.CLASS, ClassKind.OPAQUE -> true
-                ClassKind.STRUCT -> path.add(t) && run {
+            is ClassSymbol -> when {
+                // A value class has no subclass to add an Fx field (W2.9 1.2.1): its fields are all it holds, as a struct's.
+                sym.holdsOnlyItsFields -> path.add(t) && run {
                     val sub = sym.typeParams.zip(t.typeArgs()).toMap()
                     val found = sym.fields.any { holds(it.type.substitute(sub), path) }
                     path.remove(t)
                     found
                 }
-                ClassKind.MAGIC -> when {
+                // A reference class (now or in a subclass), an extern value C++ lays out, an opaque handle.
+                sym.kind != ClassKind.MAGIC -> true
+                else -> when {
                     sym.name == "StrBuf" || sym.name == "CStr" -> false
                     sym.name in HOLDERS || sym.name.startsWith("Tuple") -> t.typeArgs().any { holds(it, path) }
                     // Ref, Weak, Any, a stdlib handle (Mutex, Thread, Suite, ...).
@@ -1061,6 +1068,9 @@ object CallReach {
         }
         val fn = rc.fn
         return when (rc.kind) {
+            // A copy runs no default (each field left out keeps the receiver's) and no Fx field unless its class's
+            // `initially` does, which may call anything (W2.9 1.2.3: copy is construction).
+            CallKind.COPY -> ((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol)?.let { cls -> chainHasInitially(cls) } == false
             CallKind.VIRTUAL, CallKind.TRAIT -> false
             CallKind.FN_VALUE -> ((callee as? Identifier)?.let { model.refs[it] } as? ParamSymbol)?.let { it in k.ownFx } == true
             CallKind.PRINT -> rc.args.all { a -> (a as? ArgBinding.Given)?.let { !holdsUserType(model.types[it.expr]) } ?: true }
@@ -1151,6 +1161,19 @@ object CallReach {
         }
         // A mutator that replaces or removes may drop what it held (`xs.clear()`, `xs.set(0, v)`, `m.remove(k)`); `xs.add(v)` drops nothing.
         return !dropsHeld(rc, fn) || !heldMayDrop(rc, model, receiverType, k.drops)
+    }
+
+    /** Whether [cls] or a superclass of it has an `initially` block. */
+    fun chainHasInitially(cls: ClassSymbol): Boolean {
+        var c: ClassSymbol? = cls
+        val seen = HashSet<ClassSymbol>()
+        while (c != null && seen.add(c)) {
+            if (c.initially != null) {
+                return true
+            }
+            c = c.superclass?.sym as? ClassSymbol
+        }
+        return false
     }
 
     internal fun construction(cls: ClassSymbol?, given: Map<FieldSymbol, Expr>, model: TypedModel, k: Known): Boolean {

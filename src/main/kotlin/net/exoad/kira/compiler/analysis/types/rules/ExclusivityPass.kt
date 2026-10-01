@@ -150,7 +150,9 @@ internal class ExclusivityPass : RulePass {
                     )
                     is ObjectInitExpr -> {
                         val cls = model.inits[n]?.cls
-                        if (cls != null && cls.kind == ClassKind.CLASS) {
+                        // make_shared forwards its operands by reference: a reference class's construction (a value's is an
+                        // aggregate or a braced constructor call, sequenced and copied like a struct's, W2.9 1.2.2).
+                        if (cls != null && cls.isRef) {
                             siblings(n, (n.positionalArgs + n.namedArgs.map { it.value }).map { Operand(it, Role.VALUE) }, "the construction of ${cls.name}")
                         }
                     }
@@ -340,7 +342,7 @@ internal class ExclusivityPass : RulePass {
             val rootPrivate = when (val root = p.root()) {
                 is Place.Local -> true
                 is Place.Param -> !root.sym.byRef
-                is Place.This -> b.isStructOwner && !b.thisMutable
+                is Place.This -> b.isValueOwner && !b.thisMutable
                 is Place.Field -> root.receiver == null
                 else -> false
             }
@@ -374,7 +376,7 @@ internal class ExclusivityPass : RulePass {
         private fun stable(p: Place): Boolean {
             val steps = p.path()
             val root = p.root()
-            if (root is Place.This && (b.owner as? ClassSymbol)?.kind == ClassKind.CLASS) {
+            if (root is Place.This && (b.owner as? ClassSymbol)?.let { it.isRef } == true) {
                 return steps.isNotEmpty() && steps.first() is PathStep.FieldStep && steps.drop(1).all { valueField(it) }
             }
             // A `mut` parameter, the `this` of a value class's `mut fx`, and a trait's `this` in a default body (a class
@@ -401,7 +403,7 @@ internal class ExclusivityPass : RulePass {
         }
 
         /** A field of a value class: storage at a fixed offset inside the object that holds it. */
-        private fun valueField(s: PathStep): Boolean = s is PathStep.FieldStep && (s.sym.owner as? ClassSymbol)?.kind == ClassKind.STRUCT
+        private fun valueField(s: PathStep): Boolean = s is PathStep.FieldStep && (s.sym.owner as? ClassSymbol)?.isValue == true
 
         /** What rule M's message calls a `mut` place's storage. */
         private fun storageOf(p: Place): String {

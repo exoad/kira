@@ -7,6 +7,8 @@ import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.FnSymbol
+import net.exoad.kira.compiler.analysis.types.Foreign
+import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -21,6 +23,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
@@ -101,6 +104,112 @@ internal class EscapePass : RulePass {
             }
         }
         r.model.fxEscapes.putAll(fxEsc)
+        ThisInInitially(r, bodies).run()
+    }
+
+    /**
+     * `rules.escape.this-in-initially` (W2.9 1.2.11, review 1 #4): in a class's `initially`,
+     * `this` is used only for the class's own field reads and writes, and as the receiver of a
+     * method whose body (and every override's) keeps `this` to itself. It is never a value, an
+     * argument, a capture or stored: the object is not built yet. A value class would hand out a
+     * half-built copy where the reference backends hand out the finished object, and C++ has no
+     * `shared_ptr` to an object under construction. The rule is the typer's, so every target
+     * agrees; it replaces W2.4's C++-only refusal for `initially` (a `finally`'s stays there).
+     */
+    private class ThisInInitially(private val r: Rules, private val bodies: List<Body>) {
+        private val model = r.model
+
+        /** Every method that overrides or implements another, under the one it overrides (the methods a call may dispatch to). */
+        private val overriders: IdentityHashMap<FnSymbol, MutableList<FnSymbol>> by lazy {
+            val out = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
+            r.program.modules.forEach { m ->
+                m.declarations.filterIsInstance<ClassSymbol>().flatMap { it.methods }.forEach { fn ->
+                    var o = fn.overrides
+                    val seen = IdentityHashMap<FnSymbol, Boolean>()
+                    while (o != null && seen.put(o, true) == null) {
+                        out.getOrPut(o) { mutableListOf() }.add(fn)
+                        o = o.overrides
+                    }
+                }
+            }
+            out
+        }
+
+        private val escaping = IdentityHashMap<FnSymbol, Boolean>()
+
+        fun run() {
+            for (b in bodies) {
+                val cls = b.owner as? ClassSymbol ?: continue
+                if (b.kind != BodyKind.INITIALLY || cls.kind != ClassKind.USER) {
+                    continue
+                }
+                b.roots.forEach { root -> walk(root, cls) { node, why -> report(cls, node, why) } }
+            }
+        }
+
+        private fun report(cls: ClassSymbol, node: ASTNode, why: String) {
+            r.report(
+                "rules.escape.this-in-initially",
+                "`this` in ${cls.name}'s initially is only for its own fields and for calling a method that keeps `this` to itself; here $why. " +
+                    "The object is not built yet: hand on the fields it needs, or do this after construction.",
+                node,
+            )
+        }
+
+        /**
+         * Every use of `this` under [root] that is no field access and no call of a method that
+         * keeps `this` ([keepsThis]), reported through [bad]; a lambda that captures `this` is one.
+         */
+        private fun walk(root: ASTNode, owner: ClassSymbol, bad: (ASTNode, String) -> Unit) {
+            val allowed: MutableSet<ASTNode> = java.util.Collections.newSetFromMap(IdentityHashMap())
+            AstScan.walk(listOf(root)) { n, _ ->
+                when (n) {
+                    is MemberAccessExpr -> if (n.origin is ThisExpr && model.members[n] is MemberRef.Field) {
+                        allowed.add(n.origin)
+                    }
+                    is FunctionCallExpr -> {
+                        val rc = model.calls[n]
+                        val recv = rc?.receiver
+                        // A call of an Fx field reads the field; the closure in it was made outside the object.
+                        if (rc != null && rc.kind != CallKind.FN_VALUE && (recv is ThisExpr || rc.implicitThis)) {
+                            val fn = rc.fn
+                            if (fn != null && rc.kind != CallKind.COPY && keepsThis(fn)) {
+                                recv?.let { allowed.add(it) }
+                            } else {
+                                bad((n.name as? MemberAccessExpr)?.member ?: n.name, "it calls '${fn?.name ?: "a method"}', which lets `this` escape")
+                                recv?.let { allowed.add(it) }
+                            }
+                        }
+                    }
+                    is LambdaExpr -> if (model.captures[n].orEmpty().any { it is Capture.This && it.owner === owner }) {
+                        bad(n, "a lambda captures it")
+                    }
+                    else -> {}
+                }
+            }
+            AstScan.walk(listOf(root)) { n, _ ->
+                if (n is ThisExpr && n !in allowed) {
+                    bad(n, "it is used as a value (returned, stored, passed or put in a container)")
+                }
+            }
+        }
+
+        /** Whether [fn] and every method that overrides it keep `this` to themselves: no use of it as a value, no lambda capturing it, and only calls on it that keep it too. */
+        private fun keepsThis(fn: FnSymbol): Boolean = (listOf(fn) + overriders[fn].orEmpty()).all { !escapes(it) }
+
+        private fun escapes(fn: FnSymbol): Boolean {
+            escaping[fn]?.let { return it }
+            if (fn.body == null) {
+                return (fn.foreign !is Foreign.Magic).also { escaping[fn] = it }
+            }
+            // Assumed kept while its own body is looked at, so a recursion adds nothing.
+            escaping[fn] = false
+            val owner = fn.owner as? ClassSymbol
+            var found = false
+            fn.body?.forEach { s -> if (owner != null) walk(s, owner) { _, _ -> found = true } }
+            escaping[fn] = found
+            return found
+        }
     }
 
     private fun seed(p: ParamSymbol, fn: FnSymbol?, fxEsc: IdentityHashMap<ParamSymbol, Boolean>) {
@@ -194,9 +303,9 @@ internal class EscapePass : RulePass {
             }
         }
 
-        /** A struct's `this` is a value, never a shared handle, and a trait has no object of its own: only a class is marked. */
+        /** A value's `this` (a struct's, a value class's) is never a shared handle, and a trait has no object of its own: only a reference class is marked. */
         private fun markThisEscapes(owner: TypeSymbol?) {
-            if (owner is ClassSymbol && owner.kind == ClassKind.CLASS) {
+            if (owner is ClassSymbol && owner.isRef) {
                 owner.thisEscapes = true
             }
         }

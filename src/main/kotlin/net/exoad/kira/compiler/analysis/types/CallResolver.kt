@@ -209,6 +209,9 @@ internal class CallResolver(private val c: PhaseC) {
             return KType.Error
         }
         val hit = c.members.method(recv, name)
+        if (hit == null && name == ClassShapes.COPY) {
+            copy(e, origin, recv, member, ctx, scope)?.let { return it }
+        }
         if (hit == null) {
             val field = c.members.field(recv, name)
             val callee = e.name as? MemberAccessExpr
@@ -223,6 +226,55 @@ internal class CallResolver(private val c: PhaseC) {
             return KType.Error
         }
         return method(e, origin, recv, hit, member, hint, implicitThis = false, ctx = ctx, scope = scope)
+    }
+
+    /**
+     * `x.copy(f = v, ...)` (W2.9 1.2.3, Q7): the synthesized copy of an immutable user class,
+     * one optional parameter per field of the chain (inherited ones first), each left out kept
+     * from the receiver. A private field is a parameter only inside the class that declares it.
+     * On a class something extends it is `types.copy.extended` (a copy through the parent would
+     * drop the subclass's fields and class; Kotlin's data classes are final for the same
+     * reason). Null when [recv] has no copy (a mutable, magic or struct receiver): the caller
+     * reports the unknown member.
+     */
+    private fun copy(e: FunctionCallExpr, receiver: Expr, recv: KType, member: Identifier, ctx: BodyContext, scope: Scope): KType? {
+        val n = recv as? KType.Nominal ?: return null
+        val cls = n.sym as? ClassSymbol ?: return null
+        if (cls.kind != ClassKind.USER) {
+            return null
+        }
+        val fn = cls.copyMethod ?: return null
+        if (cls.isSubclassed) {
+            argsOnly(e, ctx, scope)
+            val sub = c.program.modules.flatMap { m -> m.declarations.filterIsInstance<ClassSymbol>() }.firstOrNull { it.superclass?.sym === cls }
+            c.report(
+                "types.copy.extended",
+                "${cls.name} is extended${sub?.let { " by ${it.name}" } ?: ""}, so a copy through it would drop the subclass's fields and class: " +
+                    "copy the subclass's own value, or build the ${cls.name} you mean.",
+                member,
+            )
+            return KType.Error
+        }
+        val fields = ClassShapes.chainFields(cls)
+        val bound = bind(e, "${recv.display()}.copy", fn.params, allOptional = true) ?: run {
+            argsOnly(e, ctx, scope)
+            return KType.Error
+        }
+        bound.args.forEachIndexed { i, a ->
+            val field = fields.getOrNull(i)?.first ?: return@forEachIndexed
+            if (a is ArgBinding.Given && !field.isPub && ctx.owner !== field.owner) {
+                c.report(
+                    "types.copy.private",
+                    "'${field.name}' is a private field of ${field.owner.name}: only ${field.owner.name}'s own methods may copy with it.",
+                    a.expr,
+                )
+            }
+        }
+        val sub = cls.typeParams.zip(n.typeArgs()).toMap()
+        val paramTypes = fn.params.map { it.type.substitute(sub) }
+        typeGiven(e, bound, paramTypes, fn.params.map { false }, fn.params.map { it.name }, IdentityHashMap(), ctx, scope)
+        model.calls[e] = ResolvedCall(CallKind.COPY, fn, receiver, false, emptyList(), bound.args, bound.order, recv, sub)
+        return recv
     }
 
     /** `Result.success(v)`, `E.x()`, `module.f(...)`: the origin names a type or a module. */
@@ -537,7 +589,7 @@ internal class CallResolver(private val c: PhaseC) {
      * Binds [e]'s arguments to [params]: positional ones first, then named ones, then defaults
      * for what is left. Reports what cannot bind, and returns null then.
      */
-    fun bind(e: FunctionCallExpr, calleeName: String, params: List<ParamSymbol>): Bound? {
+    fun bind(e: FunctionCallExpr, calleeName: String, params: List<ParamSymbol>, allOptional: Boolean = false): Bound? {
         val positional = e.positionalParameters
         val named = e.namedParameters
         if (positional.size > params.size) {
@@ -572,7 +624,7 @@ internal class CallResolver(private val c: PhaseC) {
             slots[index] = n.value to n.isMut
             order.add(index)
         }
-        val missing = params.filterIndexed { i, p -> slots[i] == null && p.default == null }
+        val missing = if (allOptional) emptyList() else params.filterIndexed { i, p -> slots[i] == null && p.default == null }
         if (missing.isNotEmpty()) {
             c.report(
                 "types.call.missing-arg",
@@ -589,7 +641,7 @@ internal class CallResolver(private val c: PhaseC) {
                 ArgBinding.Default(p, trailing = (i + 1 until params.size).all { slots[it] == null })
             }
         }
-        if (params.none { it.default != null }) {
+        if (params.none { it.default != null } && !allOptional) {
             // The same call, bound by the frontend's one rule for named arguments: it must agree.
             val canonical = NamedArguments.bind(e, calleeName, params.map { it.name })
             val mine = args.map { (it as ArgBinding.Given).expr }

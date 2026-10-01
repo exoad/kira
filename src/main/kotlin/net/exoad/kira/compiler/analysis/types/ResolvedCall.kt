@@ -37,6 +37,15 @@ enum class CallKind {
 
     /** Construction through call syntax, where the language allows it. */
     CTOR,
+
+    /**
+     * `x.copy(f = v, ...)` (W2.9 1.2.3, Q7): the synthesized copy of an immutable class that no
+     * class extends ([ClassSymbol.copyMethod]). [ResolvedCall.receiver] is the object copied,
+     * evaluated first and once; [ResolvedCall.args] has one binding per field of the chain
+     * (inherited ones first), a [ArgBinding.Default] keeping the receiver's value. It is a
+     * construction that reads its receiver, so its class's `initially` runs again.
+     */
+    COPY,
 }
 
 /**

@@ -484,7 +484,7 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub class Node { pub v: Int32 = 0 }
+                pub class Node { pub mut v: Int32 = 0 }
                 pub trait Shape { pub fx area: () Int32; }
                 pub fx f: () Void { }
                 @_extern(cpp = "bibo::openCar", header = "car.hxx")

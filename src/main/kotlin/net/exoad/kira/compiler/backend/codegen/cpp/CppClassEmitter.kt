@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Shape
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.DeclarationCollector
 import net.exoad.kira.compiler.analysis.types.Effect
@@ -173,10 +174,10 @@ class CppClassEmitter : CppClassesPart {
 
     override fun upcast(ctx: CppEmitContextImpl, e: Expr, c: Coercion.Upcast, text: String): String {
         val from = CppClassFacts.referent(c.from)
-        if (from is ClassSymbol && from.isStruct) {
+        if (from is ClassSymbol && from.isValue) {
             ctx.unsupported(
                 e,
-                "boxing struct ${from.name} into a ${c.to.display()} value (D43: take it through a generic parameter bounded by the trait)",
+                "boxing ${if (from.isStruct) "struct" else "the value class"} ${from.name} into a ${c.to.display()} value (D43: take it through a generic parameter bounded by the trait)",
             )
         }
         return text
@@ -188,6 +189,12 @@ class CppClassEmitter : CppClassesPart {
 
         /** `std::make_shared<C>` adopts the one `enable_shared_from_this` base; the root of the superclass chain carries it. */
         const val SHARED_BASE = "kira::Shared"
+
+        /** A reference class's `copy` (W2.9 1.2.3): `r->copy_({.f = v})`, generated for a class the program copies. */
+        const val COPY_MEMBER = "copy_"
+
+        /** The aggregate `copy_` takes: one `std::optional<T> f{};` per field of the chain. */
+        const val COPY_ARGS = "Copy_"
     }
 }
 
@@ -229,6 +236,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val name = name(c)
         ctx.parts.generics.templateHead(ctx, c.typeParams)?.let { w.line(it) }
         val public = mutableListOf<String>()
+        val protected = mutableListOf<String>()
         val private = mutableListOf<String>()
         public += constructorDeclaration(c)
         public += "$name(const $name&) = delete;"
@@ -236,12 +244,43 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         destructorDeclaration(c)?.let { public += it }
         c.methods.filter { isLowered(it) }.forEach { fn -> (if (isPublic(fn)) public else private) += prototype(fn) }
         facts.forwarders(c).forEach { public += forwarderPrototype(it) }
-        c.fields.forEach { f -> if (f.isPub) public += field(f) else private += field(f) }
+        if (facts.isCopied(c)) {
+            public += copyMember(c)
+        }
+        // A subclass's copy_ keeps this class's fields from *this (W2.9 1.2.3): a private one is protected in C++, and Kira keeps it private.
+        val inheritedByCopy = facts.copiedBelow(c)
+        c.fields.forEach { f -> if (f.isPub) public += field(f) else (if (inheritedByCopy) protected else private) += field(f) }
         w.line("class $name${if (c.isSubclassed) "" else " final"}${bases(c)}")
         w.line("{")
         section(w, "public:", public)
+        section(w, "protected:", protected)
         section(w, "private:", private)
         w.line("};")
+    }
+
+    /**
+     * `copy` on a reference class (W2.9 1.2.3, [M8]): a nested aggregate of one
+     * `std::optional<T> f{};` per field of the chain, and a `const` member that makes the new
+     * object through the constructor, each field the call leaves out kept from `*this`.
+     */
+    private fun copyMember(c: ClassSymbol): List<String> {
+        val params = constructorParams(c, withDefaults = false)
+        val self = ctx.speller.bareClass(c.selfType)
+        val out = mutableListOf<String>()
+        out += "struct ${CppClassEmitter.COPY_ARGS}"
+        out += "{"
+        params.forEach { p -> out += "${MEMBER_INDENT}std::optional<${p.fieldType}> ${ctx.names.escape(p.field.name)}{};" }
+        out += "};"
+        val args = params.map { p ->
+            val n = ctx.names.escape(p.field.name)
+            val kept = "w_.$n ? *w_.$n : $n"
+            if (p.deferred) "std::make_optional<${p.fieldType}>($kept)" else kept
+        }
+        out += "[[nodiscard]] kira::Rc<$self> ${CppClassEmitter.COPY_MEMBER}(const ${CppClassEmitter.COPY_ARGS}& w_) const"
+        out += "{"
+        out += "${MEMBER_INDENT}return std::make_shared<$self>(${args.joinToString(", ")});"
+        out += "}"
+        return out
     }
 
     private fun section(w: CppWriter, label: String, lines: List<String>) {
@@ -799,7 +838,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         when (sym) {
             // A struct's own methods are the declaration emitter's; the trait default bodies it
             // inherits are members of its own here (structInherited), never templates.
-            is ClassSymbol -> if (sym.isStruct) {
+            is ClassSymbol -> if (sym.isValue) {
                 if (!split || !inline) {
                     structDefaults(sym, report = false).forEach { fn -> blocks += { inheritedDefinition(this, sym, fn, inline) } }
                 }
@@ -1038,10 +1077,11 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             return "/* this */"
         }
         val owner = site.owner
-        if (owner is ClassSymbol && owner.isStruct) {
+        // A value's `this` (a struct's, a value class's: W2.9 1.2.2) is the object itself.
+        if (owner is ClassSymbol && owner.isValue) {
             return "*this"
         }
-        if (owner !is ClassSymbol || owner.kind != ClassKind.CLASS) {
+        if (owner !is ClassSymbol || !owner.isRef) {
             ctx.unsupported(e, "this as a value in a default body of trait ${owner.name} (a trait has no shared_from_this)")
             return "/* this */"
         }
@@ -1172,6 +1212,8 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             }
             cls.kind == ClassKind.MAGIC && cls.name == REF -> "kira::Box<${ctx.spell(t.typeArgs().firstOrNull() ?: KType.Error, Pos.TEMPLATE_ARG, e)}>"
             ctx.speller.isSystemClass(cls) -> ctx.speller.bareClass(t)
+            // A value class with `initially` (W2.9 1.2.3): its all-fields constructor, braced, every field passed.
+            cls.isValueClass && cls.initially != null -> return construction(e, init, ctx.spell(t, Pos.VALUE, e), kiraClass = false, braced = true)
             else -> {
                 ctx.unsupported(e, "the construction of ${t.display()} as a class")
                 return "/* ${t.display()} */"
@@ -1180,7 +1222,13 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return construction(e, init, target, kiraClass = facts.isKiraClass(cls))
     }
 
-    private fun construction(e: ObjectInitExpr, init: ResolvedInit, target: String, kiraClass: Boolean): String {
+    /**
+     * [braced]: a value class's all-fields constructor (W2.9 1.2.3), `V{a, b, c}`: no default
+     * arguments, so every left-out field's default is an operand here, ranked as any other and
+     * ordered after the given values (Kira: the given values as written, then the defaults in
+     * declaration order), and C++ evaluates a braced list left to right.
+     */
+    private fun construction(e: ObjectInitExpr, init: ResolvedInit, target: String, kiraClass: Boolean, braced: Boolean = false): String {
         val fields = init.fields
         // No object holds a view (decision 4b): ViewPass refuses the field's type (rules.view.type) before any emitter runs.
         fields.firstOrNull { holdsSecondClass(it.field.type.substitute(init.substitution)) }?.let { f ->
@@ -1191,7 +1239,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             )
         }
         var end = fields.size
-        while (end > 0 && fields[end - 1] is FieldInit.Default && fields[end - 1].field.default != null) {
+        while (!braced && end > 0 && fields[end - 1] is FieldInit.Default && fields[end - 1].field.default != null) {
             end -= 1
         }
         val types = fields.map { it.field.type.substitute(init.substitution) }
@@ -1203,7 +1251,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val operands = init.sourceOrder.filter { it < end && fields[it] is FieldInit.Given } +
             (0 until end).filter { fields[it] is FieldInit.Default && fields[it].field.default != null && !deferred(it) }
         val operand = { i: Int -> (fields[i] as? FieldInit.Given)?.expr ?: fields[i].field.default!! }
-        val ranks = operands.map { i -> if (fields[i] is FieldInit.Default) CppClassFacts.RANK_PURE else facts.operandRank(operand(i)) }
+        val ranks = operands.map { i -> if (fields[i] is FieldInit.Default && !braced) CppClassFacts.RANK_PURE else facts.operandRank(operand(i)) }
         val spilled = mutableListOf<String>()
         if (ranks.any { it == CppClassFacts.RANK_IMPURE } && ranks.count { it != CppClassFacts.RANK_PURE } >= 2) {
             operands.filterIndexed { k, _ -> ranks[k] != CppClassFacts.RANK_PURE }.forEach { i ->
@@ -1246,7 +1294,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
                 texts[i] = "std::make_optional<${ctx.spell(types[i], if (fields[i].field.isMut) Pos.MUT_VALUE else Pos.FIELD, e)}>(${texts[i]})"
             }
         }
-        val call = "std::make_shared<$target>(${texts.joinToString(", ")})"
+        val call = if (braced) "$target{${texts.joinToString(", ")}}" else "std::make_shared<$target>(${texts.joinToString(", ")})"
         if (spilled.isEmpty()) {
             return call
         }
@@ -1283,34 +1331,8 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return typedLiteral(default, text, type.prim)
     }
 
-    /**
-     * Whether a value-initialized [t] (D38's `T{}`) is a value Kira has: a scalar, a `Str`, an
-     * enum, an empty container or `Maybe`, an empty `Weak` or view, a null pointer of the FFI's
-     * `Unsafe`, `CStr` and `@_opaque` handles, and a struct or tuple or `Arr` of those. A class,
-     * trait, `Ref` or system class is a null `kira::Rc` and an `Fx` an empty `kira::Fn`, though
-     * the Kira type is not nullable (`Maybe` is): the first member access segfaults, the first
-     * call throws `std::bad_function_call` (measured on g++ and zig c++).
-     */
-    private fun hasEmptyValue(t: KType, seen: MutableSet<TypeSymbol> = Collections.newSetFromMap(IdentityHashMap())): Boolean = when (t) {
-        is KType.Scalar, KType.Str -> true
-        is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> true
-            is ClassSymbol -> when (sym.kind) {
-                ClassKind.CLASS -> false
-                ClassKind.OPAQUE -> true
-                ClassKind.STRUCT -> !seen.add(sym) || sym.typeParams.zip(t.typeArgs()).toMap().let { sub ->
-                    sym.fields.all { f -> f.default != null || hasEmptyValue(f.type.substitute(sub), seen) }
-                }
-                ClassKind.MAGIC -> when {
-                    ctx.speller.isSystemClass(sym) || sym.name == REF || sym.name == "Result" -> false
-                    sym.name == "Arr" || sym.name.startsWith("Tuple") -> t.typeArgs().all { hasEmptyValue(it, seen) }
-                    else -> true
-                }
-            }
-            else -> false
-        }
-        else -> false
-    }
+    /** [Companion.hasEmptyValue] under this module's speller. */
+    private fun hasEmptyValue(t: KType): Boolean = hasEmptyValue(t, ctx.speller)
 
     /** A construction that skips [field], which has no default, where its [type] has no empty value ([hasEmptyValue]). */
     private fun refuseSkipped(e: ObjectInitExpr, init: ResolvedInit, field: FieldSymbol, type: KType) {
@@ -1356,6 +1378,35 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
          */
         fun constLocal(type: String): String = if (type.endsWith("*")) "$type const" else "const $type"
 
+        /**
+         * Whether a value-initialized [t] (D38's `T{}`) is a value Kira has: a scalar, a `Str`, an
+         * enum, an empty container or `Maybe`, an empty `Weak` or view, a null pointer of the FFI's
+         * `Unsafe`, `CStr` and `@_opaque` handles, and a struct, value class, tuple or `Arr` of
+         * those. A reference class, trait, `Ref` or system class is a null `kira::Rc` and an `Fx`
+         * an empty `kira::Fn`, though the Kira type is not nullable (`Maybe` is): the first member
+         * access segfaults, the first call throws `std::bad_function_call` (measured on g++ and zig c++).
+         */
+        fun hasEmptyValue(t: KType, speller: CppTypeSpeller, seen: MutableSet<TypeSymbol> = Collections.newSetFromMap(IdentityHashMap())): Boolean = when (t) {
+            is KType.Scalar, KType.Str -> true
+            is KType.Nominal -> when (val sym = t.sym) {
+                is EnumSymbol -> true
+                is ClassSymbol -> when {
+                    sym.kind == ClassKind.OPAQUE -> true
+                    sym.kind == ClassKind.MAGIC -> when {
+                        speller.isSystemClass(sym) || sym.name == REF || sym.name == "Result" -> false
+                        sym.name == "Arr" || sym.name.startsWith("Tuple") -> t.typeArgs().all { hasEmptyValue(it, speller, seen) }
+                        else -> true
+                    }
+                    sym.isValue -> !seen.add(sym) || sym.typeParams.zip(t.typeArgs()).toMap().let { sub ->
+                        sym.fields.all { f -> f.default != null || hasEmptyValue(f.type.substitute(sub), speller, seen) }
+                    }
+                    else -> false
+                }
+                else -> false
+            }
+            else -> false
+        }
+
         /** The second-class types (decision 4b, 30-second-class.md 1.1): each points into storage it does not own. */
         private val SECOND_CLASS = setOf("View", "MutView", "CStr", "Unsafe")
 
@@ -1367,11 +1418,12 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         fun holdsSecondClass(t: KType, seen: MutableSet<TypeSymbol> = Collections.newSetFromMap(IdentityHashMap())): Boolean {
             val n = t as? KType.Nominal ?: return false
             val sym = n.sym as? ClassSymbol ?: return false
-            return when (sym.kind) {
-                ClassKind.MAGIC -> sym.name in SECOND_CLASS || (sym.name != "Fx" && n.typeArgs().any { holdsSecondClass(it, seen) })
-                ClassKind.STRUCT -> seen.add(sym) && sym.typeParams.zip(n.typeArgs()).toMap().let { sub -> sym.fields.any { holdsSecondClass(it.type.substitute(sub), seen) } }
-                ClassKind.CLASS -> n.typeArgs().any { holdsSecondClass(it, seen) }
-                else -> false
+            return when (sym.shape) {
+                Shape.MAGIC -> sym.name in SECOND_CLASS || (sym.name != "Fx" && n.typeArgs().any { holdsSecondClass(it, seen) })
+                // A struct or a value class holds its fields (W2.9 1.2.1); a reference class's are its object's.
+                Shape.VALUE -> seen.add(sym) && sym.typeParams.zip(n.typeArgs()).toMap().let { sub -> sym.fields.any { holdsSecondClass(it.type.substitute(sub), seen) } }
+                Shape.REF -> n.typeArgs().any { holdsSecondClass(it, seen) }
+                Shape.OPAQUE -> false
             }
         }
 
@@ -1445,7 +1497,7 @@ class CppClassFacts(private val program: TypedProgram) {
     /** Every class, struct and trait the program defines itself (no `@_magic`, `@_opaque` or `@_extern` one). */
     private val types: List<Symbol> = program.modules.flatMap { it.declarations }.filter { sym ->
         when (sym) {
-            is ClassSymbol -> (sym.kind == ClassKind.CLASS || sym.kind == ClassKind.STRUCT) && sym.foreign == null
+            is ClassSymbol -> (sym.kind == ClassKind.USER || sym.kind == ClassKind.STRUCT) && sym.foreign == null
             is TraitSymbol -> sym.foreign == null
             else -> false
         }
@@ -1455,7 +1507,7 @@ class CppClassFacts(private val program: TypedProgram) {
         collectNonEscapingLambdas()
         types.forEach { scanBodies(it) }
         types.forEach { t ->
-            if (t is ClassSymbol && t.kind == ClassKind.CLASS && (t.thisEscapes || t in escapes)) {
+            if (t is ClassSymbol && t.isRef && (t.thisEscapes || t in escapes)) {
                 t.thisEscapes = true
                 sharedRoots.add(chain(t).first().cls)
             }
@@ -1511,7 +1563,7 @@ class CppClassFacts(private val program: TypedProgram) {
 
     /** A class strictly below [c] in the program whose own method overrides [m] (directly or through further overrides). */
     private fun overriderBelow(c: ClassSymbol, m: FnSymbol): ClassSymbol? = types.firstOrNull { d ->
-        d is ClassSymbol && d !== c && d.kind == ClassKind.CLASS && chain(d).any { it.cls === c } && d.methods.any { g -> overrides(g, m) }
+        d is ClassSymbol && d !== c && d.kind == ClassKind.USER && chain(d).any { it.cls === c } && d.methods.any { g -> overrides(g, m) }
     } as ClassSymbol?
 
     private fun overrides(g: FnSymbol, m: FnSymbol): Boolean {
@@ -1529,6 +1581,22 @@ class CppClassFacts(private val program: TypedProgram) {
     /** Whether some body names the field (reads or writes it); a mem-initializer does not count. */
     fun isReferenced(f: FieldSymbol): Boolean = f in referenced
 
+    /** The reference classes some `copy` call of the program copies (W2.9 1.2.3): each gets a `copy_` member. */
+    private val copied: Set<ClassSymbol> by lazy {
+        val out: MutableSet<ClassSymbol> = Collections.newSetFromMap(IdentityHashMap())
+        model.calls.values.forEach { rc ->
+            if (rc.kind == CallKind.COPY) {
+                ((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol)?.takeIf { it.isRef }?.let { out.add(it) }
+            }
+        }
+        out
+    }
+
+    fun isCopied(c: ClassSymbol): Boolean = c in copied
+
+    /** Whether a copied class below [c] reads [c]'s fields in its `copy_`, which C++ allows only for a public or protected field. */
+    fun copiedBelow(c: ClassSymbol): Boolean = copied.any { d -> d !== c && chain(d).any { it.cls === c } }
+
     /** Whether [c] derives `kira::Shared<C>`: it is the root of a chain in which some class's `this` escapes. */
     fun derivesShared(c: ClassSymbol): Boolean = c in sharedRoots
 
@@ -1536,7 +1604,7 @@ class CppClassFacts(private val program: TypedProgram) {
     fun isVirtualBase(t: TypeSymbol): Boolean = t in virtualBases
 
     /** A class this program defines, which C++ can derive from and construct: not magic, opaque, extern or a struct. */
-    fun isKiraClass(t: TypeSymbol): Boolean = t is ClassSymbol && t.kind == ClassKind.CLASS && t.foreign == null
+    fun isKiraClass(t: TypeSymbol): Boolean = t is ClassSymbol && t.isRef && t.foreign == null
 
     /** `this` used as a value, or captured by a lambda that escapes, in [c]'s `initially` or `finally`. */
     fun initializerThisUses(c: ClassSymbol): List<ASTNode> = initializerUses[c].orEmpty()
@@ -1706,7 +1774,7 @@ class CppClassFacts(private val program: TypedProgram) {
     private fun readsNothingShared(e: Expr): Boolean = when (e) {
         is IntegerLiteral, is FloatLiteral, is CharLiteral, is StringLiteral -> true
         is UnaryExpr -> e.operator == UnaryOp.NEG && readsNothingShared(e.operand)
-        is ThisExpr -> (site(e)?.owner as? ClassSymbol)?.kind == ClassKind.CLASS
+        is ThisExpr -> (site(e)?.owner as? ClassSymbol)?.let { it.isRef } == true
         is LambdaExpr -> model.captures(e).isNullOrEmpty()
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol -> !sym.isMut
@@ -1765,7 +1833,7 @@ class CppClassFacts(private val program: TypedProgram) {
         val family = IdentityHashMap<FnSymbol, MutableList<FnSymbol>>()
         methods.forEach { m -> family.getOrPut(familyRoot(m)) { mutableListOf() }.add(m) }
         types.forEach { c ->
-            if (c !is ClassSymbol || c.kind != ClassKind.CLASS) {
+            if (c !is ClassSymbol || !c.isRef) {
                 return@forEach
             }
             val finallyCalls: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
@@ -1892,7 +1960,7 @@ class CppClassFacts(private val program: TypedProgram) {
 
     private fun thisEscapes(owner: TypeSymbol, fn: FnSymbol?, node: ASTNode, lambda: Boolean) {
         when {
-            owner is ClassSymbol && owner.kind == ClassKind.CLASS ->
+            owner is ClassSymbol && owner.isRef ->
                 if (fn == null) initializerUses.getOrPut(owner) { mutableListOf() }.add(node) else escapes.add(owner)
             // A trait's `this` as a value is refused where it is spelled (thisValue); a lambda here.
             owner is TraitSymbol && lambda -> traitUses.getOrPut(owner) { mutableListOf() }.add(node)
@@ -1902,7 +1970,7 @@ class CppClassFacts(private val program: TypedProgram) {
 
     /** The C++ bases of a class (a Kira superclass, then its traits) or a trait (its parents); a struct has none. */
     private fun directBases(t: Symbol): List<KType.Nominal> = when {
-        t is ClassSymbol && !t.isStruct -> listOfNotNull(t.superclass?.takeIf { isKiraClass(it.sym) }) + t.traits.filter { it.sym is TraitSymbol }
+        t is ClassSymbol && !t.isValue -> listOfNotNull(t.superclass?.takeIf { isKiraClass(it.sym) }) + t.traits.filter { it.sym is TraitSymbol }
         t is TraitSymbol -> t.parents.filter { it.sym is TraitSymbol }
         else -> emptyList()
     }
@@ -1964,7 +2032,7 @@ class CppClassFacts(private val program: TypedProgram) {
     private fun deriveConstness() {
         val methods = types.flatMap { t ->
             when {
-                t is ClassSymbol && t.kind == ClassKind.CLASS -> t.methods
+                t is ClassSymbol && t.isRef -> t.methods
                 t is TraitSymbol -> t.methods
                 else -> emptyList()
             }
@@ -2085,7 +2153,7 @@ class CppClassFacts(private val program: TypedProgram) {
      * gcc `-Wshadow`, clang and MSVC C4458 refuse the copy otherwise, measured).
      */
     fun structsCopying(fn: FnSymbol): List<ClassSymbol> = types.filter { t ->
-        t is ClassSymbol && t.isStruct && inheritedDefaults(t).any { it.method === fn }
+        t is ClassSymbol && t.isValue && inheritedDefaults(t).any { it.method === fn }
     }.map { it as ClassSymbol }
 
     private fun structResolution(s: ClassSymbol): Pair<List<InheritedDefault>, List<Pair<FnSymbol, List<KType.Nominal>>>> = structMemo.getOrPut(s) {
@@ -2172,7 +2240,7 @@ class CppClassFacts(private val program: TypedProgram) {
     /** A type whose members are reached through a pointer: a class, an opaque class, a trait, `Ref`, `Weak`, `Unsafe`. */
     private fun isReferenceOwner(sym: Any?): Boolean = when (sym) {
         is TraitSymbol -> true
-        is ClassSymbol -> sym.kind == ClassKind.CLASS || sym.kind == ClassKind.OPAQUE || (sym.kind == ClassKind.MAGIC && sym.name in REFERENCE_MAGIC)
+        is ClassSymbol -> (sym.isRef) || sym.kind == ClassKind.OPAQUE || (sym.kind == ClassKind.MAGIC && sym.name in REFERENCE_MAGIC)
         else -> false
     }
 

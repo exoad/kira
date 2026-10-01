@@ -24,5 +24,6 @@ object RulePasses {
         ConstEligibilityPass(),
         GenericBoundsPass(),
         NamingPass(),
+        WeakPass(),
     )
 }

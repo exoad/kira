@@ -29,7 +29,8 @@ import java.util.IdentityHashMap
  * 6. flattened trait methods;
  * 7. overrides: [FnSymbol.overrides], [FnSymbol.isVirtual], [ClassSymbol.isSubclassed];
  * 8. every Type node inside bodies, initializers and defaults (so phase C only reads typeRefs);
- * 9. constants (ConstEval).
+ * 9. constants (ConstEval);
+ * 10. each class's immutability, shape and synthesized `copy` ([ClassShapes], W2.9 1.2.1).
  *
  * Each declaration is resolved under its own guard: an internal failure leaves that
  * declaration's types as [KType.Error] with a `types.internal` diagnostic, and the rest of
@@ -77,6 +78,8 @@ internal class SignatureResolver(private val program: TypedProgram) {
         step("body types") { bodyTypes() }
         globals.forEach { g -> each(g) { constEval.valueOf(g) } }
         step("defaults") { defaults() }
+        // W2.9 1.1 and 1.2.1: immutability, shape and copy, once parents, overrides and isSubclassed are known.
+        step("class shapes") { ClassShapes(program).run() }
     }
 
     private fun step(what: String, block: () -> Unit) {

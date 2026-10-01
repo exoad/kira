@@ -453,7 +453,7 @@ class TyperPhaseTest {
         val p = TyperTestSupport.phasesAAndB { snippet("pub class View { }\nv: View = View { }") }
         expectNoErrors(p)
         val t = (p.member("test:main", "v") as GlobalSymbol).type as KType.Nominal
-        assertEquals(ClassKind.CLASS, (t.sym as ClassSymbol).kind)
+        assertEquals(ClassKind.USER, (t.sym as ClassSymbol).kind)
     }
 
     @Test

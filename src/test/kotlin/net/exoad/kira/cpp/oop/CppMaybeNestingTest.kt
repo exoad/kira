@@ -34,7 +34,7 @@ class CppMaybeNestingTest {
         // Map.get of a key mapped to null is Some(None); of a missing key, None.
 
         pub class Node {
-            pub n: Int32 = 7
+            pub mut n: Int32 = 7
         }
 
         pub fx run: () Void {
@@ -74,7 +74,7 @@ class CppMaybeNestingTest {
         "oop:b10s",
         """
         pub class Node {
-            pub n: Int32 = 7
+            pub mut n: Int32 = 7
         }
 
         fx some<T>: (x: T) Maybe<T> {

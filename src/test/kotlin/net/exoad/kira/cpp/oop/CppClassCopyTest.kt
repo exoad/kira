@@ -212,7 +212,7 @@ class CppClassCopyTest {
         }
 
         pub class Kid {
-            require pub name: Str
+            require pub mut name: Str
             require pub tree: Tree
 
             pub fx leave: () Str {
@@ -277,7 +277,7 @@ class CppClassCopyTest {
 
         pub class Runner {
             require pub s: Step
-            require pub n: Int32
+            require pub mut n: Int32
 
             pub fx run: () Int32 {
                 s.step()
@@ -1060,7 +1060,7 @@ class CppClassCopyTest {
         val messages = unsupported(
             """
             pub class Other {
-                pub k: Int32 = 3
+                pub mut k: Int32 = 3
             }
 
             pub trait Speaker {
@@ -1077,7 +1077,7 @@ class CppClassCopyTest {
                 pub r: Ref<Int32>
                 pub f: Fx<Tuple0, Int32>
                 pub w: Wrap
-                require pub n: Int32
+                require pub mut n: Int32
             }
 
             pub fx make: () X {
@@ -1098,7 +1098,7 @@ class CppClassCopyTest {
                 uri,
                 """
                 pub class Other {
-                    pub k: Int32 = 3
+                    pub mut k: Int32 = 3
                 }
 
                 pub struct Plain {

@@ -5,13 +5,28 @@
 namespace classes
 {
   class Pet;
-  class Owner;
+  struct Owner;
   class Scaler;
   class Doubler;
   class Animal;
   class Dog;
   template<typename T>
-  class Box;
+  struct Box;
+
+  struct Owner
+  {
+      kira::Rc<Pet> pet{};
+
+      [[nodiscard]] kira::Rc<Pet> getPet() const;
+  };
+
+  template<typename T>
+  struct Box
+  {
+      T value{};
+
+      [[nodiscard]] T get() const;
+  };
 
   class Scaler
   {
@@ -29,17 +44,6 @@ namespace classes
       Pet(const Pet&) = delete;
       Pet& operator=(const Pet&) = delete;
       kira::Str name;
-  };
-
-  class Owner final
-  {
-  public:
-      explicit Owner(kira::Rc<Pet> pet_);
-      Owner(const Owner&) = delete;
-      Owner& operator=(const Owner&) = delete;
-      [[nodiscard]] kira::Rc<Pet> getPet() const;
-  private:
-      kira::Rc<Pet> pet;
   };
 
   class Doubler final : public Scaler
@@ -78,28 +82,11 @@ namespace classes
       std::int32_t tricks;
   };
 
-  template<typename T>
-  class Box final
-  {
-  public:
-      explicit Box(T value_);
-      Box(const Box&) = delete;
-      Box& operator=(const Box&) = delete;
-      [[nodiscard]] T get() const;
-      T value;
-  };
-
   [[nodiscard]] std::int32_t apply(const kira::Rc<Scaler>& s, std::int32_t v);
-  [[nodiscard]] kira::Rc<Box<std::int32_t>> boxed(std::int32_t v);
+  [[nodiscard]] Box<std::int32_t> boxed(std::int32_t v);
   [[nodiscard]] kira::Rc<kira::Box<std::int32_t>> makeCounter();
   [[nodiscard]] std::int32_t bump(const kira::Rc<kira::Box<std::int32_t>>& c);
   [[nodiscard]] kira::Str petName(const kira::Weak<Pet>& w);
-
-  template<typename T>
-  Box<T>::Box(T value_)
-      : value(std::move(value_))
-  {
-  }
 
   template<typename T>
   T Box<T>::get() const

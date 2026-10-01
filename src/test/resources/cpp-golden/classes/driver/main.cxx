@@ -1,7 +1,8 @@
-// classes: the class model run. The getter hands out copies of one reference
-// and the count comes back; a C++ class implements a Kira trait and gets its
-// default body; a virtual call reaches the subclass; Box<T> is a template; Ref
-// is shared state; Weak goes empty when its object does.
+// classes: the class model run. The getter of a value (Owner, immutable) hands
+// out copies of one reference and the count comes back; a C++ class implements
+// a Kira trait and gets its default body; a virtual call reaches the subclass;
+// Box<T> is a value template; Ref is shared state; Weak goes empty when its
+// (mutable) object does.
 #include "../expected/src/lang/classes.kira.hxx"
 
 #include <cstdio>
@@ -46,11 +47,11 @@ int main()
     {
         const kira::Rc<classes::Pet> pet = std::make_shared<classes::Pet>("mochi");
         const long before = pet.use_count();
-        const kira::Rc<classes::Owner> owner = std::make_shared<classes::Owner>(pet);
+        const classes::Owner owner{pet};
         kira::Str names;
         for(int i = 0; i < 3; ++i)
         {
-            const kira::Rc<classes::Pet> p = owner->getPet();
+            const kira::Rc<classes::Pet> p = owner.getPet();
             names += p->name;
         }
         check(names == "mochimochimochi", "a getter returns the field, three times over");
@@ -72,9 +73,9 @@ int main()
         check(dog->name == "rex", "the base's field is the subclass's first constructor argument");
     }
     {
-        check(classes::boxed(7)->get() == 7, "Box<Int32>");
-        const kira::Rc<classes::Box<kira::Str>> s = std::make_shared<classes::Box<kira::Str>>("text");
-        check(s->get() == "text" && s->value == "text", "and Box<Str>, instantiated by C++");
+        check(classes::boxed(7).get() == 7, "Box<Int32>");
+        const classes::Box<kira::Str> s{"text"};
+        check(s.get() == "text" && s.value == "text", "and Box<Str>, instantiated by C++");
     }
     {
         const kira::Rc<kira::Box<std::int32_t>> c = classes::makeCounter();

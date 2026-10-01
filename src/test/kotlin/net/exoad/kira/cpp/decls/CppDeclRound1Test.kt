@@ -165,7 +165,7 @@ class CppDeclRound1Test {
             """
             pub LIMIT: Int32 = 7
             pub class Holder {
-                pub n: Int32 = 1
+                pub mut n: Int32 = 1
                 pub fx limit: () Int32 { return LIMIT }
             }
             pub trait Sized {

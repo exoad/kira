@@ -255,10 +255,13 @@ class CppExternEmitterTest {
             pub fx openCar: () Car;
             """
         )
+        // W2.9 1.2.10: Car declares no `mut`, so it is the C++ value bibo::Car (no longer kira::Rc<bibo::Car>), and C++
+        // must copy it as Kira copies a value.
         assertLines(
             h,
+            "static_assert(std::is_copy_constructible_v<::bibo::Car>, \"Kira's Car is immutable, so it is a C++ value Kira copies: the C++ type has no copy (declare its mutating methods mut fx, or make it @_opaque)\");",
             "KIRA_EXTERN_CHECK(std::declval<const ::bibo::Car&>().ok(), bool, \"Car.ok\");",
-            "KIRA_EXTERN_CHECK(bibo::openCar(), kira::Rc<bibo::Car>, \"openCar\");",
+            "KIRA_EXTERN_CHECK(bibo::openCar(), bibo::Car, \"openCar\");",
         )
     }
 
@@ -275,7 +278,7 @@ class CppExternEmitterTest {
 
             @_extern(cpp = "bibo::Car", header = "car.hxx")
             pub class Car {
-                pub speed: Float32 = 0.0
+                pub mut speed: Float32 = 0.0
             }
 
             @_extern(cpp = "bibo::counter", header = "car.hxx")

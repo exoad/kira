@@ -83,6 +83,7 @@ class EscapePassTest {
                 }
             }
             pub class Self {
+                pub mut n: Int32 = 0
                 pub fx me: () Self {
                     return this
                 }

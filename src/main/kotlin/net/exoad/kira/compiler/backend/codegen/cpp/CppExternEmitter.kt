@@ -235,12 +235,17 @@ object CppExternEmitter : CppExternsPart {
             cls.decl?.let { ctx.unsupported(it, "the extern ${kindOf(cls)} '${cls.name}' with a parent list (the C++ side owns its hierarchy)") }
             return
         }
+        // An immutable extern class is the C++ value its declaration states (W2.9 1.2.10): its fields get the layout
+        // checks an extern struct's do, and C++ must copy it as Kira copies a value; a mutable one is a kira::Rc handle.
         if (cls.fields.isNotEmpty()) {
-            if (!cls.isStruct) {
-                cls.decl?.let { ctx.unsupported(it, "the fields of the extern class '${cls.name}' (a class is reached through its methods; a struct declares fields)") }
+            if (!cls.isValue) {
+                cls.decl?.let { ctx.unsupported(it, "the fields of the extern class '${cls.name}' (a mutable class is reached through its methods; an immutable one, a value, declares fields)") }
             } else {
                 layoutChecks(ctx, cls, w)
             }
+        }
+        if (cls.isValueClass) {
+            w.line("static_assert(std::is_copy_constructible_v<${cppName(cls)}>, \"Kira's ${cls.name} is immutable, so it is a C++ value Kira copies: the C++ type has no copy (declare its mutating methods mut fx, or make it @_opaque)\");")
         }
         cls.methods.forEach { functionCheck(ctx, it, cls, w) }
     }
@@ -476,7 +481,7 @@ object CppExternEmitter : CppExternsPart {
 
     /** `->` for a class or an opaque handle (an `Rc` or a pointer), `.` for a struct (a value). */
     private fun accessor(owner: TypeSymbol): String = when {
-        owner is ClassSymbol && owner.isStruct -> "."
+        owner is ClassSymbol && owner.isValue -> "."
         else -> "->"
     }
 

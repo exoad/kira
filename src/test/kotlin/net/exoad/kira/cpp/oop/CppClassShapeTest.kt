@@ -51,6 +51,20 @@ class CppClassShapeTest {
     private fun unsupported(body: String): List<String> =
         emit(body).module(uri).diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }.map { it.message }
 
+    /** The typer's refusal of [body], as the emit helper fails with it (empty when the typer took it). */
+    private fun typerRefusal(body: String): String = runCatching { emit(body) }.exceptionOrNull()?.message ?: ""
+
+    /** [block] with the rule passes off: the C++ backstop a program meets past a checker's bug. */
+    private fun <T> withoutRulePasses(block: () -> T): T {
+        val rules = net.exoad.kira.compiler.analysis.types.KiraTyper.rulePasses.toList()
+        net.exoad.kira.compiler.analysis.types.KiraTyper.rulePasses.clear()
+        try {
+            return block()
+        } finally {
+            net.exoad.kira.compiler.analysis.types.KiraTyper.rulePasses.addAll(rules)
+        }
+    }
+
     // ---- traits ---------------------------------------------------------------------------------
 
     @Test
@@ -256,7 +270,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub class One {
-                require k: Int32
+                require mut k: Int32
                 pub fx get: () Int32 { return k }
             }
             pub class OneDefaulted {
@@ -264,12 +278,12 @@ class CppClassShapeTest {
                 pub fx get: () Int32 { return k }
             }
             pub class Two {
-                require a: Int32
+                require mut a: Int32
                 require b: Int32
                 pub fx sum: () Int32 { return a }
             }
             pub class Empty {
-                pub fx get: () Int32 { return 1 }
+                pub mut fx get: () Int32 { return 1 }
             }
             """
         )
@@ -624,7 +638,7 @@ class CppClassShapeTest {
             pub class Holder {
                 require kept: Int32
                 require read: Int32
-                require pub shown: Int32
+                require pub mut shown: Int32
                 pub fx get: () Int32 { return read }
             }
             """
@@ -687,7 +701,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub class Box<T> {
-                require pub value: T
+                require pub mut value: T
                 pub fx get: () T {
                     return value
                 }
@@ -914,8 +928,8 @@ class CppClassShapeTest {
 
     @Test
     fun thisAsAValueInInitiallyIsRefused() {
-        val messages = unsupported(
-            """
+        // The typer's rules.escape.this-in-initially refuses it first (W2.9 1.2.11); the C++ refusal is the backstop past it.
+        val program = """
             pub class Node {
                 mut me: Maybe<Node> = null
                 initially {
@@ -925,7 +939,8 @@ class CppClassShapeTest {
             pub fx keep: (n: Node) Void {
             }
             """
-        )
+        assertTrue(typerRefusal(program).contains("rules.escape.this-in-initially"), typerRefusal(program))
+        val messages = withoutRulePasses { unsupported(program) }
         assertTrue(messages.any { it.contains("this captured or used as a value in an initially or finally block of Node") }, messages.toString())
     }
 
@@ -979,7 +994,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub class Band {
-                require pub lo: Int32
+                require pub mut lo: Int32
                 pub mid: Int32 = 5
                 require pub hi: Int32
                 pub tail: Int32 = 9
@@ -1003,7 +1018,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub class Band {
-                require pub lo: Int32
+                require pub mut lo: Int32
                 pub mid: UInt8 = 5
                 require pub hi: Int32
             }
@@ -1045,7 +1060,7 @@ class CppClassShapeTest {
                 return calls
             }
             pub class Pair {
-                require pub a: Int32
+                require pub mut a: Int32
                 require pub b: Int32
             }
             pub fx make: () Pair {
@@ -1070,7 +1085,7 @@ class CppClassShapeTest {
         }
 
         pub class Pair {
-            require pub a: Str
+            require pub mut a: Str
             require pub n: Int32
         }
     """.trimIndent()
@@ -1114,7 +1129,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub class Pair {
-                require pub a: Str
+                require pub mut a: Str
                 require pub n: Int32
             }
 
@@ -1148,7 +1163,7 @@ class CppClassShapeTest {
             $renaming
 
             pub class Trio {
-                require pub a: Str
+                require pub mut a: Str
                 require pub n: Int32
                 require pub k: Int32
             }
@@ -1188,7 +1203,7 @@ class CppClassShapeTest {
             }
 
             pub class Duo {
-                require pub a: Int32
+                require pub mut a: Int32
                 pub b: Int32 = seed
                 require pub c: Int32
             }
@@ -1219,7 +1234,7 @@ class CppClassShapeTest {
             pub class Two {
                 pub a: Int32 = next()
                 pub b: Int32 = next()
-                pub c: Int32 = 7
+                pub mut c: Int32 = 7
             }
 
             pub fx none: () Two {
@@ -1358,8 +1373,8 @@ class CppClassShapeTest {
     fun thisAsAValueInAMethodAnInitiallyRunsIsRefused() {
         // initcall2: initially calls join, and join hands this on: shared_from_this() threw std::bad_weak_ptr
         // on g++ and zig (MSVC 0xC0000409), since no kira::Rc owns an object under construction.
-        val messages = unsupported(
-            """
+        // The typer's rules.escape.this-in-initially refuses it first (W2.9 1.2.11); the C++ refusal is the backstop past it.
+        val program = """
             pub class Reg {
                 pub mut n: Int32 = 0
             }
@@ -1368,7 +1383,7 @@ class CppClassShapeTest {
             }
 
             pub class Node {
-                require pub name: Str
+                require pub mut name: Str
                 require pub reg: Reg
 
                 initially {
@@ -1380,7 +1395,8 @@ class CppClassShapeTest {
                 }
             }
             """
-        )
+        assertTrue(typerRefusal(program).contains("rules.escape.this-in-initially"), typerRefusal(program))
+        val messages = withoutRulePasses { unsupported(program) }
         assertTrue(messages.any { it.startsWith("this as a value in Node.join, which the initially block of Node runs: C++ has no shared_ptr to an object under construction") }, messages.joinToString("\n"))
     }
 
@@ -1418,14 +1434,14 @@ class CppClassShapeTest {
     @Test
     fun anEscapingLambdaThatCapturesThisInAMethodAnInitiallyRunsIsRefused() {
         // initlam: initially calls hook, and hook stores a lambda capturing self = shared_from_this().
-        val messages = unsupported(
-            """
+        // The typer's rules.escape.this-in-initially refuses it first (W2.9 1.2.11); the C++ refusal is the backstop past it.
+        val program = """
             pub class Reg {
                 pub mut hook: Maybe<Fx<Tuple0, Str>> = null
             }
 
             pub class Node {
-                require pub name: Str
+                require pub mut name: Str
                 require pub reg: Reg
 
                 initially {
@@ -1443,7 +1459,8 @@ class CppClassShapeTest {
                 }
             }
             """
-        )
+        assertTrue(typerRefusal(program).contains("rules.escape.this-in-initially"), typerRefusal(program))
+        val messages = withoutRulePasses { unsupported(program) }
         assertTrue(messages.any { it.startsWith("a lambda that escapes and captures this (self = shared_from_this()) in Node.hook, which the initially block of Node runs") }, messages.joinToString("\n"))
     }
 
@@ -1511,7 +1528,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub class Cell {
-                require pub small: UInt8
+                require pub mut small: UInt8
                 require pub big: Int64
                 require pub plain: Int32
             }
@@ -1528,7 +1545,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub class Pet {
-                require pub name: Str
+                require pub mut name: Str
             }
             pub fx counter: () Ref<Int32> {
                 return Ref<Int32> { value = 0 }
@@ -1547,7 +1564,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub class Pet {
-                require pub name: Str
+                require pub mut name: Str
             }
             pub class Owner {
                 mut pet: Maybe<Pet> = null
@@ -2900,10 +2917,12 @@ class CppClassShapeTest {
             pub class Holder {
                 require pub g: Handle
                 require pub h: Handle
+                mut tick: Int32 = 0
             }
             pub class Loose {
                 pub h: Handle
                 require pub n: Int32
+                mut tick: Int32 = 0
             }
             pub fx make: () Holder {
                 return Holder { h = open(), g = open() }

@@ -280,7 +280,8 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
             is ClassSymbol -> when {
                 sym.kind == ClassKind.MAGIC -> magic(sym, t, args)
                 sym.kind == ClassKind.OPAQUE -> "${externName(sym) ?: ctx.qualified(sym)}$targs*"
-                sym.isStruct -> "${externName(sym) ?: ctx.qualified(sym)}$targs"
+                // A struct or a value class (W2.9 1.2.2), an immutable extern class among them (1.2.10).
+                sym.isValue -> "${externName(sym) ?: ctx.qualified(sym)}$targs"
                 else -> "kira::Rc<${externName(sym) ?: ctx.qualified(sym)}$targs>"
             }
             is TraitSymbol -> "kira::Rc<${ctx.qualified(sym)}$targs>"

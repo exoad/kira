@@ -95,7 +95,7 @@ class ProfilePassTest {
         val p = snippet(
             """
             pub class Node {
-                pub n: Int32 = 0
+                pub mut n: Int32 = 0
             }
             pub trait Show {
                 pub fx code: () Int32;

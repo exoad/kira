@@ -71,8 +71,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     private val declarations: List<Symbol> = placement.declarations
     private val externs: List<Symbol> = declarations.filter { foreignOf(it) is Foreign.Extern }
-    private val structs: List<ClassSymbol> = declarations.filterIsInstance<ClassSymbol>().filter { it !in externs && it.isStruct }
-    private val classes: List<ClassSymbol> = declarations.filterIsInstance<ClassSymbol>().filter { it !in externs && it.kind == ClassKind.CLASS }
+    /** The values (W2.9 1.2.2): every struct, and every user class of shape VALUE, lowered as a struct is. */
+    private val structs: List<ClassSymbol> = declarations.filterIsInstance<ClassSymbol>().filter { it !in externs && it.isValue }
+    private val classes: List<ClassSymbol> = declarations.filterIsInstance<ClassSymbol>().filter { it !in externs && it.isRef }
     private val traits: List<TraitSymbol> = declarations.filterIsInstance<TraitSymbol>().filter { it !in externs }
     private val functions: List<FnSymbol> = declarations.filterIsInstance<FnSymbol>().filter { it !in externs && it.owner == null && !it.isOperator }
     private val operators: List<FnSymbol> = declarations.filterIsInstance<FnSymbol>().filter { it.isOperator }
@@ -382,7 +383,8 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         when (sym) {
             is ClassSymbol -> {
                 parts.generics.templateHead(ctx, sym.typeParams)?.let { w.line(it) }
-                val keyword = if (sym.isStruct) "struct" else "class"
+                // A value class is a struct in C++, and says so where it is declared ahead (MSVC C4099).
+                val keyword = if (sym.isValue) "struct" else "class"
                 w.line("$keyword ${ctx.names.escape(sym.name)};")
             }
             is TraitSymbol -> {
@@ -478,7 +480,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         is AliasSymbol -> listOf(render { alias(this, sym) })
         is GlobalSymbol -> listOf(render { global(this, sym, home) })
-        is ClassSymbol -> if (sym.isStruct) listOf(render { struct(this, sym) }) else listOf(render { ctx.inScopeOf(sym) { parts.classes.define(ctx, sym, this) } })
+        is ClassSymbol -> if (sym.isValue) listOf(render { valueClass(this, sym) }) else listOf(render { ctx.inScopeOf(sym) { parts.classes.define(ctx, sym, this) } })
         is TraitSymbol -> listOf(render { ctx.inScopeOf(sym) { parts.classes.define(ctx, sym, this) } })
         else -> emptyList()
     }
@@ -506,6 +508,13 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                     return@forEach
                 }
                 out += positionOf(fn.decl) to render { definition(this, fn, p, owner = s) }
+            }
+            // A value class's `initially` constructors (W2.9 1.2.3) go where its methods go.
+            if (s.isValueClass && s.initially != null) {
+                val p = placement.type(s)
+                if (p.def == home && (exported == null || placement.isExported(s) == exported)) {
+                    out += positionOf(s.decl) to render { valueConstructors(this, s, inline = home != Home.SOURCE) }
+                }
             }
         }
         // A struct is asked too: the classes part defines the trait default bodies it inherits
@@ -709,7 +718,8 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                     sym.name == "View" || sym.name == "MutView" || sym.name == "Unsafe" -> true
                     else -> false
                 }
-                sym.isStruct -> sym.fields.all { isLiteralType(it.type) }
+                // A struct, or a value class that is an aggregate (no `initially`: its constructor is no constexpr).
+                sym.isValue && (sym.isStruct || sym.initially == null) -> sym.fields.all { isLiteralType(it.type) }
                 else -> false
             }
             else -> false
@@ -719,10 +729,29 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     // ---- structs -------------------------------------------------------------------------------
 
-    private fun struct(w: CppWriter, s: ClassSymbol) {
-        val decl = s.decl as? StructDecl
-        if (decl?.initially != null) {
+    /**
+     * A struct, or a value class (W2.9 1.2.2): a C++ `struct` with every field public, in
+     * declaration order, and `const` methods; an aggregate, built with designated initializers.
+     * A value class with no `initially` is the very text a struct with the same fields gets.
+     * With `initially` (1.2.3, Q8) it is no aggregate: it declares a default constructor that
+     * delegates with every default ([valueConstructors]), when every field without one has an
+     * empty value (D38), and an all-fields constructor whose body is the block, `explicit` for
+     * one field, with no default arguments and no converting form, so every Kira construction
+     * passes every field. A struct's `initially` stays refused (D30).
+     */
+    private fun valueClass(w: CppWriter, s: ClassSymbol) {
+        val decl = s.decl
+        val user = s.isValueClass
+        if (!user && decl is StructDecl && decl.initially != null) {
             ctx.unsupported(decl, "the initially block of struct '${s.name}' (a struct is an aggregate, D30)")
+        }
+        if (user) {
+            // A body-less method of a class is a slot a construction fills (the charter), which no value lowers yet.
+            s.methods.forEach { fn ->
+                if (fn.body == null && !ctx.isMagic(fn) && fn.foreign == null) {
+                    ctx.unsupported(fn.decl ?: decl ?: return@forEach, "'${s.name}.${fn.name}' without a body, a method implemented at instantiation (D43)")
+                }
+            }
         }
         val equality = usage.needsEquality(s)
         if (equality) {
@@ -730,7 +759,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                 ctx.diag(
                     f.decl ?: s.decl ?: return@let,
                     STRUCT_EQUALITY_CODE,
-                    "struct ${s.name} is compared with == but its field '${f.name}' has no == in C++ (an Fx, a Weak, a Stack, a Queue or a Result); " +
+                    "${if (user) "class" else "struct"} ${s.name} is compared with == but its field '${f.name}' has no == in C++ (an Fx, a Weak, a Stack, a Queue or a Result); " +
                         "compare the other fields yourself, or drop the field",
                 )
             }
@@ -738,19 +767,89 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         parts.generics.templateHead(ctx, s.typeParams)?.let { w.line(it) }
         // The body is class scope: a same-module name a member hides is spelled `::ns::name` (CppEmitContextImpl.qualified).
         ctx.inScopeOf(s) {
+            val constructors = if (user && s.initially != null) valueConstructorPrototypes(s) else emptyList()
             w.block("struct ${ctx.names.escape(s.name)}", ";") {
                 s.fields.forEach { f -> line(field(f)) }
-                val methods = s.methods.filter { !ctx.isMagic(it) }
+                val methods = s.methods.filter { !ctx.isMagic(it) && (!user || it.body != null || it.foreign != null) }
                 // The trait default bodies the struct inherits are its own members (static dispatch, design 5.5).
                 val inherited = parts.classes.structInherited(ctx, s)
-                if (methods.isNotEmpty() || inherited.isNotEmpty() || equality) {
+                if (constructors.isNotEmpty() || methods.isNotEmpty() || inherited.isNotEmpty() || equality) {
                     blank()
                 }
+                constructors.forEach { line(it) }
                 methods.forEach { fn -> prototype(fn, owner = s).forEach { line(it) } }
                 inherited.forEach { line(it) }
                 if (equality) {
                     line("bool operator==(const ${ctx.names.escape(s.name)}&) const = default;")
                 }
+            }
+        }
+    }
+
+    /** One parameter of a value class's all-fields constructor (W2.9 1.2.3): `<field>_`, by value, moved when C++ passes its type by `const&`. */
+    private class ValueParam(val field: FieldSymbol, val type: String, val name: String, val moved: Boolean)
+
+    private fun valueParams(s: ClassSymbol): List<ValueParam> = s.fields.map { f ->
+        val decl = f.decl as? VariableDecl
+        val type = if (decl != null && model.typeOf(decl.type) != null) ctx.spell(decl.type, Pos.FIELD) else ctx.spell(f.type, Pos.FIELD, f.decl)
+        val escaped = ctx.names.escape(f.name)
+        ValueParam(f, type, if (escaped == f.name) "${f.name}_" else "${escaped}p", !ctx.speller.byValue(f.type))
+    }
+
+    /**
+     * The default constructor's delegation: every field's default, or `T{}` for one without
+     * (D38) where that is a value Kira has; null when some field has none (a reference class,
+     * an `Fx`: a null handle), and the class then has no default constructor.
+     */
+    private fun defaultDelegation(s: ClassSymbol): List<String>? = s.fields.map { f ->
+        val default = f.default
+        when {
+            default != null -> initText(default, f.type)
+            ClassLowering.hasEmptyValue(f.type, ctx.speller) -> "${ctx.spell(f.type, Pos.VALUE, f.decl)}{}"
+            else -> return null
+        }
+    }
+
+    private fun valueConstructorPrototypes(s: ClassSymbol): List<String> {
+        val name = ctx.names.escape(s.name)
+        val params = valueParams(s)
+        val out = mutableListOf<String>()
+        if (params.isNotEmpty() && defaultDelegation(s) != null) {
+            out += "$name();"
+        }
+        val explicit = if (params.size == 1) "explicit " else ""
+        out += "$explicit$name(${params.joinToString(", ") { "${it.type} ${it.name}" }});"
+        return out
+    }
+
+    /**
+     * The definitions of [valueConstructorPrototypes]: the default constructor, delegating in
+     * braces (so its defaults run left to right, as Kira's declaration order has them), then the
+     * one whose mem-initializers take every field in declaration order and whose body is `initially`.
+     */
+    private fun valueConstructors(w: CppWriter, s: ClassSymbol, inline: Boolean) {
+        ctx.inScopeOf(s) {
+            val name = ctx.names.escape(s.name)
+            val qualifier = ownerQualifier(s)
+            val specifier = if (inline && s.typeParams.isEmpty()) "inline " else ""
+            val params = valueParams(s)
+            val delegation = if (params.isNotEmpty()) defaultDelegation(s) else null
+            if (delegation != null) {
+                parts.generics.templateHead(ctx, s.typeParams)?.let { w.line(it) }
+                w.line("$specifier$qualifier$name()")
+                w.block("    : $name{${delegation.joinToString(", ")}}") {}
+                w.blank()
+            }
+            s.decl?.let { node -> ctx.lineDirective(node)?.let { w.line(it) } }
+            parts.generics.templateHead(ctx, s.typeParams)?.let { w.line(it) }
+            val head = "$specifier$qualifier$name(${params.joinToString(", ") { "${it.type} ${it.name}" }})"
+            val inits = params.map { p -> "${ctx.names.escape(p.field.name)}(${if (p.moved) "std::move(${p.name})" else p.name})" }
+            val body: CppWriter.() -> Unit = { s.initially?.let { ctx.body(null, it, this) } }
+            if (inits.isEmpty()) {
+                w.block(head, body = body)
+            } else {
+                w.line(head)
+                w.block("    : ${inits.joinToString(", ")}", body = body)
             }
         }
     }
@@ -784,7 +883,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
     }
 
     /** A class held as `kira::Rc<C>`: a Kira class, or a system module's `@_magic` class the runtime defines. */
-    private fun isRcClass(sym: ClassSymbol): Boolean = sym.kind == ClassKind.CLASS || ctx.speller.isSystemClass(sym)
+    private fun isRcClass(sym: ClassSymbol): Boolean = (sym.isRef) || ctx.speller.isSystemClass(sym)
 
     // ---- functions -------------------------------------------------------------------------------
 
@@ -1130,7 +1229,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         is GlobalSymbol -> if (sym.isMut) "state" else "constant"
         is EnumSymbol -> "enum"
         is AliasSymbol -> "alias"
-        is ClassSymbol -> if (sym.isStruct) "struct" else "class"
+        is ClassSymbol -> if (sym.isValue) "struct" else "class"
         is TraitSymbol -> "trait"
         else -> "name"
     }

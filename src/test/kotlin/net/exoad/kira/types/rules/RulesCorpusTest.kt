@@ -43,7 +43,7 @@ class RulesCorpusTest {
     @Test
     fun everyRulePassIsRegistered() {
         assertEquals(
-            listOf("lent", "effects", "escape", "view", "mutability", "exclusivity", "return", "visibility", "profile", "const", "generics", "naming"),
+            listOf("lent", "effects", "escape", "view", "mutability", "exclusivity", "return", "visibility", "profile", "const", "generics", "naming", "weak"),
             KiraTyper.rulePasses.map { it.name },
         )
     }
@@ -168,7 +168,7 @@ class RulesCorpusTest {
                 is BinaryExpr -> if (n.operator != BinaryOp.AND && n.operator != BinaryOp.OR) group(n, listOf(n.leftExpr, n.rightExpr))
                 is CompoundAssignmentExpr -> group(n, listOf(n.left, n.right))
                 is PlaceAssignmentExpr -> group(n, AstTree.children(n.target).filterIsInstance<Expr>().filter { it !is Type } + n.value)
-                is ObjectInitExpr -> model.inits[n]?.let { ri -> if (ri.cls?.kind == ClassKind.CLASS) group(n, n.positionalArgs + n.namedArgs.map { it.value }) }
+                is ObjectInitExpr -> model.inits[n]?.let { ri -> if (ri.cls?.let { it.kind == ClassKind.USER && it.isRef } == true) group(n, n.positionalArgs + n.namedArgs.map { it.value }) }
                 is InterpolatedStringLiteral -> group(n, n.parts.filterIsInstance<InterpolationPart.Hole>().map { it.expr })
                 else -> {}
             }

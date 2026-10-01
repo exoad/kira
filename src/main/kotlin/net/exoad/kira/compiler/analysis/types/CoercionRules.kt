@@ -55,14 +55,31 @@ internal class TypeFacts(private val builtins: Builtins) {
     /** The first type argument of a magic container (its element), else null. */
     fun elementOf(t: KType): KType? = (t as? KType.Nominal)?.typeArgs()?.firstOrNull()
 
-    /** A user class (or an extern class): a reference type held by Rc. */
+    /**
+     * A user class (an extern one included) or an `@_opaque` handle: a DECLARATION test, what
+     * inheritance, upcasts and identity `==` read. Whether it is held by `kira::Rc` is
+     * [isRefClass]: an immutable class is a value (W2.9 1.2.1).
+     */
     fun isClass(t: KType): Boolean {
         val sym = (t as? KType.Nominal)?.sym as? ClassSymbol ?: return false
-        return sym.kind == ClassKind.CLASS || sym.kind == ClassKind.OPAQUE
+        return sym.kind == ClassKind.USER || sym.kind == ClassKind.OPAQUE
+    }
+
+    /** A class whose copies share one object (W2.9 1.2.1): a user class of shape REF, or an `@_opaque` handle. */
+    fun isRefClass(t: KType): Boolean {
+        val sym = (t as? KType.Nominal)?.sym as? ClassSymbol ?: return false
+        return sym.kind == ClassKind.OPAQUE || (sym.isRef)
+    }
+
+    /** A user class of shape VALUE (not a struct): a C++ value (W2.9 1.2.1). */
+    fun isValueClass(t: KType): Boolean {
+        val sym = (t as? KType.Nominal)?.sym as? ClassSymbol ?: return false
+        return sym.isValueClass
     }
 
     fun isTrait(t: KType): Boolean = (t as? KType.Nominal)?.sym is TraitSymbol
 
+    /** A `struct` declaration (its own Kira rules until W2.9's no-struct). */
     fun isStruct(t: KType): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.kind == ClassKind.STRUCT
 
     fun isEnum(t: KType): Boolean = (t as? KType.Nominal)?.sym is EnumSymbol
@@ -70,13 +87,14 @@ internal class TypeFacts(private val builtins: Builtins) {
     /**
      * A value whose copies share one object: a class or trait reference, a `Ref<T>` (D46), a
      * `Weak<T>`, an `Unsafe<T>`. Writing through one does not write a copy. A type parameter
-     * is one when a bound of it is a class: only that class and its subclasses satisfy the
-     * bound, and every one is an `Rc`. A trait bound is not enough (a struct may implement
-     * the trait, and a struct is copied).
+     * is one when a bound of it is a reference class: only that class and its subclasses
+     * satisfy the bound, and every one is an `Rc`. A value-class bound is not (`<T: V2>` is a
+     * `V2`, copied: W2.9 1.2.1), nor is a trait bound (a struct may implement the trait, and
+     * a struct is copied). A value class is copied too: it is no reference.
      */
     fun isReference(t: KType): Boolean = when (t) {
-        is KType.Param -> boundNominals(t).any { isClass(it) }
-        else -> isClass(t) || isTrait(t) || isMagic(t, "Ref") || isMagic(t, "Weak") || isMagic(t, "Unsafe")
+        is KType.Param -> boundNominals(t).any { isRefClass(it) }
+        else -> isRefClass(t) || isTrait(t) || isMagic(t, "Ref") || isMagic(t, "Weak") || isMagic(t, "Unsafe")
     }
 
     /**
@@ -134,7 +152,9 @@ internal class TypeFacts(private val builtins: Builtins) {
                     sym.name == "View" || sym.name == "MutView" || sym.name == "Unsafe" -> true
                     else -> false
                 }
-                sym.kind == ClassKind.STRUCT -> {
+                // A struct, or a value class with no `initially` (an aggregate; the constructor
+                // `initially` gives one is no constexpr): W2.9 1.2.2.
+                sym.kind == ClassKind.STRUCT || (sym.isValueClass && sym.initially == null) -> {
                     if (!path.add(t)) {
                         false
                     } else {

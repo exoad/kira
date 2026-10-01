@@ -106,7 +106,7 @@ object OopTestSupport {
                 is ThisExpr -> ctx.parts.classes.thisValue(ctx, e)
                 is ObjectInitExpr -> {
                     val cls = model.init(e)?.cls
-                    if (cls != null && (cls.kind == ClassKind.CLASS || cls.name == "Ref")) ctx.parts.classes.construct(ctx, e) else "<ObjectInitExpr>"
+                    if (cls != null && (cls.kind == ClassKind.USER && (cls.isRef || cls.initially != null) || cls.name == "Ref")) ctx.parts.classes.construct(ctx, e) else "<ObjectInitExpr>"
                 }
                 is IntegerLiteral -> e.value.toString()
                 is UnaryExpr -> if (e.operator == UnaryOp.NEG) "-${ctx.expr(e.operand)}" else "<UnaryExpr>"
@@ -158,7 +158,7 @@ object OopTestSupport {
             val ret = ctx.spell(e.def.returnTypeSpecifier, Pos.RETURN)
             val params = e.def.parameters.joinToString(", ") { p -> "${ctx.spell(p.typeSpecifier, Pos.PARAM)} ${p.name.value}" }
             val owner = ctx.scope as? ClassSymbol
-            val capture = if (owner != null && owner.kind == ClassKind.CLASS && ctx.model.captures(e).orEmpty().any { it is Capture.This }) {
+            val capture = if (owner != null && owner.kind == ClassKind.USER && owner.isRef && ctx.model.captures(e).orEmpty().any { it is Capture.This }) {
                 val method = owner.methods.first { m -> m.body.orEmpty().any { s -> contains(s, e) } }
                 "self = ${ctx.parts.classes.selfCapture(ctx, owner, method, e)}"
             } else {
@@ -186,7 +186,7 @@ object OopTestSupport {
 
         private fun isReference(t: KType?): Boolean {
             val sym = (t as? KType.Nominal)?.sym ?: return false
-            return (sym is ClassSymbol && (sym.kind == ClassKind.CLASS || sym.name == "Ref")) || sym is net.exoad.kira.compiler.analysis.types.TraitSymbol
+            return (sym is ClassSymbol && (sym.kind == ClassKind.USER && sym.isRef || sym.name == "Ref")) || sym is net.exoad.kira.compiler.analysis.types.TraitSymbol
         }
 
         private fun call(ctx: CppEmitContextImpl, e: FunctionCallExpr): String {

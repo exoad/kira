@@ -8,11 +8,6 @@ namespace classes
   {
   }
 
-  Owner::Owner(kira::Rc<Pet> pet_)
-      : pet(std::move(pet_))
-  {
-  }
-
   kira::Rc<Pet> Owner::getPet() const
   {
       return pet;
@@ -79,9 +74,9 @@ namespace classes
       return tricks;
   }
 
-  kira::Rc<Box<std::int32_t>> boxed(std::int32_t v)
+  Box<std::int32_t> boxed(std::int32_t v)
   {
-      return std::make_shared<Box<std::int32_t>>(v);
+      return Box<std::int32_t>{.value = v};
   }
 
   kira::Rc<kira::Box<std::int32_t>> makeCounter()

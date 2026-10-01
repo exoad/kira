@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.Capture as LambdaCapture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.Shape
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.analysis.types.EnumSymbol
@@ -789,7 +790,7 @@ class CppHoister(private val lower: CppLowering) {
                 else -> return false
             }
             is LambdaCapture.Field -> Place.Field(Place.This(c.field.owner as? TypeSymbol ?: return false), c.field)
-            is LambdaCapture.This -> if ((c.owner as? ClassSymbol)?.isStruct == true) Place.This(c.owner) else return true
+            is LambdaCapture.This -> if ((c.owner as? ClassSymbol)?.isValue == true) Place.This(c.owner) else return true
         }
         return lower.policy.isPrivate(place) && place.root() !in written
     }
@@ -1096,16 +1097,18 @@ class CppHoister(private val lower: CppLowering) {
             KType.Str, is KType.Param -> true
             is KType.Fn -> false
             is KType.Nominal -> when (val sym = t.sym) {
-                is ClassSymbol -> when (sym.kind) {
-                    ClassKind.CLASS, ClassKind.OPAQUE -> false
-                    ClassKind.STRUCT -> if (!seen.add(sym)) {
+                is ClassSymbol -> when (sym.shape) {
+                    // A value class owns what its fields own, as a struct (W2.9 1.2.1, review 1 #6); a handle owns nothing a view
+                    // points into; an extern value C++ lays out may own anything.
+                    Shape.REF, Shape.OPAQUE -> false
+                    Shape.VALUE -> if (!sym.holdsOnlyItsFields) true else if (!seen.add(sym)) {
                         false
                     } else {
                         val substitution = sym.typeParams.zip(t.typeArgs()).toMap()
                         sym.fields.any { owns(it.type.substitute(substitution), seen) } ||
                             sym.superclass?.let { owns(it.substitute(substitution), seen) } == true
                     }
-                    ClassKind.MAGIC -> when (sym.name) {
+                    Shape.MAGIC -> when (sym.name) {
                         in POINTERS, "Fx" -> false
                         in OWNERS -> true
                         else -> t.typeArgs().any { owns(it, seen) }

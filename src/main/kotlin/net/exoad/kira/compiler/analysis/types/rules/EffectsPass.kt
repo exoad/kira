@@ -348,6 +348,8 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
                 else -> fns[fn] ?: Effect.IMPURE
             }
             CallKind.MAGIC -> if (fn != null) magic(rc, fn) else Effect.IMPURE
+            // A copy (W2.9 1.2.3) is a construction that reads its receiver (an operand of its own): its class's `initially` runs again.
+            CallKind.COPY -> if (((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol)?.let { CallReach.chainHasInitially(it) } != false) Effect.IMPURE else Effect.PURE
             CallKind.VIRTUAL, CallKind.TRAIT, CallKind.EXTERN, CallKind.FN_VALUE, CallKind.PRINT -> Effect.IMPURE
         }
         if (e == Effect.IMPURE) {

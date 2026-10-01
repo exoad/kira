@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
+import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.MemberRef
@@ -109,6 +110,8 @@ internal class ConstEligibilityPass : RulePass {
             if (fn.ret != KType.Void) {
                 literal(fn.ret, fn.decl?.def?.returnTypeSpecifier ?: fn.decl, "the return type")
             }
+            // A constexpr member's class is a literal type: a value class with `initially` is none (W2.9 1.2.3).
+            (fn.owner as? ClassSymbol)?.takeIf { it.isValueClass }?.let { owner -> literal(owner.selfType, fn.decl, "its receiver") }
             AstScan.walk(b.roots) { n, _ -> node(n) }
         }
 
@@ -123,8 +126,9 @@ internal class ConstEligibilityPass : RulePass {
         private fun nonLiteral(t: KType): String = when {
             t == KType.Str -> "std::string allocates"
             facts.isList(t) || (facts.isArr(t) && !facts.isFixedArr(t)) -> "std::vector is constexpr only from GCC 12; use Arr<T, N>"
-            facts.isClass(t) || facts.isTrait(t) -> "a class reference is an Rc on the heap; use a struct"
-            facts.isStruct(t) -> "one of its fields is not"
+            facts.isValueClass(t) && ((t as KType.Nominal).sym as ClassSymbol).initially != null -> "its initially block makes its constructor no constexpr"
+            facts.isRefClass(t) || facts.isTrait(t) -> "a class reference is an Rc on the heap; use a struct"
+            facts.isStruct(t) || facts.isValueClass(t) -> "one of its fields is not"
             t is KType.Fn -> "a std::function"
             else -> "it lives on the heap"
         }
@@ -195,6 +199,8 @@ internal class ConstEligibilityPass : RulePass {
                 CallKind.VIRTUAL, CallKind.TRAIT -> r.report("rules.const.call", "$what calls '${callee?.name}' through a vtable, which is no constant expression on a heap reference.", at)
                 CallKind.EXTERN -> r.report("rules.const.extern", "$what calls the extern '${callee?.name}', which C++ cannot evaluate at compile time.", at)
                 CallKind.PRINT -> r.report("rules.const.trace", "$what calls '${callee?.name ?: "trace"}', which prints; no constant expression can.", at)
+                // A value's copy is an aggregate initialization (W2.9 1.2.3); the result's type says whether it is a literal one.
+                CallKind.COPY -> {}
                 CallKind.FN_VALUE -> {
                     val sym = (target as? Identifier)?.let { model.refs[it] }
                     if (sym !is ParamSymbol) {
@@ -301,6 +307,7 @@ internal class ConstEligibilityPass : RulePass {
                 CallKind.VIRTUAL, CallKind.TRAIT -> Refusal("rules.const.call", "calls '${callee?.name}' through a vtable")
                 CallKind.EXTERN -> Refusal("rules.const.extern", "calls the extern '${callee?.name}'")
                 CallKind.PRINT -> Refusal("rules.const.trace", "prints")
+                CallKind.COPY -> null
                 CallKind.FN_VALUE -> Refusal("rules.const.call", "calls ${target?.let { KiraUnparser.text(it) } ?: "an Fx value"}, a std::function")
             }
         }

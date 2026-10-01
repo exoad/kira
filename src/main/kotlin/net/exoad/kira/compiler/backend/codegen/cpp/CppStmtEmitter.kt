@@ -93,7 +93,7 @@ class CppStmtEmitter : CppStmtPart {
         return when {
             fn == null -> owner == null || runCatching { placement.type(owner as Symbol).def != Home.SOURCE }.getOrDefault(true)
             owner == null -> placement.function(fn).def != Home.SOURCE
-            cls != null && cls.isStruct -> placement.method(cls, fn).def != Home.SOURCE
+            cls != null && cls.isValue -> placement.method(cls, fn).def != Home.SOURCE
             else -> fn.isConst || placement.isTemplate(fn, cls) ||
                 runCatching { placement.type(owner as Symbol).def != Home.SOURCE }.getOrDefault(true)
         }

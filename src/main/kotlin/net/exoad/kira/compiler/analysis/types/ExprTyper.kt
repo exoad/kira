@@ -99,7 +99,8 @@ internal class PhaseC(val program: TypedProgram) {
     /**
      * Whether writing [p] writes a variable the code may change: a `mut` local, a `mut`
      * parameter, a `mut` global, the receiver of a struct's `mut fx` or of any class method, a
-     * struct field through a mutable struct, a `mut` field of a class (a reference, D29), an
+     * struct field through a mutable struct, a `mut` field of a class (a reference, D29), a
+     * class's own field in its `initially` (W2.9 1.1, Q8: the object is not yet visible), an
      * element of a mutable container or of any `MutView`.
      */
     fun isMutablePlace(p: Place, ctx: BodyContext): Boolean = when (p) {
@@ -109,7 +110,11 @@ internal class PhaseC(val program: TypedProgram) {
         is Place.This -> ctx.thisMutable
         is Place.Field -> {
             val owner = p.sym.owner
-            if (owner is ClassSymbol && owner.kind == ClassKind.STRUCT) p.receiver?.let { isMutablePlace(it, ctx) } ?: false else p.sym.isMut
+            when {
+                owner is ClassSymbol && owner.kind == ClassKind.STRUCT -> p.receiver?.let { isMutablePlace(it, ctx) } ?: false
+                p.sym.isMut -> true
+                else -> ctx.initially && owner === ctx.owner && (p.receiver == null || p.receiver is Place.This)
+            }
         }
         is Place.Index -> when (p.kind) {
             IndexKind.MUT_VIEW -> true
@@ -132,8 +137,10 @@ internal class PhaseC(val program: TypedProgram) {
             is Place.This -> (p.owner as? ClassSymbol)?.kind == ClassKind.STRUCT
             is Place.Field -> {
                 val owner = p.sym.owner
+                // A user class's field (a value class's too: its fields are never writable outside
+                // its `initially`, whose `this` no lambda captures, W2.9 1.2.11) is the object's.
                 val throughReference = owner is TraitSymbol ||
-                    (owner is ClassSymbol && (owner.kind == ClassKind.CLASS || owner.kind == ClassKind.OPAQUE || owner.name == "Ref"))
+                    (owner is ClassSymbol && (owner.kind == ClassKind.USER || owner.kind == ClassKind.OPAQUE || owner.name == "Ref"))
                 if (throughReference) false else p.receiver?.let { writesCapture(it, ctx) } ?: false
             }
             is Place.Index -> if (p.kind == IndexKind.MUT_VIEW || p.kind == IndexKind.VIEW) false else writesCapture(p.container, ctx)
@@ -373,13 +380,14 @@ internal class ExprTyper(private val c: PhaseC) {
     }
 
     /**
-     * The implicit receiver used inside a lambda: a struct's field is copied under its own
-     * capture ([Capture.Field]); a struct's method call, `this`, and anything of a class or
-     * trait capture the receiver itself ([Capture.This]).
+     * The implicit receiver used inside a lambda: a value's field (a struct's, a value
+     * class's: W2.9 1.2.2, `[c_k = k]`) is copied under its own capture ([Capture.Field]); a
+     * value's method call, `this`, and anything of a reference class or trait capture the
+     * receiver itself ([Capture.This]: `[*this]` for a value).
      */
     fun captureThis(ctx: BodyContext, owner: TypeSymbol, field: FieldSymbol?) {
         var f = ctx.lambda
-        val struct = (owner as? ClassSymbol)?.kind == ClassKind.STRUCT
+        val struct = (owner as? ClassSymbol)?.isValue == true
         while (f != null) {
             if (struct && field != null) f.add(Capture.Field(field)) else f.add(Capture.This(owner))
             f = f.parent
@@ -668,18 +676,22 @@ internal class ExprTyper(private val c: PhaseC) {
 
     private fun refLike(t: KType.Nominal): Boolean = facts.isClass(t) || facts.isTrait(t)
 
-    /** Types with `==` (R16): scalars, Str, enums, classes (identity), views, and structs whose fields all have it (D27). */
+    /**
+     * Types with `==` (R16): scalars, Str, enums, reference classes (identity), views, and
+     * structs and value classes whose fields all have it (D27; W2.9 1.2.2 keeps the struct's
+     * memberwise `==` for a value class until the operator packages synthesize `@_op_eq_`).
+     */
     private fun equatable(t: KType, seen: MutableSet<ClassSymbol> = HashSet()): Boolean = when {
-        t is KType.Scalar || t == KType.Str || facts.isEnum(t) || facts.isClass(t) || facts.isTrait(t) -> true
-        facts.isView(t) || facts.isMutView(t) || facts.isArr(t) || facts.isList(t) -> facts.elementOf(t)?.let { equatable(it, seen) } ?: false
-        Builtins.tupleArity(facts.magicName(t) ?: "") != null -> (t as KType.Nominal).typeArgs().all { equatable(it, seen) }
-        facts.isStruct(t) -> {
+        facts.isStruct(t) || facts.isValueClass(t) -> {
             val cls = (t as KType.Nominal).sym as ClassSymbol
             if (!seen.add(cls)) true else {
                 val sub = cls.typeParams.zip(t.typeArgs()).toMap()
                 cls.fields.all { equatable(it.type.substitute(sub), seen) }
             }
         }
+        t is KType.Scalar || t == KType.Str || facts.isEnum(t) || facts.isClass(t) || facts.isTrait(t) -> true
+        facts.isView(t) || facts.isMutView(t) || facts.isArr(t) || facts.isList(t) -> facts.elementOf(t)?.let { equatable(it, seen) } ?: false
+        Builtins.tupleArity(facts.magicName(t) ?: "") != null -> (t as KType.Nominal).typeArgs().all { equatable(it, seen) }
         else -> false
     }
 

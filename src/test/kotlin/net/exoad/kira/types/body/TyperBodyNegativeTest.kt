@@ -300,7 +300,7 @@ class TyperBodyNegativeTest {
     fun anEmptyContainerConstructionStartsAMutGlobalLikeAnArrayLiteral() {
         val p = snippet(
             "pub mut XS: List<Int32> = List<Int32> { }\npub mut YS: List<Int32> = []\npub mut M: Map<Str, Int32> = Map<Str, Int32> { }\n" +
-                "pub mut S: Set<Int32> = Set<Int32> { }\npub class C {\n    pub n: Int32 = 0\n}\npub mut OBJ: C = C { }",
+                "pub mut S: Set<Int32> = Set<Int32> { }\npub class C {\n    pub mut n: Int32 = 0\n}\npub mut OBJ: C = C { }",
         )
         assertEquals(listOf("types.global.mut-init"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
         assertTrue(p.diagnostics.single().message.contains("'OBJ' starts from C { }."), p.diagnostics.single().message)

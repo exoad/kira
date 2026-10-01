@@ -292,7 +292,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
                     val callee = (node.name as? Identifier)?.takeIf { it !is IntrinsicExpr }?.let { model.symbolOf(it) ?: m.members[it.value] } as? FnSymbol
                     val t = (model.typeOrNull(node) ?: model.call(node)?.returnType ?: callee?.ret) as? KType.Nominal
                     val sym = t?.sym as? ClassSymbol
-                    if (sym != null && sym.isStruct && sym in declared) {
+                    if (sym != null && sym.isValue && sym in declared) {
                         constructs(sym)
                     }
                 }
@@ -436,7 +436,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         ItemKind.DEF -> -1
         ItemKind.DECL -> when (val sym = item.sym) {
             is GlobalSymbol, is EnumSymbol, is AliasSymbol -> 0
-            is ClassSymbol -> if (sym.isStruct) 1 else 3
+            is ClassSymbol -> if (sym.isValue) 1 else 3
             is TraitSymbol -> 2
             else -> 4
         }
@@ -571,7 +571,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     }
 
     private fun reportCycle(s: Symbol, path: List<Symbol>) {
-        val structsOnly = path.all { it is ClassSymbol && it.isStruct } && path.size > 1
+        val structsOnly = path.all { it is ClassSymbol && it.isValue } && path.size > 1
         if (structsOnly && s is ClassSymbol) {
             if (path.zipWithNext().all { (a, b) -> b in heldByValue(a as ClassSymbol) }) {
                 reportStructCycle(s, path)
@@ -614,7 +614,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         is GlobalSymbol -> if (sym.isMut) "state" else "constant"
         is EnumSymbol -> "enum"
         is AliasSymbol -> "alias"
-        is ClassSymbol -> if (sym.isStruct) "struct" else "class"
+        is ClassSymbol -> if (sym.isValue) "struct" else "class"
         is TraitSymbol -> "trait"
         is FnSymbol -> "function"
         else -> "declaration"
@@ -654,7 +654,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     private fun byValue(t: KType, into: MutableSet<ClassSymbol>) {
         val n = t as? KType.Nominal ?: return
         val sym = n.sym
-        if (sym is ClassSymbol && sym.isStruct) {
+        if (sym is ClassSymbol && sym.isValue) {
             into.add(sym)
             n.typeArgs().forEach { byValue(it, into) }
             return
@@ -689,7 +689,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     private fun needsComplete(t: KType, into: MutableSet<ClassSymbol>) {
         val n = t as? KType.Nominal ?: return
         val sym = n.sym
-        if (sym is ClassSymbol && sym.isStruct) {
+        if (sym is ClassSymbol && sym.isValue) {
             into.add(sym)
             n.typeArgs().forEach { needsComplete(it, into) }
             return
@@ -871,7 +871,7 @@ class CppUsage private constructor(
         fun structsIn(t: KType, into: MutableSet<ClassSymbol>) {
             val n = t as? KType.Nominal ?: return
             val sym = n.sym
-            if (sym is ClassSymbol && sym.isStruct) {
+            if (sym is ClassSymbol && sym.isValue) {
                 into.add(sym)
                 n.typeArgs().forEach { structsIn(it, into) }
                 return
@@ -895,7 +895,7 @@ class CppUsage private constructor(
                         "Weak", "Stack", "Queue", "Result", Builtins.STRBUF -> false
                         else -> t.typeArgs().all { supportsEquality(it) }
                     }
-                    sym.isStruct -> sym.fields.all { supportsEquality(it.type) }
+                    sym.isValue -> sym.fields.all { supportsEquality(it.type) }
                     else -> true   // a class or trait value is an identity: shared_ptr ==
                 }
                 else -> true

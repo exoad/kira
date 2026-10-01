@@ -117,7 +117,7 @@ internal class StmtChecker(private val c: PhaseC) {
             is GlobalSymbol -> global(s)
             is FnSymbol -> function(s)
             is ClassSymbol -> {
-                val initCtx = BodyContext(s.module, null, s, KType.Void, null, true, "${s.name}'s initializer block")
+                val initCtx = BodyContext(s.module, null, s, KType.Void, null, true, "${s.name}'s initializer block", initially = s.kind == ClassKind.USER)
                 s.initially?.let { body(it, initCtx, Scope.root()) }
                 s.finally?.let { body(it, BodyContext(s.module, null, s, KType.Void, null, true, "${s.name}'s finally block"), Scope.root()) }
                 s.methods.forEach { m -> KiraTyper.guard(c.program, "typing ${m.qualifiedName}", m.decl) { function(m) } }
@@ -213,7 +213,10 @@ internal class StmtChecker(private val c: PhaseC) {
             is ObjectInitExpr -> {
                 val ri = model.inits[init] ?: return NO_REASON
                 val cls = ri.cls ?: return NO_REASON
-                if (cls.kind != ClassKind.STRUCT && cls.kind != ClassKind.MAGIC) {
+                // A value class without `initially` is built like a struct (W2.9 1.2.2); a reference class, or a class
+                // whose `initially` may read anything, is not.
+                val valueAggregate = cls.isValueClass && cls.initially == null
+                if (cls.kind != ClassKind.STRUCT && cls.kind != ClassKind.MAGIC && !valueAggregate) {
                     return NO_REASON
                 }
                 ri.fields.firstNotNullOfOrNull { f ->
@@ -434,10 +437,12 @@ internal class StmtChecker(private val c: PhaseC) {
         }
         val body = fn.body ?: return
         val owner = fn.owner
-        val struct = (owner as? ClassSymbol)?.kind == ClassKind.STRUCT
+        // A struct's receiver is writable in its `mut fx` only; an immutable class's never (W2.9 1.1: it has no
+        // `mut fx`, and no field of it is writable outside its `initially`); any other class's in any method (D29).
+        val value = (owner as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT || (it.kind == ClassKind.USER && it.isImmutable) } == true
         val ctx = BodyContext(
             fn.module, fn, owner, fn.ret, null,
-            thisMutable = !struct || fn.isMutMethod,
+            thisMutable = !value || fn.isMutMethod,
             what = if (owner != null) "${owner.name}.${fn.name}" else "'${fn.name}'",
         )
         val scope = Scope.root()

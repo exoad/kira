@@ -75,6 +75,8 @@ internal class Scope private constructor(val parent: Scope?, val lambda: LambdaF
  * @property thisMutable the implicit receiver may be written: a struct's `mut fx`, and any
  *   class method or class `initially`/`finally` (a class is a reference, D29).
  * @property what the body in words, for messages: "function 'read'".
+ * @property initially the class's own `initially` block, which may assign the class's own
+ *   fields (W2.9 1.1, Q8); a lambda inside it may not (its `this` is no capture, 1.2.11).
  */
 internal class BodyContext(
     val module: ModuleSymbol,
@@ -84,6 +86,7 @@ internal class BodyContext(
     val lambda: LambdaFrame?,
     val thisMutable: Boolean,
     val what: String,
+    val initially: Boolean = false,
 ) {
     /** The same place, inside [frame], which returns [ret]. */
     fun inLambda(frame: LambdaFrame, ret: KType): BodyContext =

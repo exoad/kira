@@ -708,7 +708,7 @@ class CppEmitContextImpl(
     private fun shadows(p: ParamSymbol): Boolean {
         val fn = p.fn
         when (val owner = fn?.owner) {
-            is ClassSymbol -> if (owner.isStruct) {
+            is ClassSymbol -> if (owner.isValue) {
                 if (structMember(owner, p.name)) {
                     return true
                 }

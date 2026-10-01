@@ -67,7 +67,7 @@ internal class MutabilityPass : RulePass {
         if (place is Place.Index && (place.kind == IndexKind.VIEW || place.kind == IndexKind.STR)) {
             return
         }
-        if (r.isMutablePlace(place, thisMutable(b, lambdas)) || isCaptureWrite(r, place, b, lambdas)) {
+        if (r.isMutablePlace(place, thisMutable(b, lambdas)) || isCaptureWrite(r, place, b, lambdas) || ownFieldInInitially(b, place, lambdas)) {
             return
         }
         val text = KiraUnparser.text(target)
@@ -92,6 +92,9 @@ internal class MutabilityPass : RulePass {
                         val (inner, why) = explain(r, b, receiver, text)
                         (if (inner == "this") "this" else "field") to why
                     }
+                owner is ClassSymbol && owner.kind == ClassKind.USER && owner.isImmutable ->
+                    "field" to "${owner.name} is immutable: build a new one, or use copy (`${r.describe(target(place))}.copy(${place.sym.name} = ...)`); " +
+                        "$text cannot be written outside ${owner.name}'s own initially block."
                 receiver is Place.This && !b.thisMutable && place.sym.isMut ->
                     "this" to "${b.what} is a plain `fx` of the ${ownerKind(b)} ${b.owner?.name}, so its own state is read-only (a `const` method in C++); declare it `mut fx` to write $text."
                 else -> "field" to "Field '${place.sym.name}' of ${owner.name} is not mut, so $text cannot be written; declare it `mut ${place.sym.name}: ${place.sym.type.display()}`."
@@ -103,6 +106,9 @@ internal class MutabilityPass : RulePass {
         }
     }
 
+    /** The receiver [p] is a field of, as source text (`this` for the implicit one). */
+    private fun target(p: Place.Field): Place = p.receiver ?: Place.This(p.sym.owner)
+
     private fun ownerKind(b: Body): String = if (b.isStructOwner) "struct" else "class"
 
     /**
@@ -113,6 +119,19 @@ internal class MutabilityPass : RulePass {
      * reference (D29): the method that wrote the lambda down modifies nothing itself.
      */
     private fun thisMutable(b: Body, lambdas: List<LambdaExpr>): Boolean = b.thisMutable || (!b.isStructOwner && lambdas.isNotEmpty())
+
+    /**
+     * A class's own `initially` assigning one of the class's own fields, straight off `this`
+     * (W2.9 1.1, Q8): the object is not yet visible, so even an immutable class's field is
+     * written there. A struct keeps its own rules, and a lambda's write is never this.
+     */
+    private fun ownFieldInInitially(b: Body, place: Place, lambdas: List<LambdaExpr>): Boolean {
+        val owner = b.owner as? ClassSymbol ?: return false
+        if (b.kind != BodyKind.INITIALLY || owner.kind != ClassKind.USER || lambdas.isNotEmpty() || place !is Place.Field) {
+            return false
+        }
+        return place.sym.owner === owner && (place.receiver == null || place.receiver is Place.This)
+    }
 
     /** A write phase C reported as writing a lambda's capture, so nothing is said twice. */
     private fun isCaptureWrite(r: Rules, place: Place, b: Body, lambdas: List<LambdaExpr>): Boolean {

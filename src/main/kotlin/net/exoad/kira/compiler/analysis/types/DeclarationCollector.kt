@@ -296,7 +296,7 @@ internal class DeclarationCollector(
 
     private fun classLike(module: ModuleSymbol, source: SourceContext, decl: ClassDecl): ClassSymbol {
         val markers = markersOf(source, decl)
-        val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.CLASS), markers, Modifier.PUBLIC in decl.modifiers)
+        val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.USER), markers, Modifier.PUBLIC in decl.modifiers)
         cls.isFinal = Modifier.FINAL in decl.modifiers
         cls.initially = decl.initially
         cls.finally = decl.finally
@@ -319,7 +319,7 @@ internal class DeclarationCollector(
             decl,
         )
         val markers = markersOf(source, decl)
-        val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.CLASS), markers, Modifier.PUBLIC in decl.modifiers)
+        val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.USER), markers, Modifier.PUBLIC in decl.modifiers)
         members(module, source, cls, decl.members)
         return cls
     }
@@ -344,7 +344,7 @@ internal class DeclarationCollector(
                 is VariableDecl -> field(module, source, cls, member, cls.fields.size).also { cls.fields.add(it) }
                 is FunctionDecl -> function(module, source, member, cls).also { cls.methods.add(it) }
                 else -> {
-                    program.report("types.class.member", "A ${cls.kind.name.lowercase()} holds fields and methods only.", member)
+                    program.report("types.class.member", "A ${if (cls.kind == ClassKind.USER) "class" else cls.kind.name.lowercase()} holds fields and methods only.", member)
                     continue
                 }
             }

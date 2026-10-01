@@ -1,10 +1,12 @@
 module "lang:classes"
 
-// The class model: reference types held by Rc, traits with parameters and
-// default bodies, inheritance, a generic class, and the spec's Ref and Weak.
+// The class model: a mutable class is a reference held by Rc and an immutable
+// one a value (W2.9), traits with parameters and default bodies, inheritance,
+// a generic class, and the spec's Ref and Weak.
 
+// A Weak needs an object with identity, a mutable class: a Pet may be renamed.
 pub class Pet {
-    require pub name: Str
+    require pub mut name: Str
 }
 
 // A getter that returns a field: a copy of the reference, never a second owner

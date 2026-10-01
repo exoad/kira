@@ -969,7 +969,8 @@ class ViewPassTest {
     @Test
     fun q6cAClassThatPublishesItselfChangesNothingForALambdaOverAView() {
         // w2-5 #5 Q6c: CB2's initially stores this in a global; the view local is refused all the same, and with a
-        // view parameter the lambda is refused for escaping into keep, whatever CB2's initially does.
+        // view parameter the lambda is refused for escaping into keep, whatever CB2's initially does. (Publishing this
+        // from initially is itself rules.escape.this-in-initially since W2.9 1.2.11.)
         val p = snippet(
             """
             pub class CB2 {
@@ -996,7 +997,7 @@ class ViewPassTest {
             }
             """,
         )
-        expectView(p, "rules.view.local", "rules.view.capture")
+        expectView(p, "rules.view.local", "rules.view.capture", "rules.escape.this-in-initially")
     }
 
     // ---- rules.view.store ---------------------------------------------------------------------
