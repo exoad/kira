@@ -1,4 +1,8 @@
-# Magic binding manifest for kira:result (C++ backend only).
+# Magic binding manifest for kira:result (C++ and py backends).
+#
+# A `py` map beside `cpp` is the py target's binding (PyBindingTable): `expr` with the same
+# placeholders, each used once and the receiver first, so Python's left-to-right evaluation is
+# Kira's; a `_k_` name in it is a helper of kira/py/runtime.py.
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it.
 # Maybe<T> is std::optional<T> for a value and a nullable kira::Rc<C> for a
@@ -11,11 +15,11 @@
 # are not constexpr (design section 6), and a @_const body holding a class
 # reference fails ConstEligibilityPass's literal-type rule before any flag is
 # read. The flags' meaning is defined in core.bind.yaml.
-Maybe.isSome:   { cpp: { expr: "kira::isSome({self})", pure: true, constexpr: true } }
-Maybe.isNone:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true } }
-Maybe.isNull:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true } }
-Maybe.unwrap:   { cpp: { expr: "kira::unwrap({self})", pure: true, constexpr: true } }
-Maybe.unwrapOr: { cpp: { expr: "kira::unwrapOr({self}, {0})", pure: true, constexpr: true } }
+Maybe.isSome:   { cpp: { expr: "kira::isSome({self})", pure: true, constexpr: true }, py: { expr: "({self} is not None)" } }
+Maybe.isNone:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true }, py: { expr: "({self} is None)" } }
+Maybe.isNull:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr: true }, py: { expr: "({self} is None)" } }
+Maybe.unwrap:   { cpp: { expr: "kira::unwrap({self})", pure: true, constexpr: true }, py: { expr: "_k_value({self})" } }
+Maybe.unwrapOr: { cpp: { expr: "kira::unwrapOr({self}, {0})", pure: true, constexpr: true }, py: { expr: "_k_or({self}, {0})" } }
 
 Result.isOk:      { cpp: { expr: "{self}.isOk()", pure: true } }
 Result.isErr:     { cpp: { expr: "{self}.isErr()", pure: true } }

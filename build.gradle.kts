@@ -37,19 +37,20 @@ tasks.test {
     }
     for (key in listOf(
         "KIRA_TOOLCHAINS", "KIRA_REQUIRE_TOOLCHAINS", "KIRA_CPP_GOLDEN_DIR",
-        "KIRA_CXX_GCC", "KIRA_CXX_CLANG", "KIRA_ZIG", "KIRA_MSVC_VCVARS", "KIRA_ARM_GXX",
+        "KIRA_CXX_GCC", "KIRA_CXX_CLANG", "KIRA_ZIG", "KIRA_MSVC_VCVARS", "KIRA_ARM_GXX", "KIRA_PYTHON",
     )) {
         inputs.property("env.$key", System.getenv(key) ?: "")
     }
-    // The files the harness compiles that live outside src/test: the runtime
-    // (kira/cpp), any golden root and runtime dir named by the knobs above.
+    // The files the harness compiles that live outside src/test: the runtimes
+    // (kira/cpp, and kira/py for the py goldens), any golden root and runtime
+    // dir named by the knobs above.
     // Without these, editing kira/cpp/kira/*.hxx and running `./gradlew test`
     // replays the previous result as UP-TO-DATE without compiling anything.
     // A missing directory is an empty tree, not an error.
     val cppGoldenRoots = (System.getProperty("kira.cppGoldenDir") ?: System.getenv("KIRA_CPP_GOLDEN_DIR") ?: "")
         .split(File.pathSeparator).map { it.trim() }.filter { it.isNotEmpty() }
     val cppRuntimeDir = listOfNotNull(System.getProperty("kira.cppRuntimeDir")?.trim()?.takeIf { it.isNotEmpty() })
-    for ((index, dir) in (listOf("kira/cpp") + cppRuntimeDir + cppGoldenRoots).withIndex()) {
+    for ((index, dir) in (listOf("kira/cpp", "kira/py") + cppRuntimeDir + cppGoldenRoots).withIndex()) {
         inputs.files(fileTree(dir))
             .withPropertyName("cppHarnessTree$index")
             .withPathSensitivity(PathSensitivity.RELATIVE)

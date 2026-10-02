@@ -6,7 +6,7 @@ import kotlin.io.path.exists
 data class ValidationIssue(val field: String, val message: String)
 
 object ManifestValidator {
-    private val supportedTargets = setOf("c", "native", "cpp", "c++", "js", "javascript", "neko", "none")
+    private val supportedTargets = setOf("c", "native", "cpp", "c++", "js", "javascript", "py", "python", "neko", "none")
 
     /** The extension the source scan reads as a module; no generated file may end with it. */
     const val KIRA_SOURCE_EXT = ".kira"

@@ -1,4 +1,8 @@
-# Magic binding manifest for kira:math (C and C++ backends).
+# Magic binding manifest for kira:math (C, C++ and py backends).
+#
+# A `py` map beside `cpp` is the py target's binding (PyBindingTable): `expr` with the same
+# placeholders, each used once and the receiver first, so Python's left-to-right evaluation is
+# Kira's; a `_k_` name in it is a helper of kira/py/runtime.py.
 #
 # Each @_magic declaration in kira/math.kira is typechecked from its Kira
 # signature; the C symbol it lowers to and the include it needs live here,
@@ -27,5 +31,5 @@ sin: { symbol: sin, includes: [math.h], cpp: { expr: "std::sin({0})", includes: 
 cos: { symbol: cos, includes: [math.h], cpp: { expr: "std::cos({0})", includes: ["<cmath>"], pure: true } }
 tan: { symbol: tan, includes: [math.h], cpp: { expr: "std::tan({0})", includes: ["<cmath>"], pure: true } }
 abs: { symbol: fabs, includes: [math.h], cpp: { expr: "std::fabs({0})", includes: ["<cmath>"], pure: true } }
-min: { symbol: fmin, includes: [math.h], cpp: { expr: "(std::min)({0}, {1})", includes: ["<algorithm>"], pure: true } }
-max: { symbol: fmax, includes: [math.h], cpp: { expr: "(std::max)({0}, {1})", includes: ["<algorithm>"], pure: true } }
+min: { symbol: fmin, includes: [math.h], cpp: { expr: "(std::min)({0}, {1})", includes: ["<algorithm>"], pure: true }, py: { expr: "_k_min({0}, {1})" } }
+max: { symbol: fmax, includes: [math.h], cpp: { expr: "(std::max)({0}, {1})", includes: ["<algorithm>"], pure: true }, py: { expr: "_k_max({0}, {1})" } }

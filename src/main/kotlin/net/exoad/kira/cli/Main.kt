@@ -8,6 +8,7 @@ import net.exoad.kira.compiler.analysis.semantic.SemanticScope
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
 import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
+import net.exoad.kira.compiler.backend.codegen.py.KiraPyBackend
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
@@ -28,13 +29,14 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.time.measureTimedValue
 
-private const val TARGET_CHOICES = "c, cpp, js, neko, none"
+private const val TARGET_CHOICES = "c, cpp, js, py, neko, none"
 
 private fun targetFromName(target: String): GeneratedProvider.OutputTarget? {
     return when (target.lowercase()) {
         "c", "native" -> GeneratedProvider.OutputTarget.C
         "cpp", "c++" -> GeneratedProvider.OutputTarget.CPP
         "js", "javascript" -> GeneratedProvider.OutputTarget.JS
+        "py", "python" -> GeneratedProvider.OutputTarget.PY
         "neko" -> GeneratedProvider.OutputTarget.NEKO
         "none" -> GeneratedProvider.OutputTarget.NONE
         else -> null
@@ -47,12 +49,12 @@ private fun applyTargetOverride(target: String) {
 }
 
 fun main(args: Array<String>) {
-    // Minimal CLI: `kira --target js|c|cpp|neko|none` overrides build.target
+    // Minimal CLI: `kira --target js|c|cpp|py|neko|none` overrides build.target
     // from kira.yaml; `--readable` emits pretty (non-minified) C/JS output;
-    // `--out <dir>` says where the output goes (for cpp: every generated
-    // file under <dir>); `--check` (cpp only) regenerates in memory and
-    // exits 1 naming every file on disk that differs, is missing or is
-    // stale. The compiler is otherwise cwd-driven.
+    // `--out <dir>` says where the output goes (for cpp and py: every generated
+    // file under <dir>); `--check` (cpp and py) regenerates in memory and
+    // exits 1 naming every file on disk that differs or is missing (and, for
+    // cpp, is stale). The compiler is otherwise cwd-driven.
     var targetOverride: String? = null
     var readableOverride = false
     var checkMode = false
@@ -83,11 +85,12 @@ fun main(args: Array<String>) {
                 i += 2
             }
             "--help", "-h" -> {
-                println("Usage: kira [--target c|cpp|js|neko|none] [--out <dir>] [--check] [--readable]")
+                println("Usage: kira [--target c|cpp|js|py|neko|none] [--out <dir>] [--check] [--readable]")
                 println("  --out <dir>  where generated files go (cpp: everything under <dir> in the tree layout, runtime and")
-                println("               kira.gen.manifest included; c/js: the directory of out.kira.*)")
-                println("  --check      cpp only: regenerate in memory, name each file on disk that differs, is missing or is")
-                println("               stale, exit 1 on drift")
+                println("               kira.gen.manifest included; py: each x.kira.py at its path under <dir>; c/js: the")
+                println("               directory of out.kira.*)")
+                println("  --check      cpp and py: regenerate in memory, name each file on disk that differs, is missing or")
+                println("               (cpp) is stale, exit 1 on drift")
                 kotlin.system.exitProcess(0)
             }
             else -> Diagnostics.panic("Unknown argument '${args[i]}' (try --help)")
@@ -132,9 +135,11 @@ fun main(args: Array<String>) {
             // No manifest: the flag is the only target source.
             applyTargetOverride(targetOverride!!)
         }
-        if (checkMode && GeneratedProvider.outputMode != GeneratedProvider.OutputTarget.CPP) {
+        if (checkMode && GeneratedProvider.outputMode != GeneratedProvider.OutputTarget.CPP &&
+            GeneratedProvider.outputMode != GeneratedProvider.OutputTarget.PY
+        ) {
             // A usage error, not a compiler failure: say so and stop, without a stack trace.
-            Diagnostics.Logging.warn("Kira", "--check is only supported with --target cpp")
+            Diagnostics.Logging.warn("Kira", "--check is only supported with --target cpp or --target py")
             kotlin.system.exitProcess(1)
         }
 
@@ -340,6 +345,19 @@ fun main(args: Array<String>) {
                         Diagnostics.Logging.warn("Kira", e.withTarget("C++").message ?: e.toString())
                         kotlin.system.exitProcess(1)
                     }
+                    if (result.exitCode != 0) {
+                        backendFailures += 1
+                    }
+                }
+
+                GeneratedProvider.OutputTarget.PY -> {
+                    Diagnostics.Logging.info("Kira", if (checkMode) "Checking py" else "Emitting py")
+                    val result = KiraPyBackend.run(
+                        unit = compilationUnit,
+                        check = checkMode,
+                        projectRoot = projectRoot,
+                        outDirOverride = outDir,
+                    )
                     if (result.exitCode != 0) {
                         backendFailures += 1
                     }
