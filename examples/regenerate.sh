@@ -17,6 +17,10 @@
 # The JS pass runs when `node` is on PATH (or $NODE points at it); without it,
 # C verification still runs and JS snapshots are left alone.
 #
+# The py leg runs the same way for every example in examples/py-legs.txt: `kira
+# --target py`, the module run with $PYTHON, its stdout diffed against expected.txt
+# and the C leg's.
+#
 # The C++ leg runs for every example named in examples/cpp-legs.txt (one name
 # per line, `#` comments): `kira --target cpp`, then $CXX -std=c++20 -O2 with
 # the runtime include dir kira/cpp, then the binary's stdout is diffed against
@@ -88,6 +92,44 @@ CPP_RUNTIME_INC="$ROOT/kira/cpp"
 CPP_LIBS=()
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) CPP_LIBS=(-lws2_32) ;; Linux) CPP_LIBS=(-pthread) ;; esac
 cpp_legs_run=0
+
+# The py leg's examples (examples/py-legs.txt, the same format): `kira --target py --out`,
+# then the module run with $PYTHON (or python3 / python on PATH, never a Windows Store alias,
+# which opens the Store), its stdout diffed like the C++ leg's. Like that leg it writes no
+# snapshot. A Python is required only when the list names an example.
+PY_LEGS_FILE="$ROOT/examples/py-legs.txt"
+PY_LEGS=()
+if [[ -f "$PY_LEGS_FILE" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    line="${line//[[:space:]]/}"
+    [[ -n "$line" ]] || continue
+    PY_LEGS+=("$line")
+  done < "$PY_LEGS_FILE"
+fi
+has_py_leg() { # has_py_leg <example-name>
+  local n
+  for n in ${PY_LEGS[@]+"${PY_LEGS[@]}"}; do
+    [[ "$n" == "$1" ]] && return 0
+  done
+  return 1
+}
+PY_BIN=""
+if [[ ${#PY_LEGS[@]} -gt 0 ]]; then
+  if [[ -n "${PYTHON:-}" ]]; then
+    PY_BIN="$PYTHON"
+  else
+    for candidate in python3 python; do
+      found="$(command -v "$candidate" 2>/dev/null || true)"
+      if [[ -n "$found" && "$found" != *WindowsApps* ]]; then PY_BIN="$found"; break; fi
+    done
+    if [[ -z "$PY_BIN" ]]; then
+      echo "no Python found for the examples in py-legs.txt (set PYTHON=/path/to/python)" >&2
+      exit 1
+    fi
+  fi
+fi
+py_legs_run=0
 
 C_PRELUDE_REF="$ROOT/examples/prelude.reference.c"
 JS_PRELUDE_REF="$ROOT/examples/prelude.reference.js"
@@ -232,9 +274,44 @@ for dir in "${DIRS[@]}"; do
     fi
   fi
 
+  # --- py backend: emit, run with Python (examples/py-legs.txt only) -----
+  py_failed=0
+  py_ran=0
+  if has_py_leg "$name"; then
+    py_ran=1
+    py_legs_run=$((py_legs_run + 1))
+    if ! (
+      cd "$dir"
+      rm -rf "$WORK/py"
+      "$KIRA_BIN" --target py --out "$WORK/py" >/dev/null 2>&1 || { echo "  kira (py) failed" >&2; exit 1; }
+      mapfile -t py_sources < <(find "$WORK/py" -name '*.kira.py' | sort)
+      if [[ ${#py_sources[@]} -ne 1 ]]; then
+        echo "  kira (py) emitted ${#py_sources[@]} modules under $WORK/py; the py target runs a one-module program" >&2; exit 1
+      fi
+      "$PY_BIN" "${py_sources[0]}" 2>"$WORK/py.err" | tr -d '\r' > "$WORK/actual-py.txt" || {
+        echo "  python failed:" >&2; cat "$WORK/py.err" >&2; exit 1;
+      }
+    ); then
+      py_failed=1
+    fi
+  fi
+
   if [[ $c_failed -eq 1 || $js_failed -eq 1 ]]; then
     failures=$((failures + 1))
     continue
+  fi
+
+  # The py leg must print exactly what expected.txt and the C leg print.
+  if [[ $py_failed -eq 1 ]]; then
+    failures=$((failures + 1))
+  elif [[ $py_ran -eq 1 ]]; then
+    if diff -q "$dir/expected.txt" "$WORK/actual-py.txt" >/dev/null && diff -q "$WORK/actual-c.txt" "$WORK/actual-py.txt" >/dev/null; then
+      echo "  ok: $name py stdout (matches expected.txt and C)"
+    else
+      echo "  MISMATCH: py stdout differs from expected.txt or C" >&2
+      diff -u "$dir/expected.txt" "$WORK/actual-py.txt" | head -40 >&2 || true
+      failures=$((failures + 1))
+    fi
   fi
 
   # The C++ leg must print exactly what expected.txt, C and JS print. A failed
@@ -325,6 +402,12 @@ if [[ ${#SELECTED[@]} -eq 0 ]]; then
       [[ -f "$ROOT/examples/$legname/kira.yaml" ]] || echo "  '$legname' in examples/cpp-legs.txt is not an example directory" >&2
     done
     echo "  a listed example did not run; check the names in examples/cpp-legs.txt" >&2
+    failures=$((failures + 1))
+  fi
+  echo "=== py leg ==="
+  echo "  ran $py_legs_run of ${#PY_LEGS[@]} example(s) listed in examples/py-legs.txt"
+  if [[ $py_legs_run -ne ${#PY_LEGS[@]} ]]; then
+    echo "  a listed example did not run; check the names in examples/py-legs.txt" >&2
     failures=$((failures + 1))
   fi
 fi
