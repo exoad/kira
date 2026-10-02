@@ -1,0 +1,90 @@
+module "app:interop"
+
+// What hand-written Python sees of a Kira module (driver.py uses it): a pub class keeps its
+// name and its constructor takes the `require` fields; a pub field is an attribute and a pub
+// method a method; private members are _name. Maybe is None or the value. A program error
+// (a zero divisor, an overflow, the value of a null Maybe) is a RuntimeError.
+
+pub class Account {
+    require pub owner: Str
+    require limit: Int32
+    pub mut balance: Int32 = 0
+    mut history: List<Int32> = List<Int32> { }
+    pub mut note: Maybe<Str> = null
+
+    pub mut fx deposit: (amount: Int32) Int32 {
+        balance += amount
+        history.add(amount)
+        return balance
+    }
+
+    pub mut fx withdraw: (amount: Int32) Maybe<Int32> {
+        if balance - amount < -limit {
+            return null
+        }
+        balance -= amount
+        history.add(-amount)
+        return balance
+    }
+
+    pub fx moves: () Size {
+        return history.size()
+    }
+
+    pub fx move: (i: Size) Int32 {
+        return history[i]
+    }
+
+    pub fx noteOr: (fallback: Str) Str {
+        return note.unwrapOr(fallback)
+    }
+}
+
+// Immutable: a value whose copies are indistinguishable, so Python shares it.
+pub class Point {
+    require pub x: Float64
+    require pub y: Float64
+
+    pub fx plus: (other: Point) Point {
+        return Point { x + other.x, y + other.y }
+    }
+}
+
+pub fx div: (a: Int32, b: Int32) Int32 {
+    return a / b
+}
+
+pub fx rem: (a: Int32, b: Int32) Int32 {
+    return a % b
+}
+
+pub fx add: (a: Int32, b: Int32) Int32 {
+    return a + b
+}
+
+pub fx mul64: (a: Int64, b: Int64) Int64 {
+    return a * b
+}
+
+pub fx valueOf: (m: Maybe<Float64>) Float64 {
+    return m.value
+}
+
+pub fx orZero: (m: Maybe<Float64>) Float64 {
+    if m.isNull() {
+        return 0.0
+    }
+    return m.value
+}
+
+pub fx isSome: (m: Maybe<Int32>) Bool {
+    return m.isSome()
+}
+
+pub fx isNone: (m: Maybe<Int32>) Bool {
+    return m.isNone()
+}
+
+pub fx ratio: (a: Float64, b: Float64) Float64 {
+    return a / b
+}

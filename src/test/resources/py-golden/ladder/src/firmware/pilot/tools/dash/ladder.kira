@@ -1,0 +1,218 @@
+module "firmware:pilot.tools.dash.ladder"
+
+// The video stream's quality ladder. streamenc.py keeps the levels themselves (LADDER) and the
+// encoders; this decides, once a second per page, from that second's numbers, whether the link
+// carries the page's level:
+//   severe  delivered under 40% of offered, or age over 1500 ms
+//   bad     delivered under 75% of offered, or age over 500 ms, or 30% of the frames dropped
+//   good    delivered at least 85% of offered, age under 300 ms, at most a frame dropped in 10
+//   fair    between bad and good
+// DOWN, fast: at once on a severe second, after DOWN_BAD bad seconds of the last DOWN_OF, or
+// when the last FULL_S seconds together delivered under FULL_RATIO (a link run full, which
+// slows the lidar and the control socket beside the video; PROBE_FULL_S in a level just tried).
+// One level, two when the link carried under half.
+// UP, slowly: after UP_S good seconds in a row that together delivered at least UP_RATIO, one
+// level. Delivered against offered is summed over seconds where it can be, since at 5 fps a
+// frame acknowledged a second late is 20% of one second. A page's first second is not counted.
+// HYSTERESIS: the gap between the down and up thresholds, and a backoff: a level that fails
+// within PROBE_S of being stepped up into waits twice as long before its next try (5, 10, 20,
+// 40, 60 s), and forgets that after FORGET_S without a failure. A steady link between two
+// levels settles on the lower one and tries the upper one less and less often.
+
+DOWN_BAD: Size = 2
+DOWN_OF: Size = 3
+FULL_S: Size = 4
+PROBE_FULL_S: Size = 2
+FULL_RATIO: Float64 = 0.9
+UP_S: Float64 = 5.0
+UP_RATIO: Float64 = 0.95
+PROBE_S: Float64 = 15.0
+BACKOFF_MAX_S: Float64 = 60.0
+FORGET_S: Float64 = 120.0
+
+// Seconds of history kept: the longest wait before a step up, and one.
+KEEP: Size = 61
+
+// One second as the ladder keeps it.
+class Second {
+    require pub delivered: Float64
+    require pub offered: Float64
+    require pub verdict: Str
+}
+
+pub class Ladder {
+    // The level, 0 the lowest. Construction clamps it to 0..top.
+    require pub mut level: Int32
+    // The highest level: the last index of streamenc.py's LADDER.
+    require top: Int32
+    // The last second's: good, fair, bad, severe, full, up, idle or warm.
+    pub mut verdict: Str = ""
+    mut hist: List<Second> = List<Second> { }
+    mut good: Size = 0
+    // When the current level was stepped up into.
+    mut enteredUp: Maybe<Float64> = null
+    // Per level: the failed tries, and when the last one failed.
+    mut fails: List<Int32> = List<Int32> { }
+    mut failedAt: List<Float64> = List<Float64> { }
+    // The page's first second: its encoder starting, not the link.
+    mut warm: Bool = true
+
+    initially {
+        if level > top {
+            level = top
+        }
+        if level < 0 {
+            level = 0
+        }
+        mut n: Int32 = 0
+        while n <= top {
+            fails.add(0)
+            failedAt.add(0.0)
+            n += 1
+        }
+    }
+
+    // One second's numbers in, the level for the next second out. fps is the frame rate of the
+    // level the page is at. Unknown numbers are null.
+    pub mut fx update: (
+        deliveredKbs: Maybe<Float64>,
+        offeredKbs: Maybe<Float64>,
+        ageMs: Maybe<Float64>,
+        dropped: Maybe<Int32>,
+        nowS: Float64,
+        fps: Float64
+    ) Int32 {
+        if offeredKbs.isNull() || offeredKbs.value <= 0.0 {
+            // Nothing offered: no evidence either way.
+            verdict = "idle"
+            good = 0
+            return level
+        }
+        if warm {
+            warm = false
+            verdict = "warm"
+            return level
+        }
+        offered: Float64 = offeredKbs.value
+        mut delivered: Float64 = 0.0
+        if !deliveredKbs.isNull() {
+            delivered = max(0.0, deliveredKbs.value)
+        }
+        ratio: Float64 = delivered / offered
+        mut lost: Float64 = 0.0
+        if !dropped.isNull() {
+            lost = dropped.value as Float64
+        }
+        mut v: Str = "fair"
+        if ratio < 0.4 || (!ageMs.isNull() && ageMs.value > 1500.0) {
+            v = "severe"
+        } else if ratio < 0.75 || (!ageMs.isNull() && ageMs.value > 500.0) || lost >= max(2.0, 0.3 * fps) {
+            v = "bad"
+        } else if ratio >= 0.85 && (ageMs.isNull() || ageMs.value < 300.0) && lost <= max(1.0, 0.1 * fps) {
+            v = "good"
+        }
+        hist.add(Second { delivered, offered, v })
+        if hist.size() > KEEP {
+            hist.removeAt(0)
+        }
+        if v == "good" {
+            good += 1
+        } else {
+            good = 0
+        }
+        mut nbad: Size = 0
+        mut i: Size = since(DOWN_OF)
+        while i < hist.size() {
+            if hist[i].verdict == "bad" || hist[i].verdict == "severe" {
+                nbad += 1
+            }
+            i += 1
+        }
+        trying: Bool = !enteredUp.isNull() && nowS - enteredUp.value <= PROBE_S
+        mut fullS: Size = FULL_S
+        if trying {
+            fullS = PROBE_FULL_S
+        }
+        full: Bool = hist.size() >= fullS && sumRatio(fullS) < FULL_RATIO
+        if level > 0 && (v == "severe" || nbad >= DOWN_BAD || full) {
+            if v == "fair" {
+                verdict = "full"
+            } else {
+                verdict = v
+            }
+            mut step: Int32 = 1
+            if ratio < 0.5 {
+                step = 2
+            }
+            mut to: Int32 = level - step
+            if to < 0 {
+                to = 0
+            }
+            move(to, nowS)
+        } else if level < top && (good as Float64) >= waitUp(level + 1, nowS) && sumRatio(good) >= UP_RATIO {
+            verdict = "up"
+            move(level + 1, nowS)
+        } else {
+            verdict = v
+        }
+        return level
+    }
+
+    // How many good seconds a step up into `to` waits for: UP_S, doubled for each failed try
+    // there, at most BACKOFF_MAX_S. A level's failures are forgotten FORGET_S after the last.
+    mut fx waitUp: (to: Int32, nowS: Float64) Float64 {
+        at: Size = to as Size
+        if fails[at] > 0 && nowS - failedAt[at] > FORGET_S {
+            fails[at] = 0
+        }
+        mut wait: Float64 = UP_S
+        mut n: Int32 = 0
+        while n < fails[at] && wait < BACKOFF_MAX_S {
+            wait = wait * 2.0
+            n += 1
+        }
+        return min(wait, BACKOFF_MAX_S)
+    }
+
+    // A fall within PROBE_S of stepping up into this level is a failed try of it.
+    mut fx move: (to: Int32, nowS: Float64) Void {
+        down: Bool = to < level
+        if down && !enteredUp.isNull() && nowS - enteredUp.value <= PROBE_S {
+            at: Size = level as Size
+            fails[at] = fails[at] + 1
+            failedAt[at] = nowS
+        }
+        if down {
+            enteredUp = null
+        } else {
+            enteredUp = nowS
+        }
+        level = to
+        hist.clear()
+        good = 0
+    }
+
+    // Delivered over offered, summed over the last n seconds (all of them, when fewer).
+    fx sumRatio: (n: Size) Float64 {
+        mut delivered: Float64 = 0.0
+        mut offered: Float64 = 0.0
+        mut i: Size = since(n)
+        while i < hist.size() {
+            delivered += hist[i].delivered
+            offered += hist[i].offered
+            i += 1
+        }
+        if offered > 0.0 {
+            return delivered / offered
+        }
+        return 1.0
+    }
+
+    // Where the last n seconds of the history start.
+    fx since: (n: Size) Size {
+        if hist.size() > n {
+            return hist.size() - n
+        }
+        return 0
+    }
+}

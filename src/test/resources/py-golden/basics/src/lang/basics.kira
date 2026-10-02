@@ -1,0 +1,104 @@
+module "lang:basics"
+
+// The control flow and values the py target lowers: if / else if / else, while with break
+// and continue, if-expressions, Str (escapes, +, ==), Bool, a mutable class held
+// by two names (one object), an immutable one copied (indistinguishable), a List of either.
+// The expected output is the C++ backend's run of this same module.
+
+class Cell {
+    pub mut count: Int32 = 0
+
+    pub mut fx bump: () Int32 {
+        count += 1
+        return count
+    }
+}
+
+class Pair {
+    require pub a: Int32
+    require pub b: Str
+
+    pub fx swapped: () Str {
+        return "${b}${a}"
+    }
+}
+
+fx grade: (n: Int32) Str {
+    if n >= 90 {
+        return "A"
+    } else if n >= 75 {
+        return "B"
+    } else if n >= 50 {
+        return "C"
+    } else {
+        return "F"
+    }
+}
+
+fx sign: (n: Int32) Int32 {
+    s: Int32 = if n > 0 {
+        1
+    } else if n < 0 {
+        -1
+    } else {
+        0
+    }
+    return s
+}
+
+fx sumOdd: (limit: Int32) Int32 {
+    mut i: Int32 = 0
+    mut total: Int32 = 0
+    while true {
+        i += 1
+        if i > limit {
+            break
+        }
+        if i % 2 == 0 {
+            continue
+        }
+        total += i
+    }
+    return total
+}
+
+fx main: () Void {
+    trace(grade(95))
+    trace(grade(80))
+    trace(grade(50))
+    trace(grade(3))
+    trace(sign(-4))
+    trace(sign(0))
+    trace(sign(9))
+    trace(sumOdd(10))
+    trace("tab\tquote\" backslash\\ end")
+    trace("a" + "b" == "ab")
+    trace(true && !false)
+    trace(1 < 2 == true)
+    mut first: Cell = Cell { }
+    second: Cell = first
+    first.bump()
+    second.bump()
+    trace(first.count)
+    trace(second.count)
+    p: Pair = Pair { 7, "x" }
+    q: Pair = p
+    trace(q.swapped())
+    mut cells: List<Cell> = List<Cell> { }
+    cells.add(first)
+    cells.add(Cell { })
+    cells[0].bump()
+    trace(first.count)
+    trace(cells[1].bump())
+    mut pairs: List<Pair> = List<Pair> { }
+    pairs.add(p)
+    pairs.add(Pair { b = "y", a = 8 })
+    trace(pairs[1].swapped())
+    trace(pairs.size())
+    trace(pairs.isEmpty())
+    removed: Pair = pairs.removeAt(0)
+    trace(removed.a)
+    trace(pairs.size())
+    pairs.clear()
+    trace(pairs.isEmpty())
+}

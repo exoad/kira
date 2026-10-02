@@ -1,0 +1,26 @@
+ada 0 None
+50 -70 None -70
+2 50 -120
+none
+rent
+None 0 0
+private members: False True False True
+module attributes: ['Account', 'Point', 'div', '_k_value', '_k_i32', '_k_divs']
+1.75 1.0
+7 / 2 -> 3
+-7 / 2 -> -3
+-7 % 2 -> -1
+7 / 0 -> RuntimeError: kira: integer division by zero
+lowest / -1 -> RuntimeError: kira: integer division overflows
+7 % 0 -> RuntimeError: kira: integer remainder by zero
+Int32 max + 1 -> RuntimeError: kira: Int32 overflow
+Int32 min + -1 -> RuntimeError: kira: Int32 overflow
+Int64 2^62 * 2 -> RuntimeError: kira: Int64 overflow
+Int64 2^61 * 2 -> 4611686018427387904
+value of 2.5 -> 2.5
+value of None -> RuntimeError: kira: the value of a null Maybe
+orZero of None -> 0.0
+move past the end -> IndexError: list index out of range
+isSome: False True True
+isNone: True False
+ratio: inf -inf True 0.75

@@ -1,0 +1,17 @@
+ladder.kira against streamenc.py's Ladder: 3027 sequences, 350700 steps, every level and verdict the same
+the oracle stepped up 12608 times and down 12962 times
+  bad            43245
+  fair           13255
+  full           3097
+  good           168300
+  idle           17219
+  severe         89955
+  up             12608
+  warm           3021
+waits asked for before a step up, and failures forgotten:
+  wait 5 s       180798
+  forgotten      1183
+  wait 10 s      35136
+  wait 20 s      31763
+  wait 40 s      16398
+  wait 60 s      1318

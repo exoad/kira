@@ -1,0 +1,221 @@
+module "lang:numbers"
+
+// Kira's numbers, which Python's operators do not share: integer / truncates toward zero and
+// % takes the dividend's sign (Python's // and % floor); the unsigned types, Int8 and Int16
+// wrap; `as` wraps between integers and saturates from a float; Float64 / by zero is IEEE's.
+// The expected output is the C++ backend's run of this same module.
+
+fx quotient: (a: Int32, b: Int32) Int32 {
+    return a / b
+}
+
+fx remainder: (a: Int32, b: Int32) Int32 {
+    return a % b
+}
+
+fx quotient64: (a: Int64, b: Int64) Int64 {
+    return a / b
+}
+
+fx remainder64: (a: Int64, b: Int64) Int64 {
+    return a % b
+}
+
+fx quotient8: (a: Int8, b: Int8) Int8 {
+    return a / b
+}
+
+fx remainder16: (a: Int16, b: Int16) Int16 {
+    return a % b
+}
+
+fx unsignedQuotient: (a: UInt32, b: UInt32) UInt32 {
+    return a / b
+}
+
+fx unsignedRemainder: (a: UInt32, b: UInt32) UInt32 {
+    return a % b
+}
+
+fx addU8: (a: UInt8, b: UInt8) UInt8 {
+    return a + b
+}
+
+fx subU8: (a: UInt8, b: UInt8) UInt8 {
+    return a - b
+}
+
+fx mulU16: (a: UInt16, b: UInt16) UInt16 {
+    return a * b
+}
+
+fx mulU32: (a: UInt32, b: UInt32) UInt32 {
+    return a * b
+}
+
+fx subU64: (a: UInt64, b: UInt64) UInt64 {
+    return a - b
+}
+
+fx addU64: (a: UInt64, b: UInt64) UInt64 {
+    return a + b
+}
+
+fx subSize: (a: Size, b: Size) Size {
+    return a - b
+}
+
+fx negU32: (a: UInt32) UInt32 {
+    return -a
+}
+
+fx negI8: (a: Int8) Int8 {
+    return -a
+}
+
+fx addI8: (a: Int8, b: Int8) Int8 {
+    return a + b
+}
+
+fx mulI16: (a: Int16, b: Int16) Int16 {
+    return a * b
+}
+
+fx flipU16: (a: UInt16) UInt16 {
+    return ~a
+}
+
+fx flipU8: (a: UInt8) UInt8 {
+    return ~a
+}
+
+fx flipI32: (a: Int32) Int32 {
+    return ~a
+}
+
+fx bits: (v: UInt32) UInt32 {
+    return (v & 0xFF00) | (v ^ 0x0F)
+}
+
+fx narrow: (v: Int64) Int32 {
+    return v as Int32
+}
+
+fx toU8: (v: Int32) UInt8 {
+    return v as UInt8
+}
+
+fx toU64: (v: Int32) UInt64 {
+    return v as UInt64
+}
+
+fx toSize: (v: Int32) Size {
+    return v as Size
+}
+
+fx toI8: (v: UInt8) Int8 {
+    return v as Int8
+}
+
+fx widen64: (v: Int32) Int64 {
+    return v as Int64
+}
+
+fx toInt: (v: Float64) Int32 {
+    return v as Int32
+}
+
+fx toByte: (v: Float64) UInt8 {
+    return v as UInt8
+}
+
+fx toBig: (v: Float64) UInt64 {
+    return v as UInt64
+}
+
+fx widen: (v: Int32) Float64 {
+    return v as Float64
+}
+
+fx ratio: (a: Float64, b: Float64) Float64 {
+    return a / b
+}
+
+fx isNan: (v: Float64) Bool {
+    return v != v
+}
+
+fx words: (n: Int32, b: Bool) Str {
+    return "${n}|${b}|${n as Str}|${b as Str}|" + (n as Str)
+}
+
+fx main: () Void {
+    trace(quotient(7, 2))
+    trace(quotient(-7, 2))
+    trace(quotient(7, -2))
+    trace(quotient(-7, -2))
+    trace(remainder(7, 2))
+    trace(remainder(-7, 2))
+    trace(remainder(7, -2))
+    trace(remainder(-7, -2))
+    trace(remainder(-7, -1))
+    trace(quotient(-2147483647 - 1, 2))
+    trace(remainder(-2147483647 - 1, -1))
+    trace(quotient(-2147483647 - 1, 2147483647))
+    trace(quotient64(-9000000000, 7))
+    trace(remainder64(-9000000000, 7))
+    trace(remainder64(9000000000, -7))
+    trace(quotient8(-128, 3))
+    trace(quotient8(-127, -2))
+    trace(remainder16(-32768, 7))
+    trace(unsignedQuotient(4000000000, 3))
+    trace(unsignedRemainder(4000000000, 7))
+    trace(addU8(200, 100))
+    trace(subU8(5, 10))
+    trace(mulU16(65535, 65535))
+    trace(mulU32(4000000000, 3))
+    trace(subU64(0, 1))
+    trace(addU64(subU64(0, 1), 2))
+    trace(subSize(3, 5))
+    trace(negU32(1))
+    trace(negI8(-128))
+    trace(addI8(127, 1))
+    trace(mulI16(300, 300))
+    trace(flipU16(0))
+    trace(flipU8(15))
+    trace(flipI32(0))
+    trace(flipI32(-2147483647 - 1))
+    trace(bits(305419896))
+    trace(narrow(4294967297))
+    trace(narrow(2147483648))
+    trace(narrow(-2147483649))
+    trace(toU8(-1))
+    trace(toU8(256 + 7))
+    trace(toU64(-1))
+    trace(toSize(-2))
+    trace(toI8(200))
+    trace(widen64(-2147483647 - 1))
+    trace(toInt(10000000000.0))
+    trace(toInt(-10000000000.0))
+    trace(toInt(-3.9))
+    trace(toInt(3.9))
+    trace(toInt(ratio(0.0, 0.0)))
+    trace(toByte(-5.0))
+    trace(toByte(300.0))
+    trace(toByte(254.9))
+    trace(toBig(1000000000000000000000000000000.0))
+    trace(toBig(-1.0))
+    trace(widen(-7))
+    trace(ratio(7.0, 2.0))
+    trace(ratio(1.0, 3.0))
+    trace(ratio(1.0, 100000.0))
+    trace(ratio(1.0, 0.0))
+    trace(ratio(-1.0, 0.0))
+    trace(ratio(1.0, -0.0))
+    trace(ratio(-1.0, -0.0))
+    trace(isNan(ratio(0.0, 0.0)))
+    trace(isNan(ratio(0.0, -0.0)))
+    trace(isNan(ratio(1.0, 3.0)))
+    trace(words(-12, true))
+    trace(words(0, false))
+}
