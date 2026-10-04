@@ -151,13 +151,16 @@ def _k_sqrt(v):
 
 
 # pow: Python's math.pow is C's wherever C's result is finite and at every infinity or NaN
-# argument; it raises where C returns NaN (a negative base and a non-integer exponent) or an
+# argument but a zero base and a -inf exponent, where Python 3.10 raises (3.11 returns C's
+# +inf); it raises where C returns NaN (a negative base and a non-integer exponent) or an
 # infinity (a zero base and a negative exponent, or an overflow), negative for a negative base
 # and an odd integer exponent.
 def _k_pow(a, b):
     try:
         return _k_math.pow(a, b)
     except (ValueError, OverflowError):
+        if _k_math.isinf(b):
+            return _k_math.inf
         if a < 0.0 and _k_math.fmod(b, 1.0) != 0.0:
             return _k_math.nan
         if _k_math.fmod(abs(b), 2.0) == 1.0:

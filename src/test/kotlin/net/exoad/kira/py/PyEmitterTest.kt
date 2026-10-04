@@ -684,6 +684,26 @@ class PyEmitterTest {
     }
 
     @Test
+    fun theErrorsPowCatchesAreNamesPythonReserves() {
+        refused(
+            """
+            pub class OverflowError {
+                pub v: Int32 = 0
+            }
+            """,
+            "'OverflowError' is a name generated Python uses",
+        )
+        refused(
+            """
+            pub fx ValueError: () Int32 {
+                return 1
+            }
+            """,
+            "'ValueError' is a name generated Python uses",
+        )
+    }
+
+    @Test
     fun aValueGivenToADefaultedFieldIsRefused() {
         refused(
             """

@@ -732,6 +732,7 @@ fx maths: () Void {
     power(2.0, -inf)
     power(2.0, inf)
     power(-0.0, -inf)
+    power(0.0, -inf)
     power(0.0, inf)
     power(-2.0, 1e300)
     power(-2.0, 1024.0)

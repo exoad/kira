@@ -96,7 +96,9 @@ import java.util.IdentityHashMap
  * Int32 and Int64 overflow stops the program (D8), Int8 and Int16 wrap (R1), every unsigned type
  * wraps; Float64 `/` by zero is IEEE's; `as` wraps between integers and saturates from a float;
  * a shift count outside the width stops the program and `<<` wraps, signed types included
- * ([shift]); kira:math's functions are C's on a double (the `_k_` helpers its manifest binds);
+ * ([shift]); kira:math's functions are C's on a double (the `_k_` helpers its manifest binds),
+ * where a NaN's sign is the machine's and not Kira's on either target (an x86 C++ build may trace
+ * -nan where Python traces nan);
  * D33 and OQ-1 hold because Python evaluates operands, arguments and an augmented target left to
  * right, reading the target first, and an assignment whose value has an effect has its index
  * computed first, where Python would compute it after the value.
