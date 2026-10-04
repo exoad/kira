@@ -112,6 +112,15 @@ def _k_fdiv(a, b):
     return _k_math.copysign(_k_math.inf, a) * _k_math.copysign(1.0, b)
 
 
+# A shift count must be in 0 until the width, as kira::shl and kira::shr check (R12): any
+# other count, of any integer type, is a program error. The emitter calls this only for a
+# count that is not such a constant.
+def _k_count(n, bits):
+    if 0 <= n < bits:
+        return n
+    _k_panic("shift count out of range")
+
+
 # Float to integer saturates and takes NaN to 0 (D9), as kira::as does.
 def _k_f2i(v, bits, signed):
     if v != v:
@@ -133,6 +142,64 @@ def _k_min(a, b):
 
 def _k_max(a, b):
     return b if b > a else a
+
+
+# kira:math's other functions are C++'s <cmath> on a double (C's Annex F), where Python's math
+# raises or returns an int. sqrt of a negative number (-0.0 is not one) is NaN.
+def _k_sqrt(v):
+    return _k_math.nan if v < 0.0 else _k_math.sqrt(v)
+
+
+# pow: Python's math.pow is C's wherever C's result is finite and at every infinity or NaN
+# argument; it raises where C returns NaN (a negative base and a non-integer exponent) or an
+# infinity (a zero base and a negative exponent, or an overflow), negative for a negative base
+# and an odd integer exponent.
+def _k_pow(a, b):
+    try:
+        return _k_math.pow(a, b)
+    except (ValueError, OverflowError):
+        if a < 0.0 and _k_math.fmod(b, 1.0) != 0.0:
+            return _k_math.nan
+        if _k_math.fmod(abs(b), 2.0) == 1.0:
+            return _k_math.copysign(_k_math.inf, a)
+        return _k_math.inf
+
+
+# floor, ceil and round return a Float64: an infinity or NaN is itself, and the result takes
+# the argument's sign, as C's does (ceil(-0.5) and round(-0.4) are -0.0). round takes a half
+# away from zero, where Python's round takes it to even.
+def _k_floor(v):
+    if not _k_math.isfinite(v):
+        return v
+    return _k_math.copysign(float(_k_math.floor(v)), v)
+
+
+def _k_ceil(v):
+    if not _k_math.isfinite(v):
+        return v
+    return _k_math.copysign(float(_k_math.ceil(v)), v)
+
+
+def _k_round(v):
+    if not _k_math.isfinite(v):
+        return v
+    r = _k_math.floor(abs(v))
+    if abs(v) - r >= 0.5:
+        r += 1
+    return _k_math.copysign(float(r), v)
+
+
+# sin, cos and tan of an infinity are NaN, as C's are; Python raises.
+def _k_sin(v):
+    return _k_math.sin(v) if _k_math.isfinite(v) else _k_math.nan
+
+
+def _k_cos(v):
+    return _k_math.cos(v) if _k_math.isfinite(v) else _k_math.nan
+
+
+def _k_tan(v):
+    return _k_math.tan(v) if _k_math.isfinite(v) else _k_math.nan
 
 
 # Text: a Bool in an interpolation or `as Str` is true or false; trace prints it as 1 or 0

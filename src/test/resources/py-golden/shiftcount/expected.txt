@@ -1,0 +1,23 @@
+Int8 1 << 0 -> 1
+Int8 1 << 7 -> -128
+Int8 1 << 8 -> RuntimeError: kira: shift count out of range
+Int8 1 << -1 -> RuntimeError: kira: shift count out of range
+UInt16 65535 >> 15 -> 1
+UInt16 65535 >> 16 -> RuntimeError: kira: shift count out of range
+UInt16 65535 >> 2^40 -> RuntimeError: kira: shift count out of range
+UInt16 65535 >> -2^40 -> RuntimeError: kira: shift count out of range
+Int32 -1 >>> 31 -> 1
+Int32 -1 >>> 32 -> RuntimeError: kira: shift count out of range
+Int32 -1 >>> 255 -> RuntimeError: kira: shift count out of range
+UInt64 1 << 63 -> 9223372036854775808
+UInt64 1 << 64 -> RuntimeError: kira: shift count out of range
+Size 2^63 >> 63 -> 1
+Size 2^63 >> 64 -> RuntimeError: kira: shift count out of range
+Size 2^63 >> -1 -> RuntimeError: kira: shift count out of range
+UInt32 1 << 32 -> RuntimeError: kira: shift count out of range
+Int64 -8 >> -1 -> RuntimeError: kira: shift count out of range
+Int16 x = 3; x <<= 15 -> -32768
+Int16 x = 3; x <<= 16 -> RuntimeError: kira: shift count out of range
+Int64 x = -1; x >>>= 63 -> 1
+Int64 x = -1; x >>>= 64 -> RuntimeError: kira: shift count out of range
+Int64 x = -1; x >>>= -64 -> RuntimeError: kira: shift count out of range

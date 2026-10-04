@@ -141,6 +141,212 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aShiftByAConstantInsideTheWidthIsBareAndAnyOtherCountIsChecked() {
+        val py = python(
+            """
+            pub fx a: (x: UInt32) UInt32 {
+                return x << 2
+            }
+
+            pub fx b: (x: UInt32, n: Int64) UInt32 {
+                return x >> n
+            }
+
+            pub fx c: (x: UInt8, n: UInt8) UInt8 {
+                return x << n
+            }
+
+            pub fx d: (x: UInt32) UInt32 {
+                return x << 32
+            }
+
+            pub fx e: (x: Int64) Int64 {
+                return x >> -1
+            }
+
+            pub fx g: (x: Size) Size {
+                return x << 40
+            }
+            """
+        )
+        assertTrue(py.contains("def a(x):\n    return _k_u32(x << 2)"), py)
+        assertTrue(py.contains("def b(x, n):\n    return x >> _k_count(n, 32)"), py)
+        assertTrue(py.contains("def c(x, n):\n    return _k_u8(x << _k_count(n, 8))"), py)
+        assertTrue(py.contains("def d(x):\n    return _k_u32(x << _k_count(32, 32))"), "a constant at the width is checked, as kira::shl does:\n$py")
+        assertTrue(py.contains("def e(x):\n    return x >> _k_count(-1, 64)"), py)
+        assertTrue(py.contains("def g(x):\n    return _k_u64(x << 40)"), "Size is 64 bits on the py target:\n$py")
+        assertTrue(py.contains("def _k_count(n, bits):\n    if 0 <= n < bits:\n        return n\n    _k_panic(\"shift count out of range\")"), py)
+    }
+
+    @Test
+    fun aSignedLeftShiftWrapsAndUnsignedRightShiftReadsTheBitsAsUnsigned() {
+        val py = python(
+            """
+            pub fx a: (x: Int32, n: Int32) Int32 {
+                return x << n
+            }
+
+            pub fx b: (x: Int64) Int64 {
+                return x << 63
+            }
+
+            pub fx c: (x: Int8, n: Int32) Int8 {
+                return x >>> n
+            }
+
+            pub fx d: (x: Int16) Int16 {
+                return x >> 3
+            }
+
+            pub fx e: (x: UInt16) UInt16 {
+                return x >>> 15
+            }
+
+            pub fx g: (x: Int64) Int64 {
+                return 1 << x
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_as_i32(x << _k_count(n, 32))"), "C++20 wraps a signed left shift, never Int32's overflow check:\n$py")
+        assertTrue(py.contains("return _k_as_i64(x << 63)"), py)
+        assertTrue(py.contains("return _k_i8((x & 0xFF) >> _k_count(n, 8))"), py)
+        assertTrue(py.contains("def d(x):\n    return x >> 3"), "Python's >> is arithmetic, as C++20's is:\n$py")
+        assertTrue(py.contains("def e(x):\n    return x >> 15"), py)
+        assertTrue(py.contains("return _k_as_i64(1 << _k_count(x, 64))"), py)
+        assertFalse(py.contains("def _k_i32("), py)
+    }
+
+    @Test
+    fun aShiftKeepsPythonsGroupingOfTheOtherBitwiseOperators() {
+        val py = python(
+            """
+            pub fx a: (x: UInt16, y: UInt16) UInt16 {
+                return (x << 4 | y >> 4) ^ (x & y) << 2
+            }
+
+            pub fx b: (x: UInt32, y: UInt32) UInt32 {
+                return (x + y) >> 1
+            }
+
+            pub fx c: (x: Int32) Int32 {
+                return (x & 0xFF) >>> 4
+            }
+            """
+        )
+        assertTrue(py.contains("return (_k_u16(x << 4) | y >> 4) ^ _k_u16((x & y) << 2)"), py)
+        assertTrue(py.contains("return _k_u32(x + y) >> 1"), py)
+        assertTrue(py.contains("return _k_as_i32((x & 255 & 0xFFFFFFFF) >> 4)"), py)
+    }
+
+    @Test
+    fun aBitwiseOrShiftCompoundAssignmentIsTheOperationAssigned() {
+        val py = python(
+            """
+            pub fx f: (v: Int32, n: Int32) Int32 {
+                mut x: Int32 = v
+                x &= 0x0F
+                x |= 0x30
+                x ^= v
+                x <<= 3
+                x <<= n
+                x >>= n
+                x >>>= 1
+                x >>>= n
+                return x
+            }
+            """
+        )
+        assertTrue(
+            py.contains(
+                "    x = v\n    x = x & 15\n    x = x | 48\n    x = x ^ v\n    x = _k_as_i32(x << 3)\n    x = _k_as_i32(x << _k_count(n, 32))\n" +
+                    "    x = x >> _k_count(n, 32)\n    x = _k_as_i32((x & 0xFFFFFFFF) >> 1)\n    x = _k_as_i32((x & 0xFFFFFFFF) >> _k_count(n, 32))\n"
+            ),
+            py,
+        )
+    }
+
+    @Test
+    fun anIndexedOrFieldCompoundAssignmentLocatesItsTargetBeforeTheValue() {
+        val py = python(
+            """
+            mut at: Size = 0
+            mut xs: List<UInt8> = List<UInt8> { }
+
+            fx next: () Size {
+                at += 1
+                return at
+            }
+
+            fx bit: () Int32 {
+                return 3
+            }
+
+            class Flags {
+                pub mut bits: UInt8 = 0
+
+                pub mut fx set: (n: Int32) Void {
+                    bits |= 1 << n
+                }
+            }
+
+            fx f: (i: Size) Void {
+                xs[next()] |= 0x80
+                xs[at] <<= bit()
+                xs[i] >>>= 1
+                xs[0] ^= 0xFF
+            }
+            """
+        )
+        assertTrue(py.contains("_k_t0 = _next()\n    _xs[_k_t0] = _xs[_k_t0] | 128"), py)
+        assertTrue(py.contains("_k_t1 = _at\n    _xs[_k_t1] = _k_u8(_xs[_k_t1] << _k_count(_bit(), 8))"), py)
+        assertTrue(py.contains("_xs[i] = _xs[i] >> 1"), py)
+        assertTrue(py.contains("_xs[0] = _xs[0] ^ 255"), py)
+        assertTrue(py.contains("self.bits = self.bits | _k_u8(1 << _k_count(n, 8))"), py)
+    }
+
+    @Test
+    fun kiraMathBindsToItsHelpersEachAFloat64AsCsIs() {
+        val py = python(
+            """
+            use "kira:math"
+
+            pub fx f: (a: Float64, b: Float64) Float64 {
+                return sqrt(a) + pow(a, b) + floor(a) + ceil(b) + round(a) + sin(a) + cos(b) + tan(a) + abs(b)
+            }
+            """
+        )
+        assertTrue(
+            py.contains(
+                "return _k_sqrt(a) + _k_pow(a, b) + _k_floor(a) + _k_ceil(b) + _k_round(a) + _k_sin(a) + _k_cos(b) + _k_tan(a) + _k_math.fabs(b)"
+            ),
+            py,
+        )
+        listOf("_k_sqrt(v)", "_k_pow(a, b)", "_k_floor(v)", "_k_ceil(v)", "_k_round(v)", "_k_sin(v)", "_k_cos(v)", "_k_tan(v)").forEach {
+            assertTrue(py.contains("def $it:"), "no $it:\n$py")
+        }
+        assertTrue(py.contains("import math as _k_math"), py)
+        assertFalse(py.contains("def _k_min"), "only the helpers the module uses:\n$py")
+        val code = py.lines().filterNot { it.trimStart().startsWith("#") }
+        assertTrue(code.none { Regex("""(?<![\w.])round\(""").containsMatchIn(it) }, "never Python's half-to-even round:\n$py")
+    }
+
+    @Test
+    fun aMathHelperIsCarriedOnlyWhenUsed() {
+        val py = python(
+            """
+            use "kira:math"
+
+            pub fx f: (a: Float64) Float64 {
+                return abs(a)
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_math.fabs(a)"), py)
+        assertTrue(py.contains("import math as _k_math"), py)
+        assertFalse(py.contains("def _k_"), "fabs needs no helper:\n$py")
+    }
+
+    @Test
     fun booleanAndUnaryOperatorsKeepKirasGrouping() {
         val py = python(
             """
@@ -522,14 +728,42 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aShiftIsRefused() {
+    fun float64RemainderIsTheTypersErrorNotTheTargets() {
+        val e = PyTestSupport.emit(
+            """
+            fx f: (x: Float64, y: Float64) Float64 {
+                return x % y
+            }
+            """
+        )
+        assertNull(e.text)
+        assertTrue(e.errors.any { it.contains("% takes integers") }, e.errors.joinToString("\n"))
+        assertTrue(e.errors.none { it.contains(PyModuleEmitter.UNSUPPORTED_CODE) }, e.errors.joinToString("\n"))
+    }
+
+    @Test
+    fun anIntegersAbsHasNoPyBinding() {
         refused(
             """
-            fx f: (x: UInt32) UInt32 {
-                return x << 2
+            fx f: (x: Int32) Int32 {
+                return x.abs()
             }
             """,
-            "the operator <<",
+            "'Int32.abs' (it has no py binding)",
+        )
+    }
+
+    @Test
+    fun kiraMathOnAFloat32IsRefused() {
+        refused(
+            """
+            use "kira:math"
+
+            fx f: (x: Float32) Float32 {
+                return sqrt(x)
+            }
+            """,
+            "Float32",
         )
     }
 

@@ -1,0 +1,804 @@
+module "lang:bitmath"
+
+use "kira:math"
+
+// The shifts, the bitwise compound assignments and kira:math's functions, where Python's own
+// differ from Kira's: `<<` wraps into its type, signed ones included; `>>` is arithmetic on a
+// negative value; `>>>` shifts a signed value's bits as its unsigned counterpart's; a count is
+// any integer type, a constant one bare and any other checked (a count outside 0 until the
+// width stops the program, which the shiftcount golden holds); sqrt, pow, floor, ceil, round,
+// sin, cos, tan and abs are C's, a Float64 for every argument, NaN or an infinity where Python
+// raises, and round takes a half away from zero. The expected output is the C++ backend's run
+// of this same module, built with zig c++ (musl) and with MSVC, which agree; MinGW-w64's C
+// library differs from C's round, taking 0.49999999999999994 to 1.
+
+// A Float64 as trace prints it, every NaN as nan: a NaN's sign is the machine's (x86's default
+// NaN is negative, which C++ prints as -nan), not Kira's.
+fx show: (v: Float64) Void {
+    if v != v {
+        trace("nan")
+    } else {
+        trace(v)
+    }
+}
+
+fx ratio: (a: Float64, b: Float64) Float64 {
+    return a / b
+}
+
+fx lessOne: (v: Size) Size {
+    return v - 1
+}
+
+fx lessOneU64: (v: UInt64) UInt64 {
+    return v - 1
+}
+
+fx shlI8: (v: Int8, n: Int32) Int8 {
+    return v << n
+}
+
+fx shrI8: (v: Int8, n: Int32) Int8 {
+    return v >> n
+}
+
+fx ushrI8: (v: Int8, n: Int32) Int8 {
+    return v >>> n
+}
+
+fx constantsI8: (v: Int8) Str {
+    return "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
+}
+
+fx compoundI8: (v: Int8, n: Int32) Str {
+    mut a: Int8 = v
+    a &= 0x3C
+    mut b: Int8 = v
+    b |= 0x3C
+    mut c: Int8 = v
+    c ^= 0x3C
+    mut d: Int8 = v
+    d <<= n
+    mut e: Int8 = v
+    e >>= n
+    mut g: Int8 = v
+    g >>>= n
+    mut h: Int8 = v
+    h <<= 7
+    mut k: Int8 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineI8: (v: Int8) Void {
+    mut l: Str = "Int8 ${v} <<"
+    mut r: Str = "Int8 ${v} >>"
+    mut u: Str = "Int8 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 8 {
+        l += " ${shlI8(v, n)}"
+        r += " ${shrI8(v, n)}"
+        u += " ${ushrI8(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI8(v))
+    trace(compoundI8(v, 0))
+    trace(compoundI8(v, 1))
+    trace(compoundI8(v, 7))
+}
+
+fx shlI16: (v: Int16, n: Int32) Int16 {
+    return v << n
+}
+
+fx shrI16: (v: Int16, n: Int32) Int16 {
+    return v >> n
+}
+
+fx ushrI16: (v: Int16, n: Int32) Int16 {
+    return v >>> n
+}
+
+fx constantsI16: (v: Int16) Str {
+    return "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
+}
+
+fx compoundI16: (v: Int16, n: Int32) Str {
+    mut a: Int16 = v
+    a &= 0x3C
+    mut b: Int16 = v
+    b |= 0x3C
+    mut c: Int16 = v
+    c ^= 0x3C
+    mut d: Int16 = v
+    d <<= n
+    mut e: Int16 = v
+    e >>= n
+    mut g: Int16 = v
+    g >>>= n
+    mut h: Int16 = v
+    h <<= 15
+    mut k: Int16 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineI16: (v: Int16) Void {
+    mut l: Str = "Int16 ${v} <<"
+    mut r: Str = "Int16 ${v} >>"
+    mut u: Str = "Int16 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 16 {
+        l += " ${shlI16(v, n)}"
+        r += " ${shrI16(v, n)}"
+        u += " ${ushrI16(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI16(v))
+    trace(compoundI16(v, 0))
+    trace(compoundI16(v, 1))
+    trace(compoundI16(v, 15))
+}
+
+fx shlI32: (v: Int32, n: Int32) Int32 {
+    return v << n
+}
+
+fx shrI32: (v: Int32, n: Int32) Int32 {
+    return v >> n
+}
+
+fx ushrI32: (v: Int32, n: Int32) Int32 {
+    return v >>> n
+}
+
+fx constantsI32: (v: Int32) Str {
+    return "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
+}
+
+fx compoundI32: (v: Int32, n: Int32) Str {
+    mut a: Int32 = v
+    a &= 0x3C
+    mut b: Int32 = v
+    b |= 0x3C
+    mut c: Int32 = v
+    c ^= 0x3C
+    mut d: Int32 = v
+    d <<= n
+    mut e: Int32 = v
+    e >>= n
+    mut g: Int32 = v
+    g >>>= n
+    mut h: Int32 = v
+    h <<= 31
+    mut k: Int32 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineI32: (v: Int32) Void {
+    mut l: Str = "Int32 ${v} <<"
+    mut r: Str = "Int32 ${v} >>"
+    mut u: Str = "Int32 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 32 {
+        l += " ${shlI32(v, n)}"
+        r += " ${shrI32(v, n)}"
+        u += " ${ushrI32(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI32(v))
+    trace(compoundI32(v, 0))
+    trace(compoundI32(v, 1))
+    trace(compoundI32(v, 31))
+}
+
+fx shlI64: (v: Int64, n: Int32) Int64 {
+    return v << n
+}
+
+fx shrI64: (v: Int64, n: Int32) Int64 {
+    return v >> n
+}
+
+fx ushrI64: (v: Int64, n: Int32) Int64 {
+    return v >>> n
+}
+
+fx constantsI64: (v: Int64) Str {
+    return "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
+}
+
+fx compoundI64: (v: Int64, n: Int32) Str {
+    mut a: Int64 = v
+    a &= 0x3C
+    mut b: Int64 = v
+    b |= 0x3C
+    mut c: Int64 = v
+    c ^= 0x3C
+    mut d: Int64 = v
+    d <<= n
+    mut e: Int64 = v
+    e >>= n
+    mut g: Int64 = v
+    g >>>= n
+    mut h: Int64 = v
+    h <<= 63
+    mut k: Int64 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineI64: (v: Int64) Void {
+    mut l: Str = "Int64 ${v} <<"
+    mut r: Str = "Int64 ${v} >>"
+    mut u: Str = "Int64 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 64 {
+        l += " ${shlI64(v, n)}"
+        r += " ${shrI64(v, n)}"
+        u += " ${ushrI64(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI64(v))
+    trace(compoundI64(v, 0))
+    trace(compoundI64(v, 1))
+    trace(compoundI64(v, 63))
+}
+
+fx shlU8: (v: UInt8, n: Int32) UInt8 {
+    return v << n
+}
+
+fx shrU8: (v: UInt8, n: Int32) UInt8 {
+    return v >> n
+}
+
+fx ushrU8: (v: UInt8, n: Int32) UInt8 {
+    return v >>> n
+}
+
+fx constantsU8: (v: UInt8) Str {
+    return "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
+}
+
+fx compoundU8: (v: UInt8, n: Int32) Str {
+    mut a: UInt8 = v
+    a &= 0x3C
+    mut b: UInt8 = v
+    b |= 0x3C
+    mut c: UInt8 = v
+    c ^= 0x3C
+    mut d: UInt8 = v
+    d <<= n
+    mut e: UInt8 = v
+    e >>= n
+    mut g: UInt8 = v
+    g >>>= n
+    mut h: UInt8 = v
+    h <<= 7
+    mut k: UInt8 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineU8: (v: UInt8) Void {
+    mut l: Str = "UInt8 ${v} <<"
+    mut r: Str = "UInt8 ${v} >>"
+    mut u: Str = "UInt8 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 8 {
+        l += " ${shlU8(v, n)}"
+        r += " ${shrU8(v, n)}"
+        u += " ${ushrU8(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU8(v))
+    trace(compoundU8(v, 0))
+    trace(compoundU8(v, 1))
+    trace(compoundU8(v, 7))
+}
+
+fx shlU16: (v: UInt16, n: Int32) UInt16 {
+    return v << n
+}
+
+fx shrU16: (v: UInt16, n: Int32) UInt16 {
+    return v >> n
+}
+
+fx ushrU16: (v: UInt16, n: Int32) UInt16 {
+    return v >>> n
+}
+
+fx constantsU16: (v: UInt16) Str {
+    return "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
+}
+
+fx compoundU16: (v: UInt16, n: Int32) Str {
+    mut a: UInt16 = v
+    a &= 0x3C
+    mut b: UInt16 = v
+    b |= 0x3C
+    mut c: UInt16 = v
+    c ^= 0x3C
+    mut d: UInt16 = v
+    d <<= n
+    mut e: UInt16 = v
+    e >>= n
+    mut g: UInt16 = v
+    g >>>= n
+    mut h: UInt16 = v
+    h <<= 15
+    mut k: UInt16 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineU16: (v: UInt16) Void {
+    mut l: Str = "UInt16 ${v} <<"
+    mut r: Str = "UInt16 ${v} >>"
+    mut u: Str = "UInt16 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 16 {
+        l += " ${shlU16(v, n)}"
+        r += " ${shrU16(v, n)}"
+        u += " ${ushrU16(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU16(v))
+    trace(compoundU16(v, 0))
+    trace(compoundU16(v, 1))
+    trace(compoundU16(v, 15))
+}
+
+fx shlU32: (v: UInt32, n: Int32) UInt32 {
+    return v << n
+}
+
+fx shrU32: (v: UInt32, n: Int32) UInt32 {
+    return v >> n
+}
+
+fx ushrU32: (v: UInt32, n: Int32) UInt32 {
+    return v >>> n
+}
+
+fx constantsU32: (v: UInt32) Str {
+    return "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
+}
+
+fx compoundU32: (v: UInt32, n: Int32) Str {
+    mut a: UInt32 = v
+    a &= 0x3C
+    mut b: UInt32 = v
+    b |= 0x3C
+    mut c: UInt32 = v
+    c ^= 0x3C
+    mut d: UInt32 = v
+    d <<= n
+    mut e: UInt32 = v
+    e >>= n
+    mut g: UInt32 = v
+    g >>>= n
+    mut h: UInt32 = v
+    h <<= 31
+    mut k: UInt32 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineU32: (v: UInt32) Void {
+    mut l: Str = "UInt32 ${v} <<"
+    mut r: Str = "UInt32 ${v} >>"
+    mut u: Str = "UInt32 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 32 {
+        l += " ${shlU32(v, n)}"
+        r += " ${shrU32(v, n)}"
+        u += " ${ushrU32(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU32(v))
+    trace(compoundU32(v, 0))
+    trace(compoundU32(v, 1))
+    trace(compoundU32(v, 31))
+}
+
+fx shlU64: (v: UInt64, n: Int32) UInt64 {
+    return v << n
+}
+
+fx shrU64: (v: UInt64, n: Int32) UInt64 {
+    return v >> n
+}
+
+fx ushrU64: (v: UInt64, n: Int32) UInt64 {
+    return v >>> n
+}
+
+fx constantsU64: (v: UInt64) Str {
+    return "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
+}
+
+fx compoundU64: (v: UInt64, n: Int32) Str {
+    mut a: UInt64 = v
+    a &= 0x3C
+    mut b: UInt64 = v
+    b |= 0x3C
+    mut c: UInt64 = v
+    c ^= 0x3C
+    mut d: UInt64 = v
+    d <<= n
+    mut e: UInt64 = v
+    e >>= n
+    mut g: UInt64 = v
+    g >>>= n
+    mut h: UInt64 = v
+    h <<= 63
+    mut k: UInt64 = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineU64: (v: UInt64) Void {
+    mut l: Str = "UInt64 ${v} <<"
+    mut r: Str = "UInt64 ${v} >>"
+    mut u: Str = "UInt64 ${v} >>>"
+    mut n: Int32 = 0
+    while n < 64 {
+        l += " ${shlU64(v, n)}"
+        r += " ${shrU64(v, n)}"
+        u += " ${ushrU64(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU64(v))
+    trace(compoundU64(v, 0))
+    trace(compoundU64(v, 1))
+    trace(compoundU64(v, 63))
+}
+
+fx shlSize: (v: Size, n: Int32) Size {
+    return v << n
+}
+
+fx shrSize: (v: Size, n: Int32) Size {
+    return v >> n
+}
+
+fx ushrSize: (v: Size, n: Int32) Size {
+    return v >>> n
+}
+
+fx constantsSize: (v: Size) Str {
+    return "${v << 0} ${v << 1} ${v << 31} ${v << 32} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 31} ${v >> 32} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 31} ${v >>> 32} ${v >>> 63}"
+}
+
+fx compoundSize: (v: Size, n: Int32) Str {
+    mut a: Size = v
+    a &= 0x3C
+    mut b: Size = v
+    b |= 0x3C
+    mut c: Size = v
+    c ^= 0x3C
+    mut d: Size = v
+    d <<= n
+    mut e: Size = v
+    e >>= n
+    mut g: Size = v
+    g >>>= n
+    mut h: Size = v
+    h <<= 63
+    mut k: Size = v
+    k >>>= 1
+    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+fx lineSize: (v: Size) Void {
+    mut l: Str = "Size ${v} <<"
+    mut r: Str = "Size ${v} >>"
+    mut u: Str = "Size ${v} >>>"
+    mut n: Int32 = 0
+    while n < 64 {
+        l += " ${shlSize(v, n)}"
+        r += " ${shrSize(v, n)}"
+        u += " ${ushrSize(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsSize(v))
+    trace(compoundSize(v, 0))
+    trace(compoundSize(v, 1))
+    trace(compoundSize(v, 63))
+}
+
+fx shlByU8: (v: UInt32, n: UInt8) UInt32 {
+    return v << n
+}
+
+fx shrBySize: (v: Int64, n: Size) Int64 {
+    return v >> n
+}
+
+fx ushrBy64: (v: Int16, n: Int64) Int16 {
+    return v >>> n
+}
+
+fx bit64: (n: Int32) Int64 {
+    return 1 << n
+}
+
+fx byte: (n: Int32) UInt8 {
+    return 1 << n
+}
+
+fx mixed: (a: UInt16, b: UInt16, n: Int32) UInt16 {
+    return (a << n | b >> n) ^ (a & b) << 2
+}
+
+class Flags {
+    pub mut bits: UInt8 = 0
+
+    pub mut fx set: (n: Int32) Void {
+        bits |= 1 << n
+    }
+
+    pub mut fx clear: (n: Int32) Void {
+        bits &= ~(1 << n)
+    }
+
+    pub mut fx flip: (n: Int32) Void {
+        bits ^= 1 << n
+    }
+}
+
+fx at: (i: Size) Size {
+    trace("at ${i}")
+    return i
+}
+
+fx given: (v: Int32) Int32 {
+    trace("value ${v}")
+    return v
+}
+
+fx indexed: () Void {
+    mut xs: List<Int32> = List<Int32> { }
+    xs.add(0x0F)
+    xs.add(-16)
+    xs.add(0x70000000)
+    xs[at(0)] |= given(0xF0)
+    xs[at(0)] &= given(0x3C)
+    xs[at(0)] ^= given(-1)
+    xs[at(1)] >>= given(2)
+    xs[at(1)] >>>= given(28)
+    xs[at(2)] <<= given(1)
+    xs[2] <<= 1
+    xs[at(2)] >>>= 31
+    trace(xs[0])
+    trace(xs[1])
+    trace(xs[2])
+}
+
+fx counts: () Void {
+    trace(shlByU8(1, 31))
+    trace(shlByU8(0xFFFFFFFF, 4))
+    trace(shrBySize(-9223372036854775807 - 1, 63))
+    trace(shrBySize(-5, 1))
+    trace(ushrBy64(-1, 15))
+    trace(ushrBy64(-32768, 0))
+    trace(bit64(0))
+    trace(bit64(62))
+    trace(bit64(63))
+    trace(byte(7))
+    trace(mixed(0xF00F, 0x0FF0, 4))
+    trace(mixed(0xFFFF, 0xFFFF, 15))
+    mut f: Flags = Flags { }
+    f.set(0)
+    f.set(7)
+    f.set(3)
+    trace(f.bits)
+    f.clear(0)
+    f.flip(7)
+    f.flip(1)
+    trace(f.bits)
+}
+
+fx rounding: (v: Float64) Void {
+    trace("of")
+    show(v)
+    show(floor(v))
+    show(ceil(v))
+    show(round(v))
+    show(floor(v) - v)
+    show(round(v) - v)
+}
+
+fx root: (v: Float64) Void {
+    show(sqrt(v))
+    show(abs(v))
+}
+
+fx trig: (v: Float64) Void {
+    show(sin(v))
+    show(cos(v))
+    show(tan(v))
+}
+
+fx power: (a: Float64, b: Float64) Void {
+    show(pow(a, b))
+}
+
+fx maths: () Void {
+    inf: Float64 = ratio(1.0, 0.0)
+    nan: Float64 = ratio(0.0, 0.0)
+    mut vs: List<Float64> = List<Float64> { }
+    vs.add(0.0)
+    vs.add(-0.0)
+    vs.add(0.5)
+    vs.add(-0.5)
+    vs.add(1.5)
+    vs.add(-1.5)
+    vs.add(2.5)
+    vs.add(-2.5)
+    vs.add(0.4)
+    vs.add(-0.4)
+    vs.add(0.49999999999999994)
+    vs.add(-0.49999999999999994)
+    vs.add(1.0)
+    vs.add(-1.0)
+    vs.add(2.0)
+    vs.add(4503599627370497.0)
+    vs.add(-4503599627370497.0)
+    vs.add(1e300)
+    vs.add(-1e300)
+    vs.add(inf)
+    vs.add(-inf)
+    vs.add(nan)
+    mut i: Size = 0
+    while i < vs.size() {
+        rounding(vs[i])
+        root(vs[i])
+        i += 1
+    }
+    trace("trig")
+    trig(0.0)
+    trig(-0.0)
+    trig(0.5)
+    trig(-1.0)
+    trig(2.0)
+    trig(inf)
+    trig(-inf)
+    trig(nan)
+    trace("pow")
+    power(2.0, 10.0)
+    power(2.0, 0.5)
+    power(-2.0, 3.0)
+    power(-2.0, 2.0)
+    power(-8.0, 1.0 / 3.0)
+    power(-1.5, 0.5)
+    power(0.0, -1.0)
+    power(-0.0, -1.0)
+    power(-0.0, -2.0)
+    power(0.0, -1.5)
+    power(-0.0, -1.5)
+    power(-0.0, 3.0)
+    power(-0.0, 0.5)
+    power(0.0, 0.0)
+    power(10.0, 309.0)
+    power(-10.0, 309.0)
+    power(-10.0, 310.0)
+    power(10.0, -400.0)
+    power(-10.0, -401.0)
+    power(nan, 0.0)
+    power(nan, 1.0)
+    power(1.0, nan)
+    power(-1.0, inf)
+    power(-1.0, -inf)
+    power(inf, -1.0)
+    power(-inf, -1.0)
+    power(-inf, -2.0)
+    power(-inf, 3.0)
+    power(-inf, 2.0)
+    power(inf, 0.5)
+    power(0.5, -inf)
+    power(0.5, inf)
+    power(2.0, -inf)
+    power(2.0, inf)
+    power(-0.0, -inf)
+    power(0.0, inf)
+    power(-2.0, 1e300)
+    power(-2.0, 1024.0)
+    power(-2.0, 1025.0)
+    power(-2.0, -1080.0)
+    power(-2.0, -1081.0)
+}
+
+fx main: () Void {
+    topSize: Size = lessOne(0)
+    highSize: Size = topSize - 0x5A5A5A5A
+    topU64: UInt64 = lessOneU64(0)
+    lineI8(0)
+    lineI8(1)
+    lineI8(-1)
+    lineI8(-128)
+    lineI8(127)
+    lineI8(0x5A)
+    lineI16(0)
+    lineI16(1)
+    lineI16(-1)
+    lineI16(-32768)
+    lineI16(32767)
+    lineI16(0x5A5A)
+    lineI32(0)
+    lineI32(1)
+    lineI32(-1)
+    lineI32(-2147483647 - 1)
+    lineI32(2147483647)
+    lineI32(0x5A5A5A5A)
+    lineI64(0)
+    lineI64(1)
+    lineI64(-1)
+    lineI64(-9223372036854775807 - 1)
+    lineI64(9223372036854775807)
+    lineI64(0x5A5A5A5A5A5A5A5A)
+    lineU8(0)
+    lineU8(1)
+    lineU8(255)
+    lineU8(128)
+    lineU8(127)
+    lineU8(0xA5)
+    lineU16(0)
+    lineU16(1)
+    lineU16(65535)
+    lineU16(32768)
+    lineU16(32767)
+    lineU16(0xA5A5)
+    lineU32(0)
+    lineU32(1)
+    lineU32(4294967295)
+    lineU32(2147483648)
+    lineU32(2147483647)
+    lineU32(0xA5A5A5A5)
+    lineU64(0)
+    lineU64(1)
+    lineU64(topU64)
+    lineU64(9223372036854775807 + 1)
+    lineU64(9223372036854775807)
+    lineU64(topU64 - 0x5A5A5A5A5A5A5A5A)
+    lineSize(0)
+    lineSize(1)
+    lineSize(4294967295)
+    lineSize(2147483648)
+    lineSize(topSize)
+    lineSize(highSize)
+    counts()
+    indexed()
+    maths()
+}

@@ -13,8 +13,9 @@ import kotlin.test.assertTrue
  * compiles with `--target py --out build/tmp/py-golden/<case>`. Every generated file must parse
  * as Python 3.10 (the board's), and the run's stdout must equal the case's expected.txt: the
  * module itself when it has a `main`, or `python driver.py <out>` when the case has a driver,
- * hand-written Python that imports the generated module. numbers and order hold the C++
- * backend's output for the same module; ladder runs the target program against the
+ * hand-written Python that imports the generated module. numbers, order and bitmath hold the C++
+ * backend's output for the same module, and shiftcount each call's that the C++ backend's run
+ * of it alone gives (a value, or the panic's message); ladder runs the target program against the
  * hand-written Ladder it replaces. Skipped when no Python is found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {

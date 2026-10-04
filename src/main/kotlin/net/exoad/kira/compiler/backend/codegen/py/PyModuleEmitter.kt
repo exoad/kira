@@ -95,6 +95,8 @@ import java.util.IdentityHashMap
  * and `%` takes the dividend's sign, a zero divisor stops the program (`_k_divs`, `_k_mods`);
  * Int32 and Int64 overflow stops the program (D8), Int8 and Int16 wrap (R1), every unsigned type
  * wraps; Float64 `/` by zero is IEEE's; `as` wraps between integers and saturates from a float;
+ * a shift count outside the width stops the program and `<<` wraps, signed types included
+ * ([shift]); kira:math's functions are C's on a double (the `_k_` helpers its manifest binds);
  * D33 and OQ-1 hold because Python evaluates operands, arguments and an augmented target left to
  * right, reading the target first, and an assignment whose value has an effect has its index
  * computed first, where Python would compute it after the value.
@@ -763,21 +765,9 @@ class PyModuleEmitter(
             BinaryOp.AND -> infix(expr(e.leftExpr, f), "and", expr(e.rightExpr, f), PyPrec.AND)
             BinaryOp.OR -> infix(expr(e.leftExpr, f), "or", expr(e.rightExpr, f), PyPrec.OR)
             in COMPARISONS -> comparison(e, f)
-            BinaryOp.ADD, BinaryOp.SUB, BinaryOp.MUL, BinaryOp.DIV, BinaryOp.MOD -> {
+            BinaryOp.ADD, BinaryOp.SUB, BinaryOp.MUL, BinaryOp.DIV, BinaryOp.MOD, in BITS -> {
                 val t = typeOf(e) ?: return Py("None", PyPrec.ATOM)
                 arith(op, t, expr(e.leftExpr, f), expr(e.rightExpr, f), e.rightExpr, e)
-            }
-            BinaryOp.CONJUNCTIVE_AND, BinaryOp.CONJUNCTIVE_OR, BinaryOp.XOR -> {
-                val t = typeOf(e) ?: return Py("None", PyPrec.ATOM)
-                if (t.prim?.isInteger != true) {
-                    return refusePy(e, "a bitwise operator on a ${t.display()}")
-                }
-                val (sym, prec) = when (op) {
-                    BinaryOp.CONJUNCTIVE_AND -> "&" to PyPrec.BAND
-                    BinaryOp.CONJUNCTIVE_OR -> "|" to PyPrec.BOR
-                    else -> "^" to PyPrec.BXOR
-                }
-                infix(expr(e.leftExpr, f), sym, expr(e.rightExpr, f), prec)
             }
             else -> refusePy(e, "the operator ${spelled(op)}")
         }
@@ -797,6 +787,18 @@ class PyModuleEmitter(
 
     /** `l op r` of type [t] in Kira's arithmetic ([PyModuleEmitter]'s semantics). */
     private fun arith(op: BinaryOp, t: KType, l: Py, r: Py, right: Expr, at: Expr): Py {
+        if (op in BITS) {
+            val prim = t.prim
+            if (prim?.isInteger != true) {
+                return refusePy(at, "a bitwise operator on a ${t.display()}")
+            }
+            return when (op) {
+                BinaryOp.CONJUNCTIVE_AND -> infix(l, "&", r, PyPrec.BAND)
+                BinaryOp.CONJUNCTIVE_OR -> infix(l, "|", r, PyPrec.BOR)
+                BinaryOp.XOR -> infix(l, "^", r, PyPrec.BXOR)
+                else -> shift(op, prim, l, r, right)
+            }
+        }
         if (t == KType.Str) {
             return if (op == BinaryOp.ADD) infix(l, "+", r, PyPrec.ADD) else refusePy(at, "the operator ${spelled(op)} on Str")
         }
@@ -824,6 +826,28 @@ class PyModuleEmitter(
             BinaryOp.DIV -> if (prim.signed) call("_k_divs", l.text, r.text, prim.bits.toString()) else call("_k_divu", l.text, r.text)
             BinaryOp.MOD -> if (prim.signed) call("_k_mods", l.text, r.text) else call("_k_modu", l.text, r.text)
             else -> intResult(prim, infix(l, sym ?: return refusePy(at, "the operator ${spelled(op)}"), r, if (op == BinaryOp.MUL) PyPrec.MUL else PyPrec.ADD))
+        }
+    }
+
+    /**
+     * `v << n`, `v >> n` and `v >>> n` in [prim], as the C++ target's (R12): a count outside
+     * `0 until` the width, of whatever integer type, stops the program (`_k_count`, as
+     * kira::shl and kira::shr do), checked unless it is a constant inside; `<<` wraps into the
+     * type, signed ones included, as C++20 defines it; `>>` is Python's, arithmetic on a negative
+     * value as C++20's; `>>>` shifts a signed value's bits as its unsigned counterpart's and
+     * reads the result back as signed.
+     */
+    private fun shift(op: BinaryOp, prim: Prim, v: Py, n: Py, count: Expr): Py {
+        val c = (model.const(count) as? ConstValue.IntConst)?.value
+        val inside = c != null && c.signum() >= 0 && c < BigInteger.valueOf(prim.bits.toLong())
+        val k = if (inside) n else call("_k_count", n.text, prim.bits.toString())
+        return when {
+            op == BinaryOp.SHL -> call(AS_HELPERS.getValue(prim), infix(v, "<<", k, PyPrec.SHIFT).text)
+            op == BinaryOp.USHR && prim.signed -> {
+                val bits = infix(v, "&", Py(MASKS.getValue(prim.bits), PyPrec.ATOM), PyPrec.BAND)
+                call(AS_HELPERS.getValue(prim), infix(bits, ">>", k, PyPrec.SHIFT).text)
+            }
+            else -> infix(v, ">>", k, PyPrec.SHIFT)
         }
     }
 
@@ -1060,6 +1084,12 @@ class PyModuleEmitter(
 
         /** `as` into each integer type: a wrap, Int32 and Int64 included. */
         private val AS_HELPERS = INT_HELPERS + mapOf(Prim.INT32 to "_k_as_i32", Prim.INT64 to "_k_as_i64")
+
+        /** The bitwise operators and the shifts: integers only. */
+        private val BITS = setOf(BinaryOp.CONJUNCTIVE_AND, BinaryOp.CONJUNCTIVE_OR, BinaryOp.XOR, BinaryOp.SHL, BinaryOp.SHR, BinaryOp.USHR)
+
+        /** A width's bits, which `>>>` keeps of a signed value. */
+        private val MASKS = mapOf(8 to "0xFF", 16 to "0xFFFF", 32 to "0xFFFFFFFF", 64 to "0xFFFFFFFFFFFFFFFF")
 
         /** A Float64 as a Python literal that reads back to the same double (Java's shortest repr). */
         fun floatText(v: Double): String {
