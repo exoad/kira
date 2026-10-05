@@ -30,6 +30,7 @@ import net.exoad.kira.compiler.analysis.types.constArgs
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.typeArgs
+import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBindingTable
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
@@ -568,29 +569,42 @@ class PyModuleEmitter(
     /**
      * [e] as a value that goes on (D44: a List is a value). A Python list is shared by every
      * name given it, so a List is copied where a second name could see a write: stored from
-     * any variable, and returned from anything but a local, which dies. An argument, given to
-     * a callee whose effect is [callee], is copied only when something may write it before the
-     * callee is done with it: a field, a `mut` global or a `mut` parameter when the callee or
-     * a sibling in [later] is IMPURE, a local when a sibling is (Python reaches no other
-     * function's locals); a by-value parameter or a constant never, as nothing may write
-     * either. A constant stored into a constant is shared. A call or a construction makes a
-     * List no one else holds. A List given as a View is lent, never copied (ViewPass keeps any
-     * IMPURE call away from a view of a shared place).
+     * any variable, and returned from anything but a local, which dies. An argument is copied
+     * only when something may write it before the callee is done with it, as the C++ target's
+     * copy policy decides: a field, a `mut` global or a `mut` parameter when the callee may write
+     * what its caller sees ([calleeWrites]: not CONFINED, or handed a `mut` operand) or a
+     * sibling in [later] is IMPURE; a local only when a sibling writes it by name (a `mut`
+     * argument, a `mut fx` on it, a MutView of it), as nothing else reaches another function's
+     * locals; a by-value parameter or a constant never, as nothing may write either. A
+     * constant stored into a constant is shared. A call or a construction makes a List no one
+     * else holds. A List given as a View is lent, never copied (ViewPass keeps any IMPURE call
+     * away from a view of a shared place).
      */
-    private fun asValue(e: Expr, f: Frame, use: Use, later: List<Expr> = emptyList(), callee: Effect = Effect.IMPURE): Py {
+    private fun asValue(e: Expr, f: Frame, use: Use, later: List<Expr> = emptyList(), calleeWrites: Boolean = true): Py {
         val v = expr(e, f)
         val t = model.typeOrNull(e) ?: return v
         if (!isList(t) || model.coercion(e) is Coercion.ToView) {
             return v
         }
-        val shared = callee == Effect.IMPURE || later.any { model.effect(it) == Effect.IMPURE }
+        val shared = calleeWrites || later.any { model.effect(it) == Effect.IMPURE }
         return if (copies(e, use, later, shared)) Py(copyOf(v.text, t), PyPrec.POSTFIX) else v
     }
+
+    /**
+     * Whether the call [rc] may write a field or global it is given while it runs (C++'s W3):
+     * it is not CONFINED (`CallReach.confined`: it may write what its caller sees, or run code
+     * the checker does not see), or it has a `mut` operand of its own, a `mut` argument or a
+     * MutView it is handed, which may be that field.
+     */
+    private fun callWrites(rc: ResolvedCall): Boolean =
+        !CallReach.confined(rc, model) || rc.args.any { a ->
+            a is ArgBinding.Given && (a.byRef || (magicName(model.typeOrNull(a.expr)) == "MutView" && model.coercion(a.expr) !is Coercion.ToView))
+        }
 
     private fun copies(e: Expr, use: Use, later: List<Expr>, sharedWritten: Boolean): Boolean = when (e) {
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol -> when (use) {
-                Use.ARG -> later.any { model.effect(it) == Effect.IMPURE }
+                Use.ARG -> later.any { writesByName(it, sym) }
                 Use.RETURN -> false
                 else -> true
             }
@@ -604,6 +618,40 @@ class PyModuleEmitter(
         }
         is MemberAccessExpr -> model.member(e) is MemberRef.Field && (use != Use.ARG || sharedWritten)
         is IfExpr -> listOfNotNull(branchValue(e.thenBranch), branchValue(e.elseBranch)).any { copies(it, use, later, sharedWritten) }
+        else -> false
+    }
+
+    /**
+     * Whether evaluating [e] writes the local [sym] by name, the one way a local is written
+     * while a sibling argument holds it (Python reaches no other function's locals): a `mut`
+     * argument rooted at it, a `mut fx` called on it, or a MutView lent from it, as the C++
+     * target's NAMED test reads it.
+     */
+    private fun writesByName(e: Expr, sym: LocalSymbol): Boolean {
+        var writes = false
+        AstTree.walk(e) { n ->
+            if (writes || n !is Expr) {
+                return@walk
+            }
+            if (magicName(model.typeOrNull(n)) == "MutView" && rootedAt(n, sym)) {
+                writes = true
+            }
+            val rc = (n as? FunctionCallExpr)?.let { model.call(it) } ?: return@walk
+            if (rc.fn?.isMutMethod == true && rc.receiver?.let { rootedAt(it, sym) } == true) {
+                writes = true
+            }
+            if (rc.args.any { it is ArgBinding.Given && it.byRef && rootedAt(it.expr, sym) }) {
+                writes = true
+            }
+        }
+        return writes
+    }
+
+    /** Whether [e] is the local [sym] or a view lent from it (`xs.from(1)`, `xs.view().slice(0, 2)`). */
+    private fun rootedAt(e: Expr, sym: LocalSymbol): Boolean = when (e) {
+        is Identifier -> model.symbolOf(e) === sym
+        is MemberAccessExpr -> (e.member as? FunctionCallExpr)?.let { rootedAt(it, sym) } ?: false
+        is FunctionCallExpr -> model.call(e)?.let { rc -> rc.fn?.name in LENDERS && rc.receiver?.let { rootedAt(it, sym) } == true } ?: false
         else -> false
     }
 
@@ -769,11 +817,12 @@ class PyModuleEmitter(
         val parts = mutableListOf<String>()
         var sawNamed = false
         val given = rc.sourceOrder.mapNotNull { k -> (rc.args[k] as? ArgBinding.Given)?.let { k to it } }
+        val writes = callWrites(rc)
         given.forEachIndexed { at, (k, b) ->
             val text = if (b.byRef) {
                 listPlace(b.expr, f) ?: "None"
             } else {
-                wrap(asValue(b.expr, f, Use.ARG, given.drop(at + 1).map { it.second.expr }, model.effect(fn)), PyPrec.TERNARY)
+                wrap(asValue(b.expr, f, Use.ARG, given.drop(at + 1).map { it.second.expr }, writes), PyPrec.TERNARY)
             }
             if (b.expr in named) {
                 sawNamed = true
@@ -852,13 +901,15 @@ class PyModuleEmitter(
         val parts = mutableListOf<String>()
         var sawNamed = false
         val given = init.sourceOrder.mapNotNull { k -> init.fields[k] as? FieldInit.Given }
+        // The construction's defaults and `initially` run before __init__ copies a List.
+        val writes = !CallReach.construction(cls, given.associate { it.field to it.expr }, model)
         given.forEachIndexed { at, fi ->
             if (fi.field.default != null || !fi.field.isRequired) {
                 refuse(fi.expr, "a value given to the defaulted field '${fi.field.name}' at a construction")
             }
             // __init__ copies a List it stores, after the defaults before it ran: a List is
             // copied here, as an argument is, when they or a later value may write it.
-            val text = wrap(asValue(fi.expr, f, Use.ARG, given.drop(at + 1).map { it.expr }, model.effect(o)), PyPrec.TERNARY)
+            val text = wrap(asValue(fi.expr, f, Use.ARG, given.drop(at + 1).map { it.expr }, writes), PyPrec.TERNARY)
             if (fi.named) {
                 sawNamed = true
                 parts += "${fi.field.name}=$text"
@@ -1219,6 +1270,9 @@ class PyModuleEmitter(
 
     companion object {
         const val UNSUPPORTED_CODE = "py.unsupported"
+
+        /** The methods that lend a view of their receiver, a MutView of a mutable List or Arr. */
+        private val LENDERS = setOf("from", "slice", "view")
 
         private val COMPARISONS = mapOf(
             BinaryOp.EQUALS to "==",
