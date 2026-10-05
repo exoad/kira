@@ -594,6 +594,28 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aGlobalStartsAfterTheGlobalsItReadsAndAConstantIsNeverCopiedAsAnArgument() {
+        val py = python(
+            """
+            A: Arr<Int32, 2> = B
+            B: Arr<Int32, 2> = [7, 8]
+            mut k: Arr<UInt8, 2> = KEY
+            KEY: Arr<UInt8, 2> = [0xAB, 0xCD]
+
+            fx total: (xs: Arr<Int32, 2>) Int32 {
+                return xs[0] + xs[1]
+            }
+
+            fx f: () Int32 {
+                return total(A) + total(B)
+            }
+            """
+        )
+        assertTrue(py.contains("_B = [7, 8]\n_A = _B\n_KEY = bytearray((171, 205))\n_k = bytearray(_KEY)"), py)
+        assertTrue(py.contains("_total(_A) + _total(_B)"), py)
+    }
+
+    @Test
     fun aMutListParameterIsTheCallersListAndAnAssignmentKeepsIt() {
         val py = python(
             """

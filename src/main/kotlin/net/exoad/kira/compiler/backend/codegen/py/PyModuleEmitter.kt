@@ -155,11 +155,11 @@ class PyModuleEmitter(
         }
         val constants = mutableListOf<String>()
         val definitions = mutableListOf<List<String>>()
-        val globals = mutableListOf<String>()
+        val globals = LinkedHashMap<GlobalSymbol, String>()
         var main: FnSymbol? = null
         module.declarations.forEach { sym ->
             when (sym) {
-                is GlobalSymbol -> global(sym)?.let { (folded, line) -> if (folded) constants += line else globals += line }
+                is GlobalSymbol -> global(sym)?.let { (folded, line) -> if (folded) constants += line else globals[sym] = line }
                 is FnSymbol -> {
                     definitions += function(sym, null)
                     if (sym.name == "main") {
@@ -186,7 +186,7 @@ class PyModuleEmitter(
         }
         definitions.forEach { sections += it.joinToString("\n") }
         if (globals.isNotEmpty()) {
-            sections += globals.joinToString("\n")
+            sections += initOrder(globals.keys.toList()).joinToString("\n") { globals.getValue(it) }
         }
         entry?.let { sections += it }
         sections.forEach { out.append("\n\n").append(it).append('\n') }
@@ -194,6 +194,44 @@ class PyModuleEmitter(
     }
 
     // ---- declarations ------------------------------------------------------------------------
+
+    /**
+     * [globals] (those not folded into a literal) in an order where each starts after every
+     * global its initializer reads, as C++ initializes a constant before its use: Python runs a
+     * module's lines in order, so `A = B` before `B = [7, 8]` would name B unbound. Source order
+     * otherwise, and for any cycle.
+     */
+    private fun initOrder(globals: List<GlobalSymbol>): List<GlobalSymbol> {
+        val pending = globals.toSet()
+        val out = LinkedHashSet<GlobalSymbol>()
+        val visiting = HashSet<GlobalSymbol>()
+        fun visit(g: GlobalSymbol) {
+            if (g in out || !visiting.add(g)) {
+                return
+            }
+            val reads = LinkedHashSet<GlobalSymbol>()
+            g.init?.let { globalsRead(it, Collections.newSetFromMap(IdentityHashMap()), reads) }
+            reads.filter { it in pending && it !== g }.forEach { visit(it) }
+            out.add(g)
+        }
+        globals.forEach { visit(it) }
+        return out.toList()
+    }
+
+    /** The module's globals [root] reads: named in it, or in a function it calls or a class it builds, transitively. */
+    private fun globalsRead(root: ASTNode, seen: MutableSet<Any>, out: MutableSet<GlobalSymbol>) {
+        AstTree.walk(root) { n ->
+            when (n) {
+                is Identifier -> (model.symbolOf(n) as? GlobalSymbol)?.takeIf { it.module === module }?.let { out.add(it) }
+                is FunctionCallExpr -> model.call(n)?.fn?.takeIf { it.module === module && seen.add(it) }?.body?.forEach { globalsRead(it, seen, out) }
+                is ObjectInitExpr -> model.init(n)?.cls?.takeIf { it.module === module && seen.add(it) }?.let { c ->
+                    c.fields.forEach { fd -> fd.default?.let { globalsRead(it, seen, out) } }
+                    c.initially?.forEach { globalsRead(it, seen, out) }
+                }
+                else -> {}
+            }
+        }
+    }
 
     /** A global as (folded into a literal, its line): constants go before every definition. */
     private fun global(g: GlobalSymbol): Pair<Boolean, String>? {
@@ -209,7 +247,7 @@ class PyModuleEmitter(
             return true to "${pyName(g)} = $folded"
         }
         val init = g.init ?: return false to "${pyName(g)} = ${zeroValue(g.type, decl)}"
-        return false to "${pyName(g)} = ${asValue(init, Frame(null, null), Use.STORE).text}"
+        return false to "${pyName(g)} = ${asValue(init, Frame(null, null), if (g.isMut) Use.STORE else Use.CONSTANT).text}"
     }
 
     private fun function(fn: FnSymbol, cls: ClassSymbol?): List<String> {
@@ -521,19 +559,23 @@ class PyModuleEmitter(
         return raw(e, f)
     }
 
-    /** Where a List value goes: into a variable or field, out of a return, or to a parameter. */
-    private enum class Use { STORE, RETURN, ARG }
+    /**
+     * Where a List value goes: into a variable or field, into a global without `mut` (which
+     * nothing can write), out of a return, or to a parameter.
+     */
+    private enum class Use { STORE, CONSTANT, RETURN, ARG }
 
     /**
      * [e] as a value that goes on (D44: a List is a value). A Python list is shared by every
      * name given it, so a List is copied where a second name could see a write: stored from
      * any variable, and returned from anything but a local, which dies. An argument, given to
      * a callee whose effect is [callee], is copied only when something may write it before the
-     * callee is done with it: a field, a global or a `mut` parameter when the callee or a
-     * sibling in [later] is IMPURE, a local when a sibling is (Python reaches no other
-     * function's locals); a by-value parameter never, as nothing may write it. A call or a
-     * construction makes a List no one else holds. A List given as a View is lent, never copied
-     * (ViewPass keeps any IMPURE call away from a view of a shared place).
+     * callee is done with it: a field, a `mut` global or a `mut` parameter when the callee or
+     * a sibling in [later] is IMPURE, a local when a sibling is (Python reaches no other
+     * function's locals); a by-value parameter or a constant never, as nothing may write
+     * either. A constant stored into a constant is shared. A call or a construction makes a
+     * List no one else holds. A List given as a View is lent, never copied (ViewPass keeps any
+     * IMPURE call away from a view of a shared place).
      */
     private fun asValue(e: Expr, f: Frame, use: Use, later: List<Expr> = emptyList(), callee: Effect = Effect.IMPURE): Py {
         val v = expr(e, f)
@@ -541,19 +583,27 @@ class PyModuleEmitter(
         if (!isList(t) || model.coercion(e) is Coercion.ToView) {
             return v
         }
-        val siblings = later.any { model.effect(it) == Effect.IMPURE }
-        return if (copies(e, use, siblings, siblings || callee == Effect.IMPURE)) Py(copyOf(v.text, t), PyPrec.POSTFIX) else v
+        val shared = callee == Effect.IMPURE || later.any { model.effect(it) == Effect.IMPURE }
+        return if (copies(e, use, later, shared)) Py(copyOf(v.text, t), PyPrec.POSTFIX) else v
     }
 
-    private fun copies(e: Expr, use: Use, localWritten: Boolean, sharedWritten: Boolean): Boolean = when (e) {
+    private fun copies(e: Expr, use: Use, later: List<Expr>, sharedWritten: Boolean): Boolean = when (e) {
         is Identifier -> when (val sym = model.symbolOf(e)) {
-            is LocalSymbol -> use == Use.STORE || (use == Use.ARG && localWritten)
+            is LocalSymbol -> when (use) {
+                Use.ARG -> later.any { model.effect(it) == Effect.IMPURE }
+                Use.RETURN -> false
+                else -> true
+            }
             is ParamSymbol -> if (sym.byRef) use != Use.ARG || sharedWritten else use != Use.ARG
-            is FieldSymbol, is GlobalSymbol -> use != Use.ARG || sharedWritten
+            is GlobalSymbol -> when {
+                sym.isMut -> use != Use.ARG || sharedWritten
+                else -> use == Use.STORE || use == Use.RETURN
+            }
+            is FieldSymbol -> use != Use.ARG || sharedWritten
             else -> false
         }
         is MemberAccessExpr -> model.member(e) is MemberRef.Field && (use != Use.ARG || sharedWritten)
-        is IfExpr -> listOfNotNull(branchValue(e.thenBranch), branchValue(e.elseBranch)).any { copies(it, use, localWritten, sharedWritten) }
+        is IfExpr -> listOfNotNull(branchValue(e.thenBranch), branchValue(e.elseBranch)).any { copies(it, use, later, sharedWritten) }
         else -> false
     }
 
