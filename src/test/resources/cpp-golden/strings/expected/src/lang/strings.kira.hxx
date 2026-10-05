@@ -26,6 +26,11 @@ namespace strings
   [[nodiscard]] kira::Str describe(bool b, double f, float g, char c, std::uint8_t u, Mood m);
   [[nodiscard]] kira::Str show(double v);
   [[nodiscard]] kira::Str flag(bool b);
+  [[nodiscard]] kira::Str fixedOf(double v, std::int32_t places);
+  [[nodiscard]] kira::Str speedLine(double mps);
+  [[nodiscard]] kira::Str hexOf(std::int32_t v);
+  [[nodiscard]] kira::Str hex64(std::uint64_t v);
+  [[nodiscard]] kira::Str bitsOf(std::int16_t v);
   [[nodiscard]] kira::Str padded(std::int32_t v);
   [[nodiscard]] kira::Maybe<std::int64_t> parseInt(const kira::Str& s);
   [[nodiscard]] kira::Maybe<double> parseFloat(const kira::Str& s);

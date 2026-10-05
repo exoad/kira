@@ -747,6 +747,43 @@ namespace kira
       return neg ? static_cast<std::int64_t>(std::uint64_t{0} - v) : static_cast<std::int64_t>(v);
   }
 
+  namespace impl_
+  {
+    // round(v * scale) for a finite v >= 0 and a scale <= 10^9 in integers only: nearest, a
+    // tie to even, on v's exact value, as printf's %.*f (D50). Saturates past 2^64.
+    [[nodiscard]] constexpr std::uint64_t scaledRound(double v, std::uint64_t scale) noexcept
+    {
+        constexpr std::uint64_t top = (std::numeric_limits<std::uint64_t>::max)();
+        const std::uint64_t bits = bitCast<std::uint64_t>(v);
+        const std::uint64_t field = (bits >> 52u) & 0x7FFu;
+        const std::uint64_t m = (bits & 0xFFFFFFFFFFFFFu) | (field != 0u ? std::uint64_t{1} << 52u : 0u);
+        const std::int32_t e = static_cast<std::int32_t>(field != 0u ? field : 1u) - 1075;
+        // v * scale = n * 2^e, n = m * scale below 2^83 as hi:lo.
+        const std::uint64_t a = (m >> 32u) * scale;
+        const std::uint64_t b = (m & 0xFFFFFFFFu) * scale;
+        const std::uint64_t lo = (a << 32u) + b;
+        const std::uint64_t hi = (a >> 32u) + (lo < b ? 1u : 0u);
+        if(e >= 0)
+        {
+            return hi != 0u || e >= 64 || (e > 0 && (lo >> (64 - e)) != 0u) ? top : lo << e;
+        }
+        const std::int32_t s = -e;
+        if(s > 83)
+        {
+            return 0u;
+        }
+        if(s < 64 && (hi >> s) != 0u)
+        {
+            return top;
+        }
+        const std::uint64_t q = s < 64 ? (lo >> s) | (hi << (64 - s)) : hi >> (s - 64);
+        const std::int32_t k = s - 1;
+        const bool half = ((k < 64 ? lo >> k : hi >> (k - 64)) & 1u) != 0u;
+        const bool below = k < 64 ? k > 0 && (lo << (64 - k)) != 0u : lo != 0u || (k > 64 && (hi << (128 - k)) != 0u);
+        return half && (below || (q & 1u) != 0u) ? (q == top ? top : q + 1u) : q;
+    }
+  }
+
   // A fixed-capacity text buffer: N chars and a terminator, no heap. Appends
   // past N are dropped, and truncated() says so. Interpolation into a StrBuf
   // lowers to clear() and appends.
@@ -840,8 +877,9 @@ namespace kira
               addUInt(static_cast<std::uint64_t>(v));
           }
       }
-      // `places` decimals (0..9), rounded half up, locale-free: 1.5 with 3 is
-      // "1.500". A magnitude past 1.8e19 / 10^places saturates.
+      // `places` decimals (clamped to 0..9), locale-free, rounded as FloatNum.fixed (D50):
+      // 1.5 with 3 is "1.500", 0.25 with 1 "0.2", -0.0 with 1 "-0.0", any NaN "nan".
+      // A magnitude past 1.8e19 / 10^places saturates.
       constexpr void addFixed(double v, std::int32_t places) noexcept
       {
           if(!(v == v))
@@ -849,7 +887,7 @@ namespace kira
               add(lit("nan"));
               return;
           }
-          if(v < 0.0)
+          if((bitCast<std::uint64_t>(v) >> 63u) != 0u)
           {
               addChar('-');
               v = -v;
@@ -865,7 +903,7 @@ namespace kira
           {
               scale *= 10u;
           }
-          const std::uint64_t scaled = as<std::uint64_t>(v * static_cast<double>(scale) + 0.5);
+          const std::uint64_t scaled = impl_::scaledRound(v, scale);
           addUInt(scaled / scale);
           if(p > 0)
           {

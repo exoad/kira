@@ -85,6 +85,11 @@ Num.toInt64:   { cpp: { expr: "kira::as<std::int64_t>({self})", pure: true, cons
 Num.toFloat32: { cpp: { expr: "kira::as<float>({self})", pure: true, constexpr: true } }
 Num.toFloat64: { cpp: { expr: "kira::as<double>({self})", pure: true, constexpr: true } }
 
+# FloatNum.fixed (D50) and IntNum.toHex (D51): kira::fixed and kira::hex in rt.hxx, through
+# std::to_chars; they return a Str, so a freestanding module has neither.
+FloatNum.fixed: { cpp: { expr: "kira::fixed({self}, {0})", pure: true } }
+IntNum.toHex:   { cpp: { expr: "kira::hex({self})", pure: true } }
+
 bitCast:       { cpp: { expr: "kira::bitCast<{T0}>({0})", pure: true, constexpr: true } }
 enumOf:        { cpp: { expr: "kira::enumOf<{T0}>({0})", pure: true, constexpr: true } }
 

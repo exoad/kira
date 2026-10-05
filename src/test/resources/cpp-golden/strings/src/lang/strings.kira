@@ -27,6 +27,27 @@ pub fx flag: (b: Bool) Str {
     return b as Str
 }
 
+// Fixed decimals rounded as printf's %.*f (D50), and lowercase hex (D51).
+pub fx fixedOf: (v: Float64, places: Int32) Str {
+    return v.fixed(places)
+}
+
+pub fx speedLine: (mps: Float64) Str {
+    return "${mps.fixed(1)} m/s"
+}
+
+pub fx hexOf: (v: Int32) Str {
+    return v.toHex()
+}
+
+pub fx hex64: (v: UInt64) Str {
+    return v.toHex()
+}
+
+pub fx bitsOf: (v: Int16) Str {
+    return (v as UInt16).toHex()
+}
+
 pub fx padded: (v: Int32) Str {
     return (v as Str).padStart(5, '0')
 }

@@ -16,5 +16,10 @@ text - commands on views and a fixed buffer
   ok    driveReply fills a StrBuf
   ok    and clears it first
   ok    a reply past 32 chars is truncated, and says so
+  ok    addFixed: an exact half goes to even
+  ok    addFixed: a decimal half is the double's exact value
+  ok    addFixed: a negative zero keeps its sign
+  ok    addFixed: NaN and the infinities
+  ok    addFixed: places clamped to 0..9
 
-15 checks, 0 failed
+20 checks, 0 failed

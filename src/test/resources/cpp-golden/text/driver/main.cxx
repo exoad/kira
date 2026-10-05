@@ -59,6 +59,32 @@ namespace
       check(reply.view() == kira::lit("OK drive servo=1600 esc=1541"), "and clears it first");
       bibo::text::driveReply(2147483647, -2147483647, reply);
       check(reply.size() == 32 && reply.truncated(), "a reply past 32 chars is truncated, and says so");
+
+      // addFixed rounds as printf's %.*f: an exact half to even, a decimal one by the double's value.
+      kira::StrBuf<32> speed;
+      const auto said = [&speed](double v, std::int32_t places, const char* want)
+      {
+          bibo::text::speedReply(v, places, speed);
+          kira::Size n = 0;
+          while(want[n] != '\0')
+          {
+              ++n;
+          }
+          return speed.view() == kira::View<char>(want, n);
+      };
+      check(said(0.25, 1, "SPEED 0.2") && said(-0.25, 1, "SPEED -0.2") && said(2.5, 0, "SPEED 2") && said(1.5, 0, "SPEED 2"),
+            "addFixed: an exact half goes to even");
+      check(said(0.15, 1, "SPEED 0.1") && said(0.35, 1, "SPEED 0.3") && said(2.675, 2, "SPEED 2.67") &&
+                said(0.45, 1, "SPEED 0.5"),
+            "addFixed: a decimal half is the double's exact value");
+      check(said(-0.0, 1, "SPEED -0.0") && said(-0.0005, 3, "SPEED -0.001") && said(1.5, 3, "SPEED 1.500"),
+            "addFixed: a negative zero keeps its sign");
+      check(said(kira::bitCast<double>(std::uint64_t{0x7FF8000000000000u}), 2, "SPEED nan") &&
+                said(kira::bitCast<double>(std::uint64_t{0xFFF8000000000000u}), 2, "SPEED nan") &&
+                said(std::numeric_limits<double>::infinity(), 1, "SPEED inf") &&
+                said(-std::numeric_limits<double>::infinity(), 1, "SPEED -inf"),
+            "addFixed: NaN and the infinities");
+      check(said(0.1, 12, "SPEED 0.100000000") && said(1.5, -1, "SPEED 2"), "addFixed: places clamped to 0..9");
   }
 }
 

@@ -65,6 +65,12 @@ pub fx driveReply: (servo: Int32, esc: Int32, mut out: StrBuf<32>) Void {
     out.set("OK drive servo=${servo} esc=${esc}")
 }
 
+// A reading into a caller's buffer: addFixed rounds as FloatNum.fixed (D50).
+pub fx speedReply: (mps: Float64, places: Int32, mut out: StrBuf<32>) Void {
+    out.set("SPEED ")
+    out.addFixed(mps, places)
+}
+
 pub fx isCommand: (s: View<Char>, verb: View<Char>) Bool {
     return !wordEnd(s, verb).isNull()
 }

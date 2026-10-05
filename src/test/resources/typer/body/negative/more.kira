@@ -92,6 +92,9 @@ pub fx more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, k: Kind, p: Pet
     ch2: Char = 'a' + 'b'                  // @error types.op.mismatch
     neg: Bool = !i                         // @error types.op.mismatch
     fm: Float64 = 1.5 % 2.0                // @error types.op.mismatch
+    half: Float64 = 0.5
+    hx: Str = half.toHex()                 // @error types.member.unknown
+    tenths: Str = i.fixed(1)               // @error types.member.unknown
     sh: Bool = s < s                       // @error types.op.mismatch
     give()                                 // no error: a discarded value is the emitter's static_cast<void>
     return                                 // @error types.return.missing

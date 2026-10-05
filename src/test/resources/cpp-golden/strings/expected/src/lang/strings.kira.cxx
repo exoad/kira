@@ -23,6 +23,31 @@ namespace strings
       return kira::text(b);
   }
 
+  kira::Str fixedOf(double v, std::int32_t places)
+  {
+      return kira::fixed(v, places);
+  }
+
+  kira::Str speedLine(double mps)
+  {
+      return kira::cat(kira::Str(kira::fixed(mps, 1)), " m/s");
+  }
+
+  kira::Str hexOf(std::int32_t v)
+  {
+      return kira::hex(v);
+  }
+
+  kira::Str hex64(std::uint64_t v)
+  {
+      return kira::hex(v);
+  }
+
+  kira::Str bitsOf(std::int16_t v)
+  {
+      return kira::hex(static_cast<std::uint16_t>(v));
+  }
+
   kira::Str padded(std::int32_t v)
   {
       return kira::str::padStart(kira::text(v), 5, '0');

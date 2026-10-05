@@ -9,6 +9,21 @@ strings - text, interpolation and strict parsing
   ok    as Str is the shortest text that reads back
   ok    text(Bool) is true
   ok    and false
+  ok    as Str: any NaN is nan
+  ok    as Str: scientific when shorter, fixed on a tie
+  ok    as Str: a large integer's exact digits
+  ok    fixed: an exact half goes to even
+  ok    fixed: a decimal half is the double's exact value
+  ok    fixed: rounds up past a half
+  ok    fixed: a negative zero keeps its sign
+  ok    fixed: NaN and the infinities
+  ok    fixed: 1e21 in full
+  ok    fixed: places clamped to 0..9
+  ok    fixed in an interpolation
+  ok    toHex: lowercase, a sign
+  ok    toHex: Int32 min
+  ok    toHex: UInt64 max
+  ok    toHex of as UInt16: the bits
   ok    padStart
   ok    padStart never cuts
   ok    toInt64: digits and an optional sign
@@ -25,4 +40,4 @@ strings - text, interpolation and strict parsing
   ok    substring
   ok    and a guard
 
-23 checks, 0 failed
+38 checks, 0 failed

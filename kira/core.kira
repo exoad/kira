@@ -64,23 +64,33 @@ pub @_magic class Num: Equatable<Num>, Hashable {
     pub fx toFloat64: () Float64;
 }
 
-pub @_magic class Int8: Num
-pub @_magic class Int16: Num
-pub @_magic class Int32: Num
-pub @_magic class Int64: Num
+// The integer types' parent (D51), as FloatNum is the floats'.
+pub @_magic class IntNum: Num {
+    // Lowercase hex digits, no prefix; a negative value is "-" and its magnitude's
+    // digits ("-ff"), so `(v as UInt16).toHex()` gives the bits.
+    pub fx toHex: () Str;
+}
+
+pub @_magic class Int8: IntNum
+pub @_magic class Int16: IntNum
+pub @_magic class Int32: IntNum
+pub @_magic class Int64: IntNum
 
 // Unsigned integers wrap (D8). `Size` is pointer-width and mixes with no
 // other integer type: `i < s.length()` needs `i: Size`.
-pub @_magic class UInt8: Num
-pub @_magic class UInt16: Num
-pub @_magic class UInt32: Num
-pub @_magic class UInt64: Num
-pub @_magic class Size: Num
+pub @_magic class UInt8: IntNum
+pub @_magic class UInt16: IntNum
+pub @_magic class UInt32: IntNum
+pub @_magic class UInt64: IntNum
+pub @_magic class Size: IntNum
 
 // The bound of kira:math's float functions (D20): `sin<T: FloatNum>` takes a
 // Float32 or a Float64 and returns the same type, inferred from the argument.
-// It adds no methods: a float's methods are still Num's.
-pub @_magic class FloatNum: Num
+pub @_magic class FloatNum: Num {
+    // `places` decimals, clamped to 0..9, rounded correctly as printf's %.*f (D50):
+    // 0.25 is "0.2" with 1, 2.675 "2.67" with 2; any NaN is "nan", an infinity "inf".
+    pub fx fixed: (places: Int32) Str;
+}
 
 pub @_magic class Float32: FloatNum
 pub @_magic class Float64: FloatNum
@@ -108,6 +118,7 @@ pub @_magic fx enumOf<E>: (raw: Any) Maybe<E>;
 // constant argument, the capacity. Appends past N are dropped. `add` and `set`
 // take a view of text; an interpolation passed to them (`buf.set("servo=${s}")`)
 // never becomes a Str: it is appended piece by piece, `set` clearing first.
+// `addFixed` rounds as FloatNum.fixed does (D50).
 pub @_magic class StrBuf {
     pub fx size: () Size;
     pub fx isEmpty: () Bool;

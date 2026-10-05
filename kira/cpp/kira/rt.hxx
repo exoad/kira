@@ -556,15 +556,26 @@ namespace kira
         p.ptr = p.buf;
         p.len = static_cast<Size>(r.ptr - p.buf);
     }
-    // Shortest text that reads back to the same float.
+    // Shortest text that reads back to the same float. Any NaN is "nan" (D50): its sign
+    // is the machine's, and C++ would print a negative one "-nan".
     inline void put(Piece& p, float v) noexcept
     {
+        if(!(v == v))
+        {
+            put(p, "nan");
+            return;
+        }
         const std::to_chars_result r = std::to_chars(p.buf, p.buf + sizeof(p.buf), v);
         p.ptr = p.buf;
         p.len = static_cast<Size>(r.ptr - p.buf);
     }
     inline void put(Piece& p, double v) noexcept
     {
+        if(!(v == v))
+        {
+            put(p, "nan");
+            return;
+        }
         const std::to_chars_result r = std::to_chars(p.buf, p.buf + sizeof(p.buf), v);
         p.ptr = p.buf;
         p.len = static_cast<Size>(r.ptr - p.buf);
@@ -626,6 +637,31 @@ namespace kira
       impl_::Piece p;
       impl_::put(p, e);
       return Str(p.ptr, p.len);
+  }
+
+  // FloatNum.fixed (D50): `places` decimals, clamped to 0..9 as StrBuf.addFixed's, rounded
+  // as printf's %.*f; any NaN is "nan", an infinity "inf" or "-inf".
+  [[nodiscard]] inline Str fixed(double v, std::int32_t places)
+  {
+      if(!(v == v))
+      {
+          return Str("nan");
+      }
+      char buf[1 + 309 + 1 + 9];
+      const int p = places < 0 ? 0 : (places > 9 ? 9 : places);
+      const std::to_chars_result r = std::to_chars(buf, buf + sizeof(buf), v, std::chars_format::fixed, p);
+      return Str(buf, static_cast<Size>(r.ptr - buf));
+  }
+
+  // IntNum.toHex (D51): lowercase digits and no prefix; a negative value is "-" and its
+  // magnitude's digits ("-ff"), as Python's %x writes it.
+  template<std::integral I>
+    requires(!std::is_same_v<I, bool> && !std::is_same_v<I, Char>)
+  [[nodiscard]] Str hex(I v)
+  {
+      char buf[1 + 2 * sizeof(I)];
+      const std::to_chars_result r = std::to_chars(buf, buf + sizeof(buf), v, 16);
+      return Str(buf, static_cast<Size>(r.ptr - buf));
   }
 
   // "a${x}b" lowers to cat("a", x, "b"): every piece is formatted in place, then

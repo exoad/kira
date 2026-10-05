@@ -184,6 +184,15 @@ namespace
       return first && same(b.view(), "2.500 1844674407") && b.truncated() && b.size() == 16;
   }
 
+  // addFixed rounds as printf's %.*f (D50), in a constant expression too.
+  template<kira::Size N>
+  [[nodiscard]] constexpr bool fixedIs(double v, std::int32_t places, const kira::Char (&want)[N])
+  {
+      kira::StrBuf<40> b;
+      b.addFixed(v, places);
+      return same(b.view(), want);
+  }
+
   static_assert(kira::as<std::int32_t>(3.99f) == 3);
   static_assert(kira::as<std::int32_t>(-3.99) == -3);
   static_assert(kira::as<std::int32_t>(1e20f) == (std::numeric_limits<std::int32_t>::max)());
@@ -228,6 +237,14 @@ namespace
   static_assert(kira::parseInt64(kira::lit("-9223372036854775808")).value() == std::numeric_limits<std::int64_t>::lowest());
   static_assert(!kira::parseInt64(kira::lit("9223372036854775808")).has_value());
   static_assert(strBufWorks());
+  static_assert(fixedIs(0.25, 1, "0.2") && fixedIs(-0.25, 1, "-0.2") && fixedIs(2.5, 0, "2") && fixedIs(3.5, 0, "4"),
+                "addFixed: an exact half goes to even");
+  static_assert(fixedIs(0.15, 1, "0.1") && fixedIs(0.35, 1, "0.3") && fixedIs(2.675, 2, "2.67") && fixedIs(0.45, 1, "0.5"),
+                "addFixed: a decimal half is the double's exact value");
+  static_assert(fixedIs(-0.0, 1, "-0.0") && fixedIs(5e-324, 9, "0.000000000") && fixedIs(0.0000000005, 9, "0.000000001"),
+                "addFixed: a negative zero, the least subnormal, and 5e-10 just above its half");
+  static_assert(fixedIs(4503599627370497.0, 0, "4503599627370497") && fixedIs(1.8e18, 1, "1800000000000000000.0"),
+                "addFixed: the integers a double holds, below the saturation");
   static_assert(kira::enumOf<Mood>(5).value() == Mood::MOOD_BUSY && kira::enumOf<Mood>(-2).value() == Mood::MOOD_LOST);
   static_assert(!kira::enumOf<Mood>(std::uint64_t{65535}).has_value() && !kira::enumOf<Mood>(1).has_value());
   static_assert(kira::unwrapOr(kira::Maybe<std::int64_t>(kira::none), 4) == 4);
@@ -361,10 +378,19 @@ namespace
       check(b.size() == 8 && b.truncated(), "StrBuf truncates, and says so");
       b.clear();
       b.addFixed(opaque(-0.0005), 3);
-      check(b.view() == kira::lit("-0.001"), "StrBuf.addFixed rounds half up");
+      check(b.view() == kira::lit("-0.001"), "StrBuf.addFixed: -0.0005 is a little past its half");
+      b.clear();
+      b.addFixed(opaque(0.125), 2);
+      check(b.view() == kira::lit("0.12"), "StrBuf.addFixed: an exact half goes to even");
+      b.clear();
+      b.addFixed(opaque(-0.0), 1);
+      check(b.view() == kira::lit("-0.0"), "StrBuf.addFixed: -0.0 keeps its sign");
       b.clear();
       b.addFixed(opaque(static_cast<double>(nan)), 2);
       check(b.view() == kira::lit("nan"), "StrBuf.addFixed of NaN");
+      b.clear();
+      b.addFixed(-opaque(kira::bitCast<double>(std::uint64_t{0x7FF8000000000000u})), 2);
+      check(b.view() == kira::lit("nan"), "StrBuf.addFixed of a negative NaN");
       b.clear();
       b.addInt(std::numeric_limits<std::int64_t>::lowest());
       check(b.view() == kira::lit("-9223372") && b.truncated(), "StrBuf.addInt of Int64 min, truncated");
@@ -473,6 +499,65 @@ namespace
                  "STEER 0.25 n=3 true MOOD_BUSY s7"),
             "cat of every piece kind");
       check(same(kira::cat(), ""), "cat of nothing");
+      const double negNan = -opaque(kira::bitCast<double>(std::uint64_t{0x7FF8000000000000u}));
+      check(same(kira::text(negNan), "nan") && same(kira::text(static_cast<float>(negNan)), "nan") && same(kira::cat(negNan), "nan"),
+            "text: any NaN is nan (D50)");
+      check(same(kira::text(opaque(1e5)), "1e+05") && same(kira::text(opaque(0.001)), "0.001") &&
+                same(kira::text(opaque(1.2345678901234568e20)), "123456789012345683968"),
+            "text: scientific when shorter, fixed on a tie, a large integer's exact digits");
+
+      check(same(kira::fixed(opaque(0.25), 1), "0.2") && same(kira::fixed(opaque(2.5), 0), "2") && same(kira::fixed(opaque(3.5), 0), "4"),
+            "fixed: an exact half goes to even");
+      check(same(kira::fixed(opaque(0.15), 1), "0.1") && same(kira::fixed(opaque(0.35), 1), "0.3") &&
+                same(kira::fixed(opaque(2.675), 2), "2.67") && same(kira::fixed(opaque(0.45), 1), "0.5"),
+            "fixed: a decimal half is the double's exact value");
+      check(same(kira::fixed(opaque(-0.0), 1), "-0.0") && same(kira::fixed(negNan, 3), "nan") &&
+                same(kira::fixed(-negNan, 3), "nan"),
+            "fixed: -0.0 keeps its sign, and any NaN is nan");
+      check(same(kira::fixed(opaque(std::numeric_limits<double>::infinity()), 2), "inf") &&
+                same(kira::fixed(-opaque(std::numeric_limits<double>::infinity()), 2), "-inf"),
+            "fixed: the infinities");
+      check(same(kira::fixed(opaque(1e21), 1), "1000000000000000000000.0") && same(kira::fixed(opaque(5e-324), 9), "0.000000000"),
+            "fixed: 1e21 in full, and the least subnormal");
+      check(same(kira::fixed(opaque(1.5), -3), "2") && same(kira::fixed(opaque(0.1), 17), "0.100000000"),
+            "fixed: places clamped to 0..9, as addFixed's");
+      check(same(kira::fixed(opaque(0.1f), 9), "0.100000001"), "fixed of a Float32 is the float's exact value");
+
+      // addFixed and fixed are one rounding: every kind of value, every places, below the saturation.
+      std::uint64_t seed = 0x9E3779B97F4A7C15u;
+      bool oneRounding = true;
+      for(int i = 0; i < 20000; ++i)
+      {
+          seed ^= seed << 13;
+          seed ^= seed >> 7;
+          seed ^= seed << 17;
+          double scale = 1.0;
+          for(std::uint64_t j = (seed >> 40) % 10u; j > 0; --j)
+          {
+              scale *= i % 2 == 0 ? 10.0 : 2.0;
+          }
+          const double v = i % 3 == 0 ? kira::bitCast<double>(seed) : static_cast<double>(seed % 100000000u) / scale;
+          for(std::int32_t p = 0; p <= 9; ++p)
+          {
+              kira::StrBuf<48> fb;
+              fb.addFixed(v, p);
+              const double mag = v < 0.0 ? -v : v;
+              if(mag == mag && mag < 1e9)
+              {
+                  oneRounding = oneRounding && kira::Str(fb.view().ptr, fb.view().len) == kira::fixed(v, p);
+              }
+          }
+      }
+      check(oneRounding, "StrBuf.addFixed and fixed agree (D50)");
+
+      check(same(kira::hex(opaque(255)), "ff") && same(kira::hex(opaque(-255)), "-ff") && same(kira::hex(opaque(0)), "0"),
+            "hex: lowercase, no prefix, a negative one signed (D51)");
+      check(same(kira::hex(std::numeric_limits<std::int8_t>::lowest()), "-80") && same(kira::hex(std::uint8_t{255}), "ff") &&
+                same(kira::hex(std::numeric_limits<std::int64_t>::lowest()), "-8000000000000000"),
+            "hex: Int8 and Int64 min, UInt8");
+      check(same(kira::hex((std::numeric_limits<std::uint64_t>::max)()), "ffffffffffffffff") &&
+                same(kira::hex(kira::as<std::uint16_t>(opaque(std::int16_t{-1}))), "ffff"),
+            "hex: UInt64 max, and an Int16's bits through UInt16");
 
       check(same(traced(2.5f), "2.5") && same(traced(1e20), "1e+20") && same(traced(0.1f), "0.1"), "trace: %g floats");
       check(same(traced(1234567.0), "1.23457e+06") && same(traced(0.0001234), "0.0001234"), "trace: %g's six digits");

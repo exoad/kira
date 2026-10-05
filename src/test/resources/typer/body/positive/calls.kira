@@ -66,6 +66,8 @@ pub fx calls: () Void {
     wide: Int64 = count.toInt64()          // @type Int64 call=MAGIC(Num.toInt64)
     small: Int8 = -3
     ab: Int8 = small.abs()                 // @type Int8 call=MAGIC(Num.abs)
+    hx: Str = count.toHex()                // @type Str call=MAGIC(IntNum.toHex)
+    tenths: Str = r8.fixed(1)              // @type Str call=MAGIC(FloatNum.fixed)
     eq: Bool = s.equals("abc")             // @type Bool call=MAGIC(Equatable.equals)
     hc: Int64 = s.hashCode()               // @type Int64 call=MAGIC(Hashable.hashCode)
     xs.add(r1)                             // @type Int32 place=Local(r1) @ r1

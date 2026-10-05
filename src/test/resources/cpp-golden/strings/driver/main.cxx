@@ -68,6 +68,32 @@ int main()
     checkStr(strings::show(0.1 + 0.2), "0.30000000000000004", "as Str is the shortest text that reads back");
     checkStr(strings::flag(true), "true", "text(Bool) is true");
     checkStr(strings::flag(false), "false", "and false");
+    const double nan = kira::bitCast<double>(std::uint64_t{0x7FF8000000000000u});
+    const double negNan = kira::bitCast<double>(std::uint64_t{0xFFF8000000000000u});
+    const double inf = std::numeric_limits<double>::infinity();
+    checkStr(strings::show(nan) + " " + strings::show(negNan), "nan nan", "as Str: any NaN is nan");
+    checkStr(strings::show(1e5) + " " + strings::show(-0.0001) + " " + strings::show(0.001), "1e+05 -1e-04 0.001",
+             "as Str: scientific when shorter, fixed on a tie");
+    checkStr(strings::show(1.2345678901234568e20), "123456789012345683968", "as Str: a large integer's exact digits");
+    checkStr(strings::fixedOf(0.25, 1) + " " + strings::fixedOf(-0.25, 1) + " " + strings::fixedOf(2.5, 0) + " " +
+                 strings::fixedOf(1.5, 0) + " " + strings::fixedOf(0.5, 0),
+             "0.2 -0.2 2 2 0", "fixed: an exact half goes to even");
+    checkStr(strings::fixedOf(0.15, 1) + " " + strings::fixedOf(0.35, 1) + " " + strings::fixedOf(2.675, 2) + " " +
+                 strings::fixedOf(1.005, 2),
+             "0.1 0.3 2.67 1.00", "fixed: a decimal half is the double's exact value");
+    checkStr(strings::fixedOf(0.45, 1) + " " + strings::fixedOf(99.95, 1) + " " + strings::fixedOf(123456.789, 0),
+             "0.5 100.0 123457", "fixed: rounds up past a half");
+    checkStr(strings::fixedOf(-0.0, 1) + " " + strings::fixedOf(-0.0001, 3), "-0.0 -0.000", "fixed: a negative zero keeps its sign");
+    checkStr(strings::fixedOf(nan, 2) + " " + strings::fixedOf(negNan, 2) + " " + strings::fixedOf(inf, 1) + " " +
+                 strings::fixedOf(-inf, 1),
+             "nan nan inf -inf", "fixed: NaN and the infinities");
+    checkStr(strings::fixedOf(1e21, 1), "1000000000000000000000.0", "fixed: 1e21 in full");
+    checkStr(strings::fixedOf(1.5, -1) + " " + strings::fixedOf(0.1, 12), "2 0.100000000", "fixed: places clamped to 0..9");
+    checkStr(strings::speedLine(3.25), "3.2 m/s", "fixed in an interpolation");
+    checkStr(strings::hexOf(255) + " " + strings::hexOf(-255) + " " + strings::hexOf(0), "ff -ff 0", "toHex: lowercase, a sign");
+    checkStr(strings::hexOf(std::numeric_limits<std::int32_t>::lowest()), "-80000000", "toHex: Int32 min");
+    checkStr(strings::hex64((std::numeric_limits<std::uint64_t>::max)()), "ffffffffffffffff", "toHex: UInt64 max");
+    checkStr(strings::bitsOf(-1) + " " + strings::bitsOf(-4096), "ffff f000", "toHex of as UInt16: the bits");
     checkStr(strings::padded(42), "00042", "padStart");
     checkStr(strings::padded(123456), "123456", "padStart never cuts");
     check(isInt(strings::parseInt("1541"), 1541) && isInt(strings::parseInt("+7"), 7) && isInt(strings::parseInt("-0"), 0),

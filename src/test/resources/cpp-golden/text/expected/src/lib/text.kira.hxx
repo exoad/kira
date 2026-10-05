@@ -8,6 +8,7 @@ namespace bibo::text
   [[nodiscard]] kira::Size trimEnd(kira::View<char> s);
   [[nodiscard]] bool toInt(kira::View<char> s, std::int32_t& out);
   void driveReply(std::int32_t servo, std::int32_t esc, kira::StrBuf<32>& out);
+  void speedReply(double mps, std::int32_t places, kira::StrBuf<32>& out);
   [[nodiscard]] bool isCommand(kira::View<char> s, kira::View<char> verb);
 }
 #include "kira/macro_pop.hxx"

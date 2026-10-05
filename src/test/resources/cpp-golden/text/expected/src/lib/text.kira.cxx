@@ -72,6 +72,12 @@ namespace bibo::text
       out.addInt(esc);
   }
 
+  void speedReply(double mps, std::int32_t places, kira::StrBuf<32>& out)
+  {
+      (out.clear(), out.add(kira::lit("SPEED ")));
+      out.addFixed(mps, places);
+  }
+
   bool isCommand(kira::View<char> s, kira::View<char> verb)
   {
       return !!kira::isSome(wordEnd(s, verb));
