@@ -519,6 +519,136 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aListIsCopiedWhereASecondNameCouldSeeAWrite() {
+        val py = python(
+            """
+            mut seed: List<Int32> = List<Int32> { }
+
+            class Holder {
+                require pub mut items: List<Int32>
+
+                pub fx snapshot: () List<Int32> {
+                    return items
+                }
+
+                pub mut fx grow: () Int32 {
+                    items.add(0)
+                    return 1
+                }
+            }
+
+            fx size: (xs: List<Int32>) Size {
+                return xs.size()
+            }
+
+            fx count: (xs: List<Int32>) Size {
+                seed.add(1)
+                return xs.size()
+            }
+
+            fx lenOf: (xs: List<Int32>, k: Int32) Size {
+                return xs.size() + (k as Size)
+            }
+
+            fx push: (mut xs: List<Int32>) Int32 {
+                xs.add(1)
+                return 1
+            }
+
+            fx echo: (xs: List<Int32>) List<Int32> {
+                return xs
+            }
+
+            fx fresh: () List<Int32> {
+                mut out: List<Int32> = List<Int32> { }
+                out.add(1)
+                return out
+            }
+
+            fx pick: (c: Bool, a: List<Int32>) List<Int32> {
+                return if c { a } else { fresh() }
+            }
+
+            fx f: (h: Holder) Void {
+                mut a: List<Int32> = fresh()
+                mut b: List<Int32> = a
+                mut c: List<Int32> = seed
+                mut d: List<Int32> = h.items
+                a = b
+                n: Size = size(a) + size(h.items) + size(seed) + count(seed) + lenOf(a, push(mut a)) + lenOf(h.items, h.grow())
+                k: Holder = Holder { a }
+            }
+            """
+        )
+        assertTrue(py.contains("        self.items = list(items)"), "__init__ stores a copy of what it is given:\n$py")
+        assertTrue(py.contains("        return list(self.items)"), "a field returned is copied:\n$py")
+        assertTrue(py.contains("    return list(xs)"), "a parameter returned is copied:\n$py")
+        assertTrue(py.contains("    out.append(1)\n    return out"), "a local returned dies, so it is not copied:\n$py")
+        assertTrue(py.contains("    return list(a if c else _fresh())"), py)
+        assertTrue(py.contains("    a = _fresh()\n    b = list(a)\n    c = list(_seed)\n    d = list(h.items)\n    a = list(b)"), "a variable stored is copied, a call is not:\n$py")
+        assertTrue(py.contains("_size(a) + _size(h.items)) + _size(_seed)"), "a pure callee is given the field or global itself:\n$py")
+        assertTrue(py.contains("_count(list(_seed))"), "a callee that writes may write the global it is given:\n$py")
+        assertTrue(py.contains("_lenOf(list(a), _push(a))"), "a local a later argument writes is copied first:\n$py")
+        assertTrue(py.contains("_lenOf(list(h.items), h.grow())"), py)
+        assertTrue(py.contains("k = _Holder(a)"), py)
+    }
+
+    @Test
+    fun aMutListParameterIsTheCallersListAndAnAssignmentKeepsIt() {
+        val py = python(
+            """
+            mut seed: List<Int32> = List<Int32> { }
+
+            class Holder {
+                pub mut items: List<Int32> = List<Int32> { }
+
+                pub mut fx reset: (mut xs: List<Int32>) Void {
+                    items = List<Int32> { }
+                    xs.add(1)
+                }
+            }
+
+            fx fill: (mut xs: List<Int32>, ys: List<Int32>) Void {
+                xs = ys
+                xs.add(2)
+                xs[0] = 3
+            }
+
+            fx f: (h: Holder) Void {
+                mut a: List<Int32> = List<Int32> { }
+                fill(mut a, seed)
+                fill(mut h.items, a)
+                fill(mut seed, a)
+                h.reset(mut h.items)
+                seed = a
+                a = seed
+            }
+            """
+        )
+        assertTrue(py.contains("def _fill(xs, ys):\n    xs[:] = ys\n    xs.append(2)\n    xs[0] = 3"), py)
+        assertTrue(py.contains("        self.items[:] = []\n        xs.append(1)"), "a field keeps its list, which a mut parameter may be:\n$py")
+        assertTrue(py.contains("    _fill(a, list(_seed))\n    _fill(h.items, a)\n    _fill(_seed, a)\n    h.reset(h.items)"), py)
+        assertTrue(py.contains("    _seed[:] = a\n    a = list(_seed)"), py)
+    }
+
+    @Test
+    fun listSetAndContainsBindToSetitemAndAnEqualityTest() {
+        val py = python(
+            """
+            fx f: (x: Float64) Bool {
+                mut xs: List<Float64> = List<Float64> { }
+                xs.add(x)
+                xs.set(0, x + 1.0)
+                return xs.contains(x)
+            }
+            """
+        )
+        assertTrue(py.contains("xs.__setitem__(0, x + 1.0)"), py)
+        assertTrue(py.contains("return _k_contains(xs, x)"), py)
+        assertTrue(py.contains("def _k_contains(xs, v):"), py)
+    }
+
+    @Test
     fun theRuntimeCarriesOnlyWhatTheModuleUses() {
         val py = python(
             """
@@ -659,36 +789,14 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMutParameterIsRefused() {
+    fun aMutParameterOtherThanAListIsRefused() {
         refused(
             """
             fx f: (mut x: Int32) Void {
                 x = 1
             }
             """,
-            "the mut parameter 'x'",
-        )
-    }
-
-    @Test
-    fun aListThatWouldBeCopiedIsRefused() {
-        refused(
-            """
-            fx f: () Int32 {
-                mut xs: List<Int32> = List<Int32> { }
-                ys: List<Int32> = xs
-                return 0
-            }
-            """,
-            "a List copied, passed or returned",
-        )
-        refused(
-            """
-            fx f: (xs: List<Int32>) Size {
-                return xs.size()
-            }
-            """,
-            "a List parameter 'xs'",
+            "the mut parameter 'x': Int32 (only a List is passed by reference)",
         )
     }
 

@@ -79,10 +79,10 @@ List.isEmpty:  { cpp: { expr: "{self}.empty()", pure: true }, py: { expr: "(len(
 List.add:      { cpp: { expr: "{self}.push_back({0})" }, py: { expr: "{self}.append({0})" } }
 List.addAll:   { cpp: { expr: "kira::list::addAll({self}, {0})" } }
 List.get:      { cpp: { expr: "kira::at({self}, {0})", pure: true }, py: { expr: "{self}[{0}]" } }
-List.set:      { cpp: { expr: "kira::at({self}, {0}) = {1}" } }
+List.set:      { cpp: { expr: "kira::at({self}, {0}) = {1}" }, py: { expr: "{self}.__setitem__({0}, {1})" } }
 List.removeAt: { cpp: { expr: "kira::list::removeAt({self}, {0})" }, py: { expr: "{self}.pop({0})" } }
 List.clear:    { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
-List.contains: { cpp: { expr: "kira::list::contains({self}, {0})", pure: true } }
+List.contains: { cpp: { expr: "kira::list::contains({self}, {0})", pure: true }, py: { expr: "_k_contains({self}, {0})" } }
 List.toArr:    { cpp: { expr: "kira::list::clone({self})", pure: true } }
 List.view:     { cpp: { expr: "kira::view({self})", pure: true } }
 List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true } }

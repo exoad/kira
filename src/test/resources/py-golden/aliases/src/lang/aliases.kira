@@ -1,0 +1,166 @@
+module "lang:aliases"
+
+// A List is a value (D44): assigning, storing, passing and returning it copies, and a `mut`
+// parameter is the caller's own List. Each probe mutates one name and traces the other.
+// The expected output is the C++ backend's run of this same module.
+
+mut log: List<Int32> = List<Int32> { }
+mut seed: List<Int32> = List<Int32> { }
+
+class Holder {
+    require pub mut items: List<Int32>
+
+    pub fx snapshot: () List<Int32> {
+        return items
+    }
+
+    pub mut fx setItems: (xs: List<Int32>) Void {
+        items = xs
+    }
+
+    // The callee writes the field the caller passed: the argument is the field as it was.
+    pub mut fx poke: (xs: List<Int32>) Size {
+        items.add(9)
+        return xs.size()
+    }
+
+    pub mut fx grow: () Int32 {
+        items.add(0)
+        return 1
+    }
+
+    // The callee replaces the field its mut parameter is: the parameter is the field.
+    pub mut fx reset: (mut xs: List<Int32>) Size {
+        items = List<Int32> { }
+        xs.add(1)
+        return items.size()
+    }
+}
+
+fx count: (xs: List<Int32>) Size {
+    log.add(1)
+    return xs.size()
+}
+
+fx fill: (mut xs: List<Int32>, n: Int32) Void {
+    mut i: Int32 = 0
+    while i < n {
+        xs.add(i)
+        i += 1
+    }
+}
+
+fx replace: (mut xs: List<Int32>, ys: List<Int32>) Void {
+    xs = ys
+}
+
+fx pushTo: (mut xs: List<Int32>) Int32 {
+    xs.add(100)
+    return 1
+}
+
+fx lenOf: (xs: List<Int32>, k: Int32) Size {
+    return xs.size() + (k as Size)
+}
+
+fx echo: (xs: List<Int32>) List<Int32> {
+    return xs
+}
+
+fx fresh: (n: Int32) List<Int32> {
+    mut out: List<Int32> = List<Int32> { }
+    fill(mut out, n)
+    return out
+}
+
+fx pick: (c: Bool, a: List<Int32>, b: List<Int32>) List<Int32> {
+    return if c { a } else { b }
+}
+
+fx show: (xs: List<Int32>) Str {
+    mut s: Str = "["
+    mut i: Size = 0
+    while i < xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+        i += 1
+    }
+    return s + "]"
+}
+
+fx main: () Void {
+    // assign, then mutate either name
+    mut a: List<Int32> = List<Int32> { }
+    a.add(1)
+    mut b: List<Int32> = a
+    b.add(2)
+    trace(show(a))
+    trace(show(b))
+    a = b
+    a.add(3)
+    trace(show(a))
+    trace(show(b))
+
+    // a field given to a construction, a setter, and returned
+    mut h: Holder = Holder { a }
+    a.add(4)
+    trace(show(h.items))
+    h.setItems(b)
+    b.add(5)
+    trace(show(h.items))
+    mut snap: List<Int32> = h.snapshot()
+    snap.add(6)
+    trace(show(h.items))
+    trace(show(snap))
+
+    // the callee writes the field it was passed
+    trace(h.poke(h.items))
+    trace(show(h.items))
+    trace(count(log))
+    trace(count(log))
+    trace(log.size())
+
+    // a mut parameter is the caller's List, the field it names included
+    fill(mut a, 3)
+    trace(show(a))
+    replace(mut a, b)
+    b.add(7)
+    trace(show(a))
+    trace(h.reset(mut h.items))
+    trace(show(h.items))
+    fill(mut h.items, 2)
+    trace(show(h.items))
+    fill(mut seed, 2)
+    trace(show(seed))
+
+    // a sibling argument that writes the List passed before it
+    trace(lenOf(a, pushTo(mut a)))
+    trace(show(a))
+    trace(lenOf(h.items, h.grow()))
+    trace(show(h.items))
+
+    // returned: a parameter, a local, either branch
+    mut e: List<Int32> = echo(a)
+    e.add(8)
+    trace(show(a))
+    trace(show(e))
+    mut f: List<Int32> = fresh(2)
+    f.add(9)
+    trace(show(f))
+    mut p: List<Int32> = pick(true, a, b)
+    p.add(10)
+    trace(show(a))
+    trace(show(p))
+    mut g: List<Int32> = seed
+    g.add(11)
+    trace(show(seed))
+    seed = g
+    g.add(12)
+    trace(show(seed))
+    trace(show(g))
+    g.set(0, 50)
+    trace(g.contains(50))
+    trace(g.contains(0))
+}

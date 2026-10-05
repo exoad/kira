@@ -79,9 +79,11 @@ import java.util.IdentityHashMap
  *   functions and methods bind through the `py:` blocks of the `.bind.yaml` manifests;
  * - module constants and `mut` globals, functions, and classes without a parent, a trait,
  *   type parameters or a `finally`. A class is a plain Python class, `__slots__` its fields;
- * - Bool, Str, the integers, Float64, Maybe<T> (None or the value), List<T> held in a variable
- *   or a field (Kira's List is a value: one that would be copied, passed or returned is refused,
- *   since a Python list is shared), and the module's own classes;
+ * - Bool, Str, the integers, Float64, Maybe<T> (None or the value), List<T> as a Python list,
+ *   and the module's own classes. Kira's List is a value (D44) and a Python list is shared, so
+ *   one is copied wherever a second name could see a write ([asValue]); a `mut` List parameter
+ *   is the caller's list itself, and a field, global or `mut` parameter assigned keeps its list
+ *   and takes the new elements, as C++'s `T&` sees them;
  * - if/else, while, break, continue, return, locals, assignments, calls, constructions, `as`,
  *   if-expressions, interpolation and `trace`.
  *
@@ -197,7 +199,7 @@ class PyModuleEmitter(
             return true to "${pyName(g)} = $folded"
         }
         val init = g.init ?: return false to "${pyName(g)} = ${zeroValue(g.type, decl)}"
-        return false to "${pyName(g)} = ${expr(init, Frame(null, null)).text}"
+        return false to "${pyName(g)} = ${asValue(init, Frame(null, null), Use.STORE).text}"
     }
 
     private fun function(fn: FnSymbol, cls: ClassSymbol?): List<String> {
@@ -210,20 +212,14 @@ class PyModuleEmitter(
             !fn.hasBody || fn.body == null -> refuse(at, "the body-less method '${fn.name}'")
         }
         checkType(fn.ret, at, "the return type of '${fn.name}'")
-        if (isList(fn.ret)) {
-            refuse(at, "a List returned by '${fn.name}' (a Python list would be shared where Kira copies)")
-        }
         val frame = Frame(cls, fn)
         val params = fn.params.map { p ->
             val node: ASTNode = p.decl ?: at
             checkName(p.name, node)
             checkLocalName(p.name, node)
             checkType(p.type, node, "the parameter '${p.name}'")
-            if (p.byRef) {
-                refuse(node, "the mut parameter '${p.name}'")
-            }
-            if (isList(p.type)) {
-                refuse(node, "a List parameter '${p.name}' (a Python list would be shared where Kira copies)")
+            if (p.byRef && !isList(p.type)) {
+                refuse(node, "the mut parameter '${p.name}': ${p.type.display()} (only a List is passed by reference)")
             }
             if (p.default != null) {
                 refuse(node, "the default value of the parameter '${p.name}'")
@@ -264,12 +260,12 @@ class PyModuleEmitter(
                 checkLocalName(f.name, node)
             }
             checkType(f.type, node, "the field '${f.name}'")
-            val value = when {
-                f.isRequired -> f.name
-                f.default != null -> expr(f.default, frame).text
+            val v = when {
+                f.isRequired -> if (isList(f.type)) copyOf(f.name, f.type) else f.name
+                f.default != null -> asValue(f.default, frame, Use.STORE).text
                 else -> zeroValue(f.type, node)
             }
-            init += "self.${pyName(f)} = $value"
+            init += "self.${pyName(f)} = $v"
         }
         c.initially?.let { init += block(it, frame) }
         if (init.isNotEmpty()) {
@@ -335,7 +331,7 @@ class PyModuleEmitter(
     private fun indent(lines: List<String>): List<String> = lines.map { if (it.isEmpty()) it else "    $it" }
 
     private fun stmt(s: Statement, f: Frame): List<String> = when (s) {
-        is ReturnStatement -> if (s.expr === NoExpr) listOf("return") else listOf("return ${expr(s.expr, f).text}")
+        is ReturnStatement -> if (s.expr === NoExpr) listOf("return") else listOf("return ${asValue(s.expr, f, Use.RETURN).text}")
         is IfSelectionStatement -> {
             val out = mutableListOf("if ${expr(s.expr, f).text}:")
             out += indent(block(s.thenStatements, f))
@@ -398,8 +394,8 @@ class PyModuleEmitter(
             refuse(decl, "a local '${sym.name}' that shadows another of its name (Python has one scope per function; rename it)")
         }
         f.scopes.last().add(sym.name)
-        val value = decl.value?.let { expr(it, f).text } ?: zeroValue(sym.type, decl)
-        return listOf("${sym.name} = $value")
+        val init = decl.value?.let { asValue(it, f, Use.STORE).text } ?: zeroValue(sym.type, decl)
+        return listOf("${sym.name} = $init")
     }
 
     /**
@@ -414,7 +410,13 @@ class PyModuleEmitter(
         val spill = op != null || model.effect(value) != Effect.PURE
         val lhs = placeText(target, f, spill, pre) ?: return emptyList()
         if (op == null) {
-            return pre + "$lhs = ${expr(value, f).text}"
+            val tt = model.typeOrNull(target)
+            if (tt != null && isList(tt) && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
+                // A field, global or mut parameter keeps its one List and takes the new elements, so
+                // a mut parameter bound to it still names it (C++'s T&); the slice copies them.
+                return pre + "$lhs[:] = ${expr(value, f).text}"
+            }
+            return pre + "$lhs = ${asValue(value, f, Use.STORE).text}"
         }
         val t = typeOf(target) ?: return emptyList()
         val combined = arith(op, t, Py(lhs, PyPrec.POSTFIX), expr(value, f), value, target)
@@ -498,12 +500,47 @@ class PyModuleEmitter(
         val t = model.typeOrNull(e)
         if (t != null) {
             unsupportedType(t)?.let { return refusePy(e, it) }
-            if (isList(t) && e !is ObjectInitExpr) {
-                return refusePy(e, "a List copied, passed or returned (Kira's List is a value; a Python list is shared)")
-            }
         }
         return raw(e, f)
     }
+
+    /** Where a List value goes: into a variable or field, out of a return, or to a parameter. */
+    private enum class Use { STORE, RETURN, ARG }
+
+    /**
+     * [e] as a value that goes on (D44: a List is a value). A Python list is shared by every
+     * name given it, so a List is copied where a second name could see a write: stored from
+     * any variable, and returned from anything but a local, which dies. An argument, given to
+     * a callee whose effect is [callee], is copied only when something may write it before the
+     * callee is done with it: a field, a global or a `mut` parameter when the callee or a
+     * sibling in [later] is IMPURE, a local when a sibling is (Python reaches no other
+     * function's locals); a by-value parameter never, as nothing may write it. A call or a
+     * construction makes a List no one else holds.
+     */
+    private fun asValue(e: Expr, f: Frame, use: Use, later: List<Expr> = emptyList(), callee: Effect = Effect.IMPURE): Py {
+        val v = expr(e, f)
+        val t = model.typeOrNull(e) ?: return v
+        if (!isList(t)) {
+            return v
+        }
+        val siblings = later.any { model.effect(it) == Effect.IMPURE }
+        return if (copies(e, use, siblings, siblings || callee == Effect.IMPURE)) Py(copyOf(v.text, t), PyPrec.POSTFIX) else v
+    }
+
+    private fun copies(e: Expr, use: Use, localWritten: Boolean, sharedWritten: Boolean): Boolean = when (e) {
+        is Identifier -> when (val sym = model.symbolOf(e)) {
+            is LocalSymbol -> use == Use.STORE || (use == Use.ARG && localWritten)
+            is ParamSymbol -> if (sym.byRef) use != Use.ARG || sharedWritten else use != Use.ARG
+            is FieldSymbol, is GlobalSymbol -> use != Use.ARG || sharedWritten
+            else -> false
+        }
+        is MemberAccessExpr -> model.member(e) is MemberRef.Field && (use != Use.ARG || sharedWritten)
+        is IfExpr -> listOfNotNull(branchValue(e.thenBranch), branchValue(e.elseBranch)).any { copies(it, use, localWritten, sharedWritten) }
+        else -> false
+    }
+
+    /** A new Python list holding the elements of [text], a List of type [t]. */
+    private fun copyOf(text: String, t: KType): String = "list($text)"
 
     private fun raw(e: Expr, f: Frame): Py {
         literal(e)?.let { return it }
@@ -596,7 +633,10 @@ class PyModuleEmitter(
     private fun objectOf(origin: Expr, f: Frame): Py =
         if (origin is ThisExpr && f.cls != null) Py("self", PyPrec.ATOM) else expr(origin, f)
 
-    /** A List as the receiver of its method or the container of an index: a variable or a field, never copied. */
+    /**
+     * A List as the receiver of its method, the container of an index or a `mut` argument: the
+     * variable or field itself, never copied; any other expression (a call) is its own List.
+     */
     private fun listPlace(e: Expr, f: Frame): String? = when (e) {
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol, is ParamSymbol -> sym.name
@@ -604,23 +644,23 @@ class PyModuleEmitter(
             is GlobalSymbol -> if (sym.module === module) pyName(sym) else refuseText(e, "a List of another module")
             else -> refuseText(e, "this List")
         }
-        is MemberAccessExpr -> {
-            val m = model.member(e) as? MemberRef.Field
-            if (m == null || !isUserClass(m.field.owner)) {
-                refuseText(e, "this List")
-            } else {
-                "${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}"
-            }
+        is MemberAccessExpr -> when (val m = model.member(e)) {
+            is MemberRef.Field ->
+                if (isUserClass(m.field.owner)) "${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}" else refuseText(e, "this List")
+            else -> wrap(expr(e, f), PyPrec.POSTFIX)
         }
-        else -> refuseText(e, "a List that is not a variable or a field")
+        else -> wrap(expr(e, f), PyPrec.POSTFIX)
     }
 
     private fun callExpr(c: FunctionCallExpr, f: Frame): Py {
         val rc = model.call(c) ?: return refusePy(c, "a call the typer did not resolve")
-        if (rc.args.any { it is ArgBinding.Given && it.byRef }) {
-            return refusePy(c, "a mut argument")
-        }
         val fn = rc.fn
+        val userCall = (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD) && fn != null && fn.module === module
+        rc.args.forEachIndexed { i, a ->
+            if (a is ArgBinding.Given && a.byRef && !(userCall && fn!!.params.getOrNull(i)?.type?.let { isList(it) } == true)) {
+                return refusePy(c, "a mut argument to '${fn?.name ?: c.name}' (only a List given to a function of the module is passed by reference)")
+            }
+        }
         return when (rc.kind) {
             CallKind.PRINT -> trace(c, rc, f)
             CallKind.FREE -> when {
@@ -649,9 +689,13 @@ class PyModuleEmitter(
         val named: Set<Expr> = Collections.newSetFromMap(IdentityHashMap<Expr, Boolean>()).apply { c.namedParameters.forEach { add(it.value) } }
         val parts = mutableListOf<String>()
         var sawNamed = false
-        rc.sourceOrder.forEach { k ->
-            val b = rc.args[k] as? ArgBinding.Given ?: return@forEach
-            val text = wrap(expr(b.expr, f), PyPrec.TERNARY)
+        val given = rc.sourceOrder.mapNotNull { k -> (rc.args[k] as? ArgBinding.Given)?.let { k to it } }
+        given.forEachIndexed { at, (k, b) ->
+            val text = if (b.byRef) {
+                listPlace(b.expr, f) ?: "None"
+            } else {
+                wrap(asValue(b.expr, f, Use.ARG, given.drop(at + 1).map { it.second.expr }, model.effect(fn)), PyPrec.TERNARY)
+            }
             if (b.expr in named) {
                 sawNamed = true
                 parts += "${fn.params[k].name}=$text"
@@ -722,12 +766,14 @@ class PyModuleEmitter(
         }
         val parts = mutableListOf<String>()
         var sawNamed = false
-        init.sourceOrder.forEach { k ->
-            val fi = init.fields[k] as? FieldInit.Given ?: return@forEach
+        val given = init.sourceOrder.mapNotNull { k -> init.fields[k] as? FieldInit.Given }
+        given.forEachIndexed { at, fi ->
             if (fi.field.default != null || !fi.field.isRequired) {
                 refuse(fi.expr, "a value given to the defaulted field '${fi.field.name}' at a construction")
             }
-            val text = wrap(expr(fi.expr, f), PyPrec.TERNARY)
+            // __init__ copies a List it stores, after the defaults before it ran: a List is
+            // copied here, as an argument is, when they or a later value may write it.
+            val text = wrap(asValue(fi.expr, f, Use.ARG, given.drop(at + 1).map { it.expr }, model.effect(o)), PyPrec.TERNARY)
             if (fi.named) {
                 sawNamed = true
                 parts += "${fi.field.name}=$text"

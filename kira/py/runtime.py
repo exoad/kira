@@ -254,3 +254,9 @@ def _k_fixed(v, places):
 # IntNum.toHex (D51): lowercase and no prefix; a negative value is "-" and its magnitude's digits.
 def _k_hex(v):
     return "%x" % v
+
+
+# List.contains compares with ==, as kira::list::contains does: a NaN is in no List. Python's
+# `in` takes an element that is the very object first, NaN included.
+def _k_contains(xs, v):
+    return v == v and v in xs
