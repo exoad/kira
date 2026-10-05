@@ -329,6 +329,12 @@ def _k_utf8(s):
     return bytearray(s.encode("utf-8", "surrogatepass"))
 
 
+# Str.of (D55): the text the UTF-8 holds, each maximal ill-formed subpart one U+FFFD, which is
+# what kira::str::of writes for the same bytes.
+def _k_strof(v):
+    return bytes(v).decode("utf-8", "replace")
+
+
 # hashCode is djb2 over the UTF-8 of the text, as kira::str::hashCode over its bytes, wrapped
 # to 64 bits and read as an Int64: C++'s number for any text.
 def _k_strhash(s):

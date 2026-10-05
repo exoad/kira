@@ -55,6 +55,12 @@ class StdlibCppBindingsTest {
 
     private val allowedCppKeys = setOf("expr", "includes", "pure", "constexpr")
 
+    /**
+     * Magic callables the typer makes, which no `.kira` file can declare: `Str.of` (D55) is
+     * called on the type, as Result.success is (D39), and binds through the manifest.
+     */
+    private val compilerKnown = setOf("Str.of")
+
     @Test
     fun everyMagicMethodAndFunctionHasACppBinding() {
         val declared = magicCallableNames()
@@ -90,7 +96,7 @@ class StdlibCppBindingsTest {
         val stray = manifestEntries()
             .filter { (_, value) -> cppMapOf(value) != null }
             .keys
-            .filterNot { it in declared }
+            .filterNot { it in declared || it in compilerKnown }
             .sorted()
         assertEquals(emptyList(), stray, "cpp bindings for names no stdlib module declares @_magic")
     }

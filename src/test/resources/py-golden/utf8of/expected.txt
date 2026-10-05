@@ -1,0 +1,19 @@
+[41 62] -> [41 62]
+[c3 a9 e2 9c 93 f0 9f 9a 97] -> [c3 a9 e2 9c 93 f0 9f 9a 97]
+[ed 9f bf ee 80 80 f4 8f bf bf] -> [ed 9f bf ee 80 80 f4 8f bf bf]
+[61 80 62 ff fe] -> [61 ef bf bd 62 ef bf bd ef bf bd]
+[c0 af] -> [ef bf bd ef bf bd]
+[e0 80 af] -> [ef bf bd ef bf bd ef bf bd]
+[ed a0 80] -> [ef bf bd ef bf bd ef bf bd]
+[f4 90 80 80] -> [ef bf bd ef bf bd ef bf bd ef bf bd]
+[f5 80 80 80] -> [ef bf bd ef bf bd ef bf bd ef bf bd]
+[e2 82] -> [ef bf bd]
+[e2 82 41] -> [ef bf bd 41]
+[f0 9f 9a 78] -> [ef bf bd 78]
+[c2] -> [ef bf bd]
+[e1 80 e1 80 80] -> [ef bf bd e1 80 80]
+every 1-byte sequence: 256 sequences, 512 bytes read, digest a1e45c5f9c1e4e25
+every 2-byte sequence: 65536 sequences, 250816 bytes read, digest 67abc117fcf74de5
+every 3-byte sequence of the boundary bytes: 6859 sequences, 51033 bytes read, digest c91245e67cc3b09a
+every 4-byte sequence of the boundary bytes: 130321 sequences, 1276026 bytes read, digest 83ac3a1ab6aba52c
+random sequences up to 8 bytes: 30000 sequences, 272492 bytes read, digest ca14456ee48f19f8

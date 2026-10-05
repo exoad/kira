@@ -434,6 +434,19 @@ class PyEmitterTest {
     }
 
     @Test
+    fun strOfReadsUtf8AsPythonsReplacingDecode() {
+        val py = python(
+            """
+            fx f: (v: View<UInt8>, xs: List<UInt8>) Str {
+                return Str.of(v) + Str.of(xs.from(1)) + Str.of(xs)
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_strof(v) + _k_strof(_k_from(xs, 1)) + _k_strof(xs)"), py)
+        assertTrue(py.contains("return bytes(v).decode(\"utf-8\", \"replace\")"), py)
+    }
+
+    @Test
     fun aCharIsItsCodePoint() {
         val py = python(
             """

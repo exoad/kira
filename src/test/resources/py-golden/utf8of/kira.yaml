@@ -1,0 +1,10 @@
+project:
+  name: golden-py-utf8of
+srcDir: src
+build:
+  target: py
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

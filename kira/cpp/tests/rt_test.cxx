@@ -614,6 +614,19 @@ namespace
       check(kira::str::bytes("h\xc3\xa9 \xe2\x9c\x93") == kira::List<std::uint8_t>{0x68, 0xC3, 0xA9, 0x20, 0xE2, 0x9C, 0x93} &&
                 kira::str::bytes("").empty() && kira::str::bytes(s).size() == kira::str::length(s),
             "bytes: the UTF-8 a Str holds");
+      const auto ofText = [](const char* t) {
+          return kira::str::of(kira::View<std::uint8_t>(reinterpret_cast<const std::uint8_t*>(t), std::strlen(t)));
+      };
+      check(ofText("ok h\xc3\xa9 \xe2\x9c\x93 \xf0\x9f\x9a\x97") == "ok h\xc3\xa9 \xe2\x9c\x93 \xf0\x9f\x9a\x97" && ofText("").empty() &&
+                kira::str::of(kira::str::bytes(s)) == s,
+            "Str.of keeps well-formed UTF-8");
+      check(ofText("a\x80" "b\xff") == "a\xef\xbf\xbd" "b\xef\xbf\xbd" && ofText("\xe2\x82") == "\xef\xbf\xbd" &&
+                ofText("\xf0\x9f\x9a" "x") == "\xef\xbf\xbd" "x",
+            "Str.of: a stray byte and a cut sequence are one U+FFFD each");
+      check(ofText("\xc0\xaf") == "\xef\xbf\xbd\xef\xbf\xbd" && ofText("\xe0\x80\xaf") == "\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd" &&
+                ofText("\xed\xa0\x80") == "\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd" &&
+                ofText("\xf4\x90\x80\x80") == "\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd",
+            "Str.of: an overlong form, a surrogate and a code point past U+10FFFF, each byte one U+FFFD");
 
       check(kira::unwrap(kira::str::toInt64("-2859")) == -2859, "toInt64");
       check(!kira::isSome(kira::str::toInt64("1541abc")) && !kira::isSome(kira::str::toInt64("")) &&

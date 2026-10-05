@@ -5,9 +5,9 @@ module "dash:dashtext"
 // (centi-degrees, kept mod 36000), distances (mm, 1..65535) and qualities (capped at 255),
 // a point whose angle or distance is not all digits dropped. command: one text frame from the
 // page, split on spaces: the heartbeat, an ack, a ping, and on the control link ws_command's
-// words. isdigit() is ASCII digits here; Python's also takes other scripts' digits. The
-// expected output is the C++ backend's run of main, then the driver's run of these against the
-// hand-written ones.
+// words, the frame's bytes read with Str.of (D55). isdigit() is ASCII digits here; Python's also
+// takes other scripts' digits. The expected output is the C++ backend's run of main, then the
+// driver's run of these against the hand-written ones.
 
 LIDAR: Int64 = 255
 
@@ -188,6 +188,12 @@ pub fx command: (text: Str, ctrl: Bool) Str {
     return wsCommand(words)
 }
 
+// A page's text frame as ws_reader reads it: its bytes decoded, data.decode("utf-8", "replace")
+// (Str.of, D55), then split on spaces.
+pub fx frame: (data: View<UInt8>, ctrl: Bool) Str {
+    return command(Str.of(data), ctrl)
+}
+
 fx scanText: (line: Str) Str {
     if !isScan(line) {
         return "not a scan"
@@ -241,4 +247,10 @@ fx main: () Void {
     trace(command("rec 3", true))
     trace(command("", true))
     trace(command("zap 1 2", true))
+    sel: List<UInt8> = [0x73, 0x65, 0x6C, 0x20, 0x33]
+    trace(frame(sel, true))
+    bad: List<UInt8> = [0x73, 0x65, 0x6C, 0x20, 0xFF]
+    trace(frame(bad, true))
+    heart: List<UInt8> = [0x68, 0xC3]
+    trace(frame(heart, false))
 }

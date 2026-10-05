@@ -1,0 +1,162 @@
+module "lang:utf8of"
+
+// Str.of (D55): the text the UTF-8 in a View<UInt8> holds, each maximal ill-formed subpart (a
+// stray or cut sequence, an overlong form, a surrogate, a code point past U+10FFFF) one U+FFFD,
+// as bibo's bytes.decode("utf-8", "replace") reads a page's frames. The expected output is the
+// C++ backend's run of main: kira::str::of's text for each case, then FNV-1a digests of what it
+// reads from every 1- and 2-byte sequence, every 3- and 4-byte one of the boundary bytes, and
+// seeded random ones up to 8 bytes leaning on leads and continuations. The py target's run is
+// Python's own decoder, so the same output is the two agreeing on every sequence.
+
+// FNV-1a's prime; its basis less its top bit, as a literal is an Int64 first.
+FNV_BASIS: UInt64 = 0x4BF29CE484222325
+FNV_PRIME: UInt64 = 0x100000001B3
+
+fx hex: (v: View<UInt8>) Str {
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < v.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + v[i].toHex().padStart(2, '0')
+        i += 1
+    }
+    return s
+}
+
+pub fx read: (b: View<UInt8>) Str {
+    return Str.of(b)
+}
+
+fx shown: (b: List<UInt8>) Str {
+    return "[" + hex(b) + "] -> [" + hex(read(b).bytes()) + "]"
+}
+
+// A running digest: what each text reads as, then a 0xFF, which UTF-8 never holds.
+pub class Digest {
+    pub mut h: UInt64 = FNV_BASIS
+    pub mut count: Int64 = 0
+    pub mut total: Int64 = 0
+
+    pub mut fx add: (b: View<UInt8>) Void {
+        text: List<UInt8> = Str.of(b).bytes()
+        mut i: Size = 0
+        while i < text.size() {
+            h = (h ^ (text[i] as UInt64)) * FNV_PRIME
+            i += 1
+        }
+        h = (h ^ 0xFF) * FNV_PRIME
+        count += 1
+        total += text.size() as Int64
+    }
+
+    pub fx said: () Str {
+        return "${count} sequences, ${total} bytes read, digest ${h.toHex()}"
+    }
+}
+
+fx edges: () List<UInt8> {
+    return [0x00, 0x41, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC1, 0xC2, 0xDF, 0xE0, 0xED, 0xEF, 0xF0, 0xF4, 0xF5, 0xFF]
+}
+
+fx main: () Void {
+    trace(shown([0x41, 0x62]))
+    trace(shown([0xC3, 0xA9, 0xE2, 0x9C, 0x93, 0xF0, 0x9F, 0x9A, 0x97]))
+    trace(shown([0xED, 0x9F, 0xBF, 0xEE, 0x80, 0x80, 0xF4, 0x8F, 0xBF, 0xBF]))
+    trace(shown([0x61, 0x80, 0x62, 0xFF, 0xFE]))
+    trace(shown([0xC0, 0xAF]))
+    trace(shown([0xE0, 0x80, 0xAF]))
+    trace(shown([0xED, 0xA0, 0x80]))
+    trace(shown([0xF4, 0x90, 0x80, 0x80]))
+    trace(shown([0xF5, 0x80, 0x80, 0x80]))
+    trace(shown([0xE2, 0x82]))
+    trace(shown([0xE2, 0x82, 0x41]))
+    trace(shown([0xF0, 0x9F, 0x9A, 0x78]))
+    trace(shown([0xC2]))
+    trace(shown([0xE1, 0x80, 0xE1, 0x80, 0x80]))
+    mut one: Digest = Digest { }
+    mut single: List<UInt8> = [0]
+    mut a: Int32 = 0
+    while a < 256 {
+        single[0] = a as UInt8
+        one.add(single)
+        a += 1
+    }
+    trace("every 1-byte sequence: " + one.said())
+    mut two: Digest = Digest { }
+    mut pair: List<UInt8> = [0, 0]
+    a = 0
+    while a < 256 {
+        mut c: Int32 = 0
+        while c < 256 {
+            pair[0] = a as UInt8
+            pair[1] = c as UInt8
+            two.add(pair)
+            c += 1
+        }
+        a += 1
+    }
+    trace("every 2-byte sequence: " + two.said())
+    e: List<UInt8> = edges()
+    mut three: Digest = Digest { }
+    mut four: Digest = Digest { }
+    mut q: List<UInt8> = [0, 0, 0, 0]
+    mut t: List<UInt8> = [0, 0, 0]
+    mut i: Size = 0
+    while i < e.size() {
+        mut j: Size = 0
+        while j < e.size() {
+            mut k: Size = 0
+            while k < e.size() {
+                t[0] = e[i]
+                t[1] = e[j]
+                t[2] = e[k]
+                three.add(t)
+                mut l: Size = 0
+                while l < e.size() {
+                    q[0] = e[i]
+                    q[1] = e[j]
+                    q[2] = e[k]
+                    q[3] = e[l]
+                    four.add(q)
+                    l += 1
+                }
+                k += 1
+            }
+            j += 1
+        }
+        i += 1
+    }
+    trace("every 3-byte sequence of the boundary bytes: " + three.said())
+    trace("every 4-byte sequence of the boundary bytes: " + four.said())
+    mut rnd: Digest = Digest { }
+    mut s: UInt64 = 20261005
+    mut n: Int32 = 0
+    while n < 30000 {
+        s = s ^ (s << 13)
+        s = s ^ (s >> 7)
+        s = s ^ (s << 17)
+        mut seq: List<UInt8> = List<UInt8> { }
+        want: UInt64 = s % 9
+        while (seq.size() as UInt64) < want {
+            s = s ^ (s << 13)
+            s = s ^ (s >> 7)
+            s = s ^ (s << 17)
+            kind: UInt64 = s % 10
+            v: UInt8 = (s >> 8) as UInt8
+            if kind < 4 {
+                seq.add(0x80 | (v & 0x3F))
+            } else if kind < 8 {
+                seq.add(0xC0 | (v & 0x3F))
+            } else if kind < 9 {
+                seq.add(v & 0x7F)
+            } else {
+                seq.add(v)
+            }
+        }
+        rnd.add(seq)
+        n += 1
+    }
+    trace("random sequences up to 8 bytes: " + rnd.said())
+}

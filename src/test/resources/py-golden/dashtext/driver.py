@@ -3,7 +3,8 @@
 # and command against the hand-written code they port (bibo's firmware/pilot/tools/dash/
 # bibodash.py at master deb187c): Lidar.scan's parse, the reader's strip and "F " test, the text
 # half of ws_reader's loop and ws_command, copied below unchanged as the oracle on stub pages,
-# cameras and a lidar that record what each call did, over seeded ASCII frames and lines. They
+# cameras and a lidar that record what each call did, over seeded lines and frames, a frame's
+# bytes read with Str.of (D55) as ws_reader decodes them, ill-formed UTF-8 included. They
 # agree on all of them; what only Python takes (other scripts' digits, a ping time float() alone
 # reads, a number past Int64) is listed at the end.
 #
@@ -191,11 +192,11 @@ class Handler:
                         cam.set_recording(on)
 
 
-def oracle_command(text, ctrl):
+def oracle_command(data, ctrl):
     did.clear()
-    Handler().frame(PageStub(), ConnStub("ctrl" if ctrl else "video"), [text.encode("utf-8")])
+    Handler().frame(PageStub(), ConnStub("ctrl" if ctrl else "video"), [data])
     if not did:
-        return "heartbeat" if text.split(" ")[0] == "h" else "ignored"
+        return "heartbeat" if data.split(b" ")[0] == b"h" else "ignored"
     if did[0].startswith("rtt "):
         return did[1] + " " + did[0]      # the time is kept, then the ping echoed
     # rot on the lidar also asks every camera; the lidar's is the one that counts here
@@ -262,19 +263,24 @@ for k in range(4000):
     scans += 1
 print("scan against Lidar.scan: %d lines, every point the same" % scans)
 
-VERBS = ["h", "a", "p", "all", "sel", "both", "rot", "h264", "mask", "low", "cam", "rec", "zap", "", "H"]
-ARGS = ["1", "0", "255", "3", "90", "180", "270", "45", "0270", "x", "", "4.5", "nan", "1e3", "-1", "+2",
-        "capture", "box", "0.3", "007", "12"]
+# A page's frame is bytes: frame reads them with Str.of (D55), as ws_reader's
+# data.decode("utf-8", "replace"), ill-formed UTF-8 included.
+VERBS = [b"h", b"a", b"p", b"all", b"sel", b"both", b"rot", b"h264", b"mask", b"low", b"cam", b"rec", b"zap", b"",
+         b"H", b"h\xff", b"\xc3\xa9"]
+ARGS = [b"1", b"0", b"255", b"3", b"90", b"180", b"270", b"45", b"0270", b"x", b"", b"4.5", b"nan", b"1e3", b"-1",
+        b"+2", b"capture", b"box", b"0.3", b"007", b"12", b"\xff", b"1\x80", b"\xe2\x82", b"caf\xc3\xa9",
+        b"\xed\xa0\x80", b"\xc0\xaf"]
 frames = 0
 for k in range(20000):
     words = [rng.choice(VERBS)] + [rng.choice(ARGS) for _ in range(rng.choice([0, 1, 1, 2, 2, 2, 3, 5]))]
-    text = " ".join(words)
+    data = b" ".join(words)
     ctrl = rng.random() < 0.8
-    assert same_rtt(m.command(text, ctrl)) == same_rtt(oracle_command(text, ctrl)), (text, ctrl)
+    assert same_rtt(m.frame(data, ctrl)) == same_rtt(oracle_command(data, ctrl)), (data, ctrl)
     frames += 1
-print("command against ws_reader's words and ws_command: %d frames, every action the same" % frames)
+print("frame against ws_reader's words and ws_command: %d frames, ill-formed UTF-8 among them, every action the same" % frames)
 
 for text in ("sel ٣", "rot 255 ٩٠", "p 1 1_0", "p 1 1e-400", "sel 99999999999999999999"):
-    print("python alone reads %s: %s, kira %s" % (ascii(text), oracle_command(text, True), m.command(text, True)))
+    data = text.encode()
+    print("python alone reads %s: %s, kira %s" % (ascii(text), oracle_command(data, True), m.frame(data, True)))
 raw = b"F 1 99999999999999999999 1,2"
 print("python alone reads %s: rot %d, kira rot %d" % (raw.decode(), oracle_scan(raw)[0], mine_scan(raw)[0]))

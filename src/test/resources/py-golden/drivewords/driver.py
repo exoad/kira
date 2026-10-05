@@ -3,7 +3,9 @@
 # read against the hand-written reading it ports (bibo's firmware/pilot/tools/dash/
 # webdrive_fake.py at master deb187c: the text part of Handler.drive's frame loop, message, and
 # Car.control's and Car.command's ints, copied below unchanged onto a car and a page that record
-# what each call did), over seeded ASCII frames: the same action for every one. int() also takes
+# what each call did), over seeded frames, their bytes read with Str.of (D55) as the loop's
+# data.decode("utf-8", "replace"), ill-formed UTF-8 among them: the same action for every one.
+# int() also takes
 # underscores, other scripts' digits and ints past Int64, and split() Unicode's whitespace:
 # those are listed at the end.
 #
@@ -114,11 +116,11 @@ class Handler:
             page.send(car.status(page))
 
 
-def oracle(text):
+def oracle(data):
     did.clear()
-    Handler().frames(PageStub(), [(1, text.encode("utf-8"))])
+    Handler().frames(PageStub(), [(1, data)])
     if not did:
-        return "nothing" if not text.split() else "ignored"
+        return "nothing" if not data.decode("utf-8", "replace").split() else "ignored"
     return did[0]
 
 
@@ -127,17 +129,23 @@ rng = random.Random(20261005)
 VERBS = ["c", "hold", "cmd", "p", "hidden", "C", "x", ""]
 ARGS = ["1", "0", "-250", "+1600", "007", "3.0", "x", "-", "+", "9223372036854775807", "-9223372036854775808",
         "12a", "1500", "65535"]
+RAW = [b"\xff", b"1\x80", b"\xe2\x82", b"\xc3\xa9", b"\xed\xa0\x80", b"\xc0\xaf", b"\xf0\x9f\x9a"]
 SPACE = [" ", " ", "  ", "\t", "\r\n", "\x0b", "\x0c", "\x1c", "\x1f"]
 frames = 0
 for k in range(30000):
     words = [rng.choice(VERBS)] + [rng.choice(ARGS) for _ in range(rng.choice([0, 1, 2, 5, 6, 6, 6, 7]))]
     text = rng.choice(["", " ", "\t"]) + "".join(w + rng.choice(SPACE) for w in words)
-    assert m.read(text) == oracle(text), ascii(text)
+    data = text.encode()
+    if rng.random() < 0.2:
+        cut = rng.randint(0, len(data))
+        data = data[:cut] + rng.choice(RAW) + data[cut:]
+    assert m.readFrame(data) == oracle(data), data
     frames += 1
 for c in range(128):
     text = "c" + chr(c) + "1 2 3 4 5 6"
-    assert m.words(text) == text.split() and m.read(text) == oracle(text), c
-print("read against the frame loop and message: %d frames and every ASCII separator, every action the same" % frames)
+    assert m.words(text) == text.split() and m.readFrame(text.encode()) == oracle(text.encode()), c
+print("readFrame against the frame loop and message: %d frames, ill-formed UTF-8 among them, and every ASCII "
+      "separator, every action the same" % frames)
 
 for text in ("c 1_0 2 3 4 5 6", "cmd ٤ 2 1 0 0 3", "c 1 2 3 4 5 9223372036854775808", "hold\xa01", "p　1"):
-    print("python alone reads %s: %s, kira %s" % (ascii(text), oracle(text), m.read(text)))
+    print("python alone reads %s: %s, kira %s" % (ascii(text), oracle(text.encode()), m.readFrame(text.encode())))

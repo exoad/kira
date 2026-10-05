@@ -485,6 +485,64 @@ namespace kira
         const auto* p = reinterpret_cast<const std::uint8_t*>(s.data());
         return List<std::uint8_t>(p, p + s.size());
     }
+    // Str.of (D55): the text the UTF-8 in `b` holds, each maximal ill-formed subpart (a stray or
+    // cut sequence, an overlong form, a surrogate, a code point past U+10FFFF) one U+FFFD, the
+    // Unicode practice Python's bytes.decode("utf-8", "replace") follows.
+    [[nodiscard]] inline Str of(View<std::uint8_t> b)
+    {
+        Str out;
+        out.reserve(b.size());
+        Size i = 0;
+        while(i < b.size())
+        {
+            const std::uint8_t lead = b[i];
+            if(lead < 0x80u)
+            {
+                out.push_back(static_cast<Char>(lead));
+                ++i;
+                continue;
+            }
+            // The continuation bytes the lead needs, and the range its first one must be in.
+            Size need = 0;
+            std::uint8_t lo = 0x80u;
+            std::uint8_t hi = 0xBFu;
+            if(lead >= 0xC2u && lead <= 0xDFu)
+            {
+                need = 1;
+            }
+            else if(lead >= 0xE0u && lead <= 0xEFu)
+            {
+                need = 2;
+                lo = lead == 0xE0u ? std::uint8_t{0xA0u} : lo;
+                hi = lead == 0xEDu ? std::uint8_t{0x9Fu} : hi;
+            }
+            else if(lead >= 0xF0u && lead <= 0xF4u)
+            {
+                need = 3;
+                lo = lead == 0xF0u ? std::uint8_t{0x90u} : lo;
+                hi = lead == 0xF4u ? std::uint8_t{0x8Fu} : hi;
+            }
+            Size j = i + 1;
+            Size seen = 0;
+            while(seen < need && j < b.size() && b[j] >= lo && b[j] <= hi)
+            {
+                ++j;
+                ++seen;
+                lo = 0x80u;
+                hi = 0xBFu;
+            }
+            if(need != 0 && seen == need)
+            {
+                out.append(reinterpret_cast<const char*>(b.data() + i), j - i);
+            }
+            else
+            {
+                out.append("\xEF\xBF\xBD");
+            }
+            i = j;
+        }
+        return out;
+    }
     // Strict decimal: parseInt64 over the string's bytes.
     [[nodiscard]] inline std::optional<std::int64_t> toInt64(const Str& s) noexcept
     {

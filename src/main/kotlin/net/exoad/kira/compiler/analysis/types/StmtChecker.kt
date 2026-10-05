@@ -73,6 +73,7 @@ internal class StmtChecker(private val c: PhaseC) {
     private val loopDepth = ArrayDeque<Int>()
 
     private val resultFns = HashMap<String, FnSymbol>()
+    private var strOf: FnSymbol? = null
 
     fun all() {
         // Defaults first, every module's: a construction that leaves a field to its default and
@@ -846,6 +847,16 @@ internal class StmtChecker(private val c: PhaseC) {
      * magic FnSymbol on the Result class, keyed `Result.success` / `Result.error` for the
      * binding table.
      */
+    /** `Str.of` (D55), as [resultFn] gives Result's: one magic FnSymbol on Str, `(bytes: View<UInt8>) Str`. */
+    fun strOfFn(cls: ClassSymbol, bytes: KType): FnSymbol = strOf ?: run {
+        val param = ParamSymbol("bytes", cls.module, null, type = bytes, index = 0)
+        val fn = FnSymbol("of", cls.module, null, emptyList(), listOf(param), KType.Str, owner = cls, foreign = Foreign.Magic("Str.of"))
+        fn.isPub = true
+        param.fn = fn
+        strOf = fn
+        fn
+    }
+
     fun resultFn(cls: ClassSymbol, which: String): FnSymbol = resultFns.getOrPut(which) {
         val tp = if (which == "success") cls.typeParams.getOrNull(0) else cls.typeParams.getOrNull(1)
         val param = ParamSymbol("value", cls.module, null, type = tp?.let { KType.Param(it) } ?: KType.Error, index = 0)

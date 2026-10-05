@@ -36,8 +36,11 @@ rec 3 1
 ignored
 ignored
 ignored
+sel 3
+ignored
+ignored
 scan against Lidar.scan: 4000 lines, every point the same
-command against ws_reader's words and ws_command: 20000 frames, every action the same
+frame against ws_reader's words and ws_command: 20000 frames, ill-formed UTF-8 among them, every action the same
 python alone reads 'sel \u0663': sel 3, kira ignored
 python alone reads 'rot 255 \u0669\u0660': rot lidar 90, kira ignored
 python alone reads 'p 1 1_0': ping [1] rtt 10.0, kira ping [1]

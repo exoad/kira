@@ -22,7 +22,8 @@ import kotlin.test.assertTrue
  * seeded inputs, as maskcmd, linkwatch, dashtext, tagcheck and drivewords do bibo's text parsers,
  * hexpad its zero-padded hex and wstext its WebSocket text and close frames; bebytes holds the
  * big-endian set at the end of its views as shortview does; strs runs its main, then its panics
- * and the py target's one rule for text, a length counting code points; strings makes
+ * and the py target's one rule for text, a length counting code points; utf8of holds Str.of
+ * against Python's decoder over every 1- and 2-byte sequence and more; strings makes
  * cpp-golden/strings' checks one for one, its expected output that case's. Skipped when no
  * Python is found (set KIRA_PYTHON).
  */

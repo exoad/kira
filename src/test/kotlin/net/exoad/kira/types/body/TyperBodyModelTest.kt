@@ -408,6 +408,35 @@ class TyperBodyModelTest {
         assertEquals(Foreign.Magic("Result.error"), error.fn!!.foreign)
     }
 
+    @Test
+    fun strOfIsCalledOnTheTypeAsResultSuccessIs() {
+        val p = snippet(
+            """
+            pub fx f: (v: View<UInt8>, xs: List<UInt8>) Str {
+                return Str.of(v) + Str.of(xs)
+            }
+            """
+        )
+        expectNoErrors(p)
+        val of = p.model.calls[BodyTestSupport.node<FunctionCallExpr>(p, "Str.of(v)")]!!
+        assertEquals(CallKind.MAGIC, of.kind)
+        assertEquals(Foreign.Magic("Str.of"), of.fn!!.foreign)
+        assertEquals("Str", of.returnType.display())
+        assertEquals(null, of.receiver)
+        val fromList = p.model.calls[BodyTestSupport.node<FunctionCallExpr>(p, "Str.of(xs)")]!!
+        assertEquals(of.fn, fromList.fn, "one FnSymbol, as Result.success has")
+        val wrong = snippet(
+            """
+            pub fx g: (s: Str) Str {
+                return Str.of(s) + Str.from(s)
+            }
+            """
+        )
+        val codes = net.exoad.kira.types.TyperTestSupport.codes(wrong)
+        assertTrue(codes.any { it.startsWith("types.") && it != "types.call.static" }, "Str.of(a Str) is a type error: $codes")
+        assertTrue("types.call.static" in codes, "any other call on Str is still refused: $codes")
+    }
+
     // ---- construction (R9) -------------------------------------------------------------------
 
     @Test

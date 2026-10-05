@@ -1046,6 +1046,24 @@ class CppExprRowsTest {
             listOf("""check(d39::halved(4) == 2 && d39::halved(3) == -1, "D39: Result.success and Result.error are kira::Result's factories");"""),
         ),
         row(
+            "d55",
+            """
+            pub fx read: (b: View<UInt8>) Str {
+                return Str.of(b)
+            }
+
+            pub fx text: () Str {
+                b: List<UInt8> = [0x68, 0xC3, 0xA9, 0xFF, 0xE2, 0x82]
+                return Str.of(b)
+            }
+            """,
+            listOf("return kira::str::of(b);"),
+            listOf(
+                """check(d55::text() == "h\xc3\xa9\xef\xbf\xbd\xef\xbf\xbd", "D55: Str.of reads UTF-8, a stray byte and a cut sequence one U+FFFD each");""",
+                """check(d55::read(kira::str::bytes("ok \xe2\x9c\x93")) == "ok \xe2\x9c\x93", "D55: and keeps what is well-formed");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {

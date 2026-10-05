@@ -4,7 +4,8 @@ module "dash:drivewords"
 // six ints (the control, which the newest of a read carries), and message's "hold", "cmd" and
 // six ints, "p" and "hidden"; a word that int() refuses drops a control or a command. split()
 // takes Python's whitespace over ASCII and the ints are Int64s. The expected output is the C++
-// backend's run of main, then the driver's run of read against the hand-written reader.
+// backend's run of main, then the driver's run of readFrame, a frame's bytes read with Str.of
+// (D55), against the hand-written reader.
 
 fx space: (c: Char) Bool {
     return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
@@ -71,6 +72,11 @@ pub fx read: (text: Str) Str {
     return "ignored"
 }
 
+// A frame as the loop reads it: data.decode("utf-8", "replace") (Str.of, D55), then read.
+pub fx readFrame: (data: View<UInt8>) Str {
+    return read(Str.of(data))
+}
+
 fx main: () Void {
     trace(read("c 1 0 1500 0 3 1"))
     trace(read("  c\t7 -250 +1600 2 3 0  extra\r\n"))
@@ -88,4 +94,8 @@ fx main: () Void {
     trace(read(" \t${(11 as Char)}${(31 as Char)} "))
     trace(read("C 1 2 3 4 5 6"))
     trace(words("a${(28 as Char)}b${(12 as Char)}c d").size())
+    hold: List<UInt8> = [0x68, 0x6F, 0x6C, 0x64, 0x20, 0x31, 0xFF]
+    trace(readFrame(hold))
+    c: List<UInt8> = [0x63, 0x20, 0x31, 0x20, 0x32, 0x20, 0x33, 0x20, 0x34, 0x20, 0x35, 0x20, 0x36, 0xE2, 0x82]
+    trace(readFrame(c))
 }

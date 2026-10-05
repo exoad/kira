@@ -5,9 +5,10 @@ use "kira:bytes"
 // webdrive_fake.py's Page.send and Page.close in Kira: a text frame of the text's UTF-8
 // (Str.bytes, D54), and a close frame of its status code, big-endian (writeU16Be, D53), then the
 // reason's UTF-8; each in ws_frame's length forms, its header written with the big-endian set.
-// Reading a frame's text back needs a Str made from UTF-8 bytes, which Kira does not have: the
-// driver reads it with Python. The expected output is the C++ backend's run of main, then the
-// driver's run of send and close against the hand-written ones.
+// And what is read back from a frame: its text as bibo's readers decode it,
+// data.decode("utf-8", "replace") (Str.of, D55), a close frame's code and reason. The expected
+// output is the C++ backend's run of main, then the driver's run of these against the
+// hand-written ones and Python's decoder.
 
 fx header: (opcode: UInt8, n: Size) List<UInt8> {
     mut out: List<UInt8> = List<UInt8> { }
@@ -49,6 +50,28 @@ pub fx close: (code: UInt16, reason: Str) List<UInt8> {
     return frame(8, payload)
 }
 
+// The payload of the unmasked frame at the start of f, past its 7-, 16- or 64-bit length.
+fx payloadOf: (f: View<UInt8>) View<UInt8> {
+    n: Size = (f[1] & 0x7F) as Size
+    if n == 126 {
+        return f.slice(4, readU16Be(f, 2) as Size)
+    }
+    if n == 127 {
+        return f.slice(10, readU64Be(f, 2) as Size)
+    }
+    return f.slice(2, n)
+}
+
+// A text frame's text, as data.decode("utf-8", "replace") reads it.
+pub fx textOf: (f: View<UInt8>) Str {
+    return Str.of(payloadOf(f))
+}
+
+// A close frame's code and reason: "<code> <reason>".
+pub fx closeOf: (f: View<UInt8>) Str {
+    return "${readU16Be(payloadOf(f), 0)} " + Str.of(payloadOf(f).from(2))
+}
+
 fx hex: (v: View<UInt8>) Str {
     mut s: Str = ""
     mut i: Size = 0
@@ -77,4 +100,15 @@ fx main: () Void {
     f: List<UInt8> = send(long)
     trace(hex(f.slice(0, 6)))
     trace(f.size())
+    trace(textOf(send("hold 1 held")))
+    trace(hex(textOf(send("café ✓")).bytes()))
+    trace(textOf(send(long)) == long)
+    bad: List<UInt8> = [0x81, 0x07, 0x61, 0xC3, 0x28, 0xFF, 0xE2, 0x82, 0x62]
+    trace(hex(textOf(bad).bytes()))
+    trace(closeOf(close(1000, "the drive socket closed")))
+    trace(hex(closeOf(close(4001, "ünï")).bytes()))
+    cut: List<UInt8> = [0x88, 0x04, 0x0F, 0xA1, 0xC3, 0xE2]
+    trace(hex(closeOf(cut).bytes()))
+    surrogate: List<UInt8> = [0x88, 0x05, 0x03, 0xE8, 0xED, 0xA0, 0x80]
+    trace(hex(closeOf(surrogate).bytes()))
 }

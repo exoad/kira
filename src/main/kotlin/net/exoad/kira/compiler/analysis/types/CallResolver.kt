@@ -44,7 +44,8 @@ import java.util.IdentityHashMap
  * literals' own defaults, and each inferred argument must satisfy its bound.
  *
  * **Special cases**: `bitCast<T>(v)` (equal sizes), `enumOf<E>(raw)` (an integer enum, a
- * `Maybe<E>`), `Result.success(v)` / `Result.error(e)` (D39, typed by the context).
+ * `Maybe<E>`), `Result.success(v)` / `Result.error(e)` (D39, typed by the context), and
+ * `Str.of(bytes)` (D55, a Str read from UTF-8).
  */
 internal class CallResolver(private val c: PhaseC) {
     private val model get() = c.model
@@ -235,6 +236,9 @@ internal class CallResolver(private val c: PhaseC) {
             model.refs[origin] = typeSym
             if (typeSym is ClassSymbol && typeSym.kind == ClassKind.MAGIC && typeSym.name == "Result" && member.value in setOf("success", "error")) {
                 return result(e, typeSym, member, hint, ctx, scope)
+            }
+            if (typeSym is ClassSymbol && typeSym.kind == ClassKind.MAGIC && typeSym.name == "Str" && member.value == "of") {
+                return strOf(e, typeSym, ctx, scope)
             }
             argsOnly(e, ctx, scope)
             c.report(
@@ -953,6 +957,22 @@ internal class CallResolver(private val c: PhaseC) {
         typeGiven(e, bound, fn.params.map { it.type.substitute(sub) }, listOf(false), listOf("value"), IdentityHashMap(), ctx, scope)
         model.calls[e] = ResolvedCall(CallKind.MAGIC, fn, null, false, emptyList(), bound.args, bound.order, target, sub)
         return target
+    }
+
+    /**
+     * `Str.of(bytes)` (D55): the text the UTF-8 in a `View<UInt8>` holds, each ill-formed part
+     * replaced with U+FFFD, as Python's `bytes.decode("utf-8", "replace")`. Like Result.success
+     * it has no Kira declaration: one magic FnSymbol on Str, keyed `Str.of` for the bindings.
+     */
+    private fun strOf(e: FunctionCallExpr, cls: ClassSymbol, ctx: BodyContext, scope: Scope): KType {
+        val fn = c.stmts.strOfFn(cls, facts.viewOf(KType.UINT8))
+        val bound = bind(e, "Str.of", fn.params) ?: run {
+            argsOnly(e, ctx, scope)
+            return KType.Str
+        }
+        typeGiven(e, bound, fn.params.map { it.type }, listOf(false), listOf("bytes"), IdentityHashMap(), ctx, scope)
+        model.calls[e] = ResolvedCall(CallKind.MAGIC, fn, null, false, emptyList(), bound.args, bound.order, KType.Str, emptyMap())
+        return KType.Str
     }
 
     /** `@_trace_(x)` and the other intrinsics met in expression position. */
