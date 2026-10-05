@@ -1,0 +1,27 @@
+read16(6, 4) -> 1284
+read16(6, 5) -> panic: slice out of range
+read16(6, 7) -> panic: slice out of range
+read32(6, 2) -> 84148994
+read32(6, 3) -> panic: slice out of range
+read32(0, 0) -> panic: slice out of range
+read64(8, 0) -> 506097522914230528
+read64(9, 2) -> panic: slice out of range
+readF64(8, 0) -> 7.94993e-275
+readF64(7, 0) -> panic: slice out of range
+write32(6, 2) -> 0 1 d4 c3 b2 a1
+write32(6, 3) -> panic: slice out of range
+write64(8, 0) -> 88 77 66 55 44 33 22 11
+write64(10, 3) -> panic: slice out of range
+writeInside(16, 4, 4, 2) -> 0 1 2 3 4 5 ef be 8 9 a b c d e f
+writeInside(16, 4, 4, 3) -> panic: slice out of range
+tail(5, 5) -> 0
+tail(5, 6) -> panic: slice out of range
+part(5, 2, 3) -> 3
+part(5, 2, 4) -> panic: slice out of range
+part(5, 6, 0) -> panic: slice out of range
+peek(6, 2, 3) -> 5
+peek(6, 2, 4) -> panic: index out of range
+poke(8, 2, 3, 2) -> 0 1 2 3 ee 5 6 7
+poke(8, 2, 3, 3) -> panic: index out of range
+peekInts(5, 1, 3) -> -12
+peekInts(5, 1, 4) -> panic: index out of range

@@ -1,0 +1,222 @@
+module "dbw:lebytes"
+
+use "kira:bytes"
+
+// Little-endian frames in Kira over kira:bytes: the drive-by-wire link's encode_raw and
+// parse_frame (bibo's tools/dbw/dbwcodec.py), and the Unitree L2's 32-byte command (the
+// unilidar module's), written through MutViews of a List and of an Arr. The expected output is
+// the C++ backend's run of main, then the driver's run of these against struct and dbwcodec.
+
+HEADER_BYTES: Size = 10
+CRC_BYTES: Size = 2
+MAGIC0: UInt8 = 0xFB
+MAGIC1: UInt8 = 0xB1
+
+pub alias Cmd as Arr<UInt8, 32>
+
+pub class Frame {
+    require pub version: UInt8
+    require pub flags: UInt8
+    require pub seq: UInt16
+    require pub type: UInt16
+    require pub payload: List<UInt8>
+}
+
+// framing.crc: CRC-16/CCITT-FALSE, a bit at a time.
+pub fx crc16: (data: View<UInt8>) UInt16 {
+    mut crc: UInt16 = 0xFFFF
+    mut i: Size = 0
+    while i < data.size() {
+        crc ^= (data[i] as UInt16) << 8
+        mut bit: Int32 = 0
+        while bit < 8 {
+            crc = if (crc & 0x8000) != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 }
+            bit += 1
+        }
+        i += 1
+    }
+    return crc
+}
+
+fx append: (mut out: List<UInt8>, v: View<UInt8>) Void {
+    mut i: Size = 0
+    while i < v.size() {
+        out.add(v[i])
+        i += 1
+    }
+}
+
+// encode_raw: the magic, version, flags, seq, type and payload length, the payload, and the
+// CRC of all of it.
+pub fx encodeRaw: (typ: UInt16, payload: View<UInt8>, seq: UInt16, flags: UInt8, version: UInt8) List<UInt8> {
+    mut out: List<UInt8> = [MAGIC0, MAGIC1, version, flags, 0, 0, 0, 0, 0, 0]
+    writeU16Le(out.view(), 4, seq)
+    writeU16Le(out.view(), 6, typ)
+    writeU16Le(out.from(8), 0, payload.size() as UInt16)
+    append(mut out, payload)
+    crc: UInt16 = crc16(out)
+    out.add(0)
+    out.add(0)
+    end: Size = out.size()
+    writeU16Le(out.slice(end - 2, 2), 0, crc)
+    return out
+}
+
+// parse_frame: one whole, CRC-valid frame from exactly its bytes, else null.
+pub fx parseFrame: (data: View<UInt8>) Maybe<Frame> {
+    if data.size() < HEADER_BYTES + CRC_BYTES || data[0] != MAGIC0 || data[1] != MAGIC1 {
+        return null
+    }
+    n: Size = readU16Le(data, 8) as Size
+    if data.size() != HEADER_BYTES + n + CRC_BYTES {
+        return null
+    }
+    if readU16Le(data, data.size() - 2) != crc16(data.slice(0, data.size() - 2)) {
+        return null
+    }
+    mut payload: List<UInt8> = List<UInt8> { }
+    append(mut payload, data.slice(HEADER_BYTES, n))
+    return Frame { data[2], data[3], readU16Le(data, 4), readU16Le(data, 6), payload }
+}
+
+// The L2's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
+pub fx crc32: (buf: View<UInt8>) UInt32 {
+    mut crc: UInt32 = 0xFFFFFFFF
+    mut i: Size = 0
+    while i < buf.size() {
+        crc ^= buf[i] as UInt32
+        mut bit: Int32 = 0
+        while bit < 8 {
+            crc = if (crc & 1) != 0 { (crc >> 1) ^ 0xEDB88320 } else { crc >> 1 }
+            bit += 1
+        }
+        i += 1
+    }
+    return ~crc
+}
+
+// unilidar's command: the magic, kind, length, type and value little-endian, the CRC of the
+// type and value, and the tail.
+pub fx command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Cmd {
+    mut p: Cmd = Cmd { }
+    p[0] = 0x55
+    p[1] = 0xAA
+    p[2] = 0x05
+    p[3] = 0x0A
+    writeU32Le(p.from(4), 0, kind)
+    writeU32Le(p.view(), 8, 32)
+    writeU32Le(p.from(12), 0, cmdType)
+    writeU32Le(p.slice(16, 4), 0, cmdValue)
+    crc: UInt32 = crc32(p.slice(12, 8))
+    writeU32Le(p.view(), 20, crc)
+    p[30] = 0x00
+    p[31] = 0xFF
+    return p
+}
+
+// The readers and writers by width, for the driver to hold against struct.
+pub fx u16At: (v: View<UInt8>, at: Size) UInt16 {
+    return readU16Le(v, at)
+}
+
+pub fx u32At: (v: View<UInt8>, at: Size) UInt32 {
+    return readU32Le(v, at)
+}
+
+pub fx u64At: (v: View<UInt8>, at: Size) UInt64 {
+    return readU64Le(v, at)
+}
+
+pub fx f64At: (v: View<UInt8>, at: Size) Float64 {
+    return readF64Le(v, at)
+}
+
+pub fx putU16: (v: MutView<UInt8>, at: Size, x: UInt16) Void {
+    writeU16Le(v, at, x)
+}
+
+pub fx putU32: (v: MutView<UInt8>, at: Size, x: UInt32) Void {
+    writeU32Le(v, at, x)
+}
+
+pub fx putU64: (v: MutView<UInt8>, at: Size, x: UInt64) Void {
+    writeU64Le(v, at, x)
+}
+
+pub fx putF64: (v: MutView<UInt8>, at: Size, x: Float64) Void {
+    writeF64Le(v, at, x)
+}
+
+// A MutView parameter written by index, by set, and read as a View.
+fx stamp: (p: MutView<UInt8>, v: UInt8) UInt32 {
+    if p.isEmpty() {
+        return 0
+    }
+    p[0] = v
+    p.set(p.size() - 1, v + 1)
+    return crc32(p.view())
+}
+
+// ---- main ----------------------------------------------------------------------------------
+
+fx hex: (v: View<UInt8>) Str {
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < v.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + v[i].toHex()
+        i += 1
+    }
+    return s
+}
+
+fx main: () Void {
+    standby: Cmd = command(100, 2, 1)
+    trace(hex(standby))
+    trace(hex(command(2000, 4, 0)))
+    trace(u32At(standby, 4))
+    trace(u32At(standby.from(8), 0))
+    trace(crc32(standby.slice(12, 8)) == u32At(standby, 20))
+
+    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    putU16(buf.view(), 0, 0xFFFF)
+    putU32(buf.view(), 2, 0xDEADBEEF)
+    putU64(buf.from(6), 0, 0x0102030405060708)
+    trace(hex(buf))
+    trace(u16At(buf, 0))
+    trace(u32At(buf, 2))
+    trace(u64At(buf, 6))
+    putU64(buf.view(), 8, ~(0 as UInt64))
+    trace(u64At(buf, 8))
+    putF64(buf.view(), 0, 1.5)
+    trace(f64At(buf, 0))
+    putF64(buf.slice(8, 8), 0, -0.0)
+    trace(hex(buf.from(8)))
+    putF64(buf.view(), 8, 1.0 / 0.0)
+    trace(f64At(buf, 8))
+    putF64(buf.view(), 8, 6.02214076e23)
+    trace(f64At(buf.from(8), 0))
+    trace(stamp(buf.slice(2, 4), 7))
+    trace(hex(buf.slice(0, 8)))
+    trace(stamp(buf.slice(0, 0), 7))
+
+    payload: List<UInt8> = [0x10, 0x20, 0x30]
+    frame: List<UInt8> = encodeRaw(0x0102, payload, 0xFFFE, 0x01, 1)
+    trace(hex(frame))
+    back: Maybe<Frame> = parseFrame(frame)
+    if back.isNull() {
+        trace("none")
+    } else {
+        f: Frame = back.value
+        trace("v${f.version} flags ${f.flags} seq ${f.seq} type ${f.type} ${hex(f.payload)}")
+    }
+    trace(parseFrame(frame.slice(0, frame.size() - 1)).isNull())
+    mut bad: List<UInt8> = List<UInt8> { values = frame.toArr() }
+    bad.set(10, 0x11)
+    trace(parseFrame(bad).isNull())
+    empty: List<UInt8> = List<UInt8> { }
+    trace(hex(encodeRaw(7, empty, 0, 0, 1)))
+    trace(parseFrame(encodeRaw(7, empty, 0, 0, 1)).isNull())
+}

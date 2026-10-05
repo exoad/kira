@@ -1,4 +1,4 @@
-# Magic binding manifest for kira:bytes (C++ backend only).
+# Magic binding manifest for kira:bytes (C++ and py backends).
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
 # (kira:bytes has no C lowering). The targets live in kira/core.hxx, so they
@@ -6,16 +6,21 @@
 # `pure` because they only read their view, yet each panics on a short view
 # (D10): the flag means "no spill needed", never "may be dropped" (see
 # core.bind.yaml).
-readU16Le: { cpp: { expr: "kira::readU16Le({0}, {1})", pure: true, constexpr: true } }
-readU32Le: { cpp: { expr: "kira::readU32Le({0}, {1})", pure: true, constexpr: true } }
-readU64Le: { cpp: { expr: "kira::readU64Le({0}, {1})", pure: true, constexpr: true } }
+#
+# The `py` maps call kira/py/runtime.py's _k_rdle, _k_wrle, _k_rdf64 and
+# _k_wrf64 with the width, over a bytearray or a memoryview, each checked as
+# b.slice(at, width) is. The Float32 ones and parseInt64 (a View<Char>) have
+# none: the py target holds no Float32 or Char.
+readU16Le: { cpp: { expr: "kira::readU16Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdle({0}, {1}, 2)" } }
+readU32Le: { cpp: { expr: "kira::readU32Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdle({0}, {1}, 4)" } }
+readU64Le: { cpp: { expr: "kira::readU64Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdle({0}, {1}, 8)" } }
 readF32Le: { cpp: { expr: "kira::readF32Le({0}, {1})", pure: true, constexpr: true } }
-readF64Le: { cpp: { expr: "kira::readF64Le({0}, {1})", pure: true, constexpr: true } }
+readF64Le: { cpp: { expr: "kira::readF64Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdf64({0}, {1})" } }
 
-writeU16Le: { cpp: { expr: "kira::writeU16Le({0}, {1}, {2})", constexpr: true } }
-writeU32Le: { cpp: { expr: "kira::writeU32Le({0}, {1}, {2})", constexpr: true } }
-writeU64Le: { cpp: { expr: "kira::writeU64Le({0}, {1}, {2})", constexpr: true } }
+writeU16Le: { cpp: { expr: "kira::writeU16Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrle({0}, {1}, 2, {2})" } }
+writeU32Le: { cpp: { expr: "kira::writeU32Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrle({0}, {1}, 4, {2})" } }
+writeU64Le: { cpp: { expr: "kira::writeU64Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrle({0}, {1}, 8, {2})" } }
 writeF32Le: { cpp: { expr: "kira::writeF32Le({0}, {1}, {2})", constexpr: true } }
-writeF64Le: { cpp: { expr: "kira::writeF64Le({0}, {1}, {2})", constexpr: true } }
+writeF64Le: { cpp: { expr: "kira::writeF64Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrf64({0}, {1}, {2})" } }
 
 parseInt64: { cpp: { expr: "kira::parseInt64({0})", pure: true, constexpr: true } }

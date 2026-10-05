@@ -26,6 +26,7 @@ import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
+import net.exoad.kira.compiler.analysis.types.constArgs
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.typeArgs
@@ -52,6 +53,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentEx
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
@@ -79,11 +81,18 @@ import java.util.IdentityHashMap
  *   functions and methods bind through the `py:` blocks of the `.bind.yaml` manifests;
  * - module constants and `mut` globals, functions, and classes without a parent, a trait,
  *   type parameters or a `finally`. A class is a plain Python class, `__slots__` its fields;
- * - Bool, Str, the integers, Float64, Maybe<T> (None or the value), List<T> as a Python list,
- *   and the module's own classes. Kira's List is a value (D44) and a Python list is shared, so
- *   one is copied wherever a second name could see a write ([asValue]); a `mut` List parameter
- *   is the caller's list itself, and a field, global or `mut` parameter assigned keeps its list
- *   and takes the new elements, as C++'s `T&` sees them;
+ * - Bool, Str, the integers, Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
+ *   Arr<T, N>) as a Python list, a bytearray of UInt8, and the module's own classes. Kira's List
+ *   is a value (D44) and a Python list is shared, so one is copied wherever a second name could
+ *   see a write ([asValue]); a `mut` List parameter is the caller's list itself, and a field,
+ *   global or `mut` parameter assigned keeps its list and takes the new elements, as C++'s `T&`
+ *   sees them;
+ * - View<T> and MutView<UInt8>, which are second-class (decision 4b: only an argument, a
+ *   receiver or a return, so none outlives the call that consumes it): a view is what it was
+ *   lent from, and its from and slice are checked memoryviews of bytes, which a MutView writes
+ *   through, or copied slices of any other element, which only a View, read-only, can be;
+ *   kira:bytes reads and writes little-endian through `_k_` helpers that stop the program on a
+ *   short view, as kira::View's slice does;
  * - if/else, while, break, continue, return, locals, assignments, calls, constructions, `as`,
  *   if-expressions, interpolation and `trace`.
  *
@@ -101,10 +110,11 @@ import java.util.IdentityHashMap
  * ([shift]); kira:math's functions are C's on a double (the `_k_` helpers its manifest binds),
  * where a NaN's sign is the machine's and not Kira's on either target (an x86 C++ build may trace
  * -nan where Python traces nan); a Float64 as text is the shortest text std::to_chars writes and
- * `fixed` is C's %.*f, any NaN nan in both (D50), and `toHex` is %x (D51);
- * D33 and OQ-1 hold because Python evaluates operands, arguments and an augmented target left to
- * right, reading the target first, and an assignment whose value has an effect has its index
- * computed first, where Python would compute it after the value.
+ * `fixed` is C's %.*f, any NaN nan in both (D50), and `toHex` is %x (D51); an index past the
+ * end of a List, Arr or view stops the program as Python's IndexError, the other panics as
+ * `_k_panic`'s RuntimeError; D33 and OQ-1 hold because Python evaluates operands, arguments and
+ * an augmented target left to right, reading the target first, and an assignment whose value
+ * has an effect has its index computed first, where Python would compute it after the value.
  */
 class PyModuleEmitter(
     private val program: TypedProgram,
@@ -489,17 +499,24 @@ class PyModuleEmitter(
         null
     }
 
-    /** [e] with the implicit conversion the typer recorded applied. */
+    /**
+     * [e] with the implicit conversion the typer recorded applied. A List, Arr or MutView becomes
+     * a View as itself: the view's reader indexes it, and from and slice make memoryviews of it.
+     * A MutView of any element read only as a View (`sum(xs.from(1))` on a `mut` List) is one.
+     */
     private fun expr(e: Expr, f: Frame): Py {
-        when (val c = model.coercion(e)) {
+        val c = model.coercion(e)
+        when (c) {
             is Coercion.WrapSome -> if (isMaybe(c.inner)) return refusePy(e, "a Maybe of a Maybe")
             is Coercion.NoneOf -> return Py("None", PyPrec.ATOM)
+            is Coercion.ToView -> if (c.from == KType.Str) return refusePy(e, "a Str as a View<Char> (Char)")
             is Coercion.StrConstReceiver, null -> {}
             else -> return refusePy(e, "the conversion ${c.javaClass.simpleName}")
         }
         val t = model.typeOrNull(e)
         if (t != null) {
-            unsupportedType(t)?.let { return refusePy(e, it) }
+            val held = if (c is Coercion.ToView && magicName(t) == "MutView") (t as KType.Nominal).typeArgs().firstOrNull() ?: t else t
+            unsupportedType(held)?.let { return refusePy(e, it) }
         }
         return raw(e, f)
     }
@@ -515,12 +532,13 @@ class PyModuleEmitter(
      * callee is done with it: a field, a global or a `mut` parameter when the callee or a
      * sibling in [later] is IMPURE, a local when a sibling is (Python reaches no other
      * function's locals); a by-value parameter never, as nothing may write it. A call or a
-     * construction makes a List no one else holds.
+     * construction makes a List no one else holds. A List given as a View is lent, never copied
+     * (ViewPass keeps any IMPURE call away from a view of a shared place).
      */
     private fun asValue(e: Expr, f: Frame, use: Use, later: List<Expr> = emptyList(), callee: Effect = Effect.IMPURE): Py {
         val v = expr(e, f)
         val t = model.typeOrNull(e) ?: return v
-        if (!isList(t)) {
+        if (!isList(t) || model.coercion(e) is Coercion.ToView) {
             return v
         }
         val siblings = later.any { model.effect(it) == Effect.IMPURE }
@@ -539,8 +557,8 @@ class PyModuleEmitter(
         else -> false
     }
 
-    /** A new Python list holding the elements of [text], a List of type [t]. */
-    private fun copyOf(text: String, t: KType): String = "list($text)"
+    /** A new Python list holding the elements of [text], a List or Arr of type [t]: a bytearray of UInt8. */
+    private fun copyOf(text: String, t: KType): String = if (isBytes(t)) "bytearray($text)" else "list($text)"
 
     private fun raw(e: Expr, f: Frame): Py {
         literal(e)?.let { return it }
@@ -559,8 +577,19 @@ class PyModuleEmitter(
             is UnaryExpr -> unary(e, f)
             is TypeCastExpr -> cast(e, f)
             is IfExpr -> ternary(e, f)
+            is ArrayLiteral -> arrayLiteral(e, f)
             else -> refusePy(e, "the expression ${e.javaClass.simpleName.removeSuffix("Expr").removeSuffix("Literal")}")
         }
+    }
+
+    /** `[a, b]` as the List or Arr the typer gave it: a list, or a bytearray of UInt8. */
+    private fun arrayLiteral(e: ArrayLiteral, f: Frame): Py {
+        val t = typeOf(e) ?: return Py("None", PyPrec.ATOM)
+        if (!isList(t)) {
+            return refusePy(e, "an array literal of a ${t.display()}")
+        }
+        val items = e.value.joinToString(", ") { wrap(expr(it, f), PyPrec.TERNARY) }
+        return if (isBytes(t)) call("bytearray", "($items${if (e.value.size == 1) "," else ""})") else Py("[$items]", PyPrec.ATOM)
     }
 
     /** A numeric literal, with any sign before it, as its recorded type spells it; else null. */
@@ -755,10 +784,16 @@ class PyModuleEmitter(
         val init = model.init(o) ?: return refusePy(o, "a construction the typer did not resolve")
         val cls = init.cls ?: return refusePy(o, "this construction")
         if (cls.kind == ClassKind.MAGIC) {
-            return if (cls.name == "List" && init.fields.all { it is FieldInit.Default }) {
-                Py("[]", PyPrec.ATOM)
-            } else {
-                refusePy(o, "a ${cls.name} construction with values (only an empty List is lowered)")
+            val t = typeOf(o) ?: return Py("None", PyPrec.ATOM)
+            if (!isList(t)) {
+                return refusePy(o, "a construction of ${t.display()}")
+            }
+            // `List<T> { }` and `Arr<T, N> { }` are their zero value; `List<T> { values = a }` a copy of a.
+            val given = init.fields.filterIsInstance<FieldInit.Given>()
+            return when {
+                given.isEmpty() -> zeroValue(t, o).let { Py(it, if (it.contains(" * ")) PyPrec.MUL else PyPrec.POSTFIX) }
+                given.size == 1 && cls.name == "List" -> asValue(given[0].expr, f, Use.STORE)
+                else -> refusePy(o, "a ${cls.name} construction with these values")
             }
         }
         if (!isUserClass(cls)) {
@@ -789,7 +824,7 @@ class PyModuleEmitter(
 
     private fun index(e: ArrayIndexExpr, f: Frame): Py {
         val ct = typeOf(e.originExpr) ?: return Py("None", PyPrec.ATOM)
-        if (magicName(ct) != "List") {
+        if (!isList(ct) && !isView(ct)) {
             return refusePy(e, "an index into a ${ct.display()}")
         }
         val container = listPlace(e.originExpr, f) ?: return Py("None", PyPrec.ATOM)
@@ -1005,7 +1040,14 @@ class PyModuleEmitter(
 
     private fun isMaybe(t: KType): Boolean = magicName(t) == "Maybe"
 
-    private fun isList(t: KType): Boolean = magicName(t) == "List"
+    /** A List, or an Arr (growable or fixed), which is one too: a Python list, a bytearray of UInt8. */
+    private fun isList(t: KType): Boolean = magicName(t).let { it == "List" || it == "Arr" }
+
+    /** A List or Arr of UInt8: a bytearray. */
+    private fun isBytes(t: KType): Boolean = isList(t) && (t as? KType.Nominal)?.typeArgs()?.firstOrNull() == KType.UINT8
+
+    /** A View or MutView: what it was lent from (a list, a bytearray), a memoryview of bytes, or a copied slice. */
+    private fun isView(t: KType): Boolean = magicName(t).let { it == "View" || it == "MutView" }
 
     private fun isUserClass(owner: Any?): Boolean =
         owner is ClassSymbol && owner.kind == ClassKind.CLASS && owner.module === module && owner.typeParams.isEmpty()
@@ -1020,11 +1062,13 @@ class PyModuleEmitter(
         KType.Str, KType.Void, KType.NullT, KType.Never -> null
         is KType.Nominal -> when (val s = t.sym) {
             is ClassSymbol -> when {
-                s.kind == ClassKind.MAGIC && (s.name == "Maybe" || s.name == "List") -> {
+                s.kind == ClassKind.MAGIC && s.name in setOf("Maybe", "List", "Arr", "View", "MutView") -> {
                     val inner = t.typeArgs().singleOrNull()
                     when {
                         inner == null -> "a ${s.name} without its element type"
-                        isMaybe(inner) || isList(inner) -> "a ${t.display()}"
+                        isMaybe(inner) || isList(inner) || isView(inner) -> "a ${t.display()}"
+                        // A view of other elements is a copied slice, which a write would not reach.
+                        s.name == "MutView" && inner != KType.UINT8 -> "a ${t.display()} (a MutView<UInt8> is the one that writes through)"
                         else -> unsupportedType(inner)
                     }
                 }
@@ -1068,16 +1112,22 @@ class PyModuleEmitter(
         return if (pub) sym.name else "_${sym.name}"
     }
 
-    /** A value of [t] before anything assigns one (D38): 0, 0.0, False, "", None, []. */
+    /**
+     * A value of [t] before anything assigns one (D38): 0, 0.0, False, "", None, [], bytearray();
+     * an `Arr<T, N>` holds N zeros (`[0] * N`, `bytearray(N)`).
+     */
     private fun zeroValue(t: KType, at: ASTNode): String {
         val prim = t.prim
+        val n = (t as? KType.Nominal)?.takeIf { isList(it) }?.constArgs()?.firstOrNull()
         return when {
             prim == Prim.BOOL -> "False"
             prim == Prim.FLOAT64 -> "0.0"
             prim?.isInteger == true -> "0"
             t == KType.Str -> "\"\""
             isMaybe(t) -> "None"
-            isList(t) -> "[]"
+            isBytes(t) -> if (n == null) "bytearray()" else "bytearray($n)"
+            isList(t) && n == null -> "[]"
+            isList(t) -> "[${zeroValue((t as KType.Nominal).typeArgs().first(), at)}] * $n"
             else -> refuseText(at, "a ${t.display()} without a value") ?: "None"
         }
     }

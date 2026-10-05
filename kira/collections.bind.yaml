@@ -2,7 +2,10 @@
 #
 # A `py` map beside `cpp` is the py target's binding (PyBindingTable): `expr` with the same
 # placeholders, each used once and the receiver first, so Python's left-to-right evaluation is
-# Kira's; a `_k_` name in it is a helper of kira/py/runtime.py.
+# Kira's; a `_k_` name in it is a helper of kira/py/runtime.py. On the py target a List or an
+# Arr is a Python list, a bytearray of UInt8; a View or MutView is what it was lent from, and
+# from and slice make a memoryview of bytes (which a MutView writes through) or a copied slice
+# of any other element, which only a View, read-only, can be.
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
 # (the C backend lowers containers through tryEmitCollectionMethod). Keys are
@@ -47,46 +50,46 @@
 #     Arr<T, N> is a List<T> (Arr<T>), as collections.kira declares it
 
 # --- View<T> ---------------------------------------------------------------
-View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
-View.isEmpty:  { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true } }
-View.get:      { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true } }
-View.from:     { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true } }
-View.slice:    { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true } }
+View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
+View.isEmpty:  { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true }, py: { expr: "(len({self}) == 0)" } }
+View.get:      { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true }, py: { expr: "{self}[{0}]" } }
+View.from:     { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
+View.slice:    { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
 
 # --- MutView<T> ------------------------------------------------------------
-MutView.size:    { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
-MutView.isEmpty: { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true } }
-MutView.get:     { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true } }
-MutView.set:     { cpp: { expr: "{self}[{0}] = {1}", constexpr: true } }
-MutView.from:    { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true } }
-MutView.slice:   { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true } }
-MutView.view:    { cpp: { expr: "kira::View<{T0}>({self})", pure: true, constexpr: true } }
+MutView.size:    { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
+MutView.isEmpty: { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true }, py: { expr: "(len({self}) == 0)" } }
+MutView.get:     { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true }, py: { expr: "{self}[{0}]" } }
+MutView.set:     { cpp: { expr: "{self}[{0}] = {1}", constexpr: true }, py: { expr: "{self}.__setitem__({0}, {1})" } }
+MutView.from:    { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
+MutView.slice:   { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
+MutView.view:    { cpp: { expr: "kira::View<{T0}>({self})", pure: true, constexpr: true }, py: { expr: "{self}" } }
 
 # --- Arr<T> (and Arr<T, N>: kira::at / kira::view overload on std::array) --
-Arr.size:      { cpp: { expr: "{self}.size()", pure: true, constexpr: true } }
-Arr.isEmpty:   { cpp: { expr: "{self}.empty()", pure: true, constexpr: true } }
-Arr.get:       { cpp: { expr: "kira::at({self}, {0})", pure: true, constexpr: true } }
-Arr.set:       { cpp: { expr: "kira::at({self}, {0}) = {1}", constexpr: true } }
-Arr.contains:  { cpp: { expr: "kira::list::contains({self}, {0})", pure: true } }
-Arr.clone:     { cpp: { expr: "kira::list::clone({self})", pure: true } }
-Arr.view:      { cpp: { expr: "kira::view({self})", pure: true, constexpr: true } }
-Arr.from:      { cpp: { expr: "kira::view({self}).from({0})", pure: true, constexpr: true } }
-Arr.slice:     { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true, constexpr: true } }
+Arr.size:      { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
+Arr.isEmpty:   { cpp: { expr: "{self}.empty()", pure: true, constexpr: true }, py: { expr: "(len({self}) == 0)" } }
+Arr.get:       { cpp: { expr: "kira::at({self}, {0})", pure: true, constexpr: true }, py: { expr: "{self}[{0}]" } }
+Arr.set:       { cpp: { expr: "kira::at({self}, {0}) = {1}", constexpr: true }, py: { expr: "{self}.__setitem__({0}, {1})" } }
+Arr.contains:  { cpp: { expr: "kira::list::contains({self}, {0})", pure: true }, py: { expr: "_k_contains({self}, {0})" } }
+Arr.clone:     { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
+Arr.view:      { cpp: { expr: "kira::view({self})", pure: true, constexpr: true }, py: { expr: "{self}" } }
+Arr.from:      { cpp: { expr: "kira::view({self}).from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
+Arr.slice:     { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
 
 # --- List<T> ---------------------------------------------------------------
 List.size:     { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
 List.isEmpty:  { cpp: { expr: "{self}.empty()", pure: true }, py: { expr: "(len({self}) == 0)" } }
 List.add:      { cpp: { expr: "{self}.push_back({0})" }, py: { expr: "{self}.append({0})" } }
-List.addAll:   { cpp: { expr: "kira::list::addAll({self}, {0})" } }
+List.addAll:   { cpp: { expr: "kira::list::addAll({self}, {0})" }, py: { expr: "{self}.extend({0})" } }
 List.get:      { cpp: { expr: "kira::at({self}, {0})", pure: true }, py: { expr: "{self}[{0}]" } }
 List.set:      { cpp: { expr: "kira::at({self}, {0}) = {1}" }, py: { expr: "{self}.__setitem__({0}, {1})" } }
 List.removeAt: { cpp: { expr: "kira::list::removeAt({self}, {0})" }, py: { expr: "{self}.pop({0})" } }
 List.clear:    { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
 List.contains: { cpp: { expr: "kira::list::contains({self}, {0})", pure: true }, py: { expr: "_k_contains({self}, {0})" } }
-List.toArr:    { cpp: { expr: "kira::list::clone({self})", pure: true } }
-List.view:     { cpp: { expr: "kira::view({self})", pure: true } }
-List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true } }
-List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true } }
+List.toArr:    { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
+List.view:     { cpp: { expr: "kira::view({self})", pure: true }, py: { expr: "{self}" } }
+List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true }, py: { expr: "_k_from({self}, {0})" } }
+List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
 
 # --- Map<K, V>: kira::Map, insertion-ordered (D27) -------------------------
 Map.size:          { cpp: { expr: "{self}.size()", pure: true } }

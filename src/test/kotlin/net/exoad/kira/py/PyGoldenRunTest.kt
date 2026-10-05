@@ -14,9 +14,12 @@ import kotlin.test.assertTrue
  * as Python 3.10 (the board's), and the run's stdout must equal the case's expected.txt: the
  * module itself when it has a `main`, or `python driver.py <out>` when the case has a driver,
  * hand-written Python that imports the generated module. numbers, order, bitmath, text and aliases
- * hold the C++ backend's output for the same module, and shiftcount each call's that the C++ backend's run
- * of it alone gives (a value, or the panic's message); ladder runs the target program against the
- * hand-written Ladder it replaces. Skipped when no Python is found (set KIRA_PYTHON).
+ * hold the C++ backend's output for the same module, and shiftcount and shortview each call's
+ * that the C++ backend's run of it alone gives (a value, or the panic's message); ladder runs the
+ * target program against the hand-written Ladder it replaces. wsframe, jpegwalk and lebytes do
+ * both: their driver runs the module's main, whose output is the C++ backend's, then holds the
+ * walkers against the hand-written bibo code they port (and struct, binascii and zlib) over
+ * seeded inputs. Skipped when no Python is found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")

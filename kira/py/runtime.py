@@ -5,6 +5,7 @@
 # Python 3.10 is the oldest this must run on (the board's).
 
 import math as _k_math
+import struct as _k_struct
 
 
 # A program error stops the program (Kira's panic): a bad index, a failed check, a division
@@ -260,3 +261,51 @@ def _k_hex(v):
 # `in` takes an element that is the very object first, NaN included.
 def _k_contains(xs, v):
     return v == v and v in xs
+
+
+# List.toArr and Arr.clone: a new list of the elements, a bytearray of bytes.
+def _k_copy(xs):
+    return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
+
+
+# View.from and View.slice (a List's, an Arr's, a MutView's) are checked as kira::View's are: a
+# start or a length past the end is a program error, where Python's slice stops short. A view
+# of bytes is a memoryview, which shares them, so a MutView<UInt8> writes them; a view of any
+# other element is a copied slice, which only a View, read-only, can be.
+def _k_from(v, at):
+    if at > len(v):
+        _k_panic("slice out of range")
+    return (memoryview(v) if isinstance(v, (bytes, bytearray)) else v)[at:]
+
+
+def _k_slice(v, at, n):
+    if at > len(v) or n > len(v) - at:
+        _k_panic("slice out of range")
+    return (memoryview(v) if isinstance(v, (bytes, bytearray)) else v)[at:at + n]
+
+
+# kira:bytes: n bytes little-endian at `at` of a bytearray or a memoryview, each checked as
+# kira::readU32Le's b.slice(at, 4) is, so a short view is a program error.
+def _k_span(b, at, n):
+    if at > len(b) or n > len(b) - at:
+        _k_panic("slice out of range")
+
+
+def _k_rdle(b, at, n):
+    _k_span(b, at, n)
+    return int.from_bytes(b[at:at + n], "little")
+
+
+def _k_wrle(b, at, n, v):
+    _k_span(b, at, n)
+    b[at:at + n] = v.to_bytes(n, "little")
+
+
+def _k_rdf64(b, at):
+    _k_span(b, at, 8)
+    return _k_struct.unpack_from("<d", b, at)[0]
+
+
+def _k_wrf64(b, at, v):
+    _k_span(b, at, 8)
+    _k_struct.pack_into("<d", b, at, v)

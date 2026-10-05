@@ -649,6 +649,107 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aListOfUInt8IsABytearrayAndAnArrAList() {
+        val py = python(
+            """
+            pub alias Cmd as Arr<UInt8, 4>
+
+            class Buf {
+                pub mut data: List<UInt8> = List<UInt8> { }
+                pub mut words: Arr<Int32, 3> = Arr<Int32, 3> { }
+            }
+
+            fx f: (xs: List<UInt8>, a: Arr<UInt8>) List<UInt8> {
+                mut out: List<UInt8> = [0xFF, 0xD8]
+                mut one: Arr<UInt8> = [7]
+                mut ints: List<Int32> = [1, 2]
+                mut p: Cmd = Cmd { }
+                p[1] = 3
+                mut copy: List<UInt8> = List<UInt8> { values = a }
+                out.addAll(xs.toArr())
+                out.addAll(a.clone())
+                ys: List<UInt8> = xs
+                return out
+            }
+            """
+        )
+        assertTrue(py.contains("        self.data = bytearray()\n        self.words = [0] * 3"), py)
+        assertTrue(py.contains("    out = bytearray((255, 216))\n    one = bytearray((7,))\n    ints = [1, 2]\n    p = bytearray(4)\n    p[1] = 3"), py)
+        assertTrue(py.contains("    copy = bytearray(a)"), "a List made from an Arr copies it:\n$py")
+        assertTrue(py.contains("    out.extend(_k_copy(xs))\n    out.extend(_k_copy(a))"), py)
+        assertTrue(py.contains("    ys = bytearray(xs)"), "a List of UInt8 is copied as a bytearray:\n$py")
+    }
+
+    @Test
+    fun aViewIsWhatItWasLentFromAndFromAndSliceAreCheckedMemoryviews() {
+        val py = python(
+            """
+            use "kira:bytes"
+
+            class Link {
+                pub mut buf: List<UInt8> = List<UInt8> { }
+
+                pub fx head: () UInt16 {
+                    return readU16Le(buf, 0)
+                }
+            }
+
+            fx sum: (v: View<UInt8>) UInt32 {
+                mut s: UInt32 = 0
+                mut i: Size = 0
+                while i < v.size() {
+                    s += v[i] as UInt32
+                    i += 1
+                }
+                return s + (v.from(1).size() as UInt32) + (v.slice(0, 1).get(0) as UInt32)
+            }
+
+            fx fill: (p: MutView<UInt8>, v: UInt8) Void {
+                p[0] = v
+                p.set(1, v)
+                writeU32Le(p, 2, 0xA1B2C3D4)
+                writeF64Le(p.from(6), 0, 1.5)
+            }
+
+            fx g: () UInt32 {
+                mut xs: List<UInt8> = List<UInt8> { }
+                fill(xs.view(), 1)
+                fill(xs.from(2), 1)
+                ints: List<Int32> = [1, 2]
+                return sum(xs) + sum(xs.slice(0, 2)) + readU32Le(xs, 0) + (readF64Le(xs.from(1), 0) as UInt32)
+            }
+            """
+        )
+        assertTrue(py.contains("        return _k_rdle(self.buf, 0, 2)"), "a View of a field is the field, never copied:\n$py")
+        assertTrue(py.contains("len(_k_from(v, 1))"), py)
+        assertTrue(py.contains("_k_slice(v, 0, 1)[0]"), py)
+        assertTrue(py.contains("    p[0] = v\n    p.__setitem__(1, v)\n    _k_wrle(p, 2, 4, 2712847316)\n    _k_wrf64(_k_from(p, 6), 0, 1.5)"), py)
+        assertTrue(py.contains("    _fill(xs, 1)\n    _fill(_k_from(xs, 2), 1)"), py)
+        assertTrue(py.contains("_sum(xs) + _sum(_k_slice(xs, 0, 2))"), py)
+        assertTrue(py.contains("_k_rdle(xs, 0, 4)"), py)
+        assertTrue(py.contains("_k_rdf64(_k_from(xs, 1), 0)"), py)
+        assertTrue(py.contains("import struct as _k_struct"), "_k_rdf64 brings struct:\n$py")
+        assertTrue(py.contains("def _k_span(b, at, n):"), py)
+    }
+
+    @Test
+    fun aMutViewOfAnotherElementIsReadAsACopiedSlice() {
+        val py = python(
+            """
+            fx at: (v: View<Int32>, i: Size) Int32 {
+                return v[i]
+            }
+
+            fx f: () Int32 {
+                mut xs: List<Int32> = [1, 2, 3]
+                return at(xs.from(1), 0) + at(xs, 2)
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_i32(_at(_k_from(xs, 1), 0) + _at(xs, 2))"), py)
+    }
+
+    @Test
     fun theRuntimeCarriesOnlyWhatTheModuleUses() {
         val py = python(
             """
@@ -797,6 +898,43 @@ class PyEmitterTest {
             }
             """,
             "the mut parameter 'x': Int32 (only a List is passed by reference)",
+        )
+    }
+
+    @Test
+    fun aMutViewThatWouldWriteACopiedSliceIsRefused() {
+        refused(
+            """
+            fx fill: (p: MutView<Int32>) Void {
+                p[0] = 1
+            }
+            """,
+            "a MutView<Int32> (a MutView<UInt8> is the one that writes through)",
+        )
+        refused(
+            """
+            fx f: () Void {
+                mut xs: List<Int32> = [1, 2, 3]
+                xs.from(1).set(0, 5)
+            }
+            """,
+            "a MutView<Int32>",
+        )
+    }
+
+    @Test
+    fun aStrAsAViewOfCharIsRefused() {
+        refused(
+            """
+            fx n: (v: View<Char>) Size {
+                return v.size()
+            }
+
+            fx f: () Size {
+                return n("abc")
+            }
+            """,
+            "Char",
         )
     }
 
