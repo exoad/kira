@@ -1,0 +1,35 @@
+1
+1029
+33752069
+283686952306183
+144964032628459529
+1.4016e-309
+0 1 be ef
+0 1 a1 b2 c3 d4
+11 22 33 44 55 66 77 88
+0 bf f8 0 0 0 0 0 0
+0 1 2 3 4 5 ca fe f0 d a b c d e f
+1 2 3 4 5 6 7 8 9 a b c d e 40 4 0 0 0 0 0 0
+65535
+3735928559
+9223372036854775806
+-0
+read16 6 4 -> 1029
+read16 6 5 -> panic: slice out of range
+read16 1 0 -> panic: slice out of range
+read32 6 2 -> 33752069
+read32 6 3 -> panic: slice out of range
+read32 0 0 -> panic: slice out of range
+read64 8 0 -> 283686952306183
+read64 9 2 -> panic: slice out of range
+readF64 8 0 -> 1.4016e-309
+readF64 7 0 -> panic: slice out of range
+write16 4 2 -> 0 1 be ef
+write16 4 3 -> panic: slice out of range
+write32 6 3 -> panic: slice out of range
+write64 8 1 -> panic: slice out of range
+writeF64 9 2 -> panic: slice out of range
+writeInside 16 4 6 2 -> 0 1 2 3 4 5 ca fe f0 d a b c d e f
+writeInside 16 4 6 3 -> panic: slice out of range
+writeInside 16 12 6 0 -> panic: slice out of range
+put and the gets against struct's big-endian formats: 5000 rounds, every byte and value the same

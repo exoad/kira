@@ -1,10 +1,13 @@
 module "dash:jpegwalk"
 
+use "kira:bytes"
+
 // bibo's JPEG walkers in Kira (streamenc.py): jpeg_size, the size of a JPEG that has a SOF, an
 // SOS after it and ends in EOI; jpeg_end, the end of the JPEG at an SOI, walked by segment
-// lengths so a table's FF D9 is never taken for its end; split_jpegs, the whole JPEGs in a byte
-// stream, each copied out of it with View.toList (D52), and the rest. The expected output is the C++ backend's run of main over synthetic
-// JPEGs, then the driver's run of these against the hand-written ones.
+// lengths (big-endian, readU16Be: D53) so a table's FF D9 is never taken for its end;
+// split_jpegs, the whole JPEGs in a byte stream, each copied out of it with View.toList (D52),
+// and the rest. The expected output is the C++ backend's run of main over synthetic JPEGs, then
+// the driver's run of these against the hand-written ones.
 
 pub class JpegSize {
     require pub w: UInt32
@@ -18,10 +21,6 @@ pub class Jpeg {
 pub class Split {
     pub mut jpegs: List<Jpeg> = List<Jpeg> { }
     pub mut rest: List<UInt8> = List<UInt8> { }
-}
-
-fx be16: (v: View<UInt8>, at: Size) Size {
-    return ((v[at] as Size) << 8) | (v[at + 1] as Size)
 }
 
 // The index of the first FF and [second] at or after [start], or null (bytes.find).
@@ -58,10 +57,10 @@ pub fx jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
             // an EOI or a restart before any scan
             return null
         }
-        seg: Size = be16(frame, i + 2)
+        seg: Size = readU16Be(frame, i + 2) as Size
         if marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC && i + 9 <= n {
-            w = be16(frame, i + 7) as UInt32
-            h = be16(frame, i + 5) as UInt32
+            w = readU16Be(frame, i + 7) as UInt32
+            h = readU16Be(frame, i + 5) as UInt32
         } else if marker == 0xDA {
             if w == 0 || h == 0 {
                 return null
@@ -91,10 +90,10 @@ pub fx jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
         } else if (marker >= 0xD0 && marker <= 0xD7) || marker == 0x01 {
             i += 2
         } else if marker == 0xDA {
-            j: Maybe<Size> = findPair(buf, i + 2 + be16(buf, i + 2), 0xD9)
+            j: Maybe<Size> = findPair(buf, i + 2 + (readU16Be(buf, i + 2) as Size), 0xD9)
             return if j.isNull() { null } else { j.value + 2 }
         } else {
-            i += 2 + be16(buf, i + 2)
+            i += 2 + (readU16Be(buf, i + 2) as Size)
         }
     }
     return null

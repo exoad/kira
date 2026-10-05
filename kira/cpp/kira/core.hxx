@@ -711,6 +711,68 @@ namespace kira
       writeU64Le(b, at, bitCast<std::uint64_t>(v));
   }
 
+  // ---- big-endian bytes (kira:bytes, D53) -------------------------------------
+  // The little-endian set's twins, the most significant byte first; checked the same way.
+  [[nodiscard]] constexpr std::uint16_t readU16Be(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 2);
+      return static_cast<std::uint16_t>((static_cast<std::uint32_t>(p[0]) << 8) | static_cast<std::uint32_t>(p[1]));
+  }
+  [[nodiscard]] constexpr std::uint32_t readU32Be(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 4);
+      return (static_cast<std::uint32_t>(p[0]) << 24) | (static_cast<std::uint32_t>(p[1]) << 16)
+             | (static_cast<std::uint32_t>(p[2]) << 8) | static_cast<std::uint32_t>(p[3]);
+  }
+  [[nodiscard]] constexpr std::uint64_t readU64Be(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 8);
+      std::uint64_t v = 0;
+      for(Size i = 0; i < 8; ++i)
+      {
+          v = (v << 8) | static_cast<std::uint64_t>(p[i]);
+      }
+      return v;
+  }
+  [[nodiscard]] constexpr float readF32Be(View<std::uint8_t> b, Size at)
+  {
+      return bitCast<float>(readU32Be(b, at));
+  }
+  [[nodiscard]] constexpr double readF64Be(View<std::uint8_t> b, Size at)
+  {
+      return bitCast<double>(readU64Be(b, at));
+  }
+  constexpr void writeU16Be(MutView<std::uint8_t> b, Size at, std::uint16_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 2);
+      p[0] = static_cast<std::uint8_t>((v >> 8) & 0xFFu);
+      p[1] = static_cast<std::uint8_t>(v & 0xFFu);
+  }
+  constexpr void writeU32Be(MutView<std::uint8_t> b, Size at, std::uint32_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 4);
+      for(Size i = 0; i < 4; ++i)
+      {
+          p[i] = static_cast<std::uint8_t>((v >> (8 * (3 - i))) & 0xFFu);
+      }
+  }
+  constexpr void writeU64Be(MutView<std::uint8_t> b, Size at, std::uint64_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 8);
+      for(Size i = 0; i < 8; ++i)
+      {
+          p[i] = static_cast<std::uint8_t>((v >> (8 * (7 - i))) & 0xFFu);
+      }
+  }
+  constexpr void writeF32Be(MutView<std::uint8_t> b, Size at, float v)
+  {
+      writeU32Be(b, at, bitCast<std::uint32_t>(v));
+  }
+  constexpr void writeF64Be(MutView<std::uint8_t> b, Size at, double v)
+  {
+      writeU64Be(b, at, bitCast<std::uint64_t>(v));
+  }
+
   // ---- text without a heap ---------------------------------------------------
   // STRICT decimal: an optional sign, then digits, and nothing else; none on
   // overflow. Locale-free and heap-free: the Pico's parser and the pilot's

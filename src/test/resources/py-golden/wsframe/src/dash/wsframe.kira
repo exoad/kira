@@ -1,9 +1,12 @@
 module "dash:wsframe"
 
+use "kira:bytes"
+
 // bibo's WebSocket framing in Kira: ws_frame (bibodash.py, webdrive_fake.py), a frame the board
 // sends, FIN set and unmasked in the short, 126 and 127 length forms; and read_frames
-// (webdrive_fake.py), every complete frame at the start of a buffer, masked or not, and the
-// bytes they took. The expected output is the C++ backend's run of main, then the driver's
+// (webdrive_fake.py), every complete frame at the start of a buffer, masked or not, its length
+// read big-endian (readU16Be, readU64Be: D53) and its payload copied out (View.toList, D52),
+// and the bytes they took. The expected output is the C++ backend's run of main, then the driver's
 // run of these against the hand-written ones.
 
 pub class Frame {
@@ -60,16 +63,6 @@ pub fx encodeMasked: (opcode: UInt8, payload: View<UInt8>, key: View<UInt8>) Lis
     return out
 }
 
-fx readBe: (v: View<UInt8>) Size {
-    mut x: Size = 0
-    mut i: Size = 0
-    while i < v.size() {
-        x = (x << 8) | (v[i] as Size)
-        i += 1
-    }
-    return x
-}
-
 // read_frames(buf): every complete frame at the start of buf goes into out, unmasked; the
 // bytes they took, so buf.from(that) is the rest.
 pub fx readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
@@ -83,13 +76,13 @@ pub fx readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
             if buf.size() - at < 4 {
                 break
             }
-            n = readBe(buf.slice(at + 2, 2))
+            n = readU16Be(buf, at + 2) as Size
             head = 4
         } else if n == 127 {
             if buf.size() - at < 10 {
                 break
             }
-            n = readBe(buf.slice(at + 2, 8))
+            n = readU64Be(buf, at + 2) as Size
             head = 10
         }
         masked: Bool = (b2 & 0x80) != 0

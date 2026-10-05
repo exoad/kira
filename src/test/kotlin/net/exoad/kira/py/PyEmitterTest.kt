@@ -825,6 +825,26 @@ class PyEmitterTest {
     }
 
     @Test
+    fun kiraBytesBigEndianSetIsTheLittleEndianOnesTwin() {
+        val py = python(
+            """
+            use "kira:bytes"
+
+            fx f: (v: View<UInt8>, p: MutView<UInt8>) UInt64 {
+                writeU16Be(p, 0, readU16Be(v, 0))
+                writeU32Be(p, 2, readU32Be(v, 2))
+                writeU64Be(p, 6, readU64Be(v, 6))
+                writeF64Be(p, 14, readF64Be(v, 14))
+                return readU64Be(p.from(6), 0)
+            }
+            """
+        )
+        assertTrue(py.contains("    _k_wrbe(p, 0, 2, _k_rdbe(v, 0, 2))\n    _k_wrbe(p, 2, 4, _k_rdbe(v, 2, 4))\n    _k_wrbe(p, 6, 8, _k_rdbe(v, 6, 8))"), py)
+        assertTrue(py.contains("    _k_wrf64be(p, 14, _k_rdf64be(v, 14))\n    return _k_rdbe(_k_from(p, 6), 0, 8)"), py)
+        assertTrue(py.contains("def _k_span(b, at, n):") && py.contains("import struct as _k_struct"), "each checks its span as the little-endian ones do:\n$py")
+    }
+
+    @Test
     fun aViewsToListIsANewListOfItsElements() {
         val py = python(
             """

@@ -6,6 +6,8 @@ module "kira:bytes"
 //
 // Every `read*Le` reads little-endian at byte offset `at` and panics when
 // the view is too short; every `write*Le` is the inverse over a `MutView`.
+// The `*Be` set is its big-endian twin (D53): the same widths, the same
+// signedness and the same panic, the most significant byte first.
 
 pub @_magic fx readU16Le: (buf: View<UInt8>, at: Size) UInt16;
 pub @_magic fx readU32Le: (buf: View<UInt8>, at: Size) UInt32;
@@ -18,6 +20,18 @@ pub @_magic fx writeU32Le: (buf: MutView<UInt8>, at: Size, value: UInt32) Void;
 pub @_magic fx writeU64Le: (buf: MutView<UInt8>, at: Size, value: UInt64) Void;
 pub @_magic fx writeF32Le: (buf: MutView<UInt8>, at: Size, value: Float32) Void;
 pub @_magic fx writeF64Le: (buf: MutView<UInt8>, at: Size, value: Float64) Void;
+
+pub @_magic fx readU16Be: (buf: View<UInt8>, at: Size) UInt16;
+pub @_magic fx readU32Be: (buf: View<UInt8>, at: Size) UInt32;
+pub @_magic fx readU64Be: (buf: View<UInt8>, at: Size) UInt64;
+pub @_magic fx readF32Be: (buf: View<UInt8>, at: Size) Float32;
+pub @_magic fx readF64Be: (buf: View<UInt8>, at: Size) Float64;
+
+pub @_magic fx writeU16Be: (buf: MutView<UInt8>, at: Size, value: UInt16) Void;
+pub @_magic fx writeU32Be: (buf: MutView<UInt8>, at: Size, value: UInt32) Void;
+pub @_magic fx writeU64Be: (buf: MutView<UInt8>, at: Size, value: UInt64) Void;
+pub @_magic fx writeF32Be: (buf: MutView<UInt8>, at: Size, value: Float32) Void;
+pub @_magic fx writeF64Be: (buf: MutView<UInt8>, at: Size, value: Float64) Void;
 
 // Strict: an optional sign, then decimal digits and nothing else; none on
 // any other text or on overflow. Locale-free.

@@ -385,3 +385,24 @@ def _k_rdf64(b, at):
 def _k_wrf64(b, at, v):
     _k_span(b, at, 8)
     _k_struct.pack_into("<d", b, at, v)
+
+
+# The big-endian twins (D53), checked the same way.
+def _k_rdbe(b, at, n):
+    _k_span(b, at, n)
+    return int.from_bytes(b[at:at + n], "big")
+
+
+def _k_wrbe(b, at, n, v):
+    _k_span(b, at, n)
+    b[at:at + n] = v.to_bytes(n, "big")
+
+
+def _k_rdf64be(b, at):
+    _k_span(b, at, 8)
+    return _k_struct.unpack_from(">d", b, at)[0]
+
+
+def _k_wrf64be(b, at, v):
+    _k_span(b, at, 8)
+    _k_struct.pack_into(">d", b, at, v)

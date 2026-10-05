@@ -13,7 +13,7 @@ module "kira:stl"
 //   kira:result       Maybe, Result, Exception, Ref, Weak, Unsafe
 //   kira:io           print / println / eprint / assert
 //   kira:math         sqrt / pow / floor / ceil / trig / min / max
-//   kira:bytes        read*Le / write*Le over byte views, parseInt64
+//   kira:bytes        read*Le / write*Le and read*Be / write*Be over byte views, parseInt64
 
 use "kira:core"
 use "kira:tuples"

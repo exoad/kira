@@ -165,6 +165,17 @@ namespace
       return b;
   }
 
+  // The big-endian twins (D53): written most significant byte first.
+  [[nodiscard]] constexpr std::array<std::uint8_t, 22> writtenBe()
+  {
+      std::array<std::uint8_t, 22> b{};
+      kira::writeU32Be(kira::mutView(b), 0, 0x01020304u);
+      kira::writeU16Be(kira::mutView(b), 4, std::uint16_t{0x0506});
+      kira::writeU64Be(kira::mutView(b), 6, 0x0708090A0B0C0D0Eu);
+      kira::writeF64Be(kira::mutView(b), 14, 1.5);
+      return b;
+  }
+
   template<kira::Size N>
   [[nodiscard]] constexpr bool same(kira::View<kira::Char> v, const kira::Char (&want)[N])
   {
@@ -234,6 +245,15 @@ namespace
   static_assert(kira::lit("abc").size() == 3 && kira::lit("abc") == kira::lit("abc") && kira::lit("abc") != kira::lit("abd"));
   static_assert(kira::readU32Le(written(), 0) == 0x04030201u && kira::readU16Le(written(), 4) == 0x0605);
   static_assert(written()[6] == 7 && written()[7] == 8);
+  static_assert(kira::readU32Be(written(), 0) == 0x01020304u && kira::readU16Be(written(), 4) == 0x0506 &&
+                    kira::readU64Be(written(), 0) == 0x0102030405060708u,
+                "big-endian reads: the same bytes, the other order");
+  static_assert(writtenBe()[0] == 1 && writtenBe()[3] == 4 && writtenBe()[4] == 5 && writtenBe()[5] == 6 &&
+                    writtenBe()[6] == 7 && writtenBe()[13] == 0x0E && writtenBe()[14] == 0x3F && writtenBe()[15] == 0xF8,
+                "big-endian writes, the most significant byte first");
+  static_assert(kira::readU64Be(writtenBe(), 6) == 0x0708090A0B0C0D0Eu && kira::readF64Be(writtenBe(), 14) == 1.5 &&
+                    kira::readU32Le(writtenBe(), 0) == 0x04030201u && kira::readF32Be(writtenBe(), 14) == 1.9375f,
+                "big-endian round trips");
   static_assert(kira::parseInt64(kira::lit("-9223372036854775808")).value() == std::numeric_limits<std::int64_t>::lowest());
   static_assert(!kira::parseInt64(kira::lit("9223372036854775808")).has_value());
   static_assert(strBufWorks());
@@ -1023,6 +1043,10 @@ namespace
       else if(std::strcmp(what, "slice") == 0)
       {
           sink = static_cast<std::int32_t>(kira::view(arr).slice(1, opaque(kira::Size{2})).size());
+      }
+      else if(std::strcmp(what, "bytesbe") == 0)
+      {
+          sink = static_cast<std::int32_t>(kira::readU32Be(kira::view(CHECK_TEXT), opaque(kira::Size{6})));
       }
       else if(std::strcmp(what, "list") == 0)
       {
