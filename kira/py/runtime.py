@@ -213,3 +213,44 @@ def _k_btext(b):
 
 def _k_gtext(v):
     return "%g" % v
+
+
+# A Float64 in an interpolation or `as Str` is the shortest text that reads back to it, as C++'s
+# std::to_chars writes it (D50): fixed, or scientific with a two-digit exponent when that is
+# shorter (fixed on a tie), a large integer in its exact digits, and any NaN nan.
+def _k_ftext(v):
+    if v != v:
+        return "nan"
+    if _k_math.isinf(v):
+        return "inf" if v > 0.0 else "-inf"
+    sign = "-" if _k_math.copysign(1.0, v) < 0.0 else ""
+    v = abs(v)
+    if v == 0.0:
+        return sign + "0"
+    mantissa, _, exp = ("%r" % v).partition("e")
+    whole, _, frac = mantissa.partition(".")
+    digits = (whole + frac).rstrip("0")
+    point = len(whole) + int(exp or "0") - (len(digits) - len(digits.lstrip("0")))
+    digits = digits.lstrip("0")
+    if point >= len(digits):
+        fixed = "%.0f" % v
+    elif point > 0:
+        fixed = digits[:point] + "." + digits[point:]
+    else:
+        fixed = "0." + "0" * -point + digits
+    e = point - 1
+    sci = digits[0] + ("." + digits[1:] if len(digits) > 1 else "") + ("e-" if e < 0 else "e+") + "%02d" % abs(e)
+    return sign + (fixed if len(fixed) <= len(sci) else sci)
+
+
+# FloatNum.fixed (D50): %.*f, whose correct rounding (a tie to even, on the double's exact value)
+# is C's; places clamped to 0..9 and any NaN nan, as on the C++ target.
+def _k_fixed(v, places):
+    if v != v:
+        return "nan"
+    return "%.*f" % (min(max(places, 0), 9), v)
+
+
+# IntNum.toHex (D51): lowercase and no prefix; a negative value is "-" and its magnitude's digits.
+def _k_hex(v):
+    return "%x" % v

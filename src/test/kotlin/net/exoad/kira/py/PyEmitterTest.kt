@@ -347,6 +347,45 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aFloat64AsTextIsTheShortestTextStdToCharsWrites() {
+        val py = python(
+            """
+            pub fx a: (x: Float64) Str {
+                return "x=${'$'}{x} m"
+            }
+
+            pub fx b: (x: Float64) Str {
+                return x as Str
+            }
+            """
+        )
+        assertTrue(py.contains("return \"x=\" + _k_ftext(x) + \" m\""), py)
+        assertTrue(py.contains("return _k_ftext(x)"), py)
+        assertTrue(py.contains("def _k_ftext(v):"), py)
+        assertTrue(py.contains("import math as _k_math"), "a helper brings what it uses:\n$py")
+        assertFalse(py.contains("repr("), "a Kira name could shadow repr, which PyNames does not reserve:\n$py")
+    }
+
+    @Test
+    fun fixedAndToHexBindToPrintfsFormats() {
+        val py = python(
+            """
+            pub fx speed: (mps: Float64) Str {
+                return "${'$'}{mps.fixed(1)} m/s"
+            }
+
+            pub fx ids: (build: UInt32, seq: Int16) Str {
+                return build.toHex() + ":" + (seq as UInt16).toHex()
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_fixed(mps, 1) + \" m/s\""), py)
+        assertTrue(py.contains("return _k_hex(build) + \":\" + _k_hex(_k_u16(seq))"), py)
+        assertTrue(py.contains("def _k_fixed(v, places):") && py.contains("def _k_hex(v):"), py)
+        assertFalse(py.contains("def _k_ftext"), "only the helpers the module uses:\n$py")
+    }
+
+    @Test
     fun booleanAndUnaryOperatorsKeepKirasGrouping() {
         val py = python(
             """
@@ -732,18 +771,6 @@ class PyEmitterTest {
             }
             """,
             "Fx value",
-        )
-    }
-
-    @Test
-    fun aFloatInAnInterpolationIsRefused() {
-        refused(
-            """
-            fx f: (x: Float64) Str {
-                return "x=${'$'}{x}"
-            }
-            """,
-            "a Float64 as text",
         )
     }
 

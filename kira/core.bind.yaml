@@ -1,9 +1,10 @@
-# Magic binding manifest for kira:core (C++ backend only).
+# Magic binding manifest for kira:core (C++ and py backends).
 #
 # Every entry here is a map with a `cpp` sub-map and no `symbol` key, so the
 # C loader (CMagicBindingTable) skips all of them: the C backend keeps
 # lowering Str and Num methods through its own Str_* / prelude helpers. The
-# C++ backend reads the `cpp` map -- see design section 7.4.
+# C++ backend reads the `cpp` map -- see design section 7.4. A `py` map beside
+# it is the py target's binding, as collections.bind.yaml describes.
 #
 # Keys: methods as `Type.method`, free functions by name. A method a magic
 # class takes from a trait without a body (Str.equals from Equatable<Str>) is
@@ -86,9 +87,9 @@ Num.toFloat32: { cpp: { expr: "kira::as<float>({self})", pure: true, constexpr: 
 Num.toFloat64: { cpp: { expr: "kira::as<double>({self})", pure: true, constexpr: true } }
 
 # FloatNum.fixed (D50) and IntNum.toHex (D51): kira::fixed and kira::hex in rt.hxx, through
-# std::to_chars; they return a Str, so a freestanding module has neither.
-FloatNum.fixed: { cpp: { expr: "kira::fixed({self}, {0})", pure: true } }
-IntNum.toHex:   { cpp: { expr: "kira::hex({self})", pure: true } }
+# std::to_chars; they return a Str, so a freestanding module has neither. On py, %.*f and %x.
+FloatNum.fixed: { cpp: { expr: "kira::fixed({self}, {0})", pure: true }, py: { expr: "_k_fixed({self}, {0})" } }
+IntNum.toHex:   { cpp: { expr: "kira::hex({self})", pure: true }, py: { expr: "_k_hex({self})" } }
 
 bitCast:       { cpp: { expr: "kira::bitCast<{T0}>({0})", pure: true, constexpr: true } }
 enumOf:        { cpp: { expr: "kira::enumOf<{T0}>({0})", pure: true, constexpr: true } }

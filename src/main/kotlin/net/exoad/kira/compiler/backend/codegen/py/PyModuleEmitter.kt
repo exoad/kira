@@ -98,7 +98,8 @@ import java.util.IdentityHashMap
  * a shift count outside the width stops the program and `<<` wraps, signed types included
  * ([shift]); kira:math's functions are C's on a double (the `_k_` helpers its manifest binds),
  * where a NaN's sign is the machine's and not Kira's on either target (an x86 C++ build may trace
- * -nan where Python traces nan);
+ * -nan where Python traces nan); a Float64 as text is the shortest text std::to_chars writes and
+ * `fixed` is C's %.*f, any NaN nan in both (D50), and `toHex` is %x (D51);
  * D33 and OQ-1 hold because Python evaluates operands, arguments and an augmented target left to
  * right, reading the target first, and an assignment whose value has an effect has its index
  * computed first, where Python would compute it after the value.
@@ -899,13 +900,17 @@ class PyModuleEmitter(
         else -> if (to.signed) to.bits > from.bits else to.bits >= from.bits
     }
 
-    /** [v], the Python of [e] of type [t], as Kira's text (kira::text): a Bool is true or false. */
+    /**
+     * [v], the Python of [e] of type [t], as Kira's text (kira::text): a Bool is true or false,
+     * a Float64 the shortest text std::to_chars writes (D50).
+     */
     private fun text(e: Expr, t: KType, v: Py): Py? {
         val prim = t.prim
         return when {
             t == KType.Str -> v
             prim?.isInteger == true -> call("str", v.text)
             prim == Prim.BOOL -> call("_k_btext", v.text)
+            prim == Prim.FLOAT64 -> call("_k_ftext", v.text)
             else -> {
                 refuse(e, "a ${t.display()} as text")
                 null

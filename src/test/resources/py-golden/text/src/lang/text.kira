@@ -1,0 +1,159 @@
+module "lang:text"
+
+// Numbers as text, as bibo's Python prints them: "%.1f" of a speed or a temperature, "%.3f" of
+// seconds, "%.0f" of milliseconds, "%x" of a build id, a USB id or a NACK detail, and `as Str`
+// and "${f}", the shortest text that reads back, as std::to_chars writes it (D50, D51). fixed
+// rounds correctly: an exact half to even, a decimal one by the double's own value; any NaN is
+// nan. toHex of a negative value is "-" and its magnitude; `as` an unsigned type gives the bits.
+// The expected output is the C++ backend's run of this same module, g++, MSVC and musl agreeing.
+
+fx speed: (mps: Float64) Str {
+    return "speed ${mps.fixed(1)} m/s"
+}
+
+fx soc: (celsius: Float64) Str {
+    return "soc ${celsius.fixed(1)} C"
+}
+
+fx seconds: (us: Int64) Str {
+    return "${((us as Float64) / 1000000.0).fixed(3)} s"
+}
+
+fx rtt: (ms: Float64) Str {
+    return "rtt ${ms.fixed(0)} ms"
+}
+
+fx build: (id: UInt32) Str {
+    return "build ${id.toHex()}"
+}
+
+fx usb: (vid: UInt16, pid: UInt16) Str {
+    return "${vid.toHex()}:${pid.toHex()}"
+}
+
+fx detail: (code: UInt32) Str {
+    return "detail 0x${code.toHex()}"
+}
+
+fx seqBits: (seq: Int16) Str {
+    return (seq as UInt16).toHex()
+}
+
+fx hex8: (v: Int8) Str {
+    return v.toHex()
+}
+
+fx hex32: (v: Int32) Str {
+    return v.toHex()
+}
+
+fx hex64: (v: Int64) Str {
+    return v.toHex()
+}
+
+fx hexU64: (v: UInt64) Str {
+    return v.toHex()
+}
+
+fx hexSize: (v: Size) Str {
+    return v.toHex()
+}
+
+fx asU64: (v: Int64) UInt64 {
+    return v as UInt64
+}
+
+fx fixedOf: (v: Float64, places: Int32) Str {
+    return v.fixed(places)
+}
+
+fx shortest: (v: Float64) Str {
+    return v as Str
+}
+
+fx ratio: (a: Float64, b: Float64) Float64 {
+    return a / b
+}
+
+fx sum: (a: Float64, b: Float64) Float64 {
+    return a + b
+}
+
+// v's shortest text, then v.fixed(p) for every p from -1 to 10 (clamped to 0..9).
+fx everyPlaces: (v: Float64) Str {
+    mut out: Str = "${v}:"
+    mut p: Int32 = -1
+    while p <= 10 {
+        out = out + " " + v.fixed(p)
+        p += 1
+    }
+    return out
+}
+
+fx main: () Void {
+    trace(speed(3.25))
+    trace(speed(0.15))
+    trace(speed(0.35))
+    trace(speed(-0.04))
+    trace(speed(12.0))
+    trace(soc(47.25))
+    trace(soc(47.35))
+    trace(soc(-0.25))
+    trace(seconds(1500))
+    trace(seconds(2675000))
+    trace(seconds(-1))
+    trace(rtt(12.5))
+    trace(rtt(13.5))
+    trace(rtt(0.4999999999999999))
+    trace(build(3735928559))
+    trace(build(0))
+    trace(usb(4292, 60000))
+    trace(usb(1155, 22336))
+    trace(detail(255))
+    trace(detail(4294967295))
+    trace(seqBits(-1))
+    trace(seqBits(-2))
+    trace(hex8(-128))
+    trace(hex8(127))
+    trace(hex32(-255))
+    trace(hex32(-2147483647 - 1))
+    trace(hex64(-9223372036854775807 - 1))
+    trace(hexU64(asU64(-1)))
+    trace(hexSize(4096))
+    trace(fixedOf(0.25, 1))
+    trace(fixedOf(2.675, 2))
+    trace(fixedOf(1.005, 2))
+    trace(fixedOf(2.5, 0))
+    trace(fixedOf(0.5, 0))
+    trace(fixedOf(1.5, 0))
+    trace(fixedOf(-0.0, 1))
+    trace(fixedOf(ratio(0.0, 0.0), 2))
+    trace(fixedOf(-ratio(0.0, 0.0), 2))
+    trace(fixedOf(ratio(1.0, 0.0), 1))
+    trace(fixedOf(ratio(-1.0, 0.0), 1))
+    trace(fixedOf(1e21, 1))
+    trace(everyPlaces(2.5))
+    trace(everyPlaces(0.125))
+    trace(everyPlaces(1.005))
+    trace(everyPlaces(123.456))
+    trace(everyPlaces(-0.0005))
+    trace(everyPlaces(99.95))
+    trace(shortest(0.1))
+    trace(shortest(sum(0.1, 0.2)))
+    trace(shortest(100.0))
+    trace(shortest(123456.0))
+    trace(shortest(100000.0))
+    trace(shortest(1e15))
+    trace(shortest(0.001))
+    trace(shortest(-0.0001))
+    trace(shortest(-0.0))
+    trace(shortest(2.5))
+    trace(shortest(1e21))
+    trace(shortest(1.2345678901234568e20))
+    trace(shortest(5e-324))
+    trace(shortest(ratio(0.0, 0.0)))
+    trace(shortest(-ratio(0.0, 0.0)))
+    trace(shortest(ratio(1.0, 0.0)))
+    trace(shortest(ratio(-1.0, 0.0)))
+    trace("v=${ratio(1.0, 3.0)} n=${-7} ok=${true}")
+}
