@@ -13,8 +13,8 @@ import kotlin.test.assertTrue
  * compiles with `--target py --out build/tmp/py-golden/<case>`. Every generated file must parse
  * as Python 3.10 (the board's), and the run's stdout must equal the case's expected.txt: the
  * module itself when it has a `main`, or `python driver.py <out>` when the case has a driver,
- * hand-written Python that imports the generated module. numbers, order, bitmath, text and aliases
- * hold the C++ backend's output for the same module, and shiftcount and shortview each call's
+ * hand-written Python that imports the generated module. numbers, order, bitmath, text, aliases and
+ * globalorder hold the C++ backend's output for the same module, and shiftcount and shortview each call's
  * that the C++ backend's run of it alone gives (a value, or the panic's message); ladder runs the
  * target program against the hand-written Ladder it replaces. wsframe, jpegwalk and lebytes do
  * both: their driver runs the module's main, whose output is the C++ backend's, then holds the

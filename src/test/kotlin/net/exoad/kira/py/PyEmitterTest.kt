@@ -700,6 +700,101 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aFieldIsCopiedForACalleeThatMayWriteWhatItsCallerSeesNotForOneThatOnlyPrints() {
+        val py = python(
+            """
+            fx show: (xs: List<Int32>) Size {
+                trace(xs.size())
+                return xs.size()
+            }
+
+            fx into: (xs: List<Int32>, mut out: List<Int32>) Size {
+                out.add(1)
+                return xs.size()
+            }
+
+            class Holder {
+                pub mut items: List<Int32> = List<Int32> { }
+
+                pub mut fx f: () Size {
+                    mut out: List<Int32> = List<Int32> { }
+                    return show(items) + into(items, mut out)
+                }
+            }
+            """
+        )
+        assertTrue(py.contains("_show(self.items)"), "a CONFINED callee writes nothing its caller sees:\n$py")
+        assertTrue(py.contains("_into(list(self.items), out)"), "a mut operand may be the field:\n$py")
+    }
+
+    @Test
+    fun aLocalBesideAnImpureSiblingIsCopiedOnlyWhenTheSiblingWritesItByName() {
+        val py = python(
+            """
+            mut cursor: Size = 0
+
+            fx next: () Size {
+                cursor += 1
+                return cursor - 1
+            }
+
+            fx at: (v: List<UInt8>, i: Size) UInt32 {
+                return v[i] as UInt32
+            }
+
+            fx fill: (p: MutView<UInt8>) Size {
+                p[0] = 1
+                return 0
+            }
+
+            fx push: (mut xs: List<UInt8>) Size {
+                xs.add(1)
+                return 0
+            }
+
+            fx walk: (n: Size) UInt32 {
+                mut buf: List<UInt8> = List<UInt8> { }
+                buf.add(5)
+                mut s: UInt32 = 0
+                while cursor < buf.size() {
+                    s = s * 33 + at(buf, next())
+                }
+                s += at(buf, push(mut buf))
+                s += at(buf, fill(buf.from(0)))
+                s += at(buf, buf.removeAt(0) as Size)
+                return s
+            }
+            """
+        )
+        assertTrue(py.contains("_at(buf, _next())"), "a call that cannot reach the local leaves it uncopied:\n$py")
+        assertTrue(py.contains("_at(bytearray(buf), _push(buf))"), "a mut argument writes it:\n$py")
+        assertTrue(py.contains("_at(bytearray(buf), _fill(_k_from(buf, 0)))"), "a MutView of it writes it:\n$py")
+        assertTrue(py.contains("_at(bytearray(buf), buf.pop(0))"), "a mut fx on it writes it:\n$py")
+    }
+
+    @Test
+    fun aGlobalStartsAfterTheGlobalsItReadsAndAConstantIsNeverCopiedAsAnArgument() {
+        val py = python(
+            """
+            A: Arr<Int32, 2> = B
+            B: Arr<Int32, 2> = [7, 8]
+            mut k: Arr<UInt8, 2> = KEY
+            KEY: Arr<UInt8, 2> = [0xAB, 0xCD]
+
+            fx total: (xs: Arr<Int32, 2>) Int32 {
+                return xs[0] + xs[1]
+            }
+
+            fx f: () Int32 {
+                return total(A) + total(B)
+            }
+            """
+        )
+        assertTrue(py.contains("_B = [7, 8]\n_A = _B\n_KEY = bytearray((171, 205))\n_k = bytearray(_KEY)"), py)
+        assertTrue(py.contains("_total(_A) + _total(_B)"), py)
+    }
+
+    @Test
     fun aMutListParameterIsTheCallersListAndAnAssignmentKeepsIt() {
         val py = python(
             """
