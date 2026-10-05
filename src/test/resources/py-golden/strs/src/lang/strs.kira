@@ -1,0 +1,172 @@
+module "lang:strs"
+
+// Str's methods as kira::str gives them: lengths and indices, the checked substring, find as a
+// Maybe, split keeping empty pieces and an empty delimiter giving the text back, trim of space,
+// tab, CR and LF only, ASCII case changes, the strict parsers and djb2. The expected output is
+// the C++ backend's run of main, then the driver's: the panics, and the py target's one rule
+// for text, a length counting code points.
+
+fx sizeText: (m: Maybe<Size>) Str {
+    if m.isNone() {
+        return "none"
+    }
+    return m.value as Str
+}
+
+fx intText: (m: Maybe<Int64>) Str {
+    if m.isNone() {
+        return "none"
+    }
+    return m.value as Str
+}
+
+fx floatText: (m: Maybe<Float64>) Str {
+    if m.isNone() {
+        return "none"
+    }
+    return m.value as Str
+}
+
+// The pieces between bars, and how many.
+fx joined: (xs: List<Str>) Str {
+    mut out: Str = "${xs.size()} ["
+    mut i: Size = 0
+    while i < xs.size() {
+        if i > 0 {
+            out = out + "|"
+        }
+        out = out + xs[i]
+        i += 1
+    }
+    return out + "]"
+}
+
+pub fx lengthOf: (s: Str) Size {
+    return s.length()
+}
+
+pub fx substringOf: (s: Str, start: Size, end: Size) Str {
+    return s.substring(start, end)
+}
+
+pub fx charAtOf: (s: Str, i: Size) Str {
+    return s.charAt(i)
+}
+
+pub fx findOf: (s: Str, v: Str) Maybe<Size> {
+    return s.find(v)
+}
+
+pub fx splitOf: (s: Str, d: Str) List<Str> {
+    return s.split(d)
+}
+
+pub fx trimOf: (s: Str) Str {
+    return s.trim()
+}
+
+pub fx lowerOf: (s: Str) Str {
+    return s.toLower()
+}
+
+pub fx upperOf: (s: Str) Str {
+    return s.toUpper()
+}
+
+pub fx intOf: (s: Str) Maybe<Int64> {
+    return s.toInt64()
+}
+
+pub fx floatOf: (s: Str) Maybe<Float64> {
+    return s.toFloat64()
+}
+
+pub fx hashOf: (s: Str) Int64 {
+    return s.hashCode()
+}
+
+fx parsed: (s: Str) Str {
+    return "[" + s + "] " + intText(s.toInt64()) + " " + floatText(s.toFloat64())
+}
+
+fx main: () Void {
+    trace("".length())
+    trace("a".size())
+    trace("hello world".length())
+    trace("".isEmpty())
+    trace(" ".isEmpty())
+    trace(substringOf("hello", 0, 5))
+    trace(substringOf("hello", 1, 3))
+    trace("[" + substringOf("hello", 5, 5) + substringOf("hello", 0, 0) + "]")
+    trace(charAtOf("hello", 0) + charAtOf("hello", 4))
+    trace("hello".contains("ell"))
+    trace("hello".contains(""))
+    trace("".contains(""))
+    trace("".contains("a"))
+    trace("hello".contains("lo!"))
+    trace("hello".startsWith("he"))
+    trace("hello".startsWith(""))
+    trace("he".startsWith("hello"))
+    trace("hello".endsWith("lo"))
+    trace("hello".endsWith(""))
+    trace("lo".endsWith("hello"))
+    trace(sizeText(findOf("hello", "l")))
+    trace(sizeText(findOf("hello", "lo")))
+    trace(sizeText(findOf("hello", "")))
+    trace(sizeText(findOf("hello", "z")))
+    trace(sizeText(findOf("", "")))
+    trace(sizeText(findOf("aaa", "aa")))
+    trace(joined(splitOf("a,b,,c", ",")))
+    trace(joined(splitOf("", ",")))
+    trace(joined(splitOf(",", ",")))
+    trace(joined(splitOf("abc", "")))
+    trace(joined(splitOf("aaa", "aa")))
+    trace(joined(splitOf("a--b--", "--")))
+    trace(joined(splitOf("no delimiter", ",")))
+    trace(joined("F 1 2  3".split(" ")))
+    trace("[" + trimOf("  x  ") + "]")
+    trace("[" + trimOf("\t\r\n x y \n") + "]")
+    trace("[" + trimOf("") + "]")
+    trace("[" + trimOf(" \t ") + "]")
+    trace(lowerOf("Hello, World! 123 [AZ] @`"))
+    trace(upperOf("Hello, World! 123 {az} @`"))
+    trace(parsed("1541"))
+    trace(parsed("+7"))
+    trace(parsed("-0"))
+    trace(parsed("-9223372036854775808"))
+    trace(parsed("9223372036854775807"))
+    trace(parsed("9223372036854775808"))
+    trace(parsed("00000000000000000000000000000000000000000042"))
+    trace(parsed("1541abc"))
+    trace(parsed(" 5"))
+    trace(parsed("5 "))
+    trace(parsed(""))
+    trace(parsed("+"))
+    trace(parsed("+-1"))
+    trace(parsed("1_000"))
+    trace(parsed("5.0"))
+    trace(parsed("2.50"))
+    trace(parsed("+2.5"))
+    trace(parsed("1e3"))
+    trace(parsed("-.125"))
+    trace(parsed("1."))
+    trace(parsed("."))
+    trace(parsed("5e"))
+    trace(parsed("2,5"))
+    trace(parsed("0x10"))
+    trace(parsed("1e400"))
+    trace(parsed("1e-400"))
+    trace(parsed("2.5e-324"))
+    trace(parsed("0e999"))
+    trace(parsed("inf"))
+    trace(parsed("-Infinity"))
+    trace(parsed("NaN"))
+    trace(parsed("nan(1f)"))
+    trace(parsed("infin"))
+    trace(hashOf(""))
+    trace(hashOf("a"))
+    trace(hashOf("hello"))
+    trace(hashOf("The quick brown fox jumps over the lazy dog"))
+    trace("abc".equals("abc"))
+    trace("abc".equals("abd"))
+}

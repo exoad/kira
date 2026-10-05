@@ -81,7 +81,9 @@ import java.util.IdentityHashMap
  *   functions and methods bind through the `py:` blocks of the `.bind.yaml` manifests;
  * - module constants and `mut` globals, functions, and classes without a parent, a trait,
  *   type parameters or a `finally`. A class is a plain Python class, `__slots__` its fields;
- * - Bool, Str, the integers, Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
+ * - Bool, Str (a Python str, whose lengths and indices count code points where C++ counts UTF-8
+ *   bytes: the same for ASCII; its methods are kira::str's through core.bind.yaml), the integers,
+ *   Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
  *   Arr<T, N>) as a Python list, a bytearray of UInt8, and the module's own classes. Kira's List
  *   is a value (D44) and a Python list is shared, so one is copied wherever a second name could
  *   see a write ([asValue]); a `mut` List parameter is the caller's list itself, and a field,

@@ -1,0 +1,26 @@
+[capture] capture
+[clear] clear
+[on] on
+[off] off
+[CAPTURE] refused
+[] refused
+[capture now] refused
+[box 0.3 0.25 0.1 0.1] box 0.3 0.25 0.1 0.1
+[box 2 -1 0.1234 0.0005] box 1.5 0 0.123 0.001
+[box 0.0015 0.0025 1.4995 -0] box 0.002 0.003 1.5 -0
+[box -0.0 1e-4 .5 5.] box -0 0 0.5 1.5
+[box 0.2 0.2 0.1] refused
+[box 0.2 0.2 0.1 0.1 0.1] refused
+[box 0.2  0.1 0.1] refused
+[box nan 0 0 0] refused
+[box 0 inf 0 0] refused
+[box 0 0 1e400 0] refused
+[box 0 0 0 1,5] refused
+[box 0 0 0 0x1] refused
+[Box 0 0 0 0] refused
+command against Mask.command: 6000 word lists, 1183 boxes among them, every answer the same
+python's float() alone takes '1_0': box 1.5 0.0 0.0 0.0, kira refused
+python's float() alone takes '0.5\t': box 0.5 0.0 0.0 0.0, kira refused
+python's float() alone takes '\n1': box 1.0 0.0 0.0 0.0, kira refused
+python's float() alone takes '\u0661': box 1.0 0.0 0.0 0.0, kira refused
+python's float() alone takes '1e-400': box 0.0 0.0 0.0 0.0, kira refused

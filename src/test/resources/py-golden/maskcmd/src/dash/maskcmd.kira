@@ -1,0 +1,79 @@
+module "dash:maskcmd"
+
+// lidarmask.py's Mask.command in Kira: the words of a "mask ..." control message (bibodash.py
+// splits the page's text on spaces and hands over the words after "mask") as the action they
+// ask for, or "refused" where command returns False. A box takes four numbers in metres, each
+// finite, clamped to 0..1.5 and rounded to 3 decimals as _clean_box does: round(v, 3) is
+// Python's correctly rounded "%.3f" read back, which fixed(3) and toFloat64 are. The expected
+// output is the C++ backend's run of main, then the driver's run of command against the
+// hand-written one.
+
+BOX_LIMIT_M: Float64 = 1.5
+
+// min(max(v, 0.0), 1.5) as Python takes them (-0.0 stays itself), then round(v, 3).
+fx clean: (v: Float64) Float64 {
+    mut c: Float64 = v
+    if c < 0.0 {
+        c = 0.0
+    }
+    if BOX_LIMIT_M < c {
+        c = BOX_LIMIT_M
+    }
+    return c.fixed(3).toFloat64().unwrapOr(c)
+}
+
+// Neither NaN nor an infinity.
+fx finite: (v: Float64) Bool {
+    return v - v == 0.0
+}
+
+pub fx command: (words: List<Str>) Str {
+    if words.size() == 1 {
+        w: Str = words[0]
+        if w == "capture" || w == "clear" || w == "on" || w == "off" {
+            return w
+        }
+        return "refused"
+    }
+    if words.size() != 5 || words[0] != "box" {
+        return "refused"
+    }
+    mut out: Str = "box"
+    mut i: Size = 1
+    while i < 5 {
+        v: Maybe<Float64> = words[i].toFloat64()
+        if v.isNone() || !finite(v.value) {
+            return "refused"
+        }
+        out = out + " ${clean(v.value)}"
+        i += 1
+    }
+    return out
+}
+
+fx said: (text: Str) Str {
+    return "[" + text + "] " + command(text.split(" "))
+}
+
+fx main: () Void {
+    trace(said("capture"))
+    trace(said("clear"))
+    trace(said("on"))
+    trace(said("off"))
+    trace(said("CAPTURE"))
+    trace(said(""))
+    trace(said("capture now"))
+    trace(said("box 0.3 0.25 0.1 0.1"))
+    trace(said("box 2 -1 0.1234 0.0005"))
+    trace(said("box 0.0015 0.0025 1.4995 -0"))
+    trace(said("box -0.0 1e-4 .5 5."))
+    trace(said("box 0.2 0.2 0.1"))
+    trace(said("box 0.2 0.2 0.1 0.1 0.1"))
+    trace(said("box 0.2  0.1 0.1"))
+    trace(said("box nan 0 0 0"))
+    trace(said("box 0 inf 0 0"))
+    trace(said("box 0 0 1e400 0"))
+    trace(said("box 0 0 0 1,5"))
+    trace(said("box 0 0 0 0x1"))
+    trace(said("Box 0 0 0 0"))
+}

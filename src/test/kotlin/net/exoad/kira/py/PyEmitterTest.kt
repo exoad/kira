@@ -386,6 +386,40 @@ class PyEmitterTest {
     }
 
     @Test
+    fun theStrMethodsBindToPythonsWithKiraStrsRules() {
+        val py = python(
+            """
+            pub fx a: (s: Str, t: Str) Size {
+                return s.length() + s.size() + s.find(t).unwrapOr(0)
+            }
+
+            pub fx b: (s: Str, t: Str) Bool {
+                return s.isEmpty() || s.contains(t) || s.startsWith(t) || s.endsWith("x") || s.equals(t)
+            }
+
+            pub fx c: (s: Str) Str {
+                return s.substring(1, 3) + s.charAt(0) + s.trim().toLower() + ("a" + s).toUpper()
+            }
+
+            pub fx d: (s: Str) List<Str> {
+                return s.split(",")
+            }
+
+            pub fx e: (s: Str) Int64 {
+                return s.toInt64().unwrapOr(0) + s.hashCode() + (s.toFloat64().unwrapOr(0.0) as Int64)
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_u64(_k_u64(len(s) + len(s)) + _k_or(_k_find(s, t), 0))"), py)
+        assertTrue(py.contains("return (len(s) == 0) or s.__contains__(t) or s.startswith(t) or s.endswith(\"x\") or (s == t)"), py)
+        assertTrue(py.contains("return _k_substr(s, 1, 3) + s[0] + s.strip(\" \\t\\n\\r\").translate(_k_lower) + (\"a\" + s).translate(_k_upper)"), py)
+        assertTrue(py.contains("return _k_split(s, \",\")"), py)
+        assertTrue(py.contains("_k_toint(s)") && py.contains("_k_strhash(s)") && py.contains("_k_tofloat(s)"), py)
+        assertTrue(py.contains("_k_lower = str.maketrans(") && py.contains("import re as _k_re"), "the tables and the regex module come with their users:\n$py")
+        assertTrue(py.contains("def _k_tofloat(s):") && py.contains("_k_decimal = _k_re.compile("), py)
+    }
+
+    @Test
     fun booleanAndUnaryOperatorsKeepKirasGrouping() {
         val py = python(
             """
@@ -935,6 +969,26 @@ class PyEmitterTest {
             }
             """,
             "Char",
+        )
+    }
+
+    @Test
+    fun aStrsCharIsRefusedUntilTheTargetHoldsChar() {
+        refused(
+            """
+            fx f: (s: Str) Bool {
+                return s.at(0) == 'a'
+            }
+            """,
+            "Char",
+        )
+        refused(
+            """
+            fx f: (s: Str) Str {
+                return s.padStart(4, '0')
+            }
+            """,
+            "'Str.padStart' (it has no py binding)",
         )
     }
 

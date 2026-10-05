@@ -5,6 +5,7 @@
 # Python 3.10 is the oldest this must run on (the board's).
 
 import math as _k_math
+import re as _k_re
 import struct as _k_struct
 
 
@@ -255,6 +256,80 @@ def _k_fixed(v, places):
 # IntNum.toHex (D51): lowercase and no prefix; a negative value is "-" and its magnitude's digits.
 def _k_hex(v):
     return "%x" % v
+
+
+# Str is a Python str, so its lengths and indices count code points where C++ counts the bytes
+# of its UTF-8: the same numbers for ASCII text. substring is checked as kira::str::substring
+# is, where a Python slice stops short.
+def _k_substr(s, start, end):
+    if start > end or end > len(s):
+        _k_panic("substring out of range")
+    return s[start:end]
+
+
+def _k_find(s, v):
+    at = s.find(v)
+    return None if at < 0 else at
+
+
+# split keeps empty pieces, as Python's does, and an empty delimiter gives the Str back whole,
+# where Python raises.
+def _k_split(s, d):
+    return s.split(d) if d else [s]
+
+
+# toLower and toUpper change A-Z and a-z only, as kira::str's do; Python's lower() and upper()
+# change every cased character.
+_k_lower = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+_k_upper = str.maketrans("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+
+# toInt64 is kira::parseInt64: an optional sign, then ASCII digits and nothing else, none past
+# Int64. Python's int() also takes spaces, underscores and other scripts' digits.
+def _k_toint(s):
+    body = s[1:] if s[:1] in ("+", "-") else s
+    if not (body.isascii() and body.isdigit()):
+        return None
+    body = body.lstrip("0")
+    if len(body) > 19:
+        return None
+    v = int(body or "0")
+    v = -v if s[0] == "-" else v
+    return v if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF else None
+
+
+# toFloat64 is std::from_chars after one leading "+": decimal text with an optional exponent, or
+# inf, infinity, nan and nan(chars) in any case, and nothing else; none where the value is
+# beyond a double, or rounds to zero from text that is not zero. Python's float() also takes
+# spaces and underscores, returns inf and 0.0 there, and refuses nan(chars).
+_k_decimal = _k_re.compile(r"[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+
+
+_k_special = _k_re.compile(r"[+-]?(?:inf|infinity|nan(?:\([0-9A-Za-z_]*\))?)", _k_re.A | _k_re.I)
+
+
+def _k_tofloat(s):
+    if _k_decimal.fullmatch(s):
+        v = float(s)
+        if _k_math.isinf(v):
+            return None
+        if v == 0.0 and s.lower().partition("e")[0].strip("+-.0"):
+            return None
+        return v
+    if _k_special.fullmatch(s):
+        return float(s.partition("(")[0])
+    return None
+
+
+# hashCode is djb2 over the UTF-8 of the text, as kira::str::hashCode over its bytes, wrapped
+# to 64 bits and read as an Int64: C++'s number for any text.
+def _k_strhash(s):
+    h = 5381
+    for b in s.encode("utf-8", "surrogatepass"):
+        h = (h * 33 + b) & 0xFFFFFFFFFFFFFFFF
+    return h - 0x10000000000000000 if h >> 63 else h
 
 
 # List.contains compares with ==, as kira::list::contains does: a NaN is in no List. Python's

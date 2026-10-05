@@ -52,24 +52,33 @@
 #     which the C and JS backends print as 0, never -0)
 #   template<class T> constexpr std::int64_t hashCode(T) noexcept   (integers by
 #     value, floats by the bits of the double, bool 0/1, Char by ord)
-Str.equals:    { cpp: { expr: "kira::str::equals({self}, {0})", pure: true } }
-Str.hashCode:  { cpp: { expr: "kira::str::hashCode({self})", pure: true } }
-Str.length:    { cpp: { expr: "kira::str::length({self})", pure: true } }
-Str.size:      { cpp: { expr: "kira::str::length({self})", pure: true } }
-Str.isEmpty:   { cpp: { expr: "kira::str::isEmpty({self})", pure: true } }
-Str.substring: { cpp: { expr: "kira::str::substring({self}, {0}, {1})", pure: true } }
-Str.charAt:    { cpp: { expr: "kira::text(kira::str::at({self}, {0}))", pure: true } }
+#
+# On the py target a Str is a Python str, so a length or an index counts CODE POINTS where C++
+# counts the bytes of its UTF-8: the same numbers for ASCII text, and the one py rule for text.
+# Every other rule is kira::str's: substring panics out of range (_k_substr) where a slice
+# stops short, an index past the end is Python's IndexError (Kira's index panic), find is none
+# rather than -1, split keeps empty pieces and gives the text back whole for an empty delimiter
+# (Python raises), trim takes space, tab, CR and LF only, the case changes touch A-Z and a-z
+# only, toInt64 and toFloat64 are the strict parsers (_k_toint, _k_tofloat), and hashCode is
+# djb2 over the UTF-8, C++'s number for any text.
+Str.equals:    { cpp: { expr: "kira::str::equals({self}, {0})", pure: true }, py: { expr: "({self} == {0})" } }
+Str.hashCode:  { cpp: { expr: "kira::str::hashCode({self})", pure: true }, py: { expr: "_k_strhash({self})" } }
+Str.length:    { cpp: { expr: "kira::str::length({self})", pure: true }, py: { expr: "len({self})" } }
+Str.size:      { cpp: { expr: "kira::str::length({self})", pure: true }, py: { expr: "len({self})" } }
+Str.isEmpty:   { cpp: { expr: "kira::str::isEmpty({self})", pure: true }, py: { expr: "(len({self}) == 0)" } }
+Str.substring: { cpp: { expr: "kira::str::substring({self}, {0}, {1})", pure: true }, py: { expr: "_k_substr({self}, {0}, {1})" } }
+Str.charAt:    { cpp: { expr: "kira::text(kira::str::at({self}, {0}))", pure: true }, py: { expr: "{self}[{0}]" } }
 Str.at:        { cpp: { expr: "kira::str::at({self}, {0})", pure: true } }
-Str.contains:  { cpp: { expr: "kira::str::contains({self}, {0})", pure: true } }
-Str.startsWith: { cpp: { expr: "kira::str::startsWith({self}, {0})", pure: true } }
-Str.endsWith:  { cpp: { expr: "kira::str::endsWith({self}, {0})", pure: true } }
-Str.find:      { cpp: { expr: "kira::str::find({self}, {0})", pure: true } }
-Str.split:     { cpp: { expr: "kira::str::split({self}, {0})", pure: true } }
-Str.trim:      { cpp: { expr: "kira::str::trim({self})", pure: true } }
-Str.toLower:   { cpp: { expr: "kira::str::toLower({self})", pure: true } }
-Str.toUpper:   { cpp: { expr: "kira::str::toUpper({self})", pure: true } }
-Str.toInt64:   { cpp: { expr: "kira::str::toInt64({self})", pure: true } }
-Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true } }
+Str.contains:  { cpp: { expr: "kira::str::contains({self}, {0})", pure: true }, py: { expr: "{self}.__contains__({0})" } }
+Str.startsWith: { cpp: { expr: "kira::str::startsWith({self}, {0})", pure: true }, py: { expr: "{self}.startswith({0})" } }
+Str.endsWith:  { cpp: { expr: "kira::str::endsWith({self}, {0})", pure: true }, py: { expr: "{self}.endswith({0})" } }
+Str.find:      { cpp: { expr: "kira::str::find({self}, {0})", pure: true }, py: { expr: "_k_find({self}, {0})" } }
+Str.split:     { cpp: { expr: "kira::str::split({self}, {0})", pure: true }, py: { expr: "_k_split({self}, {0})" } }
+Str.trim:      { cpp: { expr: "kira::str::trim({self})", pure: true }, py: { expr: '{self}.strip(" \t\n\r")' } }
+Str.toLower:   { cpp: { expr: "kira::str::toLower({self})", pure: true }, py: { expr: "{self}.translate(_k_lower)" } }
+Str.toUpper:   { cpp: { expr: "kira::str::toUpper({self})", pure: true }, py: { expr: "{self}.translate(_k_upper)" } }
+Str.toInt64:   { cpp: { expr: "kira::str::toInt64({self})", pure: true }, py: { expr: "_k_toint({self})" } }
+Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true }, py: { expr: "_k_tofloat({self})" } }
 Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true } }
 Str.view:      { cpp: { expr: "kira::str::view({self})", pure: true } }
 

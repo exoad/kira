@@ -19,7 +19,9 @@ import kotlin.test.assertTrue
  * target program against the hand-written Ladder it replaces. wsframe, jpegwalk and lebytes do
  * both: their driver runs the module's main, whose output is the C++ backend's, then holds the
  * walkers against the hand-written bibo code they port (and struct, binascii and zlib) over
- * seeded inputs. Skipped when no Python is found (set KIRA_PYTHON).
+ * seeded inputs, as maskcmd does a text parser; strs runs its main, then its panics and the
+ * py target's one rule for text, a length counting code points. Skipped when no Python is
+ * found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")
