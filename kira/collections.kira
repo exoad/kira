@@ -21,6 +21,9 @@ pub @_magic class View<T>: Iterable<T> {
     pub fx get: (index: Size) T;
     pub fx from: (at: Size) View<T>;
     pub fx slice: (at: Size, n: Size) View<T>;
+    // A new List holding a copy of the view's elements (D52): what a view
+    // keeps past the call that lent it, `buf.slice(at, n).toList()`.
+    pub fx toList: () List<T>;
 }
 
 // The mutable counterpart of `View`; converts to `View<T>` implicitly.
@@ -36,6 +39,8 @@ pub @_magic class MutView<T>: Iterable<T> {
     pub fx from: (at: Size) MutView<T>;
     pub fx slice: (at: Size, n: Size) MutView<T>;
     pub fx view: () View<T>;
+    // View.toList's twin (D52): a `mut` List's slice is a MutView.
+    pub fx toList: () List<T>;
 }
 
 // `Arr<T>` is the growable array; `Arr<T, N>` (D6) is the fixed-size one and

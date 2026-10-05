@@ -825,6 +825,25 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aViewsToListIsANewListOfItsElements() {
+        val py = python(
+            """
+            fx f: (v: View<UInt8>, w: View<Int32>) Size {
+                a: List<UInt8> = v.slice(1, 2).toList()
+                b: List<Int32> = w.toList()
+                mut c: List<UInt8> = List<UInt8> { }
+                c.add(1)
+                d: List<UInt8> = c.from(0).toList()
+                return a.size() + b.size() + d.size()
+            }
+            """
+        )
+        assertTrue(py.contains("    a = _k_copy(_k_slice(v, 1, 2))\n    b = _k_copy(w)"), "a call's List is its own, never copied again:\n$py")
+        assertTrue(py.contains("    d = _k_copy(_k_from(c, 0))"), py)
+        assertTrue(py.contains("return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)"), py)
+    }
+
+    @Test
     fun aMutViewOfAnotherElementIsReadAsACopiedSlice() {
         val py = python(
             """

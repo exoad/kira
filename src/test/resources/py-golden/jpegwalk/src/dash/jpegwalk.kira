@@ -3,7 +3,7 @@ module "dash:jpegwalk"
 // bibo's JPEG walkers in Kira (streamenc.py): jpeg_size, the size of a JPEG that has a SOF, an
 // SOS after it and ends in EOI; jpeg_end, the end of the JPEG at an SOI, walked by segment
 // lengths so a table's FF D9 is never taken for its end; split_jpegs, the whole JPEGs in a byte
-// stream and the rest. The expected output is the C++ backend's run of main over synthetic
+// stream, each copied out of it with View.toList (D52), and the rest. The expected output is the C++ backend's run of main over synthetic
 // JPEGs, then the driver's run of these against the hand-written ones.
 
 pub class JpegSize {
@@ -34,17 +34,6 @@ fx findPair: (buf: View<UInt8>, start: Size, second: UInt8) Maybe<Size> {
         j += 1
     }
     return null
-}
-
-// A copy of a view's bytes: Kira has no List made from a View.
-fx bytesOf: (v: View<UInt8>) List<UInt8> {
-    mut out: List<UInt8> = List<UInt8> { }
-    mut i: Size = 0
-    while i < v.size() {
-        out.add(v[i])
-        i += 1
-    }
-    return out
 }
 
 // jpeg_size(frame): (w, h) of a JPEG that has a SOF, an SOS after it and ends in EOI, else null.
@@ -122,10 +111,10 @@ pub fx splitJpegs: (buf: View<UInt8>) Split {
         }
         end: Maybe<Size> = jpegEnd(buf, soi.value)
         if end.isNull() {
-            out.rest = bytesOf(buf.from(soi.value))
+            out.rest = buf.from(soi.value).toList()
             return out
         }
-        out.jpegs.add(Jpeg { bytesOf(buf.slice(soi.value, end.value - soi.value)) })
+        out.jpegs.add(Jpeg { buf.slice(soi.value, end.value - soi.value).toList() })
         pos = end.value
     }
     return out

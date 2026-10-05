@@ -48,6 +48,7 @@
 #   kira::list::contains and kira::list::clone are overloaded on std::array too, so
 #     Arr.contains and Arr.clone bind the same text for an Arr<T, N>; the clone of an
 #     Arr<T, N> is a List<T> (Arr<T>), as collections.kira declares it
+#   kira::list::clone(View<T>), clone(MutView<T>) -> List<T>   (toList, D52: hosted, as a List is)
 
 # --- View<T> ---------------------------------------------------------------
 View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
@@ -55,6 +56,7 @@ View.isEmpty:  { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: tru
 View.get:      { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true }, py: { expr: "{self}[{0}]" } }
 View.from:     { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
 View.slice:    { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
+View.toList:   { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
 
 # --- MutView<T> ------------------------------------------------------------
 MutView.size:    { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
@@ -64,6 +66,7 @@ MutView.set:     { cpp: { expr: "{self}[{0}] = {1}", constexpr: true }, py: { ex
 MutView.from:    { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
 MutView.slice:   { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
 MutView.view:    { cpp: { expr: "kira::View<{T0}>({self})", pure: true, constexpr: true }, py: { expr: "{self}" } }
+MutView.toList:  { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
 
 # --- Arr<T> (and Arr<T, N>: kira::at / kira::view overload on std::array) --
 Arr.size:      { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }

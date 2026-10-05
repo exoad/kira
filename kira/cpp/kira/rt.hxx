@@ -297,6 +297,17 @@ namespace kira
     {
         return std::vector<T>(a.begin(), a.end());
     }
+    // View.toList and MutView.toList (D52): a new List holding a copy of the view's elements.
+    template<class T>
+    [[nodiscard]] std::vector<T> clone(View<T> v)
+    {
+        return std::vector<T>(v.begin(), v.end());
+    }
+    template<class T>
+    [[nodiscard]] std::vector<T> clone(MutView<T> v)
+    {
+        return std::vector<T>(v.begin(), v.end());
+    }
   }
 
   // Deque.popFront() and popBack(): a Maybe, none when empty.

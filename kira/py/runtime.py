@@ -338,7 +338,8 @@ def _k_contains(xs, v):
     return v == v and v in xs
 
 
-# List.toArr and Arr.clone: a new list of the elements, a bytearray of bytes.
+# List.toArr, Arr.clone, View.toList and MutView.toList (D52): a new list of the elements, a
+# bytearray of bytes (a memoryview's included).
 def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
 

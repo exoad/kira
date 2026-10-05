@@ -97,16 +97,14 @@ pub fx readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
         if buf.size() - at < head + keyBytes + n {
             break
         }
-        mut data: List<UInt8> = List<UInt8> { }
         start: Size = at + head + keyBytes
-        mut i: Size = 0
-        while i < n {
-            mut b: UInt8 = buf[start + i]
-            if masked {
-                b ^= buf[at + head + i % 4]
+        mut data: List<UInt8> = buf.slice(start, n).toList()
+        if masked {
+            mut i: Size = 0
+            while i < n {
+                data[i] ^= buf[at + head + i % 4]
+                i += 1
             }
-            data.add(b)
-            i += 1
         }
         out.add(Frame { b1 & 0x0F, data })
         at = start + n
