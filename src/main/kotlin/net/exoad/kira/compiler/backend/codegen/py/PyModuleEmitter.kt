@@ -54,6 +54,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
@@ -82,8 +83,10 @@ import java.util.IdentityHashMap
  * - module constants and `mut` globals, functions, and classes without a parent, a trait,
  *   type parameters or a `finally`. A class is a plain Python class, `__slots__` its fields;
  * - Bool, Str (a Python str, whose lengths and indices count code points where C++ counts UTF-8
- *   bytes: the same for ASCII; its methods are kira::str's through core.bind.yaml), the integers,
- *   Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
+ *   bytes: the same for ASCII; its methods are kira::str's through core.bind.yaml), Char (its
+ *   code point, an int: a literal is its code, `s[i]` is ord() of the character, its text is
+ *   chr() of it; a View<Char> is refused, as text is a Str), the integers, Float64, Maybe<T>
+ *   (None or the value), List<T> and Arr<T> (and
  *   Arr<T, N>) as a Python list, a bytearray of UInt8, and the module's own classes. Kira's List
  *   is a value (D44) and a Python list is shared, so one is copied wherever a second name could
  *   see a write ([asValue]); a `mut` List parameter is the caller's list itself, and a field,
@@ -107,13 +110,15 @@ import java.util.IdentityHashMap
  * **Semantics** where Python's own differ, as the C++ backend gives them: integer `/` truncates
  * and `%` takes the dividend's sign, a zero divisor stops the program (`_k_divs`, `_k_mods`);
  * Int32 and Int64 overflow stops the program (D8), Int8 and Int16 wrap (R1), every unsigned type
- * wraps; Float64 `/` by zero is IEEE's; `as` wraps between integers and saturates from a float;
+ * wraps; Float64 `/` by zero is IEEE's; `as` wraps between integers and saturates from a float,
+ * a Char `as` an integer type too narrow for every code point wraps (the identity for ASCII) and
+ * an integer `as` a Char keeps its low 8 bits, as C++'s static_cast<char>;
  * a shift count outside the width stops the program and `<<` wraps, signed types included
  * ([shift]); kira:math's functions are C's on a double (the `_k_` helpers its manifest binds),
  * where a NaN's sign is the machine's and not Kira's on either target (an x86 C++ build may trace
  * -nan where Python traces nan); a Float64 as text is the shortest text std::to_chars writes and
  * `fixed` is C's %.*f, any NaN nan in both (D50), and `toHex` is %x (D51); an index past the
- * end of a List, Arr or view stops the program as Python's IndexError, the other panics as
+ * end of a List, Arr, view or Str stops the program as Python's IndexError, the other panics as
  * `_k_panic`'s RuntimeError; D33 and OQ-1 hold because Python evaluates operands, arguments and
  * an augmented target left to right, reading the target first, and an assignment whose value
  * has an effect has its index computed first, where Python would compute it after the value.
@@ -511,7 +516,7 @@ class PyModuleEmitter(
         when (c) {
             is Coercion.WrapSome -> if (isMaybe(c.inner)) return refusePy(e, "a Maybe of a Maybe")
             is Coercion.NoneOf -> return Py("None", PyPrec.ATOM)
-            is Coercion.ToView -> if (c.from == KType.Str) return refusePy(e, "a Str as a View<Char> (Char)")
+            is Coercion.ToView -> if (c.from == KType.Str) return refusePy(e, "a Str as a View<Char> (text is a Str on the py target)")
             is Coercion.StrConstReceiver, null -> {}
             else -> return refusePy(e, "the conversion ${c.javaClass.simpleName}")
         }
@@ -566,6 +571,7 @@ class PyModuleEmitter(
         literal(e)?.let { return it }
         return when (e) {
             is StringLiteral -> Py(pyString(e.value), PyPrec.ATOM)
+            is CharLiteral -> Py(e.value.toString(), PyPrec.ATOM)
             is InterpolatedStringLiteral -> interpolation(e, f)
             is NullLiteral -> Py("None", PyPrec.ATOM)
             is IntrinsicExpr -> refusePy(e, "the intrinsic @${e.intrinsicKey.name}")
@@ -775,6 +781,7 @@ class PyModuleEmitter(
         val prim = t.prim
         val text = when {
             t == KType.Str || prim?.isInteger == true -> v.text
+            prim == Prim.CHAR -> call("chr", v.text).text
             prim == Prim.BOOL -> "1 if ${wrap(v, PyPrec.OR)} else 0"
             prim == Prim.FLOAT64 -> call("_k_gtext", v.text).text
             else -> return refusePy(arg, "trace of a ${t.display()}")
@@ -826,6 +833,10 @@ class PyModuleEmitter(
 
     private fun index(e: ArrayIndexExpr, f: Frame): Py {
         val ct = typeOf(e.originExpr) ?: return Py("None", PyPrec.ATOM)
+        if (ct == KType.Str) {
+            // s[i] is the Char at code point i: its code, as Str.at binds it.
+            return call("ord", "${wrap(expr(e.originExpr, f), PyPrec.POSTFIX)}[${indexText(e.indexExpr, f)}]")
+        }
         if (!isList(ct) && !isView(ct)) {
             return refusePy(e, "an index into a ${ct.display()}")
         }
@@ -960,11 +971,22 @@ class PyModuleEmitter(
         }
     }
 
-    /** `x as T` (R13): integers wrap, a float saturates into an integer, an integer widens to Float64. */
+    /**
+     * `x as T` (R13): integers wrap, a float saturates into an integer, an integer widens to
+     * Float64. A Char is its code point: `as` an integer type that holds every code point is the
+     * identity, and a narrower one wraps it, the identity for ASCII; an integer as a Char is its
+     * low 8 bits, as C++'s static_cast<char>.
+     */
     private fun cast(e: TypeCastExpr, f: Frame): Py {
         val kind = model.conversion(e) ?: return refusePy(e, "an `as` the typer did not resolve")
         val from = typeOf(e.value) ?: return Py("None", PyPrec.ATOM)
         val to = typeOf(e) ?: return Py("None", PyPrec.ATOM)
+        // A Char literal and the integer it converts to (`'0' as UInt8`) are written as their codes.
+        when (val k = model.const(e)) {
+            is ConstValue.CharConst -> return Py(k.value.toString(), PyPrec.ATOM)
+            is ConstValue.IntConst -> if (kind == ConversionKind.CHAR_TO_INT) return Py(k.value.toString(), PyPrec.ATOM)
+            else -> {}
+        }
         val v = expr(e.value, f)
         val fp = from.prim
         val tp = to.prim
@@ -972,6 +994,8 @@ class PyModuleEmitter(
             ConversionKind.INT_WRAP -> if (fp != null && tp != null && fits(fp, tp)) v else call(AS_HELPERS.getValue(tp!!), v.text)
             ConversionKind.INT_TO_FLOAT -> call("float", v.text)
             ConversionKind.FLOAT_TO_INT_SAT -> call("_k_f2i", v.text, tp!!.bits.toString(), if (tp.signed) "True" else "False")
+            ConversionKind.CHAR_TO_INT -> if (tp!!.bits >= 32) v else call(AS_HELPERS.getValue(tp), v.text)
+            ConversionKind.INT_TO_CHAR -> if (fp != null && fits(fp, Prim.UINT8)) v else call("_k_u8", v.text)
             ConversionKind.TO_STR -> text(e.value, from, v) ?: Py("None", PyPrec.ATOM)
             else -> refusePy(e, "the conversion ${from.display()} as ${to.display()}")
         }
@@ -985,13 +1009,14 @@ class PyModuleEmitter(
 
     /**
      * [v], the Python of [e] of type [t], as Kira's text (kira::text): a Bool is true or false,
-     * a Float64 the shortest text std::to_chars writes (D50).
+     * a Char its character, a Float64 the shortest text std::to_chars writes (D50).
      */
     private fun text(e: Expr, t: KType, v: Py): Py? {
         val prim = t.prim
         return when {
             t == KType.Str -> v
             prim?.isInteger == true -> call("str", v.text)
+            prim == Prim.CHAR -> call("chr", v.text)
             prim == Prim.BOOL -> call("_k_btext", v.text)
             prim == Prim.FLOAT64 -> call("_k_ftext", v.text)
             else -> {
@@ -1058,7 +1083,6 @@ class PyModuleEmitter(
     private fun unsupportedType(t: KType): String? = when (t) {
         is KType.Scalar -> when (t.prim) {
             Prim.FLOAT32 -> "Float32 (Float64 is Python's float)"
-            Prim.CHAR -> "Char"
             else -> null
         }
         KType.Str, KType.Void, KType.NullT, KType.Never -> null
@@ -1069,6 +1093,8 @@ class PyModuleEmitter(
                     when {
                         inner == null -> "a ${s.name} without its element type"
                         isMaybe(inner) || isList(inner) || isView(inner) -> "a ${t.display()}"
+                        // Text is a Str, never a view of Chars; a Str's view would index as a str.
+                        isView(t) && inner == KType.CHAR -> "a ${t.display()} (text is a Str on the py target)"
                         // A view of other elements is a copied slice, which a write would not reach.
                         s.name == "MutView" && inner != KType.UINT8 -> "a ${t.display()} (a MutView<UInt8> is the one that writes through)"
                         else -> unsupportedType(inner)
@@ -1124,7 +1150,7 @@ class PyModuleEmitter(
         return when {
             prim == Prim.BOOL -> "False"
             prim == Prim.FLOAT64 -> "0.0"
-            prim?.isInteger == true -> "0"
+            prim?.isInteger == true || prim == Prim.CHAR -> "0"
             t == KType.Str -> "\"\""
             isMaybe(t) -> "None"
             isBytes(t) -> if (n == null) "bytearray()" else "bytearray($n)"
@@ -1140,6 +1166,7 @@ class PyModuleEmitter(
         is ConstValue.FloatConst -> if (c.prim == Prim.FLOAT64 && c.value.isFinite()) floatText(c.value) else null
         is ConstValue.BoolConst -> if (c.value) "True" else "False"
         is ConstValue.StrConst -> pyString(c.value)
+        is ConstValue.CharConst -> c.value.toString()
         is ConstValue.NullConst -> "None"
         else -> null
     }

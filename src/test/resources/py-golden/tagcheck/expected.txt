@@ -1,0 +1,34 @@
+ok 0
+ok 47
+refused: no tag '48'
+refused: no tag '012'
+ok 12
+refused: no tag '12\n\n'
+refused: no tag ' 12'
+refused: no tag '1234567'
+refused: no tag ''
+refused: no tag "x'y"
+refused: no tag 'a"b\'c\\d'
+refused: no tag 'tab\there'
+ok home
+ok keep_out
+refused: unknown label 'keep-out'
+refused: unknown label 'Home'
+refused: unknown label ''
+ok by the door
+ok 
+refused: note not one line
+refused: note not one line
+refused: note not one line
+ok padded
+ok 01234567890123456789012345678901234567890123456789012345678901234567890123456789
+refused: note over 80 characters
+"it's"
+'say "it\'s"'
+'\x00\x1b\x7f'
+tagOf against tag_of: 20000 texts; label and note against checked: 20000 and 20000, every answer the same
+pyRepr against repr: every ASCII character, alone and after a quote, the same
+past ASCII note '\xa0spaced\u3000': python True 6 characters, kira True 8
+past ASCII note '\x85': python True 0 characters, kira True 1
+past ASCII note 'caf\xe9 caf\xe9': python True 79 characters, kira True 79
+past ASCII repr '\xa0': python "'\\xa0'", kira "'\xa0'"

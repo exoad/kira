@@ -1,0 +1,30 @@
+connected=true ssid=[Fios-2CTx6] freq=5280 dbm=-45 tx=540.3 rx=600.4
+connected=true ssid=[WhoopWhoop] freq=2437 dbm=-71 tx=72.2 rx=65
+connected=false ssid=[] freq=None dbm=None tx=None rx=None
+connected=false ssid=[] freq=None dbm=None tx=None rx=None
+None
+None
+connected=true ssid=[ my phone  net] freq=None dbm=-7 tx=None rx=None
+connected=true ssid=[] freq=12 dbm=None tx=3 rx=1
+connected=true ssid=[] freq=None dbm=None tx=None rx=None
+connected=false ssid=[] freq=None dbm=None tx=None rx=None
+-40
+-56
+None
+None
+-9
+None
+None
+wlan0
+None
+wlan1
+3
+5
+parseLink against parse_link: 5000 texts, every field the same
+parseWireless, firstManaged, splitLines and words against the hand-written ones: 5000 texts the same
+parse_link 'tx bitrate: 1.2.3 MBit/s': python ValueError, kira None
+parse_link 'rx bitrate: . MBit/s': python ValueError, kira None
+parse_link 'freq: \u0665\u0662': python 52, kira None
+parse_wireless 'wlan0: 1 2 inf': python OverflowError, kira None
+parse_wireless 'wlan0: 1 2 \u0665': python -251, kira None
+parse_wireless 'wlan0: 1 2 1_0': python -246, kira None

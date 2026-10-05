@@ -1,0 +1,81 @@
+module "lang:strings"
+
+// cpp-golden/strings on the py target: Str's interpolation, `as Str`, the Str helpers and the
+// strict parsers, the same module but for the two pieces the py target does not hold, a
+// Float32 and an integer enum, which `describe` leaves out. The driver makes the C++ driver's
+// checks one for one; its expected output is the C++ backend's run of those checks over this
+// same module, which is cpp-golden/strings' expected output.
+
+pub fx greet: (name: Str, n: Int32) Str {
+    return "hello ${name}, you are ${n}"
+}
+
+// Every piece kind an interpolation takes on the py target. A UInt8 is a number, a Char a
+// character.
+pub fx describe: (b: Bool, f: Float64, c: Char, u: UInt8) Str {
+    return "b=${b} f=${f} c=${c} u=${u}"
+}
+
+pub fx show: (v: Float64) Str {
+    return v as Str
+}
+
+pub fx flag: (b: Bool) Str {
+    return b as Str
+}
+
+// Fixed decimals rounded as printf's %.*f (D50), and lowercase hex (D51).
+pub fx fixedOf: (v: Float64, places: Int32) Str {
+    return v.fixed(places)
+}
+
+pub fx speedLine: (mps: Float64) Str {
+    return "${mps.fixed(1)} m/s"
+}
+
+pub fx hexOf: (v: Int32) Str {
+    return v.toHex()
+}
+
+pub fx hex64: (v: UInt64) Str {
+    return v.toHex()
+}
+
+pub fx bitsOf: (v: Int16) Str {
+    return (v as UInt16).toHex()
+}
+
+pub fx padded: (v: Int32) Str {
+    return (v as Str).padStart(5, '0')
+}
+
+pub fx parseInt: (s: Str) Maybe<Int64> {
+    return s.toInt64()
+}
+
+pub fx parseFloat: (s: Str) Maybe<Float64> {
+    return s.toFloat64()
+}
+
+pub fx joined: (a: Str, b: Str) Str {
+    return a + " " + b
+}
+
+pub fx bracketed: (s: Str) Str {
+    return "<" + s + ">"
+}
+
+pub fx initial: (s: Str) Char {
+    return s[0]
+}
+
+pub fx same: (a: Str, b: Str) Bool {
+    return a == b
+}
+
+pub fx middle: (s: Str) Str {
+    if s.length() < 2 {
+        return ""
+    }
+    return s.substring(1, s.length() - 1)
+}

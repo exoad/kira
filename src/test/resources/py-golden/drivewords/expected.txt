@@ -1,0 +1,22 @@
+control 1 0 1500 0 3 1
+control 7 -250 1600 2 3 0
+ignored
+control dropped
+control dropped
+hold take
+hold release
+ignored
+command 4 2 1 0 0 3
+command dropped
+ping 1234
+hidden
+nothing
+nothing
+ignored
+4
+read against the frame loop and message: 30000 frames and every ASCII separator, every action the same
+python alone reads 'c 1_0 2 3 4 5 6': control 10 2 3 4 5 6, kira control dropped
+python alone reads 'cmd \u0664 2 1 0 0 3': command 4 2 1 0 0 3, kira command dropped
+python alone reads 'c 1 2 3 4 5 9223372036854775808': control 1 2 3 4 5 9223372036854775808, kira control dropped
+python alone reads 'hold\xa01': hold take, kira ignored
+python alone reads 'p\u30001': ping 1, kira ignored

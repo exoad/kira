@@ -1,0 +1,150 @@
+module "dash:tagcheck"
+
+// tagset.py's checks of a page's request in Kira: tag_of, the id in POST /tags/<id> (ID_TEXT,
+// whose $ also takes one trailing newline, then a tag of the printed sheets), and checked's
+// label (one of LABEL_IDS) and note (stripped, one line with no control character, at most
+// NOTE_MAX characters). A refusal's text is the hand-written one, a value as repr() writes it.
+// Whitespace and repr() are Python's over ASCII. The expected output is the C++ backend's run
+// of main, then the driver's run of these against the hand-written ones.
+
+NOTE_MAX: Size = 80
+TAGS: Int64 = 48
+LABEL_IDS: List<Str> = ["none", "landmark", "home", "waypoint", "slow", "stop", "door", "test", "keep_out", "dock", "junction", "calibration", "bobo"]
+
+pub class Answer {
+    require pub ok: Bool
+    require pub text: Str
+}
+
+fx space: (c: Char) Bool {
+    return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
+}
+
+fx strip: (s: Str) Str {
+    mut a: Size = 0
+    mut b: Size = s.length()
+    while a < b && space(s[a]) {
+        a += 1
+    }
+    while b > a && space(s[b - 1]) {
+        b -= 1
+    }
+    return s.substring(a, b)
+}
+
+// [\x00-\x1f\x7f]
+fx control: (c: Char) Bool {
+    return c < ' ' || c == (127 as Char)
+}
+
+// repr(s): single quotes unless s holds one and no double quote; a backslash, the quote, \t,
+// \n and \r escaped, any other control character as \xNN.
+pub fx pyRepr: (s: Str) Str {
+    q: Char = if s.contains("'") && !s.contains("\"") { '"' } else { '\'' }
+    mut out: Str = "${q}"
+    mut i: Size = 0
+    while i < s.length() {
+        c: Char = s[i]
+        if c == '\\' || c == q {
+            out = out + "\\${c}"
+        } else if c == '\t' {
+            out = out + "\\t"
+        } else if c == '\n' {
+            out = out + "\\n"
+        } else if c == '\r' {
+            out = out + "\\r"
+        } else if control(c) {
+            out = out + "\\x" + (c as UInt8).toHex().padStart(2, '0')
+        } else {
+            out = out + "${c}"
+        }
+        i += 1
+    }
+    return out + "${q}"
+}
+
+// ^(0|[1-9][0-9]{0,5})$, where $ also stands before one last \n.
+fx idText: (text: Str) Bool {
+    body: Str = if text.endsWith("\n") { text.substring(0, text.length() - 1) } else { text }
+    if body == "0" {
+        return true
+    }
+    if body.isEmpty() || body.length() > 6 || body[0] < '1' || body[0] > '9' {
+        return false
+    }
+    mut i: Size = 1
+    while i < body.length() {
+        if body[i] < '0' || body[i] > '9' {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+pub fx tagOf: (text: Str) Answer {
+    if idText(text) {
+        id: Int64 = strip(text).toInt64().unwrapOr(-1)
+        if id >= 0 && id < TAGS {
+            return Answer { true, id as Str }
+        }
+    }
+    return Answer { false, "no tag " + pyRepr(text) }
+}
+
+pub fx label: (v: Str) Answer {
+    if !LABEL_IDS.contains(v) {
+        return Answer { false, "unknown label " + pyRepr(v) }
+    }
+    return Answer { true, v }
+}
+
+pub fx note: (v: Str) Answer {
+    s: Str = strip(v)
+    mut i: Size = 0
+    while i < s.length() {
+        if control(s[i]) {
+            return Answer { false, "note not one line" }
+        }
+        i += 1
+    }
+    if s.length() > NOTE_MAX {
+        return Answer { false, "note over ${NOTE_MAX} characters" }
+    }
+    return Answer { true, s }
+}
+
+fx said: (a: Answer) Str {
+    return if a.ok { "ok " + a.text } else { "refused: " + a.text }
+}
+
+fx main: () Void {
+    trace(said(tagOf("0")))
+    trace(said(tagOf("47")))
+    trace(said(tagOf("48")))
+    trace(said(tagOf("012")))
+    trace(said(tagOf("12\n")))
+    trace(said(tagOf("12\n\n")))
+    trace(said(tagOf(" 12")))
+    trace(said(tagOf("1234567")))
+    trace(said(tagOf("")))
+    trace(said(tagOf("x'y")))
+    trace(said(tagOf("a\"b'c\\d")))
+    trace(said(tagOf("tab\there")))
+    trace(said(label("home")))
+    trace(said(label("keep_out")))
+    trace(said(label("keep-out")))
+    trace(said(label("Home")))
+    trace(said(label("")))
+    trace(said(note("  by the door \r\n")))
+    trace(said(note("")))
+    trace(said(note("two\nlines")))
+    trace(said(note("bell${(7 as Char)}")))
+    trace(said(note("del${(127 as Char)}")))
+    trace(said(note("${(11 as Char)}  padded${(31 as Char)}")))
+    trace(said(note("01234567890123456789012345678901234567890123456789012345678901234567890123456789")))
+    trace(said(note("012345678901234567890123456789012345678901234567890123456789012345678901234567890")))
+    trace(pyRepr("it's"))
+    trace(pyRepr("say \"it's\""))
+    trace(pyRepr("${(0 as Char)}${(27 as Char)}${(127 as Char)}"))
+}

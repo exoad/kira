@@ -1,0 +1,244 @@
+module "dash:dashtext"
+
+// bibodash.py's two text parsers in Kira. scan: one "F <...> <rot mHz> <angle>,<dist>[,<q>] ..."
+// line of the lidar's text feed, after the reader strips it, as the scan's points: angles
+// (centi-degrees, kept mod 36000), distances (mm, 1..65535) and qualities (capped at 255),
+// a point whose angle or distance is not all digits dropped. command: one text frame from the
+// page, split on spaces: the heartbeat, an ack, a ping, and on the control link ws_command's
+// words. isdigit() is ASCII digits here; Python's also takes other scripts' digits. The
+// expected output is the C++ backend's run of main, then the driver's run of these against the
+// hand-written ones.
+
+LIDAR: Int64 = 255
+
+pub class Scan {
+    pub mut rotMhz: Int64 = 0
+    pub mut angles: List<UInt16> = List<UInt16> { }
+    pub mut dists: List<UInt16> = List<UInt16> { }
+    pub mut quals: List<UInt8> = List<UInt8> { }
+}
+
+fx space: (c: Char) Bool {
+    return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
+}
+
+// text.strip() over ASCII.
+fx strip: (s: Str) Str {
+    mut a: Size = 0
+    mut b: Size = s.length()
+    while a < b && space(s[a]) {
+        a += 1
+    }
+    while b > a && space(s[b - 1]) {
+        b -= 1
+    }
+    return s.substring(a, b)
+}
+
+// str.isdigit() over ASCII: not empty, every character 0-9.
+fx isDigits: (s: Str) Bool {
+    if s.isEmpty() {
+        return false
+    }
+    mut i: Size = 0
+    while i < s.length() {
+        if s[i] < '0' || s[i] > '9' {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// int(s) % m for digits of any length, digit by digit.
+fx digitsMod: (s: Str, m: Int64) Int64 {
+    mut v: Int64 = 0
+    mut i: Size = 0
+    while i < s.length() {
+        v = (v * 10 + ((s[i] as Int64) - 48)) % m
+        i += 1
+    }
+    return v
+}
+
+// min(int(s), cap) for digits of any length.
+fx digitsCapped: (s: Str, cap: Int64) Int64 {
+    mut v: Int64 = 0
+    mut i: Size = 0
+    while i < s.length() {
+        v = v * 10 + ((s[i] as Int64) - 48)
+        if v > cap {
+            return cap
+        }
+        i += 1
+    }
+    return v
+}
+
+// The reader's test: the stripped line is a scan when it starts "F ".
+pub fx isScan: (line: Str) Bool {
+    return strip(line).startsWith("F ")
+}
+
+pub fx scan: (line: Str) Scan {
+    out: Scan = Scan { }
+    words: List<Str> = strip(line).split(" ")
+    if words.size() > 2 && isDigits(words[2]) {
+        out.rotMhz = words[2].toInt64().unwrapOr(0)
+    }
+    mut k: Size = 3
+    while k < words.size() {
+        f: List<Str> = words[k].split(",")
+        k += 1
+        if f.size() < 2 || !isDigits(f[0]) || !isDigits(f[1]) {
+            continue
+        }
+        d: Int64 = digitsCapped(f[1], 65536)
+        if d <= 0 || d >= 65536 {
+            continue
+        }
+        out.angles.add(digitsMod(f[0], 36000) as UInt16)
+        out.dists.add(d as UInt16)
+        out.quals.add(if f.size() > 2 && isDigits(f[2]) { digitsCapped(f[2], 255) as UInt8 } else { 0 })
+    }
+    return out
+}
+
+fx flag: (w: Str) Str {
+    return if w == "1" { "1" } else { "0" }
+}
+
+// The int of an isdigit() word, none past Int64.
+fx number: (w: Str) Maybe<Int64> {
+    if !isDigits(w) {
+        return null
+    }
+    return w.toInt64()
+}
+
+// ws_command(page, words) as the action it takes, or "ignored".
+fx wsCommand: (words: List<Str>) Str {
+    w0: Str = words[0]
+    n: Size = words.size()
+    if w0 == "all" && n == 2 {
+        return "all " + flag(words[1])
+    }
+    if w0 == "sel" && n == 2 && number(words[1]).isSome() {
+        return "sel ${number(words[1]).value}"
+    }
+    if w0 == "both" && n == 2 {
+        return "both " + flag(words[1])
+    }
+    if w0 == "rot" && n == 3 && number(words[1]).isSome() && number(words[2]).isSome() {
+        deg: Int64 = number(words[2]).value
+        if deg != 0 && deg != 90 && deg != 180 && deg != 270 {
+            return "ignored"
+        }
+        i: Int64 = number(words[1]).value
+        return if i == LIDAR { "rot lidar ${deg}" } else { "rot ${i} ${deg}" }
+    }
+    if w0 == "h264" && n == 3 && number(words[1]).isSome() {
+        return "h264 ${number(words[1]).value} " + flag(words[2])
+    }
+    if w0 == "mask" && n >= 2 {
+        mut out: Str = "mask"
+        mut k: Size = 1
+        while k < n {
+            out = out + " [" + words[k] + "]"
+            k += 1
+        }
+        return out
+    }
+    if w0 == "low" && n == 3 && number(words[1]).isSome() {
+        return "low ${number(words[1]).value} " + flag(words[2])
+    }
+    if (w0 == "cam" || w0 == "rec") && n == 3 && number(words[1]).isSome() {
+        i: Int64 = number(words[1]).value
+        if w0 == "rec" && i == LIDAR {
+            return "rec lidar " + flag(words[2])
+        }
+        return w0 + " ${i} " + flag(words[2])
+    }
+    return "ignored"
+}
+
+// One text frame: `ctrl` when it came on the control link.
+pub fx command: (text: Str, ctrl: Bool) Str {
+    words: List<Str> = text.split(" ")
+    w0: Str = words[0]
+    n: Size = words.size()
+    if w0 == "h" {
+        return "heartbeat"
+    }
+    if w0 == "a" && n == 2 && number(words[1]).isSome() {
+        return "ack ${number(words[1]).value}"
+    }
+    if w0 == "p" && (n == 2 || n == 3) {
+        if n == 3 {
+            rtt: Maybe<Float64> = words[2].toFloat64()
+            if rtt.isSome() {
+                return "ping [" + words[1] + "] rtt ${rtt.value}"
+            }
+        }
+        return "ping [" + words[1] + "]"
+    }
+    if !ctrl {
+        return "ignored"
+    }
+    return wsCommand(words)
+}
+
+fx scanText: (line: Str) Str {
+    if !isScan(line) {
+        return "not a scan"
+    }
+    s: Scan = scan(line)
+    mut out: Str = "rot ${s.rotMhz}:"
+    mut i: Size = 0
+    while i < s.angles.size() {
+        out = out + " ${s.angles[i]},${s.dists[i]},${s.quals[i]}"
+        i += 1
+    }
+    return out
+}
+
+fx main: () Void {
+    trace(scanText("F 12 10012 0,500,47 9000,1200 18000,0,9 27000,65535,300 35999,65536,1 36001,7,x 1,2,3,4"))
+    trace(scanText("  F 0 x 100,200,10\r"))
+    trace(scanText("F 1 2"))
+    trace(scanText("F"))
+    trace(scanText("ERR no lidar"))
+    trace(scanText("F 1 2 99999999999999999999999,00000000000000000000000000000042,999999999999999999999999 -1,5 1,-5 +1,5 1,+5 ,5 5, 5,5,"))
+    trace(scanText("F 1 2  3,4"))
+    trace(command("h", true))
+    trace(command("a 12", false))
+    trace(command("a -1", false))
+    trace(command("a 12 13", false))
+    trace(command("p 123", false))
+    trace(command("p 123 4.5", false))
+    trace(command("p 123 nope", true))
+    trace(command("p", true))
+    trace(command("p 1 2 3", true))
+    trace(command("all 1", false))
+    trace(command("all 1", true))
+    trace(command("all yes", true))
+    trace(command("sel 3", true))
+    trace(command("sel x", true))
+    trace(command("both 1", true))
+    trace(command("rot 255 90", true))
+    trace(command("rot 2 180", true))
+    trace(command("rot 2 45", true))
+    trace(command("rot 2 0270", true))
+    trace(command("h264 1 1", true))
+    trace(command("h264 1", true))
+    trace(command("mask box 0.3 0.25 0.1 0.1", true))
+    trace(command("mask", true))
+    trace(command("mask  capture", true))
+    trace(command("low 0 1", true))
+    trace(command("cam 1 0", true))
+    trace(command("rec 255 1", true))
+    trace(command("rec 3 1", true))
+    trace(command("rec 3", true))
+    trace(command("", true))
+    trace(command("zap 1 2", true))
+}

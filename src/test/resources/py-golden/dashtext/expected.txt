@@ -1,0 +1,46 @@
+rot 10012: 0,500,47 9000,1200,0 27000,65535,255 1,7,0 1,2,3
+rot 0: 100,200,10
+rot 2:
+not a scan
+not a scan
+rot 2: 27999,42,255 5,5,0
+rot 2: 3,4,0
+heartbeat
+ack 12
+ignored
+ignored
+ping [123]
+ping [123] rtt 4.5
+ping [123]
+ignored
+ignored
+ignored
+all 1
+all 0
+sel 3
+ignored
+both 1
+rot lidar 90
+rot 2 180
+ignored
+rot 2 270
+h264 1 1
+ignored
+mask [box] [0.3] [0.25] [0.1] [0.1]
+ignored
+mask [] [capture]
+low 0 1
+cam 1 0
+rec lidar 1
+rec 3 1
+ignored
+ignored
+ignored
+scan against Lidar.scan: 4000 lines, every point the same
+command against ws_reader's words and ws_command: 20000 frames, every action the same
+python alone reads 'sel \u0663': sel 3, kira ignored
+python alone reads 'rot 255 \u0669\u0660': rot lidar 90, kira ignored
+python alone reads 'p 1 1_0': ping [1] rtt 10.0, kira ping [1]
+python alone reads 'p 1 1e-400': ping [1] rtt 0.0, kira ping [1]
+python alone reads 'sel 99999999999999999999': sel 99999999999999999999, kira ignored
+python alone reads F 1 99999999999999999999 1,2: rot 99999999999999999999, kira rot 0

@@ -60,7 +60,9 @@
 # rather than -1, split keeps empty pieces and gives the text back whole for an empty delimiter
 # (Python raises), trim takes space, tab, CR and LF only, the case changes touch A-Z and a-z
 # only, toInt64 and toFloat64 are the strict parsers (_k_toint, _k_tofloat), and hashCode is
-# djb2 over the UTF-8, C++'s number for any text.
+# djb2 over the UTF-8, C++'s number for any text. A Char is its code point, an int: `at` and
+# s[i] are ord() of the character, padStart is rjust (it never cuts, as kira::str's), and a
+# Char's text is chr() of it. A View<Char> (Str.view) has no py binding: text is a Str there.
 Str.equals:    { cpp: { expr: "kira::str::equals({self}, {0})", pure: true }, py: { expr: "({self} == {0})" } }
 Str.hashCode:  { cpp: { expr: "kira::str::hashCode({self})", pure: true }, py: { expr: "_k_strhash({self})" } }
 Str.length:    { cpp: { expr: "kira::str::length({self})", pure: true }, py: { expr: "len({self})" } }
@@ -68,7 +70,7 @@ Str.size:      { cpp: { expr: "kira::str::length({self})", pure: true }, py: { e
 Str.isEmpty:   { cpp: { expr: "kira::str::isEmpty({self})", pure: true }, py: { expr: "(len({self}) == 0)" } }
 Str.substring: { cpp: { expr: "kira::str::substring({self}, {0}, {1})", pure: true }, py: { expr: "_k_substr({self}, {0}, {1})" } }
 Str.charAt:    { cpp: { expr: "kira::text(kira::str::at({self}, {0}))", pure: true }, py: { expr: "{self}[{0}]" } }
-Str.at:        { cpp: { expr: "kira::str::at({self}, {0})", pure: true } }
+Str.at:        { cpp: { expr: "kira::str::at({self}, {0})", pure: true }, py: { expr: "ord({self}[{0}])" } }
 Str.contains:  { cpp: { expr: "kira::str::contains({self}, {0})", pure: true }, py: { expr: "{self}.__contains__({0})" } }
 Str.startsWith: { cpp: { expr: "kira::str::startsWith({self}, {0})", pure: true }, py: { expr: "{self}.startswith({0})" } }
 Str.endsWith:  { cpp: { expr: "kira::str::endsWith({self}, {0})", pure: true }, py: { expr: "{self}.endswith({0})" } }
@@ -79,7 +81,7 @@ Str.toLower:   { cpp: { expr: "kira::str::toLower({self})", pure: true }, py: { 
 Str.toUpper:   { cpp: { expr: "kira::str::toUpper({self})", pure: true }, py: { expr: "{self}.translate(_k_upper)" } }
 Str.toInt64:   { cpp: { expr: "kira::str::toInt64({self})", pure: true }, py: { expr: "_k_toint({self})" } }
 Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true }, py: { expr: "_k_tofloat({self})" } }
-Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true } }
+Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true }, py: { expr: "{self}.rjust({0}, chr({1}))" } }
 Str.view:      { cpp: { expr: "kira::str::view({self})", pure: true } }
 
 # Num is the parent of every scalar, so these entries serve Int8..Int64,

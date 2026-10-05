@@ -420,6 +420,64 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aCharIsItsCodePoint() {
+        val py = python(
+            """
+            SEP: Char = ':'
+
+            class Cursor {
+                pub mut last: Char = 'x'
+                pub mut none: Char
+            }
+
+            pub fx digit: (s: Str, i: Size) Bool {
+                return s[i] >= '0' && s.at(i) <= '9' && s[i] != SEP
+            }
+
+            pub fx value: (c: Char) Int32 {
+                return (c as Int32) - ('0' as Int32)
+            }
+
+            pub fx byte: (c: Char) UInt8 {
+                return c as UInt8
+            }
+
+            pub fx char: (n: Int32, b: UInt8) Str {
+                return "${'$'}{n as Char}${'$'}{b as Char}${'$'}{'\n'}" + ((9 as Char) as Str)
+            }
+
+            pub fx hex: (crc: UInt16) Str {
+                return "0x${'$'}{crc.toHex().padStart(4, '0')}"
+            }
+
+            pub fx show: (c: Char) Void {
+                trace(c)
+            }
+            """
+        )
+        assertTrue(py.contains("_SEP = 58"), "a Char constant is its code:\n$py")
+        assertTrue(py.contains("        self.last = 120\n        self.none = 0"), "a Char's zero value is 0:\n$py")
+        assertTrue(py.contains("return ord(s[i]) >= 48 and ord(s[i]) <= 57 and ord(s[i]) != _SEP"), py)
+        assertTrue(py.contains("return _k_i32(c - 48)"), "an integer type that holds every code point takes the code as it is:\n$py")
+        assertTrue(py.contains("return _k_u8(c)"), "a narrower one wraps it:\n$py")
+        assertTrue(py.contains("return chr(_k_u8(n)) + chr(b) + chr(10) + chr(9)"), py)
+        assertTrue(py.contains("return \"0x\" + _k_hex(crc).rjust(4, chr(48))"), py)
+        assertTrue(py.contains("print(chr(c))"), py)
+    }
+
+    @Test
+    fun chrAndOrdAreNamesPythonReserves() {
+        refused(
+            """
+            fx ord: (c: Char) Int32 {
+                return c as Int32
+            }
+            """,
+            "'ord' is a name generated Python uses",
+        )
+    }
+
+    @Test
     fun booleanAndUnaryOperatorsKeepKirasGrouping() {
         val py = python(
             """
@@ -957,7 +1015,7 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aStrAsAViewOfCharIsRefused() {
+    fun aViewOfCharIsRefusedAsTextIsAStr() {
         refused(
             """
             fx n: (v: View<Char>) Size {
@@ -968,27 +1026,15 @@ class PyEmitterTest {
                 return n("abc")
             }
             """,
-            "Char",
-        )
-    }
-
-    @Test
-    fun aStrsCharIsRefusedUntilTheTargetHoldsChar() {
-        refused(
-            """
-            fx f: (s: Str) Bool {
-                return s.at(0) == 'a'
-            }
-            """,
-            "Char",
+            "the parameter 'v': a View<Char> (text is a Str on the py target)",
         )
         refused(
             """
-            fx f: (s: Str) Str {
-                return s.padStart(4, '0')
+            fx f: (s: Str) Size {
+                return s.view().size()
             }
             """,
-            "'Str.padStart' (it has no py binding)",
+            "a View<Char> (text is a Str on the py target)",
         )
     }
 
