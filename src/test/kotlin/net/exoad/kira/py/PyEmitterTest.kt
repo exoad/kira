@@ -420,6 +420,20 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aStrsBytesAreItsUtf8() {
+        val py = python(
+            """
+            fx f: (s: Str) Size {
+                b: List<UInt8> = s.bytes()
+                return b.size() + s.bytes().size()
+            }
+            """
+        )
+        assertTrue(py.contains("    b = _k_utf8(s)\n    return _k_u64(len(b) + len(_k_utf8(s)))"), "a call's bytearray is its own:\n$py")
+        assertTrue(py.contains("return bytearray(s.encode(\"utf-8\", \"surrogatepass\"))"), py)
+    }
+
+    @Test
     fun aCharIsItsCodePoint() {
         val py = python(
             """

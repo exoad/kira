@@ -479,6 +479,12 @@ namespace kira
     {
         return View<Char>(s.data(), s.size());
     }
+    // Str.bytes (D54): the text's UTF-8, the bytes a Str holds, as a new List.
+    [[nodiscard]] inline List<std::uint8_t> bytes(const Str& s)
+    {
+        const auto* p = reinterpret_cast<const std::uint8_t*>(s.data());
+        return List<std::uint8_t>(p, p + s.size());
+    }
     // Strict decimal: parseInt64 over the string's bytes.
     [[nodiscard]] inline std::optional<std::int64_t> toInt64(const Str& s) noexcept
     {

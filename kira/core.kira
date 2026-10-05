@@ -54,6 +54,9 @@ pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx toFloat64: () Maybe<Float64>;
     pub fx padStart: (width: Size, fill: Char) Str;
     pub fx view: () View<Char>;
+    // The text's UTF-8, a new List of its bytes (D54): `s.bytes().size()` is the
+    // same on every target, where `length()` counts what the target's Str holds.
+    pub fx bytes: () List<UInt8>;
 }
 
 pub @_magic class Num: Equatable<Num>, Hashable {

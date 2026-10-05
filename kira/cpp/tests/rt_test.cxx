@@ -611,6 +611,9 @@ namespace
       check(same(kira::str::padStart("7", 3, '0'), "007") && same(kira::str::padStart("1234", 3, '0'), "1234"), "padStart");
       check(kira::str::hashCode("ab") == (5381 * 33 + 'a') * 33 + 'b' && kira::str::equals("a", "a"), "hashCode is djb2");
       check(kira::str::view(s).from(3).slice(0, 5) == kira::lit("drive"), "view");
+      check(kira::str::bytes("h\xc3\xa9 \xe2\x9c\x93") == kira::List<std::uint8_t>{0x68, 0xC3, 0xA9, 0x20, 0xE2, 0x9C, 0x93} &&
+                kira::str::bytes("").empty() && kira::str::bytes(s).size() == kira::str::length(s),
+            "bytes: the UTF-8 a Str holds");
 
       check(kira::unwrap(kira::str::toInt64("-2859")) == -2859, "toInt64");
       check(!kira::isSome(kira::str::toInt64("1541abc")) && !kira::isSome(kira::str::toInt64("")) &&

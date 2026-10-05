@@ -323,6 +323,12 @@ def _k_tofloat(s):
     return None
 
 
+# Str.bytes (D54): the text's UTF-8, which is what a Str holds on the C++ target, so the same
+# bytes; a lone surrogate, which only hand-written Python can hand over, is encoded as it is.
+def _k_utf8(s):
+    return bytearray(s.encode("utf-8", "surrogatepass"))
+
+
 # hashCode is djb2 over the UTF-8 of the text, as kira::str::hashCode over its bytes, wrapped
 # to 64 bits and read as an Int64: C++'s number for any text.
 def _k_strhash(s):

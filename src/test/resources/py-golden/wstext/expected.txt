@@ -1,0 +1,11 @@
+81 0b 68 6f 6c 64 20 31 20 68 65 6c 64
+81 00
+81 09 63 61 66 c3 a9 20 e2 9c 93
+9
+88 19 03 e8 74 68 65 20 64 72 69 76 65 20 73 6f 63 6b 65 74 20 63 6c 6f 73 65 64
+88 07 0f a1 c3 bc 6e c3 af
+88 02 03 f3
+81 7e 01 2c c3 a9
+304
+send and close against Page.send and Page.close: 6000 frames, every byte the same, each read back
+bytes() is the UTF-8: 14 bytes for 8 code points, as len(text.encode()) and len(text) are 14 and 8

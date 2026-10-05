@@ -1,0 +1,80 @@
+module "dash:wstext"
+
+use "kira:bytes"
+
+// webdrive_fake.py's Page.send and Page.close in Kira: a text frame of the text's UTF-8
+// (Str.bytes, D54), and a close frame of its status code, big-endian (writeU16Be, D53), then the
+// reason's UTF-8; each in ws_frame's length forms, its header written with the big-endian set.
+// Reading a frame's text back needs a Str made from UTF-8 bytes, which Kira does not have: the
+// driver reads it with Python. The expected output is the C++ backend's run of main, then the
+// driver's run of send and close against the hand-written ones.
+
+fx header: (opcode: UInt8, n: Size) List<UInt8> {
+    mut out: List<UInt8> = List<UInt8> { }
+    out.add(0x80 | opcode)
+    if n < 126 {
+        out.add(n as UInt8)
+    } else if n < 65536 {
+        out.add(126)
+        out.add(0)
+        out.add(0)
+        writeU16Be(out.view(), 2, n as UInt16)
+    } else {
+        out.add(127)
+        while out.size() < 10 {
+            out.add(0)
+        }
+        writeU64Be(out.view(), 2, n as UInt64)
+    }
+    return out
+}
+
+// ws_frame(opcode, payload)
+fx frame: (opcode: UInt8, payload: List<UInt8>) List<UInt8> {
+    mut out: List<UInt8> = header(opcode, payload.size())
+    out.addAll(payload.toArr())
+    return out
+}
+
+// Page.send(text): ws_frame(1, text.encode())
+pub fx send: (text: Str) List<UInt8> {
+    return frame(1, text.bytes())
+}
+
+// Page.close(code, reason): ws_frame(8, code.to_bytes(2, "big") + reason.encode())
+pub fx close: (code: UInt16, reason: Str) List<UInt8> {
+    mut payload: List<UInt8> = [0, 0]
+    writeU16Be(payload.view(), 0, code)
+    payload.addAll(reason.bytes().toArr())
+    return frame(8, payload)
+}
+
+fx hex: (v: View<UInt8>) Str {
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < v.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + v[i].toHex().padStart(2, '0')
+        i += 1
+    }
+    return s
+}
+
+fx main: () Void {
+    trace(hex(send("hold 1 held")))
+    trace(hex(send("")))
+    trace(hex(send("café ✓")))
+    trace("café ✓".bytes().size())
+    trace(hex(close(1000, "the drive socket closed")))
+    trace(hex(close(4001, "ünï")))
+    trace(hex(close(1011, "")))
+    mut long: Str = ""
+    while long.bytes().size() < 300 {
+        long = long + "é"
+    }
+    f: List<UInt8> = send(long)
+    trace(hex(f.slice(0, 6)))
+    trace(f.size())
+}
