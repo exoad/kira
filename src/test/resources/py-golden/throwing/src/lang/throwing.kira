@@ -1,0 +1,125 @@
+module "lang:throwing"
+
+use "lib:parse"
+
+mut log: List<Int32> = List<Int32> { }
+
+class Account {
+    require pub name: Str
+    pub mut balance: Int32 = 0
+    pub mut last: Result<Int32, Str> = Result.success(0)
+
+    pub mut fx take: (n: Int32) Int32 {
+        if n > balance {
+            throw "${name} has ${balance}, not ${n}"
+        }
+        balance -= n
+        return balance
+    }
+}
+
+fx pick: (ok: Bool) Int32 {
+    return if ok { 1 } else { throw "not ok" }
+}
+
+fx deep: (n: Int32) Int32 {
+    log.add(n)
+    if n == 0 {
+        throw "bottom"
+    }
+    return deep(n - 1) + 1
+}
+
+fx guarded: (s: Str) Int64 {
+    try {
+        return number(s)
+    } on e: Str {
+        trace("guarded: ${e}")
+    }
+    return -1
+}
+
+fx loop: () Int32 {
+    mut n: Int32 = 0
+    for i: Int32 in 0..5 {
+        try {
+            if i % 2 == 1 {
+                throw "odd ${i}"
+            }
+            n += 10
+        } on e: Str {
+            n += 1
+            if i == 3 {
+                break
+            }
+            continue
+        }
+        n += 100
+    }
+    return n
+}
+
+fx describe: (r: Result<Int32, Str>) Str {
+    if r.isOk() {
+        return "ok ${r.unwrap()} ${r.value}"
+    }
+    return "err ${r.unwrapErr()} ${r.error} ${r.isErr()}"
+}
+
+fx main: () Void {
+    // a throw in another module, caught here
+    try {
+        trace(number("12"))
+        trace(number("x1"))
+        trace("not reached")
+    } on e: Str {
+        trace(e)
+    }
+    trace(guarded("7"))
+    trace(guarded("q"))
+
+    // a throw through calls, and one from a method
+    try {
+        trace(deep(3))
+    } on err: Str {
+        trace("${err} after ${log.size()}")
+    }
+    mut a: Account = Account { "amy" }
+    a.balance = 5
+    try {
+        trace(a.take(2))
+        trace(a.take(9))
+    } on e: Str {
+        trace(e)
+    }
+    trace(a.balance)
+
+    // a throw in an if-expression, an unread message, nested tries
+    try {
+        trace(pick(true))
+        trace(pick(false))
+    } on ignored: Str {
+        trace("caught, the message unread")
+    }
+    try {
+        try {
+            throw "inner"
+        } on e: Str {
+            trace("first ${e}")
+            throw "again"
+        }
+    } on e2: Str {
+        trace("second ${e2}")
+    }
+    trace(loop())
+
+    // Result
+    trace(describe(checked(4)))
+    trace(describe(checked(-3)))
+    r: Result<Int32, Str> = checked(10)
+    trace(r.isOk())
+    trace(r.isErr())
+    a.last = checked(-1)
+    trace(describe(a.last))
+    trace(describe(Account { "bo" }.last))
+}

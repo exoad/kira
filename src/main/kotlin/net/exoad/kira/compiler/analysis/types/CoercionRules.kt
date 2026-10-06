@@ -318,7 +318,8 @@ internal class CoercionRules(private val c: PhaseC) {
             }
             is Fit.No -> {
                 val base = "$what expects ${expected.display()}, but this is ${actual.display()}"
-                c.report(f.code, if (f.reason != null) "$base: ${f.reason}." else "$base.", e)
+                val reason = f.reason ?: CastPrecedence(c.program).hint(e)
+                c.report(f.code, if (reason != null) "$base: $reason." else "$base.", e)
                 false
             }
         }

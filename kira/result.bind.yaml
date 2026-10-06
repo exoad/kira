@@ -21,9 +21,9 @@ Maybe.isNull:   { cpp: { expr: "(!kira::isSome({self}))", pure: true, constexpr:
 Maybe.unwrap:   { cpp: { expr: "kira::unwrap({self})", pure: true, constexpr: true }, py: { expr: "_k_value({self})" } }
 Maybe.unwrapOr: { cpp: { expr: "kira::unwrapOr({self}, {0})", pure: true, constexpr: true }, py: { expr: "_k_or({self}, {0})" } }
 
-Result.isOk:      { cpp: { expr: "{self}.isOk()", pure: true } }
-Result.isErr:     { cpp: { expr: "{self}.isErr()", pure: true } }
-Result.unwrap:    { cpp: { expr: "{self}.unwrap()", pure: true } }
-Result.unwrapErr: { cpp: { expr: "{self}.unwrapErr()", pure: true } }
+Result.isOk:      { cpp: { expr: "{self}.isOk()", pure: true }, py: { expr: "{self}[0]" } }
+Result.isErr:     { cpp: { expr: "{self}.isErr()", pure: true }, py: { expr: "(not {self}[0])" } }
+Result.unwrap:    { cpp: { expr: "{self}.unwrap()", pure: true }, py: { expr: "_k_unwrap({self})" } }
+Result.unwrapErr: { cpp: { expr: "{self}.unwrapErr()", pure: true }, py: { expr: "_k_unwrap_err({self})" } }
 
 Weak.upgrade:     { cpp: { expr: "{self}.lock()", pure: true } }

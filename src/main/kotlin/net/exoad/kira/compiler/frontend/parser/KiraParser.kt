@@ -82,10 +82,20 @@ class KiraParser(private val context: SourceContext) {
      */
     fun parse() {
         val statements = mutableListOf<Statement>()
-        while (!at(Token.Type.S_EOF)) {
-            statements.add(parseStatement(null))
+        try {
+            while (!at(Token.Type.S_EOF)) {
+                statements.add(parseStatement(null))
+            }
+        } catch (_: StackOverflowError) {
+            Diagnostics.panic(
+                "KiraParser::parse",
+                "This nests too deeply to parse; split it into smaller expressions or declarations.",
+                context = context,
+                location = here(),
+                selectorLength = max(1, peek().content.length)
+            )
         }
-        if (statements.first().expr !is ModuleDecl) {
+        if (statements.firstOrNull()?.expr !is ModuleDecl) {
             Diagnostics.panic(
                 "KiraParser::parse",
                 "The first declaration of ${context.file} must be a module declaration!",
@@ -640,20 +650,28 @@ class KiraParser(private val context: SourceContext) {
             if (binaryOpType == null || binaryOpType.precedence < minPrecedence) {
                 break
             }
+            val opAt = here()
             repeat(binOpTokens.size) {
                 advancePointer() // consume the operators
             }
             // the following binary operators require special parsing of the right hand side so they are put before the others
             if (binaryOpType == BinaryOp.TYPE_CHECK) {
-                val right = parseType()
-                return putOrigin(TypeCheckExpr(left, right), origin)
+                left = putOrigin(TypeCheckExpr(left, parseType()), origin)
+                continue
             }
             if (binaryOpType == BinaryOp.TYPE_CAST) {
-                val right = parseType()
-                return putOrigin(TypeCastExpr(left, right), origin)
+                left = castOf(left, origin, opAt)
+                continue
             }
             val nextMinPrecedence = binaryOpType.precedence + 1
-            val right = parseExpr(nextMinPrecedence)
+            val rightOrigin = here()
+            var right = parseExpr(nextMinPrecedence)
+            // `..` binds looser than `as`: 0..n as Int64 is 0..(n as Int64).
+            while (binaryOpType == BinaryOp.RANGE && at(Token.Type.K_AS)) {
+                val asAt = here()
+                advancePointer()
+                right = castOf(right, rightOrigin, asAt)
+            }
             left = when (binaryOpType) {
                 BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
                 BinaryOp.RANGE -> RangeExpr(left, right)
@@ -661,6 +679,22 @@ class KiraParser(private val context: SourceContext) {
             }
         }
         return putOrigin(left, origin)
+    }
+
+    /** `operand as Type`, with the pointer just past the `as` at [asAt]. */
+    private fun castOf(operand: Expr, origin: SourcePosition, asAt: SourcePosition): Expr {
+        if (at(Token.Type.IDENTIFIER) && peek(1).type == Token.Type.S_OPEN_ANGLE && typeArgumentsEnd(1) == null) {
+            val type = peek().content
+            Diagnostics.panic(
+                "KiraParser::parseExpr",
+                "The '<' after 'as $type' opens $type's type arguments, so it is not a comparison here.\n\n" +
+                    "Help: put the cast in parentheses: (... as $type) < ...",
+                location = asAt,
+                selectorLength = 3 + type.length,
+                context = context
+            )
+        }
+        return putOrigin(TypeCastExpr(operand, parseType()), origin)
     }
 
     /**
@@ -740,41 +774,35 @@ class KiraParser(private val context: SourceContext) {
         return expr
     }
 
-    /**
-     * True when `<...>` at the current pointer is a call-site type-argument list
-     * (`foo<T>(...)`), not a less-than comparison. Requires the matching `>` to be
-     * followed immediately by `(`.
-     */
-    private fun looksLikeGenericCall(): Boolean {
-        if (!at(Token.Type.S_OPEN_ANGLE)) {
-            return false
+    /** `foo<T>(...)`, not a comparison: type arguments at the pointer, then `(`. */
+    private fun looksLikeGenericCall(): Boolean =
+        typeArgumentsEnd(0)?.let { peek(it + 1).type == Token.Type.S_OPEN_PARENTHESIS } ?: false
+
+    /** The offset of the `>` closing the `<` at [start], when every token between can be part of a type argument. */
+    private fun typeArgumentsEnd(start: Int): Int? {
+        if (peek(start).type != Token.Type.S_OPEN_ANGLE) {
+            return null
         }
         var depth = 0
-        // TokenBuffer only allows peeks inside its window (size 16). Stay inside
-        // that window: offsets 0..14, and check offset+1 for the following '('.
-        val maxOffset = 14
-        var i = 0
-        while (i <= maxOffset) {
+        var i = start
+        while (true) {
             when (peek(i).type) {
                 Token.Type.S_OPEN_ANGLE -> depth++
-                Token.Type.S_CLOSE_ANGLE -> {
-                    depth--
-                    if (depth == 0) {
-                        // Need one more token for the '(' check.
-                        if (i + 1 > maxOffset + 1) {
-                            return false
-                        }
-                        // i+1 is at most 15 -- still inside the window.
-                        return peek(i + 1).type == Token.Type.S_OPEN_PARENTHESIS
-                    }
-                }
-                Token.Type.S_EOF -> return false
-                else -> {}
+                Token.Type.S_CLOSE_ANGLE -> if (--depth == 0) return i
+                in typeArgumentTokens -> {}
+                else -> return null
             }
             i++
         }
-        return false
     }
+
+    private val typeArgumentTokens = setOf(
+        Token.Type.IDENTIFIER,
+        Token.Type.S_COMMA,
+        Token.Type.L_INTEGER,
+        Token.Type.K_MODIFIER_MUTABLE,
+        Token.Type.S_COLON,
+    )
 
     /** Parse `<T, U>` type-argument list; pointer must be on `<`. */
     private fun parseTypeArgumentList(): List<Type> {
@@ -935,6 +963,7 @@ class KiraParser(private val context: SourceContext) {
                 advancePointer()
                 val expr = withNoObjectInit(false) { parseExpr() }
                 expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+                context.astParenthesized.add(expr)
                 expr
             }
 
@@ -1000,7 +1029,8 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         val operatorToken = peek()
         expectAnyOfThenAdvance(UnaryOp.entries.map { it.tokenType }.toTypedArray())
-        val operand = parseExpr(UnaryOp.NEG.precedence)
+        // `as` shares this precedence but binds looser: -x as T is (-x) as T.
+        val operand = parseExpr(UnaryOp.NEG.precedence + 1)
         return putOrigin(UnaryExpr(UnaryOp.byTokenTypeMaybe(operatorToken.type) {
             Diagnostics.panic(
                 "UnaryOperator::byTokenTypeMaybe",

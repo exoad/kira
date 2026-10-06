@@ -4,7 +4,9 @@ import net.exoad.kira.Public
 import net.exoad.kira.compiler.backend.codegen.py.PyBinding
 import net.exoad.kira.compiler.backend.codegen.py.PyBindingTable
 import net.exoad.kira.compiler.backend.codegen.py.PyModuleEmitter
+import net.exoad.kira.compiler.backend.codegen.py.PyNames
 import net.exoad.kira.compiler.backend.codegen.py.PyRuntime
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
@@ -546,7 +548,7 @@ class PyEmitterTest {
             """
         )
         assertTrue(py.contains("return (48 <= ord(s[i]) <= 57) or (c in _k_spaces) or (120 in _k_letters)"), py)
-        assertTrue(py.contains("_k_spaces = frozenset((9, 10, 11, 12, 13, 32))") && py.contains("_k_letters = frozenset("), py)
+        assertTrue(py.contains("_k_spaces = _k_builtins.frozenset((9, 10, 11, 12, 13, 32))") && py.contains("_k_letters = _k_builtins.frozenset("), py)
     }
 
     @Test
@@ -667,7 +669,7 @@ class PyEmitterTest {
             """
         )
         assertTrue(py.contains("_SEP = 58"), "a Char constant is its code:\n$py")
-        assertTrue(py.contains("        self.last = 120\n        self.none = 0"), "a Char's zero value is 0:\n$py")
+        assertTrue(py.contains("        self.last = 120 if last is _k_unset else last\n        self.none = 0 if none is _k_unset else none"), "a Char's zero value is 0:\n$py")
         assertTrue(py.contains("return ord(s[i]) >= 48 and ord(s[i]) <= 57 and ord(s[i]) != _SEP"), py)
         assertTrue(py.contains("return _k_i32(c - 48)"), "an integer type that holds every code point takes the code as it is:\n$py")
         assertTrue(py.contains("return _k_u8(c)"), "a narrower one wraps it:\n$py")
@@ -741,7 +743,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("class Meter:"), py)
         assertTrue(py.contains("__slots__ = (\"start\", \"_scale\", \"reading\", \"_ticks\")"), py)
-        assertTrue(py.contains("def __init__(self, start, scale):"), py)
+        assertTrue(py.contains("def __init__(self, start, scale, reading=_k_unset):"), py)
         assertTrue(py.contains("def tick(self):"), py)
         assertTrue(py.contains("def _hidden(self):"), py)
         assertTrue(py.contains("def _helper():"), py)
@@ -818,7 +820,7 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("    def __init__(self):\n        global _made\n        self.id = 0\n        _made = _k_i32(_made + 1)\n        self.id = _made"), py)
+        assertTrue(py.contains("    def __init__(self, id=_k_unset):\n        global _made\n        self.id = 0 if id is _k_unset else id\n        _made = _k_i32(_made + 1)\n        self.id = _made"), py)
     }
 
     @Test
@@ -1198,7 +1200,7 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("        self.data = bytearray()\n        self.words = [0] * 3"), py)
+        assertTrue(py.contains("        self.data = bytearray() if data is _k_unset else bytearray(data)\n        self.words = [0] * 3 if words is _k_unset else list(words)"), py)
         assertTrue(py.contains("    out = bytearray((255, 216))\n    one = bytearray((7,))\n    ints = [1, 2]\n    p = bytearray(4)\n    p[1] = 3"), py)
         assertTrue(py.contains("    copy = bytearray(a)"), "a List made from an Arr copies it:\n$py")
         assertTrue(py.contains("    out.extend(_k_copy(xs))\n    out.extend(_k_copy(a))"), py)
@@ -1344,6 +1346,55 @@ class PyEmitterTest {
     }
 
     @Test
+    fun everyBuiltinTheRuntimeOrABindingNamesIsOneNoKiraNameCanTake() {
+        assumeTrue(PyTestSupport.python != null, "no Python on PATH (set KIRA_PYTHON)")
+        val table = PyBindingTable().apply { loadDir(File(PyTestSupport.repoRoot, "kira").toPath()) }
+        val bindings = File(PyTestSupport.repoRoot, "build/tmp/py-builtins/bindings.py").apply { parentFile.mkdirs() }
+        bindings.writeText(
+            table.all().values.flatMap { listOfNotNull(it.expr, it.place, it.statement) }
+                .joinToString("\n", postfix = "\n") { it.replace(PyBinding.PLACEHOLDER, "_k_a").replace("{list}", "list") }
+        )
+        val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").toPath()
+        assertEquals(emptyList(), PyTestSupport.unreservedBuiltins(listOf(runtime, bindings.toPath()), PyNames.RESERVED))
+    }
+
+    @Test
+    fun aStructsCloneAndAUseCycleNameNoBuiltinAKiraNameCouldShadow() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "app:main" to """
+                use "app:other"
+
+                pub globals: Int32 = 5
+                pub mut type: Int32 = 3
+
+                pub struct Pt {
+                    pub x: Int32 = 0
+                }
+
+                pub fx main: () Int32 {
+                    a: Pt = Pt { 1 }
+                    mut b: Pt = a
+                    b.x = type
+                    return globals + o() + b.x
+                }
+                """,
+            "app:other" to """
+                use "app:main"
+
+                pub fx o: () Int32 {
+                    return 1
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("        c = object.__new__(self.__class__)"), main)
+        assertTrue(main.contains("_k_self()\n_k_m_app_other = _k_use("), main)
+        assertTrue(main.contains("    g = _k_self.__globals__"), main)
+        assertTrue(main.contains("if __name__ == \"__main__\":\n    _k_exit(main())"), main)
+    }
+
+    @Test
     fun theRuntimeComesFromBesideTheProgramsStdlibNotFromAProcessWideSetting() {
         // Another test in the same JVM may leave the stdlib registry pointing anywhere (the full
         // suite did: every emit here then failed on a missing runtime.py).
@@ -1365,12 +1416,110 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aRangeIsPythonsRangeAndAListThatMayBeWrittenIsWalkedAsACopy() {
+        val py = python(
+            """
+            mut log: List<Int32> = List<Int32> { }
+
+            class Bag {
+                require pub items: List<Int32>
+
+                pub fx total: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
+                    mut t: Int32 = 0
+                    for x: Int32 in items {
+                        trace(x)
+                    }
+                    for x: Int32 in xs {
+                        trace(x)
+                    }
+                    for y: Int32 in ys {
+                        trace(y)
+                    }
+                    for g: Int32 in log {
+                        trace(g)
+                    }
+                    for k: Int32 in items {
+                        t += k
+                    }
+                    for h: Int32 in log {
+                        t += h
+                    }
+                    return t
+                }
+            }
+
+            fx f: (n: Size, v: View<UInt8>) UInt32 {
+                mut t: UInt32 = 0
+                for i: Size in 1..n {
+                    t += i as UInt32
+                }
+                for b: UInt8 in v {
+                    t += b as UInt32
+                }
+                return t
+            }
+            """
+        )
+        assertTrue(py.contains("for i in range(1, n):"), py)
+        assertTrue(py.contains("for b in v:"), py)
+        assertTrue(py.contains("for x in list(self.items):"), py)
+        assertTrue(py.contains("for x in xs:"), py)
+        assertTrue(py.contains("for y in list(ys):"), py)
+        assertTrue(py.contains("for g in list(_log):"), py)
+        // A body that only reads walks any range in place, as C++ lends it.
+        assertTrue(py.contains("for k in self.items:"), py)
+        assertTrue(py.contains("for h in _log:"), py)
+    }
+
+    @Test
+    fun aDefaultIsTheDefsOwnWhenItFoldsAndAPubFieldIsAKeywordOfInit() {
+        val py = python(
+            """
+            pub ROW: List<Int32> = [1, 2]
+
+            class Knob {
+                require pub name: Str
+                pub mut level: Int32 = 3
+                pub mut tags: List<Int32> = List<Int32> { }
+                mut hidden: Int32 = 9
+            }
+
+            class Pair {
+                require pub left: Knob
+            }
+
+            fx scale: (x: Int32, k: Int32 = 2, s: Str = "a", m: Maybe<Int32> = null) Int32 {
+                return x * k
+            }
+
+            fx total: (xs: List<Int32> = ROW, extra: Int32 = 0) Size {
+                return xs.size()
+            }
+
+            fx f: () Int32 {
+                a: Knob = Knob { "a" }
+                b: Knob = Knob { "b", 4 }
+                return scale(1) + scale(1, k = 5) + (total() as Int32) + a.level + b.level
+            }
+            """
+        )
+        assertTrue(py.contains("def _scale(x, k=2, s=\"a\", m=None):"), py)
+        assertTrue(py.contains("def _total(xs, extra=0):"), py)
+        assertTrue(py.contains("def __init__(self, name, level=_k_unset, tags=_k_unset):"), py)
+        assertTrue(py.contains("    def __init__(self, left):\n        self.left = left"), py)
+        assertTrue(py.contains("        self.level = 3 if level is _k_unset else level\n        self.tags = [] if tags is _k_unset else list(tags)\n        self._hidden = 9"), py)
+        assertTrue(py.contains("a = _Knob(\"a\")\n    b = _Knob(name=\"b\", level=4)"), py)
+        assertTrue(py.contains("_scale(1) + _scale(1, k=5)"), py)
+        assertTrue(py.contains("_total(xs=ROW)"), py)
+    }
+
+    @Test
     fun theLadderLowersWithoutARefusal() {
         val ladder = File(PyTestSupport.repoRoot, "src/test/resources/py-golden/ladder/src/firmware/pilot/tools/dash/ladder.kira").readText()
         val e = PyTestSupport.emit(ladder.substringAfter('\n'), uri = "firmware:pilot.tools.dash.ladder")
         val py = e.python()
         assertTrue(py.contains("class Ladder:"), py)
-        assertTrue(py.contains("def __init__(self, level, top):"), py)
+        assertTrue(py.contains("def __init__(self, level, top, verdict=_k_unset):"), py)
         assertTrue(py.contains("def update(self, deliveredKbs, offeredKbs, ageMs, dropped, nowS, fps):"), py)
         assertEquals(emptyList(), e.errors)
     }
@@ -1431,16 +1580,33 @@ class PyEmitterTest {
     }
 
     @Test
-    fun anEnumIsRefused() {
-        refused(
+    fun anEnumIsANamespaceOfItsEntriesCppValues() {
+        val py = python(
             """
-            enum Mode {
+            pub enum Mode {
                 A,
-                B
+                B = 5,
+                C = 5
             }
-            """,
-            "the enum Mode",
+
+            enum Tint: Str {
+                RED = "red"
+            }
+
+            fx f: (m: Mode, t: Tint) Str {
+                n: Maybe<Mode> = enumOf<Mode>(5)
+                if m == Mode.C && t != Tint.RED && n.isSome() {
+                    trace(m)
+                }
+                return "${'$'}{m} ${'$'}{t} ${'$'}{m as Int32}"
+            }
+            """
         )
+        assertTrue(py.contains("class Mode:\n    A = 0\n    B = 5\n    C = 5\n    _k_names = {0: \"A\", 5: \"B\"}\n    _k_order = (0, 5, 5)"), py)
+        assertTrue(py.contains("class _Tint:\n    RED = 0\n    _k_names = {0: \"red\"}\n    _k_order = (0,)"), py)
+        assertTrue(py.contains("n = _k_enumof(Mode._k_order, 5)"), py)
+        assertTrue(py.contains("if m == Mode.C and t != _Tint.RED and (n is not None):\n        print(m)"), py)
+        assertTrue(py.contains("return Mode._k_names.get(m, \"\") + \" \" + _Tint._k_names.get(t, \"\") + \" \" + str(m)"), py)
     }
 
     @Test
@@ -1468,28 +1634,160 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aForLoopIsRefused() {
+    fun theLegacyForLoopIsRefused() {
         refused(
             """
             fx f: () Void {
-                for i: Int32 in 0..3 {
+                for mut i: 0..3 {
                     trace(i)
                 }
             }
             """,
-            "a for loop (write it as a while loop)",
+            "the legacy `for mut i: ...` loop",
         )
     }
 
     @Test
-    fun aMutParameterOtherThanAListOrAMapIsRefused() {
+    fun aLoopVariableThatShadowsALocalIsRefused() {
+        refused(
+            """
+            fx f: () Void {
+                i: Int32 = 0
+                if i == 0 {
+                    for i: Int32 in 0..3 {
+                        trace(i)
+                    }
+                }
+            }
+            """,
+            "a loop variable 'i' that shadows a local of its name",
+        )
+    }
+
+    @Test
+    fun aStructIsCopiedWhereASecondNameCouldSeeAWrite() {
+        val py = python(
+            """
+            pub struct Pt {
+                pub x: Int32 = 0
+                pub tags: List<Int32> = List<Int32> { }
+
+                pub fx me: () Pt {
+                    return this
+                }
+            }
+
+            fx move: (mut p: Pt) Void {
+                p = Pt { 1 }
+            }
+
+            fx f: (q: Pt) Int32 {
+                mut ps: List<Pt> = List<Pt> { }
+                ps.add(q)
+                mut a: Pt = ps[0]
+                move(mut a)
+                ps[0] = a
+                b: Maybe<Pt> = a
+                return a.x + ps.get(0).x
+            }
+            """
+        )
+        assertTrue(py.contains("    def _k_clone(self):\n        c = object.__new__(self.__class__)\n        c.x = self.x\n        c.tags = list(self.tags)\n        return c"), py)
+        assertTrue(py.contains("    def _k_set(self, o):\n        self.x = o.x\n        self.tags = o.tags"), py)
+        assertTrue(py.contains("        return self._k_clone()"), py)
+        assertTrue(py.contains("    p._k_set(Pt(x=1))"), py)
+        assertTrue(py.contains("    ps.append(q._k_clone())\n    a = ps[0]._k_clone()\n    _move(a)\n    ps[0] = a._k_clone()\n    b = a._k_clone()"), py)
+    }
+
+    @Test
+    fun aListOfStructsIsCopiedThroughMapSoACopyOfATreeCostsOneFramePerLevel() {
+        val py = python(
+            """
+            pub struct Node {
+                pub v: Int32 = 0
+                pub kids: List<Node> = List<Node> { }
+            }
+
+            fx f: (n: Node) Node {
+                mut q: Queue<Node> = Queue<Node> { }
+                q.enqueue(n)
+                mut more: Queue<Node> = q
+                return n
+            }
+            """
+        )
+        assertTrue(py.contains("        c.kids = list(_k_map(Node._k_clone, self.kids))"), py)
+        assertTrue(py.contains("    more = _k_collections.deque(_k_map(Node._k_clone, q))"), py)
+        assertTrue(py.contains("_k_map = _k_builtins.map"), py)
+    }
+
+    @Test
+    fun aStructComparedByEqualsOrContainsHasTheMemberwiseEqCppDefaults() {
+        val py = python(
+            """
+            pub struct Pt {
+                pub x: Int32 = 0
+                pub y: Int32 = 0
+            }
+
+            pub struct Seg {
+                pub a: Pt = Pt { }
+                pub tags: List<Int32> = List<Int32> { }
+            }
+
+            pub struct Other {
+                pub x: Int32 = 0
+            }
+
+            fx f: (xs: List<Pt>, s: Seg, t: Seg, o: Other) Bool {
+                return xs.contains(Pt { 1 }) && s != t && o.x == 0
+            }
+            """
+        )
+        assertTrue(py.contains("    def __eq__(self, o):\n        return self.x == o.x and self.y == o.y"), py)
+        assertTrue(py.contains("    def __eq__(self, o):\n        return self.a == o.a and self.tags == o.tags"), py)
+        assertEquals(2, Regex("def __eq__").findAll(py).count(), "Other is never compared:\n$py")
+        assertTrue(py.contains("_k_contains(xs, Pt(x=1)) and s != t"), py)
+    }
+
+    @Test
+    fun aLoopVariableIsCopiedWhereItIsReturnedAsCppCopiesItsConstReference() {
+        val py = python(
+            """
+            pub struct Pt {
+                pub x: Int32 = 0
+            }
+
+            fx first: (xs: List<Pt>) Pt {
+                for p: Pt in xs {
+                    return p
+                }
+                return Pt { }
+            }
+
+            fx row: (v: View<List<Int32>>, c: Bool) List<Int32> {
+                for r: List<Int32> in v {
+                    return if c { r } else { List<Int32> { } }
+                }
+                mut own: List<Int32> = List<Int32> { }
+                return own
+            }
+            """
+        )
+        assertTrue(py.contains("    for p in xs:\n        return p._k_clone()"), py)
+        assertTrue(py.contains("        return list(r if c else [])"), py)
+        assertTrue(py.contains("    return own\n"), "a local that owns its value is returned as itself:\n$py")
+    }
+
+    @Test
+    fun aMutParameterOtherThanAListAMapOrAStructIsRefused() {
         refused(
             """
             fx f: (mut x: Int32) Void {
                 x = 1
             }
             """,
-            "the mut parameter 'x': Int32 (only a List or a Map is passed by reference)",
+            "the mut parameter 'x': Int32 (only a List, a Map or a struct is passed by reference)",
         )
     }
 
@@ -1589,19 +1887,18 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aValueGivenToADefaultedFieldIsRefused() {
+    fun aValueGivenToAPrivateFieldAtAConstructionIsRefused() {
         refused(
             """
             class Box {
-                pub v: Int32 = 0
-            }
+                hidden: Int32 = 0
 
-            fx f: () Int32 {
-                b: Box = Box { v = 3 }
-                return b.v
+                pub fx again: () Box {
+                    return Box { hidden = 3 }
+                }
             }
             """,
-            "a value given to the defaulted field 'v'",
+            "a value given to the private field 'hidden' at a construction",
         )
     }
 
@@ -1661,15 +1958,102 @@ class PyEmitterTest {
     }
 
     @Test
-    fun printOtherThanTraceIsRefused() {
-        refused(
+    fun printPrintlnEprintAndExitAreTracesFormatOnTheirStreams() {
+        val py = python(
             """
-            fx f: () Void {
-                print("x")
+            use "kira:io"
+            use "kira:os"
+
+            fx f: (ok: Bool) Void {
+                print(ok)
+                println(2.5)
+                eprint("e")
+                assert(ok, "bad")
+                exit(3)
             }
-            """,
-            "'print' (only trace prints on the py target)",
+            """
         )
+        assertTrue(py.contains("    print(1 if ok else 0, end=\"\")\n    print(_k_gtext(2.5))\n"), py)
+        assertTrue(py.contains("    print(\"e\", end=\"\", file=_k_sys.stderr, flush=True)\n    _k_assert(ok, \"bad\")\n    _k_exit(3)"), py)
+        assertTrue(py.contains("import sys as _k_sys"), py)
+        assertTrue(py.contains("raise _k_builtins.SystemExit(code)"), py)
+    }
+
+    @Test
+    fun aThrowRaisesTheOneErrorClassATryCatchesAndAResultIsATuple() {
+        val py = python(
+            """
+            fx parse: (s: Str) Int64 {
+                v: Maybe<Int64> = s.toInt64()
+                if v.isNone() {
+                    throw "bad ${'$'}{s}"
+                }
+                return v.unwrap()
+            }
+
+            fx pick: (ok: Bool) Int32 {
+                return if ok { 1 } else { throw "no" }
+            }
+
+            fx check: (x: Int32) Result<Int32, Str> {
+                if x < 0 {
+                    return Result.error("negative")
+                }
+                return Result.success(x)
+            }
+
+            fx f: () Int64 {
+                try {
+                    return parse("x")
+                } on e: Str {
+                    trace(e)
+                }
+                r: Result<Int32, Str> = check(1)
+                if r.isOk() && !r.isErr() {
+                    return (r.unwrap() + r.value) as Int64
+                }
+                trace(r.unwrapErr())
+                return -1
+            }
+            """
+        )
+        assertTrue(py.contains("        raise _k_Error(\"bad \" + s)"), py)
+        assertTrue(py.contains("    return 1 if ok else _k_throw(\"no\")"), py)
+        assertTrue(py.contains("    try:\n        return _parse(\"x\")\n    except _k_Error as _k_t0:\n        e = _k_t0.args[0]\n        print(e)"), py)
+        assertTrue(py.contains("return (False, \"negative\")"), py)
+        assertTrue(py.contains("return (True, x)"), py)
+        assertTrue(py.contains("if r[0] and not (not r[0]):"), py)
+        assertTrue(py.contains("_k_i32(_k_unwrap(r) + _k_unwrap(r))"), py)
+        assertTrue(py.contains("print(_k_unwrap_err(r))"), py)
+        assertTrue(py.contains("_k_Error = _k_errors()"), py)
+    }
+
+    @Test
+    fun aTupleIsAPythonTupleOfCopiesAndMapEntriesAreItsItems() {
+        val py = python(
+            """
+            use "kira:tuples"
+
+            fx f: (xs: List<Int32>, m: Map<Str, Int32>) Int32 {
+                t: Tuple3<Str, List<Int32>, Int32> = Tuple3<Str, List<Int32>, Int32> { "a", xs, 2 }
+                mut inner: List<Int32> = t.second
+                inner.add(t.size())
+                es: Arr<Tuple2<Str, Int32>> = m.entries()
+                built: Map<Str, Int32> = Map<Str, Int32> { values = es }
+                for e: Tuple2<Str, Int32> in m {
+                    trace(e.first)
+                }
+                r: Result<List<Int32>, Str> = Result.success(xs)
+                return t.third + es[0].second + (built.size() as Int32) + (r.unwrap().size() as Int32)
+            }
+            """
+        )
+        assertTrue(py.contains("t = (\"a\", list(xs), 2)"), py)
+        assertTrue(py.contains("inner = list(t[1])\n    inner.append(3)"), py)
+        assertTrue(py.contains("es = list(m.items())\n    built = dict(list(es))"), py)
+        assertTrue(py.contains("for e in m.items():\n        print(e[0])"), py)
+        assertTrue(py.contains("r = (True, list(xs))"), py)
+        assertTrue(py.contains("t[2] + es[0][1]"), py)
     }
 
     @Test
@@ -1686,8 +2070,8 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMapKeyedByAClassOrAnEnumIsRefused() {
-        refused(
+    fun aMapKeyedByAClassIsTheTypersError() {
+        val e = PyTestSupport.emit(
             """
             class Box {
                 pub v: Int32 = 0
@@ -1696,88 +2080,98 @@ class PyEmitterTest {
             fx f: (m: Map<Box, Int32>) Size {
                 return m.size()
             }
-            """,
-            "a Map<Box, Int32> (a Map's key is a Str, an integer, a Bool or a Char)",
+            """
         )
+        assertNull(e.text)
+        assertTrue(e.errors.any { it.contains("types.type.key") }, e.errors.joinToString("\n"))
+        assertTrue(e.errors.none { it.contains(PyModuleEmitter.UNSUPPORTED_CODE) }, e.errors.joinToString("\n"))
+    }
+
+    @Test
+    fun containersOfContainersAreCopiedDeeply() {
+        val py = python(
+            """
+            fx f: (m: Map<Str, List<UInt8>>, g: List<List<Int32>>) Size {
+                mut h: List<List<Int32>> = g
+                mut row: List<Int32> = g[0]
+                h.add(row)
+                mut copy: Map<Str, List<UInt8>> = m
+                o: Maybe<List<Int32>> = row
+                vs: Arr<List<UInt8>> = m.valuesArr()
+                return copy.size() + h.size() + vs.size() + o.unwrap().size()
+            }
+            """
+        )
+        assertTrue(py.contains("h = [list(_k_e0) for _k_e0 in g]\n    row = list(g[0])\n    h.append(list(row))"), py)
+        assertTrue(py.contains("copy = {_k_k0: bytearray(_k_v0) for _k_k0, _k_v0 in m.items()}"), py)
+        assertTrue(py.contains("o = list(row)"), py)
+        assertTrue(py.contains("vs = [bytearray(_k_e0) for _k_e0 in list(m.values())]"), py)
+    }
+
+    @Test
+    fun aMaybeOfAMaybeIsRefusedWhereAMapOfMaybesGivesOne() {
         refused(
             """
-            enum Gear {
-                LOW,
-                HIGH
-            }
-
-            fx f: (m: Map<Gear, Int32>) Size {
-                return m.size()
+            fx f: (m: Map<Str, Maybe<Int32>>) Bool {
+                return m.get("a").isSome()
             }
             """,
-            "the enum Gear",
+            "a Maybe<Maybe<Int32>>",
         )
     }
 
     @Test
-    fun aMapOfAContainerOrAMaybeAndAContainerOfAMapAreRefused() {
-        refused(
+    fun aSetIsADictAndAStackAListAndAQueueOrDequeACollectionsDeque() {
+        val py = python(
             """
-            fx f: (m: Map<Str, List<UInt8>>) Size {
-                return m.size()
+            fx f: (q: Queue<Int32>) Int32 {
+                mut s: Set<Str> = Set<Str> { }
+                added: Bool = s.add("a")
+                mut st: Stack<Int32> = Stack<Int32> { }
+                st.push(1)
+                mut d: Deque<Int32> = Deque<Int32> { }
+                d.pushFront(2)
+                mut copy: Queue<Int32> = q
+                copy.enqueue(3)
+                return st.pop().unwrapOr(0) + d.popBack().unwrapOr(0) + copy.dequeue().unwrapOr(0)
             }
-            """,
-            "a Map<Str, List<UInt8>> (a Map's value is no Maybe, List, Arr, view or Map)",
+            """
         )
+        assertTrue(py.contains("s = {}\n    added = _k_setadd(s, \"a\")\n    st = []\n    st.append(1)\n    d = _k_collections.deque()\n    d.appendleft(2)\n    copy = _k_collections.deque(q)\n    copy.append(3)"), py)
+        assertTrue(py.contains("_k_or(_k_pop(st), 0)"), py)
+        assertTrue(py.contains("_k_or(_k_popleft(copy), 0)"), py)
+        assertTrue(py.contains("import collections as _k_collections"), py)
+    }
+
+    @Test
+    fun aSetOfFloatsIsRefusedAsAMapKeyedByOneIs() {
         refused(
             """
-            fx f: (m: Map<Str, Map<Str, Int32>>) Size {
-                return m.size()
+            fx f: (s: Set<Float64>) Size {
+                return s.size()
             }
             """,
-            "a Map<Str, Map<Str, Int32>> (a Map's value is no Maybe, List, Arr, view or Map)",
-        )
-        refused(
-            """
-            fx f: (m: Map<Str, Maybe<Int32>>) Size {
-                return m.size()
-            }
-            """,
-            "a Map<Str, Maybe<Int32>> (a Map's value is no Maybe, List, Arr, view or Map)",
-        )
-        refused(
-            """
-            fx f: (ms: List<Map<Str, Int32>>) Size {
-                return ms.size()
-            }
-            """,
-            "a List<Map<Str, Int32>> (Python would share the Map inside it, which Kira copies)",
-        )
-        refused(
-            """
-            fx f: (ms: Arr<Map<Str, Int32>>) Size {
-                return ms.size()
-            }
-            """,
-            "the parameter 'ms': an Arr<Map<Str, Int32>> (Python would share the Map inside it, which Kira copies)",
+            "a Set<Float64> (a float key: a NaN key differs between kira::Map and a dict)",
         )
     }
 
     @Test
-    fun aMapsEntriesAndAMapBuiltFromEntriesAreRefusedAsATuple2IsNotOnThePyTarget() {
-        refused(
-            """
-            fx f: (m: Map<Str, Int32>) Size {
-                return m.entries().size()
-            }
-            """,
-            "Map.entries (a Tuple2 is not on the py target: read keys() and get(k))",
-        )
+    fun aTupleWrittenOutOfOrderWithEffectsIsRefused() {
         refused(
             """
             use "kira:tuples"
 
-            fx f: () Size {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = [Tuple2<Str, Int32> { first = "a", second = 1 }] }
-                return m.size()
+            fx two: () Int32 {
+                trace("two")
+                return 2
+            }
+
+            fx f: () Int32 {
+                t: Tuple2<Int32, Int32> = Tuple2<Int32, Int32> { second = two(), first = 1 }
+                return t.first
             }
             """,
-            "a Map construction with entries (a Tuple2 is not on the py target: put each one)",
+            "a Tuple whose values, written out of their order, have effects",
         )
     }
 
@@ -1810,14 +2204,130 @@ class PyEmitterTest {
         )
     }
 
+
+    // ---- programs of several modules ----------------------------------------------------------
+
     @Test
-    fun aUseOfAnotherWorkspaceModuleIsRefused() {
-        val unit = net.exoad.kira.types.TyperTestSupport.unitOf(
-            net.exoad.kira.types.TyperTestSupport.module("test:lib", "pub fx one: () Int32 {\n    return 1\n}"),
-            net.exoad.kira.types.TyperTestSupport.module("test:main", "use \"test:lib\"\n\nfx f: () Int32 {\n    return lib.one()\n}"),
+    fun aUsedModuleIsLoadedByItsPathAndNamedThroughItsModuleObject() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "lib:units" to """
+                pub SCALE: Int32 = 10
+                pub mut calls: Int32 = 0
+
+                pub class Meter {
+                    require pub label: Str
+
+                    pub fx scaled: (x: Int32) Int32 {
+                        return x * SCALE
+                    }
+                }
+
+                pub fx bump: () Int32 {
+                    calls += 1
+                    return calls
+                }
+                """,
+            "app:main" to """
+                use "lib:units"
+
+                fx f: () Int32 {
+                    m: Meter = Meter { "a" }
+                    calls = 5
+                    units.calls = units.calls + 1
+                    return m.scaled(bump()) + units.bump() + SCALE
+                }
+                """,
         )
-        val (diagnostics, _) = net.exoad.kira.compiler.backend.codegen.py.KiraPyBackend.plan(unit, PyTestSupport.repoRoot.toPath(), version = "test")
-        val errors = diagnostics.filter { it.isError }.map { it.render() }
-        assertTrue(errors.any { it.contains("a use of another module ('test:lib')") && it.contains(PyModuleEmitter.UNSUPPORTED_CODE) }, errors.joinToString("\n"))
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("_k_m_lib_units = _k_use(__file__, \"../lib/units.kira.py\")"), main)
+        assertTrue(main.contains("m = _k_m_lib_units.Meter(\"a\")"), main)
+        assertTrue(main.contains("    _k_m_lib_units.calls = 5\n    _k_m_lib_units.calls = _k_i32(_k_m_lib_units.calls + 1)"), main)
+        assertTrue(main.contains("return _k_i32(_k_i32(m.scaled(_k_m_lib_units.bump()) + _k_m_lib_units.bump()) + _k_m_lib_units.SCALE)"), main)
+        assertFalse(main.contains("global calls"), main)
+        assertFalse(main.contains("_k_self"), main)
+        val lib = py.getValue("lib:units")
+        assertFalse(lib.contains("_k_use"), lib)
+        assertTrue(lib.contains("def bump():\n    global calls"), lib)
+    }
+
+    @Test
+    fun aModuleInAUseCycleRegistersItselfBeforeItLoadsTheOther() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "app:even" to """
+                use "app:odd"
+
+                pub K: Int32 = 2
+
+                pub fx isEven: (n: Int32) Bool {
+                    return n == 0 || isOdd(n - 1)
+                }
+                """,
+            "app:odd" to """
+                use "app:even"
+
+                pub fx isOdd: (n: Int32) Bool {
+                    return n != 0 && isEven(n - 1)
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val even = py.getValue("app:even")
+        // Its constants first, so the module that uses it back reads them while it loads.
+        assertTrue(even.contains("K = 2\n\n\n_k_self()\n_k_m_app_odd = _k_use(__file__, \"odd.kira.py\")"), even)
+        assertTrue(even.contains("return n == 0 or _k_m_app_odd.isOdd(_k_i32(n - 1))"), even)
+        val odd = py.getValue("app:odd")
+        assertTrue(odd.contains("_k_self()\n_k_m_app_even = _k_use(__file__, \"even.kira.py\")"), odd)
+    }
+
+    @Test
+    fun aStdlibFunctionACarriedOneCallsIsCarriedToo() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "kira:extra" to """
+                pub fx inner: (v: Float64) Float64 {
+                    return v * 2.0
+                }
+
+                pub fx outer: (v: Float64) Float64 {
+                    return inner(v) + 1.0
+                }
+                """,
+            "app:main" to """
+                use "kira:extra"
+
+                pub fx f: (v: Float64) Float64 {
+                    return outer(v)
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("def _k_kira_extra_outer(v):\n    return _k_kira_extra_inner(v) + 1.0"), main)
+        assertTrue(main.contains("def _k_kira_extra_inner(v):"), main)
+    }
+
+    @Test
+    fun aKiraWrittenStdlibFunctionIsCarriedByTheModuleThatCallsIt() {
+        val py = python(
+            """
+            use "kira:math"
+            use "kira:os"
+
+            fx f: (x: Float64) Float64 {
+                return clamp(deg2rad(x), lerp(0.0, -1.0, 0.5), 1.0)
+            }
+
+            fx g: () Int32 {
+                return POLL_WRITE + SIGNAL_TERM
+            }
+            """
+        )
+        assertTrue(py.contains("def _k_kira_math_clamp(value, lo, hi):\n    return _k_max(lo, _k_min(value, hi))"), py)
+        assertTrue(py.contains("def _k_kira_math_deg2rad(degrees):"), py)
+        assertTrue(py.contains("def _k_kira_math_lerp(a, b, t):"), py)
+        assertFalse(py.contains("_k_kira_math_sign"), py)
+        assertTrue(py.contains("return _k_kira_math_clamp(_k_kira_math_deg2rad(x), _k_kira_math_lerp(0.0, -1.0, 0.5), 1.0)"), py)
+        assertTrue(py.contains("return _k_i32(2 + 15)"), py)
+        assertFalse(py.contains("_k_use"), py)
     }
 }

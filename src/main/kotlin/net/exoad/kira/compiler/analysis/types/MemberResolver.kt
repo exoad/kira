@@ -160,8 +160,7 @@ internal class MemberResolver(private val c: PhaseC) {
         }
     }
 
-    /** The Maybe API: the only members reachable on a `Maybe<T>` without unwrapping (D40). */
-    val maybeApi = setOf("isSome", "isNone", "isNull", "unwrap", "unwrapOr", "value")
+    val maybeApi = MAYBE_API
 
     /**
      * `a.b` as a value: an enum entry, a module's member, or a field. A method named without a
@@ -281,6 +280,9 @@ internal class MemberResolver(private val c: PhaseC) {
     }
 
     companion object {
+        /** The Maybe API: the only members reachable on a `Maybe<T>` without unwrapping (D40). */
+        val MAYBE_API = setOf("isSome", "isNone", "isNull", "unwrap", "unwrapOr", "value")
+
         private val CALLED_ON_THE_TYPE = setOf(
             "Result.success", "Result.error", "Str.of", "Json.parse", "Json.error", "Json.obj", "Json.arr", "Json.null", "Json.of",
         )

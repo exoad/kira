@@ -3,6 +3,7 @@ package net.exoad.kira.cli
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
+import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
 import net.exoad.kira.compiler.analysis.semantic.SemanticScope
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
@@ -187,7 +188,7 @@ fun main(args: Array<String>) {
             )
             val (_, duration) = measureTimedValue {
                 val lexer = KiraLexer(srcContext)
-                val tokens = lexer.tokenize()
+                val tokens = diagnosedOrExit { lexer.tokenize() }
                 srcContext = compilationUnit.addSource(
                     file.canonicalPath,
                     srcContext.content,
@@ -207,7 +208,7 @@ fun main(args: Array<String>) {
                     dumpFile!!.appendText(dumpSB.toString())
                     dumpSB.clear() // save on memory (so not everything is in dumpSB): problematic for large projects
                 }
-                KiraSourceParsers.from(srcContext).parse()
+                diagnosedOrExit { KiraSourceParsers.from(srcContext).parse() }
 
             }
             Diagnostics.Logging.info("Kira", "Parsed ${file.name} in $duration")
@@ -390,6 +391,13 @@ private fun outputPathIn(dir: String?, fileName: String): String {
     val directory = File(dir)
     directory.mkdirs()
     return File(directory, fileName).path
+}
+
+private inline fun <T> diagnosedOrExit(block: () -> T): T = try {
+    block()
+} catch (e: DiagnosticsException) {
+    Diagnostics.Logging.warn("Kira", "\n-- Diagnostic Report #1 ${Diagnostics.recordDiagnostics(e)}")
+    kotlin.system.exitProcess(1)
 }
 
 

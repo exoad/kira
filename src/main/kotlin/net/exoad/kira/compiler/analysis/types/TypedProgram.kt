@@ -53,6 +53,12 @@ class TypedProgram(
     /** The class a type's members come from (a builtin's magic class, or the nominal's own). */
     fun classOf(type: KType): ClassSymbol? = builtins.classOf(type)
 
+    val parenthesized: Set<ASTNode> by lazy {
+        val set = java.util.Collections.newSetFromMap(IdentityHashMap<ASTNode, Boolean>())
+        unit.allSources().forEach { set.addAll(it.astParenthesized) }
+        set
+    }
+
     private val sourceByNode: IdentityHashMap<ASTNode, SourceContext> by lazy {
         val map = IdentityHashMap<ASTNode, SourceContext>()
         unit.allSources().forEach { source ->

@@ -140,4 +140,105 @@ class NullSafetyTest {
             "isSome/isNone must remain callable, got: $messages"
         )
     }
+
+    @Test
+    fun aMaybeLocalDoesNotReachTheSameNameInAnotherFunction() {
+        val messages = diagnosticsFor(
+            """
+            fx first: () Void {
+                s: Maybe<Str> = null
+            }
+
+            fx second: (s: Str) Size {
+                mut b: Size = s.length()
+                trace(s.length())
+                c: Size = if b > 0 { s.length() } else { b }
+                return c
+            }
+            """,
+            "test:nullsafety.scope"
+        )
+
+        assertTrue(
+            messages.none { it.contains("not available on a 'Maybe'") },
+            "the Str parameter s is the s in scope, got: $messages"
+        )
+    }
+
+    @Test
+    fun valueAndIsNullAreTheMaybeApi() {
+        val messages = diagnosticsFor(
+            """
+            fx find: () Maybe<Str> {
+                return null
+            }
+
+            fx read: () Str {
+                m: Maybe<Str> = find()
+                if m.isNull() {
+                    return ""
+                }
+                x: Str = m.value
+                y: Bool = m.isNull()
+                return x
+            }
+            """,
+            "test:nullsafety.d40"
+        )
+
+        assertTrue(
+            messages.none { it.contains("not available on a 'Maybe'") },
+            "value and isNull are Maybe's own members (D40), got: $messages"
+        )
+    }
+
+    @Test
+    fun anIfExpressionBranchIsAScopeOfItsOwn() {
+        val messages = diagnosticsFor(
+            """
+            fx f: (c: Bool, s: Str) Size {
+                k: Size = if c {
+                    s: Maybe<Str> = null
+                    s.unwrapOr("zz").size()
+                } else {
+                    0
+                }
+                a: Size = if c {
+                    t: Maybe<Str> = null
+                    t.unwrapOr("zz").size()
+                } else {
+                    0
+                }
+                b: Size = if c {
+                    t: Str = "four"
+                    t.size()
+                } else {
+                    0
+                }
+                n: Size = s.size()
+                return n + k + a + b
+            }
+            """,
+            "test:nullsafety.branches"
+        )
+
+        assertTrue(messages.isEmpty(), "each branch's locals stay in the branch, got: $messages")
+    }
+
+    @Test
+    fun aMaybeParametersMisuseIsLeftToTheTyper() {
+        val messages = diagnosticsFor(
+            """
+            $pet
+
+            fx f: (p: Maybe<Pet>) Str {
+                q: Str = p.name
+                return q
+            }
+            """,
+            "test:nullsafety.param"
+        )
+
+        assertTrue(messages.none { it.contains("not available on a 'Maybe'") }, "the typer's types.maybe.member reports it, got: $messages")
+    }
 }

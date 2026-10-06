@@ -103,7 +103,7 @@ class RulesCorpusTest {
             assertEquals(if (name in reads) Effect.READS else Effect.IMPURE, p.model.effect(fn), name)
         }
         val model = p.model
-        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | (p[1] as UInt32) << 8", "pilot:unilidar")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | p[1] as UInt32 << 8", "pilot:unilidar")))
         assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "out.size as Size == buf.size()", "pilot:unilidar")))
         assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "eachPacket", "pilot:unilidar").params[1]))
     }

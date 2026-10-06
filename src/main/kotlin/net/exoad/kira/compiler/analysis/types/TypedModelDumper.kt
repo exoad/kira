@@ -491,6 +491,26 @@ object KiraUnparser {
 
     private const val POSTFIX = 16
 
+    private val CAST = BinaryOp.TYPE_CAST.precedence
+
+    /** [e] as the operand of an operator of precedence [parent], parenthesized where that needs it. */
+    fun operand(e: Expr, parent: Int): String = expr(e, parent)
+
+    private fun precedenceOf(e: Expr): Int = when (e) {
+        is BinaryExpr -> e.operator.precedence
+        is UnaryExpr -> e.operator.precedence
+        is TypeCastExpr -> CAST
+        is TypeCheckExpr -> BinaryOp.TYPE_CHECK.precedence
+        is RangeExpr -> BinaryOp.RANGE.precedence
+        else -> POSTFIX
+    }
+
+    private fun endsInType(e: Expr): Boolean = when (e) {
+        is TypeCastExpr, is TypeCheckExpr -> true
+        is BinaryExpr -> precedenceOf(e.rightExpr) >= e.operator.precedence + 1 && endsInType(e.rightExpr)
+        else -> false
+    }
+
     private fun expr(e: Expr, parent: Int): String = when (e) {
         is ConstTypeArg -> e.value.value.toString()
         is Type -> type(e)
@@ -514,13 +534,17 @@ object KiraUnparser {
         is ThisExpr -> "this"
         is BinaryExpr -> {
             val p = e.operator.precedence
-            wrap("${expr(e.leftExpr, p)} ${op(e.operator)} ${expr(e.rightExpr, p + 1)}", p, parent)
+            val left = expr(e.leftExpr, p).let {
+                // A '<' right after a type would open its type arguments.
+                if (e.operator == BinaryOp.LESS_THAN && precedenceOf(e.leftExpr) >= p && endsInType(e.leftExpr)) "($it)" else it
+            }
+            wrap("$left ${op(e.operator)} ${expr(e.rightExpr, p + 1)}", p, parent)
         }
         is UnaryExpr -> {
             val p = e.operator.precedence
-            wrap("${e.operator.symbol.rep}${expr(e.operand, p)}", p, parent)
+            wrap("${e.operator.symbol.rep}${expr(e.operand, p + 1)}", p, parent)
         }
-        is TypeCastExpr -> wrap("${expr(e.value, 9)} as ${type(e.type)}", 9, parent)
+        is TypeCastExpr -> wrap("${expr(e.value, CAST)} as ${type(e.type)}", CAST, parent)
         is TypeCheckExpr -> wrap("${expr(e.value, 9)} is ${type(e.type)}", 9, parent)
         is RangeExpr -> wrap("${expr(e.begin, 15)}..${expr(e.end, 15)}", 14, parent)
         is FunctionCallExpr -> {

@@ -1,0 +1,79 @@
+module "lang:tuples"
+
+use "kira:tuples"
+
+fx minmax: (xs: List<Int32>) Pair<Int32, Int32> {
+    mut lo: Int32 = xs[0]
+    mut hi: Int32 = xs[0]
+    for x: Int32 in xs {
+        if x < lo {
+            lo = x
+        }
+        if x > hi {
+            hi = x
+        }
+    }
+    return Pair<Int32, Int32> { lo, hi }
+}
+
+fx tagged: (name: Str, xs: List<Int32>) Tuple3<Str, List<Int32>, Bool> {
+    return Tuple3<Str, List<Int32>, Bool> { name, xs, xs.isEmpty() }
+}
+
+fx checked: (xs: List<Int32>) Result<List<Int32>, Str> {
+    if xs.isEmpty() {
+        return Result.error("empty")
+    }
+    return Result.success(xs)
+}
+
+fx show: (xs: List<Int32>) Str {
+    mut s: Str = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    return s + "]"
+}
+
+fx main: () Void {
+    p: Pair<Int32, Int32> = minmax([4, 9, 1, 7])
+    trace("${p.first} ${p.second} ${p.size()}")
+
+    mut src: List<Int32> = [1, 2]
+    t: Tuple3<Str, List<Int32>, Bool> = tagged("t", src)
+    src.add(3)
+    mut inner: List<Int32> = t.second
+    inner.add(4)
+    trace("${t.first} ${show(t.second)} ${t.third} ${show(inner)} ${show(src)}")
+
+    named: Tuple2<Str, Int32> = Tuple2<Str, Int32> { first = "n", second = 5 }
+    trace("${named.first}${named.second}")
+
+    // a Map's entries, a Map built from them, and a walk over a Map
+    mut m: Map<Str, Int32> = Map<Str, Int32> { }
+    m["b"] = 2
+    m["a"] = 1
+    m["b"] = 3
+    es: Arr<Tuple2<Str, Int32>> = m.entries()
+    trace(es.size())
+    trace("${es[0].first}=${es[0].second} ${es[1].first}=${es[1].second}")
+    again: Tuple2<Str, Int32> = Tuple2<Str, Int32> { "n", 6 }
+    head: Tuple2<Str, Int32> = es[0]
+    built: Map<Str, Int32> = Map<Str, Int32> { values = [named, head, again] }
+    trace("${built.size()} ${built.get("n").unwrapOr(0)} ${built.keys()[0]}")
+    for e: Tuple2<Str, Int32> in m {
+        trace("${e.first} ${e.second}")
+    }
+
+    // a Result of a List: a copy in, a copy out
+    mut data: List<Int32> = [7]
+    r: Result<List<Int32>, Str> = checked(data)
+    data.add(8)
+    mut got: List<Int32> = r.unwrap()
+    got.add(9)
+    trace("${show(r.unwrap())} ${show(got)} ${show(data)}")
+    trace(checked(List<Int32> { }).unwrapErr())
+}

@@ -1,0 +1,14 @@
+module "app:ring"
+
+// A use cycle with app:report: each calls the other.
+
+use "app:report"
+
+pub HOPS: Int32 = 2
+
+pub fx isOdd: (n: Int32) Bool {
+    if n == 0 {
+        return false
+    }
+    return isEven(n - 1)
+}

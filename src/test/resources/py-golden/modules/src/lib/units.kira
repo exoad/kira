@@ -1,0 +1,40 @@
+module "lib:units"
+
+// Used by lib:tally and app:report both: one copy of its globals.
+
+use "kira:math"
+
+pub SCALE: Int32 = 1000
+pub NAME: Str = "units"
+pub mut calls: Int32 = 0
+pub mut seen: List<Int32> = List<Int32> { }
+pub TABLE: List<Int32> = [3, 1, 4]
+
+pub class Meter {
+    require pub label: Str
+    pub mut reads: Int32 = 0
+
+    pub mut fx read: (raw: Int32) Int32 {
+        reads += 1
+        calls += 1
+        return raw * SCALE
+    }
+}
+
+pub fx bump: (by: Int32) Int32 {
+    calls += by
+    seen.add(by)
+    return calls
+}
+
+pub fx bounded: (deg: Float64) Float64 {
+    return clamp(deg2rad(deg), -1.0, 1.0)
+}
+
+fx hidden: () Int32 {
+    return 7
+}
+
+pub fx shown: () Int32 {
+    return hidden() + 1
+}

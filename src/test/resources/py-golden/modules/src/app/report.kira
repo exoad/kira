@@ -1,0 +1,89 @@
+module "app:report"
+
+// Uses lib:units and lib:tally (which uses lib:units too), and app:ring, which uses this module
+// back.
+
+use "kira:os"
+use "lib:units"
+use "lib:tally"
+use "app:ring"
+
+pub mut steps: Int32 = 0
+
+// app:ring's constant, read while this module loads, inside the cycle.
+WIDE: Int32 = HOPS * 10
+
+pub fx isEven: (n: Int32) Bool {
+    steps += 1
+    if n == 0 {
+        return true
+    }
+    return isOdd(n - 1)
+}
+
+fx show: (xs: List<Int32>) Str {
+    mut s: Str = "["
+    mut i: Size = 0
+    while i < xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+        i += 1
+    }
+    return s + "]"
+}
+
+fx main: () Void {
+    // lib:tally read lib:units as it loaded
+    start.add(5)
+    trace(show(start))
+    trace(show(TABLE))
+    trace(calls)
+    trace(units.calls)
+    trace(SCALE)
+    trace(NAME)
+    trace(shown())
+
+    // a class of another module, built here and there, its method writing both modules' globals
+    mut m: Meter = Meter { "here" }
+    trace(m.read(3))
+    trace(record(m, 4))
+    trace(m.reads)
+    trace(total)
+    trace(calls)
+    mut f: Meter = fresh("there")
+    trace(f.label)
+    trace(record(f, 1))
+    trace(f.reads)
+
+    // another module's globals written from here, a List one included
+    calls = 100
+    trace(bump(5))
+    units.calls = units.calls + 1
+    trace(units.calls)
+    seen.add(42)
+    trace(show(seen))
+    mut mine: List<Int32> = seen
+    mine.add(0)
+    trace(show(seen))
+    trace(show(mine))
+    mut t: List<Int32> = TABLE
+    t.add(9)
+    trace(show(TABLE))
+    trace(show(t))
+
+    // kira:math's clamp and deg2rad, carried by lib:units
+    trace("${bounded(30.0)}")
+    trace("${bounded(-90.0)}")
+
+    // the cycle, both ways
+    trace(isEven(6))
+    trace(isOdd(7))
+    trace(isEven(3))
+    trace(steps)
+    trace(WIDE)
+
+    // a stdlib constant
+    trace(POLL_WRITE)
+}

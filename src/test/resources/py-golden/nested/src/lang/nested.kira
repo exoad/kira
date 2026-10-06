@@ -1,0 +1,105 @@
+module "lang:nested"
+
+// Containers of containers are values all the way down (D44): each copy below is written to
+// show the other did not move.
+
+use "kira:tuples"
+
+class Book {
+    pub mut pages: Map<Str, List<Int32>> = Map<Str, List<Int32>> { }
+    pub mut last: Maybe<List<Int32>> = null
+
+    pub mut fx note: (key: Str, v: Int32) Void {
+        mut row: List<Int32> = pages.get(key).unwrapOr(List<Int32> { })
+        row.add(v)
+        pages.put(key, row)
+        last = row
+    }
+}
+
+fx show: (xs: List<Int32>) Str {
+    mut s: Str = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    return s + "]"
+}
+
+fx grid: (rows: Size, cols: Size) List<List<Int32>> {
+    mut out: List<List<Int32>> = List<List<Int32>> { }
+    for r: Size in 0..rows {
+        mut row: List<Int32> = List<Int32> { }
+        for c: Size in 0..cols {
+            row.add((r * 10 + c) as Int32)
+        }
+        out.add(row)
+        row.add(-1)
+    }
+    return out
+}
+
+fx total: (g: List<List<Int32>>) Int32 {
+    mut t: Int32 = 0
+    for row: List<Int32> in g {
+        for v: Int32 in row {
+            t += v
+        }
+    }
+    return t
+}
+
+fx main: () Void {
+    mut g: List<List<Int32>> = grid(2, 3)
+    trace("${show(g[0])} ${show(g[1])} ${total(g)}")
+    mut row: List<Int32> = g[0]
+    row.add(99)
+    g[1][0] = 7
+    g[0].add(5)
+    trace("${show(g[0])} ${show(g[1])} ${show(row)}")
+    mut h: List<List<Int32>> = g
+    h[0][0] = -5
+    h.add(row)
+    row.add(100)
+    trace("${show(g[0])} ${h.size()} ${show(h[2])} ${g.size()}")
+    g[1] = row
+    row.add(101)
+    trace("${show(g[1])} ${g.contains(h[2])}")
+    fixed: Arr<List<Int32>, 2> = Arr<List<Int32>, 2> { }
+    trace("${fixed[0].size()} ${fixed.size()}")
+
+    // a Map of Lists, through a class, and its copies
+    mut b: Book = Book { }
+    b.note("a", 1)
+    b.note("a", 2)
+    b.note("b", 3)
+    mut snap: Map<Str, List<Int32>> = b.pages
+    b.note("a", 4)
+    trace("${show(snap.get("a").unwrap())} ${show(b.pages.get("a").unwrap())} ${show(b.last.unwrap())}")
+    mut got: List<Int32> = b.pages.get("b").unwrap()
+    got.add(30)
+    trace(show(b.pages.get("b").unwrap()))
+    es: Arr<Tuple2<Str, List<Int32>>> = b.pages.entries()
+    trace("${es[0].first} ${show(es[0].second)} ${es.size()}")
+    vs: Arr<List<Int32>> = b.pages.valuesArr()
+    trace(show(vs[1]))
+
+    // a Map of Maps, a List of Maps, a Maybe of a List
+    mut mm: Map<Str, Map<Str, Int32>> = Map<Str, Map<Str, Int32>> { }
+    mut inner: Map<Str, Int32> = Map<Str, Int32> { }
+    inner["x"] = 1
+    mm["one"] = inner
+    inner["y"] = 2
+    trace("${mm.get("one").unwrap().size()} ${inner.size()}")
+    mut lm: List<Map<Str, Int32>> = List<Map<Str, Int32>> { }
+    lm.add(inner)
+    lm[0]["z"] = 3
+    trace("${lm[0].size()} ${inner.size()}")
+    m: Maybe<List<Int32>> = row
+    row.add(102)
+    trace(show(m.unwrap()))
+    none: Maybe<List<Int32>> = null
+    trace(none.isNone())
+}

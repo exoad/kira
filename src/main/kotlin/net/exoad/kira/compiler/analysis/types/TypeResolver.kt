@@ -146,10 +146,23 @@ class TypeResolver(private val program: TypedProgram) {
             program.report("types.type.arity", arityMessage(sym.name, arity..arity, args.size), t)
             return KType.Error
         }
-        if (!typeArgsOnly(sym.name, args, t)) {
+        if (!typeArgsOnly(sym.name, args, t) || !keyHeld(sym, args, t)) {
             return KType.Error
         }
         return KType.Nominal(sym, args)
+    }
+
+    private fun keyHeld(sym: TypeSymbol, args: List<TypeArg>, t: Type): Boolean {
+        if (!isKeyedContainer(sym)) {
+            return true
+        }
+        val key = (args[0] as TypeArg.Ty).t
+        if (isKeyType(key)) {
+            return true
+        }
+        val what = if (sym.name == "Map") "A Map's key" else "A Set's element"
+        program.report("types.type.key", "$what is a scalar, a Str or an enum; ${key.display()} is none of these.", t.children[0])
+        return false
     }
 
     private fun arityMessage(name: String, expected: IntRange, got: Int): String {

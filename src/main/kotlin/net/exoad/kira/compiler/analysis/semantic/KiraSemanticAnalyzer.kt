@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.analysis.semantic
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.analysis.types.MemberResolver
 import net.exoad.kira.compiler.frontend.IntrinsicTreeWalker
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
@@ -21,6 +22,7 @@ import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.utils.EnglishUtils
+import java.util.IdentityHashMap
 
 /**
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
@@ -501,14 +503,17 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr) {
-        // TODO("Not yet implemented")
+        val typeName = (functionDeclParameterExpr.typeSpecifier.identifier as? Identifier)?.value ?: return
+        declareValueType(functionDeclParameterExpr.name.value, typeName, parameter = true)
     }
 
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
         // Null safety: a Maybe<T> must be unwrapped before its payload is
         // reachable, so only the Maybe API itself may be accessed on one.
         val receiver = memberAccessExpr.origin as? Identifier ?: return
-        if (declaredValueTypes[receiver.value] != "Maybe") {
+        val declared = declaredValueType(receiver.value)
+        // A Maybe parameter's misuse is the typer's coded types.maybe.member.
+        if (declared == null || declared.typeName != "Maybe" || declared.parameter) {
             return
         }
         val member = (memberAccessExpr.member as? Identifier)?.value
@@ -516,7 +521,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 (call.name as? Identifier)?.value
             }
             ?: return
-        if (member in maybeMembers) {
+        if (member in MemberResolver.MAYBE_API) {
             return
         }
         pump(
@@ -620,18 +625,24 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // todo
     }
 
-    /**
-     * Used for [visitVariableDecl] which uses this map to find all of the literal types and how they can match
-     */
-    /**
-     * Declared type of each local currently in scope, for null-safety checks.
-     * `Maybe` is the only nullable shape, so this is what tells us whether a
-     * `null` initializer is legal and whether a member access needs unwrapping.
-     */
-    private val declaredValueTypes = mutableMapOf<String, String>()
+    private class Declared(val typeName: String, val parameter: Boolean)
 
-    /** The Maybe API -- the only members reachable without unwrapping first. */
-    private val maybeMembers = setOf("isSome", "isNone", "unwrap", "unwrapOr")
+    /** Each variable's and parameter's declared type name, by the scope frame that declares it. */
+    private val declaredValueTypes = IdentityHashMap<KiraScopeFrame, MutableMap<String, Declared>>()
+
+    private fun declareValueType(name: String, typeName: String, parameter: Boolean = false) {
+        declaredValueTypes.getOrPut(compilationUnit.symbolTable.first()) { mutableMapOf() }[name] = Declared(typeName, parameter)
+    }
+
+    private fun declaredValueType(name: String): Declared? {
+        for (frame in compilationUnit.symbolTable) {
+            declaredValueTypes[frame]?.get(name)?.let { return it }
+            if (frame.kind is SemanticScope.Module) {
+                return null
+            }
+        }
+        return null
+    }
 
     /** True when [expr] is the stdlib `null` global (or the legacy null literal). */
     private fun isNullValue(expr: Expr?): Boolean {
@@ -723,7 +734,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                         "to allow absence, then read it with unwrapOr(...) or guard on isSome()."
                 )
             }
-            declaredValueTypes[varName] = typeName
+            declareValueType(varName, typeName)
         }
 
     }
@@ -1040,8 +1051,11 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitIfExpr(ifExpr: IfExpr) {
         ifExpr.condition.accept(this)
-        ifExpr.thenBranch.forEach { it.accept(this) }
-        ifExpr.elseBranch.forEach { it.accept(this) }
+        for (branch in listOf(ifExpr.thenBranch, ifExpr.elseBranch)) {
+            compilationUnit.symbolTable.enter(SemanticScope.Block("(if)"))
+            branch.forEach { it.accept(this) }
+            compilationUnit.symbolTable.exit()
+        }
     }
 
     override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {

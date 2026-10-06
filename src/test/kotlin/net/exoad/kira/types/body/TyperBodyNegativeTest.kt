@@ -297,6 +297,44 @@ class TyperBodyNegativeTest {
     }
 
     @Test
+    fun aMismatchACastCausesSaysWhatTheCastConverts() {
+        val p = snippet(
+            """
+            pub fx f: (v: UInt32, x: UInt8, y: Int32, w: Float64) Void {
+                b: UInt8 = v >> 8 as UInt8
+                if x & y as UInt8 == 0 {
+                    trace(1)
+                }
+                r: Int32 = w * 1000.0 + 0.5 as Int32
+            }
+            """,
+        )
+        val errors = p.diagnostics.filter { it.isError }
+        assertEquals(listOf("types.assign.mismatch", "types.op.mismatch", "types.op.mismatch"), errors.map { it.code }, TyperTestSupport.render(p))
+        assertTrue(
+            errors[0].message.endsWith(
+                "expects UInt8, but this is UInt32: `as` binds to its nearest operand, so 8 as UInt8 converts 8 alone; " +
+                    "to convert the whole, write (v >> 8) as UInt8.",
+            ),
+            errors[0].message,
+        )
+        assertTrue(
+            errors[1].message.endsWith(
+                "UInt8 & Bool is not an operation Kira has: `as` binds to its nearest operand, so the right side of & is " +
+                    "y as UInt8 == 0; to apply & first, write (x & y as UInt8) == 0.",
+            ),
+            errors[1].message,
+        )
+        assertTrue(
+            errors[2].message.endsWith(
+                "Float64 + Int32 is not an operation Kira has: `as` binds to its nearest operand, so 0.5 as Int32 converts " +
+                    "0.5 alone; to convert the whole, write (w * 1000.0 + 0.5) as Int32.",
+            ),
+            errors[2].message,
+        )
+    }
+
+    @Test
     fun anEmptyContainerConstructionStartsAMutGlobalLikeAnArrayLiteral() {
         val p = snippet(
             "pub mut XS: List<Int32> = List<Int32> { }\npub mut YS: List<Int32> = []\npub mut M: Map<Str, Int32> = Map<Str, Int32> { }\n" +

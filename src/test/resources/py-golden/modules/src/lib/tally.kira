@@ -1,0 +1,17 @@
+module "lib:tally"
+
+use "lib:units"
+
+pub mut total: Int32 = 0
+
+// Starts from lib:units' constants, which every module reads as it loads.
+pub mut start: List<Int32> = [SCALE, 7]
+
+pub fx record: (m: Meter, raw: Int32) Int32 {
+    total += m.read(raw)
+    return bump(1)
+}
+
+pub fx fresh: (label: Str) Meter {
+    return Meter { label }
+}

@@ -1,6 +1,8 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
+import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
@@ -9,8 +11,15 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
+import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -303,6 +312,30 @@ class ParserSuiteTest {
         )
     }
 
+    @Test
+    fun aComparisonWithANegatedOperandIsNotATypeArgumentList() {
+        val ast = parseModule(
+            """
+            fx f: (x: Int64) Bool {
+                if x < -LIMIT {
+                    return false
+                }
+                if x > (LIMIT) {
+                    return false
+                }
+                return x < -LIMIT || x > (LIMIT)
+            }
+            """
+        )
+        val fn = declsOf(ast).filterIsInstance<FunctionDecl>().single()
+        val ret = assertIs<ReturnStatement>(fn.def.body!!.last())
+        val or = assertIs<BinaryExpr>(ret.expr)
+        assertEquals(BinaryOp.OR, or.operator)
+        val less = assertIs<BinaryExpr>(or.leftExpr)
+        assertEquals(BinaryOp.LESS_THAN, less.operator)
+        assertIs<UnaryExpr>(less.rightExpr)
+    }
+
     // --- statements ---------------------------------------------------------
 
     @Test
@@ -447,6 +480,114 @@ class ParserSuiteTest {
             }
             """
         )
+    }
+
+    @Test
+    fun asBindsTighterThanTheBinaryOperatorsAndLooserThanAPrefixOne() {
+        val ast = parseModule(
+            """
+            fx f: (x: Int32, n: Int64) Int32 {
+                a: Float64 = x as Float64 / 1000.0
+                b: Int64 = n + x as Int64
+                c: Bool = x as Int64 > n
+                d: Int64 = -x as Int64
+                return x as Int32 + 1
+            }
+            """
+        )
+        val body = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!
+        assertEquals(5, body.size, "nothing after a cast is left to parse as a statement of its own")
+        val values = body.map { it.expr }.filterIsInstance<VariableDecl>().associate { it.name.value to it.value }
+
+        val a = assertIs<BinaryExpr>(values["a"])
+        assertEquals(BinaryOp.DIV, a.operator)
+        assertIs<TypeCastExpr>(a.leftExpr)
+
+        val b = assertIs<BinaryExpr>(values["b"])
+        assertEquals(BinaryOp.ADD, b.operator)
+        assertIs<TypeCastExpr>(b.rightExpr)
+
+        val c = assertIs<BinaryExpr>(values["c"])
+        assertEquals(BinaryOp.GREATER_THAN, c.operator)
+        assertIs<TypeCastExpr>(c.leftExpr)
+
+        assertIs<UnaryExpr>(assertIs<TypeCastExpr>(values["d"]).value)
+
+        val ret = assertIs<BinaryExpr>(assertIs<ReturnStatement>(body.last()).expr)
+        assertEquals(BinaryOp.ADD, ret.operator)
+        assertIs<TypeCastExpr>(ret.leftExpr)
+    }
+
+    @Test
+    fun aLessThanAfterACastIsADiagnosticAtTheCast() {
+        val e = assertThrows<DiagnosticsException> {
+            parse(
+                "module \"test:parser\"\n" +
+                    "fx f: (x: Int32, n: Int64) Bool {\n" +
+                    "    c: Bool = x as Int64 < n\n" +
+                    "    return c\n" +
+                    "}\n"
+            )
+        }
+        assertTrue(e.message.contains("put the cast in parentheses: (... as Int64) < ..."), e.message)
+        assertEquals(3, e.location?.lineNumber)
+        assertEquals(17, e.location?.column)
+        parseModule(
+            """
+            fx g: (x: Int32, n: Int64, xs: Arr<Int32>) Bool {
+                c: Bool = (x as Int64) < n
+                d: List<Int32> = xs as List<Int32>
+                return c
+            }
+            """
+        )
+    }
+
+    private fun valueOf(expr: String): net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr =
+        assertNotNull(declsOf(parseModule("x: Int32 = $expr")).filterIsInstance<VariableDecl>().single().value)
+
+    @Test
+    fun theUnparserParenthesizesACastAsTheParserReadsIt() {
+        val cases = linkedMapOf(
+            "(x as Int64) < n" to "(x as Int64) < n",
+            "(a + x as Int64) < n" to "(a + x as Int64) < n",
+            "x as Int64 > n" to "x as Int64 > n",
+            "(a + b) as Int64" to "(a + b) as Int64",
+            "a * b as Int64" to "a * b as Int64",
+            "-(x as Int64)" to "-(x as Int64)",
+            "-x as Int64" to "-x as Int64",
+            "v >> (n as UInt8)" to "v >> n as UInt8",
+            "(v >> n) as UInt8" to "(v >> n) as UInt8",
+        )
+        for ((source, text) in cases) {
+            assertEquals(text, KiraUnparser.text(valueOf(source)), source)
+            assertEquals(text, KiraUnparser.text(valueOf(text)), "$text read back")
+        }
+    }
+
+    @Test
+    fun aRangeEndTakesTheCast() {
+        val ast = parseModule(
+            """
+            fx f: (n: Int32) Int64 {
+                mut s: Int64 = 0
+                for i: Int64 in 0..n as Int64 {
+                    s += i
+                }
+                for j: Int64 in 0 as Int64..n as Int64 {
+                    s += j
+                }
+                return s
+            }
+            """
+        )
+        val loops = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!.filterIsInstance<ForIterationStatement>()
+        assertEquals(2, loops.size)
+        val first = assertIs<RangeExpr>(loops[0].forIterationExpr.target)
+        assertIs<TypeCastExpr>(first.end)
+        val second = assertIs<RangeExpr>(loops[1].forIterationExpr.target)
+        assertIs<TypeCastExpr>(second.begin)
+        assertIs<TypeCastExpr>(second.end)
     }
 
     @Test
@@ -642,5 +783,32 @@ class ParserSuiteTest {
         assertThrows<Throwable> {
             parseModule("fx main: () Void { \$ }")
         }
+    }
+
+    @Test
+    fun anEmptySourceIsADiagnostic() {
+        val e = assertThrows<DiagnosticsException> { parse("") }
+        assertTrue(e.message.contains("must be a module declaration"), e.message)
+    }
+
+    @Test
+    fun aThreeLevelGenericInitialiserParses() {
+        val ast = parseModule(
+            """
+            fx main: () Void {
+                m: Map<Str, Map<Str, Map<Str, Int32>>> = Map<Str, Map<Str, Map<Str, Int32>>> { }
+            }
+            """
+        )
+        val body = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!
+        assertIs<ObjectInitExpr>(assertIs<VariableDecl>(body.single().expr).value)
+    }
+
+    @Test
+    fun nestingTooDeepIsALocatedDiagnostic() {
+        val deep = "(".repeat(50_000) + "1" + ")".repeat(50_000)
+        val e = assertThrows<DiagnosticsException> { parseModule("x: Int32 = $deep") }
+        assertTrue(e.message.contains("nests too deeply"), e.message)
+        assertEquals(2, e.location?.lineNumber)
     }
 }
