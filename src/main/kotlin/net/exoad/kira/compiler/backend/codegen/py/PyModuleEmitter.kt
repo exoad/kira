@@ -461,8 +461,9 @@ class PyModuleEmitter(
      * `target = value`, or `target op= value` when [op] is set. A compound assignment reads its
      * target before the value runs (OQ-1) because Python evaluates `t = t + v` from the left.
      * Python computes an assignment's target after its value, where Kira locates it first (D33),
-     * so an index that is not a constant or a local is computed into a temporary first whenever
-     * the value has an effect, and always in a compound assignment, which names its target twice.
+     * so the object a field or container is read through and an index that is not a constant or
+     * a local are computed into temporaries first whenever the value has an effect, and always
+     * in a compound assignment, which names its target twice.
      */
     private fun assign(target: Expr, op: BinaryOp?, value: Expr, f: Frame): List<String> {
         val pre = mutableListOf<String>()
@@ -484,7 +485,7 @@ class PyModuleEmitter(
         return pre + "$lhs = ${combined.text}"
     }
 
-    /** The Python place an assignment writes, its index computed into [pre] when [spill] says so. */
+    /** The Python place an assignment writes, its parts computed into [pre] when [spill] says so. */
     private fun placeText(target: Expr, f: Frame, spill: Boolean, pre: MutableList<String>): String? {
         return when (target) {
             is Identifier -> when (val sym = model.symbolOf(target)) {
@@ -498,23 +499,11 @@ class PyModuleEmitter(
                 if (!isUserClass(m.field.owner)) {
                     return refuseText(target, "an assignment to a field of ${m.field.owner.name}")
                 }
-                val origin = target.origin
-                val obj = when {
-                    origin is ThisExpr -> "self"
-                    origin is Identifier && model.symbolOf(origin).let { it is LocalSymbol || it is ParamSymbol } -> origin.value
-                    spill -> {
-                        val t = f.fresh()
-                        pre += "$t = ${expr(origin, f).text}"
-                        t
-                    }
-                    else -> wrap(expr(origin, f), PyPrec.POSTFIX)
-                }
-                "$obj.${pyName(m.field)}"
+                "${objectPlace(target.origin, f, spill, pre)}.${pyName(m.field)}"
             }
             is ArrayIndexExpr -> {
-                // `m[k] = v` on a Map puts v: a new key goes last, a key it holds keeps its place.
                 val key = isMap(model.typeOrNull(target.originExpr))
-                val container = listPlace(target.originExpr, f) ?: return null
+                val container = containerPlace(target.originExpr, f, spill, pre) ?: return null
                 val index = target.indexExpr
                 val stays = model.const(index) != null ||
                     (index is Identifier && model.symbolOf(index).let { it is LocalSymbol || it is ParamSymbol })
@@ -529,6 +518,33 @@ class PyModuleEmitter(
                 "$container[$i]"
             }
             else -> refuseText(target, "an assignment to this place")
+        }
+    }
+
+    /** The object a written field is read through; a handle C++ reads before the value runs. */
+    private fun objectPlace(origin: Expr, f: Frame, spill: Boolean, pre: MutableList<String>): String = when {
+        origin is ThisExpr -> "self"
+        origin is Identifier && model.symbolOf(origin).let { it is LocalSymbol || it is ParamSymbol } -> origin.value
+        spill -> {
+            val t = f.fresh()
+            pre += "$t = ${expr(origin, f).text}"
+            t
+        }
+        else -> wrap(expr(origin, f), PyPrec.POSTFIX)
+    }
+
+    /** The List or Map an index assignment writes, read through [objectPlace] when it is a field. */
+    private fun containerPlace(e: Expr, f: Frame, spill: Boolean, pre: MutableList<String>): String? {
+        val field = (e as? MemberAccessExpr)?.let { model.member(it) as? MemberRef.Field }?.field
+        return when {
+            e is MemberAccessExpr && field != null ->
+                if (isUserClass(field.owner)) "${objectPlace(e.origin, f, spill, pre)}.${pyName(field)}" else refuseText(e, "this List")
+            spill && e !is Identifier -> {
+                val t = f.fresh()
+                pre += "$t = ${listPlace(e, f) ?: return null}"
+                t
+            }
+            else -> listPlace(e, f)
         }
     }
 

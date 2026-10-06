@@ -1,0 +1,115 @@
+module "lang:placeorder"
+
+// D33 on an index assignment: a container reached through a call is located before the key and
+// the value, and once in a compound assignment; a global replaced by the value is written new.
+
+class Holder {
+    pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
+    pub mut xs: List<Int32> = List<Int32> { }
+    pub mut n: Int32 = 0
+    pub mut tag: Int32 = 0
+}
+
+class Shelf {
+    pub mut bags: List<Holder> = List<Holder> { }
+    pub mut swaps: Int32 = 0
+
+    pub mut fx swapFirst: () Int32 {
+        mut b: Holder = Holder { }
+        swaps += 1
+        b.tag = swaps
+        bags[0] = b
+        return 7
+    }
+
+    pub fx first: () Holder {
+        return bags[0]
+    }
+}
+
+mut gm: Map<Str, Int32> = Map<Str, Int32> { }
+mut gxs: List<Int32> = List<Int32> { }
+
+fx holderOf: (h: Holder) Holder {
+    trace("holder")
+    return h
+}
+
+fx key: () Str {
+    trace("key")
+    return "k"
+}
+
+fx idx: () Size {
+    trace("idx")
+    return 0
+}
+
+fx val: () Int32 {
+    trace("val")
+    return 1
+}
+
+fx swapGlobals: () Int32 {
+    gm = Map<Str, Int32> { }
+    gm["x"] = 0
+    gxs = List<Int32> { }
+    gxs.add(9)
+    gxs.add(9)
+    return 3
+}
+
+fx show: (b: Holder) Str {
+    ks: Arr<Str> = b.items.keys()
+    mut s: Str = "holder${b.tag} {"
+    mut i: Size = 0
+    while i < ks.size() {
+        s = s + " ${ks[i]}"
+        i += 1
+    }
+    return s + " }"
+}
+
+fx main: () Void {
+    mut h: Holder = Holder { }
+    h.xs.add(0)
+    trace("-- map, impure key and value")
+    holderOf(h).items[key()] = val()
+    trace("-- map, constant key, impure value")
+    holderOf(h).items["c"] = val()
+    trace("-- map, impure key, constant value")
+    holderOf(h).items[key()] = 5
+    trace("-- list")
+    holderOf(h).xs[idx()] = val()
+    trace("-- field")
+    holderOf(h).items = holderOf(h).items
+    trace(h.items.size())
+
+    trace("-- the container is the one the call gave before the value replaced it")
+    mut sh: Shelf = Shelf { }
+    mut b0: Holder = Holder { }
+    sh.bags.add(b0)
+    sh.first().items["k"] = sh.swapFirst()
+    trace(show(b0))
+    trace(show(sh.bags[0]))
+    sh.first().xs.add(0)
+    sh.first().xs[0] = sh.swapFirst()
+    trace(sh.bags[0].xs.size())
+
+    trace("-- a global the value replaces")
+    gm["a"] = 1
+    gxs.add(1)
+    gm["g"] = swapGlobals()
+    trace(gm.size())
+    trace(gm.containsKey("g"))
+    gxs[0] = swapGlobals()
+    trace("${gxs[0]} ${gxs[1]}")
+
+    trace("-- compound assignments read the call once")
+    holderOf(h).xs[0] += 5
+    trace(h.xs[0])
+    holderOf(h).xs[idx()] += val()
+    trace(h.xs[0])
+    holderOf(h).n += val()
+    trace(h.n)
+}

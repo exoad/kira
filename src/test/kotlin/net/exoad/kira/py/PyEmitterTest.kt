@@ -305,6 +305,44 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aContainerReachedThroughACallIsLocatedBeforeTheKeyAndTheValueAndOnce() {
+        val py = python(
+            """
+            class Holder {
+                pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
+                pub mut xs: List<Int32> = List<Int32> { }
+            }
+
+            fx holderOf: (h: Holder) Holder {
+                trace("holder")
+                return h
+            }
+
+            fx key: () Str {
+                trace("key")
+                return "k"
+            }
+
+            fx val: () Int32 {
+                trace("val")
+                return 1
+            }
+
+            fx f: (h: Holder) Void {
+                holderOf(h).items[key()] = val()
+                holderOf(h).items[key()] = 5
+                holderOf(h).xs[0] += 5
+                h.xs[0] = val()
+            }
+            """
+        )
+        assertTrue(py.contains("    _k_t0 = _holderOf(h)\n    _k_t1 = _key()\n    _k_t0.items[_k_t1] = _val()\n"), py)
+        assertTrue(py.contains("    _holderOf(h).items[_key()] = 5\n"), "a constant value runs nothing, so Python's order is Kira's:\n$py")
+        assertTrue(py.contains("    _k_t2 = _holderOf(h)\n    _k_t2.xs[0] = _k_i32(_k_t2.xs[0] + 5)\n"), py)
+        assertTrue(py.contains("    h.xs[0] = _val()\n"), py)
+    }
+
+    @Test
     fun kiraMathBindsToItsHelpersEachAFloat64AsCsIs() {
         val py = python(
             """
