@@ -498,14 +498,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr) {
         val typeName = (functionDeclParameterExpr.typeSpecifier.identifier as? Identifier)?.value ?: return
-        declareValueType(functionDeclParameterExpr.name.value, typeName)
+        declareValueType(functionDeclParameterExpr.name.value, typeName, parameter = true)
     }
 
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
         // Null safety: a Maybe<T> must be unwrapped before its payload is
         // reachable, so only the Maybe API itself may be accessed on one.
         val receiver = memberAccessExpr.origin as? Identifier ?: return
-        if (declaredValueType(receiver.value) != "Maybe") {
+        val declared = declaredValueType(receiver.value)
+        // A Maybe parameter's misuse is the typer's coded types.maybe.member.
+        if (declared == null || declared.typeName != "Maybe" || declared.parameter) {
             return
         }
         val member = (memberAccessExpr.member as? Identifier)?.value
@@ -617,14 +619,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // todo
     }
 
-    /** Each variable's and parameter's declared type name, by the scope frame that declares it. */
-    private val declaredValueTypes = IdentityHashMap<KiraScopeFrame, MutableMap<String, String>>()
+    private class Declared(val typeName: String, val parameter: Boolean)
 
-    private fun declareValueType(name: String, typeName: String) {
-        declaredValueTypes.getOrPut(compilationUnit.symbolTable.first()) { mutableMapOf() }[name] = typeName
+    /** Each variable's and parameter's declared type name, by the scope frame that declares it. */
+    private val declaredValueTypes = IdentityHashMap<KiraScopeFrame, MutableMap<String, Declared>>()
+
+    private fun declareValueType(name: String, typeName: String, parameter: Boolean = false) {
+        declaredValueTypes.getOrPut(compilationUnit.symbolTable.first()) { mutableMapOf() }[name] = Declared(typeName, parameter)
     }
 
-    private fun declaredValueType(name: String): String? {
+    private fun declaredValueType(name: String): Declared? {
         for (frame in compilationUnit.symbolTable) {
             declaredValueTypes[frame]?.get(name)?.let { return it }
             if (frame.kind is SemanticScope.Module) {

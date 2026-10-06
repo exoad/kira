@@ -194,6 +194,29 @@ class CliSuiteTest {
     }
 
     @Test
+    fun aMaybeParametersMisuseIsTheTypersCodedDiagnostic() {
+        val dir = tempProject(
+            "maybe-param",
+            basicManifest().replace("target: c", "target: py"),
+            mapOf(
+                "src/app/main.kira" to """
+                    module "app:main"
+
+                    fx f: (s: Maybe<Str>) Size {
+                        n: Size = s.size()
+                        return n
+                    }
+                """.trimIndent(),
+            )
+        )
+        val result = runCli(dir)
+        val output = result.stdout + result.stderr
+        assertEquals(1, result.exitCode, output)
+        assertEquals(1, Regex("types\\.maybe\\.member").findAll(output).count(), output)
+        assertFalse(output.contains("Diagnostic Report"), output)
+    }
+
+    @Test
     fun anEmptySourceFileIsADiagnosticNotACrash() {
         val dir = tempProject("empty-source", basicManifest(), mapOf("src/app/main.kira" to ""))
         val result = runCli(dir)

@@ -224,4 +224,21 @@ class NullSafetyTest {
 
         assertTrue(messages.isEmpty(), "each branch's locals stay in the branch, got: $messages")
     }
+
+    @Test
+    fun aMaybeParametersMisuseIsLeftToTheTyper() {
+        val messages = diagnosticsFor(
+            """
+            $pet
+
+            fx f: (p: Maybe<Pet>) Str {
+                q: Str = p.name
+                return q
+            }
+            """,
+            "test:nullsafety.param"
+        )
+
+        assertTrue(messages.none { it.contains("not available on a 'Maybe'") }, "the typer's types.maybe.member reports it, got: $messages")
+    }
 }
