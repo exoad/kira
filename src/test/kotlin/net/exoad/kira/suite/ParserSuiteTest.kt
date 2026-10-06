@@ -15,6 +15,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
@@ -513,6 +515,31 @@ class ParserSuiteTest {
         val ret = assertIs<BinaryExpr>(assertIs<ReturnStatement>(body.last()).expr)
         assertEquals(BinaryOp.ADD, ret.operator)
         assertIs<TypeCastExpr>(ret.leftExpr)
+    }
+
+    @Test
+    fun aRangeEndTakesTheCast() {
+        val ast = parseModule(
+            """
+            fx f: (n: Int32) Int64 {
+                mut s: Int64 = 0
+                for i: Int64 in 0..n as Int64 {
+                    s += i
+                }
+                for j: Int64 in 0 as Int64..n as Int64 {
+                    s += j
+                }
+                return s
+            }
+            """
+        )
+        val loops = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!.filterIsInstance<ForIterationStatement>()
+        assertEquals(2, loops.size)
+        val first = assertIs<RangeExpr>(loops[0].forIterationExpr.target)
+        assertIs<TypeCastExpr>(first.end)
+        val second = assertIs<RangeExpr>(loops[1].forIterationExpr.target)
+        assertIs<TypeCastExpr>(second.begin)
+        assertIs<TypeCastExpr>(second.end)
     }
 
     @Test

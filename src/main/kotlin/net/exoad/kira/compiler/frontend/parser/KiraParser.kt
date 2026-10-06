@@ -659,11 +659,17 @@ class KiraParser(private val context: SourceContext) {
                 continue
             }
             if (binaryOpType == BinaryOp.TYPE_CAST) {
-                left = putOrigin(TypeCastExpr(left, parseType()), origin)
+                left = castOf(left, origin)
                 continue
             }
             val nextMinPrecedence = binaryOpType.precedence + 1
-            val right = parseExpr(nextMinPrecedence)
+            val rightOrigin = here()
+            var right = parseExpr(nextMinPrecedence)
+            // `..` binds looser than `as`: 0..n as Int64 is 0..(n as Int64).
+            while (binaryOpType == BinaryOp.RANGE && at(Token.Type.K_AS)) {
+                advancePointer()
+                right = castOf(right, rightOrigin)
+            }
             left = when (binaryOpType) {
                 BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
                 BinaryOp.RANGE -> RangeExpr(left, right)
@@ -672,6 +678,9 @@ class KiraParser(private val context: SourceContext) {
         }
         return putOrigin(left, origin)
     }
+
+    /** `operand as Type`, with the pointer just past `as`. */
+    private fun castOf(operand: Expr, origin: SourcePosition): Expr = putOrigin(TypeCastExpr(operand, parseType()), origin)
 
     /**
      * Place assignment (design 2.5). After a postfix expression shaped as a
