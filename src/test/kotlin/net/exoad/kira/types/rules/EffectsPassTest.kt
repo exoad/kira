@@ -223,9 +223,9 @@ class EffectsPassTest {
         expectClean(p)
         val model = p.model
         assertEquals(Effect.READS, model.effect(BodyTestSupport.node<TypeCastExpr>(p, "p[0] as UInt32")))
-        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "(p[1] as UInt32) << 8")))
-        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | (p[1] as UInt32) << 8")))
-        assertEquals(Effect.IMPURE, model.effect(BodyTestSupport.node<BinaryExpr>(p, "(p[0] as UInt32) + bump()")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[1] as UInt32 << 8")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | p[1] as UInt32 << 8")))
+        assertEquals(Effect.IMPURE, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 + bump()")))
         assertEquals(Effect.READS, model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "readU16(p)")), "a call of a READS function on a view")
         assertEquals(Effect.READS, model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "buf.size()")), "a pure binding on a view receiver reads what it borrows")
         assertEquals(Effect.READS, model.effect(fn(p, "readU16")))
@@ -294,7 +294,7 @@ class EffectsPassTest {
         assertEquals(Effect.READS, model.effect(fn(p, "str")), "a Str parameter is a const kira::Str&")
         assertEquals(Effect.READS, model.effect(fn(p, "arr")), "an Arr parameter is a const std::array&")
         assertEquals(Effect.READS, model.effect(fn(p, "sc")), "a view reads what it borrows")
-        assertEquals(Effect.PURE, model.effect(BodyTestSupport.node<BinaryExpr>(p, "n + (v.size() as Int32)").leftExpr), "a scalar parameter is copied")
+        assertEquals(Effect.PURE, model.effect(BodyTestSupport.node<BinaryExpr>(p, "n + v.size() as Int32").leftExpr), "a scalar parameter is copied")
     }
 
     @Test

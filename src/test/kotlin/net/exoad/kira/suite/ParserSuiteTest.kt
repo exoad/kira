@@ -2,6 +2,7 @@ package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
@@ -540,6 +541,28 @@ class ParserSuiteTest {
             }
             """
         )
+    }
+
+    private fun valueOf(expr: String): net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr =
+        assertNotNull(declsOf(parseModule("x: Int32 = $expr")).filterIsInstance<VariableDecl>().single().value)
+
+    @Test
+    fun theUnparserParenthesizesACastAsTheParserReadsIt() {
+        val cases = linkedMapOf(
+            "(x as Int64) < n" to "(x as Int64) < n",
+            "(a + x as Int64) < n" to "(a + x as Int64) < n",
+            "x as Int64 > n" to "x as Int64 > n",
+            "(a + b) as Int64" to "(a + b) as Int64",
+            "a * b as Int64" to "a * b as Int64",
+            "-(x as Int64)" to "-(x as Int64)",
+            "-x as Int64" to "-x as Int64",
+            "v >> (n as UInt8)" to "v >> n as UInt8",
+            "(v >> n) as UInt8" to "(v >> n) as UInt8",
+        )
+        for ((source, text) in cases) {
+            assertEquals(text, KiraUnparser.text(valueOf(source)), source)
+            assertEquals(text, KiraUnparser.text(valueOf(text)), "$text read back")
+        }
     }
 
     @Test

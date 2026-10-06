@@ -76,9 +76,9 @@ hall.kira:51:22  INDEX_OF[state as Size]  Int8  place=Index(Global(INDEX_OF), AR
 hall.kira:51:22  INDEX_OF  Arr<Int8, 8>  const=[-1:Int8, 0:Int8, 2:Int8, 1:Int8, 4:Int8, 5:Int8, 3:Int8, -1:Int8]  place=Global(INDEX_OF)  sym=pico:hall.INDEX_OF
 hall.kira:51:31  state as Size  Size  conv=INT_WRAP
 hall.kira:51:31  state  UInt8  place=Field(This(Decoder).state)  sym=Decoder.state
-hall.kira:52:23  ((idx as Int32) - was + 6) % 6  Int32
-hall.kira:52:24  (idx as Int32) - was + 6  Int32
-hall.kira:52:25  (idx as Int32) - was  Int32
+hall.kira:52:23  (idx as Int32 - was + 6) % 6  Int32
+hall.kira:52:24  idx as Int32 - was + 6  Int32
+hall.kira:52:25  idx as Int32 - was  Int32
 hall.kira:52:26  idx as Int32  Int32  conv=INT_WRAP
 hall.kira:52:26  idx  Int8  place=Local(idx)  sym=Decoder.feed::idx
 hall.kira:52:42  was  Int32  place=Local(was)  sym=Decoder.feed::was
@@ -139,10 +139,10 @@ hall.kira:71:28  0  Int32  const=0:Int32
 hall.kira:72:25  false  Bool  const=false  sym=kira:core.false
 hall.kira:73:27  false  Bool  const=false  sym=kira:core.false
 hall.kira:77:20  Speed { }  Speed
-hall.kira:78:5  s.windowTps = windowTicks * ((1000 / WINDOW_MS) as Int32)  Void
+hall.kira:78:5  s.windowTps = windowTicks * (1000 / WINDOW_MS) as Int32  Void
 hall.kira:78:5  s.windowTps  Int32  member=Field(Speed.windowTps: Int32)  place=Field(Local(s).windowTps)
 hall.kira:78:5  s  Speed  place=Local(s)  sym=pico:hall.speed::s
-hall.kira:78:19  windowTicks * ((1000 / WINDOW_MS) as Int32)  Int32
+hall.kira:78:19  windowTicks * (1000 / WINDOW_MS) as Int32  Int32
 hall.kira:78:19  windowTicks  Int32  place=Param(windowTicks)  sym=pico:hall.speed(windowTicks)
 hall.kira:78:33  (1000 / WINDOW_MS) as Int32  Int32  conv=INT_WRAP  const=20:Int32
 hall.kira:78:35  1000 / WINDOW_MS  UInt32  const=20:UInt32
@@ -152,14 +152,14 @@ hall.kira:79:25  nowUs - d.lastEdgeUs  UInt64
 hall.kira:79:25  nowUs  UInt64  place=Param(nowUs)  sym=pico:hall.speed(nowUs)
 hall.kira:79:33  d.lastEdgeUs  UInt64  member=Field(Decoder.lastEdgeUs: UInt64)  place=Field(Param(d).lastEdgeUs)
 hall.kira:79:33  d  Decoder  place=Param(d)  sym=pico:hall.speed(d)
-hall.kira:80:5  s.stopped = !d.primed || sinceEdge > (STOPPED_US as UInt64)  Void
+hall.kira:80:5  s.stopped = !d.primed || sinceEdge > STOPPED_US as UInt64  Void
 hall.kira:80:5  s.stopped  Bool  member=Field(Speed.stopped: Bool)  place=Field(Local(s).stopped)
 hall.kira:80:5  s  Speed  place=Local(s)  sym=pico:hall.speed::s
-hall.kira:80:17  !d.primed || sinceEdge > (STOPPED_US as UInt64)  Bool
+hall.kira:80:17  !d.primed || sinceEdge > STOPPED_US as UInt64  Bool
 hall.kira:80:17  !d.primed  Bool
 hall.kira:80:18  d.primed  Bool  member=Field(Decoder.primed: Bool)  place=Field(Param(d).primed)
 hall.kira:80:18  d  Decoder  place=Param(d)  sym=pico:hall.speed(d)
-hall.kira:80:30  sinceEdge > (STOPPED_US as UInt64)  Bool
+hall.kira:80:30  sinceEdge > STOPPED_US as UInt64  Bool
 hall.kira:80:30  sinceEdge  UInt64  place=Local(sinceEdge)  sym=pico:hall.speed::sinceEdge
 hall.kira:80:42  STOPPED_US as UInt64  UInt64  conv=INT_WRAP  const=250000:UInt64
 hall.kira:80:43  STOPPED_US  UInt32  const=250000:UInt32  place=Global(STOPPED_US)  sym=pico:hall.STOPPED_US
@@ -171,10 +171,10 @@ hall.kira:81:22  d.periodUs > 0  Bool
 hall.kira:81:22  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
 hall.kira:81:22  d  Decoder  place=Param(d)  sym=pico:hall.speed(d)
 hall.kira:81:35  0  UInt32  const=0:UInt32
-hall.kira:82:9  s.periodTps = ((1000000 / d.periodUs) as Int32) * (d.lastDir as Int32)  Void
+hall.kira:82:9  s.periodTps = (1000000 / d.periodUs) as Int32 * d.lastDir as Int32  Void
 hall.kira:82:9  s.periodTps  Int32  member=Field(Speed.periodTps: Int32)  place=Field(Local(s).periodTps)
 hall.kira:82:9  s  Speed  place=Local(s)  sym=pico:hall.speed::s
-hall.kira:82:23  ((1000000 / d.periodUs) as Int32) * (d.lastDir as Int32)  Int32
+hall.kira:82:23  (1000000 / d.periodUs) as Int32 * d.lastDir as Int32  Int32
 hall.kira:82:24  (1000000 / d.periodUs) as Int32  Int32  conv=INT_WRAP
 hall.kira:82:25  1000000 / d.periodUs  UInt32
 hall.kira:82:25  1000000  UInt32  const=1000000:UInt32
