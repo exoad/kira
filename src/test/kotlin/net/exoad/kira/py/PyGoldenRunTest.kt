@@ -26,7 +26,9 @@ import kotlin.test.assertTrue
  * against Python's decoder over every 1- and 2-byte sequence and more; strings makes
  * cpp-golden/strings' checks one for one, its expected output that case's. maporder holds a Map's
  * order (a key put again keeps its place, one removed and put again goes last) and mapaliases its
- * copies, as aliases does a List's. Skipped when no Python is found (set KIRA_PYTHON).
+ * copies, as aliases does a List's; dbwspec holds dbwcodec.py's Spec index, pack, unpack and
+ * names and dbwcli.py's rtt_samples, and connbook bibodash.py's Conn, against the hand-written
+ * ones, each dict's keys in order. Skipped when no Python is found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")

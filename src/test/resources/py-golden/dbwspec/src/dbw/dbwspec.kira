@@ -1,0 +1,599 @@
+module "dbw:dbwspec"
+
+use "kira:bytes"
+
+// bibo's drive-by-wire spec index in Kira: dbwcodec.py's Spec, dbw.json's message names and ids
+// to their field tables and its bits, reasons, NACK codes and enums both ways, each a Map as the
+// Spec's dicts are; pack and unpack driven by a message's field table; bit_names, bits_mask and
+// the name lookups; and dbwcli.py's rtt_samples, which pops each heartbeat it matches from its
+// own copy of the ones sent. Python reads the JSON and hands each table over. A payload's fields
+// are two Maps, the integers and the bytes fields as hex, as unpack gives them; an error is a
+// Str, which the caller raises as FrameError. The expected output is the C++ backend's run of
+// main, then the driver's run of these against the hand-written ones.
+
+pub class Field {
+    require pub name: Str
+    require pub kind: Str
+    require pub count: Size
+}
+
+pub class Message {
+    require pub name: Str
+    require pub id: Int64
+    require pub dir: Str
+    require pub size: Size
+    pub mut fields: List<Field> = List<Field> { }
+
+    pub mut fx addField: (fieldName: Str, fieldKind: Str, n: Size) Void {
+        fields.add(Field { fieldName, fieldKind, n })
+    }
+
+    // The bytes the field table packs: struct.calcsize of the message's struct.
+    pub fx packedSize: () Size {
+        mut total: Size = 0
+        mut i: Size = 0
+        while i < fields.size() {
+            total += width(fields[i])
+            i += 1
+        }
+        return total
+    }
+}
+
+// A name -> value table and its inverse, as the Spec's fault_bits and fault_names: a value
+// given two names keeps the last, as a dict comprehension does.
+pub class Table {
+    pub mut byName: Map<Str, Int64> = Map<Str, Int64> { }
+    pub mut byValue: Map<Int64, Str> = Map<Int64, Str> { }
+
+    pub mut fx add: (n: Str, v: Int64) Void {
+        byName[n] = v
+        byValue[v] = n
+    }
+}
+
+pub class Spec {
+    pub mut messages: Map<Str, Message> = Map<Str, Message> { }
+    pub mut byId: Map<Int64, Message> = Map<Int64, Message> { }
+    pub mut faultBits: Table = Table { }
+    pub mut infoBits: Table = Table { }
+    pub mut reasons: Table = Table { }
+    pub mut nacks: Table = Table { }
+    pub mut enums: Map<Str, Table> = Map<Str, Table> { }
+
+    // A message by name and by id, the last one given either keeping the first one's place.
+    pub mut fx addMessage: (n: Str, msgId: Int64, msgDir: Str, msgSize: Size) Message {
+        m: Message = Message { n, msgId, msgDir, msgSize }
+        messages[n] = m
+        byId[msgId] = m
+        return m
+    }
+
+    pub mut fx enumTable: (n: Str) Table {
+        if !enums.containsKey(n) {
+            enums[n] = Table { }
+        }
+        return enums.get(n).value
+    }
+}
+
+pub class Packed {
+    pub mut error: Str = ""
+    pub mut payload: List<UInt8> = List<UInt8> { }
+}
+
+pub class Unpacked {
+    pub mut error: Str = ""
+    pub mut ints: Map<Str, Int64> = Map<Str, Int64> { }
+    pub mut hex: Map<Str, Str> = Map<Str, Str> { }
+}
+
+fx width: (f: Field) Size {
+    if f.kind == "u8" || f.kind == "i8" {
+        return 1
+    } else if f.kind == "u16" || f.kind == "i16" {
+        return 2
+    } else if f.kind == "u32" || f.kind == "i32" {
+        return 4
+    }
+    return f.count
+}
+
+// The range struct.pack takes for a field's type.
+fx lowest: (kind: Str) Int64 {
+    if kind == "i8" {
+        return -128
+    } else if kind == "i16" {
+        return -32768
+    } else if kind == "i32" {
+        return -2147483648
+    }
+    return 0
+}
+
+fx highest: (kind: Str) Int64 {
+    if kind == "u8" {
+        return 255
+    } else if kind == "i8" {
+        return 127
+    } else if kind == "u16" {
+        return 65535
+    } else if kind == "i16" {
+        return 32767
+    } else if kind == "u32" {
+        return 4294967295
+    }
+    return 2147483647
+}
+
+// Python's bytes.fromhex on ASCII: pairs of hex digits, ASCII whitespace between them.
+fx space: (c: Char) Bool {
+    code: Int32 = c as Int32
+    return c == ' ' || (code >= 9 && code <= 13)
+}
+
+fx digit: (c: Char) Int32 {
+    if c >= '0' && c <= '9' {
+        return (c as Int32) - 48
+    } else if c >= 'a' && c <= 'f' {
+        return (c as Int32) - 87
+    } else if c >= 'A' && c <= 'F' {
+        return (c as Int32) - 55
+    }
+    return -1
+}
+
+pub fx fromHex: (text: Str, mut out: List<UInt8>) Bool {
+    mut i: Size = 0
+    while i < text.size() {
+        if space(text.at(i)) {
+            i += 1
+            continue
+        }
+        if i + 1 >= text.size() {
+            return false
+        }
+        top: Int32 = digit(text.at(i))
+        bot: Int32 = digit(text.at(i + 1))
+        if top < 0 || bot < 0 {
+            return false
+        }
+        out.add((top * 16 + bot) as UInt8)
+        i += 2
+    }
+    return true
+}
+
+// bytes.hex(): two lowercase digits a byte.
+pub fx hexOf: (b: View<UInt8>) Str {
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < b.size() {
+        s = s + b[i].toHex().padStart(2, '0')
+        i += 1
+    }
+    return s
+}
+
+// A list of names as Python prints one: ['a', 'b'].
+fx listText: (names: List<Str>) Str {
+    mut s: Str = "["
+    mut i: Size = 0
+    while i < names.size() {
+        if i > 0 {
+            s = s + ", "
+        }
+        s = s + "'" + names[i] + "'"
+        i += 1
+    }
+    return s + "]"
+}
+
+fx isField: (m: Message, n: Str) Bool {
+    mut i: Size = 0
+    while i < m.fields.size() {
+        if m.fields[i].name == n {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// Each name in keys no field of m has, into extra in order.
+fx collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
+    mut i: Size = 0
+    while i < keys.size() {
+        if !isField(m, keys[i]) {
+            extra.add(keys[i])
+        }
+        i += 1
+    }
+}
+
+// Whether a sorts before b in code point order, as sorted() puts them (Kira's Str has no <;
+// a Char is ordered, the same on both targets for ASCII).
+fx before: (a: Str, b: Str) Bool {
+    mut i: Size = 0
+    while i < a.size() && i < b.size() {
+        if a.at(i) != b.at(i) {
+            return a.at(i) < b.at(i)
+        }
+        i += 1
+    }
+    return a.size() < b.size()
+}
+
+// sorted(): an insertion sort by before.
+fx sortNames: (mut names: List<Str>) Void {
+    mut i: Size = 1
+    while i < names.size() {
+        v: Str = names[i]
+        mut j: Size = i
+        while j > 0 && before(v, names[j - 1]) {
+            names[j] = names[j - 1]
+            j -= 1
+        }
+        names[j] = v
+        i += 1
+    }
+}
+
+fx addLe: (mut out: List<UInt8>, v: Int64, n: Size) Void {
+    mut k: Size = 0
+    while k < n {
+        out.add(((v >> ((k * 8) as Int64)) & 0xFF) as UInt8)
+        k += 1
+    }
+}
+
+// dbwcodec.pack: the payload of message `name` from every field by name; error is pack's
+// FrameError. The bytes fields are read before any integer is packed, as pack builds its
+// values before struct.pack checks them.
+pub fx pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Packed {
+    mut out: Packed = Packed { }
+    found: Maybe<Message> = spec.messages.get(name)
+    if found.isNone() {
+        out.error = "unknown message '${name}'"
+        return out
+    }
+    m: Message = found.unwrap()
+    mut extra: List<Str> = List<Str> { }
+    collectExtra(m, ints.keys(), mut extra)
+    collectExtra(m, hex.keys(), mut extra)
+    if !extra.isEmpty() {
+        sortNames(mut extra)
+        out.error = "${m.name}: unknown field(s) ${listText(extra)}"
+        return out
+    }
+    mut missing: List<Str> = List<Str> { }
+    mut i: Size = 0
+    while i < m.fields.size() {
+        n: Str = m.fields[i].name
+        if !ints.containsKey(n) && !hex.containsKey(n) {
+            missing.add(n)
+        }
+        i += 1
+    }
+    if !missing.isEmpty() {
+        out.error = "${m.name}: missing field(s) ${listText(missing)}"
+        return out
+    }
+    mut raw: List<UInt8> = List<UInt8> { }
+    i = 0
+    while i < m.fields.size() {
+        f: Field = m.fields[i]
+        if f.kind == "bytes" {
+            given: Maybe<Str> = hex.get(f.name)
+            if given.isNone() {
+                out.error = "${m.name}: ${f.name} is not bytes"
+                return out
+            }
+            mut b: List<UInt8> = List<UInt8> { }
+            if !fromHex(given.value, mut b) {
+                out.error = "${f.name}: not hex"
+                return out
+            }
+            if b.size() != f.count {
+                out.error = "${f.name}: ${b.size()} bytes, the field is ${f.count}"
+                return out
+            }
+            raw.addAll(b.toArr())
+        }
+        i += 1
+    }
+    mut payload: List<UInt8> = List<UInt8> { }
+    mut at: Size = 0
+    i = 0
+    while i < m.fields.size() {
+        f: Field = m.fields[i]
+        if f.kind == "bytes" {
+            payload.addAll(raw.slice(at, f.count).toList().toArr())
+            at += f.count
+        } else {
+            v: Maybe<Int64> = ints.get(f.name)
+            if v.isNone() {
+                out.error = "${m.name}: ${f.name} is not an integer"
+                return out
+            }
+            if v.value < lowest(f.kind) || v.value > highest(f.kind) {
+                out.error = "${m.name}: ${f.name} ${v.value} is out of range for ${f.kind}"
+                return out
+            }
+            addLe(mut payload, v.value, width(f))
+        }
+        i += 1
+    }
+    out.payload = payload
+    return out
+}
+
+// dbwcodec.unpack: every field by name, a bytes field as lowercase hex.
+pub fx unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
+    mut out: Unpacked = Unpacked { }
+    found: Maybe<Message> = spec.messages.get(name)
+    if found.isNone() {
+        out.error = "unknown message '${name}'"
+        return out
+    }
+    m: Message = found.unwrap()
+    if payload.size() != m.size {
+        out.error = "${m.name}: ${payload.size()} payload bytes, the message is ${m.size}"
+        return out
+    }
+    mut at: Size = 0
+    mut i: Size = 0
+    while i < m.fields.size() {
+        f: Field = m.fields[i]
+        k: Str = f.kind
+        if k == "bytes" {
+            out.hex[f.name] = hexOf(payload.slice(at, f.count))
+        } else if k == "u8" {
+            out.ints[f.name] = payload[at] as Int64
+        } else if k == "i8" {
+            out.ints[f.name] = (payload[at] as Int8) as Int64
+        } else if k == "u16" {
+            out.ints[f.name] = readU16Le(payload, at) as Int64
+        } else if k == "i16" {
+            out.ints[f.name] = (readU16Le(payload, at) as Int16) as Int64
+        } else if k == "u32" {
+            out.ints[f.name] = readU32Le(payload, at) as Int64
+        } else {
+            out.ints[f.name] = (readU32Le(payload, at) as Int32) as Int64
+        }
+        at += width(f)
+        i += 1
+    }
+    return out
+}
+
+// bit_names: the names of the bits set in value, low bit first; one the table lacks is BIT<n>.
+pub fx bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
+    mut inv: Map<Int64, Str> = Map<Int64, Str> { }
+    names: Arr<Str> = table.keys()
+    mut i: Size = 0
+    while i < names.size() {
+        inv[table.get(names[i]).value] = names[i]
+        i += 1
+    }
+    mut out: List<Str> = List<Str> { }
+    mut b: Int64 = 0
+    while b < 16 {
+        if ((value >> b) & 1) != 0 {
+            out.add(inv.get(b).unwrapOr("BIT${b}"))
+        }
+        b += 1
+    }
+    return out
+}
+
+// bits_mask: none for a name the table lacks, where Python raises KeyError.
+pub fx bitsMask: (table: Map<Str, Int64>, names: List<Str>) Maybe<Int64> {
+    mut m: Int64 = 0
+    mut i: Size = 0
+    while i < names.size() {
+        bit: Maybe<Int64> = table.get(names[i])
+        if bit.isNone() {
+            return null
+        }
+        m = m | (1 << bit.value)
+        i += 1
+    }
+    return m
+}
+
+fx hex4: (v: Int64) Str {
+    return "0x" + v.toHex().toUpper().padStart(4, '0')
+}
+
+pub fx typeName: (spec: Spec, typ: Int64) Str {
+    m: Maybe<Message> = spec.byId.get(typ)
+    if m.isSome() {
+        return m.value.name
+    }
+    return hex4(typ)
+}
+
+pub fx reasonName: (spec: Spec, code: Int64) Str {
+    return spec.reasons.byValue.get(code).unwrapOr(hex4(code))
+}
+
+pub fx nackName: (spec: Spec, code: Int64) Str {
+    return spec.nacks.byValue.get(code).unwrapOr("NACK${code}")
+}
+
+pub fx stateName: (spec: Spec, value: Int64) Str {
+    return spec.enums.get("State").value.byValue.get(value).unwrapOr("STATE${value}")
+}
+
+// A TELEMETRY's receipt, or another message's.
+pub class Ev {
+    require pub tUs: Int64
+    require pub name: Str
+    require pub hasFields: Bool
+    require pub hbSeq: Int64
+    require pub hbAgeMs: Int64
+}
+
+// rtt_samples: round trips in ms, the receipt minus the heartbeat's send minus the VCU's own
+// hb_age_ms, each heartbeat matched once; sentHb is the caller's, which pending copies.
+pub fx rttSamples: (events: List<Ev>, sentHb: Map<Int64, Int64>) List<Float64> {
+    mut pending: Map<Int64, Int64> = sentHb
+    mut out: List<Float64> = List<Float64> { }
+    mut i: Size = 0
+    while i < events.size() {
+        e: Ev = events[i]
+        i += 1
+        if e.name != "TELEMETRY" || !e.hasFields {
+            continue
+        }
+        t0: Maybe<Int64> = pending.remove(e.hbSeq)
+        if t0.isSome() {
+            out.add(((e.tUs - t0.value) as Float64) / 1000.0 - (e.hbAgeMs as Float64))
+        }
+    }
+    return out
+}
+
+fx show: (u: Unpacked, m: Message) Str {
+    if u.error != "" {
+        return u.error
+    }
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < m.fields.size() {
+        n: Str = m.fields[i].name
+        if m.fields[i].kind == "bytes" {
+            s = s + " ${n}=${u.hex.get(n).value}"
+        } else {
+            s = s + " ${n}=${u.ints.get(n).value}"
+        }
+        i += 1
+    }
+    return s
+}
+
+fx joined: (names: List<Str>) Str {
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < names.size() {
+        if i > 0 {
+            s = s + "|"
+        }
+        s = s + names[i]
+        i += 1
+    }
+    return s
+}
+
+fx main: () Void {
+    mut spec: Spec = Spec { }
+    mut hb: Message = spec.addMessage("HEARTBEAT", 1, "host_to_vcu", 5)
+    hb.addField("host_ms", "u32", 0)
+    hb.addField("mode", "u8", 0)
+    mut ds: Message = spec.addMessage("DRIVE_SETPOINT", 257, "host_to_vcu", 6)
+    ds.addField("throttle_us", "u16", 0)
+    ds.addField("steer_us", "u16", 0)
+    ds.addField("duration_ms", "u16", 0)
+    mut tel: Message = spec.addMessage("TELEMETRY", 32769, "vcu_to_host", 13)
+    tel.addField("t_us", "u32", 0)
+    tel.addField("ticks", "i32", 0)
+    tel.addField("tps", "i16", 0)
+    tel.addField("hall", "i8", 0)
+    tel.addField("hb_seq", "u16", 0)
+    mut hello: Message = spec.addMessage("VCU_HELLO", 32768, "vcu_to_host", 6)
+    hello.addField("proto_major", "u8", 0)
+    hello.addField("board", "u8", 0)
+    hello.addField("serial", "bytes", 4)
+    trace(spec.messages.size())
+    trace(tel.packedSize())
+    trace(typeName(spec, 257))
+    trace(typeName(spec, 0x7002))
+    spec.faultBits.add("ESTOP", 0)
+    spec.faultBits.add("HEARTBEAT_TIMEOUT", 1)
+    spec.faultBits.add("BUMPER", 2)
+    spec.faultBits.add("ESTOP", 5)
+    trace(joined(bitNames(spec.faultBits.byName, 0x0027)))
+    trace(joined(bitNames(spec.faultBits.byName, 0)))
+    mut names: List<Str> = List<Str> { }
+    names.add("BUMPER")
+    names.add("ESTOP")
+    trace(bitsMask(spec.faultBits.byName, names).unwrapOr(-1))
+    names.add("NOPE")
+    trace(bitsMask(spec.faultBits.byName, names).unwrapOr(-1))
+    spec.reasons.add("NONE", 0)
+    spec.reasons.add("ESTOP", 1)
+    spec.nacks.add("UNKNOWN_TYPE", 1)
+    spec.enumTable("State").add("HOLD", 1)
+    spec.enumTable("State").add("ARMED", 4)
+    trace(reasonName(spec, 1) + " " + reasonName(spec, 0x1A2) + " " + nackName(spec, 1) + " " + nackName(spec, 9))
+    trace(stateName(spec, 4) + " " + stateName(spec, 7))
+
+    mut ints: Map<Str, Int64> = Map<Str, Int64> { }
+    mut hex: Map<Str, Str> = Map<Str, Str> { }
+    ints["steer_us"] = 1500
+    ints["throttle_us"] = 1650
+    ints["duration_ms"] = 100
+    p: Packed = pack(spec, "DRIVE_SETPOINT", ints, hex)
+    trace(p.error + hexOf(p.payload))
+    dp: List<UInt8> = p.payload
+    trace(show(unpack(spec, "DRIVE_SETPOINT", dp), ds))
+    ints["zz"] = 1
+    ints["aa"] = 2
+    trace(pack(spec, "DRIVE_SETPOINT", ints, hex).error)
+    ints.remove("zz")
+    ints.remove("aa")
+    ints.remove("steer_us")
+    trace(pack(spec, "DRIVE_SETPOINT", ints, hex).error)
+    ints["steer_us"] = 70000
+    trace(pack(spec, "DRIVE_SETPOINT", ints, hex).error)
+    trace(pack(spec, "NOPE", ints, hex).error)
+
+    mut ti: Map<Str, Int64> = Map<Str, Int64> { }
+    ti["t_us"] = 4000000000
+    ti["ticks"] = -5
+    ti["tps"] = -300
+    ti["hall"] = -1
+    ti["hb_seq"] = 7
+    pt: Packed = pack(spec, "TELEMETRY", ti, hex)
+    trace(pt.error + hexOf(pt.payload))
+    tp: List<UInt8> = pt.payload
+    trace(show(unpack(spec, "TELEMETRY", tp), tel))
+    trace(show(unpack(spec, "TELEMETRY", tp.slice(0, 12)), tel))
+
+    mut hi: Map<Str, Int64> = Map<Str, Int64> { }
+    hi["proto_major"] = 1
+    hi["board"] = 3
+    mut hh: Map<Str, Str> = Map<Str, Str> { }
+    hh["serial"] = "DE AD be ef"
+    ph: Packed = pack(spec, "VCU_HELLO", hi, hh)
+    trace(ph.error + hexOf(ph.payload))
+    hp: List<UInt8> = ph.payload
+    trace(show(unpack(spec, "VCU_HELLO", hp), hello))
+    hh["serial"] = "dead"
+    trace(pack(spec, "VCU_HELLO", hi, hh).error)
+    hh["serial"] = "d ead"
+    trace(pack(spec, "VCU_HELLO", hi, hh).error)
+
+    // rtt_samples: a heartbeat matched once, the caller's Map untouched
+    mut sent: Map<Int64, Int64> = Map<Int64, Int64> { }
+    sent[1] = 1000000
+    sent[2] = 1020000
+    sent[3] = 1040000
+    mut evs: List<Ev> = List<Ev> { }
+    evs.add(Ev { 1008000, "TELEMETRY", true, 1, 3 })
+    evs.add(Ev { 1030000, "SAFETY_STATE", true, 2, 0 })
+    evs.add(Ev { 1031000, "TELEMETRY", false, 2, 0 })
+    evs.add(Ev { 1032500, "TELEMETRY", true, 2, 1 })
+    evs.add(Ev { 1033000, "TELEMETRY", true, 2, 1 })
+    evs.add(Ev { 1050000, "TELEMETRY", true, 9, 0 })
+    rs: List<Float64> = rttSamples(evs, sent)
+    mut line: Str = ""
+    mut i: Size = 0
+    while i < rs.size() {
+        line = line + " ${rs[i]}"
+        i += 1
+    }
+    trace(line)
+    trace(sent.size())
+}

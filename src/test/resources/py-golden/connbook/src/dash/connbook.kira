@@ -1,0 +1,373 @@
+module "dash:connbook"
+
+use "kira:bytes"
+
+// bibo's dashboard Conn in Kira (firmware/pilot/tools/dash/bibodash.py at 7f26371) without its
+// socket, lock and wake: a page's newest-wins slots, text by kind and frames by feed, the frames
+// each feed has in flight, and the H.264 queues, each a Map as Conn's dicts are, its keys in the
+// order the dict holds them: a feed put again keeps its place, one taken and put again goes last.
+// A frame out is its opcode and payload, which ws_frame wraps. The expected output is the C++
+// backend's run of main, then the driver's run of Conn against the hand-written one.
+
+H264_BASE: Int32 = 128
+H264_IN_FLIGHT: Size = 8
+H264_BACKLOG: Size = 30
+LIDAR: Int32 = 255
+VIDEO_IN_FLIGHT: Size = 1
+LIDAR_IN_FLIGHT: Size = 2
+
+pub class Out {
+    require pub opcode: Int32
+    require pub payload: List<UInt8>
+}
+
+// latest[feed]: the newest frame not sent and its capture board ms.
+pub class Slot {
+    require pub msg: List<UInt8>
+    require pub ms: Float64
+}
+
+// A frame in flight: its size and its capture board ms.
+pub class Sent {
+    require pub size: Size
+    require pub ms: Float64
+}
+
+// unacked[feed]: the frames sent and not drawn, oldest first.
+pub class Flight {
+    pub mut items: List<Sent> = List<Sent> { }
+}
+
+pub class Frag {
+    require pub msg: List<UInt8>
+}
+
+// h264[feed]: the fragments waiting, in order, and whether the feed waits for a keyframe.
+pub class Stream {
+    pub mut q: List<Frag> = List<Frag> { }
+    pub mut key: Bool = true
+}
+
+pub class Offer {
+    require pub offered: Bool
+    require pub dropped: Int32
+}
+
+pub class Conn {
+    pub mut text: Map<Str, Str> = Map<Str, Str> { }
+    pub mut latest: Map<Int32, Slot> = Map<Int32, Slot> { }
+    pub mut unacked: Map<Int32, Flight> = Map<Int32, Flight> { }
+    pub mut h264: Map<Int32, Stream> = Map<Int32, Stream> { }
+    pub mut pong: Bool = false
+
+    pub mut fx putText: (key: Str, t: Str) Void {
+        text[key] = t
+    }
+
+    pub mut fx putPong: () Void {
+        pong = true
+    }
+
+    // True when it replaced a frame that never went out: a drop.
+    pub mut fx putFrame: (feed: Int32, msg: List<UInt8>, ms: Float64) Bool {
+        dropped: Bool = latest.containsKey(feed)
+        latest[feed] = Slot { msg, ms }
+        return dropped
+    }
+
+    pub fx room: (feed: Int32) Bool {
+        mut cap: Size = VIDEO_IN_FLIGHT
+        if feed >= H264_BASE && feed != LIDAR {
+            cap = H264_IN_FLIGHT
+        } else if feed == LIDAR {
+            cap = LIDAR_IN_FLIGHT
+        }
+        f: Maybe<Flight> = unacked.get(feed)
+        if f.isNone() {
+            return 0 < cap
+        }
+        return f.unwrap().items.size() < cap
+    }
+
+    pub fx hasWork: () Bool {
+        if pong || !text.isEmpty() {
+            return true
+        }
+        fs: Arr<Int32> = latest.keys()
+        mut i: Size = 0
+        while i < fs.size() {
+            if room(fs[i]) {
+                return true
+            }
+            i += 1
+        }
+        hs: Arr<Int32> = h264.keys()
+        i = 0
+        while i < hs.size() {
+            if !h264.get(hs[i]).unwrap().q.isEmpty() && room(hs[i]) {
+                return true
+            }
+            i += 1
+        }
+        return false
+    }
+
+    // unacked.setdefault(feed, deque())
+    mut fx flight: (feed: Int32) Flight {
+        if !unacked.containsKey(feed) {
+            unacked[feed] = Flight { }
+        }
+        return unacked.get(feed).unwrap()
+    }
+
+    mut fx takeText: (mut out: List<Out>, key: Str) Void {
+        t: Maybe<Str> = text.remove(key)
+        if t.isSome() {
+            out.add(Out { 1, t.value.bytes() })
+        }
+    }
+
+    pub mut fx take: () List<Out> {
+        mut out: List<Out> = List<Out> { }
+        if pong {
+            out.add(Out { 10, List<UInt8> { } })
+            pong = false
+        }
+        takeText(mut out, "P")
+        takeText(mut out, "h")
+        takeText(mut out, "status")
+        fs: Arr<Int32> = latest.keys()
+        mut i: Size = 0
+        while i < fs.size() {
+            feed: Int32 = fs[i]
+            if room(feed) {
+                s: Slot = latest.remove(feed).unwrap()
+                flight(feed).items.add(Sent { s.msg.size(), s.ms })
+                out.add(Out { 2, s.msg })
+            }
+            i += 1
+        }
+        hs: Arr<Int32> = h264.keys()
+        i = 0
+        while i < hs.size() {
+            hfeed: Int32 = hs[i]
+            st: Stream = h264.get(hfeed).unwrap()
+            while !st.q.isEmpty() && room(hfeed) {
+                fr: Frag = st.q.removeAt(0)
+                flight(hfeed).items.add(Sent { fr.msg.size(), readF64Le(fr.msg, 2) })
+                out.add(Out { 2, fr.msg })
+            }
+            i += 1
+        }
+        return out
+    }
+
+    pub mut fx ack: (feed: Int32) Maybe<Sent> {
+        f: Maybe<Flight> = unacked.get(feed)
+        if f.isNone() || f.unwrap().items.isEmpty() {
+            return null
+        }
+        return f.unwrap().items.removeAt(0)
+    }
+
+    pub fx oldestUnackedMs: () Maybe<Float64> {
+        mut best: Float64 = 0.0
+        mut found: Bool = false
+        fs: Arr<Int32> = unacked.keys()
+        mut i: Size = 0
+        while i < fs.size() {
+            q: Flight = unacked.get(fs[i]).unwrap()
+            if !q.items.isEmpty() && fs[i] != LIDAR && q.items[0].ms != 0.0 {
+                s: Float64 = q.items[0].ms
+                if !found || s < best {
+                    best = s
+                    found = true
+                }
+            }
+            i += 1
+        }
+        if !found {
+            return null
+        }
+        return best
+    }
+
+    // A feed switched off and on again: frames in flight then are never drawn.
+    pub mut fx reset: (feed: Int32) Void {
+        unacked.remove(feed)
+        latest.remove(feed)
+    }
+
+    pub fx hasH264: (f: Int32) Bool {
+        return h264.containsKey(f)
+    }
+
+    // (Re)starts H.264 feed f: the encoder's init segment first, when there is one (initMsg not
+    // empty), then frames from the next keyframe.
+    pub mut fx wantH264: (f: Int32, wanted: Bool, initMsg: List<UInt8>) Void {
+        unacked.remove(f)
+        if wanted {
+            mut st: Stream = Stream { }
+            if !initMsg.isEmpty() {
+                st.q.add(Frag { initMsg })
+            }
+            h264[f] = st
+        } else {
+            h264.remove(f)
+        }
+    }
+
+    // kind 0 is an init segment (a new encoder: the page starts over), 1 a keyframe, 2 not.
+    pub mut fx offerH264: (f: Int32, kind: Int32, msg: List<UInt8>) Offer {
+        found: Maybe<Stream> = h264.get(f)
+        if found.isNone() {
+            return Offer { false, 0 }
+        }
+        st: Stream = found.unwrap()
+        mut dropped: Int32 = 0
+        if kind == 0 {
+            st.q.clear()
+            st.q.add(Frag { msg })
+            st.key = true
+            unacked.remove(f)
+        } else {
+            if st.key && kind != 1 {
+                return Offer { false, 1 }
+            }
+            st.key = false
+            st.q.add(Frag { msg })
+            if st.q.size() > H264_BACKLOG {
+                n: Size = st.q.size()
+                mut kept: List<Frag> = List<Frag> { }
+                mut i: Size = 0
+                while i < n {
+                    if st.q[i].msg[1] == 0 {
+                        kept.add(st.q[i])
+                    }
+                    i += 1
+                }
+                st.q = kept
+                st.key = true
+                dropped = (n - kept.size()) as Int32
+            }
+        }
+        return Offer { true, dropped }
+    }
+}
+
+fx frame: (n: Size, first: UInt8) List<UInt8> {
+    mut b: List<UInt8> = List<UInt8> { }
+    mut i: Size = 0
+    while i < n {
+        b.add(first + (i as UInt8))
+        i += 1
+    }
+    return b
+}
+
+// An H.264 message: its feed byte, its kind byte, its capture ms as a little-endian double, a tail.
+fx fragment: (kind: UInt8, ms: Float64) List<UInt8> {
+    mut b: List<UInt8> = frame(12, 0)
+    b.set(1, kind)
+    writeF64Le(b.slice(2, 8), 0, ms)
+    return b
+}
+
+fx outs: (xs: List<Out>) Str {
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < xs.size() {
+        s = s + " ${xs[i].opcode}:${xs[i].payload.size()}"
+        i += 1
+    }
+    return "[" + s + " ]"
+}
+
+fx feeds: (c: Conn) Str {
+    lk: Arr<Int32> = c.latest.keys()
+    uk: Arr<Int32> = c.unacked.keys()
+    hk: Arr<Int32> = c.h264.keys()
+    mut s: Str = "latest"
+    mut i: Size = 0
+    while i < lk.size() {
+        s = s + " ${lk[i]}"
+        i += 1
+    }
+    s = s + " unacked"
+    i = 0
+    while i < uk.size() {
+        s = s + " ${uk[i]}/${c.unacked.get(uk[i]).unwrap().items.size()}"
+        i += 1
+    }
+    s = s + " h264"
+    i = 0
+    while i < hk.size() {
+        s = s + " ${hk[i]}/${c.h264.get(hk[i]).unwrap().q.size()}"
+        i += 1
+    }
+    return s
+}
+
+fx main: () Void {
+    mut c: Conn = Conn { }
+    trace(c.hasWork())
+    c.putText("status", "ok")
+    c.putText("P", "p 1")
+    c.putText("status", "armed")
+    c.putPong()
+    trace(c.putFrame(0, frame(5, 1), 10.5))
+    trace(c.putFrame(LIDAR, frame(3, 9), 11.0))
+    trace(c.putFrame(0, frame(6, 2), 12.25))
+    trace(feeds(c))
+    trace(outs(c.take()))
+    trace(feeds(c))
+    trace(c.room(0))
+    trace(c.room(LIDAR))
+    trace(c.oldestUnackedMs().unwrapOr(-1.0))
+    trace(c.putFrame(1, frame(4, 0), 9.0))
+    trace(c.putFrame(0, frame(2, 0), 13.0))
+    trace(outs(c.take()))
+    trace(feeds(c))
+    trace(c.oldestUnackedMs().unwrapOr(-1.0))
+    a: Maybe<Sent> = c.ack(0)
+    trace("${a.unwrap().size} ${a.unwrap().ms}")
+    trace(c.ack(0).isNone())
+    trace(c.ack(7).isNone())
+    trace(outs(c.take()))
+    trace(feeds(c))
+    c.reset(1)
+    trace(feeds(c))
+    trace(c.putFrame(1, frame(1, 0), 14.0))
+    trace(feeds(c))
+
+    // H.264: an init segment, then frames from the next keyframe; a backlog past 30 keeps the inits
+    c.wantH264(129, true, fragment(0, 1.5))
+    trace(c.hasH264(129))
+    o1: Offer = c.offerH264(129, 2, fragment(2, 20.0))
+    trace("${o1.offered} ${o1.dropped}")
+    o2: Offer = c.offerH264(129, 1, fragment(1, 21.0))
+    trace("${o2.offered} ${o2.dropped}")
+    o3: Offer = c.offerH264(130, 1, fragment(1, 21.0))
+    trace("${o3.offered} ${o3.dropped}")
+    trace(outs(c.take()))
+    trace(feeds(c))
+    trace(c.oldestUnackedMs().unwrapOr(-1.0))
+    mut k: Int32 = 0
+    mut last: Offer = Offer { false, 0 }
+    while k < 40 {
+        last = c.offerH264(129, 2, fragment(2, 30.0 + (k as Float64)))
+        if last.dropped > 1 {
+            trace("offer ${k}: ${last.offered} ${last.dropped}")
+        }
+        k += 1
+    }
+    trace("${last.offered} ${last.dropped}")
+    trace(feeds(c))
+    o4: Offer = c.offerH264(129, 0, fragment(0, 99.0))
+    trace("${o4.offered} ${o4.dropped}")
+    trace(feeds(c))
+    c.wantH264(129, false, List<UInt8> { })
+    trace(c.hasH264(129))
+    trace(feeds(c))
+    trace(c.hasWork())
+}
