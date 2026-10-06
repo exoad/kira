@@ -1,0 +1,4313 @@
+{
+ "spec": "bibo-dbw",
+ "doc": "The drive-by-wire link between the VCU (RP2350 Pico 2, USB CDC) and its host. The one machine-readable spec: firmware/lib/dbw_spec.hxx is generated from it, tools/dbw/dbwcodec.py loads it, and both run golden_frames, streams and behaviour. design.md is the prose.",
+ "status": "APPROVED 2026-10-02 with the user's answers (design.md section 2). Protocol 1.0: nothing has shipped, so the answers change 1.0 itself. Nothing built yet; M1 is next.",
+ "protocol": {
+  "major": 1,
+  "minor": 0,
+  "min_vcu_minor": 0,
+  "version_rule": [
+   "The header's version byte is the major. A receiver acts only on frames of its own major.",
+   "The VCU NACKs a CRC-valid frame of another major with VERSION and does nothing else; IDENTIFY_REQUEST, VCU_HELLO and NACK keep their type ids and layouts in every major so a mismatched pair can still identify itself.",
+   "The host sends nothing but IDENTIFY_REQUEST until a VCU_HELLO with its own major arrives. A different major, or a minor below min_vcu_minor, refuses to arm for as long as that VCU is attached (reason VCU_VERSION_MISMATCH, recoverable false).",
+   "A minor only ADDS: message types, fault bits, reason codes, NACK codes, enum values, info bits. It never changes a payload's length, a field's offset, unit, range or meaning; that is a major.",
+   "VCU minor above the host's: allowed. The host ignores types it does not know (counted), shows unknown reason codes as numbers, and refuses to arm while any fault bit it does not know is set. VCU minor below the host's: allowed down to min_vcu_minor, the lowest minor that has every message the host sends to drive.",
+   "Firmware version and build id (VCU_HELLO) are logged and shown; they never gate arming."
+  ]
+ },
+ "framing": {
+  "byte_order": "little",
+  "magic": [
+   "0xFB",
+   "0xB1"
+  ],
+  "magic_why": "Both bytes are above 0x7F, so no 7-bit ASCII text (the old firmware's OK/ERR/INFO lines, a person typing, a stray printf) can contain either; 0xFB never occurs in valid UTF-8 at all. So an ASCII line can never look like the start of a frame, and the first byte of a session tells binary from text.",
+  "header": [
+   {
+    "offset": 0,
+    "size": 2,
+    "name": "magic",
+    "value": "FB B1"
+   },
+   {
+    "offset": 2,
+    "size": 1,
+    "name": "version",
+    "value": "protocol major (1)"
+   },
+   {
+    "offset": 3,
+    "size": 1,
+    "name": "flags",
+    "value": "0; every bit reserved in 1.x, non-zero is NACK BAD_FLAGS"
+   },
+   {
+    "offset": 4,
+    "size": 2,
+    "name": "seq",
+    "value": "u16 per sender, +1 per frame sent, wraps; diagnostics and NACK references, never an ordering rule"
+   },
+   {
+    "offset": 6,
+    "size": 2,
+    "name": "type",
+    "value": "u16 message id"
+   },
+   {
+    "offset": 8,
+    "size": 2,
+    "name": "len",
+    "value": "u16 payload bytes, 0..max_payload"
+   }
+  ],
+  "header_bytes": 10,
+  "crc_bytes": 2,
+  "max_payload": 52,
+  "max_frame": 64,
+  "max_frame_why": "one USB full-speed bulk packet (64 bytes); a corrupt len over 52 is refused at once",
+  "crc": {
+   "name": "CRC-16/CCITT-FALSE",
+   "poly": "0x1021",
+   "init": "0xFFFF",
+   "refin": false,
+   "refout": false,
+   "xorout": "0x0000",
+   "check": "0x29B1",
+   "check_input": "ASCII 123456789",
+   "covers": "bytes [0, 10+len): magic, header and payload",
+   "stored": "u16 little-endian after the payload"
+  },
+  "resync": [
+   "Hunt: drop bytes until 0xFB; the next byte must be 0xB1, else drop the 0xFB and hunt on from the next byte.",
+   "With 10 header bytes: len > max_payload is a length error; drop the leading 0xFB and rescan the bytes already held.",
+   "With 10+len+2 bytes: a CRC mismatch drops the leading 0xFB only, and the bytes held are rescanned, so a real frame inside a corrupt one is still found.",
+   "A partial frame with no new byte for FRAME_GAP_MS (an inter-byte gap) is a gap reset: drop the leading 0xFB and rescan. The VCU polls this every loop pass and the host on every read timeout, so a frame cut short is resolved without waiting for more bytes.",
+   "A CRC-valid frame is handed to the dispatcher whatever its version, flags, type or length; the dispatcher refuses (NACK at the VCU, a counter at the host). Framing never interprets.",
+   "Counters, saturating: frames, crc_errors, len_errors, version_frames, discarded (bytes), gap_resets."
+  ],
+  "signal_bytes": {
+   "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fbb10100ffff020002000c016477",
+   "doc": "What carlink::stopFromSignal writes with one write(2): 64 zero bytes (completing any frame a write was interrupted in, so it fails its CRC and is rescanned) then ESTOP_SET(SIGNAL) with seq 0xFFFF. Pre-encoded at open; no allocation in the handler."
+  }
+ },
+ "enums": {
+  "State": {
+   "doc": "The VCU's state. BOOT is never reported: it lasts until the first instruction after the pins are written.",
+   "values": [
+    {
+     "name": "BOOT",
+     "value": 0,
+     "doc": "pins being written; never on the wire"
+    },
+    {
+     "name": "HOLD",
+     "value": 1,
+     "doc": "neutral held HOLD_MS after boot or after a CLEAR; non-neutral throttle refused"
+    },
+    {
+     "name": "DISARMED",
+     "value": 2,
+     "doc": "no motion authority; throttle neutral; steering obeys accepted setpoints"
+    },
+    {
+     "name": "ARMING",
+     "value": 3,
+     "doc": "heartbeats are counting toward ARM_HEARTBEATS"
+    },
+    {
+     "name": "ARMED",
+     "value": 4,
+     "doc": "throttle setpoints are obeyed until each one's duration_ms runs out"
+    },
+    {
+     "name": "FAULT",
+     "value": 5,
+     "doc": "a fault bit is set (active or latched); motion inhibited until CLEAR"
+    }
+   ]
+  },
+  "HostMode": {
+   "doc": "HEARTBEAT.mode: which roster authorised this heartbeat. Echoed in SAFETY_STATE.host_mode for logs.",
+   "values": [
+    {
+     "name": "MANUAL",
+     "value": 1,
+     "doc": "a viewer drives (pilot --manual)"
+    },
+    {
+     "name": "AUTO",
+     "value": 2,
+     "doc": "the autonomy or a driving bundle"
+    },
+    {
+     "name": "BENCH",
+     "value": 3,
+     "doc": "dbwcli.py, escsweep or stopdist; neutral throttle, except escsweep and wheels-up-estop on the user's wheels-up and stopdist on the user's wheels-down go (B10)"
+    },
+    {
+     "name": "PROGRAM",
+     "value": 4,
+     "doc": "a bibo::Car program"
+    }
+   ]
+  },
+  "Board": {
+   "doc": "VCU_HELLO.board.",
+   "values": [
+    {
+     "name": "PICO2",
+     "value": 1,
+     "doc": "the car's VCU, PICO_BOARD=pico2"
+    },
+    {
+     "name": "PICO2_W",
+     "value": 2,
+     "doc": "the desk board"
+    },
+    {
+     "name": "HOSTED",
+     "value": 3,
+     "doc": "firmware/sim hosting the real firmware on a laptop"
+    }
+   ]
+  },
+  "ResetReason": {
+   "doc": "VCU_HELLO.reset_reason, from watchdog_enable_caused_reboot() and POWMAN CHIP_RESET.",
+   "values": [
+    {
+     "name": "POWER_ON",
+     "value": 0,
+     "doc": "power-on or a USB replug"
+    },
+    {
+     "name": "WATCHDOG",
+     "value": 1,
+     "doc": "the RP2350 hardware watchdog: the loop stopped"
+    },
+    {
+     "name": "BROWNOUT",
+     "value": 2,
+     "doc": "the brownout detector"
+    },
+    {
+     "name": "RUN_PIN",
+     "value": 3,
+     "doc": "the RUN pin"
+    },
+    {
+     "name": "SOFTWARE",
+     "value": 4,
+     "doc": "picotool reboot, the 1200-baud touch, or a debugger"
+    },
+    {
+     "name": "HOSTED",
+     "value": 5,
+     "doc": "a simulated boot"
+    },
+    {
+     "name": "UNKNOWN",
+     "value": 255,
+     "doc": "none of the above could be read"
+    }
+   ]
+  }
+ },
+ "fault_bits": [
+  {
+   "bit": 0,
+   "name": "ESTOP",
+   "latches": true,
+   "active": "never (the latch is the state)",
+   "esc": "cut",
+   "servo": "held (pulse live, last angle)",
+   "clear": "human",
+   "clear_needs": "nothing",
+   "set_by": "ESTOP_SET",
+   "doc": "ESC pulse cut at once (the pin goes silent, the ESC's signal-loss failsafe stops the motor). The steering is HELD at its last angle with its pulse live, and every DRIVE_SETPOINT is refused (ESTOP_LATCHED) until CLEAR, so the angle cannot move. CLEAR brings the ESC pulse back at neutral, then HOLD; the steering keeps its angle. Decided 2026-10-02 (design.md section 2, answer 3)."
+  },
+  {
+   "bit": 1,
+   "name": "HEARTBEAT_TIMEOUT",
+   "latches": true,
+   "active": "no valid HEARTBEAT for more than HB_TIMEOUT_MS while watched",
+   "esc": "neutral",
+   "servo": "held",
+   "clear": "auto_on_arm",
+   "clear_needs": "not active (heartbeats flowing again)",
+   "set_by": "the VCU's own clock",
+   "doc": "Neutral written to the pin at once, pulse live, ESC stays armed on its side, steering held at its last angle. Not a stop and not a cut; it latches, so the next throttle needs CLEAR and HOLD."
+  },
+  {
+   "bit": 2,
+   "name": "BUMPER",
+   "latches": true,
+   "active": "GP0 at its pressed level (vcu.bumper.pressed_level) for bumper_filter_ms; clears after BUMPER_RELEASE_MS of continuous release",
+   "esc": "neutral",
+   "servo": "held",
+   "clear": "human",
+   "clear_needs": "not active",
+   "set_by": "the GP0 edge interrupt (or its alarm bumper_filter_ms later), no host involved; only when the bumper is enabled",
+   "doc": "With bumper_filter_ms 0 (the default) the press acts on the first edge; with 1..BUMPER_FILTER_MAX_MS the press must hold that long. Only the release is debounced. On the NC contact a broken wire reads as pressed."
+  },
+  {
+   "bit": 3,
+   "name": "LINK_RESET",
+   "latches": true,
+   "active": "no host session (DTR low or USB not configured)",
+   "esc": "neutral",
+   "servo": "held",
+   "clear": "auto_on_arm",
+   "clear_needs": "not active (a session is open)",
+   "set_by": "a host session ending after a heartbeat was seen in it",
+   "doc": "A USB reconnect is a disarm: the new session must CLEAR and arm again."
+  },
+  {
+   "bit": 4,
+   "name": "WATCHDOG_RESET",
+   "latches": true,
+   "active": "never",
+   "esc": "neutral",
+   "servo": "boot (centred)",
+   "clear": "human",
+   "clear_needs": "nothing",
+   "set_by": "boot, when the last reset was the RP2350 hardware watchdog",
+   "doc": "The loop hung for HW_WATCHDOG_MS. Latches set before the reset (ESTOP among them) are restored from watchdog scratch registers."
+  },
+  {
+   "bit": 5,
+   "name": "PIN_MAP",
+   "latches": false,
+   "active": "pins::begin() refused the map",
+   "esc": "none (no pin bound)",
+   "servo": "none",
+   "clear": "never",
+   "clear_needs": "a reflash",
+   "set_by": "boot",
+   "doc": "Unreachable in a build that compiles (pins.hxx static_asserts the car's map); kept so a hosted build with a broken map says so."
+  },
+  {
+   "bit": 6,
+   "name": "INTERNAL",
+   "latches": true,
+   "active": "never",
+   "esc": "cut",
+   "servo": "released",
+   "clear": "human",
+   "clear_needs": "nothing",
+   "set_by": "an invariant check: the pin clamp in servo::writeUs engaged, or the state machine reached a state it cannot be in",
+   "doc": "Validation means the hal's last-resort clamp never engages; if it does, the firmware has a bug and the car stops. The ONLY fault that releases the steering: both pulses stop. CLEAR restores the ESC at neutral and the servo at servo_center_us, then HOLD."
+  },
+  {
+   "bit": 7,
+   "name": "RESERVED_7",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 8,
+   "name": "RESERVED_8",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 9,
+   "name": "RESERVED_9",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 10,
+   "name": "RESERVED_10",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 11,
+   "name": "RESERVED_11",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 12,
+   "name": "RESERVED_12",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 13,
+   "name": "RESERVED_13",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 14,
+   "name": "RESERVED_14",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  },
+  {
+   "bit": 15,
+   "name": "RESERVED_15",
+   "latches": null,
+   "active": null,
+   "esc": "inhibit",
+   "servo": "inhibit",
+   "clear": "never",
+   "clear_needs": null,
+   "set_by": "nothing in 1.0",
+   "doc": "Never set by 1.0. A host that reads it set refuses to arm (unknown bits inhibit motion)."
+  }
+ ],
+ "inhibit_mask": "0xFFFF: every bit, defined or reserved, inhibits motion while active or latched",
+ "info_bits": [
+  {
+   "bit": 0,
+   "name": "SETPOINT_LIVE",
+   "doc": "an accepted setpoint has not reached its duration_ms"
+  },
+  {
+   "bit": 1,
+   "name": "HB_FRESH",
+   "doc": "a valid HEARTBEAT within HB_TIMEOUT_MS"
+  },
+  {
+   "bit": 2,
+   "name": "BUMPER_RAW",
+   "doc": "GP0 is at its pressed level under the polarity in force, enabled or not (so the switch and its polarity can be checked before it is enabled). On the NC polarity an unwired GP0 floats high and reads 1."
+  },
+  {
+   "bit": 3,
+   "name": "BUMPER_ENABLED",
+   "doc": "the bumper acts (compiled default or CONFIG_SET)"
+  },
+  {
+   "bit": 4,
+   "name": "HOST_SESSION",
+   "doc": "DTR high and USB configured"
+  },
+  {
+   "bit": 5,
+   "name": "ESC_LIVE",
+   "doc": "the ESC pin carries a pulse (0 after ESTOP)"
+  },
+  {
+   "bit": 6,
+   "name": "SERVO_LIVE",
+   "doc": "the servo pin carries a pulse"
+  }
+ ],
+ "bumper_flag_bits": [
+  {
+   "bit": 0,
+   "name": "ENABLE",
+   "doc": "1 enables the bumper until the next boot. 0 leaves it as it is: it never disables a bumper that is enabled (compiled in, or enabled earlier this boot). In CONFIG_REPORT: the bumper acts."
+  },
+  {
+   "bit": 1,
+   "name": "PRESSED_LOW",
+   "doc": "0 (the compiled default): the switch's NC contact is wired; GP0 reads HIGH when pressed (the contact opens and the pull-up wins) and HIGH when the wire is broken, so a broken wire reads as pressed; LOW at rest. 1: the NO contact is wired; GP0 reads LOW when pressed, HIGH at rest, and HIGH (released) when the wire is broken. Settable while the bumper is disabled or in the CONFIG_SET that enables it; asking for a different polarity on an enabled bumper is NACK NOT_PERMITTED."
+  }
+ ],
+ "reasons": [
+  {
+   "code": "0x0000",
+   "value": 0,
+   "name": "NONE",
+   "origin": "vcu",
+   "recoverable": true,
+   "doc": "nothing is wrong"
+  },
+  {
+   "code": "0x0001",
+   "value": 1,
+   "name": "ESTOP",
+   "origin": "vcu",
+   "recoverable": false,
+   "doc": "fault bit ESTOP latched"
+  },
+  {
+   "code": "0x0002",
+   "value": 2,
+   "name": "HEARTBEAT_TIMEOUT",
+   "origin": "vcu",
+   "recoverable": true,
+   "doc": "fault bit HEARTBEAT_TIMEOUT latched or active"
+  },
+  {
+   "code": "0x0003",
+   "value": 3,
+   "name": "BUMPER",
+   "origin": "vcu",
+   "recoverable": false,
+   "doc": "fault bit BUMPER latched or active"
+  },
+  {
+   "code": "0x0004",
+   "value": 4,
+   "name": "LINK_RESET",
+   "origin": "vcu",
+   "recoverable": true,
+   "doc": "fault bit LINK_RESET latched or active"
+  },
+  {
+   "code": "0x0005",
+   "value": 5,
+   "name": "WATCHDOG_RESET",
+   "origin": "vcu",
+   "recoverable": false,
+   "doc": "fault bit WATCHDOG_RESET latched"
+  },
+  {
+   "code": "0x0006",
+   "value": 6,
+   "name": "PIN_MAP",
+   "origin": "vcu",
+   "recoverable": false,
+   "doc": "fault bit PIN_MAP active; reflash"
+  },
+  {
+   "code": "0x0007",
+   "value": 7,
+   "name": "INTERNAL",
+   "origin": "vcu",
+   "recoverable": false,
+   "doc": "fault bit INTERNAL latched"
+  },
+  {
+   "code": "0x0008",
+   "value": 8,
+   "name": "SETPOINT_EXPIRED",
+   "origin": "vcu",
+   "recoverable": true,
+   "doc": "ARMED, last setpoint past its duration_ms: throttle neutral, still armed"
+  },
+  {
+   "code": "0x0009",
+   "value": 9,
+   "name": "HOLD",
+   "origin": "vcu",
+   "recoverable": true,
+   "doc": "HOLD after boot or CLEAR: throttle refused for HOLD_MS"
+  },
+  {
+   "code": "0x000A",
+   "value": 10,
+   "name": "NOT_ARMED",
+   "origin": "vcu",
+   "recoverable": true,
+   "doc": "DISARMED or ARMING"
+  },
+  {
+   "code": "0x0101",
+   "value": 257,
+   "name": "LIDAR_STALE",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "roster: the C1 reader has not delivered a good revolution within its stale band"
+  },
+  {
+   "code": "0x0102",
+   "value": 258,
+   "name": "OBSTACLE_STOP_STALE",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "roster: the stop bundle has not judged a fresh revolution within its stale band"
+  },
+  {
+   "code": "0x0103",
+   "value": 259,
+   "name": "TICK_STALE",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "roster: the pilot's tick (or a Car's minder) stopped producing decisions"
+  },
+  {
+   "code": "0x0104",
+   "value": 260,
+   "name": "CONTROL_DEAD",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "roster: the holding viewer's CONTROL stream is past bibowire::CONTROL_DEAD_MS"
+  },
+  {
+   "code": "0x0105",
+   "value": 261,
+   "name": "VCU_SILENT",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "no valid TELEMETRY within VCU_SILENT_MS"
+  },
+  {
+   "code": "0x0106",
+   "value": 262,
+   "name": "VCU_VERSION_MISMATCH",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "VCU_HELLO's protocol major differs, or its minor is below MIN_VCU_MINOR: refused to arm"
+  },
+  {
+   "code": "0x0107",
+   "value": 263,
+   "name": "VCU_NOT_FOUND",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "no VCU_HELLO answered IDENTIFY_REQUEST within HELLO_WAIT_MS"
+  },
+  {
+   "code": "0x0108",
+   "value": 264,
+   "name": "ROSTER_INCOMPLETE",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "the roster window ran out with a critical component never fresh"
+  },
+  {
+   "code": "0x0109",
+   "value": 265,
+   "name": "ROSTER_ARMING",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "the roster window is open: waiting for every critical component"
+  },
+  {
+   "code": "0x010A",
+   "value": 266,
+   "name": "UNKNOWN_FAULT_BITS",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "the VCU reports a fault bit this host does not know"
+  },
+  {
+   "code": "0x010B",
+   "value": 267,
+   "name": "VIEWER_ESTOP",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "a viewer's ESTOP (CONTROL bit or COMMAND)"
+  },
+  {
+   "code": "0x010C",
+   "value": 268,
+   "name": "SIGNAL",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "SIGINT, SIGTERM, SIGHUP or a crash handler"
+  },
+  {
+   "code": "0x010D",
+   "value": 269,
+   "name": "MODE_CHANGE",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "the pilot's mode changed: authority spent"
+  },
+  {
+   "code": "0x010E",
+   "value": 270,
+   "name": "FINISHED",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "the run ended on request"
+  },
+  {
+   "code": "0x010F",
+   "value": 271,
+   "name": "OBSTACLE",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "the stop clamp holds the throttle at zero: something is ahead"
+  },
+  {
+   "code": "0x0110",
+   "value": 272,
+   "name": "OLD_FIRMWARE",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "the VCU answered in ASCII lines: an image from before DBW; reflash"
+  },
+  {
+   "code": "0x0111",
+   "value": 273,
+   "name": "LINK_LOST",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "the VCU's port closed"
+  },
+  {
+   "code": "0x0112",
+   "value": 274,
+   "name": "ARM_TIMEOUT",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "the VCU did not report ARMED within ARM_CONFIRM_MS"
+  },
+  {
+   "code": "0x0113",
+   "value": 275,
+   "name": "DISARM",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "an explicit disarm (viewer DISARM, Car::finish): sent as ESTOP_SET"
+  },
+  {
+   "code": "0x0114",
+   "value": 276,
+   "name": "ROSTER_FAULT",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "a critical component reported its own FAULT level"
+  },
+  {
+   "code": "0x0115",
+   "value": 277,
+   "name": "REARM_LIMIT",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "the run asked to re-arm without a human act after HEARTBEAT_TIMEOUT or LINK_RESET more than REARM_MAX_PER_RUN times: the run ended"
+  },
+  {
+   "code": "0x0116",
+   "value": 278,
+   "name": "SPEED_CAP",
+   "origin": "host",
+   "recoverable": true,
+   "doc": "the measured speed is at the run's cap: the throttle is sent as neutral until it falls below"
+  },
+  {
+   "code": "0x0117",
+   "value": 279,
+   "name": "SPEED_UNKNOWN",
+   "origin": "host",
+   "recoverable": false,
+   "doc": "a forward pulse was in force for SPEED_UNKNOWN_MS with no hall tick: the speed cannot be measured, so the cap cannot hold; stopped"
+  }
+ ],
+ "nack_codes": [
+  {
+   "code": 1,
+   "name": "UNKNOWN_TYPE",
+   "detail": "the message type; frame dropped"
+  },
+  {
+   "code": 2,
+   "name": "BAD_LENGTH",
+   "detail": "the payload length received"
+  },
+  {
+   "code": 3,
+   "name": "WRONG_DIRECTION",
+   "detail": "the message type (a VCU-to-host type sent to the VCU)"
+  },
+  {
+   "code": 4,
+   "name": "BAD_FLAGS",
+   "detail": "the flags byte"
+  },
+  {
+   "code": 5,
+   "name": "VERSION",
+   "detail": "the frame's version byte"
+  },
+  {
+   "code": 6,
+   "name": "OUT_OF_RANGE",
+   "detail": "the index of the first field out of range, in the message's field order"
+  },
+  {
+   "code": 7,
+   "name": "NOT_ARMED",
+   "detail": "the throttle_us asked for"
+  },
+  {
+   "code": 8,
+   "name": "HOLD",
+   "detail": "milliseconds of HOLD left"
+  },
+  {
+   "code": 9,
+   "name": "STATE",
+   "detail": "the VCU state the command is refused in"
+  },
+  {
+   "code": 10,
+   "name": "STILL_ACTIVE",
+   "detail": "the fault bits in the mask whose condition persists; nothing was cleared"
+  },
+  {
+   "code": 11,
+   "name": "ESTOP_LATCHED",
+   "detail": "0"
+  },
+  {
+   "code": 12,
+   "name": "FAULT_LATCHED",
+   "detail": "the inhibiting fault bits"
+  },
+  {
+   "code": 13,
+   "name": "NOT_PERMITTED",
+   "detail": "the field index: CONFIG_SET.bumper_flags (8) asking for a polarity other than the one in force while the bumper is enabled; nothing was applied"
+  }
+ ],
+ "messages": [
+  {
+   "name": "HEARTBEAT",
+   "id": 1,
+   "dir": "host_to_vcu",
+   "frozen": false,
+   "rate": "HB_PERIOD_MS (50 Hz) while the host's authority stands and every critical roster member is fresh; never otherwise",
+   "doc": "The stack-healthy beat. The only thing that keeps an ARMED VCU armed. A request that does not parse, a NACKed one, or any other message type never feeds the timeout.",
+   "fields": [
+    {
+     "name": "host_ms",
+     "type": "u32",
+     "unit": "ms",
+     "range": [
+      0,
+      4294967295
+     ],
+     "doc": "the host's monotonic clock, wraps; logs only",
+     "offset": 0
+    },
+    {
+     "name": "mode",
+     "type": "u8",
+     "unit": "enum HostMode",
+     "range": [
+      1,
+      4
+     ],
+     "doc": "which roster authorised it",
+     "offset": 4
+    }
+   ],
+   "size": 5,
+   "struct": "<IB"
+  },
+  {
+   "name": "ESTOP_SET",
+   "id": 2,
+   "dir": "host_to_vcu",
+   "frozen": false,
+   "rate": "event; resent every ESTOP_RETRY_MS until SAFETY_STATE shows ESTOP latched",
+   "doc": "Latch ESTOP: the ESC pulse is cut at once and the steering is held at its last angle with its pulse live (only INTERNAL releases it); every DRIVE_SETPOINT is refused until CLEAR. Every host stop is this (viewer ESTOP, DISARM, a signal, a mode change, finish, SPEED_UNKNOWN, REARM_LIMIT).",
+   "fields": [
+    {
+     "name": "reason",
+     "type": "u16",
+     "unit": "reason code",
+     "range": [
+      256,
+      511
+     ],
+     "doc": "a host-origin reason, for the VCU's log and SAFETY_STATE",
+     "offset": 0
+    }
+   ],
+   "size": 2,
+   "struct": "<H"
+  },
+  {
+   "name": "CLEAR_LATCHED_FAULT",
+   "id": 3,
+   "dir": "host_to_vcu",
+   "frozen": false,
+   "rate": "event",
+   "doc": "Clear latched fault bits. All or nothing: a bit still active, a never-clearable bit or a reserved bit refuses the whole request. A success that leaves no inhibiting bit enters HOLD, restoring a cut ESC pulse at neutral and a released servo (INTERNAL) at servo_center_us; a held servo keeps its angle.",
+   "fields": [
+    {
+     "name": "mask",
+     "type": "u16",
+     "unit": "fault bits",
+     "range": [
+      0,
+      95
+     ],
+     "doc": "bits 0-4 and 6; 0 is allowed and still enters HOLD (the uniform start of every arming)",
+     "offset": 0
+    }
+   ],
+   "size": 2,
+   "struct": "<H"
+  },
+  {
+   "name": "IDENTIFY_REQUEST",
+   "id": 4,
+   "dir": "host_to_vcu",
+   "frozen": true,
+   "rate": "on open, every IDENTIFY_RETRY_MS until VCU_HELLO",
+   "doc": "Answered with VCU_HELLO, CONFIG_REPORT and SAFETY_STATE. Arms nothing, feeds no timeout, replays nothing. Its type and empty payload never change, in any major.",
+   "fields": [],
+   "size": 0,
+   "struct": "<"
+  },
+  {
+   "name": "CONFIG_SET",
+   "id": 5,
+   "dir": "host_to_vcu",
+   "frozen": false,
+   "rate": "after VCU_HELLO, and on a trim change; refused while ARMED",
+   "doc": "The trim, all fields at once (the pilot merges trim.txt over the last CONFIG_REPORT). Answered with CONFIG_REPORT. Not in the user's list: it is the binary home of SERVOLIMITS, SERVOTRIM, ESCLIMITS, ESCREVERSE and SLEW, and of the bumper's enable, polarity and press filter (vcu.bumper).",
+   "fields": [
+    {
+     "name": "servo_min_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1000,
+      2000
+     ],
+     "doc": "steering working range, low end; must be < servo_center_us",
+     "offset": 0
+    },
+    {
+     "name": "servo_center_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1000,
+      2000
+     ],
+     "doc": "straight ahead, measured",
+     "offset": 2
+    },
+    {
+     "name": "servo_max_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1000,
+      2000
+     ],
+     "doc": "must be > servo_center_us",
+     "offset": 4
+    },
+    {
+     "name": "esc_min_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1501,
+      2000
+     ],
+     "doc": "first forward pulse that moves the car; > neutral",
+     "offset": 6
+    },
+    {
+     "name": "esc_max_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1502,
+      2000
+     ],
+     "doc": "must be > esc_min_us",
+     "offset": 8
+    },
+    {
+     "name": "esc_rev_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1000,
+      1500
+     ],
+     "doc": "lowest brake/reverse pulse; 1500 is reverse off",
+     "offset": 10
+    },
+    {
+     "name": "slew_steer_us",
+     "type": "u8",
+     "unit": "us per 20 ms tick",
+     "range": [
+      1,
+      200
+     ],
+     "doc": "",
+     "offset": 12
+    },
+    {
+     "name": "slew_throttle_us",
+     "type": "u8",
+     "unit": "us per 20 ms tick",
+     "range": [
+      1,
+      200
+     ],
+     "doc": "",
+     "offset": 13
+    },
+    {
+     "name": "bumper_flags",
+     "type": "u8",
+     "unit": "bits",
+     "range": [
+      0,
+      3
+     ],
+     "doc": "see bumper_flag_bits: bit0 ENABLE, bit1 PRESSED_LOW; 0 is the compiled default (enable left as it is, NC polarity)",
+     "offset": 14
+    },
+    {
+     "name": "bumper_filter_ms",
+     "type": "u8",
+     "unit": "ms",
+     "range": [
+      0,
+      5
+     ],
+     "doc": "how long a press must hold before it stops the car; 0 (the default) acts on the first edge",
+     "offset": 15
+    }
+   ],
+   "size": 16,
+   "struct": "<HHHHHHBBBB"
+  },
+  {
+   "name": "DRIVE_SETPOINT",
+   "id": 257,
+   "dir": "host_to_vcu",
+   "frozen": false,
+   "rate": "every HB_PERIOD_MS: each new decision, and the newest one re-sent with its REMAINING life",
+   "doc": "Absolute pulses. throttle_us is exactly 1500, or within [esc_min_us, esc_max_us], or within [esc_rev_us, 1499]; anything else is NACK OUT_OF_RANGE, never clamped. A rejected setpoint ends the one in force (throttle neutral now). Only a 1500 throttle is accepted outside ARMED; the setpoint that completes arming must be 1500.",
+   "fields": [
+    {
+     "name": "throttle_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1000,
+      2000
+     ],
+     "doc": "see doc for the valid bands",
+     "offset": 0
+    },
+    {
+     "name": "steer_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      1000,
+      2000
+     ],
+     "doc": "within [servo_min_us, servo_max_us]",
+     "offset": 2
+    },
+    {
+     "name": "duration_ms",
+     "type": "u16",
+     "unit": "ms",
+     "range": [
+      1,
+      250
+     ],
+     "doc": "life from receipt; past it the throttle goes neutral (still ARMED), steering held",
+     "offset": 4
+    }
+   ],
+   "size": 6,
+   "struct": "<HHH"
+  },
+  {
+   "name": "NACK",
+   "id": 28674,
+   "dir": "vcu_to_host",
+   "frozen": true,
+   "rate": "event, one per refused CRC-valid frame",
+   "doc": "A CRC-valid frame was refused. A frame with a bad CRC gets no NACK (its seq cannot be trusted), only a counter. Layout frozen in every major, so a mismatched pair can still say why.",
+   "fields": [
+    {
+     "name": "rejected_seq",
+     "type": "u16",
+     "unit": "",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "the refused frame's seq",
+     "offset": 0
+    },
+    {
+     "name": "rejected_type",
+     "type": "u16",
+     "unit": "",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "its type",
+     "offset": 2
+    },
+    {
+     "name": "code",
+     "type": "u16",
+     "unit": "NACK code",
+     "range": [
+      1,
+      13
+     ],
+     "doc": "",
+     "offset": 4
+    },
+    {
+     "name": "detail",
+     "type": "u16",
+     "unit": "",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "per code, see nack_codes",
+     "offset": 6
+    }
+   ],
+   "size": 8,
+   "struct": "<HHHH"
+  },
+  {
+   "name": "VCU_HELLO",
+   "id": 32768,
+   "dir": "vcu_to_host",
+   "frozen": true,
+   "rate": "once when a host session opens, and after every IDENTIFY_REQUEST",
+   "doc": "Who the VCU is. Layout frozen in every major: the host reads proto_major before anything else and refuses to arm on a mismatch.",
+   "fields": [
+    {
+     "name": "proto_major",
+     "type": "u8",
+     "unit": "",
+     "range": [
+      0,
+      255
+     ],
+     "doc": "the wire major; equals the header version byte of the frames this VCU accepts",
+     "offset": 0
+    },
+    {
+     "name": "proto_minor",
+     "type": "u8",
+     "unit": "",
+     "range": [
+      0,
+      255
+     ],
+     "doc": "",
+     "offset": 1
+    },
+    {
+     "name": "fw_major",
+     "type": "u8",
+     "unit": "",
+     "range": [
+      0,
+      255
+     ],
+     "doc": "firmware release, by hand",
+     "offset": 2
+    },
+    {
+     "name": "fw_minor",
+     "type": "u8",
+     "unit": "",
+     "range": [
+      0,
+      255
+     ],
+     "doc": "",
+     "offset": 3
+    },
+    {
+     "name": "build_id",
+     "type": "u32",
+     "unit": "",
+     "range": [
+      0,
+      4294967295
+     ],
+     "doc": "the first 8 hex digits of the git commit as a number; 0 unknown",
+     "offset": 4
+    },
+    {
+     "name": "build_flags",
+     "type": "u8",
+     "unit": "bits",
+     "range": [
+      0,
+      3
+     ],
+     "doc": "bit0 dirty tree, bit1 hosted build",
+     "offset": 8
+    },
+    {
+     "name": "board",
+     "type": "u8",
+     "unit": "enum Board",
+     "range": [
+      1,
+      3
+     ],
+     "doc": "",
+     "offset": 9
+    },
+    {
+     "name": "reset_reason",
+     "type": "u8",
+     "unit": "enum ResetReason",
+     "range": [
+      0,
+      255
+     ],
+     "doc": "",
+     "offset": 10
+    },
+    {
+     "name": "reserved",
+     "type": "u8",
+     "unit": "",
+     "range": [
+      0,
+      0
+     ],
+     "doc": "0",
+     "offset": 11
+    },
+    {
+     "name": "serial",
+     "type": "bytes",
+     "count": 8,
+     "unit": "",
+     "range": null,
+     "doc": "pico_get_unique_board_id(), the same id as the USB serial string",
+     "offset": 12
+    },
+    {
+     "name": "describe",
+     "type": "bytes",
+     "count": 24,
+     "unit": "",
+     "range": null,
+     "doc": "git describe --tags --always --dirty, NUL padded, ASCII",
+     "offset": 20
+    }
+   ],
+   "size": 44,
+   "struct": "<BBBBIBBBB8s24s"
+  },
+  {
+   "name": "TELEMETRY",
+   "id": 32769,
+   "dir": "vcu_to_host",
+   "frozen": false,
+   "rate": "TELEMETRY_PERIOD_MS (100 Hz) while a host session is open",
+   "doc": "The encoder and the two pins. esc_meas_us and servo_meas_us are the PAD read back by edge interrupts on GP1 and GP14, not the value the firmware believes it wrote.",
+   "fields": [
+    {
+     "name": "t_us",
+     "type": "u32",
+     "unit": "us",
+     "range": [
+      0,
+      4294967295
+     ],
+     "doc": "VCU time_us_32(), wraps every 71.6 min",
+     "offset": 0
+    },
+    {
+     "name": "ticks",
+     "type": "i32",
+     "unit": "hall ticks",
+     "range": [
+      -2147483648,
+      2147483647
+     ],
+     "doc": "signed, forward positive, 6 per motor rev",
+     "offset": 4
+    },
+    {
+     "name": "tps",
+     "type": "i16",
+     "unit": "ticks/s",
+     "range": [
+      -32768,
+      32767
+     ],
+     "doc": "the VCU's lead estimate (window or edge period)",
+     "offset": 8
+    },
+    {
+     "name": "hall_state",
+     "type": "u8",
+     "unit": "ABC bits",
+     "range": [
+      0,
+      7
+     ],
+     "doc": "000 and 111 are no state",
+     "offset": 10
+    },
+    {
+     "name": "hall_flags",
+     "type": "u8",
+     "unit": "bits",
+     "range": [
+      0,
+      7
+     ],
+     "doc": "bit0 stopped, bit1 period estimate in use, bit2 decoder primed",
+     "offset": 11
+    },
+    {
+     "name": "hall_invalid",
+     "type": "u16",
+     "unit": "count",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "000/111 readings, saturating",
+     "offset": 12
+    },
+    {
+     "name": "hall_skips",
+     "type": "u16",
+     "unit": "count",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "jumps of two or three states, saturating",
+     "offset": 14
+    },
+    {
+     "name": "esc_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      0,
+      2000
+     ],
+     "doc": "the pulse the firmware writes now; 0 while cut",
+     "offset": 16
+    },
+    {
+     "name": "servo_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      0,
+      2000
+     ],
+     "doc": "0 while released (INTERNAL only)",
+     "offset": 18
+    },
+    {
+     "name": "esc_meas_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "pad readback of GP1; 0 no pulse in PAD_SILENT_MS; 65535 readback unavailable",
+     "offset": 20
+    },
+    {
+     "name": "servo_meas_us",
+     "type": "u16",
+     "unit": "us",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "pad readback of GP14, same encoding",
+     "offset": 22
+    },
+    {
+     "name": "state",
+     "type": "u8",
+     "unit": "enum State",
+     "range": [
+      1,
+      5
+     ],
+     "doc": "",
+     "offset": 24
+    },
+    {
+     "name": "info",
+     "type": "u8",
+     "unit": "info bits",
+     "range": [
+      0,
+      127
+     ],
+     "doc": "see info_bits",
+     "offset": 25
+    },
+    {
+     "name": "last_rx_seq",
+     "type": "u16",
+     "unit": "",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "seq of the newest host frame accepted",
+     "offset": 26
+    },
+    {
+     "name": "hb_seq",
+     "type": "u16",
+     "unit": "",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "seq of the newest valid HEARTBEAT",
+     "offset": 28
+    },
+    {
+     "name": "hb_age_ms",
+     "type": "u16",
+     "unit": "ms",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "since that heartbeat, saturating; with hb_seq the host measures its round trip",
+     "offset": 30
+    }
+   ],
+   "size": 32,
+   "struct": "<IihBBHHHHHHBBHHH"
+  },
+  {
+   "name": "SAFETY_STATE",
+   "id": 32773,
+   "dir": "vcu_to_host",
+   "frozen": false,
+   "rate": "SAFETY_STATE_PERIOD_MS (10 Hz), at once on any change of state or flags, and after every accepted ESTOP_SET, CLEAR_LATCHED_FAULT or CONFIG_SET",
+   "doc": "The authoritative safety snapshot.",
+   "fields": [
+    {
+     "name": "t_ms",
+     "type": "u32",
+     "unit": "ms",
+     "range": [
+      0,
+      4294967295
+     ],
+     "doc": "VCU uptime",
+     "offset": 0
+    },
+    {
+     "name": "state",
+     "type": "u8",
+     "unit": "enum State",
+     "range": [
+      1,
+      5
+     ],
+     "doc": "",
+     "offset": 4
+    },
+    {
+     "name": "host_mode",
+     "type": "u8",
+     "unit": "enum HostMode",
+     "range": [
+      0,
+      4
+     ],
+     "doc": "mode of the newest valid heartbeat; 0 none this session",
+     "offset": 5
+    },
+    {
+     "name": "reason",
+     "type": "u16",
+     "unit": "reason code",
+     "range": [
+      0,
+      255
+     ],
+     "doc": "the VCU's primary reason, by the precedence in vcu.reason_precedence",
+     "offset": 6
+    },
+    {
+     "name": "active",
+     "type": "u16",
+     "unit": "fault bits",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "",
+     "offset": 8
+    },
+    {
+     "name": "latched",
+     "type": "u16",
+     "unit": "fault bits",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "",
+     "offset": 10
+    },
+    {
+     "name": "ack_seq",
+     "type": "u16",
+     "unit": "",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "seq of the newest accepted ESTOP_SET, CLEAR_LATCHED_FAULT or CONFIG_SET",
+     "offset": 12
+    },
+    {
+     "name": "ack_type",
+     "type": "u16",
+     "unit": "",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "its type; 0 none yet this boot",
+     "offset": 14
+    },
+    {
+     "name": "hold_left_ms",
+     "type": "u16",
+     "unit": "ms",
+     "range": [
+      0,
+      1000
+     ],
+     "doc": "0 outside HOLD",
+     "offset": 16
+    },
+    {
+     "name": "hb_count",
+     "type": "u8",
+     "unit": "",
+     "range": [
+      0,
+      255
+     ],
+     "doc": "consecutive valid heartbeats, saturating",
+     "offset": 18
+    },
+    {
+     "name": "reserved",
+     "type": "u8",
+     "unit": "",
+     "range": [
+      0,
+      0
+     ],
+     "doc": "0",
+     "offset": 19
+    },
+    {
+     "name": "hb_gap_max_ms",
+     "type": "u16",
+     "unit": "ms",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "worst gap between two valid heartbeats this session; the VCU's own measure of the timing budget",
+     "offset": 20
+    },
+    {
+     "name": "nacks",
+     "type": "u16",
+     "unit": "count",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "NACKs sent this boot, saturating",
+     "offset": 22
+    },
+    {
+     "name": "crc_errors",
+     "type": "u16",
+     "unit": "count",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "saturating",
+     "offset": 24
+    },
+    {
+     "name": "discarded",
+     "type": "u16",
+     "unit": "bytes",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "bytes dropped while resynchronising, saturating",
+     "offset": 26
+    },
+    {
+     "name": "tx_dropped",
+     "type": "u16",
+     "unit": "frames",
+     "range": [
+      0,
+      65535
+     ],
+     "doc": "frames not sent because the CDC FIFO was full, saturating",
+     "offset": 28
+    }
+   ],
+   "size": 30,
+   "struct": "<IBBHHHHHHBBHHHHH"
+  },
+  {
+   "name": "CONFIG_REPORT",
+   "id": 32774,
+   "dir": "vcu_to_host",
+   "frozen": false,
+   "rate": "after VCU_HELLO and after every accepted CONFIG_SET",
+   "doc": "The trim in force, CONFIG_SET's layout; bumper_flags and bumper_filter_ms are the effective settings (ENABLE set while the bumper acts, PRESSED_LOW the polarity in force).",
+   "fields": "same_as:CONFIG_SET",
+   "size": 16,
+   "struct": "<HHHHHHBBBB"
+  }
+ ],
+ "vcu": {
+  "reason_precedence": [
+   "PIN_MAP",
+   "INTERNAL",
+   "ESTOP",
+   "BUMPER",
+   "HEARTBEAT_TIMEOUT",
+   "LINK_RESET",
+   "WATCHDOG_RESET",
+   "HOLD",
+   "SETPOINT_EXPIRED",
+   "NOT_ARMED",
+   "NONE"
+  ],
+  "throttle_valid": "exactly 1500, or esc_min_us..esc_max_us, or esc_rev_us..1499 when esc_rev_us < 1500",
+  "arming": "In DISARMED or ARMING, with no inhibiting bit and HOLD over: ARM_HEARTBEATS consecutive valid heartbeats, each within HB_TIMEOUT_MS of the one before, then a DRIVE_SETPOINT with throttle_us 1500 received after the last of them -> ARMED.",
+  "heartbeat_watch": "Starts at the first valid HEARTBEAT of a host session; stops at session end or when it fires. hb_count resets to 1 on a gap over HB_TIMEOUT_MS and to 0 at session end.",
+  "steering": "Its pulse is live in every state except while INTERNAL is latched (and under PIN_MAP, where nothing is bound). HELD means the fault does not move it: the target in force is kept, the slew finishes toward it, and the pulse stays live. It is held on setpoint expiry, HEARTBEAT_TIMEOUT, BUMPER, LINK_RESET and ESTOP. Outside ESTOP an accepted setpoint (throttle 1500 outside ARMED) still steers it; under ESTOP every DRIVE_SETPOINT is refused (ESTOP_LATCHED), so the angle cannot move until CLEAR. INTERNAL is the only fault that releases it. A CLEAR that restores a released servo restores it at servo_center_us; a live servo keeps its angle.",
+  "bumper": {
+   "pin": "GP0, an input with the internal pull-up",
+   "compiled": {
+    "BIBO_BUMPER_ENABLED": 0,
+    "BIBO_BUMPER_PRESSED_LOW": 0,
+    "BIBO_BUMPER_FILTER_MS": 0,
+    "doc": "cal.hxx: disabled until the user confirms the switch is wired; the NC polarity; no press filter"
+   },
+   "pressed_level": "bumper_flags.PRESSED_LOW clear (the compiled default; the NC contact wired): pressed reads HIGH, a broken wire reads HIGH (pressed), rest reads LOW. PRESSED_LOW set (the NO contact wired): pressed reads LOW, rest reads HIGH, a broken wire reads HIGH (released). A polarity that does not match the wiring reads pressed at rest, so an enabled bumper latches at once and the car cannot arm.",
+   "enable": "the compiled BIBO_BUMPER_ENABLED, or any accepted CONFIG_SET with ENABLE since boot; nothing disables it before the next boot",
+   "polarity": "set while the bumper is disabled, or in the CONFIG_SET that enables it (the polarity applies first); a CONFIG_SET asking for another polarity while the bumper is enabled is NACK NOT_PERMITTED, detail 8, and nothing in it is applied",
+   "press": "bumper_filter_ms 0: the first edge to the pressed level latches BUMPER in the ISR and forces neutral. 1..BUMPER_FILTER_MAX_MS: the level must stay pressed for bumper_filter_ms (a release edge restarts it) before that same latch; detect-to-neutral grows by at most the filter. The loop is the backstop: a pressed level held for bumper_filter_ms with active clear counts as a press (a missed edge, pressed at boot, or pressed when the bumper is enabled).",
+   "release": "active clears after BUMPER_RELEASE_MS of continuous released level; a bounce restarts the window; the filter never shortens it. CLEAR(BUMPER) is refused while active.",
+   "raw": "TELEMETRY info.BUMPER_RAW is the pressed level under the polarity in force, enabled or not."
+  },
+  "latch_persistence": "Latched bits are mirrored to watchdog scratch[0..1] (with a magic) on every change; a hardware-watchdog boot restores them after writing neutral. A power-on clears them.",
+  "tx": "Never blocks: a frame is written only when the CDC FIFO has room for all of it, else dropped whole and counted (tx_dropped). PICO_STDIO_USB_STDOUT_TIMEOUT_US is set small as a backstop. Binary output uses stdio_put_string(...,newline=false,cr_translation=false), never printf/fputs (CRLF translation and NUL).",
+  "rx": "Every loop pass drains every byte available, not one per pass."
+ },
+ "timing": {
+  "vcu": {
+   "HB_TIMEOUT_MS": 150,
+   "SETPOINT_MAX_MS": 250,
+   "ARM_HEARTBEATS": 5,
+   "HOLD_MS": 1000,
+   "BUMPER_RELEASE_MS": 100,
+   "TELEMETRY_PERIOD_MS": 10,
+   "SAFETY_STATE_PERIOD_MS": 100,
+   "FRAME_GAP_MS": 20,
+   "PAD_SILENT_MS": 40,
+   "LOOP_PERIOD_MAX_US": 1000,
+   "HW_WATCHDOG_MS": 2000,
+   "SLEW_TICK_MS": 20,
+   "PWM_FRAME_MS": 20,
+   "BUMPER_FILTER_MAX_MS": 5
+  },
+  "host": {
+   "HB_PERIOD_MS": 20,
+   "SETPOINT_LIFE_MS": 250,
+   "IDENTIFY_RETRY_MS": 200,
+   "HELLO_WAIT_MS": 1000,
+   "VCU_SILENT_MS": 100,
+   "ESTOP_RETRY_MS": 20,
+   "ARM_CONFIRM_MS": 2500,
+   "WRITE_WAIT_MS": 10,
+   "HOP_BUDGET_MS": 100,
+   "STATUS_PERIOD_MS": 500,
+   "STATUS_STALE_MS": 3000,
+   "ROSTER_ARM_BEATS": 3,
+   "ROSTER_ARM_WINDOW_MS": 6000,
+   "C1_PERIOD_MS": 102,
+   "STALE_MS": {
+    "c1.reader": 300,
+    "chain.stop": 300,
+    "pilot.tick": 300,
+    "viewer.control": 300,
+    "dbw.bridge": 100,
+    "car.minder": 300,
+    "driver.bundle": 300
+   },
+   "REARM_MAX_PER_RUN": 3,
+   "AUTONOMY_SPEED_CAP_MPS": 0.5,
+   "FIRST_FIELD_SPEED_MPS": 0.3,
+   "SPEED_UNKNOWN_MS": 1000
+  },
+  "host_doc": {
+   "STATUS_STALE_MS": "the dash greys the status line's span after this long with no line",
+   "REARM_MAX_PER_RUN": "a count, not a time: host_clear_policy.rearm_limit",
+   "AUTONOMY_SPEED_CAP_MPS": "m/s, a float: the most any run may set (speed_cap)",
+   "FIRST_FIELD_SPEED_MPS": "m/s, a float: the cap a run uses unless it asks for more (speed_cap)",
+   "SPEED_UNKNOWN_MS": "a forward pulse this long with no hall tick stops the run (speed_cap.unknown)"
+  },
+  "assertions": [
+   "HB_PERIOD_MS + HOP_BUDGET_MS + 25 <= HB_TIMEOUT_MS",
+   "1000 / HB_PERIOD_MS >= 20 and 1000 / HB_PERIOD_MS <= 50",
+   "SETPOINT_LIFE_MS <= SETPOINT_MAX_MS",
+   "2 * C1_PERIOD_MS + HB_PERIOD_MS <= SETPOINT_LIFE_MS",
+   "VCU_SILENT_MS >= 5 * TELEMETRY_PERIOD_MS",
+   "ARM_CONFIRM_MS >= HOLD_MS + ARM_HEARTBEATS * HB_PERIOD_MS + 2 * HOP_BUDGET_MS + 100",
+   "every STALE_MS > the HB_PERIOD_MS the aggregator runs at",
+   "FRAME_GAP_MS < HB_PERIOD_MS * 2",
+   "BUMPER_FILTER_MAX_MS < BUMPER_RELEASE_MS",
+   "BUMPER_FILTER_MAX_MS + PWM_FRAME_MS <= 25",
+   "STATUS_STALE_MS >= 3 * STATUS_PERIOD_MS",
+   "REARM_MAX_PER_RUN >= 1",
+   "FIRST_FIELD_SPEED_MPS <= AUTONOMY_SPEED_CAP_MPS",
+   "AUTONOMY_SPEED_CAP_MPS <= 0.5",
+   "SPEED_UNKNOWN_MS >= 5 * VCU_SILENT_MS"
+  ]
+ },
+ "host_clear_policy": {
+  "auto_on_arm": [
+   "HEARTBEAT_TIMEOUT",
+   "LINK_RESET"
+  ],
+  "human": [
+   "ESTOP",
+   "BUMPER",
+   "WATCHDOG_RESET",
+   "INTERNAL"
+  ],
+  "never": [
+   "PIN_MAP"
+  ],
+  "doc": "DECIDED 2026-10-02 (design.md section 2, answer 2). An explicit arm (viewer ARM, --arm, Car::arm(), dbwcli) clears the auto set. The human set needs a human act first: the viewer's CLEAR_ESTOP or dbwcli clear.",
+  "rearm_limit": {
+   "max_per_run": "REARM_MAX_PER_RUN",
+   "counts": "an arm asked for without a human act (bibo::Car::arm() in a program, or the pilot's standing --arm consent re-arming after a reopen), when the run has been ARMED before and the VCU's latched bits at the ask include HEARTBEAT_TIMEOUT or LINK_RESET",
+   "never_counts": "the first arm of a run (it clears the last session's LINK_RESET); a viewer's ARM; dbwcli",
+   "on_limit": "the counted ask after REARM_MAX_PER_RUN is refused and ends the run (TERMINAL) with reason REARM_LIMIT; the run's last line names the fault it would have cleared and the count",
+   "where": "dbwlink, which sees every arm and every latch; the run is one pilot process or one Car program",
+   "why": "a flaky link cannot make a stop-go loop. A roster role that flaps also counts: a heartbeat withheld for over HB_TIMEOUT_MS latches HEARTBEAT_TIMEOUT."
+  }
+ },
+ "speed_cap": {
+  "doc": "DECIDED 2026-10-02 (design.md section 2, answer 7). Autonomy is capped until a stopping distance is measured (plan.md B10); the first field tests run at FIRST_FIELD_SPEED_MPS.",
+  "modes": [
+   "AUTO",
+   "PROGRAM"
+  ],
+  "bench": "in BENCH only when a tool sets a cap (stopdist does; escsweep and dbwcli do not)",
+  "cap": "AUTONOMY_SPEED_CAP_MPS: the most any run may set. A run asking for more is refused at start, never clamped.",
+  "default": "FIRST_FIELD_SPEED_MPS: the cap a run uses unless it asks for more (pilot --speed-cap M)",
+  "where": "dbwlink, on every bridge cycle, so every caller (the pilot's tick, bibo::Car's minder, stopdist) gets it",
+  "measured": "|TELEMETRY.tps| x odom's MM_PER_TICK, from the newest TELEMETRY; a TELEMETRY older than VCU_SILENT_MS already withholds the heartbeat (VCU_SILENT)",
+  "rule": "while the measured speed is at or above the run's cap, the throttle sent is 1500 and the steering passes; reason SPEED_CAP while it acts. A cap, not a cruise control: it only reduces.",
+  "unknown": "TELEMETRY.esc_us above 1500 (a forward pulse written) for SPEED_UNKNOWN_MS with TELEMETRY.ticks unchanged: the speed cannot be measured, so the cap cannot hold. The bridge stops (stop(SPEED_UNKNOWN), an ESTOP); a human clears it. Brake and reverse pulses never count: the first one from rest is a brake.",
+  "lift": "AUTONOMY_SPEED_CAP_MPS changes only after B10 has measured the stopping distance from 0.3 and 0.5 m/s, and only on the user's word; the timing assertion 'AUTONOMY_SPEED_CAP_MPS <= 0.5' must be edited with it, so a lift is never a one-number change"
+ },
+ "status_line": {
+  "doc": "Until the hub Status table lands (P7b, deferred until after the first autonomous stop), the pilot tells the dashboard its primary reason as one plain-text line, and the existing strip shows it. Interim, by the user's answer; when Status lands the bytes change and the port and period stay.",
+  "transport": "one UDP datagram per line from the pilot to 127.0.0.1:port; the dash reads it on a thread of its own; neither side can block the other",
+  "port": 8022,
+  "period": "STATUS_PERIOD_MS, and at once on any change of state or reason",
+  "stale": "STATUS_STALE_MS with no line: the dash shows 'vcu -', greyed",
+  "format": "dbw1 <state> <reason> <recoverable>: ASCII, single spaces, at most 64 bytes, an optional trailing LF",
+  "states": [
+   "HOLD",
+   "DISARMED",
+   "ARMING",
+   "ARMED",
+   "FAULT",
+   "ABSENT"
+  ],
+  "reason": "a name from reasons, or 0xNNNN for a code the pilot does not know",
+  "recoverable": "1 or 0: the reason's recoverable",
+  "primary_reason": "the VCU's fault by vcu.reason_precedence first; then the host's roster or link fault; then information (HOLD, ROSTER_ARMING, OBSTACLE, SPEED_CAP, SETPOINT_EXPIRED, NOT_ARMED); then NONE",
+  "dash_text": "'vcu <state>', then ' <reason>' unless the reason only restates the state (restating_reasons)",
+  "dash_style": "bad if recoverable is 0; else warn if the state is FAULT or ABSENT or the reason is not an info reason; else ok if ARMED; else dim",
+  "restating_reasons": [
+   "NONE",
+   "HOLD",
+   "NOT_ARMED"
+  ],
+  "info_reasons": [
+   "NONE",
+   "HOLD",
+   "NOT_ARMED",
+   "SETPOINT_EXPIRED",
+   "ROSTER_ARMING",
+   "OBSTACLE",
+   "SPEED_CAP"
+  ],
+  "ignored": "a line that does not start 'dbw1 ', has other than 4 tokens, or names a state not in states is ignored and counted",
+  "examples": [
+   {
+    "line": "dbw1 ARMED NONE 1",
+    "meaning": "driving, nothing in the way",
+    "dash_text": "vcu ARMED",
+    "dash_style": "ok"
+   },
+   {
+    "line": "dbw1 ARMED OBSTACLE 1",
+    "meaning": "armed, the stop clamp holds the throttle at zero",
+    "dash_text": "vcu ARMED OBSTACLE",
+    "dash_style": "ok"
+   },
+   {
+    "line": "dbw1 ARMED SPEED_CAP 1",
+    "meaning": "armed, the measured speed is at the cap",
+    "dash_text": "vcu ARMED SPEED_CAP",
+    "dash_style": "ok"
+   },
+   {
+    "line": "dbw1 HOLD HOLD 1",
+    "meaning": "the 1 s hold after boot or CLEAR",
+    "dash_text": "vcu HOLD",
+    "dash_style": "dim"
+   },
+   {
+    "line": "dbw1 DISARMED NOT_ARMED 1",
+    "meaning": "up, not armed",
+    "dash_text": "vcu DISARMED",
+    "dash_style": "dim"
+   },
+   {
+    "line": "dbw1 DISARMED ROSTER_ARMING 1",
+    "meaning": "an arm was asked for; the roster window is open",
+    "dash_text": "vcu DISARMED ROSTER_ARMING",
+    "dash_style": "dim"
+   },
+   {
+    "line": "dbw1 DISARMED LIDAR_STALE 1",
+    "meaning": "the C1 reader stopped beating: no heartbeat is sent",
+    "dash_text": "vcu DISARMED LIDAR_STALE",
+    "dash_style": "warn"
+   },
+   {
+    "line": "dbw1 FAULT HEARTBEAT_TIMEOUT 1",
+    "meaning": "the VCU latched a timeout; an explicit arm clears it",
+    "dash_text": "vcu FAULT HEARTBEAT_TIMEOUT",
+    "dash_style": "warn"
+   },
+   {
+    "line": "dbw1 FAULT ESTOP 0",
+    "meaning": "ESTOP latched; a human must clear it",
+    "dash_text": "vcu FAULT ESTOP",
+    "dash_style": "bad"
+   },
+   {
+    "line": "dbw1 FAULT BUMPER 0",
+    "meaning": "the bumper latched; a human must clear it",
+    "dash_text": "vcu FAULT BUMPER",
+    "dash_style": "bad"
+   },
+   {
+    "line": "dbw1 ABSENT VCU_NOT_FOUND 1",
+    "meaning": "no VCU_HELLO answered",
+    "dash_text": "vcu ABSENT VCU_NOT_FOUND",
+    "dash_style": "warn"
+   },
+   {
+    "line": "dbw1 ABSENT OLD_FIRMWARE 0",
+    "meaning": "the VCU speaks ASCII: reflash it",
+    "dash_text": "vcu ABSENT OLD_FIRMWARE",
+    "dash_style": "bad"
+   },
+   {
+    "line": "dbw2 ARMED NONE 1",
+    "meaning": "another format version",
+    "dash_text": null,
+    "dash_style": "ignored"
+   },
+   {
+    "line": "dbw1 ARMED NONE",
+    "meaning": "three tokens",
+    "dash_text": null,
+    "dash_style": "ignored"
+   },
+   {
+    "line": "dbw1 BOOT NONE 1",
+    "meaning": "BOOT is never a line's state",
+    "dash_text": null,
+    "dash_style": "ignored"
+   }
+  ]
+ },
+ "behaviour_steps": {
+  "order": "Steps apply in time order, and at equal times in list order; a heartbeats step's frames interleave with the rest by time. An expect checks the state after every step at its time. A host session is open from boot unless a case closes it.",
+  "boot": "power-on or reset at t_ms: reset (a ResetReason name); scratch_latched (fault names restored from watchdog scratch); gp0, the bumper pin's level from boot (0 or 1, default 0: an NC switch at rest)",
+  "compiled": "cal.hxx's compiled defaults overridden for this case, before boot (esc_min_us, esc_max_us); the rest as config_cal_defaults",
+  "heartbeats": "a valid HEARTBEAT every every_ms from from_ms to to_ms, both included, with mode",
+  "rx": "one host frame received at t_ms: msg, and every field of it by name",
+  "gp0": "the bumper pin's level from t_ms: 0 or 1. What pressed means is bumper_flags.PRESSED_LOW's",
+  "session": "the host session opens (open true) or closes (open false) at t_ms",
+  "clamp_engaged": "the hal reports its last-resort pin clamp engaged at t_ms: an input of the pure machine and a knob of the hosted hal, never from the wire",
+  "expect": "state, reason: names. esc_us, esc_target_us, servo_us, servo_target_us, hb_count: numbers. esc_live, servo_live: bools. active, latched: fault names, exactly. info: info bits that must be set. tx: frames sent at that time must include these, in this order (type; code and detail for a NACK; fields for others). first_pin_write: the first values written to the pins at boot."
+ },
+ "golden_frames": [
+  {
+   "name": "heartbeat",
+   "hex": "fbb101000100010005007856341201f37e",
+   "bytes": 17,
+   "meaning": "HEARTBEAT seq 1, host_ms 0x12345678, mode MANUAL",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 1,
+    "type": "HEARTBEAT",
+    "len": 5,
+    "fields": {
+     "host_ms": 305419896,
+     "mode": 1
+    },
+    "crc": "0x7EF3"
+   }
+  },
+  {
+   "name": "setpoint_neutral_arm",
+   "hex": "fbb10100020001010600dc05dc05fa00185e",
+   "bytes": 18,
+   "meaning": "DRIVE_SETPOINT 1500/1500 us for 250 ms: the neutral setpoint that completes arming",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 2,
+    "type": "DRIVE_SETPOINT",
+    "len": 6,
+    "fields": {
+     "throttle_us": 1500,
+     "steer_us": 1500,
+     "duration_ms": 250
+    },
+    "crc": "0x5E18"
+   }
+  },
+  {
+   "name": "setpoint_forward",
+   "hex": "fbb1010003000101060072062c066400cd2f",
+   "bytes": 18,
+   "meaning": "DRIVE_SETPOINT 1650 us throttle, 1580 us steer, 100 ms (valid only while ARMED with esc_min <= 1650 <= esc_max)",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 3,
+    "type": "DRIVE_SETPOINT",
+    "len": 6,
+    "fields": {
+     "throttle_us": 1650,
+     "steer_us": 1580,
+     "duration_ms": 100
+    },
+    "crc": "0x2FCD"
+   }
+  },
+  {
+   "name": "estop_viewer",
+   "hex": "fbb101000400020002000b01a0d0",
+   "bytes": 14,
+   "meaning": "ESTOP_SET reason VIEWER_ESTOP",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 4,
+    "type": "ESTOP_SET",
+    "len": 2,
+    "fields": {
+     "reason": 267
+    },
+    "crc": "0xD0A0"
+   }
+  },
+  {
+   "name": "clear_hb_and_link",
+   "hex": "fbb101000500030002000a00c3f1",
+   "bytes": 14,
+   "meaning": "CLEAR_LATCHED_FAULT mask HEARTBEAT_TIMEOUT|LINK_RESET (the auto-clear of an explicit arm)",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 5,
+    "type": "CLEAR_LATCHED_FAULT",
+    "len": 2,
+    "fields": {
+     "mask": 10
+    },
+    "crc": "0xF1C3"
+   }
+  },
+  {
+   "name": "identify",
+   "hex": "fbb101000600040000005881",
+   "bytes": 12,
+   "meaning": "IDENTIFY_REQUEST, empty payload (frozen)",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 6,
+    "type": "IDENTIFY_REQUEST",
+    "len": 0,
+    "fields": {},
+    "crc": "0x8158"
+   }
+  },
+  {
+   "name": "config_cal_defaults",
+   "hex": "fbb10100070005001000ce04dc057c0605067206e80308080000614a",
+   "bytes": 28,
+   "meaning": "CONFIG_SET with cal.hxx's compiled defaults: bumper_flags 0 (enable left as compiled, so disabled; NC polarity, pressed reads high), bumper_filter_ms 0",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 7,
+    "type": "CONFIG_SET",
+    "len": 16,
+    "fields": {
+     "servo_min_us": 1230,
+     "servo_center_us": 1500,
+     "servo_max_us": 1660,
+     "esc_min_us": 1541,
+     "esc_max_us": 1650,
+     "esc_rev_us": 1000,
+     "slew_steer_us": 8,
+     "slew_throttle_us": 8,
+     "bumper_flags": 0,
+     "bumper_filter_ms": 0
+    },
+    "crc": "0x4A61"
+   }
+  },
+  {
+   "name": "config_bumper_nc_filter",
+   "hex": "fbb10100080005001000ce04dc057c0605064006dc05080801024a3b",
+   "bytes": 28,
+   "meaning": "CONFIG_SET enabling the bumper on the NC contact (ENABLE set, PRESSED_LOW clear: pressed or a broken wire reads high) with a 2 ms press filter",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 8,
+    "type": "CONFIG_SET",
+    "len": 16,
+    "fields": {
+     "servo_min_us": 1230,
+     "servo_center_us": 1500,
+     "servo_max_us": 1660,
+     "esc_min_us": 1541,
+     "esc_max_us": 1600,
+     "esc_rev_us": 1500,
+     "slew_steer_us": 8,
+     "slew_throttle_us": 8,
+     "bumper_flags": 1,
+     "bumper_filter_ms": 2
+    },
+    "crc": "0x3B4A"
+   }
+  },
+  {
+   "name": "hello",
+   "hex": "fbb10100000000802c00010000012c7dd40201010000a01d7d3a5f7dd955303264343764322d64697274790000000000000000000000025a",
+   "bytes": 56,
+   "meaning": "VCU_HELLO proto 1.0, fw 0.1, build 02d47d2c dirty, board PICO2, reset POWER_ON, serial A01D7D3A5F7DD955, describe '02d47d2-dirty'",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 0,
+    "type": "VCU_HELLO",
+    "len": 44,
+    "fields": {
+     "proto_major": 1,
+     "proto_minor": 0,
+     "fw_major": 0,
+     "fw_minor": 1,
+     "build_id": 47480108,
+     "build_flags": 1,
+     "board": 1,
+     "reset_reason": 0,
+     "reserved": 0,
+     "serial": "a01d7d3a5f7dd955",
+     "describe": "303264343764322d64697274790000000000000000000000"
+    },
+    "crc": "0x5A02"
+   }
+  },
+  {
+   "name": "telemetry",
+   "hex": "fbb101000a000180200015cd5b07d6ffffff84fe030401000000dc05dc05dd05db05047303000100070078e6",
+   "bytes": 44,
+   "meaning": "TELEMETRY ARMED: ticks -42 at -380 t/s, hall 011, both pins live at 1500 us, pads read 1501/1499 us, last host seq 3, heartbeat seq 1 seen 7 ms ago",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 10,
+    "type": "TELEMETRY",
+    "len": 32,
+    "fields": {
+     "t_us": 123456789,
+     "ticks": -42,
+     "tps": -380,
+     "hall_state": 3,
+     "hall_flags": 4,
+     "hall_invalid": 1,
+     "hall_skips": 0,
+     "esc_us": 1500,
+     "servo_us": 1500,
+     "esc_meas_us": 1501,
+     "servo_meas_us": 1499,
+     "state": 4,
+     "info": 115,
+     "last_rx_seq": 3,
+     "hb_seq": 1,
+     "hb_age_ms": 7
+    },
+    "crc": "0xE678"
+   }
+  },
+  {
+   "name": "safety_hb_timeout",
+   "hex": "fbb101000b0005801e006708000005010200020002000000000000000000970000000000000000000733",
+   "bytes": 42,
+   "meaning": "SAFETY_STATE FAULT, reason HEARTBEAT_TIMEOUT active and latched, worst heartbeat gap 151 ms",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 11,
+    "type": "SAFETY_STATE",
+    "len": 30,
+    "fields": {
+     "t_ms": 2151,
+     "state": 5,
+     "host_mode": 1,
+     "reason": 2,
+     "active": 2,
+     "latched": 2,
+     "ack_seq": 0,
+     "ack_type": 0,
+     "hold_left_ms": 0,
+     "hb_count": 0,
+     "reserved": 0,
+     "hb_gap_max_ms": 151,
+     "nacks": 0,
+     "crc_errors": 0,
+     "discarded": 0,
+     "tx_dropped": 0
+    },
+    "crc": "0x3307"
+   }
+  },
+  {
+   "name": "config_report",
+   "hex": "fbb101000c0006801000ce04dc057c0605067206e80308080000b66e",
+   "bytes": 28,
+   "meaning": "CONFIG_REPORT of the compiled defaults: bumper disabled, NC polarity, no press filter",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 12,
+    "type": "CONFIG_REPORT",
+    "len": 16,
+    "fields": {
+     "servo_min_us": 1230,
+     "servo_center_us": 1500,
+     "servo_max_us": 1660,
+     "esc_min_us": 1541,
+     "esc_max_us": 1650,
+     "esc_rev_us": 1000,
+     "slew_steer_us": 8,
+     "slew_throttle_us": 8,
+     "bumper_flags": 0,
+     "bumper_filter_ms": 0
+    },
+    "crc": "0x6EB6"
+   }
+  },
+  {
+   "name": "nack_not_armed",
+   "hex": "fbb101000d000270080003000101070072061327",
+   "bytes": 20,
+   "meaning": "NACK of seq 3 (DRIVE_SETPOINT): NOT_ARMED, asked for 1650 us",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 13,
+    "type": "NACK",
+    "len": 8,
+    "fields": {
+     "rejected_seq": 3,
+     "rejected_type": 257,
+     "code": 7,
+     "detail": 1650
+    },
+    "crc": "0x2713"
+   }
+  },
+  {
+   "name": "unknown_type",
+   "hex": "fbb101001400990002000102ba3f",
+   "bytes": 14,
+   "meaning": "a CRC-valid frame of type 0x0099, which 1.0 does not define",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 20,
+     "rejected_type": 153,
+     "code": "UNKNOWN_TYPE",
+     "detail": 153
+    },
+    "state_change": false
+   }
+  },
+  {
+   "name": "wrong_version",
+   "hex": "fbb102001500010005000100000001002e",
+   "bytes": 17,
+   "meaning": "a HEARTBEAT in major 2",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 21,
+     "rejected_type": 1,
+     "code": "VERSION",
+     "detail": 2
+    },
+    "feeds_heartbeat": false
+   }
+  },
+  {
+   "name": "bad_length_for_type",
+   "hex": "fbb1010016000100040001020304698b",
+   "bytes": 16,
+   "meaning": "a HEARTBEAT with a 4-byte payload (it is 5)",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 22,
+     "rejected_type": 1,
+     "code": "BAD_LENGTH",
+     "detail": 4
+    },
+    "feeds_heartbeat": false
+   }
+  },
+  {
+   "name": "bad_flags",
+   "hex": "fbb1010117000100050001000000016342",
+   "bytes": 17,
+   "meaning": "a HEARTBEAT with flags 0x01 (all flags reserved in 1.x)",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 23,
+     "rejected_type": 1,
+     "code": "BAD_FLAGS",
+     "detail": 1
+    },
+    "feeds_heartbeat": false
+   }
+  },
+  {
+   "name": "duration_over_cap",
+   "hex": "fbb10100180001010600dc05dc05fb003b47",
+   "bytes": 18,
+   "meaning": "DRIVE_SETPOINT duration 251 ms (cap 250)",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 24,
+     "rejected_type": 257,
+     "code": "OUT_OF_RANGE",
+     "detail": 2
+    },
+    "throttle": "neutral now; a setpoint in force ends"
+   }
+  },
+  {
+   "name": "throttle_in_deadband",
+   "hex": "fbb10100190001010600f005dc0564007072",
+   "bytes": 18,
+   "meaning": "DRIVE_SETPOINT 1520 us: above neutral, below esc_min 1541 - refused, never raised to 1541",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 25,
+     "rejected_type": 257,
+     "code": "OUT_OF_RANGE",
+     "detail": 0
+    },
+    "throttle": "neutral now"
+   }
+  },
+  {
+   "name": "wrong_direction",
+   "hex": "fbb101001a000180200000000000000000000000010000000000dc05dc05000000000200000000000000f636",
+   "bytes": 44,
+   "meaning": "a TELEMETRY sent to the VCU",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 26,
+     "rejected_type": 32769,
+     "code": "WRONG_DIRECTION",
+     "detail": 32769
+    }
+   }
+  },
+  {
+   "name": "heartbeat_mode_zero",
+   "hex": "fbb101001b00010005000500000000f82b",
+   "bytes": 17,
+   "meaning": "a HEARTBEAT with mode 0",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 27,
+     "rejected_type": 1,
+     "code": "OUT_OF_RANGE",
+     "detail": 1
+    },
+    "feeds_heartbeat": false
+   }
+  },
+  {
+   "name": "bumper_filter_over_max",
+   "hex": "fbb101001c0005001000ce04dc057c0605064006dc0508080106c961",
+   "bytes": 28,
+   "meaning": "CONFIG_SET with bumper_filter_ms 6 (max 5)",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 28,
+     "rejected_type": 5,
+     "code": "OUT_OF_RANGE",
+     "detail": 9
+    },
+    "config_change": false
+   }
+  },
+  {
+   "name": "bumper_flags_unknown_bit",
+   "hex": "fbb101001d0005001000ce04dc057c0605064006dc05080804002293",
+   "bytes": 28,
+   "meaning": "CONFIG_SET with bumper_flags bit 2 set (only bits 0-1 are defined)",
+   "vcu_must": {
+    "nack": {
+     "rejected_seq": 29,
+     "rejected_type": 5,
+     "code": "OUT_OF_RANGE",
+     "detail": 8
+    },
+    "config_change": false
+   }
+  },
+  {
+   "name": "estop_signal_frame",
+   "hex": "fbb10100ffff020002000c016477",
+   "bytes": 14,
+   "meaning": "ESTOP_SET reason SIGNAL with the reserved seq 0xFFFF: pre-encoded at open for the async-signal-safe path",
+   "decoded": {
+    "version": 1,
+    "flags": 0,
+    "seq": 65535,
+    "type": "ESTOP_SET",
+    "len": 2,
+    "fields": {
+     "reason": 268
+    },
+    "crc": "0x7764"
+   }
+  }
+ ],
+ "streams": [
+  {
+   "name": "one_frame",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb101000100010005007856341201f37e"
+    }
+   ],
+   "doc": "one whole frame",
+   "expect": {
+    "frames": [
+     {
+      "type": "HEARTBEAT",
+      "seq": 1,
+      "version": 1,
+      "payload": "7856341201"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 0,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 0,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "byte_at_a_time",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fb"
+    },
+    {
+     "t_us": 100,
+     "hex": "b1"
+    },
+    {
+     "t_us": 200,
+     "hex": "01"
+    },
+    {
+     "t_us": 300,
+     "hex": "00"
+    },
+    {
+     "t_us": 400,
+     "hex": "01"
+    },
+    {
+     "t_us": 500,
+     "hex": "00"
+    },
+    {
+     "t_us": 600,
+     "hex": "01"
+    },
+    {
+     "t_us": 700,
+     "hex": "00"
+    },
+    {
+     "t_us": 800,
+     "hex": "05"
+    },
+    {
+     "t_us": 900,
+     "hex": "00"
+    },
+    {
+     "t_us": 1000,
+     "hex": "78"
+    },
+    {
+     "t_us": 1100,
+     "hex": "56"
+    },
+    {
+     "t_us": 1200,
+     "hex": "34"
+    },
+    {
+     "t_us": 1300,
+     "hex": "12"
+    },
+    {
+     "t_us": 1400,
+     "hex": "01"
+    },
+    {
+     "t_us": 1500,
+     "hex": "f3"
+    },
+    {
+     "t_us": 1600,
+     "hex": "7e"
+    },
+    {
+     "t_us": 1700,
+     "hex": "fb"
+    },
+    {
+     "t_us": 1800,
+     "hex": "b1"
+    },
+    {
+     "t_us": 1900,
+     "hex": "01"
+    },
+    {
+     "t_us": 2000,
+     "hex": "00"
+    },
+    {
+     "t_us": 2100,
+     "hex": "02"
+    },
+    {
+     "t_us": 2200,
+     "hex": "00"
+    },
+    {
+     "t_us": 2300,
+     "hex": "01"
+    },
+    {
+     "t_us": 2400,
+     "hex": "01"
+    },
+    {
+     "t_us": 2500,
+     "hex": "06"
+    },
+    {
+     "t_us": 2600,
+     "hex": "00"
+    },
+    {
+     "t_us": 2700,
+     "hex": "dc"
+    },
+    {
+     "t_us": 2800,
+     "hex": "05"
+    },
+    {
+     "t_us": 2900,
+     "hex": "dc"
+    },
+    {
+     "t_us": 3000,
+     "hex": "05"
+    },
+    {
+     "t_us": 3100,
+     "hex": "fa"
+    },
+    {
+     "t_us": 3200,
+     "hex": "00"
+    },
+    {
+     "t_us": 3300,
+     "hex": "18"
+    },
+    {
+     "t_us": 3400,
+     "hex": "5e"
+    }
+   ],
+   "doc": "two frames fed one byte per 100 us",
+   "expect": {
+    "frames": [
+     {
+      "type": "HEARTBEAT",
+      "seq": 1,
+      "version": 1,
+      "payload": "7856341201"
+     },
+     {
+      "type": "DRIVE_SETPOINT",
+      "seq": 2,
+      "version": 1,
+      "payload": "dc05dc05fa00"
+     }
+    ],
+    "counters": {
+     "frames": 2,
+     "crc_errors": 0,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 0,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "back_to_back",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb101000100010005007856341201f37efbb10100020001010600dc05dc05fa00185e"
+    }
+   ],
+   "doc": "two frames in one read",
+   "expect": {
+    "frames": [
+     {
+      "type": "HEARTBEAT",
+      "seq": 1,
+      "version": 1,
+      "payload": "7856341201"
+     },
+     {
+      "type": "DRIVE_SETPOINT",
+      "seq": 2,
+      "version": 1,
+      "payload": "dc05dc05fa00"
+     }
+    ],
+    "counters": {
+     "frames": 2,
+     "crc_errors": 0,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 0,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "bad_crc",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb101000100010005007856341201f37f"
+    }
+   ],
+   "doc": "the heartbeat with its last CRC byte flipped: no frame, no NACK",
+   "expect": {
+    "frames": [],
+    "counters": {
+     "frames": 0,
+     "crc_errors": 1,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 17,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "bad_crc_then_good",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb101000100010005007856341201f37ffbb10100020001010600dc05dc05fa00185e"
+    }
+   ],
+   "doc": "a corrupt frame then a good one in the same read",
+   "expect": {
+    "frames": [
+     {
+      "type": "DRIVE_SETPOINT",
+      "seq": 2,
+      "version": 1,
+      "payload": "dc05dc05fa00"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 1,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 17,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "short_then_gap",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb101000100010005"
+    },
+    {
+     "t_us": 30000,
+     "hex": "fbb10100020001010600dc05dc05fa00185e"
+    }
+   ],
+   "doc": "9 bytes of a frame, then nothing for 30 ms (> FRAME_GAP_MS), then a good frame",
+   "expect": {
+    "frames": [
+     {
+      "type": "DRIVE_SETPOINT",
+      "seq": 2,
+      "version": 1,
+      "payload": "dc05dc05fa00"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 0,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 9,
+     "gap_resets": 1
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "oversized_len",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb101001e0001003500fbb10100020001010600dc05dc05fa00185e"
+    }
+   ],
+   "doc": "a header claiming 53 payload bytes (max 52), then a good frame",
+   "expect": {
+    "frames": [
+     {
+      "type": "DRIVE_SETPOINT",
+      "seq": 2,
+      "version": 1,
+      "payload": "dc05dc05fa00"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 0,
+     "len_errors": 1,
+     "version_frames": 0,
+     "discarded": 10,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "ascii_noise",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "4f4b20647269766520736572766f3d31353030206573633d313530302061726d65643d300afbb101000100010005007856341201f37e"
+    }
+   ],
+   "doc": "an old firmware's ASCII line, then a frame: no ASCII byte can start one",
+   "expect": {
+    "frames": [
+     {
+      "type": "HEARTBEAT",
+      "seq": 1,
+      "version": 1,
+      "payload": "7856341201"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 0,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 37,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "false_magic_absorbs",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb10100070001003000fbb101000100010005007856341201f37e"
+    },
+    {
+     "t_us": 25000,
+     "hex": ""
+    }
+   ],
+   "doc": "magic and a header claiming 48 bytes swallow the real frame until the gap fires; then the real frame is found inside",
+   "expect": {
+    "frames": [
+     {
+      "type": "HEARTBEAT",
+      "seq": 1,
+      "version": 1,
+      "payload": "7856341201"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 0,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 10,
+     "gap_resets": 1
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "random_noise",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "00ff7a81fbfbb1fb13fbb101000100010005007856341201f37efbb1"
+    }
+   ],
+   "doc": "noise, two false starts, a frame, and a trailing magic pair that waits for a header until the gap discards it",
+   "expect": {
+    "frames": [
+     {
+      "type": "HEARTBEAT",
+      "seq": 1,
+      "version": 1,
+      "payload": "7856341201"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 1,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 11,
+     "gap_resets": 1
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "signal_bytes_after_partial",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb101000100010005"
+    },
+    {
+     "t_us": 1000,
+     "hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fbb10100ffff020002000c016477"
+    }
+   ],
+   "doc": "a write interrupted 9 bytes in, then the signal handler's 64 zeros and ESTOP_SET: the ESTOP is decoded at once, without waiting for the gap",
+   "expect": {
+    "frames": [
+     {
+      "type": "ESTOP_SET",
+      "seq": 65535,
+      "version": 1,
+      "payload": "0c01"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 1,
+     "len_errors": 0,
+     "version_frames": 0,
+     "discarded": 73,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  },
+  {
+   "name": "wrong_version_still_framed",
+   "chunks": [
+    {
+     "t_us": 0,
+     "hex": "fbb102001500010005000100000001002e"
+    }
+   ],
+   "doc": "a CRC-valid frame in major 2 is FRAMED (counted in version_frames) and handed to the dispatcher, which NACKs it; it is never acted on",
+   "expect": {
+    "frames": [
+     {
+      "type": "HEARTBEAT",
+      "seq": 21,
+      "version": 2,
+      "payload": "0100000001"
+     }
+    ],
+    "counters": {
+     "frames": 1,
+     "crc_errors": 0,
+     "len_errors": 0,
+     "version_frames": 1,
+     "discarded": 0,
+     "gap_resets": 0
+    },
+    "bytes_left": 0
+   }
+  }
+ ],
+ "behaviour": [
+  {
+   "name": "boot_disarmed",
+   "doc": "Neutral and centre from the first instruction; HOLD then DISARMED; throttle refused while not armed.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 0,
+     "expect": {
+      "state": "HOLD",
+      "esc_us": 1500,
+      "esc_live": true,
+      "servo_us": 1500,
+      "servo_live": true,
+      "active": [],
+      "latched": []
+     }
+    },
+    {
+     "t_ms": 999,
+     "expect": {
+      "state": "HOLD"
+     }
+    },
+    {
+     "t_ms": 1000,
+     "expect": {
+      "state": "DISARMED"
+     }
+    },
+    {
+     "t_ms": 1100,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1600,
+      "steer_us": 1500,
+      "duration_ms": 100
+     }
+    },
+    {
+     "t_ms": 1100,
+     "expect": {
+      "state": "DISARMED",
+      "esc_us": 1500,
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "NOT_ARMED",
+        "detail": 1600
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "arm_then_expire",
+   "doc": "5 heartbeats and a neutral setpoint arm; a setpoint past its life goes neutral and stays ARMED.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "compiled",
+     "esc_min_us": 1541,
+     "esc_max_us": 1800
+    },
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 3000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1110,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 1580,
+      "duration_ms": 100
+     }
+    },
+    {
+     "t_ms": 1110,
+     "expect": {
+      "state": "ARMED",
+      "esc_target_us": 1650,
+      "servo_target_us": 1580
+     }
+    },
+    {
+     "t_ms": 1209,
+     "expect": {
+      "state": "ARMED",
+      "esc_target_us": 1650
+     }
+    },
+    {
+     "t_ms": 1211,
+     "expect": {
+      "state": "ARMED",
+      "esc_us": 1500,
+      "esc_target_us": 1500,
+      "servo_target_us": 1580,
+      "reason": "SETPOINT_EXPIRED"
+     }
+    }
+   ]
+  },
+  {
+   "name": "heartbeat_timeout_latches",
+   "doc": "150 ms with no heartbeat latches HEARTBEAT_TIMEOUT: neutral at once, pulse live, steering held; CLEAR refused while stale; CLEAR then a 1 s HOLD.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "compiled",
+     "esc_min_us": 1541,
+     "esc_max_us": 1800
+    },
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 2000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1990,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 1580,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 2150,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 2151,
+     "expect": {
+      "state": "FAULT",
+      "esc_us": 1500,
+      "esc_live": true,
+      "servo_target_us": 1580,
+      "servo_live": true,
+      "active": [
+       "HEARTBEAT_TIMEOUT"
+      ],
+      "latched": [
+       "HEARTBEAT_TIMEOUT"
+      ]
+     }
+    },
+    {
+     "t_ms": 2200,
+     "do": "rx",
+     "msg": "CLEAR_LATCHED_FAULT",
+     "fields": {
+      "mask": 2
+     }
+    },
+    {
+     "t_ms": 2200,
+     "expect": {
+      "state": "FAULT",
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "STILL_ACTIVE",
+        "detail": 2
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 2300,
+     "do": "heartbeats",
+     "from_ms": 2300,
+     "to_ms": 4000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 2301,
+     "expect": {
+      "active": [],
+      "latched": [
+       "HEARTBEAT_TIMEOUT"
+      ]
+     }
+    },
+    {
+     "t_ms": 2400,
+     "do": "rx",
+     "msg": "CLEAR_LATCHED_FAULT",
+     "fields": {
+      "mask": 2
+     }
+    },
+    {
+     "t_ms": 2400,
+     "expect": {
+      "state": "HOLD",
+      "latched": []
+     }
+    },
+    {
+     "t_ms": 2900,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 1500,
+      "duration_ms": 100
+     }
+    },
+    {
+     "t_ms": 2900,
+     "expect": {
+      "state": "HOLD",
+      "esc_us": 1500,
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "HOLD",
+        "detail": 500
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 3399,
+     "expect": {
+      "state": "HOLD"
+     }
+    },
+    {
+     "t_ms": 3400,
+     "expect": {
+      "state": "ARMING"
+     }
+    },
+    {
+     "t_ms": 3401,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 3401,
+     "expect": {
+      "state": "ARMED"
+     }
+    }
+   ]
+  },
+  {
+   "name": "estop_cuts_and_clear_restores",
+   "doc": "ESTOP cuts the ESC pulse and HOLDS the steering at its last angle, pulse live; every setpoint is refused, so the angle cannot move; only CLEAR brings the ESC pulse back, at neutral, then HOLD, and the steering keeps its angle.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 3000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1900,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1580,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1900,
+     "expect": {
+      "state": "ARMED",
+      "servo_target_us": 1580
+     }
+    },
+    {
+     "t_ms": 2000,
+     "do": "rx",
+     "msg": "ESTOP_SET",
+     "fields": {
+      "reason": 267
+     }
+    },
+    {
+     "t_ms": 2000,
+     "expect": {
+      "state": "FAULT",
+      "esc_live": false,
+      "esc_us": 0,
+      "servo_live": true,
+      "servo_target_us": 1580,
+      "latched": [
+       "ESTOP"
+      ],
+      "reason": "ESTOP"
+     }
+    },
+    {
+     "t_ms": 2010,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1450,
+      "duration_ms": 100
+     }
+    },
+    {
+     "t_ms": 2010,
+     "expect": {
+      "servo_live": true,
+      "servo_target_us": 1580,
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "ESTOP_LATCHED",
+        "detail": 0
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 2900,
+     "expect": {
+      "esc_live": false,
+      "servo_live": true,
+      "servo_us": 1580
+     }
+    },
+    {
+     "t_ms": 2950,
+     "do": "rx",
+     "msg": "CLEAR_LATCHED_FAULT",
+     "fields": {
+      "mask": 1
+     }
+    },
+    {
+     "t_ms": 2950,
+     "expect": {
+      "state": "HOLD",
+      "esc_live": true,
+      "esc_us": 1500,
+      "servo_live": true,
+      "servo_us": 1580,
+      "latched": []
+     }
+    }
+   ]
+  },
+  {
+   "name": "internal_releases_steering",
+   "doc": "INTERNAL is the one fault that releases the steering: the hal's last-resort clamp engaging cuts the ESC pulse and stops the servo pulse; CLEAR restores the ESC at neutral and the servo at servo_center_us.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "compiled",
+     "esc_min_us": 1541,
+     "esc_max_us": 1800
+    },
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 3000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1900,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1580,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1900,
+     "expect": {
+      "servo_target_us": 1580
+     }
+    },
+    {
+     "t_ms": 2200,
+     "do": "clamp_engaged"
+    },
+    {
+     "t_ms": 2200,
+     "expect": {
+      "state": "FAULT",
+      "esc_live": false,
+      "esc_us": 0,
+      "servo_live": false,
+      "servo_us": 0,
+      "latched": [
+       "INTERNAL"
+      ],
+      "reason": "INTERNAL"
+     }
+    },
+    {
+     "t_ms": 2300,
+     "do": "rx",
+     "msg": "CLEAR_LATCHED_FAULT",
+     "fields": {
+      "mask": 64
+     }
+    },
+    {
+     "t_ms": 2300,
+     "expect": {
+      "state": "HOLD",
+      "esc_live": true,
+      "esc_us": 1500,
+      "servo_live": true,
+      "servo_us": 1500,
+      "latched": []
+     }
+    }
+   ]
+  },
+  {
+   "name": "bumper_press_acts_release_debounced",
+   "doc": "Enabled bumper on the NC contact (pressed reads high), no filter: the first press edge forces neutral and latches; bounces extend the release; CLEAR refused until 100 ms of continuous release.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "compiled",
+     "esc_min_us": 1541,
+     "esc_max_us": 1800
+    },
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON",
+     "gp0": 0
+    },
+    {
+     "t_ms": 1001,
+     "do": "rx",
+     "msg": "CONFIG_SET",
+     "fields": {
+      "servo_min_us": 1230,
+      "servo_center_us": 1500,
+      "servo_max_us": 1660,
+      "esc_min_us": 1541,
+      "esc_max_us": 1800,
+      "esc_rev_us": 1500,
+      "slew_steer_us": 8,
+      "slew_throttle_us": 8,
+      "bumper_flags": 1,
+      "bumper_filter_ms": 0
+     }
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 3000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1500,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1600,
+     "do": "gp0",
+     "level": 1
+    },
+    {
+     "t_ms": 1600,
+     "expect": {
+      "state": "FAULT",
+      "esc_us": 1500,
+      "esc_live": true,
+      "active": [
+       "BUMPER"
+      ],
+      "latched": [
+       "BUMPER"
+      ]
+     }
+    },
+    {
+     "t_ms": 1605,
+     "do": "gp0",
+     "level": 0
+    },
+    {
+     "t_ms": 1608,
+     "do": "gp0",
+     "level": 1
+    },
+    {
+     "t_ms": 1610,
+     "do": "gp0",
+     "level": 0
+    },
+    {
+     "t_ms": 1650,
+     "do": "rx",
+     "msg": "CLEAR_LATCHED_FAULT",
+     "fields": {
+      "mask": 4
+     }
+    },
+    {
+     "t_ms": 1650,
+     "expect": {
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "STILL_ACTIVE",
+        "detail": 4
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 1709,
+     "expect": {
+      "active": [
+       "BUMPER"
+      ]
+     }
+    },
+    {
+     "t_ms": 1710,
+     "expect": {
+      "active": [],
+      "latched": [
+       "BUMPER"
+      ]
+     }
+    },
+    {
+     "t_ms": 1720,
+     "do": "rx",
+     "msg": "CLEAR_LATCHED_FAULT",
+     "fields": {
+      "mask": 4
+     }
+    },
+    {
+     "t_ms": 1720,
+     "expect": {
+      "state": "HOLD",
+      "latched": []
+     }
+    }
+   ]
+  },
+  {
+   "name": "bumper_filter_needs_a_held_press",
+   "doc": "bumper_filter_ms 3: a press shorter than 3 ms does nothing; a press held 3 ms latches BUMPER at press + 3 ms with neutral at once; the release is still debounced 100 ms.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "compiled",
+     "esc_min_us": 1541,
+     "esc_max_us": 1800
+    },
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON",
+     "gp0": 0
+    },
+    {
+     "t_ms": 1001,
+     "do": "rx",
+     "msg": "CONFIG_SET",
+     "fields": {
+      "servo_min_us": 1230,
+      "servo_center_us": 1500,
+      "servo_max_us": 1660,
+      "esc_min_us": 1541,
+      "esc_max_us": 1800,
+      "esc_rev_us": 1500,
+      "slew_steer_us": 8,
+      "slew_throttle_us": 8,
+      "bumper_flags": 1,
+      "bumper_filter_ms": 3
+     }
+    },
+    {
+     "t_ms": 1001,
+     "expect": {
+      "tx": [
+       {
+        "type": "CONFIG_REPORT",
+        "fields": {
+         "bumper_flags": 1,
+         "bumper_filter_ms": 3
+        }
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 3000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1500,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1600,
+     "do": "gp0",
+     "level": 1
+    },
+    {
+     "t_ms": 1602,
+     "do": "gp0",
+     "level": 0
+    },
+    {
+     "t_ms": 1603,
+     "expect": {
+      "state": "ARMED",
+      "active": [],
+      "latched": [],
+      "esc_target_us": 1650
+     }
+    },
+    {
+     "t_ms": 1620,
+     "do": "gp0",
+     "level": 1
+    },
+    {
+     "t_ms": 1622,
+     "expect": {
+      "state": "ARMED",
+      "active": [],
+      "latched": [],
+      "info": [
+       "BUMPER_RAW"
+      ]
+     }
+    },
+    {
+     "t_ms": 1623,
+     "expect": {
+      "state": "FAULT",
+      "esc_us": 1500,
+      "esc_live": true,
+      "active": [
+       "BUMPER"
+      ],
+      "latched": [
+       "BUMPER"
+      ],
+      "reason": "BUMPER"
+     }
+    },
+    {
+     "t_ms": 1700,
+     "do": "gp0",
+     "level": 0
+    },
+    {
+     "t_ms": 1799,
+     "expect": {
+      "active": [
+       "BUMPER"
+      ]
+     }
+    },
+    {
+     "t_ms": 1800,
+     "expect": {
+      "active": [],
+      "latched": [
+       "BUMPER"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "bumper_open_wire_reads_pressed",
+   "doc": "NC polarity, the compiled default: with nothing wired GP0 floats high and reads pressed. Disabled, it is only reported; enabling it latches BUMPER at once (a broken wire is a press). Once enabled, the polarity cannot change, even with ENABLE clear.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON",
+     "gp0": 1
+    },
+    {
+     "t_ms": 1000,
+     "expect": {
+      "state": "DISARMED",
+      "active": [],
+      "latched": [],
+      "info": [
+       "BUMPER_RAW"
+      ]
+     }
+    },
+    {
+     "t_ms": 1001,
+     "do": "rx",
+     "msg": "CONFIG_SET",
+     "fields": {
+      "servo_min_us": 1230,
+      "servo_center_us": 1500,
+      "servo_max_us": 1660,
+      "esc_min_us": 1541,
+      "esc_max_us": 1600,
+      "esc_rev_us": 1500,
+      "slew_steer_us": 8,
+      "slew_throttle_us": 8,
+      "bumper_flags": 1,
+      "bumper_filter_ms": 0
+     }
+    },
+    {
+     "t_ms": 1001,
+     "expect": {
+      "state": "FAULT",
+      "esc_us": 1500,
+      "esc_live": true,
+      "active": [
+       "BUMPER"
+      ],
+      "latched": [
+       "BUMPER"
+      ],
+      "reason": "BUMPER"
+     }
+    },
+    {
+     "t_ms": 1100,
+     "do": "gp0",
+     "level": 0
+    },
+    {
+     "t_ms": 1199,
+     "expect": {
+      "active": [
+       "BUMPER"
+      ]
+     }
+    },
+    {
+     "t_ms": 1200,
+     "expect": {
+      "active": [],
+      "latched": [
+       "BUMPER"
+      ]
+     }
+    },
+    {
+     "t_ms": 1210,
+     "do": "rx",
+     "msg": "CLEAR_LATCHED_FAULT",
+     "fields": {
+      "mask": 4
+     }
+    },
+    {
+     "t_ms": 1210,
+     "expect": {
+      "state": "HOLD",
+      "latched": []
+     }
+    },
+    {
+     "t_ms": 1220,
+     "do": "rx",
+     "msg": "CONFIG_SET",
+     "fields": {
+      "servo_min_us": 1230,
+      "servo_center_us": 1500,
+      "servo_max_us": 1660,
+      "esc_min_us": 1541,
+      "esc_max_us": 1600,
+      "esc_rev_us": 1500,
+      "slew_steer_us": 8,
+      "slew_throttle_us": 8,
+      "bumper_flags": 3,
+      "bumper_filter_ms": 0
+     }
+    },
+    {
+     "t_ms": 1220,
+     "expect": {
+      "state": "HOLD",
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "NOT_PERMITTED",
+        "detail": 8
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 1230,
+     "do": "rx",
+     "msg": "CONFIG_SET",
+     "fields": {
+      "servo_min_us": 1230,
+      "servo_center_us": 1500,
+      "servo_max_us": 1660,
+      "esc_min_us": 1541,
+      "esc_max_us": 1600,
+      "esc_rev_us": 1500,
+      "slew_steer_us": 8,
+      "slew_throttle_us": 8,
+      "bumper_flags": 2,
+      "bumper_filter_ms": 0
+     }
+    },
+    {
+     "t_ms": 1230,
+     "expect": {
+      "state": "HOLD",
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "NOT_PERMITTED",
+        "detail": 8
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "bumper_no_contact_polarity",
+   "doc": "PRESSED_LOW (an NO contact) set in the same CONFIG_SET that enables the bumper: high at rest is released, low is a press.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "compiled",
+     "esc_min_us": 1541,
+     "esc_max_us": 1800
+    },
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON",
+     "gp0": 1
+    },
+    {
+     "t_ms": 1001,
+     "do": "rx",
+     "msg": "CONFIG_SET",
+     "fields": {
+      "servo_min_us": 1230,
+      "servo_center_us": 1500,
+      "servo_max_us": 1660,
+      "esc_min_us": 1541,
+      "esc_max_us": 1800,
+      "esc_rev_us": 1500,
+      "slew_steer_us": 8,
+      "slew_throttle_us": 8,
+      "bumper_flags": 3,
+      "bumper_filter_ms": 0
+     }
+    },
+    {
+     "t_ms": 1001,
+     "expect": {
+      "state": "DISARMED",
+      "active": [],
+      "latched": [],
+      "tx": [
+       {
+        "type": "CONFIG_REPORT",
+        "fields": {
+         "bumper_flags": 3,
+         "bumper_filter_ms": 0
+        }
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 1050,
+     "do": "gp0",
+     "level": 0
+    },
+    {
+     "t_ms": 1050,
+     "expect": {
+      "state": "FAULT",
+      "esc_us": 1500,
+      "esc_live": true,
+      "active": [
+       "BUMPER"
+      ],
+      "latched": [
+       "BUMPER"
+      ],
+      "reason": "BUMPER"
+     }
+    }
+   ]
+  },
+  {
+   "name": "bumper_disabled_is_reported_only",
+   "doc": "Compiled default off: a press (high on the NC polarity) changes nothing but info BUMPER_RAW.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON",
+     "gp0": 0
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 3000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1500,
+     "do": "gp0",
+     "level": 1
+    },
+    {
+     "t_ms": 1500,
+     "expect": {
+      "state": "ARMED",
+      "active": [],
+      "latched": [],
+      "info": [
+       "BUMPER_RAW"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "session_close_is_a_disarm",
+   "doc": "A host session ending after heartbeats latches LINK_RESET; a new session must CLEAR.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 1990,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 2000,
+     "do": "session",
+     "open": false
+    },
+    {
+     "t_ms": 2000,
+     "expect": {
+      "state": "FAULT",
+      "esc_us": 1500,
+      "esc_live": true,
+      "active": [
+       "LINK_RESET"
+      ],
+      "latched": [
+       "LINK_RESET"
+      ]
+     }
+    },
+    {
+     "t_ms": 2300,
+     "expect": {
+      "latched": [
+       "LINK_RESET"
+      ]
+     }
+    },
+    {
+     "t_ms": 2400,
+     "do": "session",
+     "open": true
+    },
+    {
+     "t_ms": 2400,
+     "expect": {
+      "state": "FAULT",
+      "active": [],
+      "latched": [
+       "LINK_RESET"
+      ],
+      "hb_count": 0,
+      "tx": [
+       {
+        "type": "VCU_HELLO"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "out_of_range_rejected_never_clamped",
+   "doc": "Out-of-range fields are NACKed with the field index and end the setpoint in force.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "compiled",
+     "esc_min_us": 1541,
+     "esc_max_us": 1800
+    },
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 1000,
+     "do": "heartbeats",
+     "from_ms": 1000,
+     "to_ms": 3000,
+     "every_ms": 20,
+     "mode": "MANUAL"
+    },
+    {
+     "t_ms": 1101,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1500,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1101,
+     "expect": {
+      "state": "ARMED"
+     }
+    },
+    {
+     "t_ms": 1200,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 1500,
+      "duration_ms": 250
+     }
+    },
+    {
+     "t_ms": 1200,
+     "expect": {
+      "esc_target_us": 1650
+     }
+    },
+    {
+     "t_ms": 1210,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 1500,
+      "duration_ms": 251
+     }
+    },
+    {
+     "t_ms": 1210,
+     "expect": {
+      "state": "ARMED",
+      "esc_us": 1500,
+      "esc_target_us": 1500,
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "OUT_OF_RANGE",
+        "detail": 2
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 1220,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1650,
+      "steer_us": 2100,
+      "duration_ms": 100
+     }
+    },
+    {
+     "t_ms": 1220,
+     "expect": {
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "OUT_OF_RANGE",
+        "detail": 1
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 1230,
+     "do": "rx",
+     "msg": "DRIVE_SETPOINT",
+     "fields": {
+      "throttle_us": 1520,
+      "steer_us": 1500,
+      "duration_ms": 100
+     }
+    },
+    {
+     "t_ms": 1230,
+     "expect": {
+      "esc_target_us": 1500,
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "OUT_OF_RANGE",
+        "detail": 0
+       }
+      ]
+     }
+    },
+    {
+     "t_ms": 1240,
+     "do": "rx",
+     "msg": "CONFIG_SET",
+     "fields": {
+      "servo_min_us": 1230,
+      "servo_center_us": 1500,
+      "servo_max_us": 1660,
+      "esc_min_us": 1541,
+      "esc_max_us": 1800,
+      "esc_rev_us": 1500,
+      "slew_steer_us": 8,
+      "slew_throttle_us": 8,
+      "bumper_flags": 0,
+      "bumper_filter_ms": 0
+     }
+    },
+    {
+     "t_ms": 1240,
+     "expect": {
+      "tx": [
+       {
+        "type": "NACK",
+        "code": "STATE",
+        "detail": 4
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "watchdog_reset_keeps_estop",
+   "doc": "A hardware-watchdog reset while ESTOP was latched: neutral first (the ESC arms on it), then the restored ESTOP cuts it; the steering stays live at centre, where boot put it (ESTOP holds it).",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "WATCHDOG",
+     "scratch_latched": [
+      "ESTOP"
+     ]
+    },
+    {
+     "t_ms": 0,
+     "expect": {
+      "state": "FAULT",
+      "esc_live": false,
+      "servo_live": true,
+      "servo_us": 1500,
+      "latched": [
+       "ESTOP",
+       "WATCHDOG_RESET"
+      ],
+      "first_pin_write": {
+       "esc_us": 1500
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "identify_changes_nothing",
+   "doc": "IDENTIFY answers HELLO, CONFIG_REPORT and SAFETY_STATE and feeds no timeout.",
+   "steps": [
+    {
+     "t_ms": 0,
+     "do": "boot",
+     "reset": "POWER_ON"
+    },
+    {
+     "t_ms": 1000,
+     "expect": {
+      "state": "DISARMED"
+     }
+    },
+    {
+     "t_ms": 1100,
+     "do": "rx",
+     "msg": "IDENTIFY_REQUEST",
+     "fields": {}
+    },
+    {
+     "t_ms": 1100,
+     "expect": {
+      "state": "DISARMED",
+      "hb_count": 0,
+      "tx": [
+       {
+        "type": "VCU_HELLO"
+       },
+       {
+        "type": "CONFIG_REPORT"
+       },
+       {
+        "type": "SAFETY_STATE"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}
