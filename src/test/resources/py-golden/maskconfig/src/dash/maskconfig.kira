@@ -1,0 +1,148 @@
+module "dash:maskconfig"
+
+use "kira:json"
+use "kira:math"
+
+// lidarmask.py's lidar-mask.json with kira:json: reload's json.load, set_config's _clean_box and
+// _clean_wedges, _build's NaN refusal and save's json.dump(indent=1). The expected output is main's C++ run.
+
+BOX_LIMIT_M: Float64 = 1.5
+
+fx defaultBox: () Json {
+    b: Json = Json.obj()
+    b.put("front", Json.of(0.2))
+    b.put("back", Json.of(0.2))
+    b.put("left", Json.of(0.1))
+    b.put("right", Json.of(0.1))
+    return b
+}
+
+// Python's float() of a JSON value, none where it raises; text as Str.toFloat64 reads it, which
+// differs from float() only past a double's range and for underscores and non-ASCII spaces.
+fx pyFloat: (v: Json) Maybe<Float64> {
+    if v.isBool() {
+        return if v.asBool().unwrap() {
+            1.0
+        } else {
+            0.0
+        }
+    }
+    if v.isStr() {
+        return v.asStr().unwrap().trim().toFloat64()
+    }
+    return v.asFloat64()
+}
+
+// Python's bool() of a JSON value.
+fx truthy: (v: Json) Bool {
+    if v.isBool() {
+        return v.asBool().unwrap()
+    }
+    if v.isInt() {
+        return v.asInt64().unwrap() != 0
+    }
+    if v.isFloat() {
+        return v.asFloat64().unwrap() != 0.0
+    }
+    if v.isStr() {
+        return !v.asStr().unwrap().isEmpty()
+    }
+    return v.size() > 0
+}
+
+// Python's x % 360.0, exact while 360 * floor(x / 360) is: |x| below 2^44.
+fx mod360: (x: Float64) Float64 {
+    r: Float64 = x - 360.0 * floor(x / 360.0)
+    return if r < 0.0 {
+        r + 360.0
+    } else {
+        r
+    }
+}
+
+// round(x, places): %.*f's correctly rounded digits read back, as Python's round rounds.
+fx roundTo: (x: Float64, places: Int32) Float64 {
+    return x.fixed(places).toFloat64().unwrap()
+}
+
+pub fx cleanBox: (box: Json) Json {
+    out: Json = defaultBox()
+    if !box.isObj() {
+        return out
+    }
+    sides: List<Str> = ["front", "back", "left", "right"]
+    mut i: Size = 0
+    while i < sides.size() {
+        f: Maybe<Float64> = pyFloat(box.get(sides[i]))
+        if box.has(sides[i]) && f.isSome() {
+            out.put(sides[i], Json.of(roundTo(min(max(f.value, 0.0), BOX_LIMIT_M), 3)))
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fx cleanWedges: (wedges: Json) Json {
+    out: Json = Json.arr()
+    mut i: Size = 0
+    while wedges.isArr() && i < wedges.size() {
+        w: Json = wedges.at(i)
+        a0: Maybe<Float64> = pyFloat(w.get("a0"))
+        a1: Maybe<Float64> = pyFloat(w.get("a1"))
+        r: Maybe<Float64> = pyFloat(w.get("r_max_mm"))
+        complete: Bool = w.has("a0") && w.has("a1") && w.has("r_max_mm")
+        if complete && a0.isSome() && a1.isSome() && r.isSome() && r.value == r.value {
+            e: Json = Json.obj()
+            e.put("a0", Json.of(roundTo(mod360(a0.value), 2)))
+            e.put("a1", Json.of(roundTo(mod360(a1.value), 2)))
+            e.put("r_max_mm", Json.of(min(max(r.value, 0.0), 65535.0) as Int64))
+            e.put("blind", Json.of(truthy(w.get("blind"))))
+            if w.get("src").asStr().unwrapOr("") == "capture" {
+                e.put("src", Json.of("capture"))
+            } else {
+                e.put("src", Json.of("manual"))
+            }
+            out.add(e)
+        }
+        i += 1
+    }
+    return out
+}
+
+// A Mask on lidar-mask.json holding text: save()'s text, or what its constructor raises.
+pub fx reload: (text: Str) Str {
+    mut enabled: Bool = true
+    mut box: Json = defaultBox()
+    mut wedges: Json = Json.arr()
+    cfg: Json = Json.parse(text)
+    if Json.error() == "" && cfg.isObj() {
+        enabled = !cfg.has("on") || truthy(cfg.get("on"))
+        box = cleanBox(cfg.get("box"))
+        wedges = cleanWedges(cfg.get("wedges"))
+        mut i: Size = 0
+        while i < wedges.size() {
+            a0: Float64 = wedges.at(i).get("a0").asFloat64().unwrap()
+            a1: Float64 = wedges.at(i).get("a1").asFloat64().unwrap()
+            if a0 != a0 || a1 != a1 {
+                return "ValueError: cannot convert float NaN to integer"
+            }
+            i += 1
+        }
+    }
+    c: Json = Json.obj()
+    c.put("on", Json.of(enabled))
+    c.put("box", box)
+    c.put("wedges", wedges)
+    return c.pretty(1, true)
+}
+
+fx main: () Void {
+    trace(reload("{}"))
+    trace(reload("{\"on\": true, \"box\": {\"front\": 0.25, \"back\": 0.2, \"left\": 0.11, \"right\": 0.1}, \"wedges\": [{\"a0\": 156.5, \"a1\": 170.0, \"r_max_mm\": 400, \"blind\": true, \"src\": \"capture\"}, {\"a0\": 359.5, \"a1\": 0.5, \"r_max_mm\": 250.9, \"src\": \"manual\"}]}"))
+    trace(reload("{\"on\": 0, \"box\": {\"front\": \" 0.3125 \", \"back\": NaN, \"left\": Infinity, \"right\": -Infinity}, \"wedges\": [{\"a0\": -10, \"a1\": 370.25, \"r_max_mm\": Infinity, \"blind\": \"no\"}, {\"a0\": 1, \"a1\": 2, \"r_max_mm\": NaN}, {\"a0\": \"x\", \"a1\": 2, \"r_max_mm\": 3}, [1, 2, 3], {\"a0\": true, \"a1\": \"-725.125\", \"r_max_mm\": -Infinity, \"src\": null}]}"))
+    trace(reload("{\"on\": [], \"box\": [0.5], \"wedges\": {\"a0\": 1}}"))
+    trace(reload("{\"wedges\": [{\"a0\": NaN, \"a1\": 2, \"r_max_mm\": 3}]}"))
+    trace(reload("{\"wedges\": [{\"a0\": 1, \"a1\": \"inf\", \"r_max_mm\": 3}]}"))
+    trace(reload("{\"box\": {\"front\": 0.2,}}"))
+    trace(reload("[{\"on\": false}]"))
+}
