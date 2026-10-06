@@ -2110,6 +2110,32 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aStdlibFunctionACarriedOneCallsIsCarriedToo() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "kira:extra" to """
+                pub fx inner: (v: Float64) Float64 {
+                    return v * 2.0
+                }
+
+                pub fx outer: (v: Float64) Float64 {
+                    return inner(v) + 1.0
+                }
+                """,
+            "app:main" to """
+                use "kira:extra"
+
+                pub fx f: (v: Float64) Float64 {
+                    return outer(v)
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("def _k_kira_extra_outer(v):\n    return _k_kira_extra_inner(v) + 1.0"), main)
+        assertTrue(main.contains("def _k_kira_extra_inner(v):"), main)
+    }
+
+    @Test
     fun aKiraWrittenStdlibFunctionIsCarriedByTheModuleThatCallsIt() {
         val py = python(
             """

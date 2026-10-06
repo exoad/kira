@@ -270,7 +270,6 @@ class PyModuleEmitter(
 
     /** A top-level function, class or global as Python names it here; a Kira-written stdlib function is queued to be carried. */
     private fun ref(sym: Symbol, at: ASTNode): String? = when {
-        sym.module === module -> pyName(sym)
         sym.module.isStdlib -> if (sym is FnSymbol && sym.foreign == null && sym.body != null && sym.owner == null) {
             if (shared.bundled.add(sym)) {
                 shared.pending.addLast(sym)
@@ -279,6 +278,7 @@ class PyModuleEmitter(
         } else {
             refuseText(at, "the stdlib's '${sym.name}'")
         }
+        sym.module === module -> pyName(sym)
         else -> alias(sym.module, at)?.let { "$it.${pyName(sym)}" }
     }
 
