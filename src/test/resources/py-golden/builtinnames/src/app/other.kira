@@ -1,0 +1,7 @@
+module "app:other"
+
+use "app:main"
+
+pub fx twice: () Int32 {
+    return globals * 2
+}

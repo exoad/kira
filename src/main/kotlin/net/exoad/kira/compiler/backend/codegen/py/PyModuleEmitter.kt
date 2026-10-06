@@ -225,7 +225,7 @@ class PyModuleEmitter(
         // The constants come before the loads: in a use cycle the other module reads them while this one is half loaded.
         val loads = mutableListOf<String>()
         if (imports != null && imports.cycle.isNotEmpty()) {
-            loads += call("_k_self", "__file__", "globals()").text
+            loads += call("_k_self").text
         }
         used.forEach { (m, name) -> loads += "$name = ${call("_k_use", "__file__", pyString(imports?.path(m) ?: "")).text}" }
         if (diagnostics.any { it.isError }) {
@@ -423,7 +423,7 @@ class PyModuleEmitter(
         if (c.kind == ClassKind.STRUCT) {
             // A struct is a value (D1): the emitter copies it where a second name could see a write.
             val copied = c.fields.map { "c.${pyName(it)} = ${copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
-            body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(type(self))") + copied + "return c")
+            body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(self.__class__)") + copied + "return c")
             val set = c.fields.map { "self.${pyName(it)} = o.${pyName(it)}" }.ifEmpty { listOf("pass") }
             body += listOf("", "def _k_set(self, o):") + indent(set)
             if (usage.needsEquality(c)) {
@@ -494,7 +494,7 @@ class PyModuleEmitter(
         }
         val call = when (fn.ret) {
             KType.Void -> "${pyName(fn)}()"
-            KType.INT32 -> "raise SystemExit(${pyName(fn)}())"
+            KType.INT32 -> call("_k_exit", "${pyName(fn)}()").text
             else -> return null
         }
         return "if __name__ == \"__main__\":\n    $call"

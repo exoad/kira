@@ -1,5 +1,6 @@
 package net.exoad.kira.py
 
+import net.exoad.kira.compiler.backend.codegen.py.PyNames
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
@@ -51,6 +52,7 @@ class PyGoldenRunTest {
         val generated = out.walkTopDown().filter { it.isFile && it.name.endsWith(".kira.py") }.toList()
         assertTrue(generated.isNotEmpty(), "${case.name}: nothing was generated under $out")
         generated.forEach { assertNull(PyTestSupport.parsesAs310(it.toPath()), "${it.name} is no Python 3.10 source") }
+        assertEquals(emptyList(), PyTestSupport.unreservedBuiltins(generated.map { it.toPath() }, PyNames.RESERVED), "${case.name} names a builtin a Kira name could shadow")
         val driver = File(case, "driver.py")
         val command = if (driver.isFile) {
             listOf(python!!, driver.absolutePath, out.absolutePath)

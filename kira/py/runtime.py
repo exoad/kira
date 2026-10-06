@@ -4,6 +4,7 @@
 # of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
 # Python 3.10 is the oldest this must run on (the board's).
 
+import builtins as _k_builtins
 import collections as _k_collections
 import importlib.util as _k_importlib
 import math as _k_math
@@ -28,7 +29,7 @@ def _k_use(here, path):
         _k_sys.modules[key] = m
         try:
             spec.loader.exec_module(m)
-        except BaseException:
+        except _k_builtins.BaseException:
             del _k_sys.modules[key]
             raise
     return m
@@ -36,10 +37,11 @@ def _k_use(here, path):
 
 # In a use cycle the module run as __main__ must be found by the one that uses it back, not
 # loaded a second time.
-def _k_self(here, g):
+def _k_self():
+    g = _k_self.__globals__
     m = _k_sys.modules.get(g["__name__"])
     if m is not None and m.__dict__ is g:
-        _k_sys.modules.setdefault(_k_key(here), m)
+        _k_sys.modules.setdefault(_k_key(g["__file__"]), m)
 
 
 # A field a construction leaves out (None is a Maybe's value, so it cannot say so).
@@ -59,7 +61,7 @@ def _k_assert(ok, message):
 
 # kira:os exit: SystemExit, which no Kira try catches, flushes stdout as C++'s exit does.
 def _k_exit(code):
-    raise SystemExit(code)
+    raise _k_builtins.SystemExit(code)
 
 
 # Maybe<T> is None or the value itself; reading the value of None is a program error.
@@ -90,8 +92,8 @@ def _k_enumof(order, raw):
 def _k_errors():
     m = _k_sys.modules.get("kira:errors")
     if m is None:
-        m = type(_k_sys)("kira:errors")
-        m.Error = type("Error", (Exception,), {"__module__": "kira:errors"})
+        m = _k_builtins.type(_k_sys)("kira:errors")
+        m.Error = _k_builtins.type("Error", (_k_builtins.Exception,), {"__module__": "kira:errors"})
         m = _k_sys.modules.setdefault("kira:errors", m)
     return m.Error
 

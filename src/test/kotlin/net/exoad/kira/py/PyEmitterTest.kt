@@ -4,7 +4,9 @@ import net.exoad.kira.Public
 import net.exoad.kira.compiler.backend.codegen.py.PyBinding
 import net.exoad.kira.compiler.backend.codegen.py.PyBindingTable
 import net.exoad.kira.compiler.backend.codegen.py.PyModuleEmitter
+import net.exoad.kira.compiler.backend.codegen.py.PyNames
 import net.exoad.kira.compiler.backend.codegen.py.PyRuntime
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
@@ -1200,6 +1202,55 @@ class PyEmitterTest {
     }
 
     @Test
+    fun everyBuiltinTheRuntimeOrABindingNamesIsOneNoKiraNameCanTake() {
+        assumeTrue(PyTestSupport.python != null, "no Python on PATH (set KIRA_PYTHON)")
+        val table = PyBindingTable().apply { loadDir(File(PyTestSupport.repoRoot, "kira").toPath()) }
+        val bindings = File(PyTestSupport.repoRoot, "build/tmp/py-builtins/bindings.py").apply { parentFile.mkdirs() }
+        bindings.writeText(
+            table.all().values.flatMap { listOfNotNull(it.expr, it.place, it.statement) }
+                .joinToString("\n", postfix = "\n") { it.replace(PyBinding.PLACEHOLDER, "_k_a").replace("{list}", "list") }
+        )
+        val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").toPath()
+        assertEquals(emptyList(), PyTestSupport.unreservedBuiltins(listOf(runtime, bindings.toPath()), PyNames.RESERVED))
+    }
+
+    @Test
+    fun aStructsCloneAndAUseCycleNameNoBuiltinAKiraNameCouldShadow() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "app:main" to """
+                use "app:other"
+
+                pub globals: Int32 = 5
+                pub mut type: Int32 = 3
+
+                pub struct Pt {
+                    pub x: Int32 = 0
+                }
+
+                pub fx main: () Int32 {
+                    a: Pt = Pt { 1 }
+                    mut b: Pt = a
+                    b.x = type
+                    return globals + o() + b.x
+                }
+                """,
+            "app:other" to """
+                use "app:main"
+
+                pub fx o: () Int32 {
+                    return 1
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("        c = object.__new__(self.__class__)"), main)
+        assertTrue(main.contains("_k_self()\n_k_m_app_other = _k_use("), main)
+        assertTrue(main.contains("    g = _k_self.__globals__"), main)
+        assertTrue(main.contains("if __name__ == \"__main__\":\n    _k_exit(main())"), main)
+    }
+
+    @Test
     fun theRuntimeComesFromBesideTheProgramsStdlibNotFromAProcessWideSetting() {
         // Another test in the same JVM may leave the stdlib registry pointing anywhere (the full
         // suite did: every emit here then failed on a missing runtime.py).
@@ -1472,7 +1523,7 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("    def _k_clone(self):\n        c = object.__new__(type(self))\n        c.x = self.x\n        c.tags = list(self.tags)\n        return c"), py)
+        assertTrue(py.contains("    def _k_clone(self):\n        c = object.__new__(self.__class__)\n        c.x = self.x\n        c.tags = list(self.tags)\n        return c"), py)
         assertTrue(py.contains("    def _k_set(self, o):\n        self.x = o.x\n        self.tags = o.tags"), py)
         assertTrue(py.contains("        return self._k_clone()"), py)
         assertTrue(py.contains("    p._k_set(Pt(x=1))"), py)
@@ -1734,7 +1785,7 @@ class PyEmitterTest {
         assertTrue(py.contains("    print(1 if ok else 0, end=\"\")\n    print(_k_gtext(2.5))\n"), py)
         assertTrue(py.contains("    print(\"e\", end=\"\", file=_k_sys.stderr, flush=True)\n    _k_assert(ok, \"bad\")\n    _k_exit(3)"), py)
         assertTrue(py.contains("import sys as _k_sys"), py)
-        assertTrue(py.contains("raise SystemExit(code)"), py)
+        assertTrue(py.contains("raise _k_builtins.SystemExit(code)"), py)
     }
 
     @Test
@@ -2030,10 +2081,10 @@ class PyEmitterTest {
         assertEquals(emptyList(), errors)
         val even = py.getValue("app:even")
         // Its constants first, so the module that uses it back reads them while it loads.
-        assertTrue(even.contains("K = 2\n\n\n_k_self(__file__, globals())\n_k_m_app_odd = _k_use(__file__, \"odd.kira.py\")"), even)
+        assertTrue(even.contains("K = 2\n\n\n_k_self()\n_k_m_app_odd = _k_use(__file__, \"odd.kira.py\")"), even)
         assertTrue(even.contains("return n == 0 or _k_m_app_odd.isOdd(_k_i32(n - 1))"), even)
         val odd = py.getValue("app:odd")
-        assertTrue(odd.contains("_k_self(__file__, globals())\n_k_m_app_even = _k_use(__file__, \"even.kira.py\")"), odd)
+        assertTrue(odd.contains("_k_self()\n_k_m_app_even = _k_use(__file__, \"even.kira.py\")"), odd)
     }
 
     @Test
