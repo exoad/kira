@@ -655,8 +655,8 @@ internal class ExprTyper(private val c: PhaseC) {
             return KType.BOOL
         }
         if (op in LiteralTyper.ORDERING) {
-            if (!facts.isNumeric(lt) && lt != KType.CHAR) {
-                mismatch(e, op, lt, rt, "only numbers and Char are ordered")
+            if (!facts.isNumeric(lt) && lt != KType.CHAR && lt != KType.Str) {
+                mismatch(e, op, lt, rt, "only numbers, Char and Str are ordered")
             }
             return KType.BOOL
         }

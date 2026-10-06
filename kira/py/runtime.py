@@ -4,7 +4,11 @@
 # of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
 # Python 3.10 is the oldest this must run on (the board's).
 
+import builtins as _k_builtins
+import functools as _k_functools
+import itertools as _k_itertools
 import math as _k_math
+import operator as _k_operator
 import re as _k_re
 import struct as _k_struct
 
@@ -194,6 +198,14 @@ def _k_round(v):
     return _k_math.copysign(float(r), v)
 
 
+# fmod (D60): math.fmod is C's, but raises where C returns NaN (a zero divisor, an infinite dividend).
+def _k_fmod(a, b):
+    try:
+        return _k_math.fmod(a, b)
+    except ValueError:
+        return _k_math.nan
+
+
 # sin, cos and tan of an infinity are NaN, as C's are; Python raises.
 def _k_sin(v):
     return _k_math.sin(v) if _k_math.isfinite(v) else _k_math.nan
@@ -300,6 +312,34 @@ def _k_toint(s):
     return v if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF else None
 
 
+_k_digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+
+def _k_tointr(s, radix):
+    if not 2 <= radix <= 36:
+        _k_panic("radix out of range")
+    body = s[1:] if s[:1] in ("+", "-") else s
+    if not body or not body.isascii() or body.lower().strip(_k_digits[:radix]):
+        return None
+    body = body.lstrip("0")
+    if len(body) > 64:
+        return None
+    v = int(body or "0", radix)
+    v = -v if s[0] == "-" else v
+    return v if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF else None
+
+
+# splitWhitespace (D57): the six of C's isspace, where str.split() also takes \x1c-\x1f and Unicode spaces.
+_k_words = _k_re.compile(r"[^ \t\n\r\v\f]+")
+
+
+# Char.isWhitespace and isLetter (D59): ASCII only, where str.isspace() and isalpha() are Unicode's.
+_k_spaces = frozenset((9, 10, 11, 12, 13, 32))
+
+
+_k_letters = frozenset(range(65, 91)) | frozenset(range(97, 123))
+
+
 # toFloat64 is std::from_chars after one leading "+": decimal text with an optional exponent, or
 # inf, infinity, nan and nan(chars) in any case, and nothing else; none where the value is
 # beyond a double, or rounds to zero from text that is not zero. Python's float() also takes
@@ -355,6 +395,70 @@ def _k_contains(xs, v):
 # bytearray of bytes (a memoryview's included).
 def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
+
+
+# List.joinToString (D58): Kira evaluates the List before the separator.
+def _k_join(xs, sep):
+    return sep.join(xs)
+
+
+# List.sort, minOrNull and maxOrNull (D61) take Python's order, which is Kira's, except for a
+# Float64 list holding a zero or a NaN: Kotlin's compareTo puts -0.0 below 0.0 and NaN last.
+def _k_fkey(v):
+    return (1,) if v != v else (0, v, _k_math.copysign(1.0, v))
+
+
+def _k_ftotal(xs, t):
+    return t == "Float64" and (0.0 in xs or _k_builtins.any(_k_builtins.map(_k_math.isnan, xs)))
+
+
+def _k_sort(xs, t):
+    if _k_ftotal(xs, t):
+        xs.sort(key=_k_fkey)
+    elif isinstance(xs, bytearray):
+        s = list(xs)
+        s.sort()
+        xs[:] = s
+    else:
+        xs.sort()
+
+
+def _k_minof(xs, t):
+    if not _k_ftotal(xs, t):
+        return min(xs, default=None)
+    top = max(xs, key=_k_fkey)
+    return top if top != top else min(xs, key=_k_fkey)
+
+
+def _k_maxof(xs, t):
+    return max(xs, key=_k_fkey) if _k_ftotal(xs, t) else max(xs, default=None)
+
+
+# List.sum (D61): a Float64 adds left to right as C++ does, where 3.12's sum() compensates.
+_k_widths = {"Int8": (8, True), "Int16": (16, True), "UInt8": (8, False), "UInt16": (16, False), "UInt32": (32, False), "UInt64": (64, False), "Size": (64, False)}
+
+
+def _k_sum(xs, t):
+    if t == "Float64":
+        return _k_functools.reduce(_k_operator.add, xs, 0.0)
+    if t != "Int32" and t != "Int64":
+        bits, signed = _k_widths[t]
+        v = _k_builtins.sum(xs) & ((1 << bits) - 1)
+        return v - (1 << bits) if signed and v >> (bits - 1) else v
+    top = 1 << (31 if t == "Int32" else 63)
+    n = len(xs)
+    # No partial sum leaves n * min .. n * max, so most lists need no partial sums at all.
+    if not xs or (n * max(max(xs), 0) < top and n * min(min(xs), 0) >= -top):
+        return _k_builtins.sum(xs)
+    total = 0
+    at = 0
+    while at < n:
+        sums = list(_k_itertools.accumulate(xs[at:at + 4096], initial=total))
+        if min(sums) < -top or max(sums) >= top:
+            _k_panic(t + " overflow")
+        total = sums[-1]
+        at += 4096
+    return total
 
 
 # Keeps the dict, as `xs[:] = v` keeps a list: a mut parameter may be bound to it.
