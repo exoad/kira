@@ -650,6 +650,7 @@ class KiraParser(private val context: SourceContext) {
             if (binaryOpType == null || binaryOpType.precedence < minPrecedence) {
                 break
             }
+            val opAt = here()
             repeat(binOpTokens.size) {
                 advancePointer() // consume the operators
             }
@@ -659,7 +660,7 @@ class KiraParser(private val context: SourceContext) {
                 continue
             }
             if (binaryOpType == BinaryOp.TYPE_CAST) {
-                left = castOf(left, origin)
+                left = castOf(left, origin, opAt)
                 continue
             }
             val nextMinPrecedence = binaryOpType.precedence + 1
@@ -667,8 +668,9 @@ class KiraParser(private val context: SourceContext) {
             var right = parseExpr(nextMinPrecedence)
             // `..` binds looser than `as`: 0..n as Int64 is 0..(n as Int64).
             while (binaryOpType == BinaryOp.RANGE && at(Token.Type.K_AS)) {
+                val asAt = here()
                 advancePointer()
-                right = castOf(right, rightOrigin)
+                right = castOf(right, rightOrigin, asAt)
             }
             left = when (binaryOpType) {
                 BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
@@ -679,8 +681,21 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(left, origin)
     }
 
-    /** `operand as Type`, with the pointer just past `as`. */
-    private fun castOf(operand: Expr, origin: SourcePosition): Expr = putOrigin(TypeCastExpr(operand, parseType()), origin)
+    /** `operand as Type`, with the pointer just past the `as` at [asAt]. */
+    private fun castOf(operand: Expr, origin: SourcePosition, asAt: SourcePosition): Expr {
+        if (at(Token.Type.IDENTIFIER) && peek(1).type == Token.Type.S_OPEN_ANGLE && typeArgumentsEnd(1) == null) {
+            val type = peek().content
+            Diagnostics.panic(
+                "KiraParser::parseExpr",
+                "The '<' after 'as $type' opens $type's type arguments, so it is not a comparison here.\n\n" +
+                    "Help: put the cast in parentheses: (... as $type) < ...",
+                location = asAt,
+                selectorLength = 3 + type.length,
+                context = context
+            )
+        }
+        return putOrigin(TypeCastExpr(operand, parseType()), origin)
+    }
 
     /**
      * Place assignment (design 2.5). After a postfix expression shaped as a
@@ -759,41 +774,26 @@ class KiraParser(private val context: SourceContext) {
         return expr
     }
 
-    /**
-     * True when `<...>` at the current pointer is a call-site type-argument list
-     * (`foo<T>(...)`), not a less-than comparison. Requires every token up to the
-     * matching `>` to be one a type argument can hold, and that `>` to be followed
-     * immediately by `(`.
-     */
-    private fun looksLikeGenericCall(): Boolean {
-        if (!at(Token.Type.S_OPEN_ANGLE)) {
-            return false
+    /** `foo<T>(...)`, not a comparison: type arguments at the pointer, then `(`. */
+    private fun looksLikeGenericCall(): Boolean =
+        typeArgumentsEnd(0)?.let { peek(it + 1).type == Token.Type.S_OPEN_PARENTHESIS } ?: false
+
+    /** The offset of the `>` closing the `<` at [start], when every token between can be part of a type argument. */
+    private fun typeArgumentsEnd(start: Int): Int? {
+        if (peek(start).type != Token.Type.S_OPEN_ANGLE) {
+            return null
         }
         var depth = 0
-        // TokenBuffer only allows peeks inside its window (size 16). Stay inside
-        // that window: offsets 0..14, and check offset+1 for the following '('.
-        val maxOffset = 14
-        var i = 0
-        while (i <= maxOffset) {
+        var i = start
+        while (true) {
             when (peek(i).type) {
                 Token.Type.S_OPEN_ANGLE -> depth++
-                Token.Type.S_CLOSE_ANGLE -> {
-                    depth--
-                    if (depth == 0) {
-                        // Need one more token for the '(' check.
-                        if (i + 1 > maxOffset + 1) {
-                            return false
-                        }
-                        // i+1 is at most 15 -- still inside the window.
-                        return peek(i + 1).type == Token.Type.S_OPEN_PARENTHESIS
-                    }
-                }
+                Token.Type.S_CLOSE_ANGLE -> if (--depth == 0) return i
                 in typeArgumentTokens -> {}
-                else -> return false
+                else -> return null
             }
             i++
         }
-        return false
     }
 
     private val typeArgumentTokens = setOf(

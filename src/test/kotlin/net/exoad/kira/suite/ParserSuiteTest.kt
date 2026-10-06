@@ -518,6 +518,31 @@ class ParserSuiteTest {
     }
 
     @Test
+    fun aLessThanAfterACastIsADiagnosticAtTheCast() {
+        val e = assertThrows<DiagnosticsException> {
+            parse(
+                "module \"test:parser\"\n" +
+                    "fx f: (x: Int32, n: Int64) Bool {\n" +
+                    "    c: Bool = x as Int64 < n\n" +
+                    "    return c\n" +
+                    "}\n"
+            )
+        }
+        assertTrue(e.message.contains("put the cast in parentheses: (... as Int64) < ..."), e.message)
+        assertEquals(3, e.location?.lineNumber)
+        assertEquals(17, e.location?.column)
+        parseModule(
+            """
+            fx g: (x: Int32, n: Int64, xs: Arr<Int32>) Bool {
+                c: Bool = (x as Int64) < n
+                d: List<Int32> = xs as List<Int32>
+                return c
+            }
+            """
+        )
+    }
+
+    @Test
     fun aRangeEndTakesTheCast() {
         val ast = parseModule(
             """
