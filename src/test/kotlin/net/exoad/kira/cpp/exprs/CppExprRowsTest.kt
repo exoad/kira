@@ -1064,6 +1064,28 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d56",
+            """
+            pub fx before: (a: Str, b: Str) Bool {
+                return a < b
+            }
+
+            pub fx atMost: (a: Str) Bool {
+                return a <= "m"
+            }
+
+            pub fx literals: () Bool {
+                return "abc" < "abd" && "b" >= "abc"
+            }
+            """,
+            listOf("return a < b;", "return a <= \"m\";", "return std::string_view(\"abc\") < \"abd\" && std::string_view(\"b\") >= \"abc\";"),
+            listOf(
+                """check(d56::before("abc", "abd") && !d56::before("abd", "abc") && !d56::before("abc", "abc") && d56::before("ab", "abc") && d56::before("", "a"), "D56: a Str orders by its bytes, a prefix first");""",
+                """check(d56::before("z", "\xc3\xa9") && d56::before("\xc3\xa9", "\xe2\x9c\x93") && d56::before("\xef\xbf\xbd", "\xf0\x9f\x9a\x97"), "D56: as unsigned bytes, so UTF-8 orders by code point");""",
+                """check(d56::atMost("m") && d56::atMost("Z") && !d56::atMost("n") && d56::literals(), "D56: a literal on either side, and two literals compare their text");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {

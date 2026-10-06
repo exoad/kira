@@ -35,6 +35,7 @@ pub trait Hashable {
 
 // Every length and index is a `Size` (D2). `at` reads one code unit as a
 // `Char` (D3); `charAt` keeps the older one-character `Str` form.
+// `<`, `<=`, `>`, `>=` order by code point (D56): UTF-8's byte order on C++.
 pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx length: () Size;
     pub fx size: () Size;

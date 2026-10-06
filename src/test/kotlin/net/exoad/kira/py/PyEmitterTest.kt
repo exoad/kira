@@ -448,6 +448,18 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aStrIsOrderedAsPythonOrdersIt() {
+        val py = python(
+            """
+            fx f: (a: Str, b: Str) Bool {
+                return a < b || a >= "m"
+            }
+            """
+        )
+        assertTrue(py.contains("return a < b or a >= \"m\""), py)
+    }
+
+    @Test
     fun aCharIsItsCodePoint() {
         val py = python(
             """

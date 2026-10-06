@@ -1,0 +1,39 @@
+module "lang:stdapi"
+
+// The Kotlin-named stdlib batch (D56 on): expected.txt is the C++ backend's run of main.
+
+fx order: (a: Str, b: Str) Str {
+    if a < b && a <= b && b > a && b >= a {
+        return "<"
+    }
+    if a > b && a >= b && b < a && b <= a {
+        return ">"
+    }
+    if a <= b && a >= b {
+        return "="
+    }
+    return "?"
+}
+
+fx strOrder: () Void {
+    trace(order("abc", "abd"))
+    trace(order("abd", "abc"))
+    trace(order("abc", "abc"))
+    trace(order("ab", "abc"))
+    trace(order("", "a"))
+    trace(order("", ""))
+    trace(order("Z", "a"))
+    trace(order("a\tb", "a b"))
+    trace(order("z", "é"))
+    trace(order("ÿ", "Ā"))
+    trace(order("é", "✓"))
+    trace(order("✓", "🚗"))
+    trace(order("", "🚗"))
+    trace(order("�", "🚗"))
+    trace(order("e", "é"))
+    trace(order("éa", "éb"))
+}
+
+fx main: () Void {
+    strOrder()
+}
