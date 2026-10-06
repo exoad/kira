@@ -4,7 +4,7 @@ module "kira:result"
 // `Stack` / `Queue` / `Deque` lookups in `kira:collections`.
 //
 // `Maybe` answers to both spellings (D40): `isNull` / `value` and
-// `isNone` / `unwrap`.
+// `isNone` / `unwrap`. Q9's removal of `isNone` and `unwrap` is withdrawn.
 
 pub @_magic class Maybe<T> {
     require pub value: T

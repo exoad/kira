@@ -275,7 +275,10 @@ internal class MemberResolver(private val c: PhaseC) {
     }
 
     companion object {
-        /** The Maybe API: the only members reachable on a `Maybe<T>` without unwrapping (D40). */
+        /**
+         * The Maybe API: the only members reachable on a `Maybe<T>` without unwrapping (D40).
+         * Q9's removal of isNone and unwrap is withdrawn.
+         */
         val MAYBE_API = setOf("isSome", "isNone", "isNull", "unwrap", "unwrapOr", "value")
     }
 }
