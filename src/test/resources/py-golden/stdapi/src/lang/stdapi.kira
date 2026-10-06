@@ -205,8 +205,50 @@ fx joins: () Void {
     trace("joinToString: " + joined.said())
 }
 
+fx charTests: () Void {
+    mut digits: Str = ""
+    mut spaces: Str = ""
+    mut letters: Str = ""
+    mut i: Int32 = 0
+    while i < 256 {
+        c: Char = i as Char
+        if c.isDigit() {
+            digits = digits + "${c}"
+        }
+        if c.isWhitespace() {
+            spaces = spaces + " ${i}"
+        }
+        if c.isLetter() {
+            letters = letters + "${c}"
+        }
+        i += 1
+    }
+    trace("digits " + digits)
+    trace("spaces" + spaces)
+    trace("letters " + letters)
+    text: Str = "é✓🚗 a1\tZ_ÿ${11 as Char}${28 as Char}"
+    mut d: Int32 = 0
+    mut w: Int32 = 0
+    mut l: Int32 = 0
+    mut k: Size = 0
+    while k < text.length() {
+        if text[k].isDigit() {
+            d += 1
+        }
+        if text[k].isWhitespace() {
+            w += 1
+        }
+        if text.at(k).isLetter() {
+            l += 1
+        }
+        k += 1
+    }
+    trace("in non-ASCII text: ${d} digits, ${w} spaces, ${l} letters")
+}
+
 fx main: () Void {
     strOrder()
     strText()
     joins()
+    charTests()
 }

@@ -322,6 +322,13 @@ def _k_tointr(s, radix):
 _k_words = _k_re.compile(r"[^ \t\n\r\v\f]+")
 
 
+# Char.isWhitespace and isLetter (D59): ASCII only, where str.isspace() and isalpha() are Unicode's.
+_k_spaces = frozenset((9, 10, 11, 12, 13, 32))
+
+
+_k_letters = frozenset(range(65, 91)) | frozenset(range(97, 123))
+
+
 # toFloat64 is std::from_chars after one leading "+": decimal text with an optional exponent, or
 # inf, infinity, nan and nan(chars) in any case, and nothing else; none where the value is
 # beyond a double, or rounds to zero from text that is not zero. Python's float() also takes

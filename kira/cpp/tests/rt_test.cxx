@@ -225,6 +225,11 @@ namespace
   static_assert(kira::shr(-8, 1) == -4);
   static_assert(kira::shl(std::int64_t{1}, kira::Size{40}) == std::int64_t{1099511627776});
   static_assert(kira::ord('\xFF') == 255);
+  static_assert(kira::isDigit('0') && kira::isDigit('9') && !kira::isDigit('/') && !kira::isDigit(':') && !kira::isDigit('\xD9'));
+  static_assert(kira::isLetter('A') && kira::isLetter('z') && !kira::isLetter('@') && !kira::isLetter('[') && !kira::isLetter('`') &&
+                !kira::isLetter('{') && !kira::isLetter('\xC3'));
+  static_assert(kira::isWhitespace(' ') && kira::isWhitespace('\t') && kira::isWhitespace('\v') && kira::isWhitespace('\f') &&
+                kira::isWhitespace('\r') && !kira::isWhitespace('\x1c') && !kira::isWhitespace('\xA0') && !kira::isWhitespace('\b'));
   static_assert(kira::abs(std::int32_t{-5}) == 5 && kira::abs(std::int32_t{5}) == 5);
   static_assert(kira::abs(std::numeric_limits<std::int32_t>::lowest()) == std::numeric_limits<std::int32_t>::lowest());
   static_assert(kira::abs(std::int8_t{-128}) == std::int8_t{-128} && kira::abs(std::int16_t{-300}) == std::int16_t{300});

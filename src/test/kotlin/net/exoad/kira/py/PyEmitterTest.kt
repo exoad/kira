@@ -522,6 +522,19 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aCharsTestsAreAsciisOnItsCodePoint() {
+        val py = python(
+            """
+            fx f: (s: Str, i: Size, c: Char) Bool {
+                return s[i].isDigit() || c.isWhitespace() || 'x'.isLetter()
+            }
+            """
+        )
+        assertTrue(py.contains("return (48 <= ord(s[i]) <= 57) or (c in _k_spaces) or (120 in _k_letters)"), py)
+        assertTrue(py.contains("_k_spaces = frozenset((9, 10, 11, 12, 13, 32))") && py.contains("_k_letters = frozenset("), py)
+    }
+
+    @Test
     fun aStrIsOrderedAsPythonOrdersIt() {
         val py = python(
             """

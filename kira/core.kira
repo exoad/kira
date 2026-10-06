@@ -118,7 +118,12 @@ pub @_magic class Float64: FloatNum
 // An 8-bit code unit. `==`, `!=` and the relational operators compare it
 // (relational as unsigned, so every target agrees); nothing arithmetic
 // applies. `c as UInt8` and `n as Char` convert.
-pub @_magic class Char
+pub @_magic class Char {
+    // ASCII only (D59): '0'..'9', isspace's six, A-Z and a-z; nothing past 127.
+    pub fx isDigit: () Bool;
+    pub fx isWhitespace: () Bool;
+    pub fx isLetter: () Bool;
+}
 
 pub alias Int as Int32
 pub alias Float as Float32

@@ -66,6 +66,9 @@ pub fx calls: () Void {
     hexv: Maybe<Int64> = s.toInt64Radix(16) // @type Maybe<Int64> call=MAGIC(Str.toInt64Radix)
     names: List<Str> = ["a", "b"]
     jn: Str = names.joinToString(", ")     // @type Str call=MAGIC(List.joinToString)
+    nine: Char = '9'
+    dg: Bool = nine.isDigit()              // @type Bool call=MAGIC(Char.isDigit)
+    sp: Bool = nine.isWhitespace() || nine.isLetter() // @type Bool call=MAGIC(Char.isWhitespace) @ nine.isWhitespace()
     mut xs: List<Int32> = List<Int32> { }
     xs.add(3)                              // @type Void call=MAGIC(List.add)
     got: Int32 = xs.get(0)                 // @type Int32 call=MAGIC(List.get)

@@ -195,6 +195,14 @@ namespace kira
   {
       return c == ' ' || (c >= '\t' && c <= '\r');
   }
+  [[nodiscard]] constexpr bool isDigit(Char c) noexcept
+  {
+      return c >= '0' && c <= '9';
+  }
+  [[nodiscard]] constexpr bool isLetter(Char c) noexcept
+  {
+      return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+  }
 
   // ---- Num.abs and the scalar hashCode (kira/core.bind.yaml) -----------------
   // abs returns its argument's type: std::abs is ambiguous for uint32_t,

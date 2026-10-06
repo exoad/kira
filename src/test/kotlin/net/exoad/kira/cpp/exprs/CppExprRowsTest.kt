@@ -1139,6 +1139,31 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d59",
+            """
+            pub @_const fx wordChar: (c: Char) Bool {
+                return c.isDigit() || c.isLetter()
+            }
+
+            pub fx spaces: (s: Str) Int32 {
+                mut n: Int32 = 0
+                mut i: Size = 0
+                while i < s.length() {
+                    if s[i].isWhitespace() {
+                        n += 1
+                    }
+                    i += 1
+                }
+                return n
+            }
+            """,
+            listOf("return kira::isDigit(c) || kira::isLetter(c);", "if(kira::isWhitespace(kira::str::at(s, i)))"),
+            listOf(
+                """static_assert(d59::wordChar('7') && d59::wordChar('q') && !d59::wordChar('_') && !d59::wordChar('\xC3'), "D59: isDigit and isLetter in a constant expression");""",
+                """check(d59::spaces(" \t\n\v\f\r\x1c\xc2\xa0x") == 6, "D59: isWhitespace takes isspace's six, no other byte");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {
