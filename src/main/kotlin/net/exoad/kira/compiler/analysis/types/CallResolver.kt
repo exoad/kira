@@ -937,6 +937,7 @@ internal class CallResolver(private val c: PhaseC) {
     /** `Result.success(v)` / `Result.error(e)` (D39): the Result type comes from the context. */
     private fun result(e: FunctionCallExpr, cls: ClassSymbol, member: Identifier, hint: KType?, ctx: BodyContext, scope: Scope): KType {
         val which = member.value
+        noTypeArgs(e, "Result.$which", " Its Result type comes from where it goes.")
         val target = hint?.let { facts.maybeInner(it) ?: it }?.takeIf { facts.isMagic(it, "Result") } as? KType.Nominal
         if (target == null) {
             argsOnly(e, ctx, scope)
@@ -965,6 +966,7 @@ internal class CallResolver(private val c: PhaseC) {
      * it has no Kira declaration: one magic FnSymbol on Str, keyed `Str.of` for the bindings.
      */
     private fun strOf(e: FunctionCallExpr, cls: ClassSymbol, ctx: BodyContext, scope: Scope): KType {
+        noTypeArgs(e, "Str.of", "")
         val fn = c.stmts.strOfFn(cls, facts.viewOf(KType.UINT8))
         val bound = bind(e, "Str.of", fn.params) ?: run {
             argsOnly(e, ctx, scope)
@@ -973,6 +975,14 @@ internal class CallResolver(private val c: PhaseC) {
         typeGiven(e, bound, fn.params.map { it.type }, listOf(false), listOf("bytes"), IdentityHashMap(), ctx, scope)
         model.calls[e] = ResolvedCall(CallKind.MAGIC, fn, null, false, emptyList(), bound.args, bound.order, KType.Str, emptyMap())
         return KType.Str
+    }
+
+    /** A compiler-made callable (Result.success, Str.of) takes no type arguments, as a plain function does not. */
+    private fun noTypeArgs(e: FunctionCallExpr, calleeName: String, why: String) {
+        if (e.typeArguments.isNotEmpty()) {
+            e.typeArguments.forEach { c.typeOf(it) }
+            c.report("types.call.type-args", "'$calleeName' takes no type arguments.$why", e)
+        }
     }
 
     /** `@_trace_(x)` and the other intrinsics met in expression position. */

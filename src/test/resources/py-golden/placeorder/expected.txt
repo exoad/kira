@@ -1,0 +1,36 @@
+-- map, impure key and value
+holder
+key
+val
+-- map, constant key, impure value
+holder
+val
+-- map, impure key, constant value
+holder
+key
+-- list
+holder
+idx
+val
+-- field
+holder
+holder
+2
+-- the container is the one the call gave before the value replaced it
+holder0 { k }
+holder1 { }
+0
+-- a global the value replaces
+2
+1
+3 9
+-- compound assignments read the call once
+holder
+6
+holder
+idx
+val
+7
+holder
+val
+1

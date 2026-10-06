@@ -6,8 +6,8 @@
 # the same bytes; then the round trip's other half, textOf and closeOf (Str.of, D55), which give
 # back each text and reason. Then frames of seeded bytes, ill-formed UTF-8 among them, read as
 # bibo's readers read a page's frames, data.decode("utf-8", "replace"): the same text. Str.bytes()
-# is the UTF-8 on both targets, so its size is the same everywhere, where the py target's
-# length() counts code points as Python's len() does.
+# is the UTF-8 on both targets, so for valid UTF-8 its size is the same on both, where the py
+# target's length() counts code points as Python's len() does.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util

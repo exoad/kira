@@ -1,9 +1,6 @@
 module "lang:mapaliases"
 
-// A Map is a value (D44) as a List is: assigning, storing, passing and returning it copies, and
-// a `mut` parameter is the caller's own Map. Each probe mutates one name and traces the other,
-// as the aliases case does a List's. The expected output is the C++ backend's run of this same
-// module.
+// aliases' probes on a Map, a value (D44); expected.txt is the C++ backend's run.
 
 mut log: Map<Str, Int32> = Map<Str, Int32> { }
 mut seed: Map<Str, Int32> = Map<Str, Int32> { }
@@ -19,7 +16,6 @@ class Holder {
         items = xs
     }
 
-    // The callee writes the field the caller passed: the argument is the field as it was.
     pub mut fx poke: (xs: Map<Str, Int32>) Size {
         items["poke"] = 9
         return xs.size()
@@ -30,7 +26,6 @@ class Holder {
         return 1
     }
 
-    // The callee replaces the field its mut parameter is: the parameter is the field.
     pub mut fx reset: (mut xs: Map<Str, Int32>) Size {
         items = Map<Str, Int32> { }
         xs["r"] = 1
@@ -78,7 +73,6 @@ fx pick: (c: Bool, a: Map<Str, Int32>, b: Map<Str, Int32>) Map<Str, Int32> {
     return if c { a } else { b }
 }
 
-// The keys in order, each with its value.
 fx show: (xs: Map<Str, Int32>) Str {
     ks: Arr<Str> = xs.keys()
     mut s: Str = "{"
@@ -94,7 +88,6 @@ fx show: (xs: Map<Str, Int32>) Str {
 }
 
 fx main: () Void {
-    // assign, then mutate either name
     mut a: Map<Str, Int32> = Map<Str, Int32> { }
     a["one"] = 1
     mut b: Map<Str, Int32> = a
@@ -106,7 +99,6 @@ fx main: () Void {
     trace(show(a))
     trace(show(b))
 
-    // a field given to a construction, a setter, and returned
     mut h: Holder = Holder { a }
     a["four"] = 4
     trace(show(h.items))
@@ -118,14 +110,12 @@ fx main: () Void {
     trace(show(h.items))
     trace(show(snap))
 
-    // the callee writes the field it was passed
     trace(h.poke(h.items))
     trace(show(h.items))
     trace(count(log))
     trace(count(log))
     trace(show(log))
 
-    // a mut parameter is the caller's Map, the field it names included
     fill(mut a, 3)
     trace(show(a))
     replace(mut a, b)
@@ -138,13 +128,11 @@ fx main: () Void {
     fill(mut seed, 2)
     trace(show(seed))
 
-    // a sibling argument that writes the Map passed before it
     trace(lenOf(a, pushTo(mut a)))
     trace(show(a))
     trace(lenOf(h.items, h.grow()))
     trace(show(h.items))
 
-    // returned: a parameter, a local, either branch
     mut e: Map<Str, Int32> = echo(a)
     e["eight"] = 8
     trace(show(a))
@@ -164,7 +152,6 @@ fx main: () Void {
     trace(show(seed))
     trace(show(g))
 
-    // a field assigned from itself keeps its entries; one assigned from another takes them in order
     h.items = h.items
     trace(show(h.items))
     mut k: Holder = Holder { g }

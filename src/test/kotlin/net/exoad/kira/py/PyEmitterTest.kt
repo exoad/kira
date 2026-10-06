@@ -1,6 +1,7 @@
 package net.exoad.kira.py
 
 import net.exoad.kira.Public
+import net.exoad.kira.compiler.backend.codegen.py.PyBinding
 import net.exoad.kira.compiler.backend.codegen.py.PyBindingTable
 import net.exoad.kira.compiler.backend.codegen.py.PyModuleEmitter
 import net.exoad.kira.compiler.backend.codegen.py.PyRuntime
@@ -305,6 +306,44 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aContainerReachedThroughACallIsLocatedBeforeTheKeyAndTheValueAndOnce() {
+        val py = python(
+            """
+            class Holder {
+                pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
+                pub mut xs: List<Int32> = List<Int32> { }
+            }
+
+            fx holderOf: (h: Holder) Holder {
+                trace("holder")
+                return h
+            }
+
+            fx key: () Str {
+                trace("key")
+                return "k"
+            }
+
+            fx val: () Int32 {
+                trace("val")
+                return 1
+            }
+
+            fx f: (h: Holder) Void {
+                holderOf(h).items[key()] = val()
+                holderOf(h).items[key()] = 5
+                holderOf(h).xs[0] += 5
+                h.xs[0] = val()
+            }
+            """
+        )
+        assertTrue(py.contains("    _k_t0 = _holderOf(h)\n    _k_t1 = _key()\n    _k_t0.items[_k_t1] = _val()\n"), py)
+        assertTrue(py.contains("    _holderOf(h).items[_key()] = 5\n"), "a constant value runs nothing, so Python's order is Kira's:\n$py")
+        assertTrue(py.contains("    _k_t2 = _holderOf(h)\n    _k_t2.xs[0] = _k_i32(_k_t2.xs[0] + 5)\n"), py)
+        assertTrue(py.contains("    h.xs[0] = _val()\n"), py)
+    }
+
+    @Test
     fun kiraMathBindsToItsHelpersEachAFloat64AsCsIs() {
         val py = python(
             """
@@ -444,6 +483,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("return _k_strof(v) + _k_strof(_k_from(xs, 1)) + _k_strof(xs)"), py)
         assertTrue(py.contains("return bytes(v).decode(\"utf-8\", \"replace\")"), py)
+        assertTrue(python("fx g: (v: View<UInt8>) Str {\n    return Str.of(bytes = v)\n}").contains("return _k_strof(v)"), "a named argument in its parameter's place")
     }
 
     @Test
@@ -500,7 +540,7 @@ class PyEmitterTest {
                 return c as Int32
             }
             """,
-            "'ord' is a name generated Python uses",
+            "the name 'ord', which generated Python uses, is not supported",
         )
     }
 
@@ -895,13 +935,48 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("    m = {}\n    m.__setitem__(k, 1)\n    m[k] = 2\n    g = m.get(k)\n    r = m.pop(k, None)"), py)
+        assertTrue(py.contains("    m = {}\n    m[k] = 1\n    m[k] = 2\n    g = m.get(k)\n    r = m.pop(k, None)"), py)
         assertTrue(py.contains("    ks = list(m)\n    vs = list(m.values())"), py)
         assertTrue(py.contains("    tk = bytearray(t)\n    tv = bytearray(t.values())"), "a List<UInt8> of keys or values is bytes:\n$py")
         assertTrue(py.contains("    f[-1] = x\n"), "a signed key is a key, never an index from the end:\n$py")
         assertTrue(py.contains("    _k_t0 = _key()\n    f[_k_t0] = x + float(_at)"), "the key is located before the value runs (D33):\n$py")
-        assertTrue(py.contains("if m.__contains__(k) and _k_contains(f.values(), x) and not (len(m) == 0):\n        m.clear()"), py)
+        assertTrue(py.contains("if (k in m) and _k_contains(f.values(), x) and not (not m):\n        m.clear()"), py)
         assertTrue(py.contains("    return len(m)"), py)
+    }
+
+    @Test
+    fun putAndContainsKeyTakeTheFasterFormOnlyWhereTheirOrderCannotShow() {
+        val py = python(
+            """
+            mut at: Int32 = 0
+
+            fx key: () Str {
+                at += 1
+                return "k"
+            }
+
+            class Holder {
+                pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
+
+                pub fx mine: () Holder {
+                    return this
+                }
+
+                pub mut fx f: (xs: List<Int32>, k: Str) Bool {
+                    items.put(k, xs[0] + 1)
+                    items.put(key(), 1)
+                    items.put(k + "x", xs[1])
+                    mine().items.put(k, 2)
+                    return items.containsKey(k + "y") && items.containsKey(key())
+                }
+            }
+            """
+        )
+        assertTrue(py.contains("        self.items[k] = _k_i32(xs[0] + 1)\n"), py)
+        assertTrue(py.contains("        self.items.__setitem__(_key(), 1)\n"), "an argument that writes keeps the call's order:\n$py")
+        assertTrue(py.contains("        self.items.__setitem__(k + \"x\", xs[1])\n"), "two that may stop the program keep it:\n$py")
+        assertTrue(py.contains("        self.mine().items.__setitem__(k, 2)\n"), "a receiver a call gives keeps it:\n$py")
+        assertTrue(py.contains("return ((k + \"y\") in self.items) and self.items.__contains__(_key())"), py)
     }
 
     @Test
@@ -1117,6 +1192,9 @@ class PyEmitterTest {
         assertTrue(table.all().size >= 13, "py bindings: ${table.all().keys}")
         table.all().forEach { (key, binding) ->
             assertTrue(binding.isOrdered, "$key: ${binding.expr}")
+            listOfNotNull(binding.place, binding.statement).forEach { alt ->
+                assertEquals(binding.placeholders.sorted(), PyBinding(alt).placeholders.sorted(), "$key: $alt names each of ${binding.expr}'s once")
+            }
             PyRuntime.HELPER.findAll(binding.expr).forEach { assertTrue(it.value in runtime.names, "$key names ${it.value}, which the runtime lacks") }
         }
     }
@@ -1475,7 +1553,7 @@ class PyEmitterTest {
                 return len
             }
             """,
-            "'len' is a name generated Python uses",
+            "the name 'len', which generated Python uses, is not supported",
         )
     }
 
@@ -1487,7 +1565,7 @@ class PyEmitterTest {
                 pub v: Int32 = 0
             }
             """,
-            "'OverflowError' is a name generated Python uses",
+            "the name 'OverflowError', which generated Python uses, is not supported",
         )
         refused(
             """
@@ -1495,7 +1573,7 @@ class PyEmitterTest {
                 return 1
             }
             """,
-            "'ValueError' is a name generated Python uses",
+            "the name 'ValueError', which generated Python uses, is not supported",
         )
     }
 
@@ -1811,7 +1889,7 @@ class PyEmitterTest {
                 return dict
             }
             """,
-            "'dict' is a name generated Python uses",
+            "the name 'dict', which generated Python uses, is not supported",
         )
     }
 

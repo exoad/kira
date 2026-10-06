@@ -2,12 +2,8 @@ module "dash:connbook"
 
 use "kira:bytes"
 
-// bibo's dashboard Conn in Kira (firmware/pilot/tools/dash/bibodash.py at 7f26371) without its
-// socket, lock and wake: a page's newest-wins slots, text by kind and frames by feed, the frames
-// each feed has in flight, and the H.264 queues, each a Map as Conn's dicts are, its keys in the
-// order the dict holds them: a feed put again keeps its place, one taken and put again goes last.
-// A frame out is its opcode and payload, which ws_frame wraps. The expected output is the C++
-// backend's run of main, then the driver's run of Conn against the hand-written one.
+// bibodash.py's Conn on Maps, without its socket, lock and wake; a frame out is its opcode and
+// payload, which ws_frame wraps.
 
 H264_BASE: Int32 = 128
 H264_IN_FLIGHT: Size = 8
@@ -21,19 +17,16 @@ pub class Out {
     require pub payload: List<UInt8>
 }
 
-// latest[feed]: the newest frame not sent and its capture board ms.
 pub class Slot {
     require pub msg: List<UInt8>
     require pub ms: Float64
 }
 
-// A frame in flight: its size and its capture board ms.
 pub class Sent {
     require pub size: Size
     require pub ms: Float64
 }
 
-// unacked[feed]: the frames sent and not drawn, oldest first.
 pub class Flight {
     pub mut items: List<Sent> = List<Sent> { }
 }
@@ -42,7 +35,6 @@ pub class Frag {
     require pub msg: List<UInt8>
 }
 
-// h264[feed]: the fragments waiting, in order, and whether the feed waits for a keyframe.
 pub class Stream {
     pub mut q: List<Frag> = List<Frag> { }
     pub mut key: Bool = true
@@ -112,7 +104,6 @@ pub class Conn {
         return false
     }
 
-    // unacked.setdefault(feed, deque())
     mut fx flight: (feed: Int32) Flight {
         if !unacked.containsKey(feed) {
             unacked[feed] = Flight { }
@@ -202,8 +193,7 @@ pub class Conn {
         return h264.containsKey(f)
     }
 
-    // (Re)starts H.264 feed f: the encoder's init segment first, when there is one (initMsg not
-    // empty), then frames from the next keyframe.
+    // An empty initMsg is init_msg None.
     pub mut fx wantH264: (f: Int32, wanted: Bool, initMsg: List<UInt8>) Void {
         unacked.remove(f)
         if wanted {
@@ -265,7 +255,7 @@ fx frame: (n: Size, first: UInt8) List<UInt8> {
     return b
 }
 
-// An H.264 message: its feed byte, its kind byte, its capture ms as a little-endian double, a tail.
+// feed, kind, capture ms as a little-endian double, a tail.
 fx fragment: (kind: UInt8, ms: Float64) List<UInt8> {
     mut b: List<UInt8> = frame(12, 0)
     b.set(1, kind)
@@ -340,7 +330,6 @@ fx main: () Void {
     trace(c.putFrame(1, frame(1, 0), 14.0))
     trace(feeds(c))
 
-    // H.264: an init segment, then frames from the next keyframe; a backlog past 30 keeps the inits
     c.wantH264(129, true, fragment(0, 1.5))
     trace(c.hasH264(129))
     o1: Offer = c.offerH264(129, 2, fragment(2, 20.0))

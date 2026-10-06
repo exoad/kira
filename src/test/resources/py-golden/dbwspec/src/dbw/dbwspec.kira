@@ -2,14 +2,8 @@ module "dbw:dbwspec"
 
 use "kira:bytes"
 
-// bibo's drive-by-wire spec index in Kira: dbwcodec.py's Spec, dbw.json's message names and ids
-// to their field tables and its bits, reasons, NACK codes and enums both ways, each a Map as the
-// Spec's dicts are; pack and unpack driven by a message's field table; bit_names, bits_mask and
-// the name lookups; and dbwcli.py's rtt_samples, which pops each heartbeat it matches from its
-// own copy of the ones sent. Python reads the JSON and hands each table over. A payload's fields
-// are two Maps, the integers and the bytes fields as hex, as unpack gives them; an error is a
-// Str, which the caller raises as FrameError. The expected output is the C++ backend's run of
-// main, then the driver's run of these against the hand-written ones.
+// dbwcodec.py's Spec, pack, unpack and names, and dbwcli.py's rtt_samples, on Maps. A payload's
+// fields are two Maps (integers, bytes as hex) and an error a Str, as Kira has no mixed dict.
 
 pub class Field {
     require pub name: Str
@@ -28,7 +22,6 @@ pub class Message {
         fields.add(Field { fieldName, fieldKind, n })
     }
 
-    // The bytes the field table packs: struct.calcsize of the message's struct.
     pub fx packedSize: () Size {
         mut total: Size = 0
         mut i: Size = 0
@@ -40,8 +33,6 @@ pub class Message {
     }
 }
 
-// A name -> value table and its inverse, as the Spec's fault_bits and fault_names: a value
-// given two names keeps the last, as a dict comprehension does.
 pub class Table {
     pub mut byName: Map<Str, Int64> = Map<Str, Int64> { }
     pub mut byValue: Map<Int64, Str> = Map<Int64, Str> { }
@@ -61,7 +52,6 @@ pub class Spec {
     pub mut nacks: Table = Table { }
     pub mut enums: Map<Str, Table> = Map<Str, Table> { }
 
-    // A message by name and by id, the last one given either keeping the first one's place.
     pub mut fx addMessage: (n: Str, msgId: Int64, msgDir: Str, msgSize: Size) Message {
         m: Message = Message { n, msgId, msgDir, msgSize }
         messages[n] = m
@@ -99,7 +89,6 @@ fx width: (f: Field) Size {
     return f.count
 }
 
-// The range struct.pack takes for a field's type.
 fx lowest: (kind: Str) Int64 {
     if kind == "i8" {
         return -128
@@ -126,7 +115,7 @@ fx highest: (kind: Str) Int64 {
     return 2147483647
 }
 
-// Python's bytes.fromhex on ASCII: pairs of hex digits, ASCII whitespace between them.
+// bytes.fromhex: pairs of hex digits, ASCII whitespace between pairs.
 fx space: (c: Char) Bool {
     code: Int32 = c as Int32
     return c == ' ' || (code >= 9 && code <= 13)
@@ -164,7 +153,6 @@ pub fx fromHex: (text: Str, mut out: List<UInt8>) Bool {
     return true
 }
 
-// bytes.hex(): two lowercase digits a byte.
 pub fx hexOf: (b: View<UInt8>) Str {
     mut s: Str = ""
     mut i: Size = 0
@@ -175,7 +163,6 @@ pub fx hexOf: (b: View<UInt8>) Str {
     return s
 }
 
-// A list of names as Python prints one: ['a', 'b'].
 fx listText: (names: List<Str>) Str {
     mut s: Str = "["
     mut i: Size = 0
@@ -200,7 +187,6 @@ fx isField: (m: Message, n: Str) Bool {
     return false
 }
 
-// Each name in keys no field of m has, into extra in order.
 fx collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
     mut i: Size = 0
     while i < keys.size() {
@@ -211,8 +197,7 @@ fx collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
     }
 }
 
-// Whether a sorts before b in code point order, as sorted() puts them (Kira's Str has no <;
-// a Char is ordered, the same on both targets for ASCII).
+// Kira's Str has no <: code point order, as sorted() puts ASCII names.
 fx before: (a: Str, b: Str) Bool {
     mut i: Size = 0
     while i < a.size() && i < b.size() {
@@ -224,7 +209,6 @@ fx before: (a: Str, b: Str) Bool {
     return a.size() < b.size()
 }
 
-// sorted(): an insertion sort by before.
 fx sortNames: (mut names: List<Str>) Void {
     mut i: Size = 1
     while i < names.size() {
@@ -247,9 +231,7 @@ fx addLe: (mut out: List<UInt8>, v: Int64, n: Size) Void {
     }
 }
 
-// dbwcodec.pack: the payload of message `name` from every field by name; error is pack's
-// FrameError. The bytes fields are read before any integer is packed, as pack builds its
-// values before struct.pack checks them.
+// Bytes fields are checked before any integer, as pack builds its values before struct.pack.
 pub fx pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Packed {
     mut out: Packed = Packed { }
     found: Maybe<Message> = spec.messages.get(name)
@@ -308,7 +290,11 @@ pub fx pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) 
     while i < m.fields.size() {
         f: Field = m.fields[i]
         if f.kind == "bytes" {
-            payload.addAll(raw.slice(at, f.count).toList().toArr())
+            mut j: Size = 0
+            while j < f.count {
+                payload.add(raw[at + j])
+                j += 1
+            }
             at += f.count
         } else {
             v: Maybe<Int64> = ints.get(f.name)
@@ -328,7 +314,6 @@ pub fx pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) 
     return out
 }
 
-// dbwcodec.unpack: every field by name, a bytes field as lowercase hex.
 pub fx unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
     mut out: Unpacked = Unpacked { }
     found: Maybe<Message> = spec.messages.get(name)
@@ -367,7 +352,6 @@ pub fx unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
     return out
 }
 
-// bit_names: the names of the bits set in value, low bit first; one the table lacks is BIT<n>.
 pub fx bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
     mut inv: Map<Int64, Str> = Map<Int64, Str> { }
     names: Arr<Str> = table.keys()
@@ -387,7 +371,7 @@ pub fx bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
     return out
 }
 
-// bits_mask: none for a name the table lacks, where Python raises KeyError.
+// none where Python raises KeyError.
 pub fx bitsMask: (table: Map<Str, Int64>, names: List<Str>) Maybe<Int64> {
     mut m: Int64 = 0
     mut i: Size = 0
@@ -426,7 +410,6 @@ pub fx stateName: (spec: Spec, value: Int64) Str {
     return spec.enums.get("State").value.byValue.get(value).unwrapOr("STATE${value}")
 }
 
-// A TELEMETRY's receipt, or another message's.
 pub class Ev {
     require pub tUs: Int64
     require pub name: Str
@@ -435,8 +418,6 @@ pub class Ev {
     require pub hbAgeMs: Int64
 }
 
-// rtt_samples: round trips in ms, the receipt minus the heartbeat's send minus the VCU's own
-// hb_age_ms, each heartbeat matched once; sentHb is the caller's, which pending copies.
 pub fx rttSamples: (events: List<Ev>, sentHb: Map<Int64, Int64>) List<Float64> {
     mut pending: Map<Int64, Int64> = sentHb
     mut out: List<Float64> = List<Float64> { }
@@ -575,7 +556,6 @@ fx main: () Void {
     hh["serial"] = "d ead"
     trace(pack(spec, "VCU_HELLO", hi, hh).error)
 
-    // rtt_samples: a heartbeat matched once, the caller's Map untouched
     mut sent: Map<Int64, Int64> = Map<Int64, Int64> { }
     sent[1] = 1000000
     sent[2] = 1020000

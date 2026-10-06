@@ -11,8 +11,10 @@ import java.nio.file.Path
  * `{self}` for the receiver and `{0}`, `{1}`, ... for the arguments in parameter order. Each
  * placeholder appears once, the receiver first and the arguments in order, so Python's
  * left-to-right evaluation is Kira's (D33). A `_k_` name in it is a helper of the runtime.
+ * [place] and [statement] may name them in any order: the emitter uses them only where the
+ * receiver is a variable or field and no argument writes, [statement] only as a whole statement.
  */
-data class PyBinding(val expr: String) {
+data class PyBinding(val expr: String, val place: String? = null, val statement: String? = null) {
     /** The placeholders in the order the expression names them. */
     val placeholders: List<String> get() = PLACEHOLDER.findAll(expr).map { it.groupValues[1] }.toList()
 
@@ -73,7 +75,7 @@ class PyBindingTable {
             yaml.forEach { (key, value) ->
                 val py = (value as? Map<*, *>)?.get("py") as? Map<*, *> ?: return@forEach
                 val expr = py["expr"]?.toString() ?: return@forEach
-                out[key.toString()] = PyBinding(expr)
+                out[key.toString()] = PyBinding(expr, py["place"]?.toString(), py["statement"]?.toString())
             }
             return out
         }
@@ -87,9 +89,11 @@ class PyBindingTable {
             val template = binding.expr
             return PyBinding.PLACEHOLDER.replace(template) { m ->
                 val name = m.groupValues[1]
-                val before = template.substring(0, m.range.first).trimEnd().lastOrNull()
+                val head = template.substring(0, m.range.first).trimEnd()
+                val before = head.lastOrNull()
                 val after = template.substring(m.range.last + 1).trimStart().firstOrNull()
-                val whole = (before == '(' || before == ',' || before == '[') && (after == ')' || after == ',' || after == ']')
+                val assigned = before == '=' && head.dropLast(1).lastOrNull() !in setOf('=', '!', '<', '>') && after == null
+                val whole = assigned || (before == '(' || before == ',' || before == '[') && (after == ')' || after == ',' || after == ']')
                 val prec = if (whole) PyPrec.TERNARY else PyPrec.POSTFIX
                 if (name == "self") self?.invoke(prec) ?: m.value else argument(name.toInt(), prec)
             }
@@ -240,9 +244,9 @@ object PyNames {
 
     /** Why [name] cannot be a Python name of a Kira declaration, or null when it can. */
     fun refusal(name: String): String? = when {
-        name in KEYWORDS -> "'$name' is a Python keyword"
-        name in RESERVED -> "'$name' is a name generated Python uses"
-        name.startsWith("_") || name.startsWith("k_") -> "'$name' starts with '_' or 'k_', which the py target keeps for private names and its runtime"
+        name in KEYWORDS -> "'$name', a Python keyword,"
+        name in RESERVED -> "'$name', which generated Python uses,"
+        name.startsWith("_") || name.startsWith("k_") -> "'$name', which starts with '_' or 'k_' as the py target's private names and runtime do,"
         else -> null
     }
 }

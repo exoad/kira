@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
-# The dbwspec golden: the module's main, whose output is the C++ backend's run of it, then the Kira
-# Spec, pack, unpack, bitNames, bitsMask, the name lookups and rttSamples against the hand-written
-# code they port, copied below unchanged as the oracle: bibo's tools/dbw/dbwcodec.py (Spec, _msg,
-# _bytes_value, pack, unpack, bit_names, bits_mask, type_name, state_name, reason_name, nack_name)
-# and tools/dbw/dbwcli.py's rtt_samples, at a7da7ff, over dbw.json's messages and tables (the parts
-# Spec reads, embedded below) and seeded payloads, field maps, tables and heartbeats. The Kira Spec
-# is filled from the same JSON, its Maps in its order; each one's order is checked against the
-# oracle's dict. They agree on all of them, a bytes field's hex with a Unicode digit or space,
-# which fromhex refuses as Kira does, among them; where they say it differently (a value out of its
-# type's range, in struct's own words in Python) is listed at the end.
-#
-#   python driver.py <the directory kira --target py --out wrote>
+# main (the C++ run), then the Kira against bibo's dbwcodec.py and dbwcli.py at a7da7ff, copied
+# unchanged below, over seeded inputs.   python driver.py <kira --target py --out dir>
 import importlib.util
 import json
 import os
@@ -270,7 +260,6 @@ data = json.loads(DBW_JSON)
 oracle = Spec(data)
 mine = kira_spec(data)
 
-# The indexes hold the same keys in the same order, each to the same entry.
 assert list(mine.messages) == list(oracle.messages)
 assert list(mine.byId) == list(oracle.by_id)
 assert all(mine.byId[i].name == oracle.by_id[i]["name"] for i in oracle.by_id)
@@ -281,7 +270,8 @@ assert list(mine.faultBits.byValue.items()) == list(oracle.fault_names.items())
 assert list(mine.infoBits.byName.items()) == list(oracle.info_bits.items())
 assert list(mine.nacks.byName.items()) == list(oracle.nack_codes.items())
 assert list(mine.nacks.byValue.items()) == list(oracle.nack_names.items())
-assert list(mine.reasons.byValue) == list(oracle.reason_by_value)
+assert list(mine.reasons.byName.items()) == [(n, r["value"]) for n, r in oracle.reasons.items()]
+assert list(mine.reasons.byValue.items()) == [(v, r["name"]) for v, r in oracle.reason_by_value.items()]
 assert list(mine.enums) == list(oracle.enums)
 assert all(list(mine.enums[n].byName.items()) == list(oracle.enums[n].items()) for n in oracle.enums)
 assert all(list(mine.enums[n].byValue.items()) == list(oracle.enum_names[n].items()) for n in oracle.enums)
@@ -303,8 +293,6 @@ def int_value(kind, bad):
     return rng.choice([rng.randint(lo, hi), rng.randint(lo, hi), lo, hi, max(lo, 0)])
 
 
-# A bytes field as bytes or hex, lower or upper case, spaced or not; a bad one is a byte short or
-# long, or has a character fromhex refuses (a Unicode digit and space among them).
 def hex_value(count, bad):
     n = rng.choice([count - 1, count + 1, 0]) if bad and rng.random() < 0.5 else count
     raw = bytes(rng.randrange(256) for _ in range(max(n, 0)))
@@ -326,8 +314,6 @@ packs = refused = 0
 for k in range(6000):
     name = rng.choice(NAMES) if rng.random() < 0.1 else rng.choice(list(oracle.messages) + ["VCU_HELLO"] * 3)
     entry = oracle.messages.get(name)
-    # most maps are whole; a few miss a field, have a bad one (a bytes one when there is one,
-    # mostly), or carry names no field has
     fields = {}
     flaw = rng.random()
     names = [f["name"] for f in entry["fields"]] if entry else []
@@ -348,7 +334,6 @@ for k in range(6000):
         cause = e.__cause__
     got = kira_pack(mine, name, fields)
     if want[0] and isinstance(cause, struct.error):
-        # struct.error's words are Python's own: both refuse a value out of its type's range
         assert got[0].startswith(name + ": ") and " is out of range for " in got[0], (name, fields, got)
         refused += 1
     else:
@@ -439,7 +424,6 @@ for k in range(2000):
 print("rttSamples against rtt_samples: %d runs, %d round trips, each heartbeat matched once and the "
       "caller's Map of them untouched" % (rtts, samples))
 
-# Where the two say it differently: a value out of its type's range, in struct's words in Python.
 late = {"throttle_us": 70000, "steer_us": 1500, "duration_ms": 1}
 try:
     pack("DRIVE_SETPOINT", late, oracle)
