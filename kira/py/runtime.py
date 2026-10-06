@@ -435,23 +435,31 @@ def _k_maxof(xs, t):
     return max(xs, key=_k_fkey) if _k_ftotal(xs, t) else max(xs, default=None)
 
 
-# List.sum (D61): + from the first element, so an Int32 or Int64 partial sum past its type panics;
-# a Float64 adds left to right from 0.0 as C++ does, where 3.12's sum() compensates.
+# List.sum (D61): a Float64 adds left to right as C++ does, where 3.12's sum() compensates.
 _k_widths = {"Int8": (8, True), "Int16": (16, True), "UInt8": (8, False), "UInt16": (16, False), "UInt32": (32, False), "UInt64": (64, False), "Size": (64, False)}
 
 
 def _k_sum(xs, t):
     if t == "Float64":
         return _k_functools.reduce(_k_operator.add, xs, 0.0)
-    if t == "Int32" or t == "Int64":
-        top = 1 << (31 if t == "Int32" else 63)
-        sums = list(_k_itertools.accumulate(xs))
-        if sums and (min(sums) < -top or max(sums) >= top):
+    if t != "Int32" and t != "Int64":
+        bits, signed = _k_widths[t]
+        v = _k_builtins.sum(xs) & ((1 << bits) - 1)
+        return v - (1 << bits) if signed and v >> (bits - 1) else v
+    top = 1 << (31 if t == "Int32" else 63)
+    n = len(xs)
+    # No partial sum leaves n * min .. n * max, so most lists need no partial sums at all.
+    if not xs or (n * max(max(xs), 0) < top and n * min(min(xs), 0) >= -top):
+        return _k_builtins.sum(xs)
+    total = 0
+    at = 0
+    while at < n:
+        sums = list(_k_itertools.accumulate(xs[at:at + 4096], initial=total))
+        if min(sums) < -top or max(sums) >= top:
             _k_panic(t + " overflow")
-        return sums[-1] if sums else 0
-    bits, signed = _k_widths[t]
-    v = _k_functools.reduce(_k_operator.add, xs, 0) & ((1 << bits) - 1)
-    return v - (1 << bits) if signed and v >> (bits - 1) else v
+        total = sums[-1]
+        at += 4096
+    return total
 
 
 # Keeps the dict, as `xs[:] = v` keeps a list: a mut parameter may be bound to it.

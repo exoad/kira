@@ -77,7 +77,8 @@ pub @_magic class List<T>: Iterable<T> {
     pub fx joinToString: (separator: Str) Str;
     // Numbers, Chars or Strs (D61), stable; a float as Kotlin's compareTo: -0.0 below 0.0, NaN last.
     pub mut fx sort: () Void;
-    // Numbers (D61): `+` from the first element, so an Int32 or Int64 partial sum past its type panics.
+    // Numbers (D61), left to right from 0 (a float from +0.0): an Int32 or Int64 partial sum past T panics.
+    // The sum stays a T, never widened: Int8, Int16 and the unsigned types wrap.
     pub fx sum: () T;
     // Numbers, Chars or Strs (D61); a float list holding a NaN gives a NaN.
     pub fx minOrNull: () Maybe<T>;
