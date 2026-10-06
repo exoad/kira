@@ -1327,7 +1327,7 @@ class PyEmitterTest {
     }
 
     @Test
-    fun theLegacyForLoopAndAForLoopOverAMapAreRefused() {
+    fun theLegacyForLoopIsRefused() {
         refused(
             """
             fx f: () Void {
@@ -1337,16 +1337,6 @@ class PyEmitterTest {
             }
             """,
             "the legacy `for mut i: ...` loop",
-        )
-        refused(
-            """
-            fx f: (m: Map<Str, Int32>) Void {
-                for e: Tuple2<Str, Int32> in m {
-                    trace(e.second)
-                }
-            }
-            """,
-            "a for loop over a Map",
         )
     }
 
@@ -1652,15 +1642,31 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aResultOfAListIsRefusedAsATupleWouldShareIt() {
-        refused(
+    fun aTupleIsAPythonTupleOfCopiesAndMapEntriesAreItsItems() {
+        val py = python(
             """
-            fx f: (xs: List<Int32>) Result<List<Int32>, Str> {
-                return Result.success(xs)
+            use "kira:tuples"
+
+            fx f: (xs: List<Int32>, m: Map<Str, Int32>) Int32 {
+                t: Tuple3<Str, List<Int32>, Int32> = Tuple3<Str, List<Int32>, Int32> { "a", xs, 2 }
+                mut inner: List<Int32> = t.second
+                inner.add(t.size())
+                es: Arr<Tuple2<Str, Int32>> = m.entries()
+                built: Map<Str, Int32> = Map<Str, Int32> { values = es }
+                for e: Tuple2<Str, Int32> in m {
+                    trace(e.first)
+                }
+                r: Result<List<Int32>, Str> = Result.success(xs)
+                return t.third + es[0].second + (built.size() as Int32) + (r.unwrap().size() as Int32)
             }
-            """,
-            "a Result<List<Int32>, Str> (Python would share the List<Int32> inside it, which Kira copies)",
+            """
         )
+        assertTrue(py.contains("t = (\"a\", list(xs), 2)"), py)
+        assertTrue(py.contains("inner = list(t[1])\n    inner.append(3)"), py)
+        assertTrue(py.contains("es = list(m.items())\n    built = dict(list(es))"), py)
+        assertTrue(py.contains("for e in m.items():\n        print(e[0])"), py)
+        assertTrue(py.contains("r = (True, list(xs))"), py)
+        assertTrue(py.contains("t[2] + es[0][1]"), py)
     }
 
     @Test
@@ -1729,25 +1735,22 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMapsEntriesAndAMapBuiltFromEntriesAreRefusedAsATuple2IsNotOnThePyTarget() {
-        refused(
-            """
-            fx f: (m: Map<Str, Int32>) Size {
-                return m.entries().size()
-            }
-            """,
-            "Map.entries (a Tuple2 is not on the py target: read keys() and get(k))",
-        )
+    fun aTupleWrittenOutOfOrderWithEffectsIsRefused() {
         refused(
             """
             use "kira:tuples"
 
-            fx f: () Size {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = [Tuple2<Str, Int32> { first = "a", second = 1 }] }
-                return m.size()
+            fx two: () Int32 {
+                trace("two")
+                return 2
+            }
+
+            fx f: () Int32 {
+                t: Tuple2<Int32, Int32> = Tuple2<Int32, Int32> { second = two(), first = 1 }
+                return t.first
             }
             """,
-            "a Map construction with entries (a Tuple2 is not on the py target: put each one)",
+            "a Tuple whose values, written out of their order, have effects",
         )
     }
 

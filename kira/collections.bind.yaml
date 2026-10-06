@@ -107,7 +107,7 @@ Map.containsKey:   { cpp: { expr: "{self}.containsKey({0})", pure: true }, py: {
 Map.containsValue: { cpp: { expr: "{self}.containsValue({0})", pure: true }, py: { expr: "_k_contains({self}.values(), {0})" } }
 Map.keys:          { cpp: { expr: "{self}.keys()", pure: true }, py: { expr: "{list}({self})" } }
 Map.valuesArr:     { cpp: { expr: "{self}.valuesArr()", pure: true }, py: { expr: "{list}({self}.values())" } }
-Map.entries:       { cpp: { expr: "{self}.entries()", pure: true } }
+Map.entries:       { cpp: { expr: "{self}.entries()", pure: true }, py: { expr: "list({self}.items())" } }
 Map.clear:         { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
 
 # --- Set<T>: kira::Set, insertion-ordered (D27) ----------------------------

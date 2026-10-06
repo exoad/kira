@@ -24,6 +24,7 @@ import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Prim
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
+import net.exoad.kira.compiler.analysis.types.ResolvedInit
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
@@ -94,11 +95,11 @@ import java.util.IdentityHashMap
  *   bytes: the same for ASCII; its methods are kira::str's through core.bind.yaml), Char (its
  *   code point, an int: a literal is its code, `s[i]` is ord() of the character, its text is
  *   chr() of it; a View<Char> is refused, as text is a Str), the integers, Float64, Maybe<T>
- *   (None or the value), Result<T, E> ((True, value) or (False, error)), an enum (its C++
- *   value), List<T> and Arr<T> (and
- *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict, whose order is
- *   kira::Map's (D27), keyed by a Str, an integer, a Bool, a Char or an enum (`m[k] = v` puts; entries, a
- *   List of Tuple2, is refused), and the workspace's classes and structs.
+ *   (None or the value), a Tuple (a Python tuple), Result<T, E> ((True, value) or (False,
+ *   error)), an enum (its C++ value), List<T> and Arr<T> (and Arr<T, N>) as a Python list, a
+ *   bytearray of UInt8, Map<K, V> as a dict, whose order is kira::Map's (D27), keyed by a Str, an
+ *   integer, a Bool, a Char or an enum (`m[k] = v` puts; its entries are its items), and the
+ *   workspace's classes and structs.
  *   Kira's List, Map and struct are values (D44, D1) and a Python object is shared, so one is
  *   copied, deeply, wherever a second name could see a write ([asValue]); a `mut` one is the
  *   caller's own, and a field, global or `mut` parameter assigned keeps its object and takes
@@ -109,7 +110,7 @@ import java.util.IdentityHashMap
  *   through, or copied slices of any other element, which only a View, read-only, can be;
  *   kira:bytes reads and writes little-endian through `_k_` helpers that stop the program on a
  *   short view, as kira::View's slice does;
- * - if/else, while, for over a range, a List, an Arr or a view (D47), break, continue, return,
+ * - if/else, while, for over a range, a List, an Arr, a view or a Map (D47), break, continue, return,
  *   throw and try (D41), locals, assignments, calls, constructions, `as`, if-expressions,
  *   interpolation, `trace` and kira:io's printing.
  *
@@ -587,7 +588,10 @@ class PyModuleEmitter(
                 if (walksUnwritten(target, s.body)) it else copyOf(Py(it, PyPrec.POSTFIX), t).text
             }
             LoopKind.VIEW -> wrap(expr(target, f), PyPrec.TERNARY)
-            LoopKind.MAP -> return refuse(target, "a for loop over a Map (its entries are Tuple2s)").let { emptyList() }
+            LoopKind.MAP -> {
+                val items = "${wrap(expr(target, f), PyPrec.POSTFIX)}.items()"
+                if (walksUnwritten(target, s.body)) items else call("list", items).text
+            }
             else -> return refuse(target, "a for loop over a ${typeOf(target)?.display()}").let { emptyList() }
         }
         f.scopes.addLast(hashSetOf(v.name))
@@ -782,22 +786,12 @@ class PyModuleEmitter(
             is Coercion.StrConstReceiver, null -> {}
             else -> return refusePy(e, "the conversion ${c.javaClass.simpleName}")
         }
-        if (mapEntries(e)) {
-            return refusePy(e, "Map.entries (a Tuple2 is not on the py target: read keys() and get(k))")
-        }
         val t = model.typeOrNull(e)
         if (t != null) {
             val held = if (c is Coercion.ToView && magicName(t) == "MutView") (t as KType.Nominal).typeArgs().firstOrNull() ?: t else t
             unsupportedType(held)?.let { return refusePy(e, it) }
         }
         return raw(e, f)
-    }
-
-    /** Whether [e] is `m.entries()` on a Map, a List of Tuple2, named before its type is refused. */
-    private fun mapEntries(e: Expr): Boolean {
-        val c = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr ?: return false
-        val rc = model.call(c) ?: return false
-        return rc.kind == CallKind.MAGIC && rc.fn?.name == "entries" && isMap(rc.receiver?.let { model.typeOrNull(it) })
     }
 
     /**
@@ -1045,6 +1039,7 @@ class PyModuleEmitter(
                         bound(b, { prec -> wrap(expr(e.origin, f), prec) }, emptyList(), f)
                     }
                     isUserClass(m.field.owner) -> Py("${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}", PyPrec.POSTFIX)
+                    isTuple(ot) -> Py("${wrap(expr(e.origin, f), PyPrec.POSTFIX)}[${m.field.index}]", PyPrec.POSTFIX)
                     else -> refusePy(e, "the field ${m.field.owner.name}.${m.field.name}")
                 }
             }
@@ -1146,7 +1141,7 @@ class PyModuleEmitter(
         if (key == "Result.success" || key == "Result.error") {
             // D39: compiler-known, as C++'s static factories are; a Result is (True, value) or (False, error).
             val v = (rc.args.singleOrNull() as? ArgBinding.Given)?.expr ?: return refusePy(c, "$key without its value")
-            return Py("(${if (key == "Result.success") "True" else "False"}, ${wrap(expr(v, f), PyPrec.TERNARY)})", PyPrec.ATOM)
+            return Py("(${if (key == "Result.success") "True" else "False"}, ${wrap(asValue(v, f, Use.STORE), PyPrec.TERNARY)})", PyPrec.ATOM)
         }
         if (fn.name == "enumOf" && fn.module.uri == "kira:core") {
             val e = (rc.typeArgs.firstOrNull() as? KType.Nominal)?.sym as? EnumSymbol ?: return refusePy(c, "enumOf of no enum")
@@ -1216,11 +1211,24 @@ class PyModuleEmitter(
         return name
     }
 
+    /** A Tuple is a Python tuple, its values copies in field order, which must be the written order unless each is PURE (D33). */
+    private fun tuple(o: ObjectInitExpr, init: ResolvedInit, f: Frame): Py {
+        val given = init.fields.map { it as? FieldInit.Given ?: return refusePy(o, "a Tuple without its ${it.field.name}") }
+        if (init.sourceOrder != init.sourceOrder.sorted() && given.any { model.effect(it.expr) != Effect.PURE }) {
+            return refusePy(o, "a Tuple whose values, written out of their order, have effects")
+        }
+        val items = given.map { wrap(asValue(it.expr, f, Use.STORE), PyPrec.TERNARY) }
+        return Py("(${items.joinToString(", ")}${if (items.size == 1) "," else ""})", PyPrec.ATOM)
+    }
+
     private fun construction(o: ObjectInitExpr, f: Frame): Py {
         val init = model.init(o) ?: return refusePy(o, "a construction the typer did not resolve")
         val cls = init.cls ?: return refusePy(o, "this construction")
         if (cls.kind == ClassKind.MAGIC) {
             val t = typeOf(o) ?: return Py("None", PyPrec.ATOM)
+            if (isTuple(t)) {
+                return tuple(o, init, f)
+            }
             if (!isValue(t)) {
                 return refusePy(o, "a construction of ${t.display()}")
             }
@@ -1230,7 +1238,7 @@ class PyModuleEmitter(
             return when {
                 given.isEmpty() -> zeroValue(t, o).let { Py(it, if (it.contains(" * ")) PyPrec.MUL else if (it == "{}") PyPrec.ATOM else PyPrec.POSTFIX) }
                 given.size == 1 && cls.name == "List" -> asValue(given[0].expr, f, Use.STORE)
-                cls.name == "Map" -> refusePy(o, "a Map construction with entries (a Tuple2 is not on the py target: put each one)")
+                given.size == 1 && cls.name == "Map" -> call("dict", asValue(given[0].expr, f, Use.STORE).text)
                 else -> refusePy(o, "a ${cls.name} construction with these values")
             }
         }
@@ -1553,6 +1561,9 @@ class PyModuleEmitter(
                 }
                 s.kind == ClassKind.MAGIC && s.name == "Map" -> mapRefusal(t)
                 s.kind == ClassKind.MAGIC && s.name == "Result" -> resultRefusal(t)
+                s.kind == ClassKind.MAGIC && isTuple(t) -> t.typeArgs().firstNotNullOfOrNull { a ->
+                    unsupportedType(a) ?: if (isView(a)) "a ${t.display()} (a view lives only as long as the call it is lent to)" else null
+                }
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
                 isUserClass(s) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"
@@ -1586,13 +1597,15 @@ class PyModuleEmitter(
         }
     }
 
-    /** A Result is `(True, value)` or `(False, error)`, which a copy of it shares: neither may be a List or a Map. */
+    /** A Result, as a Tuple, is immutable: what goes in is a copy and what comes out is copied where it is kept. */
     private fun resultRefusal(t: KType.Nominal): String? {
         val args = t.typeArgs().takeIf { it.size == 2 } ?: return "a Result without its value and error types"
         return args.firstNotNullOfOrNull { a ->
-            unsupportedType(a) ?: if (isValue(a) || isView(a)) "a ${t.display()} (Python would share the ${a.display()} inside it, which Kira copies)" else null
+            unsupportedType(a) ?: if (isView(a)) "a ${t.display()} (a view lives only as long as the call it is lent to)" else null
         }
     }
+
+    private fun isTuple(t: KType?): Boolean = magicName(t)?.let { TUPLE.matches(it) } == true
 
     private fun checkType(t: KType, at: ASTNode, what: String) {
         unsupportedType(t)?.let { refuse(at, "$what: $it") }
@@ -1642,6 +1655,7 @@ class PyModuleEmitter(
             t == KType.Str -> "\"\""
             isMaybe(t) -> "None"
             magicName(t) == "Result" -> "(False, ${zeroValue((t as KType.Nominal).typeArgs()[1], at)})"
+            isTuple(t) -> (t as KType.Nominal).typeArgs().map { zeroValue(it, at) }.let { "(${it.joinToString(", ")}${if (it.size == 1) "," else ""})" }
             isBytes(t) -> if (n == null) "bytearray()" else "bytearray($n)"
             isList(t) && n == null -> "[]"
             isList(t) && holdsValue(elementOf(t)) -> "[${zeroValue(elementOf(t)!!, at)} for _k_i in range($n)]"
@@ -1696,6 +1710,8 @@ class PyModuleEmitter(
 
         /** The methods that lend a view of their receiver, a MutView of a mutable List or Arr. */
         private val LENDERS = setOf("from", "slice", "view")
+
+        private val TUPLE = Regex("Tuple[0-9]")
 
         /** The magic methods that give what their receiver holds. */
         private val BORROWERS = setOf("get", "unwrap", "unwrapOr", "unwrapErr", "peek")
