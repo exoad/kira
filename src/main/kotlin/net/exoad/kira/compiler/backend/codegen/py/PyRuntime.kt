@@ -240,9 +240,9 @@ object PyNames {
 
     /** Why [name] cannot be a Python name of a Kira declaration, or null when it can. */
     fun refusal(name: String): String? = when {
-        name in KEYWORDS -> "'$name' is a Python keyword"
-        name in RESERVED -> "'$name' is a name generated Python uses"
-        name.startsWith("_") || name.startsWith("k_") -> "'$name' starts with '_' or 'k_', which the py target keeps for private names and its runtime"
+        name in KEYWORDS -> "'$name', a Python keyword,"
+        name in RESERVED -> "'$name', which generated Python uses,"
+        name.startsWith("_") || name.startsWith("k_") -> "'$name', which starts with '_' or 'k_' as the py target's private names and runtime do,"
         else -> null
     }
 }

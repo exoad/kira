@@ -501,7 +501,7 @@ class PyEmitterTest {
                 return c as Int32
             }
             """,
-            "'ord' is a name generated Python uses",
+            "the name 'ord', which generated Python uses, is not supported",
         )
     }
 
@@ -1226,7 +1226,7 @@ class PyEmitterTest {
                 return len
             }
             """,
-            "'len' is a name generated Python uses",
+            "the name 'len', which generated Python uses, is not supported",
         )
     }
 
@@ -1238,7 +1238,7 @@ class PyEmitterTest {
                 pub v: Int32 = 0
             }
             """,
-            "'OverflowError' is a name generated Python uses",
+            "the name 'OverflowError', which generated Python uses, is not supported",
         )
         refused(
             """
@@ -1246,7 +1246,7 @@ class PyEmitterTest {
                 return 1
             }
             """,
-            "'ValueError' is a name generated Python uses",
+            "the name 'ValueError', which generated Python uses, is not supported",
         )
     }
 
