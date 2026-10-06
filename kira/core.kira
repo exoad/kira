@@ -54,8 +54,10 @@ pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx toFloat64: () Maybe<Float64>;
     pub fx padStart: (width: Size, fill: Char) Str;
     pub fx view: () View<Char>;
-    // The text's UTF-8, a new List of its bytes (D54): `s.bytes().size()` is the
-    // same on every target, where `length()` counts what the target's Str holds.
+    // The text's UTF-8, a new List of its bytes (D54): for text that is valid
+    // UTF-8, `s.bytes()` is the same on every target, where `length()` counts what
+    // the target's Str holds. A Char above 127 put into text is a raw byte on the
+    // C++ target and a Latin-1 code point (two UTF-8 bytes) on py: only ASCII agrees.
     pub fx bytes: () List<UInt8>;
     // `Str.of(bytes: View<UInt8>) Str` (D55), its inverse, is called on the type:
     // the typer makes it, as it does Result.success, so it has no line here. Each
