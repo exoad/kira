@@ -1529,15 +1529,25 @@ class PyEmitterTest {
     }
 
     @Test
-    fun printOtherThanTraceIsRefused() {
-        refused(
+    fun printPrintlnEprintAndExitAreTracesFormatOnTheirStreams() {
+        val py = python(
             """
-            fx f: () Void {
-                print("x")
+            use "kira:io"
+            use "kira:os"
+
+            fx f: (ok: Bool) Void {
+                print(ok)
+                println(2.5)
+                eprint("e")
+                assert(ok, "bad")
+                exit(3)
             }
-            """,
-            "'print' (only trace prints on the py target)",
+            """
         )
+        assertTrue(py.contains("    print(1 if ok else 0, end=\"\")\n    print(_k_gtext(2.5))\n"), py)
+        assertTrue(py.contains("    print(\"e\", end=\"\", file=_k_sys.stderr, flush=True)\n    _k_assert(ok, \"bad\")\n    _k_exit(3)"), py)
+        assertTrue(py.contains("import sys as _k_sys"), py)
+        assertTrue(py.contains("raise SystemExit(code)"), py)
     }
 
     @Test

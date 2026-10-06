@@ -51,6 +51,16 @@ def _k_panic(what):
     raise RuntimeError("kira: " + what)
 
 
+def _k_assert(ok, message):
+    if not ok:
+        _k_panic("assertion failed: " + message)
+
+
+# kira:os exit: SystemExit, which no Kira try catches, flushes stdout as C++'s exit does.
+def _k_exit(code):
+    raise SystemExit(code)
+
+
 # Maybe<T> is None or the value itself; reading the value of None is a program error.
 def _k_value(m):
     if m is None:

@@ -1063,10 +1063,16 @@ class PyModuleEmitter(
         return Py(text, binding.prec)
     }
 
-    /** `trace(x)` in D42's format: a Bool as 1 or 0, a Float64 as %g, integers and Str as they are. */
+    /**
+     * `trace(x)`, `print`, `println` and `eprint` in D42's format: a Bool as 1 or 0, a Float64 as
+     * %g, integers and Str as they are. eprint flushes, as C++'s stderr is unbuffered.
+     */
     private fun trace(c: FunctionCallExpr, rc: ResolvedCall, f: Frame): Py {
-        if (rc.fn != null) {
-            return refusePy(c, "'${rc.fn.name}' (only trace prints on the py target)")
+        val tail = when (rc.fn?.name) {
+            null, "println" -> ""
+            "print" -> ", end=\"\""
+            "eprint" -> ", end=\"\", file=${helper("_k_sys")}.stderr, flush=True"
+            else -> return refusePy(c, "'${rc.fn.name}'")
         }
         val arg = (rc.args.singleOrNull() as? ArgBinding.Given)?.expr ?: return Py("print()", PyPrec.POSTFIX)
         val t = typeOf(arg) ?: return Py("None", PyPrec.ATOM)
@@ -1077,9 +1083,14 @@ class PyModuleEmitter(
             prim == Prim.CHAR -> call("chr", v.text).text
             prim == Prim.BOOL -> "1 if ${wrap(v, PyPrec.OR)} else 0"
             prim == Prim.FLOAT64 -> call("_k_gtext", v.text).text
-            else -> return refusePy(arg, "trace of a ${t.display()}")
+            else -> return refusePy(arg, "${rc.fn?.name ?: "trace"} of a ${t.display()}")
         }
-        return Py("print($text)", PyPrec.POSTFIX)
+        return Py("print($text$tail)", PyPrec.POSTFIX)
+    }
+
+    private fun helper(name: String): String {
+        helpers.add(name)
+        return name
     }
 
     private fun construction(o: ObjectInitExpr, f: Frame): Py {

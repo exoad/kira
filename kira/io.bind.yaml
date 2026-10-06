@@ -9,4 +9,4 @@
 # `assert` is a macro in <cassert> and cannot be a name in namespace kira,
 # so W1.3's rt.hxx names it kira::assert_(bool, const Str&) (it panics with
 # the message when the condition is false); design section 6 names neither.
-assert: { symbol: kira_assert, cpp: { expr: "kira::assert_({0}, {1})" } }
+assert: { symbol: kira_assert, cpp: { expr: "kira::assert_({0}, {1})" }, py: { expr: "_k_assert({0}, {1})" } }
