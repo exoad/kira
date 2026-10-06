@@ -1,7 +1,6 @@
 module "lang:bags"
 
 // Set, Stack, Queue and Deque are values (D44), a Set insertion-ordered (D27).
-// The expected output is the C++ run's.
 
 fx show: (xs: Arr<Int32>) Str {
     mut s: Str = "["

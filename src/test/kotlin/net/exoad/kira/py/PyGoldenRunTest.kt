@@ -10,23 +10,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The py goldens (src/test/resources/py-golden/<case>): each case is a project the real CLI
- * compiles with `--target py --out build/tmp/py-golden/<case>`. Every generated file must parse
- * as Python 3.10 (the board's), and the run's stdout must equal the case's expected.txt: the
- * module with a `main` run itself, or `python driver.py <out>` when the case has a driver,
- * hand-written Python that imports the generated module. numbers, order, bitmath, text, aliases and
- * globalorder hold the C++ backend's output for the same module, and shiftcount and shortview each call's
- * that the C++ backend's run of it alone gives (a value, or the panic's message); ladder runs the
- * target program against the hand-written Ladder it replaces. wsframe, jpegwalk and lebytes do
- * both: their driver runs the module's main, whose output is the C++ backend's, then holds the
- * walkers against the hand-written bibo code they port (and struct, binascii and zlib) over
- * seeded inputs, as maskcmd, linkwatch, dashtext, tagcheck and drivewords do bibo's text parsers,
- * hexpad its zero-padded hex and wstext its WebSocket text and close frames; bebytes holds the
- * big-endian set at the end of its views as shortview does; strs runs its main, then its panics
- * and the py target's one rule for text, a length counting code points; utf8of holds Str.of
- * against Python's decoder over every 1- and 2-byte sequence and more; strings makes
- * cpp-golden/strings' checks one for one, its expected output that case's. Skipped when no
- * Python is found (set KIRA_PYTHON).
+ * Each case under src/test/resources/py-golden is compiled by the CLI and run, through its
+ * driver.py when it has one; its stdout must be expected.txt, the C++ backend's run of the same
+ * module unless the case's header says otherwise. Skipped when no Python is found (KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")

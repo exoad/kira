@@ -84,60 +84,9 @@ import java.util.Collections
 import java.util.IdentityHashMap
 
 /**
- * One Kira module as one Python module (Python 3.10 and later), from the typed model.
- *
- * The py target lowers what bibo's dashboard needs and refuses the rest with
- * `py.unsupported`, naming the construct (DECISIONS rule 0: one simple way, no corners):
- * - another workspace module is its generated file, loaded by path (`_k_use`) and named through
- *   its module object; the stdlib's magic functions and methods bind through the `py:` blocks of
- *   the `.bind.yaml` manifests, and its Kira-written functions are carried by each caller;
- * - module constants and `mut` globals, functions, and classes without a parent, a trait,
- *   type parameters or a `finally`. A class is a plain Python class, `__slots__` its fields;
- * - Bool, Str (a Python str, whose lengths and indices count code points where C++ counts UTF-8
- *   bytes: the same for ASCII; its methods are kira::str's through core.bind.yaml), Char (its
- *   code point, an int: a literal is its code, `s[i]` is ord() of the character, its text is
- *   chr() of it, so one from 128 to 255 is a Latin-1 code point where C++ writes the raw byte,
- *   and only an ASCII Char agrees; a View<Char> is refused, as text is a Str), the integers,
- *   Float64, Maybe<T> (None or the value), a Tuple (a Python tuple), Result<T, E> ((True, value)
- *   or (False, error)), an enum (its C++ value), List<T> and Arr<T> (and Arr<T, N>) as a Python
- *   list, a bytearray of UInt8, Map<K, V> as a dict (its order is kira::Map's) keyed by a Str, an
- *   integer, a Bool, a Char or an enum, a Set as a dict to None, a Stack as a list, a Queue and a
- *   Deque as a collections.deque, and the workspace's classes and structs.
- *   Kira's containers and structs are values (D44, D1) and a Python object is shared, so one is
- *   copied, deeply, wherever a second name could see a write ([asValue]); a `mut` one is the
- *   caller's own, and a field, global or `mut` parameter assigned keeps its object and takes
- *   the new contents, as C++'s `T&` sees them;
- * - View<T> and MutView<UInt8>, which are second-class (decision 4b: only an argument, a
- *   receiver or a return, so none outlives the call that consumes it): a view is what it was
- *   lent from, and its from and slice are checked memoryviews of bytes, which a MutView writes
- *   through, or copied slices of any other element, which only a View, read-only, can be;
- *   kira:bytes reads and writes little-endian through `_k_` helpers that stop the program on a
- *   short view, as kira::View's slice does;
- * - if/else, while, for over a range, a List, an Arr, a view or a Map (D47), break, continue, return,
- *   throw and try (D41), locals, assignments, calls, constructions, `as`, if-expressions,
- *   interpolation, `trace` and kira:io's printing.
- *
- * **Names.** A `pub` declaration keeps its Kira name, so hand-written Python constructs and
- * calls it; a private module declaration or member is `_name`; parameters and locals keep
- * theirs. A class's constructor takes its `require` fields, in declaration order, positionally
- * or by name. A field is an attribute and a method a method: Python reads `x.level` for a `pub`
- * field and calls `x.level()` for a method; there are no properties.
- *
- * **Semantics** where Python's own differ, as the C++ backend gives them: integer `/` truncates
- * and `%` takes the dividend's sign, a zero divisor stops the program (`_k_divs`, `_k_mods`);
- * Int32 and Int64 overflow stops the program (D8), Int8 and Int16 wrap (R1), every unsigned type
- * wraps; Float64 `/` by zero is IEEE's; `as` wraps between integers and saturates from a float,
- * a Char `as` an integer type too narrow for every code point wraps (the identity for ASCII) and
- * an integer `as` a Char keeps its low 8 bits, as C++'s static_cast<char>;
- * a shift count outside the width stops the program and `<<` wraps, signed types included
- * ([shift]); kira:math's functions are C's on a double (the `_k_` helpers its manifest binds),
- * where a NaN's sign is the machine's and not Kira's on either target (an x86 C++ build may trace
- * -nan where Python traces nan); a Float64 as text is the shortest text std::to_chars writes and
- * `fixed` is C's %.*f, any NaN nan in both (D50), and `toHex` is %x (D51); an index past the
- * end of a List, Arr, view or Str stops the program as Python's IndexError, the other panics as
- * `_k_panic`'s RuntimeError; D33 and OQ-1 hold because Python evaluates operands, arguments and
- * an augmented target left to right, reading the target first, and an assignment whose value
- * has an effect has its index computed first, where Python would compute it after the value.
+ * One Kira module as one Python module (3.10 and later), from the typed model; what it does not
+ * lower is refused as `py.unsupported`. Kira's values are copied wherever Python would share them
+ * ([asValue]), and Kira's arithmetic and checks are the runtime's `_k_` helpers.
  */
 class PyModuleEmitter(
     private val program: TypedProgram,
@@ -250,8 +199,6 @@ class PyModuleEmitter(
         sections.forEach { out.append("\n\n").append(it).append('\n') }
         return out.toString()
     }
-
-    // ---- other modules -----------------------------------------------------------------------
 
     private fun alias(target: ModuleSymbol, at: ASTNode): String? {
         used[target]?.let { return it }
@@ -438,26 +385,18 @@ class PyModuleEmitter(
         return out + indent(body)
     }
 
-    /**
-     * A parameter's default as the def's own, a literal, when it and every later one fold to
-     * one; a call leaves those out and names any other default it fills.
-     */
+    /** The def's own default when it and every later one fold to a literal; a call names any other. */
     private fun pyDefault(p: ParamSymbol): String? {
         val params = p.fn?.params ?: return null
         val folded = params.drop(params.indexOf(p)).map { q -> q.default?.let { model.const(it) }?.let { constText(it) } }
         return if (folded.all { it != null }) folded.first() else null
     }
 
-    /** A field `__init__` takes in place, in declaration order: a `require` one without a default. */
     private fun isPositional(f: FieldSymbol): Boolean = f.isRequired && f.default == null
 
-    /** Any other `pub` field `__init__` takes by name, its default (or zero) when it is left out. */
     private fun isKeyword(f: FieldSymbol): Boolean = !isPositional(f) && f.isPub
 
-    /**
-     * A namespace of the entries' C++ values (a Str or float enum's are indices, as C++ numbers
-     * them); `_k_names` is text's: the first entry's name per value, a Str entry's value.
-     */
+    /** A Str or float enum's entries are their indices, as C++ numbers them. */
     private fun enumDecl(e: EnumSymbol): List<String> {
         val at: ASTNode = e.decl ?: module.source.ast
         checkName(e.name, at)
@@ -917,12 +856,7 @@ class PyModuleEmitter(
         return rc.kind == CallKind.MAGIC && rc.fn?.name in BORROWERS
     }
 
-    /**
-     * Whether evaluating [e] writes the local [sym] by name, the one way a local is written
-     * while a sibling argument holds it (Python reaches no other function's locals): a `mut`
-     * argument rooted at it, a `mut fx` called on it, or a MutView lent from it, as the C++
-     * target's NAMED test reads it. In a statement, also an assignment to it or into it.
-     */
+    /** Whether [e] writes the local [sym] by name, the only way a sibling argument can write a local (C++'s NAMED test). */
     private fun writesByName(e: ASTNode, sym: Symbol): Boolean {
         var writes = false
         AstTree.walk(e) { n ->
@@ -1267,10 +1201,7 @@ class PyModuleEmitter(
         return Py(text, binding.prec)
     }
 
-    /**
-     * `trace(x)`, `print`, `println` and `eprint` in D42's format: a Bool as 1 or 0, a Float64 as
-     * %g, integers and Str as they are. eprint flushes, as C++'s stderr is unbuffered.
-     */
+    /** eprint flushes, as C++'s stderr is unbuffered. */
     private fun trace(c: FunctionCallExpr, rc: ResolvedCall, f: Frame): Py {
         val tail = when (rc.fn?.name) {
             null, "println" -> ""
@@ -1605,12 +1536,10 @@ class PyModuleEmitter(
 
     private fun isMap(t: KType?): Boolean = magicName(t) == "Map"
 
-    /** A Set is a dict of its elements to None, in insertion order (D27). */
     private fun isSet(t: KType?): Boolean = magicName(t) == "Set"
 
     private fun isStack(t: KType?): Boolean = magicName(t) == "Stack"
 
-    /** A Queue or a Deque: a collections.deque. */
     private fun isQueue(t: KType?): Boolean = magicName(t).let { it == "Queue" || it == "Deque" }
 
     /** A value (D44) Python shares: copied where a second name could see a write. */
@@ -1628,7 +1557,6 @@ class PyModuleEmitter(
     private fun holdsValue(t: KType?): Boolean =
         t != null && (isValue(t) || isStruct(t) || (isMaybe(t) && holdsValue((t as KType.Nominal).typeArgs().firstOrNull())))
 
-    /** A List's or Arr's element type, a Map's value type. */
     private fun elementOf(t: KType): KType? = (t as? KType.Nominal)?.typeArgs()?.let { if (isMap(t)) it.getOrNull(1) else it.firstOrNull() }
 
     /** Why the py target cannot hold a value of [t], or null when it can. */

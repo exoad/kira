@@ -1,7 +1,5 @@
 module "lang:throwing"
 
-// The expected output is the C++ run's.
-
 use "lib:parse"
 
 mut log: List<Int32> = List<Int32> { }

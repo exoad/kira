@@ -41,15 +41,7 @@ data class PyBackendResult(
     val changed: List<Path>,
 )
 
-/**
- * `kira --target py`: each workspace module `x.kira` becomes `x.kira.py` beside it, or under
- * `--out <dir>` at its path relative to the project root. The program is typed STRICT, as for
- * C++; a typer error or a construct the py target refuses ([PyModuleEmitter]) writes nothing.
- * Each file starts with a comment naming the compiler's commit and the source, and carries the
- * runtime helpers and Kira-written stdlib functions it uses, so it loads nothing of Kira's but the
- * generated files of the modules it uses ([PyImports]). `--check` regenerates in memory and
- * names each file that differs from disk (CRLF read as LF) or is missing, exiting 1.
- */
+/** `kira --target py`: each workspace module `x.kira` becomes `x.kira.py` beside it or under `--out`; nothing is written when any is refused. */
 object KiraPyBackend {
     const val EXTENSION = ".py"
     const val INTERNAL_CODE = "py.internal"

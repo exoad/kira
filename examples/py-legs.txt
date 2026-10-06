@@ -1,6 +1,3 @@
-# The examples regenerate.sh also runs through the py backend, one name per line: the leg
-# emits with `kira --target py --out`, runs the module with the main with Python and diffs its
-# stdout against expected.txt and the C leg's. The others fail the STRICT typer (a function
-# another module calls is not pub) or use what the py target refuses.
+# The examples regenerate.sh also runs through the py backend, one per line.
 01-hello
 04-classes

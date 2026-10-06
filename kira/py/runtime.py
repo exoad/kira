@@ -82,7 +82,6 @@ def _k_mcopy(m, copy):
 _k_map = _k_builtins.map
 
 
-# enumOf<E>(raw) (D25): the first entry whose C++ value is raw, or none.
 def _k_enumof(order, raw):
     for v in order:
         if v == raw:
@@ -108,7 +107,6 @@ def _k_throw(message):
     raise _k_Error(message)
 
 
-# Result (D39) is (True, value) or (False, error).
 def _k_unwrap(r):
     if not r[0]:
         _k_panic("unwrap of an error Result")
@@ -452,7 +450,6 @@ def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
 
 
-# Set.add and Set.remove say whether they changed the Set, as kira::Set's do.
 def _k_setadd(s, v):
     if v in s:
         return False
@@ -467,7 +464,6 @@ def _k_setdel(s, v):
     return False
 
 
-# Stack.pop and peek, Queue.dequeue and peek, Deque.popFront and popBack: none when empty.
 def _k_pop(s):
     return s.pop() if s else None
 
@@ -484,7 +480,6 @@ def _k_peekleft(q):
     return q[0] if q else None
 
 
-# Keeps the deque, as _k_mapset keeps the dict.
 def _k_dqset(q, v):
     if q is not v:
         q.clear()

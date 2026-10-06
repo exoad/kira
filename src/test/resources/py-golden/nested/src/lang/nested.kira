@@ -1,7 +1,7 @@
 module "lang:nested"
 
 // Containers of containers are values all the way down (D44): each copy below is written to
-// show the other did not move. The expected output is the C++ run's.
+// show the other did not move.
 
 use "kira:tuples"
 

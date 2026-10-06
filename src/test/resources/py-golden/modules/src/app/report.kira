@@ -1,7 +1,7 @@
 module "app:report"
 
 // Uses lib:units and lib:tally (which uses lib:units too), and app:ring, which uses this module
-// back. The expected output is the C++ backend's run of these same modules.
+// back.
 
 use "kira:os"
 use "lib:units"

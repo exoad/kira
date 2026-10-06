@@ -1,7 +1,5 @@
 module "lang:enums"
 
-// The expected output is the C++ run's.
-
 use "lib:modes"
 
 pub enum Level {

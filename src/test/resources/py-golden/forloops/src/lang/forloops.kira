@@ -1,7 +1,5 @@
 module "lang:forloops"
 
-// The expected output is the C++ run's.
-
 mut log: List<Int32> = [1, 2, 3]
 mut other: List<Int32> = List<Int32> { }
 

@@ -1,7 +1,5 @@
 module "lang:defaults"
 
-// The expected output is the C++ run's.
-
 pub STEP: Int32 = 7
 pub LABEL: Str = "dflt"
 pub ROW: List<Int32> = [1, 2, 3]

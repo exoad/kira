@@ -1,7 +1,5 @@
 module "lang:tuples"
 
-// The expected output is the C++ run's.
-
 use "kira:tuples"
 
 fx minmax: (xs: List<Int32>) Pair<Int32, Int32> {
