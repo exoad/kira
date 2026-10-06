@@ -47,7 +47,28 @@ nan nan nan nan nan nan
 2 -2 -0 nan nan nan
 -0 0 3.469446951953614e-18 0 -3.0000000000000004e-301 5e-324
 fmod: 3000 values, digest c624943ce8ba6dbe
+[-2147483648 -1 -1 0 2 3 2147483647]
+[-inf -1.5 -0 -0 0 0 1.5 2 inf nan nan]
+[32 44 48 87 101 104 108 108 111 127 128 200]
+11 [] [] [Apple] [a] [apple] [pear] [<c3><a9>clair] [<c3><bf>] [<c4><80>] [<e2><9c><93>] [<f0><9f><9a><97>]
+[0 3 3 200 255]
+[]
+2 0 9223372036854775807 -9223372036854775808
+44 -56 -5536 1 7
+0.6000000000000001 0 0 0 nan
+-2147483648 2147483647 none none
+-0 0 -0 0 nan nan none
+-inf inf 0.1 0.3
+[] [<f0><9f><9a><97>] 32 200 255
+Int32 lists: 3000 values, digest a71d0aec157cffd6
+Float64 lists: 3000 values, digest a4570b89ff725522
+Str lists: 3000 values, digest 4d45029635323579
+Char and UInt8 lists: 3000 values, digest a708c44fd402530d
 toInt64Radix(1, 37) -> panic: radix out of range
 toInt64Radix(1, 1) -> panic: radix out of range
 toInt64Radix(, 0) -> panic: radix out of range
 toInt64Radix(z, 36) -> 35
+sum([2147483647, 1, -5]) -> panic: Int32 overflow
+sum([-9223372036854775808, -1]) -> panic: Int64 overflow
+sum([2147483647, -1, 1]) -> 2147483647
+sum([-2147483647, -1, -1]) -> panic: Int32 overflow

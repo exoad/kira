@@ -39,6 +39,7 @@
 #include "kira/rt.hxx"
 
 #include <clocale>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -681,6 +682,37 @@ namespace
 
   void testContainers()
   {
+      const double inf = std::numeric_limits<double>::infinity();
+      const double nan = opaque(std::numeric_limits<double>::quiet_NaN());
+      kira::List<double> fs{2.0, nan, 0.0, -inf, -0.0, 1.5, nan, -0.0};
+      kira::list::sort(fs);
+      check(fs[0] == -inf && fs[1] == 0.0 && std::signbit(fs[1]) && std::signbit(fs[2]) && fs[3] == 0.0 && !std::signbit(fs[3]) &&
+                fs[4] == 1.5 && fs[5] == 2.0 && fs[6] != fs[6] && fs[7] != fs[7],
+            "sort: a float as Kotlin's compareTo, -0.0 below 0.0 and NaN last");
+      kira::List<kira::Char> cs{'b', '\xC3', 'A', '\x7F'};
+      kira::List<kira::Str> ss{"b", "\xc3\xa9", "", "ab", "B"};
+      kira::list::sort(cs);
+      kira::list::sort(ss);
+      check(cs == kira::List<kira::Char>{'A', 'b', '\x7F', '\xC3'} && ss == kira::List<kira::Str>{"", "B", "ab", "b", "\xc3\xa9"},
+            "sort: a Char by its code unit, a Str by its bytes");
+      check(kira::list::sum(kira::List<std::int32_t>{1, -2, 3}) == 2 && kira::list::sum(kira::List<std::int32_t>{}) == 0 &&
+                kira::list::sum(kira::List<std::uint8_t>{200, 100}) == 44 && kira::list::sum(kira::List<std::int8_t>{100, 100}) == -56 &&
+                kira::list::sum(kira::List<double>{0.1, 0.2, 0.3}) == (0.1 + 0.2) + 0.3 &&
+                kira::list::sum(kira::List<std::int64_t>{(std::numeric_limits<std::int64_t>::max)(), -1, 1}) == (std::numeric_limits<std::int64_t>::max)(),
+            "sum: + from the first element, wrapping where + wraps");
+      check(!std::signbit(kira::list::sum(kira::List<double>{-0.0})) && kira::list::sum(kira::List<float>{0.5f, 0.25f}) == 0.75f, "sum: from +0.0");
+      check(kira::unwrap(kira::list::minOrNull(kira::List<std::int32_t>{3, -1, 2})) == -1 &&
+                kira::unwrap(kira::list::maxOrNull(kira::List<kira::Str>{"b", "\xc3\xa9", "a"})) == "\xc3\xa9" &&
+                !kira::isSome(kira::list::minOrNull(kira::List<std::int32_t>{})) &&
+                kira::unwrap(kira::list::maxOrNull(kira::List<kira::Char>{'a', '\xC3'})) == '\xC3',
+            "minOrNull and maxOrNull");
+      const kira::List<double> zeros{0.0, -0.0, 0.0};
+      const double low = kira::unwrap(kira::list::minOrNull(zeros));
+      const double high = kira::unwrap(kira::list::maxOrNull(kira::List<double>{-0.0, 0.0, -0.0}));
+      const double nanLow = kira::unwrap(kira::list::minOrNull(kira::List<double>{1.0, nan, -1.0}));
+      const double nanHigh = kira::unwrap(kira::list::maxOrNull(kira::List<double>{1.0, nan, -1.0}));
+      check(std::signbit(low) && !std::signbit(high) && nanLow != nanLow && nanHigh != nanHigh,
+            "minOrNull and maxOrNull: -0.0 below 0.0, and a NaN if any is");
       kira::Map<kira::Str, std::int32_t> m;
       m.put("b", 2);
       m.put("a", 1);
@@ -1115,6 +1147,10 @@ namespace
       else if(std::strcmp(what, "strat") == 0)
       {
           sink = kira::str::at("abc", opaque(kira::Size{3}));
+      }
+      else if(std::strcmp(what, "sum") == 0)
+      {
+          sink = kira::list::sum(kira::List<std::int32_t>{(std::numeric_limits<std::int32_t>::max)(), opaque(std::int32_t{1}), -5});
       }
       else if(std::strcmp(what, "radix") == 0)
       {

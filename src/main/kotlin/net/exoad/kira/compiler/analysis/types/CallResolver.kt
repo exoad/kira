@@ -336,15 +336,18 @@ internal class CallResolver(private val c: PhaseC) {
         return ret
     }
 
-    /** The List methods whose element type a generic bound cannot say (D58): a Str to join. */
+    /** The List methods whose element type a generic bound cannot say: a Str to join (D58), an ordered or numeric one (D61). */
     private fun elementBound(e: FunctionCallExpr, recv: KType, fn: FnSymbol) {
         val owner = fn.owner as? ClassSymbol ?: return
         if (owner.kind != ClassKind.MAGIC || owner.name != "List" || !facts.isList(recv)) {
             return
         }
         val element = facts.elementOf(recv) ?: return
+        val ordered = facts.isNumeric(element) || element == KType.CHAR || element == KType.Str
         val (ok, what) = when (fn.name) {
-            "joinToString" -> (element == KType.Str) to "Str"
+            "joinToString" -> (element == KType.Str) to "Strs"
+            "sort", "minOrNull", "maxOrNull" -> ordered to "numbers, Chars or Strs"
+            "sum" -> facts.isNumeric(element) to "numbers"
             else -> return
         }
         if (!ok && !element.containsError()) {

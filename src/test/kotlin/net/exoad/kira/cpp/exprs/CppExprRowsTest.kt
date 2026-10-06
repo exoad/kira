@@ -1184,6 +1184,37 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d61",
+            """
+            pub fx sorted: (xs: List<Int32>) List<Int32> {
+                mut out: List<Int32> = xs
+                out.sort()
+                return out
+            }
+
+            pub fx words: (s: Str) Str {
+                mut ws: List<Str> = s.splitWhitespace()
+                ws.sort()
+                return ws.joinToString(",")
+            }
+
+            pub fx total: (xs: List<UInt8>) UInt8 {
+                return xs.sum()
+            }
+
+            pub fx spread: (xs: List<Float64>) Float64 {
+                return xs.maxOrNull().unwrapOr(0.0) - xs.minOrNull().unwrapOr(0.0)
+            }
+            """,
+            listOf("kira::list::sort(out);", "return kira::list::sum(xs);"),
+            listOf(
+                """check(d61::sorted({3, -1, 2, -1}) == kira::List<std::int32_t>{-1, -1, 2, 3} && d61::sorted({}).empty(), "D61: sort orders a List in place");""",
+                """check(d61::words("pear Apple \xc3\xa9" "clair apple") == "Apple,apple,pear,\xc3\xa9" "clair", "D61: a Str by its bytes, which is UTF-8's code point order");""",
+                """check(d61::total({200, 100}) == 44 && d61::total({}) == 0, "D61: sum wraps as an unsigned + does");""",
+                """check(d61::spread({1.5, -2.0, 4.0}) == 6.0 && d61::spread({}) == 0.0 && d61::spread({1.0, std::numeric_limits<double>::quiet_NaN()}) != d61::spread({1.0, std::numeric_limits<double>::quiet_NaN()}), "D61: minOrNull and maxOrNull, a NaN if any is");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {

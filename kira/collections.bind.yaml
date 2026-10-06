@@ -51,6 +51,7 @@
 #     Arr<T, N> is a List<T> (Arr<T>), as collections.kira declares it
 #   kira::list::clone(View<T>), clone(MutView<T>) -> List<T>   (toList, D52: hosted, as a List is)
 #   kira::list::joinToString(const List<Str>&, const Str&) -> Str   (D58: the typer takes a List<Str> only)
+#   kira::list::sort, sum, minOrNull, maxOrNull over a List<T>, and kira::list::less, their order   (D61)
 
 # --- View<T> ---------------------------------------------------------------
 View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
@@ -96,6 +97,11 @@ List.view:     { cpp: { expr: "kira::view({self})", pure: true }, py: { expr: "{
 List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true }, py: { expr: "_k_from({self}, {0})" } }
 List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
 List.joinToString: { cpp: { expr: "kira::list::joinToString({self}, {0})", pure: true }, py: { expr: "_k_join({self}, {0})" } }
+# D61: `{T0}` on py is the element type's Kira name, which the helper's rule depends on.
+List.sort:      { cpp: { expr: "kira::list::sort({self})" }, py: { expr: '_k_sort({self}, "{T0}")' } }
+List.sum:       { cpp: { expr: "kira::list::sum({self})", pure: true }, py: { expr: '_k_sum({self}, "{T0}")' } }
+List.minOrNull: { cpp: { expr: "kira::list::minOrNull({self})", pure: true }, py: { expr: '_k_minof({self}, "{T0}")' } }
+List.maxOrNull: { cpp: { expr: "kira::list::maxOrNull({self})", pure: true }, py: { expr: '_k_maxof({self}, "{T0}")' } }
 
 # --- Map<K, V>: kira::Map, insertion-ordered (D27) -------------------------
 # py: a dict keeps kira::Map's order; `{list}` is list, or bytearray for a List<UInt8>.

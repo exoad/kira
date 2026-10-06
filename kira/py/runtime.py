@@ -4,7 +4,11 @@
 # of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
 # Python 3.10 is the oldest this must run on (the board's).
 
+import builtins as _k_builtins
+import functools as _k_functools
+import itertools as _k_itertools
 import math as _k_math
+import operator as _k_operator
 import re as _k_re
 import struct as _k_struct
 
@@ -397,6 +401,57 @@ def _k_copy(xs):
 # List.joinToString (D58): Kira evaluates the List before the separator.
 def _k_join(xs, sep):
     return sep.join(xs)
+
+
+# List.sort, minOrNull and maxOrNull (D61) take Python's order, which is Kira's, except for a
+# Float64 list holding a zero or a NaN: Kotlin's compareTo puts -0.0 below 0.0 and NaN last.
+def _k_fkey(v):
+    return (1,) if v != v else (0, v, _k_math.copysign(1.0, v))
+
+
+def _k_ftotal(xs, t):
+    return t == "Float64" and (0.0 in xs or _k_builtins.any(_k_builtins.map(_k_math.isnan, xs)))
+
+
+def _k_sort(xs, t):
+    if _k_ftotal(xs, t):
+        xs.sort(key=_k_fkey)
+    elif isinstance(xs, bytearray):
+        s = list(xs)
+        s.sort()
+        xs[:] = s
+    else:
+        xs.sort()
+
+
+def _k_minof(xs, t):
+    if not _k_ftotal(xs, t):
+        return min(xs, default=None)
+    top = max(xs, key=_k_fkey)
+    return top if top != top else min(xs, key=_k_fkey)
+
+
+def _k_maxof(xs, t):
+    return max(xs, key=_k_fkey) if _k_ftotal(xs, t) else max(xs, default=None)
+
+
+# List.sum (D61): + from the first element, so an Int32 or Int64 partial sum past its type panics;
+# a Float64 adds left to right from 0.0 as C++ does, where 3.12's sum() compensates.
+_k_widths = {"Int8": (8, True), "Int16": (16, True), "UInt8": (8, False), "UInt16": (16, False), "UInt32": (32, False), "UInt64": (64, False), "Size": (64, False)}
+
+
+def _k_sum(xs, t):
+    if t == "Float64":
+        return _k_functools.reduce(_k_operator.add, xs, 0.0)
+    if t == "Int32" or t == "Int64":
+        top = 1 << (31 if t == "Int32" else 63)
+        sums = list(_k_itertools.accumulate(xs))
+        if sums and (min(sums) < -top or max(sums) >= top):
+            _k_panic(t + " overflow")
+        return sums[-1] if sums else 0
+    bits, signed = _k_widths[t]
+    v = _k_functools.reduce(_k_operator.add, xs, 0) & ((1 << bits) - 1)
+    return v - (1 << bits) if signed and v >> (bits - 1) else v
 
 
 # Keeps the dict, as `xs[:] = v` keeps a list: a mut parameter may be bound to it.

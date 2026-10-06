@@ -83,6 +83,10 @@ pub fx calls: () Void {
     eq: Bool = s.equals("abc")             // @type Bool call=MAGIC(Equatable.equals)
     hc: Int64 = s.hashCode()               // @type Int64 call=MAGIC(Hashable.hashCode)
     xs.add(r1)                             // @type Int32 place=Local(r1) @ r1
+    xs.sort()                              // @type Void call=MAGIC(List.sort)
+    total: Int32 = xs.sum()                // @type Int32 call=MAGIC(List.sum)
+    least: Maybe<Int32> = xs.minOrNull()   // @type Maybe<Int32> call=MAGIC(List.minOrNull)
+    most: Maybe<Str> = names.maxOrNull()   // @type Maybe<Str> call=MAGIC(List.maxOrNull)
     mut ages: Map<Str, Int32> = Map<Str, Int32> { }
     ages.put("ada", 36)                    // @type Void call=MAGIC(Map.put)
     found: Maybe<Int32> = ages.get("ada")  // @type Maybe<Int32> call=MAGIC(Map.get)

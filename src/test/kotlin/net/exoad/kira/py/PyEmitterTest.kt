@@ -550,6 +550,34 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aListsSortSumMinAndMaxNameTheirElementType() {
+        val py = python(
+            """
+            class Bag {
+                pub mut fs: List<Float64> = List<Float64> { }
+                pub mut bs: List<UInt8> = List<UInt8> { }
+
+                pub mut fx tidy: () Float64 {
+                    fs.sort()
+                    bs.sort()
+                    return fs.sum() + (bs.sum() as Float64)
+                }
+            }
+
+            fx f: (mut xs: List<Int32>, names: List<Str>) Int32 {
+                xs.sort()
+                return xs.sum() + xs.minOrNull().unwrapOr(0) + (names.maxOrNull().unwrapOr("").length() as Int32)
+            }
+            """
+        )
+        assertTrue(py.contains("_k_sort(self.fs, \"Float64\")") && py.contains("_k_sort(self.bs, \"UInt8\")"), py)
+        assertTrue(py.contains("_k_sum(self.fs, \"Float64\") + float(_k_sum(self.bs, \"UInt8\"))"), py)
+        assertTrue(py.contains("_k_sort(xs, \"Int32\")") && py.contains("_k_sum(xs, \"Int32\")") && py.contains("_k_minof(xs, \"Int32\")") && py.contains("_k_maxof(names, \"Str\")"), py)
+        assertTrue(py.contains("return _k_functools.reduce(_k_operator.add, xs, 0.0)") && py.contains("import itertools as _k_itertools"), py)
+        assertTrue(py.contains("xs.sort(key=_k_fkey)") && py.contains("import builtins as _k_builtins"), py)
+    }
+
+    @Test
     fun aStrIsOrderedAsPythonOrdersIt() {
         val py = python(
             """

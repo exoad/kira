@@ -15,6 +15,7 @@
 #error "kira/rt.hxx is the hosted runtime; a freestanding module includes kira/core.hxx only"
 #endif
 
+#include <algorithm>
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
@@ -307,6 +308,105 @@ namespace kira
     [[nodiscard]] std::vector<T> clone(MutView<T> v)
     {
         return std::vector<T>(v.begin(), v.end());
+    }
+    // Kira's order (D61): a Char by its code unit, a float as Kotlin's compareTo, -0.0 below 0.0
+    // and NaN above everything.
+    template<class T>
+    [[nodiscard]] constexpr bool less(const T& a, const T& b) noexcept
+    {
+        if constexpr(std::is_floating_point_v<T>)
+        {
+            if(a < b)
+            {
+                return true;
+            }
+            if(b < a || a != a)
+            {
+                return false;
+            }
+            if(b != b)
+            {
+                return true;
+            }
+            return (bitCast<std::uint64_t>(static_cast<double>(a)) >> 63u) > (bitCast<std::uint64_t>(static_cast<double>(b)) >> 63u);
+        }
+        else if constexpr(std::is_same_v<T, Char>)
+        {
+            return ord(a) < ord(b);
+        }
+        else
+        {
+            return a < b;
+        }
+    }
+    template<class T, class A>
+    void sort(std::vector<T, A>& l)
+    {
+        std::stable_sort(l.begin(), l.end(), [](const T& a, const T& b) { return ::kira::list::less(a, b); });
+    }
+    // `+` from the first element: an Int32 or Int64 partial sum past its type panics (D8).
+    template<class T, class A>
+    [[nodiscard]] T sum(const std::vector<T, A>& l)
+    {
+        T total{};
+        for(const T& v : l)
+        {
+            if constexpr(std::is_same_v<T, std::int32_t> || std::is_same_v<T, std::int64_t>)
+            {
+                if(v > 0 ? total > (std::numeric_limits<T>::max)() - v : total < std::numeric_limits<T>::lowest() - v)
+                {
+                    panic(std::is_same_v<T, std::int32_t> ? "Int32 overflow" : "Int64 overflow");
+                }
+                total += v;
+            }
+            else
+            {
+                total = static_cast<T>(total + v);
+            }
+        }
+        return total;
+    }
+    // A float list holding a NaN gives a NaN, as Kotlin's minOrNull does.
+    template<class T, class A>
+    [[nodiscard]] Maybe<T> minOrNull(const std::vector<T, A>& l)
+    {
+        if(l.empty())
+        {
+            return none;
+        }
+        const T* best = &l[0];
+        for(const T& v : l)
+        {
+            if constexpr(std::is_floating_point_v<T>)
+            {
+                if(v != v)
+                {
+                    return v;
+                }
+            }
+            if(::kira::list::less(v, *best))
+            {
+                best = &v;
+            }
+        }
+        return *best;
+    }
+    template<class T, class A>
+    [[nodiscard]] Maybe<T> maxOrNull(const std::vector<T, A>& l)
+    {
+        if(l.empty())
+        {
+            return none;
+        }
+        const T* best = &l[0];
+        for(const T& v : l)
+        {
+            if(::kira::list::less(*best, v))
+            {
+                best = &v;
+            }
+        }
+        return *best;
     }
     template<class A>
     [[nodiscard]] Str joinToString(const std::vector<Str, A>& l, const Str& separator)

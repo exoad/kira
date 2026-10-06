@@ -277,10 +277,162 @@ fx remainders: () Void {
     trace("fmod: " + rems.said())
 }
 
+pub fx sum32: (xs: List<Int32>) Int32 {
+    return xs.sum()
+}
+
+pub fx sum64: (xs: List<Int64>) Int64 {
+    return xs.sum()
+}
+
+fx ints: (xs: List<Int32>) Str {
+    mut out: Str = "["
+    mut i: Size = 0
+    while i < xs.size() {
+        out = out + (if i > 0 { " " } else { "" }) + "${xs[i]}"
+        i += 1
+    }
+    return out + "]"
+}
+
+fx floats: (xs: List<Float64>) Str {
+    mut out: Str = "["
+    mut i: Size = 0
+    while i < xs.size() {
+        out = out + (if i > 0 { " " } else { "" }) + "${xs[i]}"
+        i += 1
+    }
+    return out + "]"
+}
+
+fx codes: (xs: List<Char>) Str {
+    mut out: Str = "["
+    mut i: Size = 0
+    while i < xs.size() {
+        out = out + (if i > 0 { " " } else { "" }) + "${xs[i] as UInt8}"
+        i += 1
+    }
+    return out + "]"
+}
+
+fx bytes8: (xs: List<UInt8>) Str {
+    mut out: Str = "["
+    mut i: Size = 0
+    while i < xs.size() {
+        out = out + (if i > 0 { " " } else { "" }) + "${xs[i]}"
+        i += 1
+    }
+    return out + "]"
+}
+
+fx mi: (m: Maybe<Int32>) Str {
+    return if m.isNone() { "none" } else { "${m.value}" }
+}
+
+fx mf: (m: Maybe<Float64>) Str {
+    return if m.isNone() { "none" } else { "${m.value}" }
+}
+
+fx ms: (m: Maybe<Str>) Str {
+    return if m.isNone() { "none" } else { vis(m.value) }
+}
+
+fx mc: (m: Maybe<Char>) Str {
+    return if m.isNone() { "none" } else { "${m.value as UInt8}" }
+}
+
+fx listOrder: () Void {
+    zero: Float64 = 0.0
+    inf: Float64 = 1.0 / zero
+    nan: Float64 = zero / zero
+    mut ns: List<Int32> = [3, -1, 2, -1, 0, 2147483647, -2147483648]
+    ns.sort()
+    trace(ints(ns))
+    mut fs: List<Float64> = [2.0, nan, 0.0, -inf, -0.0, 1.5, nan, -0.0, inf, -1.5, 0.0]
+    fs.sort()
+    trace(floats(fs))
+    mut cs: List<Char> = ['h', 'e', 'l', 'l', 'o', ',', ' ', 'W', (200 as Char), (127 as Char), (128 as Char), '0']
+    cs.sort()
+    trace(codes(cs))
+    mut ss: List<Str> = ["pear", "Apple", "éclair", "apple", "", "✓", "🚗", "", "Ā", "ÿ", "a"]
+    ss.sort()
+    trace(visAll(ss))
+    mut bs: List<UInt8> = [200, 3, 255, 0, 3]
+    bs.sort()
+    trace(bytes8(bs))
+    mut none: List<Int32> = List<Int32> { }
+    none.sort()
+    trace(ints(none))
+    trace("${sum32([1, -2, 3])} ${sum32(none)} ${sum64([9223372036854775807, -1, 1])} ${sum64([-9223372036854775807, -1])}")
+    u8s: List<UInt8> = [200, 100]
+    i8s: List<Int8> = [100, 100]
+    i16s: List<Int16> = [30000, 30000]
+    u64s: List<UInt64> = [0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF, 3]
+    szs: List<Size> = [3, 4]
+    trace("${u8s.sum()} ${i8s.sum()} ${i16s.sum()} ${u64s.sum()} ${szs.sum()}")
+    tenths: List<Float64> = [0.1, 0.2, 0.3]
+    kahan: List<Float64> = [1e16, 1.0, -1e16]
+    negz: List<Float64> = [-0.0]
+    nofs: List<Float64> = List<Float64> { }
+    infs: List<Float64> = [inf, -inf]
+    trace("${tenths.sum()} ${kahan.sum()} ${negz.sum()} ${nofs.sum()} ${infs.sum()}")
+    trace(mi(ns.minOrNull()) + " " + mi(ns.maxOrNull()) + " " + mi(none.minOrNull()) + " " + mi(none.maxOrNull()))
+    zs: List<Float64> = [0.0, -0.0, 0.0]
+    nzs: List<Float64> = [-0.0, 0.0, -0.0]
+    withNan: List<Float64> = [1.0, nan, -1.0]
+    trace(mf(zs.minOrNull()) + " " + mf(zs.maxOrNull()) + " " + mf(nzs.minOrNull()) + " " + mf(nzs.maxOrNull()) + " " + mf(withNan.minOrNull()) + " " + mf(withNan.maxOrNull()) + " " + mf(nofs.minOrNull()))
+    trace(mf(infs.minOrNull()) + " " + mf(infs.maxOrNull()) + " " + mf(tenths.minOrNull()) + " " + mf(tenths.maxOrNull()))
+    trace(ms(ss.minOrNull()) + " " + ms(ss.maxOrNull()) + " " + mc(cs.minOrNull()) + " " + mc(cs.maxOrNull()) + " " + "${bs.maxOrNull().unwrapOr(0)}")
+    ps: List<Str> = pieces()
+    mut r: Rng = Rng { }
+    mut di: Digest = Digest { }
+    mut df: Digest = Digest { }
+    mut ds: Digest = Digest { }
+    mut dc: Digest = Digest { }
+    mut n: Int32 = 0
+    while n < 1500 {
+        want: UInt64 = r.below(12)
+        mut xi: List<Int32> = List<Int32> { }
+        mut xf: List<Float64> = List<Float64> { }
+        mut xs: List<Str> = List<Str> { }
+        mut xc: List<Char> = List<Char> { }
+        mut xb: List<UInt8> = List<UInt8> { }
+        while (xi.size() as UInt64) < want {
+            xi.add((r.below(2001) as Int32) - 1000)
+            kind: UInt64 = r.below(12)
+            num: Float64 = (r.below(41) as Float64) - 20.0
+            xf.add(if kind == 0 { nan } else if kind == 1 { zero } else if kind == 2 { -zero } else if kind == 3 { inf } else if kind == 4 { -inf } else { num / 4.0 })
+            head: Str = ps[r.below(ps.size() as UInt64) as Size]
+            xs.add(head + ps[r.below(ps.size() as UInt64) as Size])
+            xc.add(r.below(256) as Char)
+            xb.add(r.below(256) as UInt8)
+        }
+        di.text(mi(xi.minOrNull()) + mi(xi.maxOrNull()) + "${xi.sum()}")
+        xi.sort()
+        di.text(ints(xi))
+        df.text(mf(xf.minOrNull()) + mf(xf.maxOrNull()) + "${xf.sum()}")
+        xf.sort()
+        df.text(floats(xf))
+        ds.text(ms(xs.minOrNull()) + ms(xs.maxOrNull()))
+        xs.sort()
+        ds.text(xs.joinToString("|"))
+        dc.text(mc(xc.minOrNull()) + mc(xc.maxOrNull()) + "${xb.sum()}")
+        xc.sort()
+        xb.sort()
+        dc.text(codes(xc) + bytes8(xb))
+        n += 1
+    }
+    trace("Int32 lists: " + di.said())
+    trace("Float64 lists: " + df.said())
+    trace("Str lists: " + ds.said())
+    trace("Char and UInt8 lists: " + dc.said())
+}
+
 fx main: () Void {
     strOrder()
     strText()
     joins()
     charTests()
     remainders()
+    listOrder()
 }
