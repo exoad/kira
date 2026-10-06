@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-# The connbook golden: the module's main, whose output is the C++ backend's run of it, then the Kira
-# Conn against the hand-written one it ports, bibo's firmware/pilot/tools/dash/bibodash.py at
-# 7f26371, its Conn class copied below unchanged as the oracle (its socket a stub, ws_frame the
-# opcode and payload it would wrap), over seeded runs of every call a page's pump, reader and
-# stream make: put_text, put_pong, put_frame, take, ack, room, has_work, oldest_unacked_ms, reset,
-# want_h264, has_h264 and offer_h264. After each call the two agree on what it returned and on
-# every dict: its keys in the same order (a feed put again keeps its place, one taken and put
-# again goes last) and what each holds.
-#
-#   python driver.py <the directory kira --target py --out wrote>
+# main (the C++ run), then the Kira Conn against bibodash.py's at 7f26371, copied unchanged below,
+# every dict's keys in order after each call.   python driver.py <kira --target py --out dir>
 import collections
 import importlib.util
 import math
@@ -182,7 +174,6 @@ class Conn:
 
 # ---- the two side by side ----------------------------------------------------------------------
 def same(a, b):
-    # equal, a NaN capture time equal to a NaN
     if isinstance(a, float) and isinstance(b, float):
         return a == b or (math.isnan(a) and math.isnan(b))
     if isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
@@ -191,7 +182,6 @@ def same(a, b):
 
 
 def books(o, k):
-    # every dict of each, its keys in order and what each key holds
     a = (list(o.text.items()),
          [(f, bytes(msg), ms) for f, (msg, ms) in o.latest.items()],
          [(f, list(q)) for f, q in o.unacked.items()],

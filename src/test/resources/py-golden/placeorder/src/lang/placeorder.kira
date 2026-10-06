@@ -1,7 +1,6 @@
 module "lang:placeorder"
 
-// D33 on an index assignment: a container reached through a call is located before the key and
-// the value, and once in a compound assignment; a global replaced by the value is written new.
+// D33: a container a call gives is located before the key and the value, and once.
 
 class Holder {
     pub mut items: Map<Str, Int32> = Map<Str, Int32> { }

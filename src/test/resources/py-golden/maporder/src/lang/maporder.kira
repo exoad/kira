@@ -1,10 +1,6 @@
 module "lang:maporder"
 
-// A Map keeps its keys in insertion order (D27) on both targets: a new key goes last, a put of a
-// key it holds keeps its place and takes the value, a removed key put again goes last. get and
-// remove are a Maybe, none for a missing key; m[k] = v puts, its key located before its value
-// runs (D33). Keys are Str, the integers, Bool and Char; a List<UInt8> of keys or values is the
-// target's bytes. The expected output is the C++ backend's run of this same module.
+// A Map's order (D27), its methods and m[k] = v; expected.txt is the C++ backend's run.
 
 mut ticks: Int32 = 0
 mut keyAt: Int32 = 0
@@ -101,7 +97,7 @@ fx main: () Void {
     trace(m.containsValue(2))
     trace(m.isEmpty())
 
-    // m[k] = v locates its key before its value runs; a value that reads the Map sees it without the key
+    // The key is located before the value runs (D33), which sees the Map without it.
     m["n"] = m.size() as Int32
     trace(keysOf(m))
     m[nextKey()] = next()
@@ -114,7 +110,6 @@ fx main: () Void {
     m.put("k1", 1)
     trace(keysOf(m))
 
-    // a removed key in the middle: the ones after it move up, in order
     mut order: Map<Int32, Str> = Map<Int32, Str> { }
     mut i: Int32 = -3
     while i <= 3 {
@@ -134,7 +129,6 @@ fx main: () Void {
     }
     trace(line)
 
-    // Bool, Char and UInt8 keys; a List<UInt8> of keys or values is bytes
     mut flags: Map<Bool, Int32> = Map<Bool, Int32> { }
     flags[true] = 1
     flags[false] = 2
@@ -165,7 +159,7 @@ fx main: () Void {
     trace(signed.containsKey(-128))
     trace(signed.containsKey(127))
 
-    // Float64 values: containsValue compares with ==, so a NaN is never found
+    // containsValue compares with ==: a NaN is never found.
     mut f: Map<Str, Float64> = Map<Str, Float64> { }
     nan: Float64 = 0.0 / 0.0
     f["nan"] = nan
@@ -174,7 +168,6 @@ fx main: () Void {
     trace(f.containsValue(0.0))
     trace(f.size())
 
-    // a field and a global
     mut ix: Index = Index { }
     trace(ix.add("x"))
     trace(ix.add("y"))

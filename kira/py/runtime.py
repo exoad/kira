@@ -357,8 +357,7 @@ def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
 
 
-# A Map field, global or mut parameter assigned keeps its dict and takes the new entries in
-# their order, as `xs[:] = v` keeps a List's list, so a mut parameter bound to it still names it.
+# Keeps the dict, as `xs[:] = v` keeps a list: a mut parameter may be bound to it.
 def _k_mapset(m, v):
     if m is not v:
         m.clear()

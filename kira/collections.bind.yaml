@@ -6,7 +6,7 @@
 # Arr is a Python list, a bytearray of UInt8; a View or MutView is what it was lent from, and
 # from and slice make a memoryview of bytes (which a MutView writes through) or a copied slice
 # of any other element, which only a View, read-only, can be. A Map is a dict. `place` and
-# `statement` are faster forms in any order, taken only where that order cannot show (PyBinding).
+# `statement` name their operands in any order; the emitter takes them where that cannot show.
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
 # (the C backend lowers containers through tryEmitCollectionMethod). Keys are
@@ -96,9 +96,7 @@ List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true }, py: 
 List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
 
 # --- Map<K, V>: kira::Map, insertion-ordered (D27) -------------------------
-# On py a dict, whose order is kira::Map's: a new key goes last, a put of a key it holds keeps
-# its place, a removed key put again goes last. `{list}` in a py expr is the List the call
-# returns: list, or bytearray for a List<UInt8>. entries (a List of Tuple2) has no py binding.
+# py: a dict keeps kira::Map's order; `{list}` is list, or bytearray for a List<UInt8>.
 Map.size:          { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
 Map.isEmpty:       { cpp: { expr: "{self}.isEmpty()", pure: true }, py: { expr: "(not {self})" } }
 Map.put:           { cpp: { expr: "{self}.put({0}, {1})" }, py: { expr: "{self}.__setitem__({0}, {1})", statement: "{self}[{0}] = {1}" } }

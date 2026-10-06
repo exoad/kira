@@ -89,9 +89,8 @@ import java.util.IdentityHashMap
  *   chr() of it, so one from 128 to 255 is a Latin-1 code point where C++ writes the raw byte,
  *   and only an ASCII Char agrees; a View<Char> is refused, as text is a Str), the integers,
  *   Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
- *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict, whose order is
- *   kira::Map's (D27), keyed by a Str, an integer, a Bool or a Char (`m[k] = v` puts; entries, a
- *   List of Tuple2, is refused), and the module's own classes.
+ *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict (its order is
+ *   kira::Map's) keyed by a Str, an integer, a Bool or a Char, and the module's own classes.
  *   Kira's List and Map are values (D44) and a Python list or dict is shared, so one is copied
  *   wherever a second name could see a write ([asValue]); a `mut` List or Map parameter is the
  *   caller's own, and a field, global or `mut` parameter assigned keeps its list or dict and
@@ -141,7 +140,7 @@ class PyModuleEmitter(
     /** The Python names of the module's own top-level declarations: a local may not take one. */
     private val topNames = HashSet<String>()
 
-    /** The call a statement is, while it is written: a binding's `statement` form is taken only there. */
+    /** The call being written as a whole statement. */
     private var statementCall: FunctionCallExpr? = null
 
     /** The module's text, [header] lines first, or null when anything was refused. */
@@ -480,9 +479,7 @@ class PyModuleEmitter(
         if (op == null) {
             val tt = model.typeOrNull(target)
             if (tt != null && isValue(tt) && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
-                // A field, global or mut parameter keeps its one List or Map and takes the new
-                // elements, so a mut parameter bound to it still names it (C++'s T&); the slice
-                // and _k_mapset copy them.
+                // A field, global or mut parameter keeps its list or dict: a mut parameter may be bound to it (C++'s T&).
                 val v = expr(value, f)
                 return pre + if (isMap(tt)) call("_k_mapset", lhs, v.text).text else "$lhs[:] = ${v.text}"
             }
@@ -529,7 +526,7 @@ class PyModuleEmitter(
         }
     }
 
-    /** The object a written field is read through; a handle C++ reads before the value runs. */
+    /** A handle C++ reads before the value runs (D33). */
     private fun objectPlace(origin: Expr, f: Frame, spill: Boolean, pre: MutableList<String>): String = when {
         origin is ThisExpr -> "self"
         origin is Identifier && model.symbolOf(origin).let { it is LocalSymbol || it is ParamSymbol } -> origin.value
@@ -541,7 +538,6 @@ class PyModuleEmitter(
         else -> wrap(expr(origin, f), PyPrec.POSTFIX)
     }
 
-    /** The List or Map an index assignment writes, read through [objectPlace] when it is a field. */
     private fun containerPlace(e: Expr, f: Frame, spill: Boolean, pre: MutableList<String>): String? {
         val field = (e as? MemberAccessExpr)?.let { model.member(it) as? MemberRef.Field }?.field
         return when {
@@ -602,7 +598,7 @@ class PyModuleEmitter(
         return raw(e, f)
     }
 
-    /** Whether [e] is `m.entries()` on a Map, a List of Tuple2, named before its type is refused. */
+    /** `m.entries()`, refused by name before its Tuple2 type would be. */
     private fun mapEntries(e: Expr): Boolean {
         val c = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr ?: return false
         val rc = model.call(c) ?: return false
@@ -704,7 +700,6 @@ class PyModuleEmitter(
         else -> false
     }
 
-    /** A new Python list holding the elements of [text], a List or Arr of type [t] (a bytearray of UInt8), or a new dict of a Map's. */
     private fun copyOf(text: String, t: KType): String = when {
         isMap(t) -> "dict($text)"
         isBytes(t) -> "bytearray($text)"
@@ -917,7 +912,7 @@ class PyModuleEmitter(
             plain && binding.place != null -> binding.place
             else -> binding.expr
         }
-        // `{list}` is the List the call returns: a bytearray of UInt8.
+        // `{list}`: list, or bytearray when the call returns a List<UInt8>.
         val list = if (isBytes(model.typeOrNull(c) ?: KType.Error)) "bytearray" else "list"
         return bound(PyBinding(text.replace("{list}", list)), self, args, f)
     }
@@ -963,8 +958,6 @@ class PyModuleEmitter(
             if (!isValue(t)) {
                 return refusePy(o, "a construction of ${t.display()}")
             }
-            // `List<T> { }`, `Arr<T, N> { }` and `Map<K, V> { }` are their zero value;
-            // `List<T> { values = a }` a copy of a.
             val given = init.fields.filterIsInstance<FieldInit.Given>()
             return when {
                 given.isEmpty() -> zeroValue(t, o).let { Py(it, if (it.contains(" * ")) PyPrec.MUL else if (it == "{}") PyPrec.ATOM else PyPrec.POSTFIX) }
@@ -1243,10 +1236,9 @@ class PyModuleEmitter(
     /** A List or Arr of UInt8: a bytearray. */
     private fun isBytes(t: KType): Boolean = isList(t) && (t as? KType.Nominal)?.typeArgs()?.firstOrNull() == KType.UINT8
 
-    /** A Map: a dict. */
     private fun isMap(t: KType?): Boolean = magicName(t) == "Map"
 
-    /** A List, an Arr or a Map: a value (D44) Python shares, so it is copied where a second name could see a write. */
+    /** A value (D44) Python shares: copied where a second name could see a write. */
     private fun isValue(t: KType): Boolean = isList(t) || isMap(t)
 
     /** A View or MutView: what it was lent from (a list, a bytearray), a memoryview of bytes, or a copied slice. */
@@ -1292,13 +1284,7 @@ class PyModuleEmitter(
         KType.Error -> "an untyped value"
     }
 
-    /**
-     * Why the py target cannot hold the Map [t], or null when it can: a key is a Str, an integer,
-     * a Bool or a Char, never a float (a NaN key is a new entry at each put in kira::Map, and the
-     * entry it was in a dict when it is the same object); a value is anything the target holds
-     * but a Maybe (get's None could not tell a missing key) or a container (a dict's copy would
-     * share it).
-     */
+    /** A NaN key is a new entry at each put in kira::Map; get's None could not tell a Maybe value from a missing key. */
     private fun mapRefusal(t: KType.Nominal): String? {
         val (k, v) = t.typeArgs().takeIf { it.size == 2 } ?: return "a Map without its key and value types"
         val kp = k.prim
