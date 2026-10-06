@@ -16,7 +16,6 @@ spec = importlib.util.spec_from_file_location("powerdata_kira", path)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
-# ---- the oracle: powerpage.py as written by hand, its Tally answering the seeded numbers -------
 CURRENT = None
 _powerpage = types.SimpleNamespace(Tally=lambda: CURRENT)
 
@@ -42,7 +41,6 @@ def oracle_body(now, seconds, latest, st, series):
     return json.dumps(body)
 
 
-# ---- seeded windows -----------------------------------------------------------------------------
 rng = random.Random(20261006)
 
 
@@ -59,6 +57,7 @@ class Tally:
     def __init__(self, n_buckets):
         self.samples = 0 if n_buckets == 0 else rng.randint(1, 1800)
         self.v = [maybe_float(0.05) for _ in range(9)]
+        self.v[4] = rng.choice([None, 0, rng.randrange(50)])
         self.wh = rng.uniform(0, 20)
 
     def add(self, b):
@@ -125,9 +124,3 @@ for k in range(3000):
     assert got == want, (got, want)
     bodies += 1
 print("body against powerpage.py's json.dumps of its /data body: %d bodies, %d series points, the same bytes" % (bodies, points))
-
-# A count the feed hands over as an int, through the Tally's Float64, is a float as on the C++ target.
-CURRENT = Tally(1)
-CURRENT.v[4] = 3
-print("an int j_oc_new: python %s, kira %s" % (json.dumps(stats([object()])["j_oc_new"]),
-                                               json.dumps(m.stats(1, 1, None, None, None, 0.0, None, 3, None, None, None)["j_oc_new"])))
