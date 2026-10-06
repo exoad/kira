@@ -308,7 +308,11 @@ pub fx pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) 
     while i < m.fields.size() {
         f: Field = m.fields[i]
         if f.kind == "bytes" {
-            payload.addAll(raw.slice(at, f.count).toList().toArr())
+            mut j: Size = 0
+            while j < f.count {
+                payload.add(raw[at + j])
+                j += 1
+            }
             at += f.count
         } else {
             v: Maybe<Int64> = ints.get(f.name)

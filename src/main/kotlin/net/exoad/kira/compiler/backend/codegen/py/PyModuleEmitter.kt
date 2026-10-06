@@ -141,6 +141,9 @@ class PyModuleEmitter(
     /** The Python names of the module's own top-level declarations: a local may not take one. */
     private val topNames = HashSet<String>()
 
+    /** The call a statement is, while it is written: a binding's `statement` form is taken only there. */
+    private var statementCall: FunctionCallExpr? = null
+
     /** The module's text, [header] lines first, or null when anything was refused. */
     fun emit(header: List<String>): String? {
         module.uses.forEach { use ->
@@ -437,7 +440,12 @@ class PyModuleEmitter(
             refuse(s, "a declaration inside a body")
             emptyList()
         }
-        else -> listOf(expr(e, f).text)
+        else -> {
+            statementCall = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr
+            val text = expr(e, f).text
+            statementCall = null
+            listOf(text)
+        }
     }
 
     private fun local(decl: VariableDecl, f: Frame): List<String> {
@@ -900,13 +908,26 @@ class PyModuleEmitter(
                 if (t != null && isValue(t)) listPlace(r, f) ?: "None" else wrap(expr(r, f), prec)
             }
         }
-        // `{list}` is the List the call returns (Map.keys, Map.valuesArr): a bytearray of UInt8.
-        val made = if ("{list}" in binding.expr) {
-            PyBinding(binding.expr.replace("{list}", if (isBytes(model.typeOrNull(c) ?: KType.Error)) "bytearray" else "list"))
-        } else {
-            binding
+        val args = rc.args.map { (it as ArgBinding.Given).expr }
+        // In any order these run the same: nothing writes, and at most one may stop the program.
+        val plain = receiver != null && isPlace(receiver) && args.none { model.effect(it) == Effect.IMPURE } &&
+            args.count { model.const(it) == null && !isPlace(it) } <= 1
+        val text = when {
+            plain && binding.statement != null && statementCall === c -> binding.statement
+            plain && binding.place != null -> binding.place
+            else -> binding.expr
         }
-        return bound(made, self, rc.args.map { (it as ArgBinding.Given).expr }, f)
+        // `{list}` is the List the call returns: a bytearray of UInt8.
+        val list = if (isBytes(model.typeOrNull(c) ?: KType.Error)) "bytearray" else "list"
+        return bound(PyBinding(text.replace("{list}", list)), self, args, f)
+    }
+
+    /** A variable, `this` or a field of one: reading it runs nothing and stops nothing. */
+    private fun isPlace(e: Expr): Boolean = when (e) {
+        is ThisExpr -> true
+        is Identifier -> model.symbolOf(e).let { it is LocalSymbol || it is ParamSymbol || it is FieldSymbol || (it is GlobalSymbol && it.module === module) }
+        is MemberAccessExpr -> (model.member(e) as? MemberRef.Field)?.field?.owner.let { isUserClass(it) } && isPlace(e.origin)
+        else -> false
     }
 
     private fun bound(binding: PyBinding, self: ((Int) -> String)?, args: List<Expr>, f: Frame): Py {

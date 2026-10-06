@@ -281,7 +281,8 @@ assert list(mine.faultBits.byValue.items()) == list(oracle.fault_names.items())
 assert list(mine.infoBits.byName.items()) == list(oracle.info_bits.items())
 assert list(mine.nacks.byName.items()) == list(oracle.nack_codes.items())
 assert list(mine.nacks.byValue.items()) == list(oracle.nack_names.items())
-assert list(mine.reasons.byValue) == list(oracle.reason_by_value)
+assert list(mine.reasons.byName.items()) == [(n, r["value"]) for n, r in oracle.reasons.items()]
+assert list(mine.reasons.byValue.items()) == [(v, r["name"]) for v, r in oracle.reason_by_value.items()]
 assert list(mine.enums) == list(oracle.enums)
 assert all(list(mine.enums[n].byName.items()) == list(oracle.enums[n].items()) for n in oracle.enums)
 assert all(list(mine.enums[n].byValue.items()) == list(oracle.enum_names[n].items()) for n in oracle.enums)

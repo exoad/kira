@@ -1,6 +1,7 @@
 package net.exoad.kira.py
 
 import net.exoad.kira.Public
+import net.exoad.kira.compiler.backend.codegen.py.PyBinding
 import net.exoad.kira.compiler.backend.codegen.py.PyBindingTable
 import net.exoad.kira.compiler.backend.codegen.py.PyModuleEmitter
 import net.exoad.kira.compiler.backend.codegen.py.PyRuntime
@@ -934,13 +935,48 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("    m = {}\n    m.__setitem__(k, 1)\n    m[k] = 2\n    g = m.get(k)\n    r = m.pop(k, None)"), py)
+        assertTrue(py.contains("    m = {}\n    m[k] = 1\n    m[k] = 2\n    g = m.get(k)\n    r = m.pop(k, None)"), py)
         assertTrue(py.contains("    ks = list(m)\n    vs = list(m.values())"), py)
         assertTrue(py.contains("    tk = bytearray(t)\n    tv = bytearray(t.values())"), "a List<UInt8> of keys or values is bytes:\n$py")
         assertTrue(py.contains("    f[-1] = x\n"), "a signed key is a key, never an index from the end:\n$py")
         assertTrue(py.contains("    _k_t0 = _key()\n    f[_k_t0] = x + float(_at)"), "the key is located before the value runs (D33):\n$py")
-        assertTrue(py.contains("if m.__contains__(k) and _k_contains(f.values(), x) and not (len(m) == 0):\n        m.clear()"), py)
+        assertTrue(py.contains("if (k in m) and _k_contains(f.values(), x) and not (not m):\n        m.clear()"), py)
         assertTrue(py.contains("    return len(m)"), py)
+    }
+
+    @Test
+    fun putAndContainsKeyTakeTheFasterFormOnlyWhereTheirOrderCannotShow() {
+        val py = python(
+            """
+            mut at: Int32 = 0
+
+            fx key: () Str {
+                at += 1
+                return "k"
+            }
+
+            class Holder {
+                pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
+
+                pub fx mine: () Holder {
+                    return this
+                }
+
+                pub mut fx f: (xs: List<Int32>, k: Str) Bool {
+                    items.put(k, xs[0] + 1)
+                    items.put(key(), 1)
+                    items.put(k + "x", xs[1])
+                    mine().items.put(k, 2)
+                    return items.containsKey(k + "y") && items.containsKey(key())
+                }
+            }
+            """
+        )
+        assertTrue(py.contains("        self.items[k] = _k_i32(xs[0] + 1)\n"), py)
+        assertTrue(py.contains("        self.items.__setitem__(_key(), 1)\n"), "an argument that writes keeps the call's order:\n$py")
+        assertTrue(py.contains("        self.items.__setitem__(k + \"x\", xs[1])\n"), "two that may stop the program keep it:\n$py")
+        assertTrue(py.contains("        self.mine().items.__setitem__(k, 2)\n"), "a receiver a call gives keeps it:\n$py")
+        assertTrue(py.contains("return ((k + \"y\") in self.items) and self.items.__contains__(_key())"), py)
     }
 
     @Test
@@ -1156,6 +1192,9 @@ class PyEmitterTest {
         assertTrue(table.all().size >= 13, "py bindings: ${table.all().keys}")
         table.all().forEach { (key, binding) ->
             assertTrue(binding.isOrdered, "$key: ${binding.expr}")
+            listOfNotNull(binding.place, binding.statement).forEach { alt ->
+                assertEquals(binding.placeholders.sorted(), PyBinding(alt).placeholders.sorted(), "$key: $alt names each of ${binding.expr}'s once")
+            }
             PyRuntime.HELPER.findAll(binding.expr).forEach { assertTrue(it.value in runtime.names, "$key names ${it.value}, which the runtime lacks") }
         }
     }
