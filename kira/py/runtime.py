@@ -79,6 +79,9 @@ def _k_mcopy(m, copy):
     return None if m is None else copy(m)
 
 
+_k_map = _k_builtins.map
+
+
 # enumOf<E>(raw) (D25): the first entry whose C++ value is raw, or none.
 def _k_enumof(order, raw):
     for v in order:

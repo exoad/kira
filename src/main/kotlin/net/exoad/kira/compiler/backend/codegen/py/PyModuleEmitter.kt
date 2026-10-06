@@ -976,9 +976,14 @@ class PyModuleEmitter(
             isBytes(t) -> call("bytearray", v.text)
             isSet(t) -> call("dict", v.text)
             isQueue(t) -> {
-                val items = if (holdsValue(args[0])) "[${copyOf(Py("_k_e$d", PyPrec.ATOM), args[0], d + 1).text} for _k_e$d in ${wrap(v, PyPrec.OR + 1)}]" else v.text
+                val items = when {
+                    isStruct(args[0]) -> clones(v, args[0])
+                    holdsValue(args[0]) -> "[${copyOf(Py("_k_e$d", PyPrec.ATOM), args[0], d + 1).text} for _k_e$d in ${wrap(v, PyPrec.OR + 1)}]"
+                    else -> v.text
+                }
                 Py("${helper("_k_collections")}.deque($items)", PyPrec.POSTFIX)
             }
+            (isList(t) || isStack(t)) && isStruct(args[0]) -> call("list", clones(v, args[0]))
             isList(t) || isStack(t) -> if (holdsValue(args[0])) {
                 Py("[${copyOf(Py("_k_e$d", PyPrec.ATOM), args[0], d + 1).text} for _k_e$d in ${wrap(v, PyPrec.OR + 1)}]", PyPrec.ATOM)
             } else {
@@ -988,6 +993,12 @@ class PyModuleEmitter(
             isMaybe(t) -> call("_k_mcopy", v.text, "lambda _k_m$d: ${copyOf(Py("_k_m$d", PyPrec.ATOM), args[0], d + 1).text}")
             else -> v
         }
+    }
+
+    /** `_k_map(Pt._k_clone, xs)`: a comprehension is a frame of its own before 3.12, which halved how deep a tree of structs could be copied. */
+    private fun clones(v: Py, element: KType): String {
+        val s = (element as KType.Nominal).sym as ClassSymbol
+        return "${helper("_k_map")}(${ref(s, s.decl ?: module.source.ast) ?: "None"}._k_clone, ${v.text})"
     }
 
     private fun raw(e: Expr, f: Frame): Py {

@@ -1531,6 +1531,28 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aListOfStructsIsCopiedThroughMapSoACopyOfATreeCostsOneFramePerLevel() {
+        val py = python(
+            """
+            pub struct Node {
+                pub v: Int32 = 0
+                pub kids: List<Node> = List<Node> { }
+            }
+
+            fx f: (n: Node) Node {
+                mut q: Queue<Node> = Queue<Node> { }
+                q.enqueue(n)
+                mut more: Queue<Node> = q
+                return n
+            }
+            """
+        )
+        assertTrue(py.contains("        c.kids = list(_k_map(Node._k_clone, self.kids))"), py)
+        assertTrue(py.contains("    more = _k_collections.deque(_k_map(Node._k_clone, q))"), py)
+        assertTrue(py.contains("_k_map = _k_builtins.map"), py)
+    }
+
+    @Test
     fun aStructComparedByEqualsOrContainsHasTheMemberwiseEqCppDefaults() {
         val py = python(
             """
