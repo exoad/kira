@@ -17,6 +17,7 @@ import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
+import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
@@ -51,6 +52,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
@@ -66,6 +68,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -102,8 +105,8 @@ import java.util.IdentityHashMap
  *   through, or copied slices of any other element, which only a View, read-only, can be;
  *   kira:bytes reads and writes little-endian through `_k_` helpers that stop the program on a
  *   short view, as kira::View's slice does;
- * - if/else, while, break, continue, return, locals, assignments, calls, constructions, `as`,
- *   if-expressions, interpolation and `trace`.
+ * - if/else, while, for over a range, a List, an Arr or a view (D47), break, continue, return,
+ *   locals, assignments, calls, constructions, `as`, if-expressions, interpolation and `trace`.
  *
  * **Names.** A `pub` declaration keeps its Kira name, so hand-written Python constructs and
  * calls it; a private module declaration or member is `_name`; parameters and locals keep
@@ -470,12 +473,12 @@ class PyModuleEmitter(
             out
         }
         is WhileIterationStatement -> listOf("while ${expr(s.condition, f).text}:") + indent(block(s.statements, f))
+        is ForIterationStatement -> forLoop(s, f)
         is BreakStatement -> listOf("break")
         is ContinueStatement -> listOf("continue")
         else -> {
             if (s.javaClass != Statement::class.java) {
                 val what = when (s.javaClass.simpleName) {
-                    "ForIterationStatement" -> "a for loop (write it as a while loop)"
                     "DoWhileIterationStatement" -> "a do-while loop"
                     "UseStatement" -> "a use statement inside a body"
                     else -> "the statement ${s.javaClass.simpleName}"
@@ -486,6 +489,54 @@ class PyModuleEmitter(
                 exprStatement(s, s.expr, f)
             }
         }
+    }
+
+    private fun forLoop(s: ForIterationStatement, f: Frame): List<String> {
+        val fe = s.forIterationExpr
+        val plan = model.loop(s) ?: return refuse(fe, "a for loop the typer did not resolve").let { emptyList() }
+        val v = plan.variable as? LocalSymbol ?: return refuse(fe, "a for loop without its variable").let { emptyList() }
+        if (plan.isLegacy) {
+            refuse(fe, "the legacy `for mut ${v.name}: ...` loop (D17: write `for ${v.name}: T in ...`)")
+            return emptyList()
+        }
+        checkName(v.name, fe)
+        checkLocalName(v.name, fe)
+        checkType(v.type, fe, "the loop variable '${v.name}'")
+        if (f.scopes.any { v.name in it }) {
+            refuse(fe, "a loop variable '${v.name}' that shadows a local of its name (Python has one scope per function; rename it)")
+        }
+        val target = fe.target
+        val over = when (plan.kind) {
+            LoopKind.RANGE -> {
+                val r = target as? RangeExpr ?: return refuse(fe, "a range loop without a range").let { emptyList() }
+                call("range", wrap(expr(r.begin, f), PyPrec.TERNARY), wrap(expr(r.end, f), PyPrec.TERNARY)).text
+            }
+            LoopKind.LIST, LoopKind.ARR -> {
+                val t = typeOf(target) ?: return emptyList()
+                val it = wrap(expr(target, f), PyPrec.POSTFIX)
+                if (walksUnwritten(target, s.body)) it else copyOf(it, t)
+            }
+            LoopKind.VIEW -> wrap(expr(target, f), PyPrec.TERNARY)
+            LoopKind.MAP -> return refuse(target, "a for loop over a Map (its entries are Tuple2s)").let { emptyList() }
+            else -> return refuse(target, "a for loop over a ${typeOf(target)?.display()}").let { emptyList() }
+        }
+        f.scopes.addLast(hashSetOf(v.name))
+        val body = block(s.body, f)
+        f.scopes.removeLast()
+        return listOf("for ${v.name} in $over:") + indent(body)
+    }
+
+    /** C++ walks a copy of a List the body may write: so does Python, unless nothing but the body could write it. */
+    private fun walksUnwritten(target: Expr, body: List<Statement>): Boolean = when (target) {
+        is Identifier -> when (val sym = model.symbolOf(target)) {
+            is LocalSymbol -> body.none { writesByName(it, sym) }
+            is ParamSymbol -> !sym.byRef && body.none { writesByName(it, sym) }
+            is GlobalSymbol -> !sym.isMut
+            else -> false
+        }
+        is FunctionCallExpr, is ObjectInitExpr, is ArrayLiteral -> true
+        is MemberAccessExpr -> target.member is FunctionCallExpr && model.member(target) !is MemberRef.Field
+        else -> false
     }
 
     private fun exprStatement(s: Statement, e: Expr, f: Frame): List<String> = when (e) {
@@ -714,13 +765,26 @@ class PyModuleEmitter(
      * Whether evaluating [e] writes the local [sym] by name, the one way a local is written
      * while a sibling argument holds it (Python reaches no other function's locals): a `mut`
      * argument rooted at it, a `mut fx` called on it, or a MutView lent from it, as the C++
-     * target's NAMED test reads it.
+     * target's NAMED test reads it. In a statement, also an assignment to it or into it.
      */
-    private fun writesByName(e: Expr, sym: LocalSymbol): Boolean {
+    private fun writesByName(e: ASTNode, sym: Symbol): Boolean {
         var writes = false
         AstTree.walk(e) { n ->
             if (writes || n !is Expr) {
                 return@walk
+            }
+            val assigned = when (n) {
+                is AssignmentExpr -> n.target
+                is CompoundAssignmentExpr -> n.left
+                is PlaceAssignmentExpr -> n.target
+                else -> null
+            }
+            var place = assigned
+            while (place is ArrayIndexExpr) {
+                place = place.originExpr
+            }
+            if (place is Identifier && model.symbolOf(place) === sym) {
+                writes = true
             }
             if (magicName(model.typeOrNull(n)) == "MutView" && rootedAt(n, sym)) {
                 writes = true
@@ -737,7 +801,7 @@ class PyModuleEmitter(
     }
 
     /** Whether [e] is the local [sym] or a view lent from it (`xs.from(1)`, `xs.view().slice(0, 2)`). */
-    private fun rootedAt(e: Expr, sym: LocalSymbol): Boolean = when (e) {
+    private fun rootedAt(e: Expr, sym: Symbol): Boolean = when (e) {
         is Identifier -> model.symbolOf(e) === sym
         is MemberAccessExpr -> (e.member as? FunctionCallExpr)?.let { rootedAt(it, sym) } ?: false
         is FunctionCallExpr -> model.call(e)?.let { rc -> rc.fn?.name in LENDERS && rc.receiver?.let { rootedAt(it, sym) } == true } ?: false

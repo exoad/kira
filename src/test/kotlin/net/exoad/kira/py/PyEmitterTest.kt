@@ -1143,6 +1143,53 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aRangeIsPythonsRangeAndAListThatMayBeWrittenIsWalkedAsACopy() {
+        val py = python(
+            """
+            mut log: List<Int32> = List<Int32> { }
+
+            class Bag {
+                require pub items: List<Int32>
+
+                pub fx total: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
+                    mut t: Int32 = 0
+                    for x: Int32 in items {
+                        t += x
+                    }
+                    for x: Int32 in xs {
+                        t += x
+                    }
+                    for y: Int32 in ys {
+                        t += y
+                    }
+                    for g: Int32 in log {
+                        t += g
+                    }
+                    return t
+                }
+            }
+
+            fx f: (n: Size, v: View<UInt8>) UInt32 {
+                mut t: UInt32 = 0
+                for i: Size in 1..n {
+                    t += i as UInt32
+                }
+                for b: UInt8 in v {
+                    t += b as UInt32
+                }
+                return t
+            }
+            """
+        )
+        assertTrue(py.contains("for i in range(1, n):"), py)
+        assertTrue(py.contains("for b in v:"), py)
+        assertTrue(py.contains("for x in list(self.items):"), py)
+        assertTrue(py.contains("for x in xs:"), py)
+        assertTrue(py.contains("for y in list(ys):"), py)
+        assertTrue(py.contains("for g in list(_log):"), py)
+    }
+
+    @Test
     fun theLadderLowersWithoutARefusal() {
         val ladder = File(PyTestSupport.repoRoot, "src/test/resources/py-golden/ladder/src/firmware/pilot/tools/dash/ladder.kira").readText()
         val e = PyTestSupport.emit(ladder.substringAfter('\n'), uri = "firmware:pilot.tools.dash.ladder")
@@ -1221,16 +1268,43 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aForLoopIsRefused() {
+    fun theLegacyForLoopAndAForLoopOverAMapAreRefused() {
         refused(
             """
             fx f: () Void {
-                for i: Int32 in 0..3 {
+                for mut i: 0..3 {
                     trace(i)
                 }
             }
             """,
-            "a for loop (write it as a while loop)",
+            "the legacy `for mut i: ...` loop",
+        )
+        refused(
+            """
+            fx f: (m: Map<Str, Int32>) Void {
+                for e: Tuple2<Str, Int32> in m {
+                    trace(e.second)
+                }
+            }
+            """,
+            "a for loop over a Map",
+        )
+    }
+
+    @Test
+    fun aLoopVariableThatShadowsALocalIsRefused() {
+        refused(
+            """
+            fx f: () Void {
+                i: Int32 = 0
+                if i == 0 {
+                    for i: Int32 in 0..3 {
+                        trace(i)
+                    }
+                }
+            }
+            """,
+            "a loop variable 'i' that shadows a local of its name",
         )
     }
 

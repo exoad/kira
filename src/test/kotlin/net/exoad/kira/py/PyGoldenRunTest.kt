@@ -30,7 +30,8 @@ import kotlin.test.assertTrue
  * names and dbwcli.py's rtt_samples, and connbook bibodash.py's Conn, against the hand-written
  * ones, each dict's keys in order. modules is a program of four modules in two directories, one
  * used by two others, two in a use cycle, calling kira:math's Kira-written functions: the module
- * with the main is run. Skipped when no Python is found (set KIRA_PYTHON).
+ * with the main is run; forloops walks ranges, Lists, Arrs and views. Skipped when no Python is
+ * found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")
