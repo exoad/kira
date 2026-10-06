@@ -140,4 +140,55 @@ class NullSafetyTest {
             "isSome/isNone must remain callable, got: $messages"
         )
     }
+
+    @Test
+    fun aMaybeLocalDoesNotReachTheSameNameInAnotherFunction() {
+        val messages = diagnosticsFor(
+            """
+            fx first: () Void {
+                s: Maybe<Str> = null
+            }
+
+            fx second: (s: Str) Size {
+                mut b: Size = s.length()
+                trace(s.length())
+                c: Size = if b > 0 { s.length() } else { b }
+                return c
+            }
+            """,
+            "test:nullsafety.scope"
+        )
+
+        assertTrue(
+            messages.none { it.contains("not available on a 'Maybe'") },
+            "the Str parameter s is the s in scope, got: $messages"
+        )
+    }
+
+    @Test
+    fun valueAndIsNullAreTheMaybeApi() {
+        val messages = diagnosticsFor(
+            """
+            fx find: () Maybe<Str> {
+                return null
+            }
+
+            fx read: () Str {
+                m: Maybe<Str> = find()
+                if m.isNull() {
+                    return ""
+                }
+                x: Str = m.value
+                y: Bool = m.isNull()
+                return x
+            }
+            """,
+            "test:nullsafety.d40"
+        )
+
+        assertTrue(
+            messages.none { it.contains("not available on a 'Maybe'") },
+            "value and isNull are Maybe's own members (D40), got: $messages"
+        )
+    }
 }

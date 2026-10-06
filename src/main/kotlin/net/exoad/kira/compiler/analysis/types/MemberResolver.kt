@@ -160,8 +160,7 @@ internal class MemberResolver(private val c: PhaseC) {
         }
     }
 
-    /** The Maybe API: the only members reachable on a `Maybe<T>` without unwrapping (D40). */
-    val maybeApi = setOf("isSome", "isNone", "isNull", "unwrap", "unwrapOr", "value")
+    val maybeApi = MAYBE_API
 
     /**
      * `a.b` as a value: an enum entry, a module's member, or a field. A method named without a
@@ -273,5 +272,10 @@ internal class MemberResolver(private val c: PhaseC) {
         }
         c.report("types.member.unknown", noMember(receiver, "field or method", name), member)
         return KType.Error
+    }
+
+    companion object {
+        /** The Maybe API: the only members reachable on a `Maybe<T>` without unwrapping (D40). */
+        val MAYBE_API = setOf("isSome", "isNone", "isNull", "unwrap", "unwrapOr", "value")
     }
 }
