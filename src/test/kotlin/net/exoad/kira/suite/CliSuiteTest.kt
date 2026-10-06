@@ -194,6 +194,17 @@ class CliSuiteTest {
     }
 
     @Test
+    fun anEmptySourceFileIsADiagnosticNotACrash() {
+        val dir = tempProject("empty-source", basicManifest(), mapOf("src/app/main.kira" to ""))
+        val result = runCli(dir)
+        val output = result.stdout + result.stderr
+        assertEquals(1, result.exitCode, output)
+        assertTrue(output.contains("must be a module declaration"), output)
+        assertFalse(output.contains("Exception in thread"), output)
+        assertFalse(output.contains("at net.exoad."), output)
+    }
+
+    @Test
     fun panicsOnLegacyTomlManifest() {
         val dir = tempProject(
             "legacy-toml",

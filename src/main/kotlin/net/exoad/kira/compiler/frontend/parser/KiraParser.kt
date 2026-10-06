@@ -82,10 +82,20 @@ class KiraParser(private val context: SourceContext) {
      */
     fun parse() {
         val statements = mutableListOf<Statement>()
-        while (!at(Token.Type.S_EOF)) {
-            statements.add(parseStatement(null))
+        try {
+            while (!at(Token.Type.S_EOF)) {
+                statements.add(parseStatement(null))
+            }
+        } catch (_: StackOverflowError) {
+            Diagnostics.panic(
+                "KiraParser::parse",
+                "This nests too deeply to parse; split it into smaller expressions or declarations.",
+                context = context,
+                location = here(),
+                selectorLength = max(1, peek().content.length)
+            )
         }
-        if (statements.first().expr !is ModuleDecl) {
+        if (statements.firstOrNull()?.expr !is ModuleDecl) {
             Diagnostics.panic(
                 "KiraParser::parse",
                 "The first declaration of ${context.file} must be a module declaration!",

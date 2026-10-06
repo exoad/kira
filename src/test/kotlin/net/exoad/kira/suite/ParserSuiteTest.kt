@@ -1,6 +1,7 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
+import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
@@ -13,6 +14,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
@@ -706,5 +708,32 @@ class ParserSuiteTest {
         assertThrows<Throwable> {
             parseModule("fx main: () Void { \$ }")
         }
+    }
+
+    @Test
+    fun anEmptySourceIsADiagnostic() {
+        val e = assertThrows<DiagnosticsException> { parse("") }
+        assertTrue(e.message.contains("must be a module declaration"), e.message)
+    }
+
+    @Test
+    fun aThreeLevelGenericInitialiserParses() {
+        val ast = parseModule(
+            """
+            fx main: () Void {
+                m: Map<Str, Map<Str, Map<Str, Int32>>> = Map<Str, Map<Str, Map<Str, Int32>>> { }
+            }
+            """
+        )
+        val body = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!
+        assertIs<ObjectInitExpr>(assertIs<VariableDecl>(body.single().expr).value)
+    }
+
+    @Test
+    fun nestingTooDeepIsALocatedDiagnostic() {
+        val deep = "(".repeat(50_000) + "1" + ")".repeat(50_000)
+        val e = assertThrows<DiagnosticsException> { parseModule("x: Int32 = $deep") }
+        assertTrue(e.message.contains("nests too deeply"), e.message)
+        assertEquals(2, e.location?.lineNumber)
     }
 }
