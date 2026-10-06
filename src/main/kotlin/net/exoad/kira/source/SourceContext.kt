@@ -33,6 +33,9 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
      */
     lateinit var astIntrinsicInvocations: IdentityHashMap<ASTNode, List<IntrinsicExpr>>
 
+    /** The expressions written inside parentheses, which the AST does not keep. */
+    val astParenthesized: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
+
     /** The marker invocations on [node], with their arguments; empty when it has none. */
     fun <T : ASTNode> intrinsicInvocationsOf(node: T): List<IntrinsicExpr> {
         if (!::astIntrinsicInvocations.isInitialized) {

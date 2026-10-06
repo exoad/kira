@@ -1,0 +1,17 @@
+module "fixture:body.castwarn"
+
+// A cast outside parentheses in the right operand of a shift or a bitwise operator reads as Kotlin
+// reads it, `as` before every binary operator, where it read the other way before: a warning.
+
+pub fx casts: (v: UInt32, n: Int32, x: UInt8, y: Int32) Void {
+    a: UInt32 = v >> n as UInt8             // @warn types.cast.precedence
+    b: UInt32 = v << n as UInt8             // @warn types.cast.precedence
+    c: UInt32 = v >>> n as UInt8            // @warn types.cast.precedence
+    d: UInt8 = x & y as UInt8               // @warn types.cast.precedence
+    e: UInt8 = x | y as UInt8 + 1           // @warn types.cast.precedence
+    f: UInt8 = x ^ y as UInt8               // @warn types.cast.precedence
+    g: UInt32 = v >> (n as UInt8)           // @type UInt32
+    h: UInt8 = (v >> n) as UInt8            // @type UInt8 conv=INT_WRAP
+    i: Int32 = n + y as Int32               // @type Int32
+    j: UInt32 = v as UInt32 >> n            // @type UInt32
+}

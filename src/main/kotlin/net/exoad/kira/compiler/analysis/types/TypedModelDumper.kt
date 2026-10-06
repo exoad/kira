@@ -493,6 +493,9 @@ object KiraUnparser {
 
     private val CAST = BinaryOp.TYPE_CAST.precedence
 
+    /** [e] as the operand of an operator of precedence [parent], parenthesized where that needs it. */
+    fun operand(e: Expr, parent: Int): String = expr(e, parent)
+
     private fun precedenceOf(e: Expr): Int = when (e) {
         is BinaryExpr -> e.operator.precedence
         is UnaryExpr -> e.operator.precedence

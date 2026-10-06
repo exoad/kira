@@ -963,6 +963,7 @@ class KiraParser(private val context: SourceContext) {
                 advancePointer()
                 val expr = withNoObjectInit(false) { parseExpr() }
                 expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+                context.astParenthesized.add(expr)
                 expr
             }
 
