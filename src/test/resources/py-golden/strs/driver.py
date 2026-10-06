@@ -4,7 +4,7 @@
 # slice stops short and an index past the end is Python's IndexError, Kira's index panic), then
 # text past ASCII: the py target's one rule for text is that a Str counts code points, where C++
 # counts the bytes of its UTF-8 (10 for "héllo €"); the case changes, trim and hashCode
-# are C++'s for any text, hashCode being djb2 over the UTF-8 (C++ gives 8246534910121424176).
+# are C++'s for valid UTF-8, hashCode being djb2 over it (C++ gives 8246534910121424176).
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util

@@ -86,8 +86,9 @@ import java.util.IdentityHashMap
  * - Bool, Str (a Python str, whose lengths and indices count code points where C++ counts UTF-8
  *   bytes: the same for ASCII; its methods are kira::str's through core.bind.yaml), Char (its
  *   code point, an int: a literal is its code, `s[i]` is ord() of the character, its text is
- *   chr() of it; a View<Char> is refused, as text is a Str), the integers, Float64, Maybe<T>
- *   (None or the value), List<T> and Arr<T> (and
+ *   chr() of it, so one from 128 to 255 is a Latin-1 code point where C++ writes the raw byte,
+ *   and only an ASCII Char agrees; a View<Char> is refused, as text is a Str), the integers,
+ *   Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
  *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict, whose order is
  *   kira::Map's (D27), keyed by a Str, an integer, a Bool or a Char (`m[k] = v` puts; entries, a
  *   List of Tuple2, is refused), and the module's own classes.
@@ -872,8 +873,10 @@ class PyModuleEmitter(
         val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
         val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
             ?: return refusePy(c, "'${keys.firstOrNull() ?: fn.name}' (it has no py binding)")
-        if (c.namedParameters.isNotEmpty() || rc.args.any { it !is ArgBinding.Given }) {
-            return refusePy(c, "a call of '${fn.name}' with named or defaulted arguments")
+        // Python evaluates a binding's arguments in parameter order: named ones are taken only
+        // where that is the order they were written in (D33).
+        if (rc.args.any { it !is ArgBinding.Given } || rc.sourceOrder != rc.args.indices.toList()) {
+            return refusePy(c, "a call of '${keys.firstOrNull() ?: fn.name}' with defaulted arguments, or named ones out of its parameters' order")
         }
         val self: ((Int) -> String)? = receiver?.let { r ->
             { prec ->

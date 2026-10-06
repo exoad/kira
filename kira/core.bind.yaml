@@ -62,11 +62,14 @@
 # rather than -1, split keeps empty pieces and gives the text back whole for an empty delimiter
 # (Python raises), trim takes space, tab, CR and LF only, the case changes touch A-Z and a-z
 # only, toInt64 and toFloat64 are the strict parsers (_k_toint, _k_tofloat), and hashCode is
-# djb2 over the UTF-8, C++'s number for any text. A Char is its code point, an int: `at` and
-# s[i] are ord() of the character, padStart is rjust (it never cuts, as kira::str's), and a
-# Char's text is chr() of it. A View<Char> (Str.view) has no py binding: text is a Str there.
-# bytes (D54) is the text's UTF-8 on both targets (_k_utf8, a bytearray), so its size is the
-# C++ target's length() for any text. Str.of(bytes) (D55) has no Kira declaration: the typer
+# djb2 over the UTF-8, the C++ target's number for text that is valid UTF-8 there. A Char is
+# its code point, an int: `at` and s[i] are ord() of the character, padStart is rjust (it never
+# cuts, as kira::str's), and a Char's text is chr() of it, so a Char from 128 to 255 is the
+# Latin-1 code point U+0080..U+00FF (two UTF-8 bytes) where the C++ target writes the raw byte:
+# only an ASCII Char gives both targets the same text. A View<Char> (Str.view) has no py
+# binding: text is a Str there. bytes (D54) is the text's UTF-8 (_k_utf8, a bytearray): for
+# text that is valid UTF-8 on the C++ target, the same bytes, and its size that target's
+# length(). Str.of(bytes) (D55) has no Kira declaration: the typer
 # special-cases it as it does Result.success, one magic FnSymbol keyed `Str.of`. It reads UTF-8,
 # each maximal ill-formed subpart one U+FFFD, the same text on both targets for any bytes
 # (kira::str::of, and bytes.decode("utf-8", "replace") on py).

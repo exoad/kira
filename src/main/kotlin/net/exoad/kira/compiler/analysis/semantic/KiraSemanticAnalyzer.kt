@@ -325,6 +325,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         checkNamedArguments(functionCallExpr)
     }
 
+    /**
+     * The callables the typer makes, which no declaration names (D39, D55), by `Type.name`, and
+     * their parameters' names.
+     */
+    private val compilerMadeParameters = mapOf(
+        "Result.success" to listOf("value"),
+        "Result.error" to listOf("value"),
+        "Str.of" to listOf("bytes"),
+    )
+
     /** Top-level function name -> parameter names, across every source. */
     private val functionParameterNames = mutableMapOf<String, List<String>>()
 
@@ -355,7 +365,23 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 parameterNames = functionParameterNames[calleeName]
             }
             is MemberAccessExpr -> {
-                calleeName = (callee.member as? Identifier)?.value ?: "(member)"
+                val simple = (callee.member as? Identifier)?.value ?: "(member)"
+                val made = (callee.origin as? Identifier)?.let { compilerMadeParameters["${it.value}.$simple"] }
+                if (made != null) {
+                    // Result.success(value = v), Str.of(bytes = b): called on the type, bound by the typer.
+                    val name = "${(callee.origin as Identifier).value}.$simple"
+                    val binding = NamedArguments.bind(call, name, made)
+                    if (binding is NamedArguments.Binding.Unbound) {
+                        pump(
+                            binding.message,
+                            location = location,
+                            selectorLength = simple.length,
+                            help = "Named arguments bind to the callee's parameter names; positional arguments come first."
+                        )
+                    }
+                    return
+                }
+                calleeName = simple
                 val candidates = methodParameterNames[calleeName].orEmpty()
                 if (candidates.size > 1) {
                     pump(
