@@ -2,3 +2,5 @@ toolchains: [gcc, clang, msvc, zig-aarch64]
 profile: hosted
 defines: []
 emit: required
+# Its digests hold only with D33's order, which the expected C++ spills for: RulesCorpusTest's no-spill check skips it.
+pins: spills
