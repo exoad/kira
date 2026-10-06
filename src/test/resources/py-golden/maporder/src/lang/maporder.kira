@@ -1,0 +1,187 @@
+module "lang:maporder"
+
+// A Map keeps its keys in insertion order (D27) on both targets: a new key goes last, a put of a
+// key it holds keeps its place and takes the value, a removed key put again goes last. get and
+// remove are a Maybe, none for a missing key; m[k] = v puts, its key located before its value
+// runs (D33). Keys are Str, the integers, Bool and Char; a List<UInt8> of keys or values is the
+// target's bytes. The expected output is the C++ backend's run of this same module.
+
+mut ticks: Int32 = 0
+mut keyAt: Int32 = 0
+mut seen: Map<Str, Int32> = Map<Str, Int32> { }
+
+fx next: () Int32 {
+    ticks += 1
+    return ticks
+}
+
+fx nextKey: () Str {
+    keyAt += 1
+    return "k${keyAt}"
+}
+
+fx keysOf: (m: Map<Str, Int32>) Str {
+    ks: Arr<Str> = m.keys()
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < ks.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${ks[i]}=${m.get(ks[i]).unwrapOr(-1)}"
+        i += 1
+    }
+    return "{" + s + "}"
+}
+
+fx valuesOf: (m: Map<Str, Int32>) Str {
+    vs: Arr<Int32> = m.valuesArr()
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < vs.size() {
+        s = s + " ${vs[i]}"
+        i += 1
+    }
+    return "[" + s + " ]"
+}
+
+fx bytesText: (b: Arr<UInt8>) Str {
+    mut s: Str = ""
+    mut i: Size = 0
+    while i < b.size() {
+        s = s + " ${b[i]}"
+        i += 1
+    }
+    return "bytes${s} (${b.size()})"
+}
+
+fx maybeText: (v: Maybe<Int32>) Str {
+    if v.isSome() {
+        return "some ${v.value}"
+    }
+    return "none"
+}
+
+class Index {
+    pub mut byName: Map<Str, Int32> = Map<Str, Int32> { }
+    pub mut count: Int32 = 0
+
+    pub mut fx add: (name: Str) Int32 {
+        if !byName.containsKey(name) {
+            count += 1
+            byName[name] = count
+        }
+        return byName.get(name).value
+    }
+}
+
+fx main: () Void {
+    mut m: Map<Str, Int32> = Map<Str, Int32> { }
+    trace(m.isEmpty())
+    m.put("b", 1)
+    m.put("a", 2)
+    m["c"] = 3
+    trace(keysOf(m))
+    m.put("b", 10)
+    m["a"] = 20
+    trace(keysOf(m))
+    trace(valuesOf(m))
+    trace(maybeText(m.remove("b")))
+    trace(maybeText(m.remove("b")))
+    trace(keysOf(m))
+    m.put("b", 100)
+    trace(keysOf(m))
+    trace(maybeText(m.get("a")))
+    trace(maybeText(m.get("zz")))
+    trace(m.get("zz").unwrapOr(7))
+    trace(m.size())
+    trace(m.containsKey("c"))
+    trace(m.containsKey("C"))
+    trace(m.containsValue(100))
+    trace(m.containsValue(2))
+    trace(m.isEmpty())
+
+    // m[k] = v locates its key before its value runs; a value that reads the Map sees it without the key
+    m["n"] = m.size() as Int32
+    trace(keysOf(m))
+    m[nextKey()] = next()
+    m[nextKey()] = next() + keyAt
+    trace(keysOf(m))
+    m.clear()
+    trace(m.size())
+    trace(keysOf(m))
+    m["k9"] = 9
+    m.put("k1", 1)
+    trace(keysOf(m))
+
+    // a removed key in the middle: the ones after it move up, in order
+    mut order: Map<Int32, Str> = Map<Int32, Str> { }
+    mut i: Int32 = -3
+    while i <= 3 {
+        order[i * 7] = "v${i}"
+        i += 1
+    }
+    order.remove(0)
+    order.remove(-21)
+    order[0] = "back"
+    order[-7] = "again"
+    ks: Arr<Int32> = order.keys()
+    mut line: Str = ""
+    mut j: Size = 0
+    while j < ks.size() {
+        line = line + " ${ks[j]}:${order.get(ks[j]).value}"
+        j += 1
+    }
+    trace(line)
+
+    // Bool, Char and UInt8 keys; a List<UInt8> of keys or values is bytes
+    mut flags: Map<Bool, Int32> = Map<Bool, Int32> { }
+    flags[true] = 1
+    flags[false] = 2
+    flags[true] = 3
+    trace(flags.get(true).value * 10 + flags.get(false).value)
+    trace(flags.size())
+    mut chars: Map<Char, Int32> = Map<Char, Int32> { }
+    chars['z'] = 26
+    chars['a'] = 1
+    cs: Arr<Char> = chars.keys()
+    trace("${cs[0]}${cs[1]} ${chars.get('a').value}")
+    mut table: Map<UInt8, UInt8> = Map<UInt8, UInt8> { }
+    table[0xFE] = 1
+    table[3] = 0x80
+    table[0x10] = 255
+    table[3] = 7
+    trace(bytesText(table.keys()))
+    trace(bytesText(table.valuesArr()))
+    mut wide: Map<UInt64, Int64> = Map<UInt64, Int64> { }
+    mut top: UInt64 = 0
+    top -= 1
+    wide[top] = -9223372036854775807
+    wide[0] = 1
+    trace(wide.get(top).value)
+    trace(wide.keys()[0])
+    mut signed: Map<Int8, Bool> = Map<Int8, Bool> { }
+    signed[-128] = true
+    trace(signed.containsKey(-128))
+    trace(signed.containsKey(127))
+
+    // Float64 values: containsValue compares with ==, so a NaN is never found
+    mut f: Map<Str, Float64> = Map<Str, Float64> { }
+    nan: Float64 = 0.0 / 0.0
+    f["nan"] = nan
+    f["zero"] = -0.0
+    trace(f.containsValue(nan))
+    trace(f.containsValue(0.0))
+    trace(f.size())
+
+    // a field and a global
+    mut ix: Index = Index { }
+    trace(ix.add("x"))
+    trace(ix.add("y"))
+    trace(ix.add("x"))
+    trace(ix.byName.size())
+    seen["one"] = 1
+    seen.put("two", 2)
+    seen["one"] = 11
+    trace(keysOf(seen))
+}

@@ -863,6 +863,98 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aMapIsADictAndItsMethodsBindToItsOwn() {
+        val py = python(
+            """
+            mut at: Int32 = 0
+
+            fx key: () Int32 {
+                at += 1
+                return at
+            }
+
+            fx f: (k: Str, x: Float64) Size {
+                mut m: Map<Str, Int32> = Map<Str, Int32> { }
+                m.put(k, 1)
+                m[k] = 2
+                g: Maybe<Int32> = m.get(k)
+                r: Maybe<Int32> = m.remove(k)
+                ks: Arr<Str> = m.keys()
+                vs: Arr<Int32> = m.valuesArr()
+                mut t: Map<UInt8, UInt8> = Map<UInt8, UInt8> { }
+                t[1] = 2
+                tk: Arr<UInt8> = t.keys()
+                tv: Arr<UInt8> = t.valuesArr()
+                mut f: Map<Int32, Float64> = Map<Int32, Float64> { }
+                f[-1] = x
+                f[key()] = x + (at as Float64)
+                if m.containsKey(k) && f.containsValue(x) && !m.isEmpty() {
+                    m.clear()
+                }
+                return m.size()
+            }
+            """
+        )
+        assertTrue(py.contains("    m = {}\n    m.__setitem__(k, 1)\n    m[k] = 2\n    g = m.get(k)\n    r = m.pop(k, None)"), py)
+        assertTrue(py.contains("    ks = list(m)\n    vs = list(m.values())"), py)
+        assertTrue(py.contains("    tk = bytearray(t)\n    tv = bytearray(t.values())"), "a List<UInt8> of keys or values is bytes:\n$py")
+        assertTrue(py.contains("    f[-1] = x\n"), "a signed key is a key, never an index from the end:\n$py")
+        assertTrue(py.contains("    _k_t0 = _key()\n    f[_k_t0] = x + float(_at)"), "the key is located before the value runs (D33):\n$py")
+        assertTrue(py.contains("if m.__contains__(k) and _k_contains(f.values(), x) and not (len(m) == 0):\n        m.clear()"), py)
+        assertTrue(py.contains("    return len(m)"), py)
+    }
+
+    @Test
+    fun aMapIsCopiedWhereASecondNameCouldSeeAWriteAsAListIs() {
+        val py = python(
+            """
+            mut seed: Map<Str, Int32> = Map<Str, Int32> { }
+
+            class Holder {
+                require pub mut items: Map<Str, Int32>
+
+                pub fx snapshot: () Map<Str, Int32> {
+                    return items
+                }
+
+                pub mut fx reset: (mut xs: Map<Str, Int32>) Void {
+                    items = Map<Str, Int32> { }
+                    xs["r"] = 1
+                }
+            }
+
+            fx count: (xs: Map<Str, Int32>) Size {
+                seed["n"] = 1
+                return xs.size()
+            }
+
+            fx fill: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
+                xs = ys
+                xs["f"] = 2
+            }
+
+            fx f: (h: Holder) Size {
+                mut a: Map<Str, Int32> = Map<Str, Int32> { }
+                mut b: Map<Str, Int32> = a
+                fill(mut a, seed)
+                fill(mut h.items, a)
+                h.reset(mut h.items)
+                seed = a
+                k: Holder = Holder { a }
+                return count(seed) + b.size()
+            }
+            """
+        )
+        assertTrue(py.contains("        self.items = dict(items)"), "__init__ stores a copy of what it is given:\n$py")
+        assertTrue(py.contains("        return dict(self.items)"), "a field returned is copied:\n$py")
+        assertTrue(py.contains("        _k_mapset(self.items, {})\n        xs[\"r\"] = 1"), "a field keeps its dict, which a mut parameter may be:\n$py")
+        assertTrue(py.contains("def _fill(xs, ys):\n    _k_mapset(xs, ys)\n    xs[\"f\"] = 2"), py)
+        assertTrue(py.contains("    b = dict(a)\n    _fill(a, dict(_seed))\n    _fill(h.items, a)\n    h.reset(h.items)\n    _k_mapset(_seed, a)\n    k = _Holder(a)"), py)
+        assertTrue(py.contains("_count(dict(_seed))"), "a callee that writes may write the global it is given:\n$py")
+        assertTrue(py.contains("def _k_mapset(m, v):\n    if m is not v:\n        m.clear()\n        m.update(v)"), py)
+    }
+
+    @Test
     fun aListOfUInt8IsABytearrayAndAnArrAList() {
         val py = python(
             """
@@ -1143,14 +1235,14 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMutParameterOtherThanAListIsRefused() {
+    fun aMutParameterOtherThanAListOrAMapIsRefused() {
         refused(
             """
             fx f: (mut x: Int32) Void {
                 x = 1
             }
             """,
-            "the mut parameter 'x': Int32 (only a List is passed by reference)",
+            "the mut parameter 'x': Int32 (only a List or a Map is passed by reference)",
         )
     }
 
@@ -1334,15 +1426,132 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMapIsRefused() {
+    fun aMapKeyedByAFloatIsRefusedAsANaNKeyDiffersBetweenTheTargets() {
+        refused(
+            """
+            fx f: () Size {
+                m: Map<Float64, Int32> = Map<Float64, Int32> { }
+                return m.size()
+            }
+            """,
+            "a Map<Float64, Int32> (a float key: a NaN key differs between kira::Map and a dict)",
+        )
+    }
+
+    @Test
+    fun aMapKeyedByAClassOrAnEnumIsRefused() {
+        refused(
+            """
+            class Box {
+                pub v: Int32 = 0
+            }
+
+            fx f: (m: Map<Box, Int32>) Size {
+                return m.size()
+            }
+            """,
+            "a Map<Box, Int32> (a Map's key is a Str, an integer, a Bool or a Char)",
+        )
+        refused(
+            """
+            enum Gear {
+                LOW,
+                HIGH
+            }
+
+            fx f: (m: Map<Gear, Int32>) Size {
+                return m.size()
+            }
+            """,
+            "the enum Gear",
+        )
+    }
+
+    @Test
+    fun aMapOfAContainerOrAMaybeAndAContainerOfAMapAreRefused() {
+        refused(
+            """
+            fx f: (m: Map<Str, List<UInt8>>) Size {
+                return m.size()
+            }
+            """,
+            "a Map<Str, List<UInt8>> (a Map's value is no Maybe, List, Arr, view or Map)",
+        )
+        refused(
+            """
+            fx f: (m: Map<Str, Map<Str, Int32>>) Size {
+                return m.size()
+            }
+            """,
+            "a Map<Str, Map<Str, Int32>> (a Map's value is no Maybe, List, Arr, view or Map)",
+        )
+        refused(
+            """
+            fx f: (m: Map<Str, Maybe<Int32>>) Size {
+                return m.size()
+            }
+            """,
+            "a Map<Str, Maybe<Int32>> (a Map's value is no Maybe, List, Arr, view or Map)",
+        )
+        refused(
+            """
+            fx f: (ms: List<Map<Str, Int32>>) Size {
+                return ms.size()
+            }
+            """,
+            "a List<Map<Str, Int32>>",
+        )
+    }
+
+    @Test
+    fun aMapsEntriesAndAMapBuiltFromEntriesAreRefusedAsATuple2IsNotOnThePyTarget() {
+        refused(
+            """
+            fx f: (m: Map<Str, Int32>) Size {
+                return m.entries().size()
+            }
+            """,
+            "Map.entries (a Tuple2 is not on the py target: read keys() and get(k))",
+        )
+        refused(
+            """
+            use "kira:tuples"
+
+            fx f: () Size {
+                m: Map<Str, Int32> = Map<Str, Int32> { values = [Tuple2<Str, Int32> { first = "a", second = 1 }] }
+                return m.size()
+            }
+            """,
+            "a Map construction with entries (a Tuple2 is not on the py target: put each one)",
+        )
+    }
+
+    @Test
+    fun aCompoundAssignmentThroughAMapIndexIsTheTypersErrorNotTheTargets() {
+        val e = PyTestSupport.emit(
+            """
+            fx f: () Size {
+                mut m: Map<Str, Int32> = Map<Str, Int32> { }
+                m["a"] += 1
+                return m.size()
+            }
+            """
+        )
+        assertNull(e.text)
+        assertTrue(e.errors.any { it.contains("types.index.map-read") }, e.errors.joinToString("\n"))
+        assertTrue(e.errors.none { it.contains(PyModuleEmitter.UNSUPPORTED_CODE) }, e.errors.joinToString("\n"))
+    }
+
+    @Test
+    fun dictIsANamePythonReserves() {
         refused(
             """
             fx f: () Int32 {
-                m: Map<Str, Int32> = Map<Str, Int32> { }
-                return 0
+                dict: Int32 = 1
+                return dict
             }
             """,
-            "the type Map",
+            "'dict' is a name generated Python uses",
         )
     }
 

@@ -24,8 +24,9 @@ import kotlin.test.assertTrue
  * big-endian set at the end of its views as shortview does; strs runs its main, then its panics
  * and the py target's one rule for text, a length counting code points; utf8of holds Str.of
  * against Python's decoder over every 1- and 2-byte sequence and more; strings makes
- * cpp-golden/strings' checks one for one, its expected output that case's. Skipped when no
- * Python is found (set KIRA_PYTHON).
+ * cpp-golden/strings' checks one for one, its expected output that case's. maporder holds a Map's
+ * order (a key put again keeps its place, one removed and put again goes last) and mapaliases its
+ * copies, as aliases does a List's. Skipped when no Python is found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")

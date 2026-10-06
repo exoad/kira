@@ -234,7 +234,7 @@ object PyNames {
 
     /** The builtins generated code and the runtime call by name, which a Kira name would shadow, and `self`. */
     val RESERVED = setOf(
-        "self", "abs", "bool", "chr", "float", "int", "len", "list", "max", "min", "ord", "print", "str", "object",
+        "self", "abs", "bool", "chr", "dict", "float", "int", "len", "list", "max", "min", "ord", "print", "str", "object",
         "isinstance", "bytes", "bytearray", "memoryview", "RuntimeError", "ValueError", "OverflowError",
     )
 

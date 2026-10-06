@@ -344,8 +344,8 @@ def _k_strhash(s):
     return h - 0x10000000000000000 if h >> 63 else h
 
 
-# List.contains compares with ==, as kira::list::contains does: a NaN is in no List. Python's
-# `in` takes an element that is the very object first, NaN included.
+# List.contains and Map.containsValue compare with ==, as kira::list::contains and kira::Map
+# do: a NaN is in no List. Python's `in` takes an element that is the very object first.
 def _k_contains(xs, v):
     return v == v and v in xs
 
@@ -354,6 +354,14 @@ def _k_contains(xs, v):
 # bytearray of bytes (a memoryview's included).
 def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
+
+
+# A Map field, global or mut parameter assigned keeps its dict and takes the new entries in
+# their order, as `xs[:] = v` keeps a List's list, so a mut parameter bound to it still names it.
+def _k_mapset(m, v):
+    if m is not v:
+        m.clear()
+        m.update(v)
 
 
 # View.from and View.slice (a List's, an Arr's, a MutView's) are checked as kira::View's are: a
