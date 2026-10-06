@@ -483,7 +483,7 @@ class PyEmitterTest {
             """
         )
         assertTrue(py.contains("_SEP = 58"), "a Char constant is its code:\n$py")
-        assertTrue(py.contains("        self.last = 120\n        self.none = 0"), "a Char's zero value is 0:\n$py")
+        assertTrue(py.contains("        self.last = 120 if last is _k_unset else last\n        self.none = 0 if none is _k_unset else none"), "a Char's zero value is 0:\n$py")
         assertTrue(py.contains("return ord(s[i]) >= 48 and ord(s[i]) <= 57 and ord(s[i]) != _SEP"), py)
         assertTrue(py.contains("return _k_i32(c - 48)"), "an integer type that holds every code point takes the code as it is:\n$py")
         assertTrue(py.contains("return _k_u8(c)"), "a narrower one wraps it:\n$py")
@@ -557,7 +557,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("class Meter:"), py)
         assertTrue(py.contains("__slots__ = (\"start\", \"_scale\", \"reading\", \"_ticks\")"), py)
-        assertTrue(py.contains("def __init__(self, start, scale):"), py)
+        assertTrue(py.contains("def __init__(self, start, scale, reading=_k_unset):"), py)
         assertTrue(py.contains("def tick(self):"), py)
         assertTrue(py.contains("def _hidden(self):"), py)
         assertTrue(py.contains("def _helper():"), py)
@@ -634,7 +634,7 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("    def __init__(self):\n        global _made\n        self.id = 0\n        _made = _k_i32(_made + 1)\n        self.id = _made"), py)
+        assertTrue(py.contains("    def __init__(self, id=_k_unset):\n        global _made\n        self.id = 0 if id is _k_unset else id\n        _made = _k_i32(_made + 1)\n        self.id = _made"), py)
     }
 
     @Test
@@ -979,7 +979,7 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("        self.data = bytearray()\n        self.words = [0] * 3"), py)
+        assertTrue(py.contains("        self.data = bytearray() if data is _k_unset else bytearray(data)\n        self.words = [0] * 3 if words is _k_unset else list(words)"), py)
         assertTrue(py.contains("    out = bytearray((255, 216))\n    one = bytearray((7,))\n    ints = [1, 2]\n    p = bytearray(4)\n    p[1] = 3"), py)
         assertTrue(py.contains("    copy = bytearray(a)"), "a List made from an Arr copies it:\n$py")
         assertTrue(py.contains("    out.extend(_k_copy(xs))\n    out.extend(_k_copy(a))"), py)
@@ -1190,12 +1190,54 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aDefaultIsTheDefsOwnWhenItFoldsAndAPubFieldIsAKeywordOfInit() {
+        val py = python(
+            """
+            pub ROW: List<Int32> = [1, 2]
+
+            class Knob {
+                require pub name: Str
+                pub mut level: Int32 = 3
+                pub mut tags: List<Int32> = List<Int32> { }
+                mut hidden: Int32 = 9
+            }
+
+            class Pair {
+                require pub left: Knob
+            }
+
+            fx scale: (x: Int32, k: Int32 = 2, s: Str = "a", m: Maybe<Int32> = null) Int32 {
+                return x * k
+            }
+
+            fx total: (xs: List<Int32> = ROW, extra: Int32 = 0) Size {
+                return xs.size()
+            }
+
+            fx f: () Int32 {
+                a: Knob = Knob { "a" }
+                b: Knob = Knob { "b", 4 }
+                return scale(1) + scale(1, k = 5) + (total() as Int32) + a.level + b.level
+            }
+            """
+        )
+        assertTrue(py.contains("def _scale(x, k=2, s=\"a\", m=None):"), py)
+        assertTrue(py.contains("def _total(xs, extra=0):"), py)
+        assertTrue(py.contains("def __init__(self, name, level=_k_unset, tags=_k_unset):"), py)
+        assertTrue(py.contains("    def __init__(self, left):\n        self.left = left"), py)
+        assertTrue(py.contains("        self.level = 3 if level is _k_unset else level\n        self.tags = [] if tags is _k_unset else list(tags)\n        self._hidden = 9"), py)
+        assertTrue(py.contains("a = _Knob(\"a\")\n    b = _Knob(name=\"b\", level=4)"), py)
+        assertTrue(py.contains("_scale(1) + _scale(1, k=5)"), py)
+        assertTrue(py.contains("_total(xs=ROW)"), py)
+    }
+
+    @Test
     fun theLadderLowersWithoutARefusal() {
         val ladder = File(PyTestSupport.repoRoot, "src/test/resources/py-golden/ladder/src/firmware/pilot/tools/dash/ladder.kira").readText()
         val e = PyTestSupport.emit(ladder.substringAfter('\n'), uri = "firmware:pilot.tools.dash.ladder")
         val py = e.python()
         assertTrue(py.contains("class Ladder:"), py)
-        assertTrue(py.contains("def __init__(self, level, top):"), py)
+        assertTrue(py.contains("def __init__(self, level, top, verdict=_k_unset):"), py)
         assertTrue(py.contains("def update(self, deliveredKbs, offeredKbs, ageMs, dropped, nowS, fps):"), py)
         assertEquals(emptyList(), e.errors)
     }
@@ -1416,19 +1458,18 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aValueGivenToADefaultedFieldIsRefused() {
+    fun aValueGivenToAPrivateFieldAtAConstructionIsRefused() {
         refused(
             """
             class Box {
-                pub v: Int32 = 0
-            }
+                hidden: Int32 = 0
 
-            fx f: () Int32 {
-                b: Box = Box { v = 3 }
-                return b.v
+                pub fx again: () Box {
+                    return Box { hidden = 3 }
+                }
             }
             """,
-            "a value given to the defaulted field 'v'",
+            "a value given to the private field 'hidden' at a construction",
         )
     }
 

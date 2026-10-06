@@ -41,6 +41,10 @@ def _k_self(here, g):
         _k_sys.modules.setdefault(_k_key(here), m)
 
 
+# A field a construction leaves out (None is a Maybe's value, so it cannot say so).
+_k_unset = object()
+
+
 # A program error stops the program (Kira's panic): a bad index, a failed check, a division
 # by zero. Python callers see a RuntimeError.
 def _k_panic(what):

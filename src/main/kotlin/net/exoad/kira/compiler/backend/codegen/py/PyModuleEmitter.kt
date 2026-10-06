@@ -344,11 +344,8 @@ class PyModuleEmitter(
             if (p.byRef && !isValue(p.type)) {
                 refuse(node, "the mut parameter '${p.name}': ${p.type.display()} (only a List or a Map is passed by reference)")
             }
-            if (p.default != null) {
-                refuse(node, "the default value of the parameter '${p.name}'")
-            }
             frame.scopes.first().add(p.name)
-            p.name
+            pyDefault(p)?.let { "${p.name}=$it" } ?: p.name
         }
         val head = "def ${pyName(fn)}(${(listOfNotNull(if (cls != null) "self" else null) + params).joinToString(", ")}):"
         val body = mutableListOf<String>()
@@ -372,28 +369,39 @@ class PyModuleEmitter(
         val body = mutableListOf<String>()
         val slots = c.fields.map { pyName(it) }
         body += "__slots__ = (${slots.joinToString(", ") { "\"$it\"" }}${if (slots.size == 1) "," else ""})"
-        val required = c.fields.filter { it.isRequired }
+        val required = c.fields.filter { isPositional(it) }
+        val optional = c.fields.filter { isKeyword(it) }
         val frame = Frame(c, null)
         val init = mutableListOf<String>()
         assignedGlobals(c.initially.orEmpty()).takeIf { it.isNotEmpty() }?.let { init += "global ${it.joinToString(", ")}" }
         c.fields.forEach { f ->
             val node: ASTNode = f.decl ?: at
             checkName(f.name, node)
-            if (f.isRequired) {
+            if (isPositional(f) || isKeyword(f)) {
                 checkLocalName(f.name, node)
             }
             checkType(f.type, node, "the field '${f.name}'")
+            val given = if (isValue(f.type)) copyOf(f.name, f.type) else f.name
+            val absent = {
+                when {
+                    f.default != null -> asValue(f.default, frame, Use.STORE)
+                    else -> zeroValue(f.type, node).let { Py(it, if (it.contains(" * ")) PyPrec.MUL else PyPrec.POSTFIX) }
+                }
+            }
             val v = when {
-                f.isRequired -> if (isValue(f.type)) copyOf(f.name, f.type) else f.name
-                f.default != null -> asValue(f.default, frame, Use.STORE).text
-                else -> zeroValue(f.type, node)
+                isPositional(f) -> given
+                isKeyword(f) -> {
+                    helpers.add("_k_unset")
+                    "${wrap(absent(), PyPrec.OR)} if ${f.name} is _k_unset else $given"
+                }
+                else -> absent().text
             }
             init += "self.${pyName(f)} = $v"
         }
         c.initially?.let { init += block(it, frame) }
         if (init.isNotEmpty()) {
             body += ""
-            body += "def __init__(${(listOf("self") + required.map { it.name }).joinToString(", ")}):"
+            body += "def __init__(${(listOf("self") + required.map { it.name } + optional.map { "${it.name}=_k_unset" }).joinToString(", ")}):"
             body += indent(init)
         }
         c.methods.forEach { m ->
@@ -402,6 +410,22 @@ class PyModuleEmitter(
         }
         return out + indent(body)
     }
+
+    /**
+     * A parameter's default as the def's own, a literal, when it and every later one fold to
+     * one; a call leaves those out and names any other default it fills.
+     */
+    private fun pyDefault(p: ParamSymbol): String? {
+        val params = p.fn?.params ?: return null
+        val folded = params.drop(params.indexOf(p)).map { q -> q.default?.let { model.const(it) }?.let { constText(it) } }
+        return if (folded.all { it != null }) folded.first() else null
+    }
+
+    /** A field `__init__` takes in place, in declaration order: a `require` one without a default. */
+    private fun isPositional(f: FieldSymbol): Boolean = f.isRequired && f.default == null
+
+    /** Any other `pub` field `__init__` takes by name, its default (or zero) when it is left out. */
+    private fun isKeyword(f: FieldSymbol): Boolean = !isPositional(f) && f.isPub
 
     private fun mainCall(fn: FnSymbol): String? {
         if (fn.params.isNotEmpty()) {
@@ -1000,6 +1024,12 @@ class PyModuleEmitter(
                 parts += text
             }
         }
+        rc.args.filterIsInstance<ArgBinding.Default>().forEach { d ->
+            val value = d.param.default
+            if (value != null && pyDefault(d.param) == null) {
+                parts += "${d.param.name}=${wrap(asValue(value, f, Use.ARG, emptyList(), false), PyPrec.TERNARY)}"
+            }
+        }
         return parts.joinToString(", ")
     }
 
@@ -1079,14 +1109,16 @@ class PyModuleEmitter(
         val given = init.sourceOrder.mapNotNull { k -> init.fields[k] as? FieldInit.Given }
         // The construction's defaults and `initially` run before __init__ copies a List.
         val writes = !CallReach.construction(cls, given.associate { it.field to it.expr }, model)
+        // A value for a field __init__ takes by name makes every value one by name, in source order.
+        val byName = given.any { isKeyword(it.field) }
         given.forEachIndexed { at, fi ->
-            if (fi.field.default != null || !fi.field.isRequired) {
-                refuse(fi.expr, "a value given to the defaulted field '${fi.field.name}' at a construction")
+            if (!isPositional(fi.field) && !isKeyword(fi.field)) {
+                refuse(fi.expr, "a value given to the private field '${fi.field.name}' at a construction (__init__ takes a pub one by name)")
             }
             // __init__ copies a List it stores, after the defaults before it ran: a List is
             // copied here, as an argument is, when they or a later value may write it.
             val text = wrap(asValue(fi.expr, f, Use.ARG, given.drop(at + 1).map { it.expr }, writes), PyPrec.TERNARY)
-            if (fi.named) {
+            if (fi.named || byName) {
                 sawNamed = true
                 parts += "${fi.field.name}=$text"
             } else {
