@@ -72,6 +72,14 @@ def _k_or(m, default):
     return default if m is None else m
 
 
+# enumOf<E>(raw) (D25): the first entry whose C++ value is raw, or none.
+def _k_enumof(order, raw):
+    for v in order:
+        if v == raw:
+            return v
+    return None
+
+
 # A throw (D41) is this class's exception, one class for every generated module so that one
 # catches what another throws; a panic is a RuntimeError, which no Kira try catches.
 def _k_errors():

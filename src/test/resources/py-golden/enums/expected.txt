@@ -1,0 +1,22 @@
+1
+WARN
+1
+1
+1
+ERROR OK
+1
+RUN 4 RUN FAULT
+4
+1
+FAULT
+1
+ERROR
+[] 0 WARN green
+red false red
+2
+HIGH false
+1
+ERROR true false
+3
+3
+FAULT IDLE RUN

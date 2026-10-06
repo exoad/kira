@@ -1,0 +1,81 @@
+module "lang:enums"
+
+// The expected output is the C++ run's.
+
+use "lib:modes"
+
+pub enum Level {
+    OK,
+    WARN,
+    ERROR
+}
+
+enum Color: Str {
+    RED = "red",
+    GREEN = "green",
+    ALSO_RED = "red"
+}
+
+enum Gain: Float64 {
+    LOW = 0.5,
+    HIGH = 2.0
+}
+
+class Lamp {
+    pub mut level: Level = Level.WARN
+    pub mut mode: Mode
+    pub mut color: Color = Color.GREEN
+}
+
+fx worse: (a: Level, b: Level) Level {
+    return if (a as Int32) > (b as Int32) { a } else { b }
+}
+
+fx main: () Void {
+    l: Level = Level.WARN
+    trace(l)
+    trace("${l}")
+    trace(l == Level.WARN)
+    trace(l != Level.OK)
+    trace(l as Int32)
+    trace("${worse(Level.ERROR, l)} ${worse(Level.OK, Level.OK)}")
+
+    // explicit values, one shared: equal entries, the first one's name
+    m: Mode = Mode.HALT
+    trace(m == Mode.RUN)
+    trace("${m} ${m as Int16} ${next(Mode.IDLE)} ${next(m)}")
+    trace(m)
+    hit: Maybe<Mode> = enumOf<Mode>(200)
+    miss: Maybe<Mode> = enumOf<Mode>(2)
+    trace(hit.isSome())
+    trace("${hit.unwrap()}")
+    trace(miss.isNone())
+    lv: Maybe<Level> = enumOf<Level>(2)
+    trace("${lv.unwrap()}")
+
+    // a zero value that is no entry
+    lamp: Lamp = Lamp { }
+    trace("[${lamp.mode}] ${lamp.mode as Int16} ${lamp.level} ${lamp.color}")
+
+    // Str and float bases: each entry its own, numbered as C++ numbers them
+    c: Color = Color.ALSO_RED
+    trace("${c} ${c == Color.RED} ${Color.RED}")
+    trace(c)
+    g: Gain = Gain.HIGH
+    trace("${g} ${g == Gain.LOW}")
+    trace(g)
+
+    // in a List and as a Map key
+    mut seen: List<Level> = List<Level> { }
+    seen.add(Level.ERROR)
+    seen.add(Level.OK)
+    trace("${seen[0]} ${seen.contains(Level.OK)} ${seen.contains(Level.WARN)}")
+    mut counts: Map<Mode, Int32> = Map<Mode, Int32> { }
+    counts[Mode.FAULT] = 1
+    counts[Mode.IDLE] = 2
+    counts[Mode.HALT] = 3
+    trace(counts.size())
+    trace(counts.get(Mode.RUN).unwrapOr(0))
+    keys: Arr<Mode> = counts.keys()
+    trace("${keys[0]} ${keys[1]} ${keys[2]}")
+}

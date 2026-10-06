@@ -1273,16 +1273,33 @@ class PyEmitterTest {
     }
 
     @Test
-    fun anEnumIsRefused() {
-        refused(
+    fun anEnumIsANamespaceOfItsEntriesCppValues() {
+        val py = python(
             """
-            enum Mode {
+            pub enum Mode {
                 A,
-                B
+                B = 5,
+                C = 5
             }
-            """,
-            "the enum Mode",
+
+            enum Tint: Str {
+                RED = "red"
+            }
+
+            fx f: (m: Mode, t: Tint) Str {
+                n: Maybe<Mode> = enumOf<Mode>(5)
+                if m == Mode.C && t != Tint.RED && n.isSome() {
+                    trace(m)
+                }
+                return "${'$'}{m} ${'$'}{t} ${'$'}{m as Int32}"
+            }
+            """
         )
+        assertTrue(py.contains("class Mode:\n    A = 0\n    B = 5\n    C = 5\n    _k_names = {0: \"A\", 5: \"B\"}\n    _k_order = (0, 5, 5)"), py)
+        assertTrue(py.contains("class _Tint:\n    RED = 0\n    _k_names = {0: \"red\"}\n    _k_order = (0,)"), py)
+        assertTrue(py.contains("n = _k_enumof(Mode._k_order, 5)"), py)
+        assertTrue(py.contains("if m == Mode.C and t != _Tint.RED and (n is not None):\n        print(m)"), py)
+        assertTrue(py.contains("return Mode._k_names.get(m, \"\") + \" \" + _Tint._k_names.get(t, \"\") + \" \" + str(m)"), py)
     }
 
     @Test
@@ -1625,7 +1642,7 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMapKeyedByAClassOrAnEnumIsRefused() {
+    fun aMapKeyedByAClassIsRefused() {
         refused(
             """
             class Box {
@@ -1636,20 +1653,7 @@ class PyEmitterTest {
                 return m.size()
             }
             """,
-            "a Map<Box, Int32> (a Map's key is a Str, an integer, a Bool or a Char)",
-        )
-        refused(
-            """
-            enum Gear {
-                LOW,
-                HIGH
-            }
-
-            fx f: (m: Map<Gear, Int32>) Size {
-                return m.size()
-            }
-            """,
-            "the enum Gear",
+            "a Map<Box, Int32> (a Map's key is a Str, an integer, a Bool, a Char or an enum)",
         )
     }
 
