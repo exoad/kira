@@ -1480,6 +1480,35 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aStructComparedByEqualsOrContainsHasTheMemberwiseEqCppDefaults() {
+        val py = python(
+            """
+            pub struct Pt {
+                pub x: Int32 = 0
+                pub y: Int32 = 0
+            }
+
+            pub struct Seg {
+                pub a: Pt = Pt { }
+                pub tags: List<Int32> = List<Int32> { }
+            }
+
+            pub struct Other {
+                pub x: Int32 = 0
+            }
+
+            fx f: (xs: List<Pt>, s: Seg, t: Seg, o: Other) Bool {
+                return xs.contains(Pt { 1 }) && s != t && o.x == 0
+            }
+            """
+        )
+        assertTrue(py.contains("    def __eq__(self, o):\n        return self.x == o.x and self.y == o.y"), py)
+        assertTrue(py.contains("    def __eq__(self, o):\n        return self.a == o.a and self.tags == o.tags"), py)
+        assertEquals(2, Regex("def __eq__").findAll(py).count(), "Other is never compared:\n$py")
+        assertTrue(py.contains("_k_contains(xs, Pt(x=1)) and s != t"), py)
+    }
+
+    @Test
     fun aLoopVariableIsCopiedWhereItIsReturnedAsCppCopiesItsConstReference() {
         val py = python(
             """

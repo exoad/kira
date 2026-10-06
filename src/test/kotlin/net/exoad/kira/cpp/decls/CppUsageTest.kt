@@ -81,4 +81,20 @@ class CppUsageTest {
         assertFalse(usage.needsEnumValues(ctx.symbol.members["Kind"] as EnumSymbol))
         assertFalse(usage.needsEquality(ctx.symbol.members["Pt"] as ClassSymbol))
     }
+
+    @Test
+    fun containsAndContainsValueCompareTheStructsTheyAreGiven() {
+        val (_, ctx) = DeclTestSupport.emitWith(
+            DeclTestSupport.module(
+                "test:main",
+                "pub struct Pt { pub x: Int32 = 0 }\npub struct Val { pub x: Int32 = 0 }\npub struct Other { pub x: Int32 = 0 }\n" +
+                    "pub fx f: (xs: List<Pt>, m: Map<Str, Val>, o: List<Other>) Bool { return xs.contains(Pt { 1 }) && m.containsValue(Val { 2 }) && o.size() > 0 }",
+            ),
+            uri = "test:main",
+        )
+        val usage = CppUsage.scan(ctx.program)
+        assertTrue(usage.needsEquality(ctx.symbol.members["Pt"] as ClassSymbol))
+        assertTrue(usage.needsEquality(ctx.symbol.members["Val"] as ClassSymbol))
+        assertFalse(usage.needsEquality(ctx.symbol.members["Other"] as ClassSymbol))
+    }
 }

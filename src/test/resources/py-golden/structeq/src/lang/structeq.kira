@@ -1,0 +1,49 @@
+module "lang:structeq"
+
+struct Pt {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+}
+
+struct Seg {
+    pub a: Pt = Pt { }
+    pub b: Pt = Pt { }
+    pub tags: List<Int32> = List<Int32> { }
+}
+
+struct Lone {
+    pub v: Float64 = 0.0
+}
+
+fx main: () Void {
+    mut pts: List<Pt> = List<Pt> { }
+    pts.add(Pt { 1, 2 })
+    probe: Pt = Pt { 1, 2 }
+    trace(pts.contains(probe))
+    trace(pts.contains(Pt { 3, 4 }))
+
+    mut m: Map<Str, Pt> = Map<Str, Pt> { }
+    m["a"] = Pt { 5 }
+    trace(m.containsValue(Pt { 5 }))
+    trace(m.containsValue(Pt { 5, 1 }))
+
+    mut s: Seg = Seg { Pt { 1 }, Pt { 2 } }
+    s.tags.add(7)
+    mut t: Seg = s
+    trace(s == t)
+    t.tags.add(8)
+    trace(s == t)
+    trace(s != t)
+    mut segs: List<Seg> = List<Seg> { }
+    segs.add(s)
+    trace(segs.contains(t))
+    t.tags = [7]
+    trace(segs.contains(t))
+    trace(Pt { 1, 2 } == probe)
+
+    nan: Float64 = 0.0 / 0.0
+    mut ls: List<Lone> = List<Lone> { }
+    ls.add(Lone { nan })
+    trace(ls.contains(Lone { nan }))
+    trace(ls.contains(Lone { }))
+}

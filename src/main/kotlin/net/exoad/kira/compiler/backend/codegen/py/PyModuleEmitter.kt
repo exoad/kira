@@ -36,6 +36,7 @@ import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBindingTable
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
+import net.exoad.kira.compiler.backend.codegen.cpp.CppUsage
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
@@ -145,6 +146,7 @@ class PyModuleEmitter(
     private val runtime: PyRuntime,
     private val imports: PyImports? = null,
     private val shared: Shared = Shared(),
+    private val usage: CppUsage = CppUsage.NONE,
 ) {
     /** One generated module's state, shared with the emitters of the stdlib functions it carries. */
     class Shared {
@@ -424,6 +426,10 @@ class PyModuleEmitter(
             body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(type(self))") + copied + "return c")
             val set = c.fields.map { "self.${pyName(it)} = o.${pyName(it)}" }.ifEmpty { listOf("pass") }
             body += listOf("", "def _k_set(self, o):") + indent(set)
+            if (usage.needsEquality(c)) {
+                val same = c.fields.joinToString(" and ") { "self.${pyName(it)} == o.${pyName(it)}" }.ifEmpty { "True" }
+                body += listOf("", "def __eq__(self, o):") + indent(listOf("return $same"))
+            }
         }
         c.methods.forEach { m ->
             body += ""
@@ -1380,11 +1386,12 @@ class PyModuleEmitter(
         }
     }
 
-    /** A comparison of numbers, Bools or Strs (the typer has no `==` on a Maybe, a class or a container). */
+    /** A comparison of numbers, Bools, Strs or enums, or `==` and `!=` of two structs (their `__eq__`, C++'s defaulted operator==). */
     private fun comparison(e: BinaryExpr, f: Frame): Py {
         val lt = typeOf(e.leftExpr) ?: return Py("None", PyPrec.ATOM)
         val rt = typeOf(e.rightExpr) ?: return Py("None", PyPrec.ATOM)
-        if ((lt != KType.Str && lt !is KType.Scalar && !isEnum(lt)) || (rt != KType.Str && rt !is KType.Scalar && !isEnum(rt))) {
+        val structs = isStruct(lt) && isStruct(rt) && (e.operator == BinaryOp.EQUALS || e.operator == BinaryOp.NOT_EQUAL)
+        if (!structs && ((lt != KType.Str && lt !is KType.Scalar && !isEnum(lt)) || (rt != KType.Str && rt !is KType.Scalar && !isEnum(rt)))) {
             return refusePy(e, "a comparison of ${lt.display()} and ${rt.display()}")
         }
         val l = expr(e.leftExpr, f)
