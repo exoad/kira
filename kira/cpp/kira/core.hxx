@@ -190,7 +190,6 @@ namespace kira
       return static_cast<unsigned char>(c);
   }
 
-  // Space, tab, LF, VT, FF and CR: C's isspace in the C locale (D57).
   [[nodiscard]] constexpr bool isWhitespace(Char c) noexcept
   {
       return c == ' ' || (c >= '\t' && c <= '\r');
@@ -823,7 +822,6 @@ namespace kira
       return neg ? static_cast<std::int64_t>(std::uint64_t{0} - v) : static_cast<std::int64_t>(v);
   }
 
-  // Str.toInt64Radix (D57): parseInt64's rules with the digits and letters of `radix`.
   [[nodiscard]] constexpr std::optional<std::int64_t> parseInt64(View<Char> s, std::int32_t radix) noexcept
   {
       if(radix < 2 || radix > 36)

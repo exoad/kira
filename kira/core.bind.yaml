@@ -121,7 +121,6 @@ Num.toFloat64: { cpp: { expr: "kira::as<double>({self})", pure: true, constexpr:
 FloatNum.fixed: { cpp: { expr: "kira::fixed({self}, {0})", pure: true }, py: { expr: "_k_fixed({self}, {0})" } }
 IntNum.toHex:   { cpp: { expr: "kira::hex({self})", pure: true }, py: { expr: "_k_hex({self})" } }
 
-# Char's tests (D59) are ASCII: freestanding in core.hxx, and the code point's range on py.
 Char.isDigit:      { cpp: { expr: "kira::isDigit({self})", pure: true, constexpr: true }, py: { expr: "(48 <= {self} <= 57)" } }
 Char.isWhitespace: { cpp: { expr: "kira::isWhitespace({self})", pure: true, constexpr: true }, py: { expr: "({self} in _k_spaces)" } }
 Char.isLetter:     { cpp: { expr: "kira::isLetter({self})", pure: true, constexpr: true }, py: { expr: "({self} in _k_letters)" } }

@@ -914,7 +914,6 @@ class PyModuleEmitter(
         }
         // `{list}`: list, or bytearray when the call returns a List<UInt8>.
         val list = if (isBytes(model.typeOrNull(c) ?: KType.Error)) "bytearray" else "list"
-        // `{T0}`: the receiver's element type as Kira names it, for a helper whose rule depends on it (D61).
         val element = (receiver?.let { model.typeOrNull(it) } as? KType.Nominal)?.typeArgs()?.firstOrNull()?.display().orEmpty()
         return bound(PyBinding(text.replace("{list}", list).replace("{T0}", element)), self, args, f)
     }

@@ -312,7 +312,6 @@ def _k_toint(s):
     return v if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF else None
 
 
-# toInt64Radix (D57): toint's rules over the ASCII digits and letters of the radix.
 _k_digits = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 

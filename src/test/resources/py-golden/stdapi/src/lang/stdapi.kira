@@ -97,7 +97,11 @@ fx strOrder: () Void {
     trace(order("ÿ", "Ā"))
     trace(order("é", "✓"))
     trace(order("✓", "🚗"))
-    trace(order("", "🚗"))
+    e000: List<UInt8> = [0xEE, 0x80, 0x80]
+    pua: Str = Str.of(e000)
+    trace(order(pua, "🚗"))
+    trace(order("✓", pua))
+    trace(order("�", pua))
     trace(order("�", "🚗"))
     trace(order("e", "é"))
     trace(order("éa", "éb"))
