@@ -80,6 +80,9 @@ object KiraTyper {
         guard(program, "body typing") {
             bodyTyper.type(program)
         }
+        guard(program, "key check") {
+            KeyCheck(program).run()
+        }
         rulePasses.forEach { pass ->
             guard(program, "rule pass ${pass.name}") {
                 pass.run(program)

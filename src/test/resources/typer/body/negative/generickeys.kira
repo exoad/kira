@@ -1,0 +1,56 @@
+module "fixture:body.generickeys"
+
+// A type parameter that reaches a Map's key or a Set's element, directly, through another
+// generic or through an alias, is checked where it is instantiated.
+
+pub class Holder {
+    require pub n: Int32
+}
+
+pub class Index<K> {
+    pub mut m: Map<K, Int32> = Map<K, Int32> { }
+}
+
+pub class Bag<T> {
+    pub s: Set<T> = Set<T> { }
+}
+
+pub class Outer<T> {
+    pub ix: Index<T> = Index<T> { }
+}
+
+pub class Plain<T> {
+    require pub v: T
+}
+
+pub alias Reg<K> as Map<K, Str>
+
+pub fx put<K>: (k: K) Size {
+    m: Map<K, Int32> = Map<K, Int32> { }
+    return m.size()
+}
+
+pub fx relay<T>: (t: T) Size {
+    return put<T>(t)
+}
+
+pub fx fine: (r: Reg<Int64>) Size {
+    a: Index<Int32> = Index<Int32> { }
+    b: Outer<Str> = Outer<Str> { }
+    c: Bag<Char> = Bag<Char> { }
+    p: Plain<Holder> = Plain<Holder> { Holder { 1 } }
+    return put<Int32>(1) + relay<Str>("x") + r.size()
+}
+
+pub fx keys: (h: Holder) Size {
+    d: Index<Holder> = Index<Holder> { }           // @error types.type.key ; @error types.type.key
+    e: Bag<Holder> = Bag<Holder> { }               // @error types.type.key ; @error types.type.key
+    f: Outer<Holder> = Outer<Holder> { }           // @error types.type.key ; @error types.type.key
+    i: Size = put<Holder>(h)                       // @error types.type.key
+    j: Size = relay<Holder>(h)                     // @error types.type.key
+    return i + j
+}
+
+pub fx regs: (r: Reg<Holder>) Size {               // @error types.type.key
+    return r.size()
+}

@@ -152,13 +152,12 @@ class TypeResolver(private val program: TypedProgram) {
         return KType.Nominal(sym, args)
     }
 
-    /** A Map's key and a Set's element are what kira::Map and kira::Set can hold: a scalar, a Str or an enum. */
     private fun keyHeld(sym: TypeSymbol, args: List<TypeArg>, t: Type): Boolean {
-        if ((sym as? ClassSymbol)?.kind != ClassKind.MAGIC || (sym.name != "Map" && sym.name != "Set")) {
+        if (!isKeyedContainer(sym)) {
             return true
         }
         val key = (args[0] as TypeArg.Ty).t
-        if (key is KType.Scalar || key == KType.Str || key is KType.Param || key == KType.Error || (key as? KType.Nominal)?.sym is EnumSymbol) {
+        if (isKeyType(key)) {
             return true
         }
         val what = if (sym.name == "Map") "A Map's key" else "A Set's element"
