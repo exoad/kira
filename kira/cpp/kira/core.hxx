@@ -190,6 +190,19 @@ namespace kira
       return static_cast<unsigned char>(c);
   }
 
+  [[nodiscard]] constexpr bool isWhitespace(Char c) noexcept
+  {
+      return c == ' ' || (c >= '\t' && c <= '\r');
+  }
+  [[nodiscard]] constexpr bool isDigit(Char c) noexcept
+  {
+      return c >= '0' && c <= '9';
+  }
+  [[nodiscard]] constexpr bool isLetter(Char c) noexcept
+  {
+      return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+  }
+
   // ---- Num.abs and the scalar hashCode (kira/core.bind.yaml) -----------------
   // abs returns its argument's type: std::abs is ambiguous for uint32_t,
   // uint64_t and size_t, and returns int for the 8- and 16-bit types. Unsigned
@@ -805,6 +818,51 @@ namespace kira
               return std::nullopt;
           }
           v = v * 10 + d;
+      }
+      return neg ? static_cast<std::int64_t>(std::uint64_t{0} - v) : static_cast<std::int64_t>(v);
+  }
+
+  [[nodiscard]] constexpr std::optional<std::int64_t> parseInt64(View<Char> s, std::int32_t radix) noexcept
+  {
+      if(radix < 2 || radix > 36)
+      {
+          panic("radix out of range");
+      }
+      Size i = 0;
+      bool neg = false;
+      if(i < s.size() && (s.ptr[i] == '+' || s.ptr[i] == '-'))
+      {
+          neg = s.ptr[i] == '-';
+          ++i;
+      }
+      if(i == s.size())
+      {
+          return std::nullopt;
+      }
+      const std::uint64_t limit = neg ? std::uint64_t{1} << 63 : (std::uint64_t{1} << 63) - 1;
+      const std::uint64_t r = static_cast<std::uint64_t>(radix);
+      std::uint64_t v = 0;
+      for(; i < s.size(); ++i)
+      {
+          const Char c = s.ptr[i];
+          std::uint64_t d = 36;
+          if(c >= '0' && c <= '9')
+          {
+              d = static_cast<std::uint64_t>(c - '0');
+          }
+          else if(c >= 'a' && c <= 'z')
+          {
+              d = static_cast<std::uint64_t>(c - 'a' + 10);
+          }
+          else if(c >= 'A' && c <= 'Z')
+          {
+              d = static_cast<std::uint64_t>(c - 'A' + 10);
+          }
+          if(d >= r || v > (limit - d) / r)
+          {
+              return std::nullopt;
+          }
+          v = v * r + d;
       }
       return neg ? static_cast<std::int64_t>(std::uint64_t{0} - v) : static_cast<std::int64_t>(v);
   }

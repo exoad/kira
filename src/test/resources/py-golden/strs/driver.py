@@ -41,6 +41,6 @@ print("substring by code point:", m.substringOf(text, 1, 2) == "é", m.charAtOf(
 print("hashCode over the UTF-8:", m.hashOf(text), m.hashOf(text) == 8246534910121424176)
 print("ASCII case only:", m.upperOf("héllo été") == "HéLLO éTé",
       m.lowerOf("ÉTÉ OK") == "ÉtÉ ok")
-print("trim of four only:", m.trimOf("\xa0x\xa0") == "\xa0x\xa0", m.trimOf("\x0bx\x0c") == "\x0bx\x0c")
+print("trim of the six only:", m.trimOf("\xa0x\xa0") == "\xa0x\xa0", m.trimOf("\x0bx\x0c") == "x", m.trimOf("\x1cx\x1f") == "\x1cx\x1f")
 print("strict parsers:", m.intOf("١٢"), m.intOf("1_0"), m.floatOf("1_0.5"), m.floatOf(" 2.5"),
       m.floatOf("١.5"))

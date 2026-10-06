@@ -87,5 +87,5 @@ code points: 7 of 10 UTF-8 bytes
 substring by code point: True True
 hashCode over the UTF-8: 8246534910121424176 True
 ASCII case only: True True
-trim of four only: True True
+trim of the six only: True True True
 strict parsers: None None None None None

@@ -1064,6 +1064,157 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d56",
+            """
+            pub fx before: (a: Str, b: Str) Bool {
+                return a < b
+            }
+
+            pub fx atMost: (a: Str) Bool {
+                return a <= "m"
+            }
+
+            pub fx literals: () Bool {
+                return "abc" < "abd" && "b" >= "abc"
+            }
+            """,
+            listOf("return a < b;", "return a <= \"m\";", "return std::string_view(\"abc\") < \"abd\" && std::string_view(\"b\") >= \"abc\";"),
+            listOf(
+                """check(d56::before("abc", "abd") && !d56::before("abd", "abc") && !d56::before("abc", "abc") && d56::before("ab", "abc") && d56::before("", "a"), "D56: a Str orders by its bytes, a prefix first");""",
+                """check(d56::before("z", "\xc3\xa9") && d56::before("\xc3\xa9", "\xe2\x9c\x93") && d56::before("\xef\xbf\xbd", "\xf0\x9f\x9a\x97"), "D56: as unsigned bytes, so UTF-8 orders by code point");""",
+                """check(d56::atMost("m") && d56::atMost("Z") && !d56::atMost("n") && d56::literals(), "D56: a literal on either side, and two literals compare their text");""",
+            ),
+        ),
+        row(
+            "d57",
+            """
+            pub fx padded: (s: Str) Str {
+                return s.padEnd(4, '.')
+            }
+
+            pub fx trimmed: (s: Str) Str {
+                return "[" + s.trimStart() + "|" + s.trimEnd() + "]"
+            }
+
+            pub fx words: (s: Str) Size {
+                return s.splitWhitespace().size()
+            }
+
+            pub fx swapped: (s: Str) Str {
+                return s.replace("ab", "ba").replace("", "/")
+            }
+
+            pub fx hex: (s: Str) Int64 {
+                return s.toInt64Radix(16).unwrapOr(-1)
+            }
+            """,
+            listOf(
+                "return kira::str::padEnd(s, 4, '.');",
+                "return kira::str::replace(kira::Str(kira::str::replace(s, \"ab\", \"ba\")), \"\", \"/\");",
+                "return kira::List<kira::Str>(kira::str::splitWhitespace(s)).size();",
+            ),
+            listOf(
+                """check(d57::padded("ab") == "ab.." && d57::padded("abcde") == "abcde", "D57: padEnd fills on the right and never cuts");""",
+                """check(d57::trimmed(" \t\v x \f\r\n") == "[x \f\r\n| \t\v x]", "D57, D62: trimStart and trimEnd take the six whitespace characters");""",
+                """check(d57::words("\v a\fb  c\r\n") == 3 && d57::words(" \t") == 0, "D57: splitWhitespace splits on runs of C's six");""",
+                """check(d57::swapped("abab") == "/b/a/b/a/" && d57::swapped("\xc3\xa9") == "/\xc3\xa9/", "D57: replace takes every occurrence, an empty one between code points");""",
+                """check(d57::hex("-7F") == -127 && d57::hex("0x7f") == -1 && d57::hex("8000000000000000") == -1, "D57: toInt64Radix is strict and none past Int64");""",
+            ),
+        ),
+        row(
+            "d58",
+            """
+            pub fx joined: (xs: List<Str>, sep: Str) Str {
+                return xs.joinToString(sep)
+            }
+
+            pub fx words: (s: Str) Str {
+                return s.splitWhitespace().joinToString("|")
+            }
+            """,
+            listOf("return kira::list::joinToString(xs, sep);"),
+            listOf(
+                """check(d58::joined({"a", "", "b"}, ", ") == "a, , b" && d58::joined({}, ", ").empty() && d58::joined({"x"}, "-") == "x", "D58: joinToString puts the separator between the pieces");""",
+                """check(d58::words(" a b\tc ") == "a|b|c", "D58: and joins a List a call made");""",
+            ),
+        ),
+        row(
+            "d59",
+            """
+            pub @_const fx wordChar: (c: Char) Bool {
+                return c.isDigit() || c.isLetter()
+            }
+
+            pub fx spaces: (s: Str) Int32 {
+                mut n: Int32 = 0
+                mut i: Size = 0
+                while i < s.length() {
+                    if s[i].isWhitespace() {
+                        n += 1
+                    }
+                    i += 1
+                }
+                return n
+            }
+            """,
+            listOf("return kira::isDigit(c) || kira::isLetter(c);", "if(kira::isWhitespace(kira::str::at(s, i)))"),
+            listOf(
+                """static_assert(d59::wordChar('7') && d59::wordChar('q') && !d59::wordChar('_') && !d59::wordChar('\xC3'), "D59: isDigit and isLetter in a constant expression");""",
+                """check(d59::spaces(" \t\n\v\f\r\x1c\xc2\xa0x") == 6, "D59: isWhitespace takes isspace's six, no other byte");""",
+            ),
+        ),
+        row(
+            "d60",
+            """
+            use "kira:math"
+
+            pub fx rem: (a: Float64, b: Float64) Float64 {
+                return fmod(a, b)
+            }
+
+            pub fx rem32: (a: Float32, b: Float32) Float32 {
+                return fmod(a, b)
+            }
+            """,
+            listOf("return std::fmod(a, b);"),
+            listOf(
+                """check(d60::rem(5.5, 2.0) == 1.5 && d60::rem(-5.5, 2.0) == -1.5 && d60::rem(5.5, -2.0) == 1.5 && d60::rem(1.0, 1e300) == 1.0, "D60: fmod truncates, with the dividend's sign");""",
+                """check(d60::rem(1.0, 0.0) != d60::rem(1.0, 0.0) && d60::rem(std::numeric_limits<double>::infinity(), 1.0) != d60::rem(std::numeric_limits<double>::infinity(), 1.0) && d60::rem(2.0, std::numeric_limits<double>::infinity()) == 2.0, "D60: NaN for a zero divisor or an infinite dividend, the dividend for an infinite divisor");""",
+                """check(d60::rem32(7.5f, 2.0f) == 1.5f && std::is_same_v<decltype(d60::rem32(1.0f, 1.0f)), float>, "D60: and a Float32 stays a float");""",
+            ),
+        ),
+        row(
+            "d61",
+            """
+            pub fx sorted: (xs: List<Int32>) List<Int32> {
+                mut out: List<Int32> = xs
+                out.sort()
+                return out
+            }
+
+            pub fx words: (s: Str) Str {
+                mut ws: List<Str> = s.splitWhitespace()
+                ws.sort()
+                return ws.joinToString(",")
+            }
+
+            pub fx total: (xs: List<UInt8>) UInt8 {
+                return xs.sum()
+            }
+
+            pub fx spread: (xs: List<Float64>) Float64 {
+                return xs.maxOrNull().unwrapOr(0.0) - xs.minOrNull().unwrapOr(0.0)
+            }
+            """,
+            listOf("kira::list::sort(out);", "return kira::list::sum(xs);"),
+            listOf(
+                """check(d61::sorted({3, -1, 2, -1}) == kira::List<std::int32_t>{-1, -1, 2, 3} && d61::sorted({}).empty(), "D61: sort orders a List in place");""",
+                """check(d61::words("pear Apple \xc3\xa9" "clair apple") == "Apple,apple,pear,\xc3\xa9" "clair", "D61: a Str by its bytes, which is UTF-8's code point order");""",
+                """check(d61::total({200, 100}) == 44 && d61::total({}) == 0, "D61: sum wraps as an unsigned + does");""",
+                """check(d61::spread({1.5, -2.0, 4.0}) == 6.0 && d61::spread({}) == 0.0 && d61::spread({1.0, std::numeric_limits<double>::quiet_NaN()}) != d61::spread({1.0, std::numeric_limits<double>::quiet_NaN()}), "D61: minOrNull and maxOrNull, a NaN if any is");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {

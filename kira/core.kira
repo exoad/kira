@@ -35,6 +35,7 @@ pub trait Hashable {
 
 // Every length and index is a `Size` (D2). `at` reads one code unit as a
 // `Char` (D3); `charAt` keeps the older one-character `Str` form.
+// `<`, `<=`, `>`, `>=` order by code point (D56): UTF-8's byte order on C++.
 pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx length: () Size;
     pub fx size: () Size;
@@ -47,12 +48,22 @@ pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx endsWith: (suffix: Str) Bool;
     pub fx find: (value: Str) Maybe<Size>;
     pub fx split: (delimiter: Str) List<Str>;
+    // Whitespace is C's six, tab, LF, VT, FF, CR and space, for every trim, splitWhitespace and Char (D62).
     pub fx trim: () Str;
     pub fx toLower: () Str;
     pub fx toUpper: () Str;
     pub fx toInt64: () Maybe<Int64>;
     pub fx toFloat64: () Maybe<Float64>;
     pub fx padStart: (width: Size, fill: Char) Str;
+    pub fx padEnd: (width: Size, fill: Char) Str;
+    pub fx trimStart: () Str;
+    pub fx trimEnd: () Str;
+    // Split on runs of whitespace; no empty pieces (D57).
+    pub fx splitWhitespace: () List<Str>;
+    // Every occurrence, left to right; an empty oldValue goes between code points and at both ends (D57).
+    pub fx replace: (oldValue: Str, newValue: Str) Str;
+    // Kotlin's toLongOrNull(radix) over ASCII digits and letters; a radix outside 2..36 panics (D57).
+    pub fx toInt64Radix: (radix: Int32) Maybe<Int64>;
     pub fx view: () View<Char>;
     // The text's UTF-8, a new List of its bytes (D54): for text that is valid
     // UTF-8, `s.bytes()` is the same on every target, where `length()` counts what
@@ -107,7 +118,12 @@ pub @_magic class Float64: FloatNum
 // An 8-bit code unit. `==`, `!=` and the relational operators compare it
 // (relational as unsigned, so every target agrees); nothing arithmetic
 // applies. `c as UInt8` and `n as Char` convert.
-pub @_magic class Char
+pub @_magic class Char {
+    // ASCII only (D59): '0'..'9', D62's whitespace, A-Z and a-z; nothing past 127.
+    pub fx isDigit: () Bool;
+    pub fx isWhitespace: () Bool;
+    pub fx isLetter: () Bool;
+}
 
 pub alias Int as Int32
 pub alias Float as Float32

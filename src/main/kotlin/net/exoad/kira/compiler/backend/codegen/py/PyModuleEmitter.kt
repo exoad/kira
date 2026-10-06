@@ -1178,7 +1178,8 @@ class PyModuleEmitter(
         val stores = fn.isMutMethod && (fn.name != "addAll" || args.any { a -> holdsValue(model.typeOrNull(a)?.let { elementOf(it) }) })
         // `{list}`: list, or bytearray when the call returns a List<UInt8>.
         val list = if (isBytes(model.typeOrNull(c) ?: KType.Error)) "bytearray" else "list"
-        val result = bound(PyBinding(text.replace("{list}", list)), self, args, f, store = stores)
+        val element = (receiver?.let { model.typeOrNull(it) } as? KType.Nominal)?.typeArgs()?.firstOrNull()?.display().orEmpty()
+        val result = bound(PyBinding(text.replace("{list}", list).replace("{T0}", element)), self, args, f, store = stores)
         // These make a new List of the elements they hold, which hold values a write would share.
         val t = model.typeOrNull(c)
         return if (fn.name in SHALLOW && t != null && holdsValue(elementOf(t))) copyOf(result, t) else result

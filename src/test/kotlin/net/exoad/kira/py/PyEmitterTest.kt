@@ -346,6 +346,21 @@ class PyEmitterTest {
     }
 
     @Test
+    fun fmodIsMathFmodWithCsNaNs() {
+        val py = python(
+            """
+            use "kira:math"
+
+            pub fx f: (a: Float64, b: Float64) Float64 {
+                return fmod(a, b) + fmod(a + b, 2.0)
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_fmod(a, b) + _k_fmod(a + b, 2.0)"), py)
+        assertTrue(py.contains("def _k_fmod(a, b):") && py.contains("        return _k_math.nan"), py)
+    }
+
+    @Test
     fun kiraMathBindsToItsHelpersEachAFloat64AsCsIs() {
         val py = python(
             """
@@ -453,7 +468,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("return _k_u64(_k_u64(len(s) + len(s)) + _k_or(_k_find(s, t), 0))"), py)
         assertTrue(py.contains("return (len(s) == 0) or s.__contains__(t) or s.startswith(t) or s.endswith(\"x\") or (s == t)"), py)
-        assertTrue(py.contains("return _k_substr(s, 1, 3) + s[0] + s.strip(\" \\t\\n\\r\").translate(_k_lower) + (\"a\" + s).translate(_k_upper)"), py)
+        assertTrue(py.contains("return _k_substr(s, 1, 3) + s[0] + s.strip(\" \\t\\n\\v\\f\\r\").translate(_k_lower) + (\"a\" + s).translate(_k_upper)"), py)
         assertTrue(py.contains("return _k_split(s, \",\")"), py)
         assertTrue(py.contains("_k_toint(s)") && py.contains("_k_strhash(s)") && py.contains("_k_tofloat(s)"), py)
         assertTrue(py.contains("_k_lower = str.maketrans(") && py.contains("import re as _k_re"), "the tables and the regex module come with their users:\n$py")
@@ -486,6 +501,94 @@ class PyEmitterTest {
         assertTrue(py.contains("return _k_strof(v) + _k_strof(_k_from(xs, 1)) + _k_strof(xs)"), py)
         assertTrue(py.contains("return bytes(v).decode(\"utf-8\", \"replace\")"), py)
         assertTrue(python("fx g: (v: View<UInt8>) Str {\n    return Str.of(bytes = v)\n}").contains("return _k_strof(v)"), "a named argument in its parameter's place")
+    }
+
+    @Test
+    fun theKotlinNamedStrMethodsKeepKiraStrsRules() {
+        val py = python(
+            """
+            pub fx a: (s: Str, fill: Char) Str {
+                return s.padEnd(4, fill) + s.trimStart() + s.trimEnd() + s.replace("a", "")
+            }
+
+            pub fx b: (s: Str) List<Str> {
+                return s.splitWhitespace()
+            }
+
+            pub fx c: (s: Str) Int64 {
+                return s.toInt64Radix(16).unwrapOr(0)
+            }
+            """
+        )
+        assertTrue(py.contains("return s.ljust(4, chr(fill)) + s.lstrip(\" \\t\\n\\v\\f\\r\") + s.rstrip(\" \\t\\n\\v\\f\\r\") + s.replace(\"a\", \"\")"), py)
+        assertTrue(py.contains("return _k_words.findall(s)") && py.contains("_k_words = _k_re.compile(r\"[^ \\t\\n\\r\\v\\f]+\")"), py)
+        assertTrue(py.contains("return _k_or(_k_tointr(s, 16), 0)") && py.contains("_k_digits = ") && py.contains("def _k_panic("), py)
+    }
+
+    @Test
+    fun joinToStringTakesTheListBeforeTheSeparator() {
+        val py = python(
+            """
+            fx f: (xs: List<Str>, sep: Str) Str {
+                return xs.joinToString(sep) + "a b".splitWhitespace().joinToString(",")
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_join(xs, sep) + _k_join(_k_words.findall(\"a b\"), \",\")"), py)
+        assertTrue(py.contains("return sep.join(xs)"), py)
+    }
+
+    @Test
+    fun aCharsTestsAreAsciisOnItsCodePoint() {
+        val py = python(
+            """
+            fx f: (s: Str, i: Size, c: Char) Bool {
+                return s[i].isDigit() || c.isWhitespace() || 'x'.isLetter()
+            }
+            """
+        )
+        assertTrue(py.contains("return (48 <= ord(s[i]) <= 57) or (c in _k_spaces) or (120 in _k_letters)"), py)
+        assertTrue(py.contains("_k_spaces = _k_builtins.frozenset((9, 10, 11, 12, 13, 32))") && py.contains("_k_letters = _k_builtins.frozenset("), py)
+    }
+
+    @Test
+    fun aListsSortSumMinAndMaxNameTheirElementType() {
+        val py = python(
+            """
+            class Bag {
+                pub mut fs: List<Float64> = List<Float64> { }
+                pub mut bs: List<UInt8> = List<UInt8> { }
+
+                pub mut fx tidy: () Float64 {
+                    fs.sort()
+                    bs.sort()
+                    return fs.sum() + (bs.sum() as Float64)
+                }
+            }
+
+            fx f: (mut xs: List<Int32>, names: List<Str>) Int32 {
+                xs.sort()
+                return xs.sum() + xs.minOrNull().unwrapOr(0) + (names.maxOrNull().unwrapOr("").length() as Int32)
+            }
+            """
+        )
+        assertTrue(py.contains("_k_sort(self.fs, \"Float64\")") && py.contains("_k_sort(self.bs, \"UInt8\")"), py)
+        assertTrue(py.contains("_k_sum(self.fs, \"Float64\") + float(_k_sum(self.bs, \"UInt8\"))"), py)
+        assertTrue(py.contains("_k_sort(xs, \"Int32\")") && py.contains("_k_sum(xs, \"Int32\")") && py.contains("_k_minof(xs, \"Int32\")") && py.contains("_k_maxof(names, \"Str\")"), py)
+        assertTrue(py.contains("return _k_functools.reduce(_k_operator.add, xs, 0.0)") && py.contains("import itertools as _k_itertools"), py)
+        assertTrue(py.contains("xs.sort(key=_k_fkey)") && py.contains("import builtins as _k_builtins"), py)
+    }
+
+    @Test
+    fun aStrIsOrderedAsPythonOrdersIt() {
+        val py = python(
+            """
+            fx f: (a: Str, b: Str) Bool {
+                return a < b || a >= "m"
+            }
+            """
+        )
+        assertTrue(py.contains("return a < b or a >= \"m\""), py)
     }
 
     @Test
