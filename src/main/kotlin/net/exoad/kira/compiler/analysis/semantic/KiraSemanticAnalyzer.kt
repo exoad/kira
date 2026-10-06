@@ -326,7 +326,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     /**
-     * The callables the typer makes, which no declaration names (D39, D55, D61), by `Type.name`,
+     * The callables the typer makes, which no declaration names (D39, D55, D64), by `Type.name`,
      * and their parameters' names.
      */
     private val compilerMadeParameters = mapOf(

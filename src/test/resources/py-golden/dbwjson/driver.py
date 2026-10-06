@@ -17,7 +17,6 @@ spec_ = importlib.util.spec_from_file_location("dbwjson_kira", path)
 m = importlib.util.module_from_spec(spec_)
 spec_.loader.exec_module(m)
 
-# ---- the oracle: dbwcodec.py as written by hand --------------------------------------------------
 HEADER_BYTES = 10
 CRC_BYTES = 2
 
@@ -108,7 +107,6 @@ def oracle(p):
         return "StopIteration"
 
 
-# ---- dbw.json and seeded edits of it ------------------------------------------------------------
 rng = random.Random(20261006)
 work = tempfile.mkdtemp()
 target = os.path.join(work, "dbw.json")

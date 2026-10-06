@@ -15,7 +15,6 @@ spec = importlib.util.spec_from_file_location("maskconfig_kira", path)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
-# ---- the oracle: lidarmask.py as written by hand ------------------------------------------------
 BOX_LIMIT_M = 1.5
 # TT-02 body, 0.19 x 0.40 m, centred on the sensor, as the page draws the car.
 DEFAULT_BOX = {"front": 0.20, "back": 0.20, "left": 0.10, "right": 0.10}
@@ -63,7 +62,6 @@ def mask_saves(text):
     return json.dumps({"on": on, "box": dict(box), "wedges": [dict(w) for w in wedges]}, indent=1)
 
 
-# ---- seeded configs ---------------------------------------------------------------------------
 rng = random.Random(20261006)
 TEXTS = ["0.3", " 1.25 ", "\t-2", ".5", "5.", "+0.75", "1e-3", "nan", "-inf", "Infinity", "INF", "", "abc", "0x10",
          "1,5", "capture", "manual"]

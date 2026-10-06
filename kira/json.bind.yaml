@@ -1,5 +1,5 @@
 # kira:json: kira/cpp/kira/json.hxx (`{self}` a kira::Rc<kira::json::Json>), and on py the value
-# json.loads gives with runtime.py's _k_j helpers. The keys after the methods are the typer's (D61).
+# json.loads gives with runtime.py's _k_j helpers. The keys after the methods are the typer's (D64).
 Json.isNull:    { cpp: { expr: "{self}->isNull()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self} is None)" } }
 Json.isBool:    { cpp: { expr: "{self}->isBool()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is bool)" } }
 Json.isInt:     { cpp: { expr: "{self}->isInt()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is int)" } }

@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 
 /**
  * kira/cpp/tests/json_corpus.cxx, built by each host toolchain, answers json_corpus.py's corpus with the
- * py target's bytes (D62, D63). Skipped without Python (set KIRA_PYTHON).
+ * py target's bytes (D65, D66). Skipped without Python (set KIRA_PYTHON).
  */
 class JsonCorpusTest {
     private val tests = File("kira/cpp/tests")

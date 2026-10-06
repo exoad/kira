@@ -858,7 +858,6 @@ internal class StmtChecker(private val c: PhaseC) {
         fn
     }
 
-    /** kira:json's constructors (D61): one magic FnSymbol on Json per binding [key]. */
     fun jsonFn(cls: ClassSymbol, name: String, key: String, params: List<Pair<String, KType>>, ret: KType): FnSymbol = jsonFns.getOrPut(key) {
         val ps = params.mapIndexed { i, (n, t) -> ParamSymbol(n, cls.module, null, type = t, index = i) }
         val fn = FnSymbol(name, cls.module, null, emptyList(), ps, ret, owner = cls, foreign = Foreign.Magic(key))

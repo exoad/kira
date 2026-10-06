@@ -90,9 +90,7 @@ import java.util.IdentityHashMap
  *   and only an ASCII Char agrees; a View<Char> is refused, as text is a Str), the integers,
  *   Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
  *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict (its order is
- *   kira::Map's) keyed by a Str, an integer, a Bool or a Char, kira:json's Json as the value
- *   json.loads gives (never in a Maybe or as a Map's value: JSON null is None), and the
- *   module's own classes.
+ *   kira::Map's) keyed by a Str, an integer, a Bool or a Char, and the module's own classes.
  *   Kira's List and Map are values (D44) and a Python list or dict is shared, so one is copied
  *   wherever a second name could see a write ([asValue]); a `mut` List or Map parameter is the
  *   caller's own, and a field, global or `mut` parameter assigned keeps its list or dict and
@@ -1241,7 +1239,6 @@ class PyModuleEmitter(
 
     private fun isMap(t: KType?): Boolean = magicName(t) == "Map"
 
-    /** kira:json's Json: the value json.loads gives, None for JSON null (D60). */
     private fun isJson(t: KType?): Boolean = magicName(t) == "Json" && ((t as KType.Nominal).sym.module.uri == "kira:json")
 
     /** A value (D44) Python shares: copied where a second name could see a write. */
