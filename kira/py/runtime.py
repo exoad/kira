@@ -72,6 +72,10 @@ def _k_or(m, default):
     return default if m is None else m
 
 
+def _k_mcopy(m, copy):
+    return None if m is None else copy(m)
+
+
 # enumOf<E>(raw) (D25): the first entry whose C++ value is raw, or none.
 def _k_enumof(order, raw):
     for v in order:

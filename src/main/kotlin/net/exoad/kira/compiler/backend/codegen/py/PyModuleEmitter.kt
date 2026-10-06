@@ -98,11 +98,11 @@ import java.util.IdentityHashMap
  *   value), List<T> and Arr<T> (and
  *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict, whose order is
  *   kira::Map's (D27), keyed by a Str, an integer, a Bool, a Char or an enum (`m[k] = v` puts; entries, a
- *   List of Tuple2, is refused), and the module's own classes.
- *   Kira's List and Map are values (D44) and a Python list or dict is shared, so one is copied
- *   wherever a second name could see a write ([asValue]); a `mut` List or Map parameter is the
- *   caller's own, and a field, global or `mut` parameter assigned keeps its list or dict and
- *   takes the new elements, as C++'s `T&` sees them;
+ *   List of Tuple2, is refused), and the workspace's classes and structs.
+ *   Kira's List, Map and struct are values (D44, D1) and a Python object is shared, so one is
+ *   copied, deeply, wherever a second name could see a write ([asValue]); a `mut` one is the
+ *   caller's own, and a field, global or `mut` parameter assigned keeps its object and takes
+ *   the new contents, as C++'s `T&` sees them;
  * - View<T> and MutView<UInt8>, which are second-class (decision 4b: only an argument, a
  *   receiver or a return, so none outlives the call that consumes it): a view is what it was
  *   lent from, and its from and slice are checked memoryviews of bytes, which a MutView writes
@@ -346,8 +346,8 @@ class PyModuleEmitter(
             checkName(p.name, node)
             checkLocalName(p.name, node)
             checkType(p.type, node, "the parameter '${p.name}'")
-            if (p.byRef && !isValue(p.type)) {
-                refuse(node, "the mut parameter '${p.name}': ${p.type.display()} (only a List or a Map is passed by reference)")
+            if (p.byRef && !isValue(p.type) && !isStruct(p.type)) {
+                refuse(node, "the mut parameter '${p.name}': ${p.type.display()} (only a List, a Map or a struct is passed by reference)")
             }
             frame.scopes.first().add(p.name)
             pyDefault(p)?.let { "${p.name}=$it" } ?: p.name
@@ -363,7 +363,7 @@ class PyModuleEmitter(
         val at: ASTNode = c.decl ?: module.source.ast
         checkName(c.name, at)
         when {
-            c.kind != ClassKind.CLASS -> refuse(at, "the ${c.kind.name.lowercase()} ${c.name}")
+            c.kind != ClassKind.CLASS && c.kind != ClassKind.STRUCT -> refuse(at, "the ${c.kind.name.lowercase()} ${c.name}")
             c.typeParams.isNotEmpty() -> refuse(at, "the generic class ${c.name}")
             c.superclass != null -> refuse(at, "the subclass ${c.name} (class inheritance)")
             c.traits.isNotEmpty() -> refuse(at, "the class ${c.name} implementing a trait")
@@ -386,7 +386,7 @@ class PyModuleEmitter(
                 checkLocalName(f.name, node)
             }
             checkType(f.type, node, "the field '${f.name}'")
-            val given = if (isValue(f.type)) copyOf(f.name, f.type) else f.name
+            val given = if (holdsValue(f.type)) copyOf(Py(f.name, PyPrec.ATOM), f.type).text else f.name
             val absent = {
                 when {
                     f.default != null -> asValue(f.default, frame, Use.STORE)
@@ -408,6 +408,13 @@ class PyModuleEmitter(
             body += ""
             body += "def __init__(${(listOf("self") + required.map { it.name } + optional.map { "${it.name}=_k_unset" }).joinToString(", ")}):"
             body += indent(init)
+        }
+        if (c.kind == ClassKind.STRUCT) {
+            // A struct is a value (D1): the emitter copies it where a second name could see a write.
+            val copied = c.fields.map { "c.${pyName(it)} = ${copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
+            body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(type(self))") + copied + "return c")
+            val set = c.fields.map { "self.${pyName(it)} = o.${pyName(it)}" }.ifEmpty { listOf("pass") }
+            body += listOf("", "def _k_set(self, o):") + indent(set)
         }
         c.methods.forEach { m ->
             body += ""
@@ -577,7 +584,7 @@ class PyModuleEmitter(
             LoopKind.LIST, LoopKind.ARR -> {
                 val t = typeOf(target) ?: return emptyList()
                 val it = wrap(expr(target, f), PyPrec.POSTFIX)
-                if (walksUnwritten(target, s.body)) it else copyOf(it, t)
+                if (walksUnwritten(target, s.body)) it else copyOf(Py(it, PyPrec.POSTFIX), t).text
             }
             LoopKind.VIEW -> wrap(expr(target, f), PyPrec.TERNARY)
             LoopKind.MAP -> return refuse(target, "a for loop over a Map (its entries are Tuple2s)").let { emptyList() }
@@ -672,12 +679,15 @@ class PyModuleEmitter(
         val lhs = placeText(target, f, spill, pre) ?: return emptyList()
         if (op == null) {
             val tt = model.typeOrNull(target)
-            if (tt != null && isValue(tt) && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
-                // A field, global or mut parameter keeps its one List or Map and takes the new
-                // elements, so a mut parameter bound to it still names it (C++'s T&); the slice
-                // and _k_mapset copy them.
-                val v = expr(value, f)
-                return pre + if (isMap(tt)) call("_k_mapset", lhs, v.text).text else "$lhs[:] = ${v.text}"
+            if (tt != null && (isValue(tt) || isStruct(tt)) && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
+                // A field, global or mut parameter keeps its one List, Map or struct and takes the
+                // new contents, so a mut parameter bound to it still names it (C++'s T&).
+                val v = if (isStruct(tt) || holdsValue(elementOf(tt))) asValue(value, f, Use.STORE) else expr(value, f)
+                return pre + when {
+                    isStruct(tt) -> "$lhs._k_set(${v.text})"
+                    isMap(tt) -> call("_k_mapset", lhs, v.text).text
+                    else -> "$lhs[:] = ${v.text}"
+                }
             }
             return pre + "$lhs = ${asValue(value, f, Use.STORE).text}"
         }
@@ -813,11 +823,11 @@ class PyModuleEmitter(
     private fun asValue(e: Expr, f: Frame, use: Use, later: List<Expr> = emptyList(), calleeWrites: Boolean = true): Py {
         val v = expr(e, f)
         val t = model.typeOrNull(e) ?: return v
-        if (!isValue(t) || model.coercion(e) is Coercion.ToView) {
+        if (!holdsValue(t) || model.coercion(e) is Coercion.ToView) {
             return v
         }
         val shared = calleeWrites || later.any { model.effect(it) == Effect.IMPURE }
-        return if (copies(e, use, later, shared)) Py(copyOf(v.text, t), PyPrec.POSTFIX) else v
+        return if (copies(e, use, later, shared)) copyOf(v, t) else v
     }
 
     /**
@@ -846,9 +856,18 @@ class PyModuleEmitter(
             is FieldSymbol -> use != Use.ARG || sharedWritten
             else -> false
         }
-        is MemberAccessExpr -> model.member(e) is MemberRef.Field && (use != Use.ARG || sharedWritten)
+        is MemberAccessExpr -> (model.member(e) is MemberRef.Field || borrows(e)) && (use != Use.ARG || sharedWritten)
+        is ArrayIndexExpr, is ThisExpr -> use != Use.ARG || sharedWritten
+        is FunctionCallExpr -> borrows(e) && (use != Use.ARG || sharedWritten)
         is IfExpr -> listOfNotNull(branchValue(e.thenBranch), branchValue(e.elseBranch)).any { copies(it, use, later, sharedWritten) }
         else -> false
+    }
+
+    /** A magic accessor gives what its receiver holds, not a value of its own (kira::unwrap's `const T&`). */
+    private fun borrows(e: Expr): Boolean {
+        val c = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr ?: return false
+        val rc = model.call(c) ?: return false
+        return rc.kind == CallKind.MAGIC && rc.fn?.name in BORROWERS
     }
 
     /**
@@ -899,10 +918,25 @@ class PyModuleEmitter(
     }
 
     /** A new Python list holding the elements of [text], a List or Arr of type [t] (a bytearray of UInt8), or a new dict of a Map's. */
-    private fun copyOf(text: String, t: KType): String = when {
-        isMap(t) -> "dict($text)"
-        isBytes(t) -> "bytearray($text)"
-        else -> "list($text)"
+    private fun copyOf(v: Py, t: KType, depth: Int = 0): Py {
+        val args = (t as? KType.Nominal)?.typeArgs().orEmpty()
+        val d = depth
+        return when {
+            isMap(t) -> if (holdsValue(args[1])) {
+                Py("{_k_k$d: ${copyOf(Py("_k_v$d", PyPrec.ATOM), args[1], d + 1).text} for _k_k$d, _k_v$d in ${wrap(v, PyPrec.POSTFIX)}.items()}", PyPrec.ATOM)
+            } else {
+                call("dict", v.text)
+            }
+            isBytes(t) -> call("bytearray", v.text)
+            isList(t) -> if (holdsValue(args[0])) {
+                Py("[${copyOf(Py("_k_e$d", PyPrec.ATOM), args[0], d + 1).text} for _k_e$d in ${wrap(v, PyPrec.OR + 1)}]", PyPrec.ATOM)
+            } else {
+                call("list", v.text)
+            }
+            isStruct(t) -> Py("${wrap(v, PyPrec.POSTFIX)}._k_clone()", PyPrec.POSTFIX)
+            isMaybe(t) -> call("_k_mcopy", v.text, "lambda _k_m$d: ${copyOf(Py("_k_m$d", PyPrec.ATOM), args[0], d + 1).text}")
+            else -> v
+        }
     }
 
     private fun raw(e: Expr, f: Frame): Py {
@@ -935,7 +969,7 @@ class PyModuleEmitter(
         if (!isList(t)) {
             return refusePy(e, "an array literal of a ${t.display()}")
         }
-        val items = e.value.joinToString(", ") { wrap(expr(it, f), PyPrec.TERNARY) }
+        val items = e.value.joinToString(", ") { wrap(asValue(it, f, Use.STORE), PyPrec.TERNARY) }
         return if (isBytes(t)) call("bytearray", "($items${if (e.value.size == 1) "," else ""})") else Py("[$items]", PyPrec.ATOM)
     }
 
@@ -1047,8 +1081,8 @@ class PyModuleEmitter(
         val fn = rc.fn
         val userCall = (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD) && fn != null && fn.foreign == null && fn.body != null
         rc.args.forEachIndexed { i, a ->
-            if (a is ArgBinding.Given && a.byRef && !(userCall && fn!!.params.getOrNull(i)?.type?.let { isValue(it) } == true)) {
-                return refusePy(c, "a mut argument to '${fn?.name ?: c.name}' (only a List or a Map given to a Kira function is passed by reference)")
+            if (a is ArgBinding.Given && a.byRef && !(userCall && fn!!.params.getOrNull(i)?.type?.let { isValue(it) || isStruct(it) } == true)) {
+                return refusePy(c, "a mut argument to '${fn?.name ?: c.name}' (only a List, a Map or a struct given to a Kira function is passed by reference)")
             }
         }
         return when (rc.kind) {
@@ -1138,11 +1172,16 @@ class PyModuleEmitter(
         } else {
             binding
         }
-        return bound(made, self, rc.args.map { (it as ArgBinding.Given).expr }, f)
+        // addAll copies the elements it takes, so its List is copied only when they hold values.
+        val stores = fn.isMutMethod && (fn.name != "addAll" || rc.args.any { a -> holdsValue(model.typeOrNull((a as ArgBinding.Given).expr)?.let { elementOf(it) }) })
+        return bound(made, self, rc.args.map { (it as ArgBinding.Given).expr }, f, store = stores)
     }
 
-    private fun bound(binding: PyBinding, self: ((Int) -> String)?, args: List<Expr>, f: Frame): Py {
-        val text = PyBindingTable.expand(binding, self) { i, prec -> args.getOrNull(i)?.let { wrap(expr(it, f), prec) } ?: "None" }
+    /** A value a mutating method stores ([store]: `xs.add(v)`, `m.put(k, v)`) is a copy, as C++ copies it in. */
+    private fun bound(binding: PyBinding, self: ((Int) -> String)?, args: List<Expr>, f: Frame, store: Boolean = false): Py {
+        val text = PyBindingTable.expand(binding, self) { i, prec ->
+            args.getOrNull(i)?.let { wrap(if (store) asValue(it, f, Use.STORE) else expr(it, f), prec) } ?: "None"
+        }
         PyRuntime.HELPER.findAll(binding.expr).forEach { helpers.add(it.value) }
         return Py(text, binding.prec)
     }
@@ -1480,7 +1519,16 @@ class PyModuleEmitter(
     private fun isView(t: KType): Boolean = magicName(t).let { it == "View" || it == "MutView" }
 
     private fun isUserClass(owner: Any?): Boolean =
-        owner is ClassSymbol && owner.kind == ClassKind.CLASS && !owner.module.isStdlib && owner.typeParams.isEmpty()
+        owner is ClassSymbol && (owner.kind == ClassKind.CLASS || owner.kind == ClassKind.STRUCT) && !owner.module.isStdlib && owner.typeParams.isEmpty()
+
+    private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && isUserClass(it) } == true
+
+    /** A value Python would share where Kira copies it: a container, a struct, a Maybe of one. */
+    private fun holdsValue(t: KType?): Boolean =
+        t != null && (isValue(t) || isStruct(t) || (isMaybe(t) && holdsValue((t as KType.Nominal).typeArgs().firstOrNull())))
+
+    /** A List's or Arr's element type, a Map's value type. */
+    private fun elementOf(t: KType): KType? = (t as? KType.Nominal)?.typeArgs()?.let { if (isMap(t)) it.getOrNull(1) else it.firstOrNull() }
 
     /** Why the py target cannot hold a value of [t], or null when it can. */
     private fun unsupportedType(t: KType): String? = when (t) {
@@ -1596,8 +1644,12 @@ class PyModuleEmitter(
             magicName(t) == "Result" -> "(False, ${zeroValue((t as KType.Nominal).typeArgs()[1], at)})"
             isBytes(t) -> if (n == null) "bytearray()" else "bytearray($n)"
             isList(t) && n == null -> "[]"
-            isList(t) -> "[${zeroValue((t as KType.Nominal).typeArgs().first(), at)}] * $n"
+            isList(t) && holdsValue(elementOf(t)) -> "[${zeroValue(elementOf(t)!!, at)} for _k_i in range($n)]"
+            isList(t) -> "[${zeroValue(elementOf(t)!!, at)}] * $n"
             isMap(t) -> "{}"
+            isStruct(t) -> ((t as KType.Nominal).sym as ClassSymbol).let { s ->
+                "${ref(s, at) ?: "None"}(${s.fields.filter { isPositional(it) }.joinToString(", ") { zeroValue(it.type, at) }})"
+            }
             else -> refuseText(at, "a ${t.display()} without a value") ?: "None"
         }
     }
@@ -1644,6 +1696,9 @@ class PyModuleEmitter(
 
         /** The methods that lend a view of their receiver, a MutView of a mutable List or Arr. */
         private val LENDERS = setOf("from", "slice", "view")
+
+        /** The magic methods that give what their receiver holds. */
+        private val BORROWERS = setOf("get", "unwrap", "unwrapOr", "unwrapErr", "peek")
 
         private val COMPARISONS = mapOf(
             BinaryOp.EQUALS to "==",

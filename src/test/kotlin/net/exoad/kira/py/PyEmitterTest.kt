@@ -1368,14 +1368,49 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMutParameterOtherThanAListOrAMapIsRefused() {
+    fun aStructIsCopiedWhereASecondNameCouldSeeAWrite() {
+        val py = python(
+            """
+            pub struct Pt {
+                pub x: Int32 = 0
+                pub tags: List<Int32> = List<Int32> { }
+
+                pub fx me: () Pt {
+                    return this
+                }
+            }
+
+            fx move: (mut p: Pt) Void {
+                p = Pt { 1 }
+            }
+
+            fx f: (q: Pt) Int32 {
+                mut ps: List<Pt> = List<Pt> { }
+                ps.add(q)
+                mut a: Pt = ps[0]
+                move(mut a)
+                ps[0] = a
+                b: Maybe<Pt> = a
+                return a.x + ps.get(0).x
+            }
+            """
+        )
+        assertTrue(py.contains("    def _k_clone(self):\n        c = object.__new__(type(self))\n        c.x = self.x\n        c.tags = list(self.tags)\n        return c"), py)
+        assertTrue(py.contains("    def _k_set(self, o):\n        self.x = o.x\n        self.tags = o.tags"), py)
+        assertTrue(py.contains("        return self._k_clone()"), py)
+        assertTrue(py.contains("    p._k_set(Pt(x=1))"), py)
+        assertTrue(py.contains("    ps.append(q._k_clone())\n    a = ps[0]._k_clone()\n    _move(a)\n    ps[0]._k_set(a._k_clone())\n    b = a._k_clone()"), py)
+    }
+
+    @Test
+    fun aMutParameterOtherThanAListAMapOrAStructIsRefused() {
         refused(
             """
             fx f: (mut x: Int32) Void {
                 x = 1
             }
             """,
-            "the mut parameter 'x': Int32 (only a List or a Map is passed by reference)",
+            "the mut parameter 'x': Int32 (only a List, a Map or a struct is passed by reference)",
         )
     }
 

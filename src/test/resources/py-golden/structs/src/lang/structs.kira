@@ -1,0 +1,124 @@
+module "lang:structs"
+
+// A struct is a value (D1): each copy below is written to show the other did not move.
+// The expected output is the C++ run's.
+
+pub struct Pt {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+
+    pub fx sum: () Int32 {
+        return x + y
+    }
+
+    pub mut fx shift: (dx: Int32) Void {
+        x += dx
+    }
+
+    pub fx moved: (dx: Int32) Pt {
+        mut p: Pt = this
+        p.shift(dx)
+        return p
+    }
+}
+
+struct Path {
+    require pub name: Str
+    pub pts: List<Pt> = List<Pt> { }
+    pub start: Pt = Pt { 1, 1 }
+    pub last: Maybe<Pt> = null
+}
+
+class Holder {
+    pub mut at: Pt = Pt { }
+
+    pub fx get: () Pt {
+        return at
+    }
+}
+
+mut origin: Pt = Pt { }
+
+fx bump: (mut p: Pt) Void {
+    p.x += 100
+}
+
+fx reset: (mut p: Pt) Void {
+    p = Pt { 5, 5 }
+}
+
+fx norm: (p: Pt) Int32 {
+    return p.x * p.x + p.y * p.y
+}
+
+fx main: () Void {
+    mut a: Pt = Pt { 1, 2 }
+    mut b: Pt = a
+    b.x = 10
+    trace("${a.x} ${b.x}")
+    a.shift(5)
+    c: Pt = a.moved(1)
+    trace("${a.x} ${c.x}")
+    bump(mut a)
+    trace(a.x)
+    reset(mut b)
+    trace("${b.x} ${b.y}")
+
+    // in a List: added, read and written as values
+    mut pts: List<Pt> = List<Pt> { }
+    pts.add(a)
+    a.x = 0
+    trace(pts[0].x)
+    pts[0].x = 7
+    mut q: Pt = pts[0]
+    q.y = 99
+    trace("${pts[0].x} ${pts[0].y} ${q.y}")
+    pts[0].shift(1)
+    trace(pts[0].x)
+    pts[0] = q
+    q.x = -1
+    trace("${pts[0].x} ${pts.get(0).y}")
+    mut copied: List<Pt> = pts
+    copied[0].x = 1000
+    trace("${pts[0].x} ${copied[0].x}")
+    lit: List<Pt> = [a, q]
+    a.y = 55
+    trace("${lit[0].y} ${lit[1].x}")
+
+    // in a class and a struct
+    mut h: Holder = Holder { }
+    h.at.x = 3
+    mut got: Pt = h.get()
+    got.x = 4
+    trace(h.at.x)
+    h.at = got
+    got.x = 8
+    trace(h.at.x)
+    mut path: Path = Path { "p" }
+    path.pts.add(Pt { 2, 2 })
+    mut other: Path = path
+    other.pts.add(Pt { 3, 3 })
+    other.start.x = 50
+    other.pts[0].y = 9
+    trace("${path.pts.size()} ${other.pts.size()} ${path.start.x} ${path.pts[0].y}")
+    other.last = q
+    q.y = 1
+    trace(other.last.unwrap().y)
+
+    // a global
+    origin.x = 9
+    mut o: Pt = origin
+    o.x = 1
+    trace(origin.x)
+    origin = o
+    o.x = 2
+    trace(origin.x)
+    trace(norm(Pt { y = 3, x = 4 }))
+
+    // the zero value, and a walk
+    z: Pt = Pt { }
+    trace(z.sum())
+    for p: Pt in pts {
+        trace(p.sum())
+    }
+}
