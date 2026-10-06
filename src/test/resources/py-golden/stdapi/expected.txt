@@ -14,3 +14,28 @@
 <
 <
 <
+[ab...][abcdef][  ]
+[x y <0d><0a>][ <09> x y][][]
+[<0b>x<0c>][<0b>x<0c>][<0b>x<0c>]
+4 [the] [quick] [brown] [fox]
+3 [a] [b] [c<1c>d]
+0
+0
+1 [one]
+[a--b--c][ba][abc]
+[-a-b-c-][-][]
+[|h|<c3><a9>|l|l|o|][hello][ab]
+255 255 -1295 5
+511 none none none
+9223372036854775807 none -9223372036854775808
+-9223372036854775808 9223372036854775807 none
+1 none none none
+none none none none none none 20 35
+splitWhitespace: 7576 values, digest 63c010cb5f22d2fe
+trimStart, trimEnd, trim: 9000 values, digest 28e60aee0339810e
+replace: 3000 values, digest 57f81695c5e0b078
+toInt64Radix: 3000 values, digest 649cc21553bd66bf
+toInt64Radix(1, 37) -> panic: radix out of range
+toInt64Radix(1, 1) -> panic: radix out of range
+toInt64Radix(, 0) -> panic: radix out of range
+toInt64Radix(z, 36) -> 35

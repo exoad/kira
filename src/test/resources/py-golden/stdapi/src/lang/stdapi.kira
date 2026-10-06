@@ -1,6 +1,74 @@
 module "lang:stdapi"
 
-// The Kotlin-named stdlib batch (D56 on): expected.txt is the C++ backend's run of main.
+// The Kotlin-named stdlib batch (D56 on): expected.txt is the C++ backend's run of main, then
+// the driver's panics as the C++ backend's run of each call alone gives them.
+
+FNV_BASIS: UInt64 = 0x4BF29CE484222325
+FNV_PRIME: UInt64 = 0x100000001B3
+
+pub class Rng {
+    pub mut s: UInt64 = 20261005
+
+    pub mut fx below: (n: UInt64) UInt64 {
+        s = s ^ (s << 13)
+        s = s ^ (s >> 7)
+        s = s ^ (s << 17)
+        return s % n
+    }
+}
+
+pub class Digest {
+    pub mut h: UInt64 = FNV_BASIS
+    pub mut count: Int64 = 0
+
+    pub mut fx text: (s: Str) Void {
+        b: List<UInt8> = s.bytes()
+        mut i: Size = 0
+        while i < b.size() {
+            h = (h ^ (b[i] as UInt64)) * FNV_PRIME
+            i += 1
+        }
+        h = (h ^ 0xFF) * FNV_PRIME
+        count += 1
+    }
+
+    pub fx said: () Str {
+        return "${count} values, digest ${h.toHex()}"
+    }
+}
+
+// Printable ASCII as itself, any other byte as <hh>.
+fx vis: (s: Str) Str {
+    b: List<UInt8> = s.bytes()
+    mut out: Str = "["
+    mut i: Size = 0
+    while i < b.size() {
+        if b[i] >= 0x20 && b[i] < 0x7F {
+            out = out + "${b[i] as Char}"
+        } else {
+            out = out + "<" + b[i].toHex().padStart(2, '0') + ">"
+        }
+        i += 1
+    }
+    return out + "]"
+}
+
+fx visAll: (xs: List<Str>) Str {
+    mut out: Str = "${xs.size()}"
+    mut i: Size = 0
+    while i < xs.size() {
+        out = out + " " + vis(xs[i])
+        i += 1
+    }
+    return out
+}
+
+fx maybeText: (m: Maybe<Int64>) Str {
+    if m.isNone() {
+        return "none"
+    }
+    return m.value as Str
+}
 
 fx order: (a: Str, b: Str) Str {
     if a < b && a <= b && b > a && b >= a {
@@ -34,6 +102,87 @@ fx strOrder: () Void {
     trace(order("éa", "éb"))
 }
 
+fx pieces: () List<Str> {
+    return ["a", "b", " ", "\t", "\n", "\r", "${11 as Char}", "${12 as Char}", "${28 as Char}", "é", "ab", "ba", "✓"]
+}
+
+pub fx radixOf: (s: Str, radix: Int32) Str {
+    return maybeText(s.toInt64Radix(radix))
+}
+
+fx strText: () Void {
+    trace(vis("ab".padEnd(5, '.')) + vis("abcdef".padEnd(3, '.')) + vis("".padEnd(2, ' ')))
+    trace(vis(" \t x y \r\n".trimStart()) + vis(" \t x y \r\n".trimEnd()) + vis(" \n".trimStart()) + vis("".trimEnd()))
+    v: Str = "${11 as Char}x${12 as Char}"
+    trace(vis(v.trimStart()) + vis(v.trimEnd()) + vis(v.trim()))
+    trace(visAll("  the quick\tbrown\r\nfox  ".splitWhitespace()))
+    trace(visAll("a${11 as Char}b${12 as Char}c${28 as Char}d".splitWhitespace()))
+    trace(visAll(" \t\r\n".splitWhitespace()))
+    trace(visAll("".splitWhitespace()))
+    trace(visAll("one".splitWhitespace()))
+    trace(vis("a.b.c".replace(".", "--")) + vis("aaa".replace("aa", "b")) + vis("abc".replace("x", "y")))
+    trace(vis("abc".replace("", "-")) + vis("".replace("", "-")) + vis("abc".replace("abc", "")))
+    trace(vis("héllo".replace("", "|")) + vis("héllo".replace("é", "e")) + vis("a✓b✓".replace("✓", "")))
+    trace(radixOf("ff", 16) + " " + radixOf("FF", 16) + " " + radixOf("-Zz", 36) + " " + radixOf("+101", 2))
+    trace(radixOf("777", 8) + " " + radixOf("778", 8) + " " + radixOf("12", 2) + " " + radixOf("0x1f", 16))
+    trace(radixOf("7fffffffffffffff", 16) + " " + radixOf("8000000000000000", 16) + " " + radixOf("-8000000000000000", 16))
+    trace(radixOf("-1000000000000000000000000000000000000000000000000000000000000000", 2) + " " + radixOf("1y2p0ij32e8e7", 36) + " " + radixOf("1y2p0ij32e8e8", 36))
+    trace(radixOf("0000000000000000000000000000000000000000000000000000000000000000000000001", 2) + " " + radixOf("-", 10) + " " + radixOf("", 10) + " " + radixOf("+", 36))
+    trace(radixOf("1_0", 10) + " " + radixOf(" 1", 10) + " " + radixOf("1 ", 10) + " " + radixOf("١", 10) + " " + radixOf("ｆ", 16) + " " + radixOf("K", 36) + " " + radixOf("K", 36) + " " + radixOf("z", 36))
+    ps: List<Str> = pieces()
+    mut r: Rng = Rng { }
+    mut words: Digest = Digest { }
+    mut trims: Digest = Digest { }
+    mut swaps: Digest = Digest { }
+    mut n: Int32 = 0
+    while n < 3000 {
+        mut s: Str = ""
+        want: UInt64 = r.below(11)
+        mut k: UInt64 = 0
+        while k < want {
+            s = s + ps[r.below(ps.size() as UInt64) as Size]
+            k += 1
+        }
+        ws: List<Str> = s.splitWhitespace()
+        mut i: Size = 0
+        while i < ws.size() {
+            words.text(ws[i])
+            i += 1
+        }
+        words.text("${ws.size()}")
+        trims.text(s.trimStart())
+        trims.text(s.trimEnd())
+        trims.text(s.trim())
+        pick: UInt64 = r.below((ps.size() as UInt64) + 2)
+        needle: Str = if pick < (ps.size() as UInt64) { ps[pick as Size] } else { "" }
+        repl: Str = if r.below(4) == 0 { "" } else { ps[r.below(ps.size() as UInt64) as Size] }
+        swaps.text(s.replace(needle, repl))
+        n += 1
+    }
+    trace("splitWhitespace: " + words.said())
+    trace("trimStart, trimEnd, trim: " + trims.said())
+    trace("replace: " + swaps.said())
+    digits: Str = "0123456789abcdefzABCDEFZ+-_ x"
+    mut radixes: Digest = Digest { }
+    n = 0
+    while n < 3000 {
+        mut s: Str = ""
+        long: Bool = r.below(8) == 0
+        want: UInt64 = if long { 60 + r.below(8) } else { r.below(21) }
+        mut k: UInt64 = 0
+        while k < want {
+            at: Size = if long { r.below(2) as Size } else { r.below(digits.length() as UInt64) as Size }
+            s = s + digits.substring(at, at + 1)
+            k += 1
+        }
+        radix: Int32 = if long { 2 } else { (r.below(35) as Int32) + 2 }
+        radixes.text(radixOf(s, radix))
+        n += 1
+    }
+    trace("toInt64Radix: " + radixes.said())
+}
+
 fx main: () Void {
     strOrder()
+    strText()
 }

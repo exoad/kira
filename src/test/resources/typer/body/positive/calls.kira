@@ -59,6 +59,11 @@ pub fx calls: () Void {
     up: Str = s.toUpper()                  // @type Str call=MAGIC(Str.toUpper)
     sub2: Str = s.substring(0, 2)          // @type Size const=0:Size @ 0
     at: Maybe<Size> = s.find("b")          // @type Maybe<Size> call=MAGIC(Str.find)
+    pe: Str = s.padEnd(5, '.')             // @type Str call=MAGIC(Str.padEnd)
+    ts: Str = s.trimStart() + s.trimEnd()  // @type Str call=MAGIC(Str.trimStart) @ s.trimStart()
+    ws: List<Str> = s.splitWhitespace()    // @type List<Str> call=MAGIC(Str.splitWhitespace)
+    rp: Str = s.replace("b", "")           // @type Str call=MAGIC(Str.replace)
+    hexv: Maybe<Int64> = s.toInt64Radix(16) // @type Maybe<Int64> call=MAGIC(Str.toInt64Radix)
     mut xs: List<Int32> = List<Int32> { }
     xs.add(3)                              // @type Void call=MAGIC(List.add)
     got: Int32 = xs.get(0)                 // @type Int32 call=MAGIC(List.get)

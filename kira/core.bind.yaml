@@ -48,6 +48,7 @@
 #     kira/c/c_generator.c: h = h * 33 + byte over uint64, cast to int64)
 #   kira::str::bytes(const Str&) -> List<std::uint8_t>   (Str.bytes, D54: hosted)
 #   kira::str::of(View<std::uint8_t>) -> Str             (Str.of, D55: hosted)
+#   kira::str::padEnd, trimStart, trimEnd, splitWhitespace, replace, toInt64(s, radix)   (D57: hosted)
 #   template<class T> constexpr T abs(T) noexcept      (type-preserving; unsigned
 #     is the identity, INT_MIN stays INT_MIN by wrapping, D8; a floating-point
 #     T clears the sign bit, so abs(-0.0) is +0.0 as fabs and Math.abs give,
@@ -92,6 +93,12 @@ Str.toUpper:   { cpp: { expr: "kira::str::toUpper({self})", pure: true }, py: { 
 Str.toInt64:   { cpp: { expr: "kira::str::toInt64({self})", pure: true }, py: { expr: "_k_toint({self})" } }
 Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true }, py: { expr: "_k_tofloat({self})" } }
 Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true }, py: { expr: "{self}.rjust({0}, chr({1}))" } }
+Str.padEnd:    { cpp: { expr: "kira::str::padEnd({self}, {0}, {1})", pure: true }, py: { expr: "{self}.ljust({0}, chr({1}))" } }
+Str.trimStart: { cpp: { expr: "kira::str::trimStart({self})", pure: true }, py: { expr: '{self}.lstrip(" \t\n\r")' } }
+Str.trimEnd:   { cpp: { expr: "kira::str::trimEnd({self})", pure: true }, py: { expr: '{self}.rstrip(" \t\n\r")' } }
+Str.splitWhitespace: { cpp: { expr: "kira::str::splitWhitespace({self})", pure: true }, py: { expr: "_k_words.findall({self})" } }
+Str.replace:   { cpp: { expr: "kira::str::replace({self}, {0}, {1})", pure: true }, py: { expr: "{self}.replace({0}, {1})" } }
+Str.toInt64Radix: { cpp: { expr: "kira::str::toInt64({self}, {0})", pure: true }, py: { expr: "_k_tointr({self}, {0})" } }
 Str.view:      { cpp: { expr: "kira::str::view({self})", pure: true } }
 Str.bytes:     { cpp: { expr: "kira::str::bytes({self})", pure: true }, py: { expr: "_k_utf8({self})" } }
 Str.of:        { cpp: { expr: "kira::str::of({0})", pure: true }, py: { expr: "_k_strof({0})" } }

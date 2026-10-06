@@ -584,6 +584,81 @@ namespace kira
         out += s;
         return out;
     }
+    [[nodiscard]] inline Str padEnd(const Str& s, Size width, Char fill)
+    {
+        if(s.size() >= width)
+        {
+            return s;
+        }
+        return s + Str(width - s.size(), fill);
+    }
+    [[nodiscard]] inline Str trimStart(const Str& s)
+    {
+        const Size a = s.find_first_not_of(" \t\n\r");
+        return a == Str::npos ? Str() : s.substr(a);
+    }
+    [[nodiscard]] inline Str trimEnd(const Str& s)
+    {
+        const Size b = s.find_last_not_of(" \t\n\r");
+        return b == Str::npos ? Str() : s.substr(0, b + 1);
+    }
+    [[nodiscard]] inline List<Str> splitWhitespace(const Str& s)
+    {
+        List<Str> out;
+        Size i = 0;
+        while(i < s.size())
+        {
+            while(i < s.size() && isWhitespace(s[i]))
+            {
+                ++i;
+            }
+            const Size start = i;
+            while(i < s.size() && !isWhitespace(s[i]))
+            {
+                ++i;
+            }
+            if(i > start)
+            {
+                out.push_back(s.substr(start, i - start));
+            }
+        }
+        return out;
+    }
+    // An empty `from` inserts `to` before each UTF-8 lead byte and at the end, so between code
+    // points as Python's str.replace does.
+    [[nodiscard]] inline Str replace(const Str& s, const Str& from, const Str& to)
+    {
+        Str out;
+        if(from.empty())
+        {
+            for(const Char c : s)
+            {
+                if((ord(c) & 0xC0u) != 0x80u)
+                {
+                    out += to;
+                }
+                out += c;
+            }
+            return out + to;
+        }
+        Size at = 0;
+        for(;;)
+        {
+            const Size hit = s.find(from, at);
+            if(hit == Str::npos)
+            {
+                out.append(s, at, Str::npos);
+                return out;
+            }
+            out.append(s, at, hit - at);
+            out += to;
+            at = hit + from.size();
+        }
+    }
+    [[nodiscard]] inline std::optional<std::int64_t> toInt64(const Str& s, std::int32_t radix) noexcept
+    {
+        return parseInt64(view(s), radix);
+    }
   }
 
   // ---- text: `x as Str` and "${x}" ------------------------------------------

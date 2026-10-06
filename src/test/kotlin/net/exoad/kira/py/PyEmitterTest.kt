@@ -448,6 +448,28 @@ class PyEmitterTest {
     }
 
     @Test
+    fun theKotlinNamedStrMethodsKeepKiraStrsRules() {
+        val py = python(
+            """
+            pub fx a: (s: Str, fill: Char) Str {
+                return s.padEnd(4, fill) + s.trimStart() + s.trimEnd() + s.replace("a", "")
+            }
+
+            pub fx b: (s: Str) List<Str> {
+                return s.splitWhitespace()
+            }
+
+            pub fx c: (s: Str) Int64 {
+                return s.toInt64Radix(16).unwrapOr(0)
+            }
+            """
+        )
+        assertTrue(py.contains("return s.ljust(4, chr(fill)) + s.lstrip(\" \\t\\n\\r\") + s.rstrip(\" \\t\\n\\r\") + s.replace(\"a\", \"\")"), py)
+        assertTrue(py.contains("return _k_words.findall(s)") && py.contains("_k_words = _k_re.compile(r\"[^ \\t\\n\\r\\v\\f]+\")"), py)
+        assertTrue(py.contains("return _k_or(_k_tointr(s, 16), 0)") && py.contains("_k_digits = ") && py.contains("def _k_panic("), py)
+    }
+
+    @Test
     fun aStrIsOrderedAsPythonOrdersIt() {
         val py = python(
             """

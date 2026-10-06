@@ -609,6 +609,29 @@ namespace
       check(same(kira::str::trim(" \t x y\r\n"), "x y") && same(kira::str::trim("   "), ""), "trim");
       check(same(kira::str::toLower("MiXeD 1"), "mixed 1") && same(kira::str::toUpper("MiXeD"), "MIXED"), "toLower, toUpper");
       check(same(kira::str::padStart("7", 3, '0'), "007") && same(kira::str::padStart("1234", 3, '0'), "1234"), "padStart");
+      check(same(kira::str::padEnd("7", 3, '.'), "7..") && same(kira::str::padEnd("1234", 3, '.'), "1234"), "padEnd");
+      check(same(kira::str::trimStart(" \t x y\r\n"), "x y\r\n") && same(kira::str::trimEnd(" \t x y\r\n"), " \t x y") &&
+                same(kira::str::trimStart(" \n"), "") && same(kira::str::trimEnd(""), "") && same(kira::str::trimEnd("\vx\f"), "\vx\f"),
+            "trimStart and trimEnd take trim's four");
+      const kira::List<kira::Str> words = kira::str::splitWhitespace("\t a  bc\r\n\v\fd \x1c");
+      check(words.size() == 4 && words[0] == "a" && words[1] == "bc" && words[2] == "d" && words[3] == "\x1c" &&
+                kira::str::splitWhitespace(" \t\n").empty() && kira::str::splitWhitespace("").empty(),
+            "splitWhitespace: runs of C's six, no empty pieces");
+      check(same(kira::str::replace("a.b.c", ".", "--"), "a--b--c") && same(kira::str::replace("aaa", "aa", "b"), "ba") &&
+                same(kira::str::replace("abc", "x", "y"), "abc") && same(kira::str::replace("abc", "", "-"), "-a-b-c-") &&
+                same(kira::str::replace("", "", "-"), "-") && same(kira::str::replace("h\xc3\xa9", "", "|"), "|h|\xc3\xa9|"),
+            "replace: every occurrence, and an empty one between code points");
+      check(kira::unwrap(kira::str::toInt64("ff", 16)) == 255 && kira::unwrap(kira::str::toInt64("-Zz", 36)) == -1295 &&
+                kira::unwrap(kira::str::toInt64("+101", 2)) == 5 &&
+                kira::unwrap(kira::str::toInt64("-1000000000000000000000000000000000000000000000000000000000000000", 2)) ==
+                    std::numeric_limits<std::int64_t>::lowest() &&
+                kira::unwrap(kira::str::toInt64("7fffffffffffffff", 16)) == (std::numeric_limits<std::int64_t>::max)(),
+            "toInt64 with a radix");
+      check(!kira::isSome(kira::str::toInt64("8000000000000000", 16)) && !kira::isSome(kira::str::toInt64("12", 2)) &&
+                !kira::isSome(kira::str::toInt64("0x1f", 16)) && !kira::isSome(kira::str::toInt64("-", 10)) &&
+                !kira::isSome(kira::str::toInt64("", 10)) && !kira::isSome(kira::str::toInt64("1_0", 10)) &&
+                !kira::isSome(kira::str::toInt64(" 1", 10)),
+            "toInt64 with a radix: none on overflow and on any other character");
       check(kira::str::hashCode("ab") == (5381 * 33 + 'a') * 33 + 'b' && kira::str::equals("a", "a"), "hashCode is djb2");
       check(kira::str::view(s).from(3).slice(0, 5) == kira::lit("drive"), "view");
       check(kira::str::bytes("h\xc3\xa9 \xe2\x9c\x93") == kira::List<std::uint8_t>{0x68, 0xC3, 0xA9, 0x20, 0xE2, 0x9C, 0x93} &&
@@ -1083,6 +1106,10 @@ namespace
       else if(std::strcmp(what, "strat") == 0)
       {
           sink = kira::str::at("abc", opaque(kira::Size{3}));
+      }
+      else if(std::strcmp(what, "radix") == 0)
+      {
+          sink = static_cast<std::int32_t>(kira::isSome(kira::str::toInt64("1", opaque(std::int32_t{37}))));
       }
       else if(std::strcmp(what, "result") == 0)
       {

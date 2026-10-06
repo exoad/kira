@@ -54,6 +54,16 @@ pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx toInt64: () Maybe<Int64>;
     pub fx toFloat64: () Maybe<Float64>;
     pub fx padStart: (width: Size, fill: Char) Str;
+    pub fx padEnd: (width: Size, fill: Char) Str;
+    // Space, tab, CR and LF, as trim (D57).
+    pub fx trimStart: () Str;
+    pub fx trimEnd: () Str;
+    // Split on runs of space, tab, LF, VT, FF and CR; no empty pieces (D57).
+    pub fx splitWhitespace: () List<Str>;
+    // Every occurrence, left to right; an empty oldValue goes between code points and at both ends (D57).
+    pub fx replace: (oldValue: Str, newValue: Str) Str;
+    // Kotlin's toLongOrNull(radix) over ASCII digits and letters; a radix outside 2..36 panics (D57).
+    pub fx toInt64Radix: (radix: Int32) Maybe<Int64>;
     pub fx view: () View<Char>;
     // The text's UTF-8, a new List of its bytes (D54): for text that is valid
     // UTF-8, `s.bytes()` is the same on every target, where `length()` counts what

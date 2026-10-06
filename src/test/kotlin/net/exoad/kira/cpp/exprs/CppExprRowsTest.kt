@@ -1086,6 +1086,42 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d57",
+            """
+            pub fx padded: (s: Str) Str {
+                return s.padEnd(4, '.')
+            }
+
+            pub fx trimmed: (s: Str) Str {
+                return "[" + s.trimStart() + "|" + s.trimEnd() + "]"
+            }
+
+            pub fx words: (s: Str) Size {
+                return s.splitWhitespace().size()
+            }
+
+            pub fx swapped: (s: Str) Str {
+                return s.replace("ab", "ba").replace("", "/")
+            }
+
+            pub fx hex: (s: Str) Int64 {
+                return s.toInt64Radix(16).unwrapOr(-1)
+            }
+            """,
+            listOf(
+                "return kira::str::padEnd(s, 4, '.');",
+                "return kira::str::replace(kira::Str(kira::str::replace(s, \"ab\", \"ba\")), \"\", \"/\");",
+                "return kira::List<kira::Str>(kira::str::splitWhitespace(s)).size();",
+            ),
+            listOf(
+                """check(d57::padded("ab") == "ab.." && d57::padded("abcde") == "abcde", "D57: padEnd fills on the right and never cuts");""",
+                """check(d57::trimmed(" \t x \r\n") == "[x \r\n| \t x]", "D57: trimStart and trimEnd take trim's four");""",
+                """check(d57::words("\v a\fb  c\r\n") == 3 && d57::words(" \t") == 0, "D57: splitWhitespace splits on runs of C's six");""",
+                """check(d57::swapped("abab") == "/b/a/b/a/" && d57::swapped("\xc3\xa9") == "/\xc3\xa9/", "D57: replace takes every occurrence, an empty one between code points");""",
+                """check(d57::hex("-7F") == -127 && d57::hex("0x7f") == -1 && d57::hex("8000000000000000") == -1, "D57: toInt64Radix is strict and none past Int64");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {

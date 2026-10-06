@@ -300,6 +300,28 @@ def _k_toint(s):
     return v if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF else None
 
 
+# toInt64Radix (D57): toint's rules over the ASCII digits and letters of the radix.
+_k_digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+
+def _k_tointr(s, radix):
+    if not 2 <= radix <= 36:
+        _k_panic("radix out of range")
+    body = s[1:] if s[:1] in ("+", "-") else s
+    if not body or not body.isascii() or body.lower().strip(_k_digits[:radix]):
+        return None
+    body = body.lstrip("0")
+    if len(body) > 64:
+        return None
+    v = int(body or "0", radix)
+    v = -v if s[0] == "-" else v
+    return v if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF else None
+
+
+# splitWhitespace (D57): the six of C's isspace, where str.split() also takes \x1c-\x1f and Unicode spaces.
+_k_words = _k_re.compile(r"[^ \t\n\r\v\f]+")
+
+
 # toFloat64 is std::from_chars after one leading "+": decimal text with an optional exponent, or
 # inf, infinity, nan and nan(chars) in any case, and nothing else; none where the value is
 # beyond a double, or rounds to zero from text that is not zero. Python's float() also takes
