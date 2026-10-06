@@ -13,6 +13,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
@@ -474,6 +475,42 @@ class ParserSuiteTest {
             }
             """
         )
+    }
+
+    @Test
+    fun asBindsTighterThanTheBinaryOperatorsAndLooserThanAPrefixOne() {
+        val ast = parseModule(
+            """
+            fx f: (x: Int32, n: Int64) Int32 {
+                a: Float64 = x as Float64 / 1000.0
+                b: Int64 = n + x as Int64
+                c: Bool = x as Int64 > n
+                d: Int64 = -x as Int64
+                return x as Int32 + 1
+            }
+            """
+        )
+        val body = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!
+        assertEquals(5, body.size, "nothing after a cast is left to parse as a statement of its own")
+        val values = body.map { it.expr }.filterIsInstance<VariableDecl>().associate { it.name.value to it.value }
+
+        val a = assertIs<BinaryExpr>(values["a"])
+        assertEquals(BinaryOp.DIV, a.operator)
+        assertIs<TypeCastExpr>(a.leftExpr)
+
+        val b = assertIs<BinaryExpr>(values["b"])
+        assertEquals(BinaryOp.ADD, b.operator)
+        assertIs<TypeCastExpr>(b.rightExpr)
+
+        val c = assertIs<BinaryExpr>(values["c"])
+        assertEquals(BinaryOp.GREATER_THAN, c.operator)
+        assertIs<TypeCastExpr>(c.leftExpr)
+
+        assertIs<UnaryExpr>(assertIs<TypeCastExpr>(values["d"]).value)
+
+        val ret = assertIs<BinaryExpr>(assertIs<ReturnStatement>(body.last()).expr)
+        assertEquals(BinaryOp.ADD, ret.operator)
+        assertIs<TypeCastExpr>(ret.leftExpr)
     }
 
     @Test

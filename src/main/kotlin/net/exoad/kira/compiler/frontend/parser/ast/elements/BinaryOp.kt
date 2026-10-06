@@ -38,7 +38,7 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int) {
     RANGE(arrayOf(Symbols.PERIOD, Symbols.PERIOD), 14),
 
     TYPE_CHECK(arrayOf(Symbols.LOWERCASE_I, Symbols.LOWERCASE_S), 9),
-    TYPE_CAST(arrayOf(Symbols.LOWERCASE_A, Symbols.LOWERCASE_S), 9)
+    TYPE_CAST(arrayOf(Symbols.LOWERCASE_A, Symbols.LOWERCASE_S), 13)
     ;
 
     companion object {

@@ -321,7 +321,7 @@ proto.kira:147:21  neg  Bool  place=Local(neg)  sym=pilot:proto.fixed3::neg
 proto.kira:147:27  -value  Float32
 proto.kira:147:28  value  Float32  place=Param(value)  sym=pilot:proto.fixed3(value)
 proto.kira:147:43  value  Float32  place=Param(value)  sym=pilot:proto.fixed3(value)
-proto.kira:148:21  v * 1000.0 + 0.5 as Int32  Int32  conv=FLOAT_TO_INT_SAT
+proto.kira:148:21  (v * 1000.0 + 0.5) as Int32  Int32  conv=FLOAT_TO_INT_SAT
 proto.kira:148:22  v * 1000.0 + 0.5  Float32
 proto.kira:148:22  v * 1000.0  Float32
 proto.kira:148:22  v  Float32  place=Local(v)  sym=pilot:proto.fixed3::v

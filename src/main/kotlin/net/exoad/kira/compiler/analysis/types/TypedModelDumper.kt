@@ -520,7 +520,7 @@ object KiraUnparser {
             val p = e.operator.precedence
             wrap("${e.operator.symbol.rep}${expr(e.operand, p)}", p, parent)
         }
-        is TypeCastExpr -> wrap("${expr(e.value, 9)} as ${type(e.type)}", 9, parent)
+        is TypeCastExpr -> wrap("${expr(e.value, BinaryOp.TYPE_CAST.precedence)} as ${type(e.type)}", 9, parent)
         is TypeCheckExpr -> wrap("${expr(e.value, 9)} is ${type(e.type)}", 9, parent)
         is RangeExpr -> wrap("${expr(e.begin, 15)}..${expr(e.end, 15)}", 14, parent)
         is FunctionCallExpr -> {

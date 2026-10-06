@@ -139,12 +139,12 @@ hall.kira:71:28  0  Int32  const=0:Int32
 hall.kira:72:25  false  Bool  const=false  sym=kira:core.false
 hall.kira:73:27  false  Bool  const=false  sym=kira:core.false
 hall.kira:77:20  Speed { }  Speed
-hall.kira:78:5  s.windowTps = windowTicks * (1000 / WINDOW_MS as Int32)  Void
+hall.kira:78:5  s.windowTps = windowTicks * ((1000 / WINDOW_MS) as Int32)  Void
 hall.kira:78:5  s.windowTps  Int32  member=Field(Speed.windowTps: Int32)  place=Field(Local(s).windowTps)
 hall.kira:78:5  s  Speed  place=Local(s)  sym=pico:hall.speed::s
-hall.kira:78:19  windowTicks * (1000 / WINDOW_MS as Int32)  Int32
+hall.kira:78:19  windowTicks * ((1000 / WINDOW_MS) as Int32)  Int32
 hall.kira:78:19  windowTicks  Int32  place=Param(windowTicks)  sym=pico:hall.speed(windowTicks)
-hall.kira:78:33  1000 / WINDOW_MS as Int32  Int32  conv=INT_WRAP  const=20:Int32
+hall.kira:78:33  (1000 / WINDOW_MS) as Int32  Int32  conv=INT_WRAP  const=20:Int32
 hall.kira:78:35  1000 / WINDOW_MS  UInt32  const=20:UInt32
 hall.kira:78:35  1000  UInt32  const=1000:UInt32
 hall.kira:78:42  WINDOW_MS  UInt32  const=50:UInt32  place=Global(WINDOW_MS)  sym=pico:hall.WINDOW_MS
@@ -171,11 +171,11 @@ hall.kira:81:22  d.periodUs > 0  Bool
 hall.kira:81:22  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
 hall.kira:81:22  d  Decoder  place=Param(d)  sym=pico:hall.speed(d)
 hall.kira:81:35  0  UInt32  const=0:UInt32
-hall.kira:82:9  s.periodTps = (1000000 / d.periodUs as Int32) * (d.lastDir as Int32)  Void
+hall.kira:82:9  s.periodTps = ((1000000 / d.periodUs) as Int32) * (d.lastDir as Int32)  Void
 hall.kira:82:9  s.periodTps  Int32  member=Field(Speed.periodTps: Int32)  place=Field(Local(s).periodTps)
 hall.kira:82:9  s  Speed  place=Local(s)  sym=pico:hall.speed::s
-hall.kira:82:23  (1000000 / d.periodUs as Int32) * (d.lastDir as Int32)  Int32
-hall.kira:82:24  1000000 / d.periodUs as Int32  Int32  conv=INT_WRAP
+hall.kira:82:23  ((1000000 / d.periodUs) as Int32) * (d.lastDir as Int32)  Int32
+hall.kira:82:24  (1000000 / d.periodUs) as Int32  Int32  conv=INT_WRAP
 hall.kira:82:25  1000000 / d.periodUs  UInt32
 hall.kira:82:25  1000000  UInt32  const=1000000:UInt32
 hall.kira:82:35  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)

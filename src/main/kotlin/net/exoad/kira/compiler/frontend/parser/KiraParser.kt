@@ -645,12 +645,12 @@ class KiraParser(private val context: SourceContext) {
             }
             // the following binary operators require special parsing of the right hand side so they are put before the others
             if (binaryOpType == BinaryOp.TYPE_CHECK) {
-                val right = parseType()
-                return putOrigin(TypeCheckExpr(left, right), origin)
+                left = putOrigin(TypeCheckExpr(left, parseType()), origin)
+                continue
             }
             if (binaryOpType == BinaryOp.TYPE_CAST) {
-                val right = parseType()
-                return putOrigin(TypeCastExpr(left, right), origin)
+                left = putOrigin(TypeCastExpr(left, parseType()), origin)
+                continue
             }
             val nextMinPrecedence = binaryOpType.precedence + 1
             val right = parseExpr(nextMinPrecedence)
@@ -1009,7 +1009,8 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         val operatorToken = peek()
         expectAnyOfThenAdvance(UnaryOp.entries.map { it.tokenType }.toTypedArray())
-        val operand = parseExpr(UnaryOp.NEG.precedence)
+        // `as` shares this precedence but binds looser: -x as T is (-x) as T.
+        val operand = parseExpr(UnaryOp.NEG.precedence + 1)
         return putOrigin(UnaryExpr(UnaryOp.byTokenTypeMaybe(operatorToken.type) {
             Diagnostics.panic(
                 "UnaryOperator::byTokenTypeMaybe",
