@@ -214,9 +214,14 @@ internal class MemberResolver(private val c: PhaseC) {
                     model.members[e] = MemberRef.EnumEntry(entry)
                     return KType.Nominal(sym)
                 }
+                val called = "${origin.value}.${member.value}"
                 c.report(
                     "types.member.static",
-                    "'${origin.value}' is a type; '${member.value}' is reached through a value of it, not through the type.",
+                    if ((sym as? ClassSymbol)?.kind == ClassKind.MAGIC && called in CALLED_ON_THE_TYPE) {
+                        "'$called' is made by the typer and is only called; to pass it as an Fx, wrap the call in a lambda."
+                    } else {
+                        "'${origin.value}' is a type; '${member.value}' is reached through a value of it, not through the type."
+                    },
                     e,
                 )
                 return KType.Error
@@ -273,5 +278,11 @@ internal class MemberResolver(private val c: PhaseC) {
         }
         c.report("types.member.unknown", noMember(receiver, "field or method", name), member)
         return KType.Error
+    }
+
+    companion object {
+        private val CALLED_ON_THE_TYPE = setOf(
+            "Result.success", "Result.error", "Str.of", "Json.parse", "Json.error", "Json.obj", "Json.arr", "Json.null", "Json.of",
+        )
     }
 }

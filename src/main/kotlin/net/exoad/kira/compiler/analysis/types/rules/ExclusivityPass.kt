@@ -436,7 +436,14 @@ internal class ExclusivityPass : RulePass {
                     }
                     val fnName = model.calls[e]?.fn?.name ?: "this call"
                     val written = if (w.how == "mut") "`mut ${w.text}`" else "the MutView '${w.text}'"
+                    val handle = model.calls[e]?.receiver?.let { model.types[it] }?.let { r.isReference(it) } == true
                     when {
+                        w.isReceiver && handle -> r.report(
+                            "rules.exclusivity.receiver",
+                            "'$fnName' writes its receiver '${w.text}', and the argument '${o.text}' is that same object (D37): " +
+                                "it would hold itself. Pass another one.",
+                            o.at,
+                        )
                         w.isReceiver -> r.report(
                             "rules.exclusivity.receiver",
                             "'$fnName' writes its receiver '${w.text}', and the argument '${o.text}' overlaps it (D37): " +

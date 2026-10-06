@@ -498,6 +498,24 @@ class TyperBodyModelTest {
         assertTrue(codes.size >= 6, "an Int32 and a Float32 are not widened to an Int64 and a Float64: $codes")
         assertTrue("types.init.not-constructible" in codes, "Json { } is refused: $codes")
         assertTrue("types.call.static" in codes, "any other call on Json is refused: $codes")
+        val values = snippet(
+            """
+            pub fx h: (xs: List<Json>, m: Map<Str, Json>, j: Json) Bool {
+                f: Fx<Tuple1<Str>, Json> = Json.parse
+                return xs.contains(j) || m.containsValue(j)
+            }
+            """
+        )
+        assertEquals(2, values.diagnostics.count { it.code == "types.json.contains" }, TyperTestSupport.render(values))
+        assertTrue(values.diagnostics.any { it.code == "types.member.static" && it.message.contains("'Json.parse' is made by the typer") }, TyperTestSupport.render(values))
+        val itself = snippet(
+            """
+            pub fx k: (o: Json) Void {
+                o.put("self", o)
+            }
+            """
+        )
+        assertTrue(itself.diagnostics.any { it.code == "rules.exclusivity.receiver" && it.message.contains("is that same object") }, TyperTestSupport.render(itself))
     }
 
     @Test

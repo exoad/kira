@@ -45,9 +45,8 @@ import java.util.IdentityHashMap
  * literals' own defaults, and each inferred argument must satisfy its bound.
  *
  * **Special cases**: `bitCast<T>(v)` (equal sizes), `enumOf<E>(raw)` (an integer enum, a
- * `Maybe<E>`), `Result.success(v)` / `Result.error(e)` (D39, typed by the context),
- * `Str.of(bytes)` (D55, a Str read from UTF-8), and kira:json's `Json.parse`, `error`, `obj`,
- * `arr`, `null` and `of` (D61).
+ * `Maybe<E>`), `Result.success(v)` / `Result.error(e)` (D39, typed by the context), and
+ * `Str.of(bytes)` (D55, a Str read from UTF-8).
  */
 internal class CallResolver(private val c: PhaseC) {
     private val model get() = c.model
@@ -334,6 +333,7 @@ internal class CallResolver(private val c: PhaseC) {
             mutReceiver(receiver, recv, fn, nameNode, implicitThis, ctx)
         }
         elementBound(e, recv, fn)
+        jsonEquality(e, recv, fn)
         model.calls[e] = ResolvedCall(
             kindFor(recv, fn, hit), fn, receiver, implicitThis, fn.typeParams.map { own[it] ?: KType.Error },
             bound.args, bound.order, ret, hit.substitution + own,
@@ -359,6 +359,22 @@ internal class CallResolver(private val c: PhaseC) {
             c.report("types.call.bound", "'${fn.name}' needs a List of $what, and ${recv.display()} is not one.", e)
         }
     }
+
+    // C++ would compare Json handles and py the values json.loads gave.
+    private fun jsonEquality(e: FunctionCallExpr, recv: KType, fn: FnSymbol) {
+        val owner = fn.owner as? ClassSymbol ?: return
+        val element = (recv as? KType.Nominal)?.typeArgs()?.lastOrNull() ?: return
+        if (owner.kind == ClassKind.MAGIC && fn.name in setOf("contains", "containsValue") && isJson(element)) {
+            c.report(
+                "types.json.contains",
+                "'${fn.name}' compares with ==, which Json has none of (D63): find the element by what you read from it.",
+                e,
+            )
+        }
+    }
+
+    private fun isJson(t: KType): Boolean =
+        ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.MAGIC && it.name == "Json" && it.module.uri == JSON_URI } == true
 
     /**
      * A `mut fx` writes its receiver (D44), so inside a lambda the receiver must not be a
@@ -1002,10 +1018,6 @@ internal class CallResolver(private val c: PhaseC) {
         return KType.Str
     }
 
-    /**
-     * `Json.parse(text)`, `Json.error()`, `Json.obj()`, `Json.arr()` and `Json.null()` (D61), made
-     * as Str.of is, each one magic FnSymbol on Json keyed `Json.<name>`; null for any other name.
-     */
     private fun json(e: FunctionCallExpr, cls: ClassSymbol, member: Identifier, ctx: BodyContext, scope: Scope): KType? {
         val name = member.value
         val json = KType.Nominal(cls, emptyList())
@@ -1029,10 +1041,7 @@ internal class CallResolver(private val c: PhaseC) {
         return ret
     }
 
-    /**
-     * `Json.of(value)` (D61): one FnSymbol, keyed `Json.of(<type>)`, per Bool, Int64, Float64, Str and
-     * Maybe of one, chosen by the argument's type; a number literal is an Int64 unless it is a float.
-     */
+    // D64: a number literal is an Int64 unless it is a float.
     private fun jsonOf(e: FunctionCallExpr, cls: ClassSymbol, json: KType, ctx: BodyContext, scope: Scope): KType {
         noTypeArgs(e, "Json.of", "")
         val probe = c.stmts.jsonFn(cls, "of", "Json.of(Bool)", listOf("value" to KType.BOOL), json)
