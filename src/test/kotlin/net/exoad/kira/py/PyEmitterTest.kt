@@ -1555,14 +1555,104 @@ class PyEmitterTest {
         )
     }
 
+
+    // ---- programs of several modules ----------------------------------------------------------
+
     @Test
-    fun aUseOfAnotherWorkspaceModuleIsRefused() {
-        val unit = net.exoad.kira.types.TyperTestSupport.unitOf(
-            net.exoad.kira.types.TyperTestSupport.module("test:lib", "pub fx one: () Int32 {\n    return 1\n}"),
-            net.exoad.kira.types.TyperTestSupport.module("test:main", "use \"test:lib\"\n\nfx f: () Int32 {\n    return lib.one()\n}"),
+    fun aUsedModuleIsLoadedByItsPathAndNamedThroughItsModuleObject() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "lib:units" to """
+                pub SCALE: Int32 = 10
+                pub mut calls: Int32 = 0
+
+                pub class Meter {
+                    require pub label: Str
+
+                    pub fx scaled: (x: Int32) Int32 {
+                        return x * SCALE
+                    }
+                }
+
+                pub fx bump: () Int32 {
+                    calls += 1
+                    return calls
+                }
+                """,
+            "app:main" to """
+                use "lib:units"
+
+                fx f: () Int32 {
+                    m: Meter = Meter { "a" }
+                    calls = 5
+                    units.calls = units.calls + 1
+                    return m.scaled(bump()) + units.bump() + SCALE
+                }
+                """,
         )
-        val (diagnostics, _) = net.exoad.kira.compiler.backend.codegen.py.KiraPyBackend.plan(unit, PyTestSupport.repoRoot.toPath(), version = "test")
-        val errors = diagnostics.filter { it.isError }.map { it.render() }
-        assertTrue(errors.any { it.contains("a use of another module ('test:lib')") && it.contains(PyModuleEmitter.UNSUPPORTED_CODE) }, errors.joinToString("\n"))
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("_k_m_lib_units = _k_use(__file__, \"../lib/units.kira.py\")"), main)
+        assertTrue(main.contains("m = _k_m_lib_units.Meter(\"a\")"), main)
+        assertTrue(main.contains("    _k_m_lib_units.calls = 5\n    _k_m_lib_units.calls = _k_i32(_k_m_lib_units.calls + 1)"), main)
+        assertTrue(main.contains("return _k_i32(_k_i32(m.scaled(_k_m_lib_units.bump()) + _k_m_lib_units.bump()) + _k_m_lib_units.SCALE)"), main)
+        assertFalse(main.contains("global calls"), main)
+        assertFalse(main.contains("_k_self"), main)
+        val lib = py.getValue("lib:units")
+        assertFalse(lib.contains("_k_use"), lib)
+        assertTrue(lib.contains("def bump():\n    global calls"), lib)
+    }
+
+    @Test
+    fun aModuleInAUseCycleRegistersItselfBeforeItLoadsTheOther() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "app:even" to """
+                use "app:odd"
+
+                pub K: Int32 = 2
+
+                pub fx isEven: (n: Int32) Bool {
+                    return n == 0 || isOdd(n - 1)
+                }
+                """,
+            "app:odd" to """
+                use "app:even"
+
+                pub fx isOdd: (n: Int32) Bool {
+                    return n != 0 && isEven(n - 1)
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val even = py.getValue("app:even")
+        // Its constants first, so the module that uses it back reads them while it loads.
+        assertTrue(even.contains("K = 2\n\n\n_k_self(__file__, globals())\n_k_m_app_odd = _k_use(__file__, \"odd.kira.py\")"), even)
+        assertTrue(even.contains("return n == 0 or _k_m_app_odd.isOdd(_k_i32(n - 1))"), even)
+        val odd = py.getValue("app:odd")
+        assertTrue(odd.contains("_k_self(__file__, globals())\n_k_m_app_even = _k_use(__file__, \"even.kira.py\")"), odd)
+    }
+
+    @Test
+    fun aKiraWrittenStdlibFunctionIsCarriedByTheModuleThatCallsIt() {
+        val py = python(
+            """
+            use "kira:math"
+            use "kira:os"
+
+            fx f: (x: Float64) Float64 {
+                return clamp(deg2rad(x), lerp(0.0, -1.0, 0.5), 1.0)
+            }
+
+            fx g: () Int32 {
+                return POLL_WRITE + SIGNAL_TERM
+            }
+            """
+        )
+        assertTrue(py.contains("def _k_kira_math_clamp(value, lo, hi):\n    return _k_max(lo, _k_min(value, hi))"), py)
+        assertTrue(py.contains("def _k_kira_math_deg2rad(degrees):"), py)
+        assertTrue(py.contains("def _k_kira_math_lerp(a, b, t):"), py)
+        assertFalse(py.contains("_k_kira_math_sign"), py)
+        assertTrue(py.contains("return _k_kira_math_clamp(_k_kira_math_deg2rad(x), _k_kira_math_lerp(0.0, -1.0, 0.5), 1.0)"), py)
+        assertTrue(py.contains("return _k_i32(2 + 15)"), py)
+        assertFalse(py.contains("_k_use"), py)
     }
 }

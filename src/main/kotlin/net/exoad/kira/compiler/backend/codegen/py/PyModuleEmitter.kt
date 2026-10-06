@@ -79,8 +79,9 @@ import java.util.IdentityHashMap
  *
  * The py target lowers what bibo's dashboard needs and refuses the rest with
  * `py.unsupported`, naming the construct (DECISIONS rule 0: one simple way, no corners):
- * - one module per program: no `use` of another workspace module; the stdlib's magic
- *   functions and methods bind through the `py:` blocks of the `.bind.yaml` manifests;
+ * - another workspace module is its generated file, loaded by path (`_k_use`) and named through
+ *   its module object; the stdlib's magic functions and methods bind through the `py:` blocks of
+ *   the `.bind.yaml` manifests, and its Kira-written functions are carried by each caller;
  * - module constants and `mut` globals, functions, and classes without a parent, a trait,
  *   type parameters or a `finally`. A class is a plain Python class, `__slots__` its fields;
  * - Bool, Str (a Python str, whose lengths and indices count code points where C++ counts UTF-8
@@ -131,21 +132,34 @@ class PyModuleEmitter(
     private val module: ModuleSymbol,
     private val bindings: PyBindingTable,
     private val runtime: PyRuntime,
+    private val imports: PyImports? = null,
+    private val shared: Shared = Shared(),
 ) {
+    /** One generated module's state, shared with the emitters of the stdlib functions it carries. */
+    class Shared {
+        val diagnostics = mutableListOf<CppDiagnostic>()
+        val helpers = LinkedHashSet<String>()
+        val reported: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
+        val bundled = LinkedHashSet<FnSymbol>()
+        val pending = ArrayDeque<FnSymbol>()
+    }
+
     private val model = program.model
-    val diagnostics = mutableListOf<CppDiagnostic>()
-    private val helpers = LinkedHashSet<String>()
-    private val reported: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
+    val diagnostics: MutableList<CppDiagnostic> get() = shared.diagnostics
+    private val helpers: MutableSet<String> get() = shared.helpers
+    private val reported: MutableSet<ASTNode> get() = shared.reported
 
     /** The Python names of the module's own top-level declarations: a local may not take one. */
     private val topNames = HashSet<String>()
 
+    private val used = LinkedHashMap<ModuleSymbol, String>()
+
     /** The module's text, [header] lines first, or null when anything was refused. */
     fun emit(header: List<String>): String? {
         module.uses.forEach { use ->
-            val uri = use.uri.value
-            if (!uri.startsWith("kira:")) {
-                refuse(use, "a use of another module ('$uri'): a program is one module on the py target")
+            val target = program.module(use.uri.value) ?: return@forEach
+            if (!target.isStdlib && target !== module) {
+                alias(target, use)
             }
         }
         if (module.operators.isNotEmpty()) {
@@ -184,6 +198,17 @@ class PyModuleEmitter(
             }
         }
         val entry = main?.let { mainCall(it) }
+        val stdlib = mutableListOf<List<String>>()
+        while (shared.pending.isNotEmpty()) {
+            val fn = shared.pending.removeFirst()
+            stdlib += PyModuleEmitter(program, fn.module, bindings, runtime, null, shared).function(fn, null)
+        }
+        // The constants come before the loads: in a use cycle the other module reads them while this one is half loaded.
+        val loads = mutableListOf<String>()
+        if (imports != null && imports.cycle.isNotEmpty()) {
+            loads += call("_k_self", "__file__", "globals()").text
+        }
+        used.forEach { (m, name) -> loads += "$name = ${call("_k_use", "__file__", pyString(imports?.path(m) ?: "")).text}" }
         if (diagnostics.any { it.isError }) {
             return null
         }
@@ -194,6 +219,10 @@ class PyModuleEmitter(
         if (constants.isNotEmpty()) {
             sections += constants.joinToString("\n")
         }
+        if (loads.isNotEmpty()) {
+            sections += loads.joinToString("\n")
+        }
+        stdlib.forEach { sections += it.joinToString("\n") }
         definitions.forEach { sections += it.joinToString("\n") }
         if (globals.isNotEmpty()) {
             sections += initOrder(globals.keys.toList()).joinToString("\n") { globals.getValue(it) }
@@ -202,6 +231,39 @@ class PyModuleEmitter(
         sections.forEach { out.append("\n\n").append(it).append('\n') }
         return out.toString()
     }
+
+    // ---- other modules -----------------------------------------------------------------------
+
+    private fun alias(target: ModuleSymbol, at: ASTNode): String? {
+        used[target]?.let { return it }
+        if (imports?.path(target) == null) {
+            return refuseText(at, "a use of '${target.uri}', whose generated file has no path relative to this one's")
+        }
+        val base = "_k_m_" + sanitized(target.uri)
+        var name = base
+        var n = 2
+        while (name in used.values) {
+            name = "${base}_${n++}"
+        }
+        used[target] = name
+        return name
+    }
+
+    /** A top-level function, class or global as Python names it here; a Kira-written stdlib function is queued to be carried. */
+    private fun ref(sym: Symbol, at: ASTNode): String? = when {
+        sym.module === module -> pyName(sym)
+        sym.module.isStdlib -> if (sym is FnSymbol && sym.foreign == null && sym.body != null && sym.owner == null) {
+            if (shared.bundled.add(sym)) {
+                shared.pending.addLast(sym)
+            }
+            pyName(sym)
+        } else {
+            refuseText(at, "the stdlib's '${sym.name}'")
+        }
+        else -> alias(sym.module, at)?.let { "$it.${pyName(sym)}" }
+    }
+
+    private fun folded(g: GlobalSymbol): String? = g.constValue?.let { constText(it) }
 
     // ---- declarations ------------------------------------------------------------------------
 
@@ -489,10 +551,13 @@ class PyModuleEmitter(
             is Identifier -> when (val sym = model.symbolOf(target)) {
                 is LocalSymbol, is ParamSymbol -> sym.name
                 is FieldSymbol -> fieldOfThis(sym, target, f)
-                is GlobalSymbol -> if (sym.module === module) pyName(sym) else refuseText(target, "an assignment to another module's global")
+                is GlobalSymbol -> ref(sym, target)
                 else -> refuseText(target, "an assignment to '${target.value}'")
             }
             is MemberAccessExpr -> {
+                (model.member(target) as? MemberRef.ModuleMember)?.let { mm ->
+                    return if (mm.symbol is GlobalSymbol) ref(mm.symbol, target) else refuseText(target, "an assignment to this member")
+                }
                 val m = model.member(target) as? MemberRef.Field ?: return refuseText(target, "an assignment to this member")
                 if (!isUserClass(m.field.owner)) {
                     return refuseText(target, "an assignment to a field of ${m.field.owner.name}")
@@ -745,18 +810,21 @@ class PyModuleEmitter(
     private fun identifier(id: Identifier, f: Frame): Py = when (val sym = model.symbolOf(id)) {
         is LocalSymbol, is ParamSymbol -> Py(sym.name, PyPrec.ATOM)
         is FieldSymbol -> fieldOfThis(sym, id, f)?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
-        is GlobalSymbol -> when {
-            sym.module.isStdlib && sym.foreign is Foreign.Magic -> when (sym.name) {
-                "true" -> Py("True", PyPrec.ATOM)
-                "false" -> Py("False", PyPrec.ATOM)
-                "null" -> Py("None", PyPrec.ATOM)
-                else -> refusePy(id, "the magic value '${sym.name}'")
-            }
-            sym.module === module -> Py(pyName(sym), PyPrec.ATOM)
-            else -> refusePy(id, "a global of another module ('${sym.name}')")
-        }
+        is GlobalSymbol -> globalRead(sym, id)
         is FnSymbol -> refusePy(id, "a function used as a value ('${sym.name}')")
         else -> refusePy(id, "the name '${id.value}'")
+    }
+
+    private fun globalRead(sym: GlobalSymbol, at: Expr): Py = when {
+        sym.module.isStdlib && sym.foreign is Foreign.Magic -> when (sym.name) {
+            "true" -> Py("True", PyPrec.ATOM)
+            "false" -> Py("False", PyPrec.ATOM)
+            "null" -> Py("None", PyPrec.ATOM)
+            else -> refusePy(at, "the magic value '${sym.name}'")
+        }
+        sym.module.isStdlib -> folded(sym)?.let { Py(it, if (it.startsWith("-")) PyPrec.UNARY else PyPrec.ATOM) }
+            ?: refusePy(at, "the stdlib's global '${sym.name}'")
+        else -> ref(sym, at)?.let { Py(it, if (sym.module === module) PyPrec.ATOM else PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
     }
 
     /** `self.f` for a field of the class whose method or `initially` is being written. */
@@ -770,6 +838,10 @@ class PyModuleEmitter(
     private fun member(e: MemberAccessExpr, f: Frame): Py {
         (e.member as? FunctionCallExpr)?.let { c -> if (model.call(c) != null) return callExpr(c, f) }
         return when (val m = model.member(e)) {
+            is MemberRef.ModuleMember -> when (val sym = m.symbol) {
+                is GlobalSymbol -> globalRead(sym, e)
+                else -> refusePy(e, "a function used as a value ('${sym.name}')")
+            }
             is MemberRef.Field -> {
                 val ot = typeOf(e.origin) ?: return Py("None", PyPrec.ATOM)
                 when {
@@ -797,10 +869,11 @@ class PyModuleEmitter(
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol, is ParamSymbol -> sym.name
             is FieldSymbol -> fieldOfThis(sym, e, f)
-            is GlobalSymbol -> if (sym.module === module) pyName(sym) else refuseText(e, "a List of another module")
+            is GlobalSymbol -> ref(sym, e)
             else -> refuseText(e, "this List")
         }
         is MemberAccessExpr -> when (val m = model.member(e)) {
+            is MemberRef.ModuleMember -> (m.symbol as? GlobalSymbol)?.let { ref(it, e) } ?: refuseText(e, "this List")
             is MemberRef.Field ->
                 if (isUserClass(m.field.owner)) "${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}" else refuseText(e, "this List")
             else -> wrap(expr(e, f), PyPrec.POSTFIX)
@@ -811,17 +884,17 @@ class PyModuleEmitter(
     private fun callExpr(c: FunctionCallExpr, f: Frame): Py {
         val rc = model.call(c) ?: return refusePy(c, "a call the typer did not resolve")
         val fn = rc.fn
-        val userCall = (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD) && fn != null && fn.module === module
+        val userCall = (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD) && fn != null && fn.foreign == null && fn.body != null
         rc.args.forEachIndexed { i, a ->
             if (a is ArgBinding.Given && a.byRef && !(userCall && fn!!.params.getOrNull(i)?.type?.let { isValue(it) } == true)) {
-                return refusePy(c, "a mut argument to '${fn?.name ?: c.name}' (only a List or a Map given to a function of the module is passed by reference)")
+                return refusePy(c, "a mut argument to '${fn?.name ?: c.name}' (only a List or a Map given to a Kira function is passed by reference)")
             }
         }
         return when (rc.kind) {
             CallKind.PRINT -> trace(c, rc, f)
             CallKind.FREE -> when {
-                fn == null || fn.module !== module -> refusePy(c, "a call of '${fn?.name ?: c.name}' in another module")
-                else -> Py("${pyName(fn)}(${userArgs(c, rc, f)})", PyPrec.POSTFIX)
+                fn == null || !userCall -> refusePy(c, "a call of '${fn?.name ?: c.name}'")
+                else -> ref(fn, c)?.let { Py("$it(${userArgs(c, rc, f)})", PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
             }
             CallKind.METHOD -> {
                 if (fn == null || !isUserClass(fn.owner)) {
@@ -936,6 +1009,7 @@ class PyModuleEmitter(
         if (!isUserClass(cls)) {
             return refusePy(o, "a construction of ${cls.name}")
         }
+        val clsName = ref(cls, o) ?: return Py("None", PyPrec.ATOM)
         val parts = mutableListOf<String>()
         var sawNamed = false
         val given = init.sourceOrder.mapNotNull { k -> init.fields[k] as? FieldInit.Given }
@@ -958,7 +1032,7 @@ class PyModuleEmitter(
                 parts += text
             }
         }
-        return Py("${pyName(cls)}(${parts.joinToString(", ")})", PyPrec.POSTFIX)
+        return Py("$clsName(${parts.joinToString(", ")})", PyPrec.POSTFIX)
     }
 
     private fun index(e: ArrayIndexExpr, f: Frame): Py {
@@ -1213,7 +1287,7 @@ class PyModuleEmitter(
     private fun isView(t: KType): Boolean = magicName(t).let { it == "View" || it == "MutView" }
 
     private fun isUserClass(owner: Any?): Boolean =
-        owner is ClassSymbol && owner.kind == ClassKind.CLASS && owner.module === module && owner.typeParams.isEmpty()
+        owner is ClassSymbol && owner.kind == ClassKind.CLASS && !owner.module.isStdlib && owner.typeParams.isEmpty()
 
     /** Why the py target cannot hold a value of [t], or null when it can. */
     private fun unsupportedType(t: KType): String? = when (t) {
@@ -1239,7 +1313,6 @@ class PyModuleEmitter(
                 s.kind == ClassKind.MAGIC && s.name == "Map" -> mapRefusal(t)
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
                 isUserClass(s) -> null
-                s.module !== module -> "the class ${s.name} of another module"
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"
             }
             is EnumSymbol -> "the enum ${s.name}"
@@ -1286,7 +1359,11 @@ class PyModuleEmitter(
         }
     }
 
+    /** A Kira-written stdlib function is `_k_kira_math_clamp`: every module that calls one carries its own copy. */
     private fun pyName(sym: Symbol): String {
+        if (sym.module.isStdlib && (sym is FnSymbol && sym.owner == null || sym is GlobalSymbol)) {
+            return "_k_${sanitized(sym.module.uri)}_${sym.name}"
+        }
         val pub = when (sym) {
             is FnSymbol -> sym.isPub
             is ClassSymbol -> sym.isPub
@@ -1296,6 +1373,9 @@ class PyModuleEmitter(
         }
         return if (pub) sym.name else "_${sym.name}"
     }
+
+    private fun sanitized(text: String): String =
+        text.map { if (it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9') it else '_' }.joinToString("")
 
     /**
      * A value of [t] before anything assigns one (D38): 0, 0.0, False, "", None, [], bytearray(),

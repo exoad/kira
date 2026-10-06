@@ -4,9 +4,41 @@
 # of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
 # Python 3.10 is the oldest this must run on (the board's).
 
+import importlib.util as _k_importlib
 import math as _k_math
+import os as _k_os
 import re as _k_re
 import struct as _k_struct
+import sys as _k_sys
+
+
+# x.kira.py is no name an import statement can give: a used module is loaded by its path, once
+# per process under its real path, so every module that uses it shares its globals.
+def _k_key(path):
+    return _k_os.path.normcase(_k_os.path.realpath(path))
+
+
+def _k_use(here, path):
+    key = _k_key(_k_os.path.join(_k_os.path.dirname(_k_os.path.abspath(here)), path))
+    m = _k_sys.modules.get(key)
+    if m is None:
+        spec = _k_importlib.spec_from_file_location(key, key)
+        m = _k_importlib.module_from_spec(spec)
+        _k_sys.modules[key] = m
+        try:
+            spec.loader.exec_module(m)
+        except BaseException:
+            del _k_sys.modules[key]
+            raise
+    return m
+
+
+# In a use cycle the module run as __main__ must be found by the one that uses it back, not
+# loaded a second time.
+def _k_self(here, g):
+    m = _k_sys.modules.get(g["__name__"])
+    if m is not None and m.__dict__ is g:
+        _k_sys.modules.setdefault(_k_key(here), m)
 
 
 # A program error stops the program (Kira's panic): a bad index, a failed check, a division

@@ -25,6 +25,13 @@ object PyTestSupport {
         return Emitted(planned.firstOrNull()?.text, diagnostics, planned)
     }
 
+    /** The modules [modules] (URI to body) as one program, emitted in memory: each module's Python by URI, and every error. */
+    fun emitProgram(vararg modules: Pair<String, String>): Pair<Map<String, String>, List<String>> {
+        val unit = TyperTestSupport.unitOf(*modules.map { (uri, body) -> TyperTestSupport.module(uri, body) }.toTypedArray())
+        val (diagnostics, planned) = KiraPyBackend.plan(unit, repoRoot.toPath(), version = "test")
+        return planned.associate { it.module to it.text } to diagnostics.filter { it.isError }.map { it.render() }
+    }
+
     data class Run(val exitCode: Int, val stdout: String, val stderr: String) {
         val all: String get() = "$stdout\n$stderr"
     }

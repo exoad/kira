@@ -1,6 +1,6 @@
 # The examples regenerate.sh also runs through the py backend, one name per line: the leg
-# emits with `kira --target py --out`, runs the module with Python and diffs its stdout
-# against expected.txt and the C leg's. The py target compiles a one-module program and
-# refuses what it does not lower yet (py.unsupported), so only 01-hello is listed: every
-# other example uses another module of its own.
+# emits with `kira --target py --out`, runs the module with the main with Python and diffs its
+# stdout against expected.txt and the C leg's. The others fail the STRICT typer (a function
+# another module calls is not pub) or use what the py target refuses.
 01-hello
+04-classes

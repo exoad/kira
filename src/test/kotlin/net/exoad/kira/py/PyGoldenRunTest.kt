@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * The py goldens (src/test/resources/py-golden/<case>): each case is a project the real CLI
  * compiles with `--target py --out build/tmp/py-golden/<case>`. Every generated file must parse
  * as Python 3.10 (the board's), and the run's stdout must equal the case's expected.txt: the
- * module itself when it has a `main`, or `python driver.py <out>` when the case has a driver,
+ * module with a `main` run itself, or `python driver.py <out>` when the case has a driver,
  * hand-written Python that imports the generated module. numbers, order, bitmath, text, aliases and
  * globalorder hold the C++ backend's output for the same module, and shiftcount and shortview each call's
  * that the C++ backend's run of it alone gives (a value, or the panic's message); ladder runs the
@@ -28,7 +28,9 @@ import kotlin.test.assertTrue
  * order (a key put again keeps its place, one removed and put again goes last) and mapaliases its
  * copies, as aliases does a List's; dbwspec holds dbwcodec.py's Spec index, pack, unpack and
  * names and dbwcli.py's rtt_samples, and connbook bibodash.py's Conn, against the hand-written
- * ones, each dict's keys in order. Skipped when no Python is found (set KIRA_PYTHON).
+ * ones, each dict's keys in order. modules is a program of four modules in two directories, one
+ * used by two others, two in a use cycle, calling kira:math's Kira-written functions: the module
+ * with the main is run. Skipped when no Python is found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")
@@ -58,7 +60,9 @@ class PyGoldenRunTest {
         val command = if (driver.isFile) {
             listOf(python!!, driver.absolutePath, out.absolutePath)
         } else {
-            listOf(python!!, generated.single().absolutePath)
+            val mains = generated.filter { it.readText().contains("\nif __name__ == \"__main__\":\n") }
+            assertEquals(1, mains.size, "${case.name}: no one module has a main among ${generated.map { it.name }}")
+            listOf(python!!, mains.single().absolutePath)
         }
         val ran = PyTestSupport.run(command, case)
         assertEquals(0, ran.exitCode, "${case.name} exited ${ran.exitCode}:\n${ran.all}")
