@@ -29,7 +29,7 @@ mkdir -p "$out"
 
 # -ffp-contract=off is D28: generated code is pinned unfused, and aarch64 g++ fuses by default.
 WARN=(-std=c++20 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off)
-PANICS=(div mod overflow shl shr index view slice bytesbe list unwrap rc substring strat radix sum result assert jsonput jsonadd jsoncycle)
+PANICS=(div mod overflow shl shr index view slice bytesbe list unwrap rc substring strat radix sum result assert jsonput jsonadd jsoncycle jsondeep)
 
 passes=0
 fails=0

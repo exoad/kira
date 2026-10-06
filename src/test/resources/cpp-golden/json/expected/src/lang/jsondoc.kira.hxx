@@ -52,6 +52,7 @@ namespace jsondoc
   void addTo(const kira::Rc<kira::json::Json>& j);
   [[nodiscard]] kira::Str holdsItself();
   [[nodiscard]] kira::Str floatOf(double x);
+  [[nodiscard]] kira::Str tooDeep();
   void main();
 }
 #include "kira/macro_pop.hxx"

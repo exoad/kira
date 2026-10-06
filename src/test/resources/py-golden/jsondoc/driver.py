@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# main (cpp-golden/json's run), then what Python hands the module: each panic's message, which the
-# C++ runtime's is (rt_test's jsonput, jsonadd and jsoncycle), and ints given as Float64s.
-#   python driver.py <kira --target py --out dir>
+# main, then each panic's message, rt_test's jsonput, jsonadd, jsoncycle and jsondeep on C++.
 import importlib.util
 import os
 import runpy
@@ -13,7 +11,7 @@ spec = importlib.util.spec_from_file_location("jsondoc_kira", path)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
-for call in (lambda: m.putOn([]), lambda: m.addTo({}), m.holdsItself):
+for call in (lambda: m.putOn([]), lambda: m.addTo({}), m.holdsItself, m.tooDeep):
     try:
         call()
         print("no panic")

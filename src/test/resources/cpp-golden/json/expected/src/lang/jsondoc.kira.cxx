@@ -21,6 +21,7 @@ namespace jsondoc
     [[nodiscard]] kira::Str mutated(const kira::Rc<Rng>& r, const kira::Str& doc);
     [[nodiscard]] kira::Str reason(const kira::Str& text);
     [[nodiscard]] kira::Str deep(std::int32_t n, const kira::Str& inner);
+    [[nodiscard]] kira::Rc<kira::json::Json> nested(std::int32_t n);
 
     kira::Str shown(const kira::Str& s)
     {
@@ -246,6 +247,20 @@ namespace jsondoc
         }
         return kira::Str(kira::str::substring(s, 0, static_cast<kira::Size>(n))) + inner + kira::Str(kira::str::substring(s, static_cast<kira::Size>(n), kira::str::length(s)));
     }
+
+    kira::Rc<kira::json::Json> nested(std::int32_t n)
+    {
+        kira::Rc<kira::json::Json> v = kira::json::arr();
+        std::int32_t i{1};
+        while(i < n)
+        {
+            const kira::Rc<kira::json::Json> outer = kira::json::arr();
+            outer->add(v);
+            v = outer;
+            i += 1;
+        }
+        return v;
+    }
   }
 
   Digest::Digest(std::uint64_t h_, std::int64_t count_, std::int64_t total_)
@@ -316,6 +331,11 @@ namespace jsondoc
   kira::Str floatOf(double x)
   {
       return kira::json::ofFloat(x)->dump();
+  }
+
+  kira::Str tooDeep()
+  {
+      return nested(513)->dump();
   }
 
   void main()
@@ -415,6 +435,12 @@ namespace jsondoc
       h->seen.push_back(shared);
       h->doc->put("z", kira::json::ofInt(3));
       kira::trace(kira::Str(shared->dump()) + " " + kira::cat(xs.size(), " ", ys.size(), " ", kira::at(h->seen, 0)->size()));
+      kira::trace([&]() -> kira::Str
+      {
+          const kira::Size t0_ = kira::str::length(kira::Str(nested(512)->dump()));
+          const kira::Size t1_ = kira::str::length(kira::Str(nested(512)->pretty(1, false)));
+          return kira::cat(t0_, " ", t1_);
+      }());
       const kira::Rc<Rng> r = std::make_shared<Rng>();
       const kira::Rc<Digest> forms = std::make_shared<Digest>();
       const kira::Rc<Digest> docs = std::make_shared<Digest>();

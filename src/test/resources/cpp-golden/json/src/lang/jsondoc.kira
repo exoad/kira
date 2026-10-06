@@ -3,8 +3,7 @@ module "lang:jsondoc"
 use "kira:json"
 use "kira:bytes"
 
-// kira:json (D60-D63): py-golden/jsondoc runs this source and must print this case's C++ output,
-// seeded values' every form and documents mutated from them last, as digests.
+// kira:json (D63-D66): py-golden/jsondoc runs this source and must print this case's C++ output.
 
 FNV_BASIS: UInt64 = 0x4BF29CE484222325
 FNV_PRIME: UInt64 = 0x100000001B3
@@ -244,6 +243,22 @@ pub fx floatOf: (x: Float64) Str {
     return Json.of(x).dump()
 }
 
+pub fx tooDeep: () Str {
+    return nested(513).dump()
+}
+
+fx nested: (n: Int32) Json {
+    mut v: Json = Json.arr()
+    mut i: Int32 = 1
+    while i < n {
+        outer: Json = Json.arr()
+        outer.add(v)
+        v = outer
+        i += 1
+    }
+    return v
+}
+
 fx main: () Void {
     o: Json = Json.obj()
     o.put("null", Json.null())
@@ -321,6 +336,7 @@ fx main: () Void {
     h.seen.add(shared)
     h.doc.put("z", Json.of(3))
     trace(shared.dump() + " " + "${xs.size()} ${ys.size()} ${h.seen[0].size()}")
+    trace("${nested(512).dump().size()} ${nested(512).pretty(1, false).size()}")
 
     r: Rng = Rng { }
     forms: Digest = Digest { }

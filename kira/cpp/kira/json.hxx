@@ -1,11 +1,12 @@
-// kira/json.hxx - the hosted runtime of kira:json (D60): one Json class, written as CPython's
-// json.dumps writes it (D62) and read as json.loads reads it (D63).
+// kira/json.hxx - the hosted runtime of kira:json (D63-D66).
 #pragma once
 
 #include "kira/rt.hxx"
 
 #include <charconv>
+#include <clocale>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <system_error>
 #include <utility>
@@ -458,6 +459,10 @@ namespace kira::json
             }
             else if(const Json::Arr* a = std::get_if<Json::Arr>(&v))
             {
+                if(level == MAX_DEPTH)
+                {
+                    panic("Nesting deeper than 512");
+                }
                 if(a->empty())
                 {
                     out += "[]";
@@ -474,6 +479,10 @@ namespace kira::json
             }
             else if(const Json::Obj* o = std::get_if<Json::Obj>(&v))
             {
+                if(level == MAX_DEPTH)
+                {
+                    panic("Nesting deeper than 512");
+                }
                 if(o->isEmpty())
                 {
                     out += "{}";
@@ -570,6 +579,59 @@ namespace kira::json
             out += static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu));
             out += static_cast<char>(0x80u | (cp & 0x3Fu));
         }
+    }
+
+    // float() of digits past a double's range: an infinity or a zero, signed as the text is.
+    [[nodiscard]] inline double outOfRange(const char* first, const char* last) noexcept
+    {
+        const bool negative = *first == '-';
+        const char* p = negative ? first + 1 : first;
+        std::int64_t point = 0;
+        bool fraction = false;
+        bool seen = false;
+        for(; p < last && *p != 'e' && *p != 'E'; ++p)
+        {
+            if(*p == '.')
+            {
+                fraction = true;
+                continue;
+            }
+            point += fraction ? 0 : 1;
+            seen = seen || *p != '0';
+            point -= seen ? 0 : 1;
+        }
+        std::int64_t exp = 0;
+        bool expNegative = false;
+        if(p < last)
+        {
+            ++p;
+            expNegative = *p == '-';
+            for(p += (*p == '-' || *p == '+') ? 1 : 0; p < last; ++p)
+            {
+                exp = exp < 100000000 ? exp * 10 + (*p - '0') : exp;
+            }
+        }
+        const bool huge = (expNegative ? -exp : exp) + point > 0;
+        const double m = huge ? std::numeric_limits<double>::infinity() : 0.0;
+        return negative ? -m : m;
+    }
+
+    // libstdc++ 11's from_chars calls a subnormal out of range (strtod's ERANGE): strtod reads it
+    // again, its '.' made the locale's decimal point if it stops short.
+    [[nodiscard]] inline double reread(const char* first, const char* last)
+    {
+        Str t(first, last);
+        char* end = nullptr;
+        double v = std::strtod(t.c_str(), &end);
+        if(end != t.c_str() + t.size())
+        {
+            for(char& c : t)
+            {
+                c = c == '.' ? *std::localeconv()->decimal_point : c;
+            }
+            v = std::strtod(t.c_str(), &end);
+        }
+        return v != 0.0 && v - v == 0.0 ? v : outOfRange(first, last);
     }
 
     // CPython 3.10's C scanner (Modules/_json.c) step for step, over bytes: every branch it takes
@@ -991,44 +1053,9 @@ namespace kira::json
             double d = 0.0;
             if(std::from_chars(first, last, d).ec == std::errc::result_out_of_range)
             {
-                d = outOfRange(first, last);
+                d = reread(first, last);
             }
             return ofFloat(d);
-        }
-
-        // float() of digits past a double's range: an infinity or a zero, signed as the text is.
-        [[nodiscard]] static double outOfRange(const char* first, const char* last) noexcept
-        {
-            const bool negative = *first == '-';
-            const char* p = negative ? first + 1 : first;
-            std::int64_t point = 0;
-            bool fraction = false;
-            bool seen = false;
-            for(; p < last && *p != 'e' && *p != 'E'; ++p)
-            {
-                if(*p == '.')
-                {
-                    fraction = true;
-                    continue;
-                }
-                point += fraction ? 0 : 1;
-                seen = seen || *p != '0';
-                point -= seen ? 0 : 1;
-            }
-            std::int64_t exp = 0;
-            bool expNegative = false;
-            if(p < last)
-            {
-                ++p;
-                expNegative = *p == '-';
-                for(p += (*p == '-' || *p == '+') ? 1 : 0; p < last; ++p)
-                {
-                    exp = exp < 100000000 ? exp * 10 + (*p - '0') : exp;
-                }
-            }
-            const bool huge = (expNegative ? -exp : exp) + point > 0;
-            const double m = huge ? std::numeric_limits<double>::infinity() : 0.0;
-            return negative ? -m : m;
         }
 
         const Str& s_;
@@ -1057,7 +1084,6 @@ namespace kira::json
       Rc<Json> v = impl_::Reader(text).document();
       return v ? v : null();
   }
-  // Why the last parse on this thread failed, json.loads's own words; "" after one that did not.
   [[nodiscard]] inline Str error()
   {
       return impl_::lastError();

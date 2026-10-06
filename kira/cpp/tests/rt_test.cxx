@@ -1036,8 +1036,7 @@ namespace
       kira::replace(handleSlot) = kira::none;
   }
 
-  // kira:json (D60-D63): json.dumps's text and json.loads's reasons; json_corpus.py holds
-  // thousands more of each against CPython.
+  // kira:json (D63-D66); json_corpus.py holds thousands more against CPython.
   void testJson()
   {
       using kira::json::Json;
@@ -1073,6 +1072,16 @@ namespace
           const kira::Rc<Json> v = kira::json::parse(text);
           return v->isNull() ? kira::json::error() : kira::Str("parsed");
       };
+      const auto chain = [](int n) {
+          kira::Rc<Json> v = kira::json::arr();
+          for(int k = 1; k < n; ++k)
+          {
+              const kira::Rc<Json> outer = kira::json::arr();
+              outer->add(v);
+              v = outer;
+          }
+          return v;
+      };
       check(same(reason("[1,]"), "Expecting value: line 1 column 4 (char 3)") && same(reason("{\"a\" 1}"), "Expecting ':' delimiter: line 1 column 6 (char 5)") &&
                 same(reason("[1]\n x"), "Extra data: line 2 column 2 (char 5)") && same(reason(""), "Expecting value: line 1 column 1 (char 0)"),
             "Json.error: json.loads's reasons, line, column and char");
@@ -1084,6 +1093,17 @@ namespace
       check(same(reason((kira::Str(512, '[') + kira::Str(512, ']')).c_str()), "parsed") &&
                 same(reason((kira::Str(513, '[') + kira::Str(513, ']')).c_str()), "Nesting deeper than 512: line 1 column 513 (char 512)"),
             "Json.parse: 512 deep parses, 513 fails");
+      check(same(chain(512)->dump(), (kira::Str(512, '[') + kira::Str(512, ']')).c_str()) && chain(512)->pretty(0, true).size() == 2046,
+            "Json.dump: 512 deep built through the API writes");
+      const auto real64 = [](const char* text) { return kira::unwrap(kira::json::parse(text)->asFloat64()); };
+      check(real64("4.9e-324") == 4.9e-324 && real64("-4.9e-324") == -4.9e-324 && real64("1e-310") == 1e-310 &&
+                real64("2.2250738585072011e-308") == 2.2250738585072011e-308 && real64("2.4703282292062328e-324") == 4.9e-324 &&
+                same(kira::json::parse("[2.4703282292062327e-324, -1e-400, 1e400]")->dump(), "[0.0, -0.0, Infinity]"),
+            "Json.parse: a subnormal is itself, below half the least one a zero, past the greatest an infinity");
+      const auto reread = [](const char* text) { return kira::json::impl_::reread(text, text + std::strlen(text)); };
+      check(reread("4.9e-324") == 4.9e-324 && reread("-1e-310") == -1e-310 && std::signbit(reread("-1e-400")) && reread("-1e-400") == 0.0 &&
+                reread("1e400") == std::numeric_limits<double>::infinity(),
+            "Json.parse's re-read of what from_chars calls out of range: libstdc++ 11's subnormals");
       check(kira::json::parse("null")->isNull() && kira::json::error().empty() && same(reason("nul"), "Expecting value: line 1 column 1 (char 0)"),
             "Json.error: \"\" after a parse that did not fail, a JSON null included");
       check(o->get("nope")->at(5)->get("x")->isNull() && nested->get("a")->at(9)->isNull() && !nested->has("c") && nested->get("a")->keys().empty() &&
@@ -1142,6 +1162,9 @@ namespace
       check(kira::unwrap(kira::str::toFloat64("2.50")) == 2.5, "toFloat64 under the locale");
       check(!kira::isSome(kira::str::toFloat64("2,50")), "and still refuses a comma");
       check(same(traced(opaque(0.5)), "0.5"), "trace under the locale");
+      const char subnormal[] = "4.9e-324";
+      check(kira::json::impl_::reread(subnormal, subnormal + 8) == 4.9e-324 && same(kira::json::parse("[2.5, 4.9e-324]")->dump(), "[2.5, 5e-324]"),
+            "Json reads a float and a subnormal under the locale");
       std::setlocale(LC_ALL, "C");
   }
 
@@ -1240,6 +1263,17 @@ namespace
           const kira::Rc<kira::json::Json> a = kira::json::arr();
           a->add(a);
           sink = static_cast<std::int32_t>(a->dump().size());
+      }
+      else if(std::strcmp(what, "jsondeep") == 0)
+      {
+          kira::Rc<kira::json::Json> v = kira::json::arr();
+          for(int k = 1; k < 513; ++k)
+          {
+              const kira::Rc<kira::json::Json> outer = kira::json::arr();
+              outer->add(v);
+              v = outer;
+          }
+          sink = static_cast<std::int32_t>(v->pretty(1, true).size());
       }
       std::printf("panic mode %s did not panic (%d)\n", what, sink);
       return 3;

@@ -80,5 +80,6 @@ Nesting deeper than 512: line 1 column 513 (char 512)
 Nesting deeper than 512: line 1 column 513 (char 512)
 Expecting value: line 1 column 101 (char 100)
 {"x": 1, "y": 2, "z": 3} 1 2 3
+1024 263167
 values: 12500 texts, 1567579 bytes, digest 877ab2492f586b95, 2500 parse back to their dump
 mutated documents: 2500 texts, 118228 bytes, digest 97bb978d33fa0d56, 1994 refused

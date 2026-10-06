@@ -627,7 +627,7 @@ class PyEmitterTest {
         assertTrue(py.contains("if (d.body.__class__ is dict) and _k_jhas(d.body, \"k\") and (_k_jget(d.body, \"k\").__class__ is list):"), py)
         assertTrue(py.contains("return _k_jpretty(o, 2, False) + _k_jerror()"), py)
         assertTrue(py.contains("_k_or(_k_jasint(_k_jget(d.body, \"v\")), -1)") && py.contains("_k_jsize(d.body)") && py.contains("_k_jkeys(d.body)"), py)
-        assertTrue(py.contains("return _k_json.dumps(j)") && py.contains("import json as _k_json") && py.contains("import threading as _k_threading"), py)
+        assertTrue(py.contains("text = _k_json.dumps(j, indent=indent, ensure_ascii=ascii)") && py.contains("import json as _k_json") && py.contains("import threading as _k_threading"), py)
     }
 
     @Test

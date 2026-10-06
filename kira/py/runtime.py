@@ -534,7 +534,7 @@ def _k_wrf64be(b, at, v):
     _k_struct.pack_into(">d", b, at, v)
 
 
-# kira:json (D60): a Json is the value json.loads gives, None for JSON null. bool is an int in
+# kira:json (D63): a Json is the value json.loads gives, None for JSON null. bool is an int in
 # Python, so a kind is its exact class.
 def _k_jasbool(j):
     return j if j.__class__ is bool else None
@@ -588,25 +588,85 @@ def _k_jmaybef(m):
     return None if m is None else float(m)
 
 
-# A ValueError from dumps is its "Circular reference detected".
 def _k_jdump(j):
-    try:
-        return _k_json.dumps(j)
-    except ValueError:
-        _k_panic("a Json that holds itself")
+    return _k_jtext(j, None, True)
 
 
 def _k_jpretty(j, indent, ascii):
+    return _k_jtext(j, indent, ascii)
+
+
+def _k_jtext(j, indent, ascii):
     try:
-        return _k_json.dumps(j, indent=indent, ensure_ascii=ascii)
-    except ValueError:
-        _k_panic("a Json that holds itself")
+        text = _k_json.dumps(j, indent=indent, ensure_ascii=ascii)
+    except (ValueError, _k_builtins.RecursionError):
+        text = None
+    if text is None or (text.count("[") + text.count("{") > 512 and not _k_jsound(j, False)):
+        _k_panic(_k_jfault(j) or "Nesting deeper than 512")
+    return text
+
+
+# What kira::json's writer stops at first, in its order: a container 513 deep or one inside itself.
+def _k_jfault(j):
+    if j.__class__ is not list and j.__class__ is not dict:
+        return None
+    above = {_k_builtins.id(j)}
+    stack = [(_k_builtins.iter(j.values() if j.__class__ is dict else j), j)]
+    while stack:
+        for x in stack[-1][0]:
+            if x.__class__ is list or x.__class__ is dict:
+                if len(stack) == 512:
+                    return "Nesting deeper than 512"
+                if _k_builtins.id(x) in above:
+                    return "a Json that holds itself"
+                if x:
+                    above.add(_k_builtins.id(x))
+                    stack.append((_k_builtins.iter(x.values() if x.__class__ is dict else x), x))
+                    break
+        else:
+            above.discard(_k_builtins.id(stack.pop()[1]))
+    return None
+
+
+# No container 513 deep in a value without cycles and, with ints, no integer outside Int64.
+def _k_jsound(v, ints):
+    if v.__class__ is int:
+        return not ints or -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF
+    level = [v] if v.__class__ is list or v.__class__ is dict else []
+    for _ in _k_builtins.range(512):
+        if not level:
+            return True
+        nxt = []
+        add = nxt.append
+        for c in level:
+            for x in (c.values() if c.__class__ is dict else c):
+                t = x.__class__
+                if t is dict or t is list:
+                    add(x)
+                elif ints and t is int and not -0x8000000000000000 <= x <= 0x7FFFFFFFFFFFFFFF:
+                    return False
+        level = nxt
+    return not level
 
 
 _k_jstate = _k_threading.local()
 
 
-class _k_JRange(Exception):
+_k_jdecoder = _k_json.JSONDecoder()
+
+
+# Json.parse (D66): json.loads when nothing is 513 deep nor an integer outside Int64, else the text
+# read again to fail where and as kira::json's scanner does.
+def _k_jparse(text):
+    _k_jstate.error = ""
+    try:
+        v = _k_jdecoder.decode(text)
+    except (ValueError, _k_builtins.RecursionError):
+        return _k_jstrict(text)
+    return v if _k_jsound(v, True) else _k_jstrict(text)
+
+
+class _k_JRange(_k_builtins.Exception):
     pass
 
 
@@ -651,10 +711,7 @@ def _k_jbig(text):
     return 0
 
 
-# Json.parse (D63): json.loads, an integer past Int64 refused where the scanner meets it, and a
-# bracket 513 deep where kira::json's would; the reason in Json.error(), this thread's.
-def _k_jparse(text):
-    _k_jstate.error = ""
+def _k_jstrict(text):
     why = "Nesting deeper than 512"
     try:
         v = _k_json.loads(text, parse_int=_k_jint64)
@@ -671,7 +728,7 @@ def _k_jparse(text):
         at = _k_jdeep(text, big)
         if at < 0:
             why, at = "Integer out of Int64 range", big
-    except RecursionError:
+    except _k_builtins.RecursionError:
         at = _k_jdeep(text, len(text))
         if at < 0:
             raise
@@ -680,4 +737,4 @@ def _k_jparse(text):
 
 
 def _k_jerror():
-    return getattr(_k_jstate, "error", "")
+    return _k_builtins.getattr(_k_jstate, "error", "")
