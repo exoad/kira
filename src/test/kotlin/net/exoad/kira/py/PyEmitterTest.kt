@@ -1517,8 +1517,8 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMapKeyedByAClassOrAnEnumIsRefused() {
-        refused(
+    fun aMapKeyedByAClassIsTheTypersErrorAndByAnEnumIsRefused() {
+        val e = PyTestSupport.emit(
             """
             class Box {
                 pub v: Int32 = 0
@@ -1527,9 +1527,11 @@ class PyEmitterTest {
             fx f: (m: Map<Box, Int32>) Size {
                 return m.size()
             }
-            """,
-            "a Map<Box, Int32> (a Map's key is a Str, an integer, a Bool or a Char)",
+            """
         )
+        assertNull(e.text)
+        assertTrue(e.errors.any { it.contains("types.type.key") }, e.errors.joinToString("\n"))
+        assertTrue(e.errors.none { it.contains(PyModuleEmitter.UNSUPPORTED_CODE) }, e.errors.joinToString("\n"))
         refused(
             """
             enum Gear {
