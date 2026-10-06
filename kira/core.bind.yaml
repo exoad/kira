@@ -61,7 +61,7 @@
 # Every other rule is kira::str's: substring panics out of range (_k_substr) where a slice
 # stops short, an index past the end is Python's IndexError (Kira's index panic), find is none
 # rather than -1, split keeps empty pieces and gives the text back whole for an empty delimiter
-# (Python raises), trim takes space, tab, CR and LF only, the case changes touch A-Z and a-z
+# (Python raises), the trims take C's six spaces only (D62), the case changes touch A-Z and a-z
 # only, toInt64 and toFloat64 are the strict parsers (_k_toint, _k_tofloat), and hashCode is
 # djb2 over the UTF-8, the C++ target's number for text that is valid UTF-8 there. A Char is
 # its code point, an int: `at` and s[i] are ord() of the character, padStart is rjust (it never
@@ -87,15 +87,15 @@ Str.startsWith: { cpp: { expr: "kira::str::startsWith({self}, {0})", pure: true 
 Str.endsWith:  { cpp: { expr: "kira::str::endsWith({self}, {0})", pure: true }, py: { expr: "{self}.endswith({0})" } }
 Str.find:      { cpp: { expr: "kira::str::find({self}, {0})", pure: true }, py: { expr: "_k_find({self}, {0})" } }
 Str.split:     { cpp: { expr: "kira::str::split({self}, {0})", pure: true }, py: { expr: "_k_split({self}, {0})" } }
-Str.trim:      { cpp: { expr: "kira::str::trim({self})", pure: true }, py: { expr: '{self}.strip(" \t\n\r")' } }
+Str.trim:      { cpp: { expr: "kira::str::trim({self})", pure: true }, py: { expr: '{self}.strip(" \t\n\v\f\r")' } }
 Str.toLower:   { cpp: { expr: "kira::str::toLower({self})", pure: true }, py: { expr: "{self}.translate(_k_lower)" } }
 Str.toUpper:   { cpp: { expr: "kira::str::toUpper({self})", pure: true }, py: { expr: "{self}.translate(_k_upper)" } }
 Str.toInt64:   { cpp: { expr: "kira::str::toInt64({self})", pure: true }, py: { expr: "_k_toint({self})" } }
 Str.toFloat64: { cpp: { expr: "kira::str::toFloat64({self})", pure: true }, py: { expr: "_k_tofloat({self})" } }
 Str.padStart:  { cpp: { expr: "kira::str::padStart({self}, {0}, {1})", pure: true }, py: { expr: "{self}.rjust({0}, chr({1}))" } }
 Str.padEnd:    { cpp: { expr: "kira::str::padEnd({self}, {0}, {1})", pure: true }, py: { expr: "{self}.ljust({0}, chr({1}))" } }
-Str.trimStart: { cpp: { expr: "kira::str::trimStart({self})", pure: true }, py: { expr: '{self}.lstrip(" \t\n\r")' } }
-Str.trimEnd:   { cpp: { expr: "kira::str::trimEnd({self})", pure: true }, py: { expr: '{self}.rstrip(" \t\n\r")' } }
+Str.trimStart: { cpp: { expr: "kira::str::trimStart({self})", pure: true }, py: { expr: '{self}.lstrip(" \t\n\v\f\r")' } }
+Str.trimEnd:   { cpp: { expr: "kira::str::trimEnd({self})", pure: true }, py: { expr: '{self}.rstrip(" \t\n\v\f\r")' } }
 Str.splitWhitespace: { cpp: { expr: "kira::str::splitWhitespace({self})", pure: true }, py: { expr: "_k_words.findall({self})" } }
 Str.replace:   { cpp: { expr: "kira::str::replace({self}, {0}, {1})", pure: true }, py: { expr: "{self}.replace({0}, {1})" } }
 Str.toInt64Radix: { cpp: { expr: "kira::str::toInt64({self}, {0})", pure: true }, py: { expr: "_k_tointr({self}, {0})" } }

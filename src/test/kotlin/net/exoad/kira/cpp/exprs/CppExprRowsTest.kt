@@ -1115,7 +1115,7 @@ class CppExprRowsTest {
             ),
             listOf(
                 """check(d57::padded("ab") == "ab.." && d57::padded("abcde") == "abcde", "D57: padEnd fills on the right and never cuts");""",
-                """check(d57::trimmed(" \t x \r\n") == "[x \r\n| \t x]", "D57: trimStart and trimEnd take trim's four");""",
+                """check(d57::trimmed(" \t\v x \f\r\n") == "[x \f\r\n| \t\v x]", "D57, D62: trimStart and trimEnd take the six whitespace characters");""",
                 """check(d57::words("\v a\fb  c\r\n") == 3 && d57::words(" \t") == 0, "D57: splitWhitespace splits on runs of C's six");""",
                 """check(d57::swapped("abab") == "/b/a/b/a/" && d57::swapped("\xc3\xa9") == "/\xc3\xa9/", "D57: replace takes every occurrence, an empty one between code points");""",
                 """check(d57::hex("-7F") == -127 && d57::hex("0x7f") == -1 && d57::hex("8000000000000000") == -1, "D57: toInt64Radix is strict and none past Int64");""",

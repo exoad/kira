@@ -612,13 +612,16 @@ namespace
       const kira::List<kira::Str> parts = kira::str::split("a,,b", ",");
       check(parts.size() == 3 && parts[1].empty() && parts[2] == "b", "split keeps empty pieces");
       check(kira::str::split("abc", "").size() == 1, "split on an empty delimiter");
-      check(same(kira::str::trim(" \t x y\r\n"), "x y") && same(kira::str::trim("   "), ""), "trim");
+      check(same(kira::str::trim(" \t x y\r\n"), "x y") && same(kira::str::trim("   "), "") && same(kira::str::trim("\v\fx\f\v"), "x") &&
+                same(kira::str::trim("\x1cx\xc2\xa0"), "\x1cx\xc2\xa0"),
+            "trim: the six of isWhitespace, no other byte");
       check(same(kira::str::toLower("MiXeD 1"), "mixed 1") && same(kira::str::toUpper("MiXeD"), "MIXED"), "toLower, toUpper");
       check(same(kira::str::padStart("7", 3, '0'), "007") && same(kira::str::padStart("1234", 3, '0'), "1234"), "padStart");
       check(same(kira::str::padEnd("7", 3, '.'), "7..") && same(kira::str::padEnd("1234", 3, '.'), "1234"), "padEnd");
       check(same(kira::str::trimStart(" \t x y\r\n"), "x y\r\n") && same(kira::str::trimEnd(" \t x y\r\n"), " \t x y") &&
-                same(kira::str::trimStart(" \n"), "") && same(kira::str::trimEnd(""), "") && same(kira::str::trimEnd("\vx\f"), "\vx\f"),
-            "trimStart and trimEnd take trim's four");
+                same(kira::str::trimStart(" \n"), "") && same(kira::str::trimEnd(""), "") && same(kira::str::trimEnd("\vx\f"), "\vx") &&
+                same(kira::str::trimStart("\vx\f"), "x\f") && same(kira::str::trimEnd("x\x1c"), "x\x1c"),
+            "trimStart and trimEnd take trim's six");
       const kira::List<kira::Str> words = kira::str::splitWhitespace("\t a  bc\r\n\v\fd \x1c");
       check(words.size() == 4 && words[0] == "a" && words[1] == "bc" && words[2] == "d" && words[3] == "\x1c" &&
                 kira::str::splitWhitespace(" \t\n").empty() && kira::str::splitWhitespace("").empty(),

@@ -1,8 +1,8 @@
 module "lang:strs"
 
 // Str's methods as kira::str gives them: lengths and indices, the checked substring, find as a
-// Maybe, split keeping empty pieces and an empty delimiter giving the text back, trim of space,
-// tab, CR and LF only, ASCII case changes, the strict parsers and djb2. The expected output is
+// Maybe, split keeping empty pieces and an empty delimiter giving the text back, trim of the six
+// whitespace characters only (D62), ASCII case changes, the strict parsers and djb2. The expected output is
 // the C++ backend's run of main, then the driver's: the panics, and the py target's one rule
 // for text, a length counting code points.
 

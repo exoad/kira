@@ -16,7 +16,7 @@
 <
 [ab...][abcdef][  ]
 [x y <0d><0a>][ <09> x y][][]
-[<0b>x<0c>][<0b>x<0c>][<0b>x<0c>]
+[x<0c>][<0b>x][x]
 4 [the] [quick] [brown] [fox]
 3 [a] [b] [c<1c>d]
 0
@@ -32,7 +32,7 @@
 1 none none none
 none none none none none none 20 35
 splitWhitespace: 7576 values, digest 63c010cb5f22d2fe
-trimStart, trimEnd, trim: 9000 values, digest 28e60aee0339810e
+trimStart, trimEnd, trim: 9000 values, digest a08e2c78cfd6666e
 replace: 3000 values, digest 57f81695c5e0b078
 toInt64Radix: 3000 values, digest 649cc21553bd66bf
 [a, , b][][x]

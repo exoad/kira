@@ -466,7 +466,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("return _k_u64(_k_u64(len(s) + len(s)) + _k_or(_k_find(s, t), 0))"), py)
         assertTrue(py.contains("return (len(s) == 0) or s.__contains__(t) or s.startswith(t) or s.endswith(\"x\") or (s == t)"), py)
-        assertTrue(py.contains("return _k_substr(s, 1, 3) + s[0] + s.strip(\" \\t\\n\\r\").translate(_k_lower) + (\"a\" + s).translate(_k_upper)"), py)
+        assertTrue(py.contains("return _k_substr(s, 1, 3) + s[0] + s.strip(\" \\t\\n\\v\\f\\r\").translate(_k_lower) + (\"a\" + s).translate(_k_upper)"), py)
         assertTrue(py.contains("return _k_split(s, \",\")"), py)
         assertTrue(py.contains("_k_toint(s)") && py.contains("_k_strhash(s)") && py.contains("_k_tofloat(s)"), py)
         assertTrue(py.contains("_k_lower = str.maketrans(") && py.contains("import re as _k_re"), "the tables and the regex module come with their users:\n$py")
@@ -518,7 +518,7 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("return s.ljust(4, chr(fill)) + s.lstrip(\" \\t\\n\\r\") + s.rstrip(\" \\t\\n\\r\") + s.replace(\"a\", \"\")"), py)
+        assertTrue(py.contains("return s.ljust(4, chr(fill)) + s.lstrip(\" \\t\\n\\v\\f\\r\") + s.rstrip(\" \\t\\n\\v\\f\\r\") + s.replace(\"a\", \"\")"), py)
         assertTrue(py.contains("return _k_words.findall(s)") && py.contains("_k_words = _k_re.compile(r\"[^ \\t\\n\\r\\v\\f]+\")"), py)
         assertTrue(py.contains("return _k_or(_k_tointr(s, 16), 0)") && py.contains("_k_digits = ") && py.contains("def _k_panic("), py)
     }

@@ -48,6 +48,7 @@ pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx endsWith: (suffix: Str) Bool;
     pub fx find: (value: Str) Maybe<Size>;
     pub fx split: (delimiter: Str) List<Str>;
+    // Whitespace is C's six, tab, LF, VT, FF, CR and space, for every trim, splitWhitespace and Char (D62).
     pub fx trim: () Str;
     pub fx toLower: () Str;
     pub fx toUpper: () Str;
@@ -55,10 +56,9 @@ pub @_magic class Str: Equatable<Str>, Hashable {
     pub fx toFloat64: () Maybe<Float64>;
     pub fx padStart: (width: Size, fill: Char) Str;
     pub fx padEnd: (width: Size, fill: Char) Str;
-    // Space, tab, CR and LF, as trim (D57).
     pub fx trimStart: () Str;
     pub fx trimEnd: () Str;
-    // Split on runs of space, tab, LF, VT, FF and CR; no empty pieces (D57).
+    // Split on runs of whitespace; no empty pieces (D57).
     pub fx splitWhitespace: () List<Str>;
     // Every occurrence, left to right; an empty oldValue goes between code points and at both ends (D57).
     pub fx replace: (oldValue: Str, newValue: Str) Str;
@@ -119,7 +119,7 @@ pub @_magic class Float64: FloatNum
 // (relational as unsigned, so every target agrees); nothing arithmetic
 // applies. `c as UInt8` and `n as Char` convert.
 pub @_magic class Char {
-    // ASCII only (D59): '0'..'9', isspace's six, A-Z and a-z; nothing past 127.
+    // ASCII only (D59): '0'..'9', D62's whitespace, A-Z and a-z; nothing past 127.
     pub fx isDigit: () Bool;
     pub fx isWhitespace: () Bool;
     pub fx isLetter: () Bool;

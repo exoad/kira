@@ -546,17 +546,16 @@ namespace kira
             from = hit + delimiter.size();
         }
     }
-    // Space, tab, CR and LF, as the C and JS backends.
+    // isWhitespace's six (D62), where the C and JS backends still take space, tab, CR and LF.
     [[nodiscard]] inline Str trim(const Str& s)
     {
-        const auto blank = [](Char c) noexcept { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
         Size a = 0;
         Size b = s.size();
-        while(a < b && blank(s[a]))
+        while(a < b && isWhitespace(s[a]))
         {
             ++a;
         }
-        while(b > a && blank(s[b - 1]))
+        while(b > a && isWhitespace(s[b - 1]))
         {
             --b;
         }
@@ -706,13 +705,21 @@ namespace kira
     }
     [[nodiscard]] inline Str trimStart(const Str& s)
     {
-        const Size a = s.find_first_not_of(" \t\n\r");
-        return a == Str::npos ? Str() : s.substr(a);
+        Size a = 0;
+        while(a < s.size() && isWhitespace(s[a]))
+        {
+            ++a;
+        }
+        return s.substr(a);
     }
     [[nodiscard]] inline Str trimEnd(const Str& s)
     {
-        const Size b = s.find_last_not_of(" \t\n\r");
-        return b == Str::npos ? Str() : s.substr(0, b + 1);
+        Size b = s.size();
+        while(b > 0 && isWhitespace(s[b - 1]))
+        {
+            --b;
+        }
+        return s.substr(0, b);
     }
     [[nodiscard]] inline List<Str> splitWhitespace(const Str& s)
     {
