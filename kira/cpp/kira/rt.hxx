@@ -308,6 +308,20 @@ namespace kira
     {
         return std::vector<T>(v.begin(), v.end());
     }
+    template<class A>
+    [[nodiscard]] Str joinToString(const std::vector<Str, A>& l, const Str& separator)
+    {
+        Str out;
+        for(Size i = 0; i < l.size(); ++i)
+        {
+            if(i > 0)
+            {
+                out += separator;
+            }
+            out += l[i];
+        }
+        return out;
+    }
   }
 
   // Deque.popFront() and popBack(): a Maybe, none when empty.

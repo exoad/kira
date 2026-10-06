@@ -73,6 +73,8 @@ pub @_magic class List<T>: Iterable<T> {
     pub fx view: () View<T>;
     pub fx from: (at: Size) View<T>;
     pub fx slice: (at: Size, n: Size) View<T>;
+    // A List<Str> only (D58).
+    pub fx joinToString: (separator: Str) Str;
 }
 
 pub @_magic class Map<K, V> {

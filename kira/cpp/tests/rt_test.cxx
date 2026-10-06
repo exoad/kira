@@ -632,6 +632,10 @@ namespace
                 !kira::isSome(kira::str::toInt64("", 10)) && !kira::isSome(kira::str::toInt64("1_0", 10)) &&
                 !kira::isSome(kira::str::toInt64(" 1", 10)),
             "toInt64 with a radix: none on overflow and on any other character");
+      check(same(kira::list::joinToString(kira::List<kira::Str>{"a", "", "b"}, ", "), "a, , b") &&
+                same(kira::list::joinToString(kira::List<kira::Str>{"x"}, "-"), "x") &&
+                same(kira::list::joinToString(kira::List<kira::Str>{}, "-"), ""),
+            "joinToString");
       check(kira::str::hashCode("ab") == (5381 * 33 + 'a') * 33 + 'b' && kira::str::equals("a", "a"), "hashCode is djb2");
       check(kira::str::view(s).from(3).slice(0, 5) == kira::lit("drive"), "view");
       check(kira::str::bytes("h\xc3\xa9 \xe2\x9c\x93") == kira::List<std::uint8_t>{0x68, 0xC3, 0xA9, 0x20, 0xE2, 0x9C, 0x93} &&

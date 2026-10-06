@@ -1122,6 +1122,23 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d58",
+            """
+            pub fx joined: (xs: List<Str>, sep: Str) Str {
+                return xs.joinToString(sep)
+            }
+
+            pub fx words: (s: Str) Str {
+                return s.splitWhitespace().joinToString("|")
+            }
+            """,
+            listOf("return kira::list::joinToString(xs, sep);"),
+            listOf(
+                """check(d58::joined({"a", "", "b"}, ", ") == "a, , b" && d58::joined({}, ", ").empty() && d58::joined({"x"}, "-") == "x", "D58: joinToString puts the separator between the pieces");""",
+                """check(d58::words(" a b\tc ") == "a|b|c", "D58: and joins a List a call made");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {

@@ -35,6 +35,9 @@ splitWhitespace: 7576 values, digest 63c010cb5f22d2fe
 trimStart, trimEnd, trim: 9000 values, digest 28e60aee0339810e
 replace: 3000 values, digest 57f81695c5e0b078
 toInt64Radix: 3000 values, digest 649cc21553bd66bf
+[a, , b][][x]
+[the_quick_brown][<c3><a9><e2><9c><93>]
+joinToString: 2000 values, digest 359b6cfccb3bf450
 toInt64Radix(1, 37) -> panic: radix out of range
 toInt64Radix(1, 1) -> panic: radix out of range
 toInt64Radix(, 0) -> panic: radix out of range

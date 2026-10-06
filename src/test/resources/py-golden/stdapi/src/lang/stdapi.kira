@@ -182,7 +182,31 @@ fx strText: () Void {
     trace("toInt64Radix: " + radixes.said())
 }
 
+fx joins: () Void {
+    abc: List<Str> = ["a", "", "b"]
+    none: List<Str> = List<Str> { }
+    one: List<Str> = ["x"]
+    marks: List<Str> = ["é", "✓"]
+    trace(vis(abc.joinToString(", ")) + vis(none.joinToString(", ")) + vis(one.joinToString("-")))
+    trace(vis(" the  quick\tbrown ".splitWhitespace().joinToString("_")) + vis(marks.joinToString("")))
+    ps: List<Str> = pieces()
+    mut r: Rng = Rng { }
+    mut joined: Digest = Digest { }
+    mut n: Int32 = 0
+    while n < 2000 {
+        mut xs: List<Str> = List<Str> { }
+        want: UInt64 = r.below(6)
+        while (xs.size() as UInt64) < want {
+            xs.add(ps[r.below(ps.size() as UInt64) as Size])
+        }
+        joined.text(xs.joinToString(ps[r.below(ps.size() as UInt64) as Size]))
+        n += 1
+    }
+    trace("joinToString: " + joined.said())
+}
+
 fx main: () Void {
     strOrder()
     strText()
+    joins()
 }

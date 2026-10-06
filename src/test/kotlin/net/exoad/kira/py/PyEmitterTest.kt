@@ -470,6 +470,19 @@ class PyEmitterTest {
     }
 
     @Test
+    fun joinToStringTakesTheListBeforeTheSeparator() {
+        val py = python(
+            """
+            fx f: (xs: List<Str>, sep: Str) Str {
+                return xs.joinToString(sep) + "a b".splitWhitespace().joinToString(",")
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_join(xs, sep) + _k_join(_k_words.findall(\"a b\"), \",\")"), py)
+        assertTrue(py.contains("return sep.join(xs)"), py)
+    }
+
+    @Test
     fun aStrIsOrderedAsPythonOrdersIt() {
         val py = python(
             """

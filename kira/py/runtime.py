@@ -379,6 +379,11 @@ def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
 
 
+# List.joinToString (D58): Kira evaluates the List before the separator.
+def _k_join(xs, sep):
+    return sep.join(xs)
+
+
 # View.from and View.slice (a List's, an Arr's, a MutView's) are checked as kira::View's are: a
 # start or a length past the end is a program error, where Python's slice stops short. A view
 # of bytes is a memoryview, which shares them, so a MutView<UInt8> writes them; a view of any
