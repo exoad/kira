@@ -1389,7 +1389,7 @@ class PyEmitterTest {
         assertTrue(py.contains("    def _k_set(self, o):\n        self.x = o.x\n        self.tags = o.tags"), py)
         assertTrue(py.contains("        return self._k_clone()"), py)
         assertTrue(py.contains("    p._k_set(Pt(x=1))"), py)
-        assertTrue(py.contains("    ps.append(q._k_clone())\n    a = ps[0]._k_clone()\n    _move(a)\n    ps[0]._k_set(a._k_clone())\n    b = a._k_clone()"), py)
+        assertTrue(py.contains("    ps.append(q._k_clone())\n    a = ps[0]._k_clone()\n    _move(a)\n    ps[0] = a._k_clone()\n    b = a._k_clone()"), py)
     }
 
     @Test
@@ -1699,38 +1699,35 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aMapOfAContainerOrAMaybeAndAContainerOfAMapAreRefused() {
-        refused(
+    fun containersOfContainersAreCopiedDeeply() {
+        val py = python(
             """
-            fx f: (m: Map<Str, List<UInt8>>) Size {
-                return m.size()
+            fx f: (m: Map<Str, List<UInt8>>, g: List<List<Int32>>) Size {
+                mut h: List<List<Int32>> = g
+                mut row: List<Int32> = g[0]
+                h.add(row)
+                mut copy: Map<Str, List<UInt8>> = m
+                o: Maybe<List<Int32>> = row
+                vs: Arr<List<UInt8>> = m.valuesArr()
+                return copy.size() + h.size() + vs.size() + o.unwrap().size()
             }
-            """,
-            "a Map<Str, List<UInt8>> (a Map's value is no Maybe, List, Arr, view or Map)",
+            """
         )
+        assertTrue(py.contains("h = [list(_k_e0) for _k_e0 in g]\n    row = list(g[0])\n    h.append(list(row))"), py)
+        assertTrue(py.contains("copy = {_k_k0: bytearray(_k_v0) for _k_k0, _k_v0 in m.items()}"), py)
+        assertTrue(py.contains("o = list(row)"), py)
+        assertTrue(py.contains("vs = [bytearray(_k_e0) for _k_e0 in list(m.values())]"), py)
+    }
+
+    @Test
+    fun aMaybeOfAMaybeIsRefusedWhereAMapOfMaybesGivesOne() {
         refused(
             """
-            fx f: (m: Map<Str, Map<Str, Int32>>) Size {
-                return m.size()
+            fx f: (m: Map<Str, Maybe<Int32>>) Bool {
+                return m.get("a").isSome()
             }
             """,
-            "a Map<Str, Map<Str, Int32>> (a Map's value is no Maybe, List, Arr, view or Map)",
-        )
-        refused(
-            """
-            fx f: (m: Map<Str, Maybe<Int32>>) Size {
-                return m.size()
-            }
-            """,
-            "a Map<Str, Maybe<Int32>> (a Map's value is no Maybe, List, Arr, view or Map)",
-        )
-        refused(
-            """
-            fx f: (ms: List<Map<Str, Int32>>) Size {
-                return ms.size()
-            }
-            """,
-            "a List<Map<Str, Int32>>",
+            "a Maybe<Maybe<Int32>>",
         )
     }
 

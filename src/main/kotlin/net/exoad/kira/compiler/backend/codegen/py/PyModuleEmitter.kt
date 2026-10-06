@@ -683,7 +683,7 @@ class PyModuleEmitter(
         val lhs = placeText(target, f, spill, pre) ?: return emptyList()
         if (op == null) {
             val tt = model.typeOrNull(target)
-            if (tt != null && (isValue(tt) || isStruct(tt)) && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
+            if (tt != null && (isValue(tt) || isStruct(tt)) && target !is ArrayIndexExpr && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
                 // A field, global or mut parameter keeps its one List, Map or struct and takes the
                 // new contents, so a mut parameter bound to it still names it (C++'s T&).
                 val v = if (isStruct(tt) || holdsValue(elementOf(tt))) asValue(value, f, Use.STORE) else expr(value, f)
@@ -1169,7 +1169,10 @@ class PyModuleEmitter(
         }
         // addAll copies the elements it takes, so its List is copied only when they hold values.
         val stores = fn.isMutMethod && (fn.name != "addAll" || rc.args.any { a -> holdsValue(model.typeOrNull((a as ArgBinding.Given).expr)?.let { elementOf(it) }) })
-        return bound(made, self, rc.args.map { (it as ArgBinding.Given).expr }, f, store = stores)
+        val result = bound(made, self, rc.args.map { (it as ArgBinding.Given).expr }, f, store = stores)
+        // These make a new List of the elements they hold, which hold values a write would share.
+        val t = model.typeOrNull(c)
+        return if (fn.name in SHALLOW && t != null && holdsValue(elementOf(t))) copyOf(result, t) else result
     }
 
     /** A value a mutating method stores ([store]: `xs.add(v)`, `m.put(k, v)`) is a copy, as C++ copies it in. */
@@ -1551,7 +1554,7 @@ class PyModuleEmitter(
                     val inner = t.typeArgs().singleOrNull()
                     when {
                         inner == null -> "a ${s.name} without its element type"
-                        isMaybe(inner) || isList(inner) || isView(inner) || isMap(inner) -> "a ${t.display()}"
+                        isView(inner) || (isMaybe(t) && isMaybe(inner)) -> "a ${t.display()}"
                         // Text is a Str, never a view of Chars; a Str's view would index as a str.
                         isView(t) && inner == KType.CHAR -> "a ${t.display()} (text is a Str on the py target)"
                         // A view of other elements is a copied slice, which a write would not reach.
@@ -1578,11 +1581,8 @@ class PyModuleEmitter(
     }
 
     /**
-     * Why the py target cannot hold the Map [t], or null when it can: a key is a Str, an integer,
-     * a Bool or a Char, never a float (a NaN key is a new entry at each put in kira::Map, and the
-     * entry it was in a dict when it is the same object); a value is anything the target holds
-     * but a Maybe (get's None could not tell a missing key) or a container (a dict's copy would
-     * share it).
+     * A float key is refused: a NaN key is a new entry at each put in kira::Map, and the entry it
+     * was in a dict when it is the same object. A Maybe value's get, a Maybe of a Maybe, is refused where it is read.
      */
     private fun mapRefusal(t: KType.Nominal): String? {
         val (k, v) = t.typeArgs().takeIf { it.size == 2 } ?: return "a Map without its key and value types"
@@ -1592,7 +1592,7 @@ class PyModuleEmitter(
             kp == Prim.FLOAT64 || kp == Prim.FLOAT32 -> "a ${t.display()} (a float key: a NaN key differs between kira::Map and a dict)"
             unsupportedType(k) != null -> unsupportedType(k)
             !keyed -> "a ${t.display()} (a Map's key is a Str, an integer, a Bool, a Char or an enum)"
-            isMaybe(v) || isValue(v) || isView(v) -> "a ${t.display()} (a Map's value is no Maybe, List, Arr, view or Map)"
+            isView(v) -> "a ${t.display()} (a Map's value is no view)"
             else -> unsupportedType(v)
         }
     }
@@ -1712,6 +1712,8 @@ class PyModuleEmitter(
         private val LENDERS = setOf("from", "slice", "view")
 
         private val TUPLE = Regex("Tuple[0-9]")
+
+        private val SHALLOW = setOf("toArr", "clone", "toList", "valuesArr")
 
         /** The magic methods that give what their receiver holds. */
         private val BORROWERS = setOf("get", "unwrap", "unwrapOr", "unwrapErr", "peek")
