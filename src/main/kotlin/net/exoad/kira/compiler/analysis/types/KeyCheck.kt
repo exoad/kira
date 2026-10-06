@@ -3,7 +3,6 @@ package net.exoad.kira.compiler.analysis.types
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import java.util.IdentityHashMap
 
-/** Map and Set, whose first type argument kira::Map and kira::Set hash. */
 internal fun isKeyedContainer(sym: TypeSymbol): Boolean =
     (sym as? ClassSymbol)?.kind == ClassKind.MAGIC && (sym.name == "Map" || sym.name == "Set")
 

@@ -53,7 +53,6 @@ class TypedProgram(
     /** The class a type's members come from (a builtin's magic class, or the nominal's own). */
     fun classOf(type: KType): ClassSymbol? = builtins.classOf(type)
 
-    /** Every expression the sources wrote inside parentheses. */
     val parenthesized: Set<ASTNode> by lazy {
         val set = java.util.Collections.newSetFromMap(IdentityHashMap<ASTNode, Boolean>())
         unit.allSources().forEach { set.addAll(it.astParenthesized) }

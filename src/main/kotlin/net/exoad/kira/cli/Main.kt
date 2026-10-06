@@ -393,7 +393,6 @@ private fun outputPathIn(dir: String?, fileName: String): String {
     return File(directory, fileName).path
 }
 
-/** A lexer or parser panic is the program's error: its diagnostic and exit 1, with no JVM stack trace. */
 private inline fun <T> diagnosedOrExit(block: () -> T): T = try {
     block()
 } catch (e: DiagnosticsException) {
