@@ -1,5 +1,6 @@
 package net.exoad.kira.py
 
+import net.exoad.kira.compiler.backend.codegen.py.PyNames
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
@@ -9,23 +10,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The py goldens (src/test/resources/py-golden/<case>): each case is a project the real CLI
- * compiles with `--target py --out build/tmp/py-golden/<case>`. Every generated file must parse
- * as Python 3.10 (the board's), and the run's stdout must equal the case's expected.txt: the
- * module itself when it has a `main`, or `python driver.py <out>` when the case has a driver,
- * hand-written Python that imports the generated module. numbers, order, bitmath, text, aliases and
- * globalorder hold the C++ backend's output for the same module, and shiftcount and shortview each call's
- * that the C++ backend's run of it alone gives (a value, or the panic's message); ladder runs the
- * target program against the hand-written Ladder it replaces. wsframe, jpegwalk and lebytes do
- * both: their driver runs the module's main, whose output is the C++ backend's, then holds the
- * walkers against the hand-written bibo code they port (and struct, binascii and zlib) over
- * seeded inputs, as maskcmd, linkwatch, dashtext, tagcheck and drivewords do bibo's text parsers,
- * hexpad its zero-padded hex and wstext its WebSocket text and close frames; bebytes holds the
- * big-endian set at the end of its views as shortview does; strs runs its main, then its panics
- * and the py target's one rule for text, a length counting code points; utf8of holds Str.of
- * against Python's decoder over every 1- and 2-byte sequence and more; stdapi runs the
- * Kotlin-named batch (D56 on); strings makes cpp-golden/strings' checks one for one, its
- * expected output that case's. Skipped when no Python is found (set KIRA_PYTHON).
+ * Each case under src/test/resources/py-golden is compiled by the CLI and run, through its
+ * driver.py when it has one; its stdout must be expected.txt, the C++ backend's run of the same
+ * module unless the case's header says otherwise. Skipped when no Python is found (KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")
@@ -51,11 +38,14 @@ class PyGoldenRunTest {
         val generated = out.walkTopDown().filter { it.isFile && it.name.endsWith(".kira.py") }.toList()
         assertTrue(generated.isNotEmpty(), "${case.name}: nothing was generated under $out")
         generated.forEach { assertNull(PyTestSupport.parsesAs310(it.toPath()), "${it.name} is no Python 3.10 source") }
+        assertEquals(emptyList(), PyTestSupport.unreservedBuiltins(generated.map { it.toPath() }, PyNames.RESERVED), "${case.name} names a builtin a Kira name could shadow")
         val driver = File(case, "driver.py")
         val command = if (driver.isFile) {
             listOf(python!!, driver.absolutePath, out.absolutePath)
         } else {
-            listOf(python!!, generated.single().absolutePath)
+            val mains = generated.filter { it.readText().contains("\nif __name__ == \"__main__\":\n") }
+            assertEquals(1, mains.size, "${case.name}: no one module has a main among ${generated.map { it.name }}")
+            listOf(python!!, mains.single().absolutePath)
         }
         val ran = PyTestSupport.run(command, case)
         assertEquals(0, ran.exitCode, "${case.name} exited ${ran.exitCode}:\n${ran.all}")

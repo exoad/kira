@@ -25,6 +25,13 @@ object PyTestSupport {
         return Emitted(planned.firstOrNull()?.text, diagnostics, planned)
     }
 
+    /** The modules [modules] (URI to body) as one program, emitted in memory: each module's Python by URI, and every error. */
+    fun emitProgram(vararg modules: Pair<String, String>): Pair<Map<String, String>, List<String>> {
+        val unit = TyperTestSupport.unitOf(*modules.map { (uri, body) -> TyperTestSupport.module(uri, body) }.toTypedArray())
+        val (diagnostics, planned) = KiraPyBackend.plan(unit, repoRoot.toPath(), version = "test")
+        return planned.associate { it.module to it.text } to diagnostics.filter { it.isError }.map { it.render() }
+    }
+
     data class Run(val exitCode: Int, val stdout: String, val stderr: String) {
         val all: String get() = "$stdout\n$stderr"
     }
@@ -69,6 +76,34 @@ object PyTestSupport {
     val pythonVersion: String by lazy {
         val p = python ?: return@lazy "none"
         run(listOf(p, "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"), repoRoot).stdout.trim()
+    }
+
+    /** The builtins [files] read by a bare name that is neither in [reserved] nor bound in the file: a Kira name could shadow each. */
+    fun unreservedBuiltins(files: List<Path>, reserved: Set<String>): List<String> {
+        val p = python ?: return emptyList()
+        val script = """
+            import ast, builtins, sys
+            reserved = set(sys.argv[1].split(','))
+            out = set()
+            for path in sys.argv[2:]:
+                tree = ast.parse(open(path, encoding='utf-8').read(), path)
+                bound = set()
+                for n in ast.walk(tree):
+                    if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Load):
+                        bound.add(n.id)
+                    elif isinstance(n, (ast.FunctionDef, ast.ClassDef)):
+                        bound.add(n.name)
+                    elif isinstance(n, ast.arg):
+                        bound.add(n.arg)
+                for n in ast.walk(tree):
+                    if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and hasattr(builtins, n.id):
+                        if not n.id.startswith('__') and n.id not in reserved and n.id not in bound:
+                            out.add(n.id)
+            print(' '.join(sorted(out)))
+        """.trimIndent()
+        val r = run(listOf(p, "-c", script, reserved.joinToString(",")) + files.map { it.toString() }, repoRoot)
+        check(r.exitCode == 0) { r.all }
+        return r.stdout.trim().split(" ").filter { it.isNotEmpty() }
     }
 
     /** Whether [file] parses as Python 3.10 source: null when it does, else the error. */

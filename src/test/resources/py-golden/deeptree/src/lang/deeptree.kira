@@ -1,0 +1,35 @@
+module "lang:deeptree"
+
+struct Node {
+    pub v: Int32 = 0
+    pub kids: List<Node> = List<Node> { }
+}
+
+fx total: (n: Node) Int32 {
+    mut t: Int32 = n.v
+    for k: Node in n.kids {
+        t += total(k)
+    }
+    return t
+}
+
+fx main: () Void {
+    mut leaf: Node = Node { 1 }
+    mut mid: Node = Node { 10 }
+    mid.kids.add(leaf)
+    mid.kids.add(leaf)
+    mut root: Node = Node { 100 }
+    root.kids.add(mid)
+    leaf.v = 5
+    mut copy: Node = root
+    copy.kids[0].kids[1].v = 1000
+    trace(total(root))
+    trace(total(copy))
+    mut chain: Node = Node { 0 }
+    for i: Int32 in 0..600 {
+        mut up: Node = Node { i }
+        up.kids.add(chain)
+        chain = up
+    }
+    trace(total(chain))
+}

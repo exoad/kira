@@ -1,0 +1,34 @@
+module "lang:printing"
+
+// eprint's text goes to stderr, which is not compared.
+
+use "kira:io"
+use "kira:os"
+
+fx stop: (code: Int32) Int32 {
+    println("stopping")
+    exit(code)
+    return 1
+}
+
+fx main: () Void {
+    print("a")
+    print(1)
+    print(true)
+    print(2.5)
+    print('c')
+    println("")
+    println(-7 as Int64)
+    println(false)
+    println(1.0 / 3.0)
+    println(255 as UInt8)
+    println('z')
+    eprint("to stderr")
+    eprint(3)
+    print("same ")
+    println("line")
+    assert(1 < 2, "never shown")
+    print("no newline before exit")
+    trace(stop(0))
+    println("never printed")
+}

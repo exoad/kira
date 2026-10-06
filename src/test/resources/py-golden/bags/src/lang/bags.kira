@@ -1,0 +1,88 @@
+module "lang:bags"
+
+// Set, Stack, Queue and Deque are values (D44), a Set insertion-ordered (D27).
+
+fx show: (xs: Arr<Int32>) Str {
+    mut s: Str = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    return s + "]"
+}
+
+fx count: (s: Set<Str>) Size {
+    return s.size()
+}
+
+fx drain: (mut q: Queue<Int32>) Int32 {
+    mut t: Int32 = 0
+    while !q.isEmpty() {
+        t += q.dequeue().unwrapOr(0)
+    }
+    return t
+}
+
+fx main: () Void {
+    mut seen: Set<Int32> = Set<Int32> { }
+    trace(seen.add(3))
+    trace(seen.add(1))
+    trace(seen.add(3))
+    trace(seen.add(2))
+    trace(seen.remove(1))
+    trace(seen.remove(9))
+    trace(seen.add(1))
+    trace("${show(seen.toArr())} ${seen.size()} ${seen.contains(2)} ${seen.isEmpty()}")
+    mut other: Set<Int32> = seen
+    other.add(7)
+    trace("${seen.size()} ${other.size()}")
+    for v: Int32 in seen {
+        trace(v)
+    }
+    mut names: Set<Str> = Set<Str> { }
+    names.add("b")
+    names.add("a")
+    trace(count(names))
+    names.clear()
+    trace(names.isEmpty())
+
+    mut st: Stack<Int32> = Stack<Int32> { }
+    trace(st.pop().isNone())
+    trace(st.peek().isNone())
+    st.push(1)
+    st.push(2)
+    mut st2: Stack<Int32> = st
+    st2.push(3)
+    trace("${st.peek().unwrap()} ${st.size()} ${st2.size()}")
+    trace(st.pop().unwrap())
+    trace(st.pop().unwrap())
+    trace(st.isEmpty())
+
+    mut q: Queue<Int32> = Queue<Int32> { }
+    q.enqueue(5)
+    q.enqueue(6)
+    q.enqueue(7)
+    trace("${q.peek().unwrap()} ${q.size()}")
+    mut q2: Queue<Int32> = q
+    trace(drain(mut q2))
+    trace("${q.size()} ${q2.size()}")
+    trace(q.dequeue().unwrap())
+    q.clear()
+    trace(q.dequeue().isNone())
+
+    mut d: Deque<Int32> = Deque<Int32> { }
+    d.pushBack(1)
+    d.pushFront(0)
+    d.pushBack(2)
+    trace(d.size())
+    trace(d.popFront().unwrap())
+    trace(d.popBack().unwrap())
+    trace(d.size())
+    mut d2: Deque<Int32> = d
+    d2.pushBack(9)
+    trace("${d.size()} ${d2.size()} ${d.isEmpty()}")
+    trace(d.popBack().unwrap())
+    trace(d.popFront().isNone())
+}

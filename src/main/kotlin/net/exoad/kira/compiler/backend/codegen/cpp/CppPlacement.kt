@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
+import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.Builtins
@@ -786,10 +787,10 @@ class CppUsage private constructor(
     fun needsValueOf(e: EnumSymbol): Boolean = e in valueOf
 
     /**
-     * `a == b` or `a != b` somewhere in the program on the struct, or on a `Maybe`, `List`,
-     * `Arr`, `Map`, `Set`, `Deque` or tuple holding it, or on a struct whose field holds it:
-     * a defaulted `operator==` compares members, so every struct reachable from a compared
-     * one needs its own.
+     * `a == b`, `a != b`, `contains` or `containsValue` somewhere in the program on the struct,
+     * or on a `Maybe`, `List`, `Arr`, `Map`, `Set`, `Deque` or tuple holding it, or on a struct
+     * whose field holds it: a defaulted `operator==` compares members, so every struct reachable
+     * from a compared one needs its own.
      */
     fun needsEquality(s: ClassSymbol): Boolean = s in compared
 
@@ -840,6 +841,9 @@ class CppUsage private constructor(
                                 ((call.returnType as? KType.Nominal)?.args?.firstOrNull() as? TypeArg.Ty)?.t?.let { r ->
                                     ((r as? KType.Nominal)?.sym as? EnumSymbol)?.let { enumValues.add(it) }
                                 }
+                            }
+                            if (call.kind == CallKind.MAGIC && (call.fn?.name == "contains" || call.fn?.name == "containsValue")) {
+                                call.args.forEach { a -> (a as? ArgBinding.Given)?.expr?.let { model.typeOrNull(it) }?.let { structsIn(it, compared) } }
                             }
                         }
                         else -> {}

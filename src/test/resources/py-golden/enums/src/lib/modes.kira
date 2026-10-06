@@ -1,0 +1,15 @@
+module "lib:modes"
+
+pub enum Mode: Int16 {
+    IDLE = 1,
+    RUN = 4,
+    HALT = 4,
+    FAULT = 200
+}
+
+pub fx next: (m: Mode) Mode {
+    if m == Mode.IDLE {
+        return Mode.RUN
+    }
+    return Mode.FAULT
+}

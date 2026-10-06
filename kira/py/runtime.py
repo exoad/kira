@@ -5,18 +5,66 @@
 # Python 3.10 is the oldest this must run on (the board's).
 
 import builtins as _k_builtins
+import collections as _k_collections
 import functools as _k_functools
+import importlib.util as _k_importlib
 import itertools as _k_itertools
 import math as _k_math
 import operator as _k_operator
+import os as _k_os
 import re as _k_re
 import struct as _k_struct
+import sys as _k_sys
+
+
+# x.kira.py is no name an import statement can give: a used module is loaded by its path, once
+# per process under its real path, so every module that uses it shares its globals.
+def _k_key(path):
+    return _k_os.path.normcase(_k_os.path.realpath(path))
+
+
+def _k_use(here, path):
+    key = _k_key(_k_os.path.join(_k_os.path.dirname(_k_os.path.abspath(here)), path))
+    m = _k_sys.modules.get(key)
+    if m is None:
+        spec = _k_importlib.spec_from_file_location(key, key)
+        m = _k_importlib.module_from_spec(spec)
+        _k_sys.modules[key] = m
+        try:
+            spec.loader.exec_module(m)
+        except _k_builtins.BaseException:
+            del _k_sys.modules[key]
+            raise
+    return m
+
+
+# In a use cycle the module run as __main__ must be found by the one that uses it back, not
+# loaded a second time.
+def _k_self():
+    g = _k_self.__globals__
+    m = _k_sys.modules.get(g["__name__"])
+    if m is not None and m.__dict__ is g:
+        _k_sys.modules.setdefault(_k_key(g["__file__"]), m)
+
+
+# A field a construction leaves out (None is a Maybe's value, so it cannot say so).
+_k_unset = object()
 
 
 # A program error stops the program (Kira's panic): a bad index, a failed check, a division
 # by zero. Python callers see a RuntimeError.
 def _k_panic(what):
     raise RuntimeError("kira: " + what)
+
+
+def _k_assert(ok, message):
+    if not ok:
+        _k_panic("assertion failed: " + message)
+
+
+# kira:os exit: SystemExit, which no Kira try catches, flushes stdout as C++'s exit does.
+def _k_exit(code):
+    raise _k_builtins.SystemExit(code)
 
 
 # Maybe<T> is None or the value itself; reading the value of None is a program error.
@@ -28,6 +76,50 @@ def _k_value(m):
 
 def _k_or(m, default):
     return default if m is None else m
+
+
+def _k_mcopy(m, copy):
+    return None if m is None else copy(m)
+
+
+_k_map = _k_builtins.map
+
+
+def _k_enumof(order, raw):
+    for v in order:
+        if v == raw:
+            return v
+    return None
+
+
+# A throw (D41) is this class's exception, one class for every generated module so that one
+# catches what another throws; a panic is a RuntimeError, which no Kira try catches.
+def _k_errors():
+    m = _k_sys.modules.get("kira:errors")
+    if m is None:
+        m = _k_builtins.type(_k_sys)("kira:errors")
+        m.Error = _k_builtins.type("Error", (_k_builtins.Exception,), {"__module__": "kira:errors"})
+        m = _k_sys.modules.setdefault("kira:errors", m)
+    return m.Error
+
+
+_k_Error = _k_errors()
+
+
+def _k_throw(message):
+    raise _k_Error(message)
+
+
+def _k_unwrap(r):
+    if not r[0]:
+        _k_panic("unwrap of an error Result")
+    return r[1]
+
+
+def _k_unwrap_err(r):
+    if r[0]:
+        _k_panic("unwrapErr of a success Result")
+    return r[1]
 
 
 # Int32 and Int64 overflow is a program error (D8); Int8 and Int16 wrap, as C++ narrows them
@@ -334,10 +426,10 @@ _k_words = _k_re.compile(r"[^ \t\n\r\v\f]+")
 
 
 # Char.isWhitespace and isLetter (D59): ASCII only, where str.isspace() and isalpha() are Unicode's.
-_k_spaces = frozenset((9, 10, 11, 12, 13, 32))
+_k_spaces = _k_builtins.frozenset((9, 10, 11, 12, 13, 32))
 
 
-_k_letters = frozenset(range(65, 91)) | frozenset(range(97, 123))
+_k_letters = _k_builtins.frozenset(range(65, 91)) | _k_builtins.frozenset(range(97, 123))
 
 
 # toFloat64 is std::from_chars after one leading "+": decimal text with an optional exponent, or
@@ -395,6 +487,42 @@ def _k_contains(xs, v):
 # bytearray of bytes (a memoryview's included).
 def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
+
+
+def _k_setadd(s, v):
+    if v in s:
+        return False
+    s[v] = None
+    return True
+
+
+def _k_setdel(s, v):
+    if v in s:
+        del s[v]
+        return True
+    return False
+
+
+def _k_pop(s):
+    return s.pop() if s else None
+
+
+def _k_peek(s):
+    return s[-1] if s else None
+
+
+def _k_popleft(q):
+    return q.popleft() if q else None
+
+
+def _k_peekleft(q):
+    return q[0] if q else None
+
+
+def _k_dqset(q, v):
+    if q is not v:
+        q.clear()
+        q.extend(v)
 
 
 # List.joinToString (D58): Kira evaluates the List before the separator.

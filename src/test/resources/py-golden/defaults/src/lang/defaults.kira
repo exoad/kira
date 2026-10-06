@@ -1,0 +1,107 @@
+module "lang:defaults"
+
+pub STEP: Int32 = 7
+pub LABEL: Str = "dflt"
+pub ROW: List<Int32> = [1, 2, 3]
+
+mut made: Int32 = 0
+
+fx tick: (v: Int32) Int32 {
+    made += 1
+    trace("tick ${v}")
+    return v
+}
+
+fx scale: (x: Int32, k: Int32 = 2) Int32 {
+    return x * k
+}
+
+fx mid: (a: Int32, b: Int32 = STEP, c: Int32 = 1) Int32 {
+    return a * 100 + b * 10 + c
+}
+
+fx words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, m: Maybe<Int32> = null) Str {
+    mut out: Str = s
+    if loud {
+        out = out.toUpper()
+    }
+    return "${out}${mark as UInt8} ${w} ${m.unwrapOr(-1)}"
+}
+
+fx total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
+    mut t: Int32 = extra
+    for x: Int32 in xs {
+        t += x
+    }
+    return t
+}
+
+class Knob {
+    require pub name: Str
+    pub mut level: Int32 = tick(1)
+    pub mut tags: List<Int32> = List<Int32> { }
+    pub mut limit: Maybe<Int32> = null
+    pub mut zero: Int32
+    mut hidden: Int32 = tick(9)
+
+    pub fx shift: (by: Int32 = 1, twice: Bool = false) Int32 {
+        if twice {
+            return level + by * 2
+        }
+        return level + by
+    }
+
+    pub fx peek: () Int32 {
+        return hidden
+    }
+}
+
+fx show: (xs: List<Int32>) Str {
+    mut s: Str = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    return s + "]"
+}
+
+fx main: () Void {
+    trace(scale(3))
+    trace(scale(3, 4))
+    trace(scale(3, k = 5))
+    trace(mid(1, 2))
+    trace(mid(1, 2, 3))
+    trace(mid(a = 4, c = 5, b = 6))
+    trace(mid(9))
+    trace(words())
+    trace(words("hi", true))
+    trace(words(m = 5, s = "x", loud = false, mark = 63 as Char, w = 2.0))
+    trace(total())
+    trace(total(extra = 10, xs = [1]))
+    trace(total([5, 5]))
+
+    // a field left out runs its default; a field given does not
+    a: Knob = Knob { "a" }
+    trace(a.level)
+    trace(made)
+    mut src: List<Int32> = [4, 5]
+    b: Knob = Knob { "b", tick(3), src }
+    src.add(6)
+    trace(b.level)
+    trace(show(b.tags))
+    trace(made)
+    c: Knob = Knob { name = "c", limit = 8, zero = tick(2) }
+    trace(c.limit.unwrapOr(0))
+    trace(c.zero)
+    trace(c.level)
+    trace(made)
+    d: Knob = Knob { level = tick(4), name = "d" }
+    trace(d.name)
+    trace(d.level)
+    trace(d.peek())
+    trace(d.shift())
+    trace(d.shift(3))
+    trace(d.shift(twice = true, by = 2))
+}

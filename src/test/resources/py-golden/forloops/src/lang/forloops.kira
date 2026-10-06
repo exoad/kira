@@ -1,0 +1,185 @@
+module "lang:forloops"
+
+mut log: List<Int32> = [1, 2, 3]
+mut other: List<Int32> = List<Int32> { }
+
+class Bag {
+    require pub mut items: List<Int32>
+    pub mut seen: List<Int32> = List<Int32> { }
+
+    pub mut fx note: (v: Int32) Void {
+        seen.add(v)
+    }
+
+    pub mut fx walk: () Int32 {
+        mut n: Int32 = 0
+        for x: Int32 in items {
+            note(x * 10)
+            n += x
+        }
+        return n
+    }
+}
+
+class Cell {
+    require pub mut v: Int32
+}
+
+fx endAt: (n: Int32) Int32 {
+    trace("end ${n}")
+    return n
+}
+
+fx startAt: (n: Int32) Int32 {
+    trace("start ${n}")
+    return n
+}
+
+fx elsewhere: () Int32 {
+    other.add(9)
+    return 1
+}
+
+fx sumView: (xs: View<Int32>) Int32 {
+    mut t: Int32 = 0
+    for x: Int32 in xs {
+        t += x
+    }
+    return t
+}
+
+fx sumBytes: (bs: View<UInt8>) UInt32 {
+    mut t: UInt32 = 0
+    for b: UInt8 in bs {
+        t += b as UInt32
+    }
+    return t
+}
+
+fx walkParam: (xs: List<Int32>) Int32 {
+    mut t: Int32 = 0
+    for x: Int32 in xs {
+        t += x
+    }
+    return t
+}
+
+fx walkMut: (mut xs: List<Int32>) Int32 {
+    mut t: Int32 = 0
+    for x: Int32 in xs {
+        t += x
+    }
+    xs.add(t)
+    return t
+}
+
+fx made: () List<Int32> {
+    return [4, 5, 6]
+}
+
+fx show: (xs: List<Int32>) Str {
+    mut s: Str = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    return s + "]"
+}
+
+fx main: () Void {
+    // ranges: the start, then the end, each once; empty and backwards ranges
+    for i: Int32 in startAt(1)..endAt(4) {
+        trace(i)
+    }
+    for i: Int32 in 5..5 {
+        trace(i)
+    }
+    for i: Int32 in 5..2 {
+        trace(i)
+    }
+    mut n: Int32 = 3
+    for i: Int32 in 0..n {
+        n += 10
+        trace(i)
+    }
+    trace(n)
+    for u: UInt8 in 250..255 {
+        trace(u)
+    }
+    lo: Int64 = -2
+    for i: Int64 in lo..1 {
+        trace(i)
+    }
+
+    // break and continue, nested
+    for i: Int32 in 0..4 {
+        if i == 1 {
+            continue
+        }
+        for j: Int32 in 0..10 {
+            if j == 2 {
+                break
+            }
+            trace(i * 10 + j)
+        }
+    }
+
+    mut xs: List<Int32> = [1, 2, 3]
+    for x: Int32 in xs {
+        trace(x)
+    }
+    for x: Int32 in xs {
+        for y: Int32 in xs {
+            trace(x * y)
+        }
+    }
+
+    // a field, while a method writes another field of the object
+    mut bag: Bag = Bag { [1, 2] }
+    trace(bag.walk())
+    trace(show(bag.seen))
+    for x: Int32 in bag.items {
+        bag.note(x)
+    }
+    trace(show(bag.seen))
+
+    // a global, while a call writes another global
+    for x: Int32 in log {
+        trace(x + elsewhere())
+    }
+    trace(show(other))
+
+    // parameters, a call's List, views
+    trace(walkParam(xs))
+    mut zs: List<Int32> = [1, 2]
+    trace(walkMut(mut zs))
+    trace(show(zs))
+    for x: Int32 in made() {
+        trace(x)
+    }
+    trace(sumView(xs))
+    trace(sumView(xs.from(2)))
+    octets: List<UInt8> = [200, 100, 7]
+    trace(sumBytes(octets))
+    trace(sumBytes(octets.slice(1, 2)))
+    for b: UInt8 in octets {
+        trace(b)
+    }
+    fixed: Arr<Int32, 3> = Arr<Int32, 3> { }
+    for x: Int32 in fixed {
+        trace(x)
+    }
+
+    // a List of objects: the loop writes the objects, not the List
+    mut cells: List<Cell> = List<Cell> { }
+    cells.add(Cell { 1 })
+    cells.add(Cell { 2 })
+    for c: Cell in cells {
+        c.v = c.v * 5
+    }
+    for c: Cell in cells {
+        trace(c.v)
+    }
+}

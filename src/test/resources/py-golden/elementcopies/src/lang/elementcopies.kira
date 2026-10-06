@@ -1,0 +1,104 @@
+module "lang:elementcopies"
+
+struct Pt {
+    pub x: Int32 = 0
+    pub tags: List<Int32> = List<Int32> { }
+}
+
+class Holder {
+    pub mut at: Pt = Pt { }
+}
+
+class World {
+    pub mut pts: List<Pt> = List<Pt> { }
+
+    pub fx above: (n: Int32) Pt {
+        for p: Pt in pts {
+            if p.x > n {
+                return p
+            }
+        }
+        return Pt { }
+    }
+
+    pub fx sum: () Int32 {
+        mut t: Int32 = 0
+        for p: Pt in pts {
+            t += p.x
+        }
+        return t
+    }
+}
+
+GRID: List<List<Int32>> = [[1, 2], [3]]
+
+fx first: (xs: List<Pt>) Pt {
+    for p: Pt in xs {
+        return p
+    }
+    return Pt { }
+}
+
+fx firstOf: (v: View<Pt>) Pt {
+    for p: Pt in v {
+        return p
+    }
+    return Pt { }
+}
+
+fx pick: (xs: List<Pt>, want: Int32) Pt {
+    for p: Pt in xs {
+        if p.x == want {
+            return if want > 0 { p } else { Pt { } }
+        }
+    }
+    return Pt { }
+}
+
+fx firstRow: (g: List<List<Int32>>) List<Int32> {
+    for r: List<Int32> in g {
+        return r
+    }
+    return List<Int32> { }
+}
+
+fx gridRow: () List<Int32> {
+    for r: List<Int32> in GRID {
+        return r
+    }
+    return List<Int32> { }
+}
+
+fx main: () Void {
+    mut pts: List<Pt> = List<Pt> { }
+    pts.add(Pt { 1 })
+    pts.add(Pt { 2 })
+    mut q: Pt = first(pts)
+    q.x = 99
+    mut v: Pt = firstOf(pts)
+    v.x = 98
+    mut s: Pt = pick(pts, 2)
+    s.x = 50
+    trace("${pts[0].x} ${pts[1].x}")
+
+    mut g: List<List<Int32>> = List<List<Int32>> { }
+    g.add([1, 2])
+    mut r: List<Int32> = firstRow(g)
+    r.add(3)
+    mut c: List<Int32> = gridRow()
+    c.add(9)
+    trace("${g[0].size()} ${GRID[0].size()} ${gridRow().size()}")
+
+    mut h: Holder = Holder { }
+    h.at = first(pts)
+    h.at.tags.add(5)
+    h.at.x = 7
+    trace("${pts[0].x} ${pts[0].tags.size()} ${h.at.x} ${h.at.tags.size()}")
+
+    mut w: World = World { }
+    w.pts = pts
+    mut a: Pt = w.above(1)
+    a.x = 40
+    a.tags.add(6)
+    trace("${w.pts[1].x} ${w.pts[1].tags.size()} ${a.x} ${w.sum()}")
+}

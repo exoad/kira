@@ -1,0 +1,36 @@
+module "app:main"
+
+use "app:other"
+
+pub globals: Int32 = 5
+pub mut type: Int32 = 3
+
+pub struct Pt {
+    pub x: Int32 = 0
+    pub tags: List<Int32> = List<Int32> { }
+}
+
+fx check: (n: Int32) Int32 {
+    if n > 4 {
+        throw "big ${n}"
+    }
+    return n
+}
+
+pub fx main: () Int32 {
+    mut a: Pt = Pt { 1 }
+    mut b: Pt = a
+    b.x = 2
+    b.tags.add(type)
+    trace("${a.x} ${a.tags.size()} ${b.x} ${b.tags.size()}")
+    trace(globals + twice())
+    try {
+        trace(check(type))
+        trace(check(globals))
+    } on e: Str {
+        trace(e)
+    }
+    type = 9
+    trace(type)
+    return 0
+}

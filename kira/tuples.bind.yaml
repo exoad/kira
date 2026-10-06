@@ -1,15 +1,15 @@
-# Magic binding manifest for kira:tuples (C++ backend only).
+# Magic binding manifest for kira:tuples (C++ and py backends; a Tuple is a Python tuple).
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it.
 # TupleN<...> is the aggregate kira::TupleN with fields first, second, ...;
 # `size()` is the arity, a constant.
-Tuple0.size: { cpp: { expr: "static_cast<std::int32_t>(0)", pure: true, constexpr: true } }
-Tuple1.size: { cpp: { expr: "static_cast<std::int32_t>(1)", pure: true, constexpr: true } }
-Tuple2.size: { cpp: { expr: "static_cast<std::int32_t>(2)", pure: true, constexpr: true } }
-Tuple3.size: { cpp: { expr: "static_cast<std::int32_t>(3)", pure: true, constexpr: true } }
-Tuple4.size: { cpp: { expr: "static_cast<std::int32_t>(4)", pure: true, constexpr: true } }
-Tuple5.size: { cpp: { expr: "static_cast<std::int32_t>(5)", pure: true, constexpr: true } }
-Tuple6.size: { cpp: { expr: "static_cast<std::int32_t>(6)", pure: true, constexpr: true } }
-Tuple7.size: { cpp: { expr: "static_cast<std::int32_t>(7)", pure: true, constexpr: true } }
-Tuple8.size: { cpp: { expr: "static_cast<std::int32_t>(8)", pure: true, constexpr: true } }
-Tuple9.size: { cpp: { expr: "static_cast<std::int32_t>(9)", pure: true, constexpr: true } }
+Tuple0.size: { cpp: { expr: "static_cast<std::int32_t>(0)", pure: true, constexpr: true }, py: { expr: "0" } }
+Tuple1.size: { cpp: { expr: "static_cast<std::int32_t>(1)", pure: true, constexpr: true }, py: { expr: "1" } }
+Tuple2.size: { cpp: { expr: "static_cast<std::int32_t>(2)", pure: true, constexpr: true }, py: { expr: "2" } }
+Tuple3.size: { cpp: { expr: "static_cast<std::int32_t>(3)", pure: true, constexpr: true }, py: { expr: "3" } }
+Tuple4.size: { cpp: { expr: "static_cast<std::int32_t>(4)", pure: true, constexpr: true }, py: { expr: "4" } }
+Tuple5.size: { cpp: { expr: "static_cast<std::int32_t>(5)", pure: true, constexpr: true }, py: { expr: "5" } }
+Tuple6.size: { cpp: { expr: "static_cast<std::int32_t>(6)", pure: true, constexpr: true }, py: { expr: "6" } }
+Tuple7.size: { cpp: { expr: "static_cast<std::int32_t>(7)", pure: true, constexpr: true }, py: { expr: "7" } }
+Tuple8.size: { cpp: { expr: "static_cast<std::int32_t>(8)", pure: true, constexpr: true }, py: { expr: "8" } }
+Tuple9.size: { cpp: { expr: "static_cast<std::int32_t>(9)", pure: true, constexpr: true }, py: { expr: "9" } }
