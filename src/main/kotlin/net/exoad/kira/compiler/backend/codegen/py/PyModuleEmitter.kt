@@ -54,6 +54,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
@@ -91,7 +93,7 @@ import java.util.IdentityHashMap
  *   bytes: the same for ASCII; its methods are kira::str's through core.bind.yaml), Char (its
  *   code point, an int: a literal is its code, `s[i]` is ord() of the character, its text is
  *   chr() of it; a View<Char> is refused, as text is a Str), the integers, Float64, Maybe<T>
- *   (None or the value), List<T> and Arr<T> (and
+ *   (None or the value), Result<T, E> ((True, value) or (False, error)), List<T> and Arr<T> (and
  *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict, whose order is
  *   kira::Map's (D27), keyed by a Str, an integer, a Bool or a Char (`m[k] = v` puts; entries, a
  *   List of Tuple2, is refused), and the module's own classes.
@@ -106,7 +108,8 @@ import java.util.IdentityHashMap
  *   kira:bytes reads and writes little-endian through `_k_` helpers that stop the program on a
  *   short view, as kira::View's slice does;
  * - if/else, while, for over a range, a List, an Arr or a view (D47), break, continue, return,
- *   locals, assignments, calls, constructions, `as`, if-expressions, interpolation and `trace`.
+ *   throw and try (D41), locals, assignments, calls, constructions, `as`, if-expressions,
+ *   interpolation, `trace` and kira:io's printing.
  *
  * **Names.** A `pub` declaration keeps its Kira name, so hand-written Python constructs and
  * calls it; a private module declaration or member is `_name`; parameters and locals keep
@@ -569,11 +572,38 @@ class PyModuleEmitter(
         is AssignmentExpr -> assign(e.target, null, e.value, f)
         is CompoundAssignmentExpr -> assign(e.left, e.operator, e.right, f)
         is PlaceAssignmentExpr -> assign(e.target, e.operator, e.value, f)
+        is ThrowExpr -> listOf("raise ${helper("_k_Error")}(${wrap(expr(e.value, f), PyPrec.TERNARY)})")
+        is TryExpr -> tryStatement(e, f)
         is Decl -> {
             refuse(s, "a declaration inside a body")
             emptyList()
         }
         else -> listOf(expr(e, f).text)
+    }
+
+    /** `try { } on e: Str { }` (D41) catches only a throw: a panic is a RuntimeError, which C++ never catches either. */
+    private fun tryStatement(e: TryExpr, f: Frame): List<String> {
+        val err = helper("_k_Error")
+        val out = mutableListOf("try:")
+        out += indent(block(e.tryBlock, f))
+        val name = e.exceptionName
+        if (name == null) {
+            out += "except $err:"
+            out += indent(block(e.handlerBlock, f))
+            return out
+        }
+        checkName(name.value, name)
+        checkLocalName(name.value, name)
+        if (f.scopes.any { name.value in it }) {
+            refuse(name, "an error '${name.value}' that shadows a local of its name (Python has one scope per function; rename it)")
+        }
+        // `except ... as x` unbinds x when the handler ends, so the Kira name is a copy of it.
+        val caught = f.fresh()
+        out += "except $err as $caught:"
+        f.scopes.addLast(hashSetOf(name.value))
+        out += indent(listOf("${name.value} = $caught.args[0]") + block(e.handlerBlock, f))
+        f.scopes.removeLast()
+        return out
     }
 
     private fun local(decl: VariableDecl, f: Frame): List<String> {
@@ -858,6 +888,7 @@ class PyModuleEmitter(
             is TypeCastExpr -> cast(e, f)
             is IfExpr -> ternary(e, f)
             is ArrayLiteral -> arrayLiteral(e, f)
+            is ThrowExpr -> call("_k_throw", wrap(expr(e.value, f), PyPrec.TERNARY))
             else -> refusePy(e, "the expression ${e.javaClass.simpleName.removeSuffix("Expr").removeSuffix("Literal")}")
         }
     }
@@ -935,6 +966,11 @@ class PyModuleEmitter(
                 when {
                     magicName(ot) == "Maybe" && m.field.name == "value" -> {
                         val b = bindings.lookup("Maybe.unwrap") ?: return refusePy(e, "Maybe.value (no py binding)")
+                        bound(b, { prec -> wrap(expr(e.origin, f), prec) }, emptyList(), f)
+                    }
+                    magicName(ot) == "Result" && (m.field.name == "value" || m.field.name == "error") -> {
+                        val key = if (m.field.name == "value") "Result.unwrap" else "Result.unwrapErr"
+                        val b = bindings.lookup(key) ?: return refusePy(e, "Result.${m.field.name} (no py binding)")
                         bound(b, { prec -> wrap(expr(e.origin, f), prec) }, emptyList(), f)
                     }
                     isUserClass(m.field.owner) -> Py("${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}", PyPrec.POSTFIX)
@@ -1035,6 +1071,12 @@ class PyModuleEmitter(
 
     private fun magicCall(c: FunctionCallExpr, rc: ResolvedCall, f: Frame): Py {
         val fn = rc.fn ?: return refusePy(c, "this call")
+        val key = (fn.foreign as? Foreign.Magic)?.key
+        if (key == "Result.success" || key == "Result.error") {
+            // D39: compiler-known, as C++'s static factories are; a Result is (True, value) or (False, error).
+            val v = (rc.args.singleOrNull() as? ArgBinding.Given)?.expr ?: return refusePy(c, "$key without its value")
+            return Py("(${if (key == "Result.success") "True" else "False"}, ${wrap(expr(v, f), PyPrec.TERNARY)})", PyPrec.ATOM)
+        }
         val receiver = rc.receiver
         val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
         val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
@@ -1418,6 +1460,7 @@ class PyModuleEmitter(
                     }
                 }
                 s.kind == ClassKind.MAGIC && s.name == "Map" -> mapRefusal(t)
+                s.kind == ClassKind.MAGIC && s.name == "Result" -> resultRefusal(t)
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
                 isUserClass(s) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"
@@ -1448,6 +1491,14 @@ class PyModuleEmitter(
             !keyed -> "a ${t.display()} (a Map's key is a Str, an integer, a Bool or a Char)"
             isMaybe(v) || isValue(v) || isView(v) -> "a ${t.display()} (a Map's value is no Maybe, List, Arr, view or Map)"
             else -> unsupportedType(v)
+        }
+    }
+
+    /** A Result is `(True, value)` or `(False, error)`, which a copy of it shares: neither may be a List or a Map. */
+    private fun resultRefusal(t: KType.Nominal): String? {
+        val args = t.typeArgs().takeIf { it.size == 2 } ?: return "a Result without its value and error types"
+        return args.firstNotNullOfOrNull { a ->
+            unsupportedType(a) ?: if (isValue(a) || isView(a)) "a ${t.display()} (Python would share the ${a.display()} inside it, which Kira copies)" else null
         }
     }
 
@@ -1497,6 +1548,7 @@ class PyModuleEmitter(
             prim?.isInteger == true || prim == Prim.CHAR -> "0"
             t == KType.Str -> "\"\""
             isMaybe(t) -> "None"
+            magicName(t) == "Result" -> "(False, ${zeroValue((t as KType.Nominal).typeArgs()[1], at)})"
             isBytes(t) -> if (n == null) "bytearray()" else "bytearray($n)"
             isList(t) && n == null -> "[]"
             isList(t) -> "[${zeroValue((t as KType.Nominal).typeArgs().first(), at)}] * $n"

@@ -72,6 +72,37 @@ def _k_or(m, default):
     return default if m is None else m
 
 
+# A throw (D41) is this class's exception, one class for every generated module so that one
+# catches what another throws; a panic is a RuntimeError, which no Kira try catches.
+def _k_errors():
+    m = _k_sys.modules.get("kira:errors")
+    if m is None:
+        m = type(_k_sys)("kira:errors")
+        m.Error = type("Error", (Exception,), {"__module__": "kira:errors"})
+        m = _k_sys.modules.setdefault("kira:errors", m)
+    return m.Error
+
+
+_k_Error = _k_errors()
+
+
+def _k_throw(message):
+    raise _k_Error(message)
+
+
+# Result (D39) is (True, value) or (False, error).
+def _k_unwrap(r):
+    if not r[0]:
+        _k_panic("unwrap of an error Result")
+    return r[1]
+
+
+def _k_unwrap_err(r):
+    if r[0]:
+        _k_panic("unwrapErr of a success Result")
+    return r[1]
+
+
 # Int32 and Int64 overflow is a program error (D8); Int8 and Int16 wrap, as C++ narrows them
 # (R1); every unsigned type wraps, Size as the 64 bits of a hosted target.
 def _k_i32(v):

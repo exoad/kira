@@ -1551,6 +1551,67 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aThrowRaisesTheOneErrorClassATryCatchesAndAResultIsATuple() {
+        val py = python(
+            """
+            fx parse: (s: Str) Int64 {
+                v: Maybe<Int64> = s.toInt64()
+                if v.isNone() {
+                    throw "bad ${'$'}{s}"
+                }
+                return v.unwrap()
+            }
+
+            fx pick: (ok: Bool) Int32 {
+                return if ok { 1 } else { throw "no" }
+            }
+
+            fx check: (x: Int32) Result<Int32, Str> {
+                if x < 0 {
+                    return Result.error("negative")
+                }
+                return Result.success(x)
+            }
+
+            fx f: () Int64 {
+                try {
+                    return parse("x")
+                } on e: Str {
+                    trace(e)
+                }
+                r: Result<Int32, Str> = check(1)
+                if r.isOk() && !r.isErr() {
+                    return (r.unwrap() + r.value) as Int64
+                }
+                trace(r.unwrapErr())
+                return -1
+            }
+            """
+        )
+        assertTrue(py.contains("        raise _k_Error(\"bad \" + s)"), py)
+        assertTrue(py.contains("    return 1 if ok else _k_throw(\"no\")"), py)
+        assertTrue(py.contains("    try:\n        return _parse(\"x\")\n    except _k_Error as _k_t0:\n        e = _k_t0.args[0]\n        print(e)"), py)
+        assertTrue(py.contains("return (False, \"negative\")"), py)
+        assertTrue(py.contains("return (True, x)"), py)
+        assertTrue(py.contains("if r[0] and not (not r[0]):"), py)
+        assertTrue(py.contains("_k_i32(_k_unwrap(r) + _k_unwrap(r))"), py)
+        assertTrue(py.contains("print(_k_unwrap_err(r))"), py)
+        assertTrue(py.contains("_k_Error = _k_errors()"), py)
+    }
+
+    @Test
+    fun aResultOfAListIsRefusedAsATupleWouldShareIt() {
+        refused(
+            """
+            fx f: (xs: List<Int32>) Result<List<Int32>, Str> {
+                return Result.success(xs)
+            }
+            """,
+            "a Result<List<Int32>, Str> (Python would share the List<Int32> inside it, which Kira copies)",
+        )
+    }
+
+    @Test
     fun aMapKeyedByAFloatIsRefusedAsANaNKeyDiffersBetweenTheTargets() {
         refused(
             """
