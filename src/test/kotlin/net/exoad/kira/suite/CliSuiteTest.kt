@@ -167,6 +167,33 @@ class CliSuiteTest {
     }
 
     @Test
+    fun anUnknownStringEscapeIsADiagnosticNotACrash() {
+        val dir = tempProject(
+            "unknown-escape",
+            basicManifest(),
+            mapOf(
+                "src/app/main.kira" to """
+                    module "app:main"
+
+                    fx main: () Void {
+                        s: Str = "a\0b"
+                        trace(s)
+                    }
+                """.trimIndent(),
+            )
+        )
+        val result = runCli(dir)
+        val output = result.stdout + result.stderr
+        assertEquals(1, result.exitCode, output)
+        assertTrue(output.contains("Unknown escape sequence '\\0'"), output)
+        assertTrue(output.contains("Kira knows \\n, \\t, \\r, \\\\, \\\" and \\${'$'}."), output)
+        assertTrue(output.contains("main.kira] : line 4"), output)
+        assertFalse(output.contains("Exception in thread"), output)
+        assertFalse(output.contains("at net.exoad."), output)
+        assertFalse(File(dir, "out.kira.c").exists(), "no C should be emitted on a parse error")
+    }
+
+    @Test
     fun panicsOnLegacyTomlManifest() {
         val dir = tempProject(
             "legacy-toml",
