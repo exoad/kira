@@ -344,7 +344,6 @@ namespace kira
     {
         std::stable_sort(l.begin(), l.end(), [](const T& a, const T& b) { return ::kira::list::less(a, b); });
     }
-    // `+` from the first element: an Int32 or Int64 partial sum past its type panics (D8).
     template<class T, class A>
     [[nodiscard]] T sum(const std::vector<T, A>& l)
     {
@@ -366,7 +365,6 @@ namespace kira
         }
         return total;
     }
-    // A float list holding a NaN gives a NaN, as Kotlin's minOrNull does.
     template<class T, class A>
     [[nodiscard]] Maybe<T> minOrNull(const std::vector<T, A>& l)
     {

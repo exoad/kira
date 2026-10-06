@@ -39,7 +39,6 @@ pub class Digest {
     }
 }
 
-// Printable ASCII as itself, any other byte as <hh>.
 fx vis: (s: Str) Str {
     b: List<UInt8> = s.bytes()
     mut out: Str = "["
