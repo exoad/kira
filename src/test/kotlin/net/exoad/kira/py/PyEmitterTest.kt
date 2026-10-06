@@ -1471,6 +1471,35 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aLoopVariableIsCopiedWhereItIsReturnedAsCppCopiesItsConstReference() {
+        val py = python(
+            """
+            pub struct Pt {
+                pub x: Int32 = 0
+            }
+
+            fx first: (xs: List<Pt>) Pt {
+                for p: Pt in xs {
+                    return p
+                }
+                return Pt { }
+            }
+
+            fx row: (v: View<List<Int32>>, c: Bool) List<Int32> {
+                for r: List<Int32> in v {
+                    return if c { r } else { List<Int32> { } }
+                }
+                mut own: List<Int32> = List<Int32> { }
+                return own
+            }
+            """
+        )
+        assertTrue(py.contains("    for p in xs:\n        return p._k_clone()"), py)
+        assertTrue(py.contains("        return list(r if c else [])"), py)
+        assertTrue(py.contains("    return own\n"), "a local that owns its value is returned as itself:\n$py")
+    }
+
+    @Test
     fun aMutParameterOtherThanAListAMapOrAStructIsRefused() {
         refused(
             """

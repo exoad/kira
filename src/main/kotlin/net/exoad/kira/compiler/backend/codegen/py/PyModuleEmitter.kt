@@ -164,6 +164,9 @@ class PyModuleEmitter(
 
     private val used = LinkedHashMap<ModuleSymbol, String>()
 
+    /** Loop variables, each bound to an element of what its loop walks, not a value of its own. */
+    private val elementBound: MutableSet<LocalSymbol> = Collections.newSetFromMap(IdentityHashMap())
+
     /** The call being written as a whole statement. */
     private var statementCall: FunctionCallExpr? = null
 
@@ -602,6 +605,7 @@ class PyModuleEmitter(
             }
             else -> return refuse(target, "a for loop over a ${typeOf(target)?.display()}").let { emptyList() }
         }
+        elementBound.add(v)
         f.scopes.addLast(hashSetOf(v.name))
         val body = block(s.body, f)
         f.scopes.removeLast()
@@ -867,7 +871,7 @@ class PyModuleEmitter(
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol -> when (use) {
                 Use.ARG -> later.any { writesByName(it, sym) }
-                Use.RETURN -> false
+                Use.RETURN -> sym in elementBound
                 else -> true
             }
             is ParamSymbol -> if (sym.byRef) use != Use.ARG || sharedWritten else use != Use.ARG
