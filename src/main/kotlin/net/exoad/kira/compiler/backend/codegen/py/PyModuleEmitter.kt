@@ -852,8 +852,10 @@ class PyModuleEmitter(
         val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
         val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
             ?: return refusePy(c, "'${keys.firstOrNull() ?: fn.name}' (it has no py binding)")
-        if (c.namedParameters.isNotEmpty() || rc.args.any { it !is ArgBinding.Given }) {
-            return refusePy(c, "a call of '${fn.name}' with named or defaulted arguments")
+        // Python evaluates a binding's arguments in parameter order: named ones are taken only
+        // where that is the order they were written in (D33).
+        if (rc.args.any { it !is ArgBinding.Given } || rc.sourceOrder != rc.args.indices.toList()) {
+            return refusePy(c, "a call of '${keys.firstOrNull() ?: fn.name}' with defaulted arguments, or named ones out of its parameters' order")
         }
         val self: ((Int) -> String)? = receiver?.let { r ->
             { prec ->

@@ -444,6 +444,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("return _k_strof(v) + _k_strof(_k_from(xs, 1)) + _k_strof(xs)"), py)
         assertTrue(py.contains("return bytes(v).decode(\"utf-8\", \"replace\")"), py)
+        assertTrue(python("fx g: (v: View<UInt8>) Str {\n    return Str.of(bytes = v)\n}").contains("return _k_strof(v)"), "a named argument in its parameter's place")
     }
 
     @Test

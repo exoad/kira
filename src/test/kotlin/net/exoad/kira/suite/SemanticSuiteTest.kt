@@ -352,6 +352,30 @@ class SemanticSuiteTest {
     }
 
     @Test
+    fun namedArgumentsBindToTheCallablesTheTyperMakes() {
+        // Result.success and Str.of (D39, D55) have no declaration to read names from.
+        assertHealthy(
+            """
+            fx main: () Void {
+                v: List<UInt8> = [104, 105]
+                trace(Str.of(bytes = v))
+                r: Result<Int32, Str> = Result.success(value = 5)
+                e: Result<Int32, Str> = Result.error(value = "no")
+            }
+            """
+        )
+        val msgs = assertUnhealthy(
+            """
+            fx main: () Void {
+                v: List<UInt8> = [104, 105]
+                trace(Str.of(text = v))
+            }
+            """
+        )
+        assertTrue(msgs.any { it.contains("'Str.of' has no parameter named 'text'. Its parameters are: bytes.") }, msgs.toString())
+    }
+
+    @Test
     fun namedArgumentsOnAnUnresolvableCalleeAreDiagnosed() {
         // Positional calls to unknown functions still pass (pinned gap above);
         // a call that uses names has nothing to bind them to, so it is refused

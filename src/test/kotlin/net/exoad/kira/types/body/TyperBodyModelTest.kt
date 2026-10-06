@@ -437,6 +437,47 @@ class TyperBodyModelTest {
         assertTrue("types.call.static" in codes, "any other call on Str is still refused: $codes")
     }
 
+    @Test
+    fun theCompilerMadeCallablesTakeNoTypeArgumentsAndBindNamedOnes() {
+        val typed = snippet(
+            """
+            pub fx a: (v: View<UInt8>) Str {
+                return Str.of<Float64, Bool, Str>(v)
+            }
+
+            pub fx b: () Result<Int32, Str> {
+                return Result.success<Int32>(5)
+            }
+            """
+        )
+        val diags = typed.diagnostics.filter { it.code == "types.call.type-args" }.map { it.message }
+        assertTrue(diags.any { it.startsWith("'Str.of' takes no type arguments.") }, diags.toString())
+        assertTrue(diags.any { it.startsWith("'Result.success' takes no type arguments.") }, diags.toString())
+        val named = snippet(
+            """
+            pub fx c: (v: View<UInt8>) Str {
+                return Str.of(bytes = v)
+            }
+
+            pub fx d: () Result<Int32, Str> {
+                return Result.success(value = 5)
+            }
+            """
+        )
+        expectNoErrors(named)
+        val of = named.model.calls[BodyTestSupport.node<FunctionCallExpr>(named, "Str.of(bytes = v)")]!!
+        assertEquals(Foreign.Magic("Str.of"), of.fn!!.foreign)
+        val wrongName = snippet(
+            """
+            pub fx e: (v: View<UInt8>) Str {
+                return Str.of(text = v)
+            }
+            """
+        )
+        val messages = wrongName.diagnostics.map { it.message }
+        assertTrue(messages.any { it.contains("'Str.of' has no parameter named 'text'") }, messages.toString())
+    }
+
     // ---- construction (R9) -------------------------------------------------------------------
 
     @Test
