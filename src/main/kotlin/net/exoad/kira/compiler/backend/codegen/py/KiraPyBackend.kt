@@ -46,7 +46,8 @@ data class PyBackendResult(
  * C++; a typer error or a construct the py target refuses ([PyModuleEmitter]) writes nothing.
  * Each file starts with a comment naming the compiler's commit and the source, and carries the
  * runtime helpers and Kira-written stdlib functions it uses, so it loads nothing of Kira's but the
- * generated files of the modules it uses ([PyImports]). `--check` regenerates in memory and names each file that differs from disk (CRLF read as LF) or is missing, exiting 1.
+ * generated files of the modules it uses ([PyImports]). `--check` regenerates in memory and
+ * names each file that differs from disk (CRLF read as LF) or is missing, exiting 1.
  */
 object KiraPyBackend {
     const val EXTENSION = ".py"

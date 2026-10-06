@@ -98,7 +98,8 @@ import java.util.IdentityHashMap
  *   (None or the value), a Tuple (a Python tuple), Result<T, E> ((True, value) or (False,
  *   error)), an enum (its C++ value), List<T> and Arr<T> (and Arr<T, N>) as a Python list, a
  *   bytearray of UInt8, Map<K, V> as a dict, whose order is kira::Map's (D27), keyed by a Str, an
- *   integer, a Bool, a Char or an enum (`m[k] = v` puts; its entries are its items), and the
+ *   integer, a Bool, a Char or an enum (`m[k] = v` puts; its entries are its items), a Set as a
+ *   dict to None, a Stack as a list, a Queue and a Deque as a collections.deque, and the
  *   workspace's classes and structs.
  *   Kira's List, Map and struct are values (D44, D1) and a Python object is shared, so one is
  *   copied, deeply, wherever a second name could see a write ([asValue]); a `mut` one is the
@@ -592,6 +593,10 @@ class PyModuleEmitter(
                 val items = "${wrap(expr(target, f), PyPrec.POSTFIX)}.items()"
                 if (walksUnwritten(target, s.body)) items else call("list", items).text
             }
+            LoopKind.SET -> {
+                val it = wrap(expr(target, f), PyPrec.POSTFIX)
+                if (walksUnwritten(target, s.body)) it else call("list", it).text
+            }
             else -> return refuse(target, "a for loop over a ${typeOf(target)?.display()}").let { emptyList() }
         }
         f.scopes.addLast(hashSetOf(v.name))
@@ -689,7 +694,8 @@ class PyModuleEmitter(
                 val v = if (isStruct(tt) || holdsValue(elementOf(tt))) asValue(value, f, Use.STORE) else expr(value, f)
                 return pre + when {
                     isStruct(tt) -> "$lhs._k_set(${v.text})"
-                    isMap(tt) -> call("_k_mapset", lhs, v.text).text
+                    isMap(tt) || isSet(tt) -> call("_k_mapset", lhs, v.text).text
+                    isQueue(tt) -> call("_k_dqset", lhs, v.text).text
                     else -> "$lhs[:] = ${v.text}"
                 }
             }
@@ -922,7 +928,12 @@ class PyModuleEmitter(
                 call("dict", v.text)
             }
             isBytes(t) -> call("bytearray", v.text)
-            isList(t) -> if (holdsValue(args[0])) {
+            isSet(t) -> call("dict", v.text)
+            isQueue(t) -> {
+                val items = if (holdsValue(args[0])) "[${copyOf(Py("_k_e$d", PyPrec.ATOM), args[0], d + 1).text} for _k_e$d in ${wrap(v, PyPrec.OR + 1)}]" else v.text
+                Py("${helper("_k_collections")}.deque($items)", PyPrec.POSTFIX)
+            }
+            isList(t) || isStack(t) -> if (holdsValue(args[0])) {
                 Py("[${copyOf(Py("_k_e$d", PyPrec.ATOM), args[0], d + 1).text} for _k_e$d in ${wrap(v, PyPrec.OR + 1)}]", PyPrec.ATOM)
             } else {
                 call("list", v.text)
@@ -1242,6 +1253,7 @@ class PyModuleEmitter(
                 given.isEmpty() -> zeroValue(t, o).let { Py(it, if (it.contains(" * ")) PyPrec.MUL else if (it == "{}") PyPrec.ATOM else PyPrec.POSTFIX) }
                 given.size == 1 && cls.name == "List" -> asValue(given[0].expr, f, Use.STORE)
                 given.size == 1 && cls.name == "Map" -> call("dict", asValue(given[0].expr, f, Use.STORE).text)
+                given.size == 1 && cls.name == "Set" -> Py("dict.fromkeys(${expr(given[0].expr, f).text})", PyPrec.POSTFIX)
                 else -> refusePy(o, "a ${cls.name} construction with these values")
             }
         }
@@ -1523,8 +1535,16 @@ class PyModuleEmitter(
     /** A Map: a dict. */
     private fun isMap(t: KType?): Boolean = magicName(t) == "Map"
 
-    /** A List, an Arr or a Map: a value (D44) Python shares, so it is copied where a second name could see a write. */
-    private fun isValue(t: KType): Boolean = isList(t) || isMap(t)
+    /** A Set is a dict of its elements to None, in insertion order (D27). */
+    private fun isSet(t: KType?): Boolean = magicName(t) == "Set"
+
+    private fun isStack(t: KType?): Boolean = magicName(t) == "Stack"
+
+    /** A Queue or a Deque: a collections.deque. */
+    private fun isQueue(t: KType?): Boolean = magicName(t).let { it == "Queue" || it == "Deque" }
+
+    /** A container: a value (D44) Python shares, so it is copied where a second name could see a write. */
+    private fun isValue(t: KType): Boolean = isList(t) || isMap(t) || isSet(t) || isStack(t) || isQueue(t)
 
     /** A View or MutView: what it was lent from (a list, a bytearray), a memoryview of bytes, or a copied slice. */
     private fun isView(t: KType): Boolean = magicName(t).let { it == "View" || it == "MutView" }
@@ -1563,6 +1583,15 @@ class PyModuleEmitter(
                     }
                 }
                 s.kind == ClassKind.MAGIC && s.name == "Map" -> mapRefusal(t)
+                s.kind == ClassKind.MAGIC && (isSet(t) || isStack(t) || isQueue(t)) -> {
+                    val e = t.typeArgs().singleOrNull()
+                    when {
+                        e == null -> "a ${s.name} without its element type"
+                        isSet(t) -> keyRefusal(e, t)
+                        isView(e) -> "a ${t.display()}"
+                        else -> unsupportedType(e)
+                    }
+                }
                 s.kind == ClassKind.MAGIC && s.name == "Result" -> resultRefusal(t)
                 s.kind == ClassKind.MAGIC && isTuple(t) -> t.typeArgs().firstNotNullOfOrNull { a ->
                     unsupportedType(a) ?: if (isView(a)) "a ${t.display()} (a view lives only as long as the call it is lent to)" else null
@@ -1586,14 +1615,17 @@ class PyModuleEmitter(
      */
     private fun mapRefusal(t: KType.Nominal): String? {
         val (k, v) = t.typeArgs().takeIf { it.size == 2 } ?: return "a Map without its key and value types"
+        return keyRefusal(k, t) ?: if (isView(v)) "a ${t.display()} (a Map's value is no view)" else unsupportedType(v)
+    }
+
+    private fun keyRefusal(k: KType, t: KType): String? {
         val kp = k.prim
         val keyed = k == KType.Str || isEnum(k) || (kp != null && (kp.isInteger || kp == Prim.BOOL || kp == Prim.CHAR))
         return when {
             kp == Prim.FLOAT64 || kp == Prim.FLOAT32 -> "a ${t.display()} (a float key: a NaN key differs between kira::Map and a dict)"
             unsupportedType(k) != null -> unsupportedType(k)
             !keyed -> "a ${t.display()} (a Map's key is a Str, an integer, a Bool, a Char or an enum)"
-            isView(v) -> "a ${t.display()} (a Map's value is no view)"
-            else -> unsupportedType(v)
+            else -> null
         }
     }
 
@@ -1660,7 +1692,9 @@ class PyModuleEmitter(
             isList(t) && n == null -> "[]"
             isList(t) && holdsValue(elementOf(t)) -> "[${zeroValue(elementOf(t)!!, at)} for _k_i in range($n)]"
             isList(t) -> "[${zeroValue(elementOf(t)!!, at)}] * $n"
-            isMap(t) -> "{}"
+            isMap(t) || isSet(t) -> "{}"
+            isStack(t) -> "[]"
+            isQueue(t) -> "${helper("_k_collections")}.deque()"
             isStruct(t) -> ((t as KType.Nominal).sym as ClassSymbol).let { s ->
                 "${ref(s, at) ?: "None"}(${s.fields.filter { isPositional(it) }.joinToString(", ") { zeroValue(it.type, at) }})"
             }
@@ -1715,7 +1749,6 @@ class PyModuleEmitter(
 
         private val SHALLOW = setOf("toArr", "clone", "toList", "valuesArr")
 
-        /** The magic methods that give what their receiver holds. */
         private val BORROWERS = setOf("get", "unwrap", "unwrapOr", "unwrapErr", "peek")
 
         private val COMPARISONS = mapOf(

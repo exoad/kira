@@ -1732,6 +1732,41 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aSetIsADictAndAStackAListAndAQueueOrDequeACollectionsDeque() {
+        val py = python(
+            """
+            fx f: (q: Queue<Int32>) Int32 {
+                mut s: Set<Str> = Set<Str> { }
+                added: Bool = s.add("a")
+                mut st: Stack<Int32> = Stack<Int32> { }
+                st.push(1)
+                mut d: Deque<Int32> = Deque<Int32> { }
+                d.pushFront(2)
+                mut copy: Queue<Int32> = q
+                copy.enqueue(3)
+                return st.pop().unwrapOr(0) + d.popBack().unwrapOr(0) + copy.dequeue().unwrapOr(0)
+            }
+            """
+        )
+        assertTrue(py.contains("s = {}\n    added = _k_setadd(s, \"a\")\n    st = []\n    st.append(1)\n    d = _k_collections.deque()\n    d.appendleft(2)\n    copy = _k_collections.deque(q)\n    copy.append(3)"), py)
+        assertTrue(py.contains("_k_or(_k_pop(st), 0)"), py)
+        assertTrue(py.contains("_k_or(_k_popleft(copy), 0)"), py)
+        assertTrue(py.contains("import collections as _k_collections"), py)
+    }
+
+    @Test
+    fun aSetOfFloatsIsRefusedAsAMapKeyedByOneIs() {
+        refused(
+            """
+            fx f: (s: Set<Float64>) Size {
+                return s.size()
+            }
+            """,
+            "a Set<Float64> (a float key: a NaN key differs between kira::Map and a dict)",
+        )
+    }
+
+    @Test
     fun aTupleWrittenOutOfOrderWithEffectsIsRefused() {
         refused(
             """

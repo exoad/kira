@@ -4,6 +4,7 @@
 # of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
 # Python 3.10 is the oldest this must run on (the board's).
 
+import collections as _k_collections
 import importlib.util as _k_importlib
 import math as _k_math
 import os as _k_os
@@ -443,6 +444,45 @@ def _k_contains(xs, v):
 # bytearray of bytes (a memoryview's included).
 def _k_copy(xs):
     return bytearray(xs) if isinstance(xs, (bytes, bytearray, memoryview)) else list(xs)
+
+
+# Set.add and Set.remove say whether they changed the Set, as kira::Set's do.
+def _k_setadd(s, v):
+    if v in s:
+        return False
+    s[v] = None
+    return True
+
+
+def _k_setdel(s, v):
+    if v in s:
+        del s[v]
+        return True
+    return False
+
+
+# Stack.pop and peek, Queue.dequeue and peek, Deque.popFront and popBack: none when empty.
+def _k_pop(s):
+    return s.pop() if s else None
+
+
+def _k_peek(s):
+    return s[-1] if s else None
+
+
+def _k_popleft(q):
+    return q.popleft() if q else None
+
+
+def _k_peekleft(q):
+    return q[0] if q else None
+
+
+# A Queue or Deque field, global or mut parameter assigned keeps its deque, as a List keeps its list.
+def _k_dqset(q, v):
+    if q is not v:
+        q.clear()
+        q.extend(v)
 
 
 # A Map field, global or mut parameter assigned keeps its dict and takes the new entries in
