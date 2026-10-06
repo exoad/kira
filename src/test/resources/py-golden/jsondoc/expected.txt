@@ -1,0 +1,88 @@
+{"null": null, "bool": true, "int": 7, "float": 2.5, "str": "\u00e9 \"q\" \ud83d\ude00", "arr": [1, {}, []]}
+{
+  "null": null,
+  "bool": true,
+  "int": 7,
+  "float": 2.5,
+  "str": "\u00e9 \"q\" \ud83d\ude00",
+  "arr": [
+    1,
+    {},
+    []
+  ]
+}
+{
+"null": null,
+"bool": true,
+"int": 7,
+"float": 2.5,
+"str": "<c3><a9> \"q\" <f0><9f><98><80>",
+"arr": [
+1,
+{},
+[]
+]
+}
+{
+    "null": null,
+    "bool": true,
+    "int": 7,
+    "float": 2.5,
+    "str": "<c3><a9> \"q\" <f0><9f><98><80>",
+    "arr": [
+        1,
+        {},
+        []
+    ]
+}
+[1.0, 0.0001, 1e-05, 1e+16, 1000000000000000.0, 1.5e+300, -0.0, 0.30000000000000004, 0.3333333333333333, 5e-324, NaN, Infinity, -Infinity, 1.2345678901234568e+17, 1e+22, 100.0, 2.5e-07, 0.0, 9007199254740992.0]
+[0, -1, 9223372036854775807, -9223372036854775808, 9007199254740993, 4294967296, -9223372036854775808]
+"q\" b\\ s/ n\n t\t r\r \u0001\b\f\u001f\u007f \u00e9\u20ac\u4e2d\ud83d\ude00"
+"q\" b\\ s/ n\n t\t r\r \u0001\b\f\u001f<7f> <c3><a9><e2><82><ac><e4><b8><ad><f0><9f><98><80>"
+null "s" ""
+{"a": {"dup": NaN, "n": 3}, "b": -Infinity} []
+true true false 2 2 true true
+true 3 3 true
+true true true 0 0
+s true true true false true true 4
+snullnull
+Expecting value: line 1 column 4 (char 3)
+Expecting ':' delimiter: line 1 column 6 (char 5)
+Extra data: line 1 column 5 (char 4)
+Expecting value: line 1 column 1 (char 0)
+Expecting value: line 1 column 3 (char 2)
+Expecting value: line 1 column 1 (char 0)
+Integer out of Int64 range: line 1 column 1 (char 0)
+Integer out of Int64 range: line 1 column 1 (char 0)
+Invalid \escape: line 1 column 3 (char 2)
+Invalid \uXXXX escape: line 1 column 3 (char 2)
+Expecting property name enclosed in double quotes: line 1 column 8 (char 7)
+Expecting ',' delimiter: line 1 column 3 (char 2)
+Unterminated string starting at: line 1 column 1 (char 0)
+Expecting ',' delimiter: line 1 column 4 (char 3)
+Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+Invalid control character at: line 1 column 4 (char 3)
+Expecting value: line 4 column 3 (char 10)
+Expecting value: line 1 column 7 (char 6)
+Extra data: line 1 column 5 (char 4)
+Expecting value: line 1 column 1 (char 0)
+Expecting value: line 1 column 2 (char 1)
+Expecting ',' delimiter: line 1 column 3 (char 2)
+Expecting value: line 1 column 2 (char 1)
+Expecting ',' delimiter: line 1 column 3 (char 2)
+Expecting value: line 1 column 7 (char 6)
+Extra data: line 1 column 4 (char 3)
+Expecting value: line 1 column 12 (char 11)
+Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)
+ok [[[[[[[[[[[[[[[[[
+Nesting deeper than 512: line 1 column 513 (char 512)
+Nesting deeper than 512: line 1 column 513 (char 512)
+Nesting deeper than 512: line 1 column 513 (char 512)
+Expecting value: line 1 column 101 (char 100)
+{"x": 1, "y": 2, "z": 3} 1 2 3
+values: 12500 texts, 1567579 bytes, digest 877ab2492f586b95, 2500 parse back to their dump
+mutated documents: 2500 texts, 118228 bytes, digest 97bb978d33fa0d56, 1994 refused
+kira: Json.put on a Json that is no object
+kira: Json.add on a Json that is no array
+kira: a Json that holds itself
+3.0 9007199254740992.0 -0.0 1.0
