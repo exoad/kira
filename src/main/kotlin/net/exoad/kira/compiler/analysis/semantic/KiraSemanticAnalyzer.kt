@@ -1041,8 +1041,11 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitIfExpr(ifExpr: IfExpr) {
         ifExpr.condition.accept(this)
-        ifExpr.thenBranch.forEach { it.accept(this) }
-        ifExpr.elseBranch.forEach { it.accept(this) }
+        for (branch in listOf(ifExpr.thenBranch, ifExpr.elseBranch)) {
+            compilationUnit.symbolTable.enter(SemanticScope.Block("(if)"))
+            branch.forEach { it.accept(this) }
+            compilationUnit.symbolTable.exit()
+        }
     }
 
     override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {

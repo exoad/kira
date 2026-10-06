@@ -191,4 +191,37 @@ class NullSafetyTest {
             "value and isNull are Maybe's own members (D40), got: $messages"
         )
     }
+
+    @Test
+    fun anIfExpressionBranchIsAScopeOfItsOwn() {
+        val messages = diagnosticsFor(
+            """
+            fx f: (c: Bool, s: Str) Size {
+                k: Size = if c {
+                    s: Maybe<Str> = null
+                    s.unwrapOr("zz").size()
+                } else {
+                    0
+                }
+                a: Size = if c {
+                    t: Maybe<Str> = null
+                    t.unwrapOr("zz").size()
+                } else {
+                    0
+                }
+                b: Size = if c {
+                    t: Str = "four"
+                    t.size()
+                } else {
+                    0
+                }
+                n: Size = s.size()
+                return n + k + a + b
+            }
+            """,
+            "test:nullsafety.branches"
+        )
+
+        assertTrue(messages.isEmpty(), "each branch's locals stay in the branch, got: $messages")
+    }
 }
