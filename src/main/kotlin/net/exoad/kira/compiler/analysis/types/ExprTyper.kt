@@ -713,9 +713,10 @@ internal class ExprTyper(private val c: PhaseC) {
     private fun sym(op: BinaryOp): String = op.symbol.joinToString("") { it.rep.toString() }
 
     private fun mismatch(e: Expr, op: BinaryOp, lt: KType, rt: KType, why: String?) {
+        val reason = CastPrecedence(c.program).hint(e) ?: why
         c.report(
             "types.op.mismatch",
-            "${lt.display()} ${sym(op)} ${rt.display()} is not an operation Kira has" + (why?.let { ": $it." } ?: "."),
+            "${lt.display()} ${sym(op)} ${rt.display()} is not an operation Kira has" + (reason?.let { ": $it." } ?: "."),
             e,
         )
     }

@@ -6,8 +6,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 
 /**
- * `as` binds tighter than every binary operator (Kotlin's order); before, a cast in the right operand of a
- * shift or a bitwise operator read differently, so such a cast outside parentheses is warned about.
+ * `as` binds tighter than every binary operator (Kotlin's order). A cast outside parentheses in the right operand
+ * of a shift or bitwise operator read differently before, so it is warned about; a mismatch it causes says so.
  */
 internal class CastPrecedence(private val program: TypedProgram) {
     private val parenthesized get() = program.parenthesized
@@ -17,6 +17,35 @@ internal class CastPrecedence(private val program: TypedProgram) {
         e in parenthesized -> null
         e is TypeCastExpr -> e
         e is BinaryExpr -> bareCast(e.leftExpr) ?: bareCast(e.rightExpr)
+        else -> null
+    }
+
+    /** For a mismatch at [e]: a cast in its right operand that converts less than it may seem to, and the parentheses for more. */
+    fun hint(e: Expr): String? {
+        val b = e as? BinaryExpr ?: return null
+        val right = b.rightExpr
+        if (right is TypeCastExpr && right !in parenthesized) {
+            val whole = KiraUnparser.text(BinaryExpr(b.leftExpr, right.value, b.operator))
+            return "`as` binds to its nearest operand, so ${KiraUnparser.text(right)} converts " +
+                "${KiraUnparser.operand(right.value, BinaryOp.TYPE_CAST.precedence)} alone; " +
+                "to convert the whole, write ($whole) as ${KiraUnparser.type(right.type)}"
+        }
+        val lead = leadingCast(right) ?: return null
+        val rightText = KiraUnparser.text(right)
+        val leadText = KiraUnparser.text(lead)
+        if (!rightText.startsWith(leadText)) {
+            return null
+        }
+        val sym = b.operator.symbol.joinToString("") { it.rep.toString() }
+        val first = KiraUnparser.text(BinaryExpr(b.leftExpr, lead, b.operator))
+        return "`as` binds to its nearest operand, so the right side of $sym is $rightText; " +
+            "to apply $sym first, write ($first)${rightText.removePrefix(leadText)}"
+    }
+
+    private fun leadingCast(e: Expr): TypeCastExpr? = when {
+        e in parenthesized -> null
+        e is TypeCastExpr -> e
+        e is BinaryExpr -> leadingCast(e.leftExpr)
         else -> null
     }
 
