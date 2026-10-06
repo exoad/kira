@@ -1,0 +1,163 @@
+module "lang:mapaliases"
+
+// aliases' probes on a Map, a value (D44); expected.txt is the C++ backend's run.
+
+mut log: Map<Str, Int32> = Map<Str, Int32> { }
+mut seed: Map<Str, Int32> = Map<Str, Int32> { }
+
+class Holder {
+    require pub mut items: Map<Str, Int32>
+
+    pub fx snapshot: () Map<Str, Int32> {
+        return items
+    }
+
+    pub mut fx setItems: (xs: Map<Str, Int32>) Void {
+        items = xs
+    }
+
+    pub mut fx poke: (xs: Map<Str, Int32>) Size {
+        items["poke"] = 9
+        return xs.size()
+    }
+
+    pub mut fx grow: () Int32 {
+        items["grow"] = 0
+        return 1
+    }
+
+    pub mut fx reset: (mut xs: Map<Str, Int32>) Size {
+        items = Map<Str, Int32> { }
+        xs["r"] = 1
+        return items.size()
+    }
+}
+
+fx count: (xs: Map<Str, Int32>) Size {
+    log["n${log.size()}"] = 1
+    return xs.size()
+}
+
+fx fill: (mut xs: Map<Str, Int32>, n: Int32) Void {
+    mut i: Int32 = 0
+    while i < n {
+        xs["f${i}"] = i
+        i += 1
+    }
+}
+
+fx replace: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
+    xs = ys
+}
+
+fx pushTo: (mut xs: Map<Str, Int32>) Int32 {
+    xs.put("push", 100)
+    return 1
+}
+
+fx lenOf: (xs: Map<Str, Int32>, k: Int32) Size {
+    return xs.size() + (k as Size)
+}
+
+fx echo: (xs: Map<Str, Int32>) Map<Str, Int32> {
+    return xs
+}
+
+fx fresh: (n: Int32) Map<Str, Int32> {
+    mut out: Map<Str, Int32> = Map<Str, Int32> { }
+    fill(mut out, n)
+    return out
+}
+
+fx pick: (c: Bool, a: Map<Str, Int32>, b: Map<Str, Int32>) Map<Str, Int32> {
+    return if c { a } else { b }
+}
+
+fx show: (xs: Map<Str, Int32>) Str {
+    ks: Arr<Str> = xs.keys()
+    mut s: Str = "{"
+    mut i: Size = 0
+    while i < ks.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${ks[i]}:${xs.get(ks[i]).value}"
+        i += 1
+    }
+    return s + "}"
+}
+
+fx main: () Void {
+    mut a: Map<Str, Int32> = Map<Str, Int32> { }
+    a["one"] = 1
+    mut b: Map<Str, Int32> = a
+    b["two"] = 2
+    trace(show(a))
+    trace(show(b))
+    a = b
+    a["three"] = 3
+    trace(show(a))
+    trace(show(b))
+
+    mut h: Holder = Holder { a }
+    a["four"] = 4
+    trace(show(h.items))
+    h.setItems(b)
+    b["five"] = 5
+    trace(show(h.items))
+    mut snap: Map<Str, Int32> = h.snapshot()
+    snap["six"] = 6
+    trace(show(h.items))
+    trace(show(snap))
+
+    trace(h.poke(h.items))
+    trace(show(h.items))
+    trace(count(log))
+    trace(count(log))
+    trace(show(log))
+
+    fill(mut a, 3)
+    trace(show(a))
+    replace(mut a, b)
+    b["seven"] = 7
+    trace(show(a))
+    trace(h.reset(mut h.items))
+    trace(show(h.items))
+    fill(mut h.items, 2)
+    trace(show(h.items))
+    fill(mut seed, 2)
+    trace(show(seed))
+
+    trace(lenOf(a, pushTo(mut a)))
+    trace(show(a))
+    trace(lenOf(h.items, h.grow()))
+    trace(show(h.items))
+
+    mut e: Map<Str, Int32> = echo(a)
+    e["eight"] = 8
+    trace(show(a))
+    trace(show(e))
+    mut f: Map<Str, Int32> = fresh(2)
+    f["nine"] = 9
+    trace(show(f))
+    mut p: Map<Str, Int32> = pick(true, a, b)
+    p["ten"] = 10
+    trace(show(a))
+    trace(show(p))
+    mut g: Map<Str, Int32> = seed
+    g["eleven"] = 11
+    trace(show(seed))
+    seed = g
+    g["twelve"] = 12
+    trace(show(seed))
+    trace(show(g))
+
+    h.items = h.items
+    trace(show(h.items))
+    mut k: Holder = Holder { g }
+    k.items["zero"] = 0
+    h.items = k.items
+    k.items.remove("f0")
+    trace(show(h.items))
+    trace(show(k.items))
+}

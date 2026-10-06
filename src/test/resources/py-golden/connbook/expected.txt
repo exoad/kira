@@ -1,0 +1,39 @@
+0
+0
+0
+1
+latest 0 255 unacked h264
+[ 10:0 1:3 1:5 2:6 2:3 ]
+latest unacked 0/1 255/1 h264
+0
+1
+12.25
+0
+0
+[ 2:4 ]
+latest 0 unacked 0/1 255/1 1/1 h264
+9
+6 12.25
+1
+1
+[ 2:2 ]
+latest unacked 0/1 255/1 1/1 h264
+latest unacked 0/1 255/1 h264
+0
+latest 1 unacked 0/1 255/1 h264
+1
+false 1
+true 0
+false 0
+[ 2:1 2:12 2:12 ]
+latest unacked 0/1 255/1 1/1 129/2 h264 129/0
+1.5
+offer 30: true 31
+false 1
+latest unacked 0/1 255/1 1/1 129/2 h264 129/0
+true 0
+latest unacked 0/1 255/1 1/1 h264 129/1
+0
+latest unacked 0/1 255/1 1/1 h264
+0
+Conn against bibodash.Conn: 300 runs, 26957 calls (ack 3145 frame 4471 has 1470 offer 4394 oldest 1480 pong 1571 reset 1426 room 1578 take 2971 text 1463 want 1496 work 1492), every result and every dict's keys, in order, and entries the same

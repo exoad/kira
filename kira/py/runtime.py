@@ -367,8 +367,8 @@ def _k_strhash(s):
     return h - 0x10000000000000000 if h >> 63 else h
 
 
-# List.contains compares with ==, as kira::list::contains does: a NaN is in no List. Python's
-# `in` takes an element that is the very object first, NaN included.
+# List.contains and Map.containsValue compare with ==, as kira::list::contains and kira::Map
+# do: a NaN is in no List. Python's `in` takes an element that is the very object first.
 def _k_contains(xs, v):
     return v == v and v in xs
 
@@ -382,6 +382,13 @@ def _k_copy(xs):
 # List.joinToString (D58): Kira evaluates the List before the separator.
 def _k_join(xs, sep):
     return sep.join(xs)
+
+
+# Keeps the dict, as `xs[:] = v` keeps a list: a mut parameter may be bound to it.
+def _k_mapset(m, v):
+    if m is not v:
+        m.clear()
+        m.update(v)
 
 
 # View.from and View.slice (a List's, an Arr's, a MutView's) are checked as kira::View's are: a

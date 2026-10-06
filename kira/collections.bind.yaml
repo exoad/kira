@@ -5,7 +5,8 @@
 # Kira's; a `_k_` name in it is a helper of kira/py/runtime.py. On the py target a List or an
 # Arr is a Python list, a bytearray of UInt8; a View or MutView is what it was lent from, and
 # from and slice make a memoryview of bytes (which a MutView writes through) or a copied slice
-# of any other element, which only a View, read-only, can be.
+# of any other element, which only a View, read-only, can be. A Map is a dict. `place` and
+# `statement` name their operands in any order; the emitter takes them where that cannot show.
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
 # (the C backend lowers containers through tryEmitCollectionMethod). Keys are
@@ -97,17 +98,18 @@ List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true }
 List.joinToString: { cpp: { expr: "kira::list::joinToString({self}, {0})", pure: true }, py: { expr: "_k_join({self}, {0})" } }
 
 # --- Map<K, V>: kira::Map, insertion-ordered (D27) -------------------------
-Map.size:          { cpp: { expr: "{self}.size()", pure: true } }
-Map.isEmpty:       { cpp: { expr: "{self}.isEmpty()", pure: true } }
-Map.put:           { cpp: { expr: "{self}.put({0}, {1})" } }
-Map.get:           { cpp: { expr: "{self}.get({0})", pure: true } }
-Map.remove:        { cpp: { expr: "{self}.remove({0})" } }
-Map.containsKey:   { cpp: { expr: "{self}.containsKey({0})", pure: true } }
-Map.containsValue: { cpp: { expr: "{self}.containsValue({0})", pure: true } }
-Map.keys:          { cpp: { expr: "{self}.keys()", pure: true } }
-Map.valuesArr:     { cpp: { expr: "{self}.valuesArr()", pure: true } }
+# py: a dict keeps kira::Map's order; `{list}` is list, or bytearray for a List<UInt8>.
+Map.size:          { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
+Map.isEmpty:       { cpp: { expr: "{self}.isEmpty()", pure: true }, py: { expr: "(not {self})" } }
+Map.put:           { cpp: { expr: "{self}.put({0}, {1})" }, py: { expr: "{self}.__setitem__({0}, {1})", statement: "{self}[{0}] = {1}" } }
+Map.get:           { cpp: { expr: "{self}.get({0})", pure: true }, py: { expr: "{self}.get({0})" } }
+Map.remove:        { cpp: { expr: "{self}.remove({0})" }, py: { expr: "{self}.pop({0}, None)" } }
+Map.containsKey:   { cpp: { expr: "{self}.containsKey({0})", pure: true }, py: { expr: "{self}.__contains__({0})", place: "({0} in {self})" } }
+Map.containsValue: { cpp: { expr: "{self}.containsValue({0})", pure: true }, py: { expr: "_k_contains({self}.values(), {0})" } }
+Map.keys:          { cpp: { expr: "{self}.keys()", pure: true }, py: { expr: "{list}({self})" } }
+Map.valuesArr:     { cpp: { expr: "{self}.valuesArr()", pure: true }, py: { expr: "{list}({self}.values())" } }
 Map.entries:       { cpp: { expr: "{self}.entries()", pure: true } }
-Map.clear:         { cpp: { expr: "{self}.clear()" } }
+Map.clear:         { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
 
 # --- Set<T>: kira::Set, insertion-ordered (D27) ----------------------------
 Set.size:      { cpp: { expr: "{self}.size()", pure: true } }
