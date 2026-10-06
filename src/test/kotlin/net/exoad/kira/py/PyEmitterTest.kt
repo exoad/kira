@@ -1232,16 +1232,22 @@ class PyEmitterTest {
                 pub fx total: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
                     mut t: Int32 = 0
                     for x: Int32 in items {
-                        t += x
+                        trace(x)
                     }
                     for x: Int32 in xs {
-                        t += x
+                        trace(x)
                     }
                     for y: Int32 in ys {
-                        t += y
+                        trace(y)
                     }
                     for g: Int32 in log {
-                        t += g
+                        trace(g)
+                    }
+                    for k: Int32 in items {
+                        t += k
+                    }
+                    for h: Int32 in log {
+                        t += h
                     }
                     return t
                 }
@@ -1265,6 +1271,9 @@ class PyEmitterTest {
         assertTrue(py.contains("for x in xs:"), py)
         assertTrue(py.contains("for y in list(ys):"), py)
         assertTrue(py.contains("for g in list(_log):"), py)
+        // A body that only reads walks any range in place, as C++ lends it.
+        assertTrue(py.contains("for k in self.items:"), py)
+        assertTrue(py.contains("for h in _log:"), py)
     }
 
     @Test

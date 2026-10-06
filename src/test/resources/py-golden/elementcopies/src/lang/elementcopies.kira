@@ -9,6 +9,27 @@ class Holder {
     pub mut at: Pt = Pt { }
 }
 
+class World {
+    pub mut pts: List<Pt> = List<Pt> { }
+
+    pub fx above: (n: Int32) Pt {
+        for p: Pt in pts {
+            if p.x > n {
+                return p
+            }
+        }
+        return Pt { }
+    }
+
+    pub fx sum: () Int32 {
+        mut t: Int32 = 0
+        for p: Pt in pts {
+            t += p.x
+        }
+        return t
+    }
+}
+
 GRID: List<List<Int32>> = [[1, 2], [3]]
 
 fx first: (xs: List<Pt>) Pt {
@@ -73,4 +94,11 @@ fx main: () Void {
     h.at.tags.add(5)
     h.at.x = 7
     trace("${pts[0].x} ${pts[0].tags.size()} ${h.at.x} ${h.at.tags.size()}")
+
+    mut w: World = World { }
+    w.pts = pts
+    mut a: Pt = w.above(1)
+    a.x = 40
+    a.tags.add(6)
+    trace("${w.pts[1].x} ${w.pts[1].tags.size()} ${a.x} ${w.sum()}")
 }

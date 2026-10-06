@@ -41,6 +41,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
@@ -613,7 +614,7 @@ class PyModuleEmitter(
     }
 
     /** C++ walks a copy of a List the body may write: so does Python, unless nothing but the body could write it. */
-    private fun walksUnwritten(target: Expr, body: List<Statement>): Boolean = when (target) {
+    private fun walksUnwritten(target: Expr, body: List<Statement>): Boolean = readsOnly(body) || when (target) {
         is Identifier -> when (val sym = model.symbolOf(target)) {
             is LocalSymbol -> body.none { writesByName(it, sym) }
             is ParamSymbol -> !sym.byRef && body.none { writesByName(it, sym) }
@@ -623,6 +624,20 @@ class PyModuleEmitter(
         is FunctionCallExpr, is ObjectInitExpr, is ArrayLiteral -> true
         is MemberAccessExpr -> target.member is FunctionCallExpr && model.member(target) !is MemberRef.Field
         else -> false
+    }
+
+    /** No expression of [body] is IMPURE, so nothing writes the range while it is walked (C++'s W6 lends it then). */
+    private fun readsOnly(body: List<Statement>): Boolean {
+        val stack = ArrayDeque<ASTNode>(body)
+        while (stack.isNotEmpty()) {
+            when (val n = stack.removeLast()) {
+                is Type -> {}
+                is VariableDecl -> n.value?.let { stack.addLast(it) }
+                is Expr -> if (model.effect(n) == Effect.IMPURE) return false
+                else -> AstTree.children(n).forEach { stack.addLast(it) }
+            }
+        }
+        return true
     }
 
     private fun exprStatement(s: Statement, e: Expr, f: Frame): List<String> = when (e) {
