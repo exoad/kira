@@ -1,0 +1,98 @@
+module "pp:powerdata"
+
+use "kira:json"
+
+// powerpage.py's /data body with kira:json: stats() and the body as do_GET builds them, each
+// series point through clean(). The expected output is the C++ run of main.
+
+// powerpage.py's clean(): a float that is no finite number is null.
+fx clean: (v: Maybe<Float64>) Json {
+    if v.isNull() {
+        return Json.null()
+    }
+    x: Float64 = v.value
+    if x != x || x - x != 0.0 {
+        return Json.null()
+    }
+    return Json.of(x)
+}
+
+// A raw sample's point: [tS, inW, inW, cpuPct, piTempC, jTempC].
+pub fx rawPoint: (tS: Float64, inW: Maybe<Float64>, cpuPct: Maybe<Float64>, piTempC: Maybe<Float64>, jTempC: Maybe<Float64>) Json {
+    p: Json = Json.arr()
+    p.add(clean(tS))
+    p.add(clean(inW))
+    p.add(clean(inW))
+    p.add(clean(cpuPct))
+    p.add(clean(piTempC))
+    p.add(clean(jTempC))
+    return p
+}
+
+// A minute bucket's point, its start the int key Store.add files it under.
+pub fx bucketPoint: (startS: Int64, avgW: Maybe<Float64>, maxW: Maybe<Float64>, cpuAvg: Maybe<Float64>, piTempC: Maybe<Float64>, jTempC: Maybe<Float64>) Json {
+    p: Json = Json.arr()
+    p.add(Json.of(startS))
+    p.add(clean(avgW))
+    p.add(clean(maxW))
+    p.add(clean(cpuAvg))
+    p.add(clean(piTempC))
+    p.add(clean(jTempC))
+    return p
+}
+
+// j_wh is sum()'s: the int 0 over no buckets.
+pub fx stats: (samples: Size, buckets: Size, jetsonUp: Maybe<Float64>, avgW: Maybe<Float64>, peakW: Maybe<Float64>, wh: Float64, minV: Maybe<Float64>, ocNew: Maybe<Float64>, cpuAvg: Maybe<Float64>, piTempMax: Maybe<Float64>, jTempMax: Maybe<Float64>) Json {
+    s: Json = Json.obj()
+    s.put("samples", Json.of(samples as Int64))
+    s.put("jetson_up", Json.of(jetsonUp))
+    s.put("j_avg_w", Json.of(avgW))
+    s.put("j_peak_w", Json.of(peakW))
+    if buckets > 0 {
+        s.put("j_wh", Json.of(wh))
+    } else {
+        s.put("j_wh", Json.of(0))
+    }
+    s.put("j_min_v", Json.of(minV))
+    s.put("j_oc_new", Json.of(ocNew))
+    s.put("pi_cpu_avg", Json.of(cpuAvg))
+    s.put("pi_temp_max", Json.of(piTempMax))
+    s.put("j_temp_max", Json.of(jTempMax))
+    return s
+}
+
+pub fx body: (nowS: Float64, seconds: Int64, latest: Json, st: Json, series: List<Json>) Str {
+    b: Json = Json.obj()
+    b.put("now", Json.of(nowS))
+    b.put("seconds", Json.of(seconds))
+    b.put("latest", latest)
+    b.put("stats", st)
+    s: Json = Json.arr()
+    mut i: Size = 0
+    while i < series.size() {
+        s.add(series[i])
+        i += 1
+    }
+    b.put("series", s)
+    return b.dump()
+}
+
+fx main: () Void {
+    none: Maybe<Float64> = null
+    zero: Float64 = 0.0
+    row: Json = Json.obj()
+    row.put("t", Json.of(1759700000.25))
+    row.put("pi_cpu_pct", Json.of(12.5))
+    row.put("pi_load1", Json.of(0.31))
+    row.put("pi_temp_c", Json.of(48.3))
+    row.put("pi_mhz", Json.null())
+    row.put("j_in_mv", Json.of(5016))
+    row.put("j_in_ma", Json.of(1480))
+    row.put("j_oc_events", Json.of(0))
+    row.put("j_mode", Json.of("15W"))
+    raw: List<Json> = [rawPoint(1759699999.0, 7.42368, 11.0, 48.0, 45.5), rawPoint(1759700001.5, none, zero / zero, none, 1.0 / zero)]
+    trace(body(1759700002.125, 3600, row, stats(2, 1, 0.5, 7.42368, 7.42368, 0.004124266666666667, 5.016, 0.0, 11.0, 48.0, 45.5), raw))
+    minutes: List<Json> = [bucketPoint(1759699920, 7.2, 7.5, 10.25, 47.9, 44.0), bucketPoint(1759699980, none, none, none, none, none)]
+    trace(body(1759700002.5, 86400, Json.null(), stats(31, 2, 0.967741935483871, none, -1.0 / zero, 0.1, none, 2.0, none, none, none), minutes))
+    trace(body(1759700003.0, 60, Json.null(), stats(0, 0, none, none, none, 0.0, none, none, none, none, none), []))
+}

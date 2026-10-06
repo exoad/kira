@@ -25,7 +25,8 @@ import kotlin.test.assertTrue
  * and the py target's one rule for text, a length counting code points; utf8of holds Str.of
  * against Python's decoder over every 1- and 2-byte sequence and more; strings makes
  * cpp-golden/strings' checks one for one, its expected output that case's; jsondoc is
- * cpp-golden/json's source, its output first. Skipped when no Python is found (set KIRA_PYTHON).
+ * cpp-golden/json's source, its output first; dbwjson, maskconfig and powerdata hold kira:json
+ * ports against dbwcodec.py, lidarmask.py and powerpage.py. Skipped when no Python is found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")
