@@ -1,5 +1,7 @@
 module "lang:stdapi"
 
+use "kira:math"
+
 // The Kotlin-named stdlib batch (D56 on): expected.txt is the C++ backend's run of main, then
 // the driver's panics as the C++ backend's run of each call alone gives them.
 
@@ -246,9 +248,39 @@ fx charTests: () Void {
     trace("in non-ASCII text: ${d} digits, ${w} spaces, ${l} letters")
 }
 
+fx rem: (a: Float64, b: Float64) Str {
+    return "${fmod(a, b)}"
+}
+
+fx remainders: () Void {
+    zero: Float64 = 0.0
+    inf: Float64 = 1.0 / zero
+    nan: Float64 = zero / zero
+    trace(rem(5.5, 2.0) + " " + rem(-5.5, 2.0) + " " + rem(5.5, -2.0) + " " + rem(-5.5, -2.0) + " " + rem(-3.0, 3.0) + " " + rem(3.0, -3.0))
+    trace(rem(1.0, zero) + " " + rem(-1.0, -zero) + " " + rem(inf, 1.0) + " " + rem(-inf, 1.0) + " " + rem(inf, inf) + " " + rem(zero, zero))
+    trace(rem(2.0, inf) + " " + rem(-2.0, -inf) + " " + rem(-zero, inf) + " " + rem(nan, 1.0) + " " + rem(1.0, nan) + " " + rem(nan, zero))
+    trace(rem(-zero, 1.0) + " " + rem(zero, -1.0) + " " + rem(0.1, 0.01) + " " + rem(1e300, 3.0) + " " + rem(-1e-300, 7e-301) + " " + rem(5e-324, 1.0))
+    mut r: Rng = Rng { }
+    mut rems: Digest = Digest { }
+    mut n: Int32 = 0
+    while n < 3000 {
+        top: Float64 = (r.below(2000001) as Float64) - 1000000.0
+        a: Float64 = top / ((r.below(997) as Float64) + 1.0)
+        kind: UInt64 = r.below(10)
+        over: Float64 = (r.below(20001) as Float64) - 10000.0
+        under: Float64 = (r.below(89) as Float64) + 1.0
+        b: Float64 = if kind == 0 { zero } else if kind == 1 { inf } else if kind == 2 { a / 7.0 } else { over / under }
+        big: Float64 = if r.below(4) == 0 { a * 1e17 } else { a }
+        rems.text(rem(big, b))
+        n += 1
+    }
+    trace("fmod: " + rems.said())
+}
+
 fx main: () Void {
     strOrder()
     strText()
     joins()
     charTests()
+    remainders()
 }

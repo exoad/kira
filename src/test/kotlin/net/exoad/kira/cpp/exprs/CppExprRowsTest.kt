@@ -1164,6 +1164,26 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "d60",
+            """
+            use "kira:math"
+
+            pub fx rem: (a: Float64, b: Float64) Float64 {
+                return fmod(a, b)
+            }
+
+            pub fx rem32: (a: Float32, b: Float32) Float32 {
+                return fmod(a, b)
+            }
+            """,
+            listOf("return std::fmod(a, b);"),
+            listOf(
+                """check(d60::rem(5.5, 2.0) == 1.5 && d60::rem(-5.5, 2.0) == -1.5 && d60::rem(5.5, -2.0) == 1.5 && d60::rem(1.0, 1e300) == 1.0, "D60: fmod truncates, with the dividend's sign");""",
+                """check(d60::rem(1.0, 0.0) != d60::rem(1.0, 0.0) && d60::rem(std::numeric_limits<double>::infinity(), 1.0) != d60::rem(std::numeric_limits<double>::infinity(), 1.0) && d60::rem(2.0, std::numeric_limits<double>::infinity()) == 2.0, "D60: NaN for a zero divisor or an infinite dividend, the dividend for an infinite divisor");""",
+                """check(d60::rem32(7.5f, 2.0f) == 1.5f && std::is_same_v<decltype(d60::rem32(1.0f, 1.0f)), float>, "D60: and a Float32 stays a float");""",
+            ),
+        ),
+        row(
             "b1",
             """
             fx poke: (v: MutView<UInt8>, x: UInt8) Void {

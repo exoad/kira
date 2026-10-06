@@ -50,6 +50,8 @@ pub fx calls: () Void {
     r12: Float64 = pow(2.0, 10.0)          // @type Float64 call=MAGIC(pow)
     r13: Float32 = abs(f32 - 3.0)          // @type Float32 call=MAGIC(abs)
     r14: Float64 = max(1.0, 2.0)           // @type Float64 call=MAGIC(max)
+    r15: Float64 = fmod(7.5, 2.0)          // @type Float64 call=MAGIC(fmod)
+    r16: Float32 = fmod(f32, 2.0)          // @type Float32 call=MAGIC(fmod)
     trace(r1)                              // @type Void call=PRINT
     println("x")                           // @type Void call=PRINT(println)
     print(r8)                              // @type Void call=PRINT(print)

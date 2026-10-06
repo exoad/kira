@@ -344,6 +344,21 @@ class PyEmitterTest {
     }
 
     @Test
+    fun fmodIsMathFmodWithCsNaNs() {
+        val py = python(
+            """
+            use "kira:math"
+
+            pub fx f: (a: Float64, b: Float64) Float64 {
+                return fmod(a, b) + fmod(a + b, 2.0)
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_fmod(a, b) + _k_fmod(a + b, 2.0)"), py)
+        assertTrue(py.contains("def _k_fmod(a, b):") && py.contains("        return _k_math.nan"), py)
+    }
+
+    @Test
     fun kiraMathBindsToItsHelpersEachAFloat64AsCsIs() {
         val py = python(
             """

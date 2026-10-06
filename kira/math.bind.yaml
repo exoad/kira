@@ -33,3 +33,5 @@ tan: { symbol: tan, includes: [math.h], cpp: { expr: "std::tan({0})", includes: 
 abs: { symbol: fabs, includes: [math.h], cpp: { expr: "std::fabs({0})", includes: ["<cmath>"], pure: true }, py: { expr: "_k_math.fabs({0})" } }
 min: { symbol: fmin, includes: [math.h], cpp: { expr: "(std::min)({0}, {1})", includes: ["<algorithm>"], pure: true }, py: { expr: "_k_min({0}, {1})" } }
 max: { symbol: fmax, includes: [math.h], cpp: { expr: "(std::max)({0}, {1})", includes: ["<algorithm>"], pure: true }, py: { expr: "_k_max({0}, {1})" } }
+# D60: no `symbol`, so the C backend's table stays as it was.
+fmod: { cpp: { expr: "std::fmod({0}, {1})", includes: ["<cmath>"], pure: true }, py: { expr: "_k_fmod({0}, {1})" } }

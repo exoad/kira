@@ -194,6 +194,14 @@ def _k_round(v):
     return _k_math.copysign(float(r), v)
 
 
+# fmod (D60): math.fmod is C's, but raises where C returns NaN (a zero divisor, an infinite dividend).
+def _k_fmod(a, b):
+    try:
+        return _k_math.fmod(a, b)
+    except ValueError:
+        return _k_math.nan
+
+
 # sin, cos and tan of an infinity are NaN, as C's are; Python raises.
 def _k_sin(v):
     return _k_math.sin(v) if _k_math.isfinite(v) else _k_math.nan
