@@ -15,6 +15,7 @@
 #error "kira/rt.hxx is the hosted runtime; a freestanding module includes kira/core.hxx only"
 #endif
 
+#include <algorithm>
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
@@ -308,6 +309,117 @@ namespace kira
     {
         return std::vector<T>(v.begin(), v.end());
     }
+    // Kira's order (D61): a Char by its code unit, a float as Kotlin's compareTo, -0.0 below 0.0
+    // and NaN above everything.
+    template<class T>
+    [[nodiscard]] constexpr bool less(const T& a, const T& b) noexcept
+    {
+        if constexpr(std::is_floating_point_v<T>)
+        {
+            if(a < b)
+            {
+                return true;
+            }
+            if(b < a || a != a)
+            {
+                return false;
+            }
+            if(b != b)
+            {
+                return true;
+            }
+            return (bitCast<std::uint64_t>(static_cast<double>(a)) >> 63u) > (bitCast<std::uint64_t>(static_cast<double>(b)) >> 63u);
+        }
+        else if constexpr(std::is_same_v<T, Char>)
+        {
+            return ord(a) < ord(b);
+        }
+        else
+        {
+            return a < b;
+        }
+    }
+    template<class T, class A>
+    void sort(std::vector<T, A>& l)
+    {
+        std::stable_sort(l.begin(), l.end(), [](const T& a, const T& b) { return ::kira::list::less(a, b); });
+    }
+    template<class T, class A>
+    [[nodiscard]] T sum(const std::vector<T, A>& l)
+    {
+        T total{};
+        for(const T& v : l)
+        {
+            if constexpr(std::is_same_v<T, std::int32_t> || std::is_same_v<T, std::int64_t>)
+            {
+                if(v > 0 ? total > (std::numeric_limits<T>::max)() - v : total < std::numeric_limits<T>::lowest() - v)
+                {
+                    panic(std::is_same_v<T, std::int32_t> ? "Int32 overflow" : "Int64 overflow");
+                }
+                total += v;
+            }
+            else
+            {
+                total = static_cast<T>(total + v);
+            }
+        }
+        return total;
+    }
+    template<class T, class A>
+    [[nodiscard]] Maybe<T> minOrNull(const std::vector<T, A>& l)
+    {
+        if(l.empty())
+        {
+            return none;
+        }
+        const T* best = &l[0];
+        for(const T& v : l)
+        {
+            if constexpr(std::is_floating_point_v<T>)
+            {
+                if(v != v)
+                {
+                    return v;
+                }
+            }
+            if(::kira::list::less(v, *best))
+            {
+                best = &v;
+            }
+        }
+        return *best;
+    }
+    template<class T, class A>
+    [[nodiscard]] Maybe<T> maxOrNull(const std::vector<T, A>& l)
+    {
+        if(l.empty())
+        {
+            return none;
+        }
+        const T* best = &l[0];
+        for(const T& v : l)
+        {
+            if(::kira::list::less(*best, v))
+            {
+                best = &v;
+            }
+        }
+        return *best;
+    }
+    template<class A>
+    [[nodiscard]] Str joinToString(const std::vector<Str, A>& l, const Str& separator)
+    {
+        Str out;
+        for(Size i = 0; i < l.size(); ++i)
+        {
+            if(i > 0)
+            {
+                out += separator;
+            }
+            out += l[i];
+        }
+        return out;
+    }
   }
 
   // Deque.popFront() and popBack(): a Maybe, none when empty.
@@ -434,17 +546,16 @@ namespace kira
             from = hit + delimiter.size();
         }
     }
-    // Space, tab, CR and LF, as the C and JS backends.
+    // isWhitespace's six (D62), where the C and JS backends still take space, tab, CR and LF.
     [[nodiscard]] inline Str trim(const Str& s)
     {
-        const auto blank = [](Char c) noexcept { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
         Size a = 0;
         Size b = s.size();
-        while(a < b && blank(s[a]))
+        while(a < b && isWhitespace(s[a]))
         {
             ++a;
         }
-        while(b > a && blank(s[b - 1]))
+        while(b > a && isWhitespace(s[b - 1]))
         {
             --b;
         }
@@ -583,6 +694,89 @@ namespace kira
         Str out(width - s.size(), fill);
         out += s;
         return out;
+    }
+    [[nodiscard]] inline Str padEnd(const Str& s, Size width, Char fill)
+    {
+        if(s.size() >= width)
+        {
+            return s;
+        }
+        return s + Str(width - s.size(), fill);
+    }
+    [[nodiscard]] inline Str trimStart(const Str& s)
+    {
+        Size a = 0;
+        while(a < s.size() && isWhitespace(s[a]))
+        {
+            ++a;
+        }
+        return s.substr(a);
+    }
+    [[nodiscard]] inline Str trimEnd(const Str& s)
+    {
+        Size b = s.size();
+        while(b > 0 && isWhitespace(s[b - 1]))
+        {
+            --b;
+        }
+        return s.substr(0, b);
+    }
+    [[nodiscard]] inline List<Str> splitWhitespace(const Str& s)
+    {
+        List<Str> out;
+        Size i = 0;
+        while(i < s.size())
+        {
+            while(i < s.size() && isWhitespace(s[i]))
+            {
+                ++i;
+            }
+            const Size start = i;
+            while(i < s.size() && !isWhitespace(s[i]))
+            {
+                ++i;
+            }
+            if(i > start)
+            {
+                out.push_back(s.substr(start, i - start));
+            }
+        }
+        return out;
+    }
+    // An empty `from` inserts `to` before each UTF-8 lead byte and at the end, so between code
+    // points as Python's str.replace does.
+    [[nodiscard]] inline Str replace(const Str& s, const Str& from, const Str& to)
+    {
+        Str out;
+        if(from.empty())
+        {
+            for(const Char c : s)
+            {
+                if((ord(c) & 0xC0u) != 0x80u)
+                {
+                    out += to;
+                }
+                out += c;
+            }
+            return out + to;
+        }
+        Size at = 0;
+        for(;;)
+        {
+            const Size hit = s.find(from, at);
+            if(hit == Str::npos)
+            {
+                out.append(s, at, Str::npos);
+                return out;
+            }
+            out.append(s, at, hit - at);
+            out += to;
+            at = hit + from.size();
+        }
+    }
+    [[nodiscard]] inline std::optional<std::int64_t> toInt64(const Str& s, std::int32_t radix) noexcept
+    {
+        return parseInt64(view(s), radix);
     }
   }
 

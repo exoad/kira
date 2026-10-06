@@ -23,10 +23,9 @@ import kotlin.test.assertTrue
  * hexpad its zero-padded hex and wstext its WebSocket text and close frames; bebytes holds the
  * big-endian set at the end of its views as shortview does; strs runs its main, then its panics
  * and the py target's one rule for text, a length counting code points; utf8of holds Str.of
- * against Python's decoder over every 1- and 2-byte sequence and more; strings makes
- * cpp-golden/strings' checks one for one, its expected output that case's; jsondoc is
- * cpp-golden/json's source, its output first; dbwjson, maskconfig and powerdata hold kira:json
- * ports against dbwcodec.py, lidarmask.py and powerpage.py. Skipped when no Python is found (set KIRA_PYTHON).
+ * against Python's decoder over every 1- and 2-byte sequence and more; stdapi runs the
+ * Kotlin-named batch (D56 on); strings makes cpp-golden/strings' checks one for one, its
+ * expected output that case's. Skipped when no Python is found (set KIRA_PYTHON).
  */
 class PyGoldenRunTest {
     private val root = File(PyTestSupport.repoRoot, "src/test/resources/py-golden")

@@ -95,7 +95,14 @@ pub fx more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, k: Kind, p: Pet
     half: Float64 = 0.5
     hx: Str = half.toHex()                 // @error types.member.unknown
     tenths: Str = i.fixed(1)               // @error types.member.unknown
-    sh: Bool = s < s                       // @error types.op.mismatch
+    names: List<Str> = ["a"]
+    mut flags: List<Bool> = [true]
+    ko: Bool = k < k                       // @error types.op.mismatch
+    joined: Str = xs.joinToString(",")     // @error types.call.bound
+    numDigit: Bool = i.isDigit()           // @error types.member.unknown
+    textSum: Str = names.sum()             // @error types.call.bound
+    flags.sort()                           // @error types.call.bound
+    flagMin: Maybe<Bool> = flags.minOrNull() // @error types.call.bound
     give()                                 // no error: a discarded value is the emitter's static_cast<void>
     return                                 // @error types.return.missing
 }

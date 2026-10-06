@@ -333,11 +333,31 @@ internal class CallResolver(private val c: PhaseC) {
         if (fn.isMutMethod) {
             mutReceiver(receiver, recv, fn, nameNode, implicitThis, ctx)
         }
+        elementBound(e, recv, fn)
         model.calls[e] = ResolvedCall(
             kindFor(recv, fn, hit), fn, receiver, implicitThis, fn.typeParams.map { own[it] ?: KType.Error },
             bound.args, bound.order, ret, hit.substitution + own,
         )
         return ret
+    }
+
+    /** The List methods whose element type a generic bound cannot say: a Str to join (D58), an ordered or numeric one (D61). */
+    private fun elementBound(e: FunctionCallExpr, recv: KType, fn: FnSymbol) {
+        val owner = fn.owner as? ClassSymbol ?: return
+        if (owner.kind != ClassKind.MAGIC || owner.name != "List" || !facts.isList(recv)) {
+            return
+        }
+        val element = facts.elementOf(recv) ?: return
+        val ordered = facts.isNumeric(element) || element == KType.CHAR || element == KType.Str
+        val (ok, what) = when (fn.name) {
+            "joinToString" -> (element == KType.Str) to "Strs"
+            "sort", "minOrNull", "maxOrNull" -> ordered to "numbers, Chars or Strs"
+            "sum" -> facts.isNumeric(element) to "numbers"
+            else -> return
+        }
+        if (!ok && !element.containsError()) {
+            c.report("types.call.bound", "'${fn.name}' needs a List of $what, and ${recv.display()} is not one.", e)
+        }
     }
 
     /**

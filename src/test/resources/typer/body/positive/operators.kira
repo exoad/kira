@@ -50,6 +50,8 @@ pub fx comparisons: (a: Int32, b: Int32, x: Float32, n: Size, s: Str, ch: Char, 
     c13: Bool = !(a >= b)                  // @type Bool
     c14: Bool = 2 == 2                     // @type Bool const=true
     c15: Bool = 1.5 < 2.5                  // @type Bool const=true
+    c16: Bool = s < "kira"                 // @type Bool
+    c17: Bool = s >= s                     // @type Bool
 }
 
 pub fx strings: (s: Str, t: Str, a: Int32) Void {

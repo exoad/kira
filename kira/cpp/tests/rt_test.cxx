@@ -40,6 +40,7 @@
 #include "kira/json.hxx"
 
 #include <clocale>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -226,6 +227,11 @@ namespace
   static_assert(kira::shr(-8, 1) == -4);
   static_assert(kira::shl(std::int64_t{1}, kira::Size{40}) == std::int64_t{1099511627776});
   static_assert(kira::ord('\xFF') == 255);
+  static_assert(kira::isDigit('0') && kira::isDigit('9') && !kira::isDigit('/') && !kira::isDigit(':') && !kira::isDigit('\xD9'));
+  static_assert(kira::isLetter('A') && kira::isLetter('z') && !kira::isLetter('@') && !kira::isLetter('[') && !kira::isLetter('`') &&
+                !kira::isLetter('{') && !kira::isLetter('\xC3'));
+  static_assert(kira::isWhitespace(' ') && kira::isWhitespace('\t') && kira::isWhitespace('\v') && kira::isWhitespace('\f') &&
+                kira::isWhitespace('\r') && !kira::isWhitespace('\x1c') && !kira::isWhitespace('\xA0') && !kira::isWhitespace('\b'));
   static_assert(kira::abs(std::int32_t{-5}) == 5 && kira::abs(std::int32_t{5}) == 5);
   static_assert(kira::abs(std::numeric_limits<std::int32_t>::lowest()) == std::numeric_limits<std::int32_t>::lowest());
   static_assert(kira::abs(std::int8_t{-128}) == std::int8_t{-128} && kira::abs(std::int16_t{-300}) == std::int16_t{300});
@@ -607,9 +613,39 @@ namespace
       const kira::List<kira::Str> parts = kira::str::split("a,,b", ",");
       check(parts.size() == 3 && parts[1].empty() && parts[2] == "b", "split keeps empty pieces");
       check(kira::str::split("abc", "").size() == 1, "split on an empty delimiter");
-      check(same(kira::str::trim(" \t x y\r\n"), "x y") && same(kira::str::trim("   "), ""), "trim");
+      check(same(kira::str::trim(" \t x y\r\n"), "x y") && same(kira::str::trim("   "), "") && same(kira::str::trim("\v\fx\f\v"), "x") &&
+                same(kira::str::trim("\x1cx\xc2\xa0"), "\x1cx\xc2\xa0"),
+            "trim: the six of isWhitespace, no other byte");
       check(same(kira::str::toLower("MiXeD 1"), "mixed 1") && same(kira::str::toUpper("MiXeD"), "MIXED"), "toLower, toUpper");
       check(same(kira::str::padStart("7", 3, '0'), "007") && same(kira::str::padStart("1234", 3, '0'), "1234"), "padStart");
+      check(same(kira::str::padEnd("7", 3, '.'), "7..") && same(kira::str::padEnd("1234", 3, '.'), "1234"), "padEnd");
+      check(same(kira::str::trimStart(" \t x y\r\n"), "x y\r\n") && same(kira::str::trimEnd(" \t x y\r\n"), " \t x y") &&
+                same(kira::str::trimStart(" \n"), "") && same(kira::str::trimEnd(""), "") && same(kira::str::trimEnd("\vx\f"), "\vx") &&
+                same(kira::str::trimStart("\vx\f"), "x\f") && same(kira::str::trimEnd("x\x1c"), "x\x1c"),
+            "trimStart and trimEnd take trim's six");
+      const kira::List<kira::Str> words = kira::str::splitWhitespace("\t a  bc\r\n\v\fd \x1c");
+      check(words.size() == 4 && words[0] == "a" && words[1] == "bc" && words[2] == "d" && words[3] == "\x1c" &&
+                kira::str::splitWhitespace(" \t\n").empty() && kira::str::splitWhitespace("").empty(),
+            "splitWhitespace: runs of C's six, no empty pieces");
+      check(same(kira::str::replace("a.b.c", ".", "--"), "a--b--c") && same(kira::str::replace("aaa", "aa", "b"), "ba") &&
+                same(kira::str::replace("abc", "x", "y"), "abc") && same(kira::str::replace("abc", "", "-"), "-a-b-c-") &&
+                same(kira::str::replace("", "", "-"), "-") && same(kira::str::replace("h\xc3\xa9", "", "|"), "|h|\xc3\xa9|"),
+            "replace: every occurrence, and an empty one between code points");
+      check(kira::unwrap(kira::str::toInt64("ff", 16)) == 255 && kira::unwrap(kira::str::toInt64("-Zz", 36)) == -1295 &&
+                kira::unwrap(kira::str::toInt64("+101", 2)) == 5 &&
+                kira::unwrap(kira::str::toInt64("-1000000000000000000000000000000000000000000000000000000000000000", 2)) ==
+                    std::numeric_limits<std::int64_t>::lowest() &&
+                kira::unwrap(kira::str::toInt64("7fffffffffffffff", 16)) == (std::numeric_limits<std::int64_t>::max)(),
+            "toInt64 with a radix");
+      check(!kira::isSome(kira::str::toInt64("8000000000000000", 16)) && !kira::isSome(kira::str::toInt64("12", 2)) &&
+                !kira::isSome(kira::str::toInt64("0x1f", 16)) && !kira::isSome(kira::str::toInt64("-", 10)) &&
+                !kira::isSome(kira::str::toInt64("", 10)) && !kira::isSome(kira::str::toInt64("1_0", 10)) &&
+                !kira::isSome(kira::str::toInt64(" 1", 10)),
+            "toInt64 with a radix: none on overflow and on any other character");
+      check(same(kira::list::joinToString(kira::List<kira::Str>{"a", "", "b"}, ", "), "a, , b") &&
+                same(kira::list::joinToString(kira::List<kira::Str>{"x"}, "-"), "x") &&
+                same(kira::list::joinToString(kira::List<kira::Str>{}, "-"), ""),
+            "joinToString");
       check(kira::str::hashCode("ab") == (5381 * 33 + 'a') * 33 + 'b' && kira::str::equals("a", "a"), "hashCode is djb2");
       check(kira::str::view(s).from(3).slice(0, 5) == kira::lit("drive"), "view");
       check(kira::str::bytes("h\xc3\xa9 \xe2\x9c\x93") == kira::List<std::uint8_t>{0x68, 0xC3, 0xA9, 0x20, 0xE2, 0x9C, 0x93} &&
@@ -650,6 +686,37 @@ namespace
 
   void testContainers()
   {
+      const double inf = std::numeric_limits<double>::infinity();
+      const double nan = opaque(std::numeric_limits<double>::quiet_NaN());
+      kira::List<double> fs{2.0, nan, 0.0, -inf, -0.0, 1.5, nan, -0.0};
+      kira::list::sort(fs);
+      check(fs[0] == -inf && fs[1] == 0.0 && std::signbit(fs[1]) && std::signbit(fs[2]) && fs[3] == 0.0 && !std::signbit(fs[3]) &&
+                fs[4] == 1.5 && fs[5] == 2.0 && fs[6] != fs[6] && fs[7] != fs[7],
+            "sort: a float as Kotlin's compareTo, -0.0 below 0.0 and NaN last");
+      kira::List<kira::Char> cs{'b', '\xC3', 'A', '\x7F'};
+      kira::List<kira::Str> ss{"b", "\xc3\xa9", "", "ab", "B"};
+      kira::list::sort(cs);
+      kira::list::sort(ss);
+      check(cs == kira::List<kira::Char>{'A', 'b', '\x7F', '\xC3'} && ss == kira::List<kira::Str>{"", "B", "ab", "b", "\xc3\xa9"},
+            "sort: a Char by its code unit, a Str by its bytes");
+      check(kira::list::sum(kira::List<std::int32_t>{1, -2, 3}) == 2 && kira::list::sum(kira::List<std::int32_t>{}) == 0 &&
+                kira::list::sum(kira::List<std::uint8_t>{200, 100}) == 44 && kira::list::sum(kira::List<std::int8_t>{100, 100}) == -56 &&
+                kira::list::sum(kira::List<double>{0.1, 0.2, 0.3}) == (0.1 + 0.2) + 0.3 &&
+                kira::list::sum(kira::List<std::int64_t>{(std::numeric_limits<std::int64_t>::max)(), -1, 1}) == (std::numeric_limits<std::int64_t>::max)(),
+            "sum: + from the first element, wrapping where + wraps");
+      check(!std::signbit(kira::list::sum(kira::List<double>{-0.0})) && kira::list::sum(kira::List<float>{0.5f, 0.25f}) == 0.75f, "sum: from +0.0");
+      check(kira::unwrap(kira::list::minOrNull(kira::List<std::int32_t>{3, -1, 2})) == -1 &&
+                kira::unwrap(kira::list::maxOrNull(kira::List<kira::Str>{"b", "\xc3\xa9", "a"})) == "\xc3\xa9" &&
+                !kira::isSome(kira::list::minOrNull(kira::List<std::int32_t>{})) &&
+                kira::unwrap(kira::list::maxOrNull(kira::List<kira::Char>{'a', '\xC3'})) == '\xC3',
+            "minOrNull and maxOrNull");
+      const kira::List<double> zeros{0.0, -0.0, 0.0};
+      const double low = kira::unwrap(kira::list::minOrNull(zeros));
+      const double high = kira::unwrap(kira::list::maxOrNull(kira::List<double>{-0.0, 0.0, -0.0}));
+      const double nanLow = kira::unwrap(kira::list::minOrNull(kira::List<double>{1.0, nan, -1.0}));
+      const double nanHigh = kira::unwrap(kira::list::maxOrNull(kira::List<double>{1.0, nan, -1.0}));
+      check(std::signbit(low) && !std::signbit(high) && nanLow != nanLow && nanHigh != nanHigh,
+            "minOrNull and maxOrNull: -0.0 below 0.0, and a NaN if any is");
       kira::Map<kira::Str, std::int32_t> m;
       m.put("b", 2);
       m.put("a", 1);
@@ -1143,6 +1210,14 @@ namespace
       else if(std::strcmp(what, "strat") == 0)
       {
           sink = kira::str::at("abc", opaque(kira::Size{3}));
+      }
+      else if(std::strcmp(what, "sum") == 0)
+      {
+          sink = kira::list::sum(kira::List<std::int32_t>{(std::numeric_limits<std::int32_t>::max)(), opaque(std::int32_t{1}), -5});
+      }
+      else if(std::strcmp(what, "radix") == 0)
+      {
+          sink = static_cast<std::int32_t>(kira::isSome(kira::str::toInt64("1", opaque(std::int32_t{37}))));
       }
       else if(std::strcmp(what, "result") == 0)
       {

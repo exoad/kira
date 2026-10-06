@@ -74,7 +74,7 @@ for %%n in (1 2 3 4 5 6) do (
 )
 
 REM Each runtime check, hit on purpose, aborts with "kira: ...".
-for %%p in (div mod overflow shl shr index view slice bytesbe list unwrap rc substring strat result assert jsonput jsonadd jsoncycle) do (
+for %%p in (div mod overflow shl shr index view slice bytesbe list unwrap rc substring strat radix sum result assert jsonput jsonadd jsoncycle) do (
     "%OUT%\rt_test.exe" panic %%p > "%OUT%\panic_%%p.out" 2> "%OUT%\panic_%%p.err"
     set "PRC=!errorlevel!"
     findstr /b /c:"kira: " "%OUT%\panic_%%p.err" > nul

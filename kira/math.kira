@@ -24,6 +24,8 @@ pub @_magic @_infer fx tan<T: FloatNum>: (value: T) T;
 pub @_magic @_infer fx abs<T: FloatNum>: (value: T) T;
 pub @_magic @_infer fx min<T: FloatNum>: (a: T, b: T) T;
 pub @_magic @_infer fx max<T: FloatNum>: (a: T, b: T) T;
+// C's fmod (D60): a - b * trunc(a / b) exactly, with a's sign; NaN where b is 0 or a infinite.
+pub @_magic @_infer fx fmod<T: FloatNum>: (a: T, b: T) T;
 
 pub fx clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
     return max(lo, min(value, hi))
