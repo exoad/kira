@@ -1538,7 +1538,15 @@ class PyEmitterTest {
                 return ms.size()
             }
             """,
-            "a List<Map<Str, Int32>>",
+            "a List<Map<Str, Int32>> (Python would share the Map inside it, which Kira copies)",
+        )
+        refused(
+            """
+            fx f: (ms: Arr<Map<Str, Int32>>) Size {
+                return ms.size()
+            }
+            """,
+            "the parameter 'ms': an Arr<Map<Str, Int32>> (Python would share the Map inside it, which Kira copies)",
         )
     }
 

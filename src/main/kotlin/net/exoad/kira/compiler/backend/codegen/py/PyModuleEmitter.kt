@@ -730,7 +730,7 @@ class PyModuleEmitter(
     private fun arrayLiteral(e: ArrayLiteral, f: Frame): Py {
         val t = typeOf(e) ?: return Py("None", PyPrec.ATOM)
         if (!isList(t)) {
-            return refusePy(e, "an array literal of a ${t.display()}")
+            return refusePy(e, "an array literal of ${article(t.display())}")
         }
         val items = e.value.joinToString(", ") { wrap(expr(it, f), PyPrec.TERNARY) }
         return if (isBytes(t)) call("bytearray", "($items${if (e.value.size == 1) "," else ""})") else Py("[$items]", PyPrec.ATOM)
@@ -929,7 +929,7 @@ class PyModuleEmitter(
             prim == Prim.CHAR -> call("chr", v.text).text
             prim == Prim.BOOL -> "1 if ${wrap(v, PyPrec.OR)} else 0"
             prim == Prim.FLOAT64 -> call("_k_gtext", v.text).text
-            else -> return refusePy(arg, "trace of a ${t.display()}")
+            else -> return refusePy(arg, "trace of ${article(t.display())}")
         }
         return Py("print($text)", PyPrec.POSTFIX)
     }
@@ -949,7 +949,7 @@ class PyModuleEmitter(
                 given.isEmpty() -> zeroValue(t, o).let { Py(it, if (it.contains(" * ")) PyPrec.MUL else if (it == "{}") PyPrec.ATOM else PyPrec.POSTFIX) }
                 given.size == 1 && cls.name == "List" -> asValue(given[0].expr, f, Use.STORE)
                 cls.name == "Map" -> refusePy(o, "a Map construction with entries (a Tuple2 is not on the py target: put each one)")
-                else -> refusePy(o, "a ${cls.name} construction with these values")
+                else -> refusePy(o, "${article(cls.name)} construction with these values")
             }
         }
         if (!isUserClass(cls)) {
@@ -987,7 +987,7 @@ class PyModuleEmitter(
             return call("ord", "${wrap(expr(e.originExpr, f), PyPrec.POSTFIX)}[${indexText(e.indexExpr, f)}]")
         }
         if (!isList(ct) && !isView(ct)) {
-            return refusePy(e, "an index into a ${ct.display()}")
+            return refusePy(e, "an index into ${article(ct.display())}")
         }
         val container = listPlace(e.originExpr, f) ?: return Py("None", PyPrec.ATOM)
         return Py("$container[${indexText(e.indexExpr, f)}]", PyPrec.POSTFIX)
@@ -1036,7 +1036,7 @@ class PyModuleEmitter(
         if (op in BITS) {
             val prim = t.prim
             if (prim?.isInteger != true) {
-                return refusePy(at, "a bitwise operator on a ${t.display()}")
+                return refusePy(at, "a bitwise operator on ${article(t.display())}")
             }
             return when (op) {
                 BinaryOp.CONJUNCTIVE_AND -> infix(l, "&", r, PyPrec.BAND)
@@ -1048,7 +1048,7 @@ class PyModuleEmitter(
         if (t == KType.Str) {
             return if (op == BinaryOp.ADD) infix(l, "+", r, PyPrec.ADD) else refusePy(at, "the operator ${spelled(op)} on Str")
         }
-        val prim = t.prim ?: return refusePy(at, "arithmetic on a ${t.display()}")
+        val prim = t.prim ?: return refusePy(at, "arithmetic on ${article(t.display())}")
         val sym = when (op) {
             BinaryOp.ADD -> "+"
             BinaryOp.SUB -> "-"
@@ -1066,7 +1066,7 @@ class PyModuleEmitter(
             }
         }
         if (!prim.isInteger) {
-            return refusePy(at, "arithmetic on a ${t.display()}")
+            return refusePy(at, "arithmetic on ${article(t.display())}")
         }
         return when (op) {
             BinaryOp.DIV -> if (prim.signed) call("_k_divs", l.text, r.text, prim.bits.toString()) else call("_k_divu", l.text, r.text)
@@ -1110,12 +1110,12 @@ class PyModuleEmitter(
             UnaryOp.NEG -> when {
                 prim == Prim.FLOAT64 -> Py("-${wrap(operand, PyPrec.UNARY)}", PyPrec.UNARY)
                 prim?.isInteger == true -> intResult(prim, Py("-${wrap(operand, PyPrec.UNARY)}", PyPrec.UNARY))
-                else -> refusePy(e, "a minus on a ${t.display()}")
+                else -> refusePy(e, "a minus on ${article(t.display())}")
             }
             UnaryOp.BIT_NOT -> when {
                 prim?.isInteger == true && prim.signed -> Py("~${wrap(operand, PyPrec.UNARY)}", PyPrec.UNARY)
                 prim?.isInteger == true -> intResult(prim, Py("~${wrap(operand, PyPrec.UNARY)}", PyPrec.UNARY))
-                else -> refusePy(e, "a ~ on a ${t.display()}")
+                else -> refusePy(e, "a ~ on ${article(t.display())}")
             }
         }
     }
@@ -1169,7 +1169,7 @@ class PyModuleEmitter(
             prim == Prim.BOOL -> call("_k_btext", v.text)
             prim == Prim.FLOAT64 -> call("_k_ftext", v.text)
             else -> {
-                refuse(e, "a ${t.display()} as text")
+                refuse(e, "${article(t.display())} as text")
                 null
             }
         }
@@ -1246,12 +1246,13 @@ class PyModuleEmitter(
                 s.kind == ClassKind.MAGIC && s.name in setOf("Maybe", "List", "Arr", "View", "MutView") -> {
                     val inner = t.typeArgs().singleOrNull()
                     when {
-                        inner == null -> "a ${s.name} without its element type"
-                        isMaybe(inner) || isList(inner) || isView(inner) || isMap(inner) -> "a ${t.display()}"
+                        inner == null -> "${article(s.name)} without its element type"
+                        isList(inner) || isMap(inner) -> "${article(t.display())} (Python would share the ${magicName(inner)} inside it, which Kira copies)"
+                        isMaybe(inner) || isView(inner) -> article(t.display())
                         // Text is a Str, never a view of Chars; a Str's view would index as a str.
-                        isView(t) && inner == KType.CHAR -> "a ${t.display()} (text is a Str on the py target)"
+                        isView(t) && inner == KType.CHAR -> "${article(t.display())} (text is a Str on the py target)"
                         // A view of other elements is a copied slice, which a write would not reach.
-                        s.name == "MutView" && inner != KType.UINT8 -> "a ${t.display()} (a MutView<UInt8> is the one that writes through)"
+                        s.name == "MutView" && inner != KType.UINT8 -> "${article(t.display())} (a MutView<UInt8> is the one that writes through)"
                         else -> unsupportedType(inner)
                     }
                 }
@@ -1282,13 +1283,15 @@ class PyModuleEmitter(
         val kp = k.prim
         val keyed = k == KType.Str || (kp != null && (kp.isInteger || kp == Prim.BOOL || kp == Prim.CHAR))
         return when {
-            kp == Prim.FLOAT64 || kp == Prim.FLOAT32 -> "a ${t.display()} (a float key: a NaN key differs between kira::Map and a dict)"
+            kp == Prim.FLOAT64 || kp == Prim.FLOAT32 -> "${article(t.display())} (a float key: a NaN key differs between kira::Map and a dict)"
             unsupportedType(k) != null -> unsupportedType(k)
-            !keyed -> "a ${t.display()} (a Map's key is a Str, an integer, a Bool or a Char)"
-            isMaybe(v) || isValue(v) || isView(v) -> "a ${t.display()} (a Map's value is no Maybe, List, Arr, view or Map)"
+            !keyed -> "${article(t.display())} (a Map's key is a Str, an integer, a Bool or a Char)"
+            isMaybe(v) || isValue(v) || isView(v) -> "${article(t.display())} (a Map's value is no Maybe, List, Arr, view or Map)"
             else -> unsupportedType(v)
         }
     }
+
+    private fun article(word: String): String = if (word.first() in "AEIOaeio") "an $word" else "a $word"
 
     private fun checkType(t: KType, at: ASTNode, what: String) {
         unsupportedType(t)?.let { refuse(at, "$what: $it") }
@@ -1333,7 +1336,7 @@ class PyModuleEmitter(
             isList(t) && n == null -> "[]"
             isList(t) -> "[${zeroValue((t as KType.Nominal).typeArgs().first(), at)}] * $n"
             isMap(t) -> "{}"
-            else -> refuseText(at, "a ${t.display()} without a value") ?: "None"
+            else -> refuseText(at, "${article(t.display())} without a value") ?: "None"
         }
     }
 
