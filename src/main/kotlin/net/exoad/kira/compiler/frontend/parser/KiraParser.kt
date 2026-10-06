@@ -742,8 +742,9 @@ class KiraParser(private val context: SourceContext) {
 
     /**
      * True when `<...>` at the current pointer is a call-site type-argument list
-     * (`foo<T>(...)`), not a less-than comparison. Requires the matching `>` to be
-     * followed immediately by `(`.
+     * (`foo<T>(...)`), not a less-than comparison. Requires every token up to the
+     * matching `>` to be one a type argument can hold, and that `>` to be followed
+     * immediately by `(`.
      */
     private fun looksLikeGenericCall(): Boolean {
         if (!at(Token.Type.S_OPEN_ANGLE)) {
@@ -768,13 +769,21 @@ class KiraParser(private val context: SourceContext) {
                         return peek(i + 1).type == Token.Type.S_OPEN_PARENTHESIS
                     }
                 }
-                Token.Type.S_EOF -> return false
-                else -> {}
+                in typeArgumentTokens -> {}
+                else -> return false
             }
             i++
         }
         return false
     }
+
+    private val typeArgumentTokens = setOf(
+        Token.Type.IDENTIFIER,
+        Token.Type.S_COMMA,
+        Token.Type.L_INTEGER,
+        Token.Type.K_MODIFIER_MUTABLE,
+        Token.Type.S_COLON,
+    )
 
     /** Parse `<T, U>` type-argument list; pointer must be on `<`. */
     private fun parseTypeArgumentList(): List<Type> {

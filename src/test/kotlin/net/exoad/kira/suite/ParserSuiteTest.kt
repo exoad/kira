@@ -9,8 +9,11 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
+import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -301,6 +304,30 @@ class ParserSuiteTest {
             }
             """
         )
+    }
+
+    @Test
+    fun aComparisonWithANegatedOperandIsNotATypeArgumentList() {
+        val ast = parseModule(
+            """
+            fx f: (x: Int64) Bool {
+                if x < -LIMIT {
+                    return false
+                }
+                if x > (LIMIT) {
+                    return false
+                }
+                return x < -LIMIT || x > (LIMIT)
+            }
+            """
+        )
+        val fn = declsOf(ast).filterIsInstance<FunctionDecl>().single()
+        val ret = assertIs<ReturnStatement>(fn.def.body!!.last())
+        val or = assertIs<BinaryExpr>(ret.expr)
+        assertEquals(BinaryOp.OR, or.operator)
+        val less = assertIs<BinaryExpr>(or.leftExpr)
+        assertEquals(BinaryOp.LESS_THAN, less.operator)
+        assertIs<UnaryExpr>(less.rightExpr)
     }
 
     // --- statements ---------------------------------------------------------
