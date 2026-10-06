@@ -74,6 +74,7 @@ internal class StmtChecker(private val c: PhaseC) {
 
     private val resultFns = HashMap<String, FnSymbol>()
     private var strOf: FnSymbol? = null
+    private val jsonFns = HashMap<String, FnSymbol>()
 
     fun all() {
         // Defaults first, every module's: a construction that leaves a field to its default and
@@ -854,6 +855,15 @@ internal class StmtChecker(private val c: PhaseC) {
         fn.isPub = true
         param.fn = fn
         strOf = fn
+        fn
+    }
+
+    /** kira:json's constructors (D61): one magic FnSymbol on Json per binding [key]. */
+    fun jsonFn(cls: ClassSymbol, name: String, key: String, params: List<Pair<String, KType>>, ret: KType): FnSymbol = jsonFns.getOrPut(key) {
+        val ps = params.mapIndexed { i, (n, t) -> ParamSymbol(n, cls.module, null, type = t, index = i) }
+        val fn = FnSymbol(name, cls.module, null, emptyList(), ps, ret, owner = cls, foreign = Foreign.Magic(key))
+        fn.isPub = true
+        ps.forEach { it.fn = fn }
         fn
     }
 

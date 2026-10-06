@@ -1,0 +1,37 @@
+# kira:json: kira/cpp/kira/json.hxx (`{self}` a kira::Rc<kira::json::Json>), and on py the value
+# json.loads gives with runtime.py's _k_j helpers. The keys after the methods are the typer's (D61).
+Json.isNull:    { cpp: { expr: "{self}->isNull()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self} is None)" } }
+Json.isBool:    { cpp: { expr: "{self}->isBool()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is bool)" } }
+Json.isInt:     { cpp: { expr: "{self}->isInt()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is int)" } }
+Json.isFloat:   { cpp: { expr: "{self}->isFloat()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is float)" } }
+Json.isStr:     { cpp: { expr: "{self}->isStr()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is str)" } }
+Json.isArr:     { cpp: { expr: "{self}->isArr()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is list)" } }
+Json.isObj:     { cpp: { expr: "{self}->isObj()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "({self}.__class__ is dict)" } }
+Json.asBool:    { cpp: { expr: "{self}->asBool()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jasbool({self})" } }
+Json.asInt64:   { cpp: { expr: "{self}->asInt64()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jasint({self})" } }
+Json.asFloat64: { cpp: { expr: "{self}->asFloat64()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jasfloat({self})" } }
+Json.asStr:     { cpp: { expr: "{self}->asStr()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jasstr({self})" } }
+Json.get:       { cpp: { expr: "{self}->get({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jget({self}, {0})" } }
+Json.at:        { cpp: { expr: "{self}->at({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jat({self}, {0})" } }
+Json.has:       { cpp: { expr: "{self}->has({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jhas({self}, {0})" } }
+Json.keys:      { cpp: { expr: "{self}->keys()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jkeys({self})" } }
+Json.size:      { cpp: { expr: "{self}->size()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jsize({self})" } }
+Json.put:       { cpp: { expr: "{self}->put({0}, {1})", includes: ["kira/json.hxx"] }, py: { expr: "_k_jput({self}, {0}, {1})" } }
+Json.add:       { cpp: { expr: "{self}->add({0})", includes: ["kira/json.hxx"] }, py: { expr: "_k_jadd({self}, {0})" } }
+Json.dump:      { cpp: { expr: "{self}->dump()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jdump({self})" } }
+Json.pretty:    { cpp: { expr: "{self}->pretty({0}, {1})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jpretty({self}, {0}, {1})" } }
+
+Json.parse: { cpp: { expr: "kira::json::parse({0})", includes: ["kira/json.hxx"] }, py: { expr: "_k_jparse({0})" } }
+Json.error: { cpp: { expr: "kira::json::error()", includes: ["kira/json.hxx"] }, py: { expr: "_k_jerror()" } }
+Json.obj:   { cpp: { expr: "kira::json::obj()", includes: ["kira/json.hxx"] }, py: { expr: "{}" } }
+Json.arr:   { cpp: { expr: "kira::json::arr()", includes: ["kira/json.hxx"] }, py: { expr: "[]" } }
+Json.null:  { cpp: { expr: "kira::json::null()", includes: ["kira/json.hxx"], pure: true }, py: { expr: "None" } }
+# A Float64 is float() of itself, so an int a Python caller hands over dumps as C++ writes it.
+"Json.of(Bool)":           { cpp: { expr: "kira::json::ofBool({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "{0}" } }
+"Json.of(Int64)":          { cpp: { expr: "kira::json::ofInt({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "{0}" } }
+"Json.of(Float64)":        { cpp: { expr: "kira::json::ofFloat({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "float({0})" } }
+"Json.of(Str)":            { cpp: { expr: "kira::json::ofStr({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "{0}" } }
+"Json.of(Maybe<Bool>)":    { cpp: { expr: "kira::json::ofMaybe({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "{0}" } }
+"Json.of(Maybe<Int64>)":   { cpp: { expr: "kira::json::ofMaybe({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "{0}" } }
+"Json.of(Maybe<Float64>)": { cpp: { expr: "kira::json::ofMaybe({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "_k_jmaybef({0})" } }
+"Json.of(Maybe<Str>)":     { cpp: { expr: "kira::json::ofMaybe({0})", includes: ["kira/json.hxx"], pure: true }, py: { expr: "{0}" } }

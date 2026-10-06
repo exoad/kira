@@ -446,6 +446,7 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
             "kira:test" to "kira/test.hxx",
             "kira:time" to "kira/time.hxx",
             "kira:os" to "kira/os.hxx",
+            "kira:json" to "kira/json.hxx",
         )
 
         /** The runtime header of the system module [uri], or null when it has none. */

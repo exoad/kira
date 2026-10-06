@@ -56,10 +56,12 @@ class StdlibCppBindingsTest {
     private val allowedCppKeys = setOf("expr", "includes", "pure", "constexpr")
 
     /**
-     * Magic callables the typer makes, which no `.kira` file can declare: `Str.of` (D55) is
-     * called on the type, as Result.success is (D39), and binds through the manifest.
+     * Magic callables the typer makes, which no `.kira` file can declare: `Str.of` (D55) and
+     * kira:json's constructors (D61) are called on the type, as Result.success is (D39), and
+     * bind through the manifest.
      */
-    private val compilerKnown = setOf("Str.of")
+    private val compilerKnown = setOf("Str.of", "Json.parse", "Json.error", "Json.obj", "Json.arr", "Json.null") +
+        listOf("Bool", "Int64", "Float64", "Str").flatMap { listOf("Json.of($it)", "Json.of(Maybe<$it>)") }
 
     @Test
     fun everyMagicMethodAndFunctionHasACppBinding() {

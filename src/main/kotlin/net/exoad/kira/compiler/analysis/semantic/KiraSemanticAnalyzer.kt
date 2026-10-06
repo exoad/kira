@@ -326,13 +326,19 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     /**
-     * The callables the typer makes, which no declaration names (D39, D55), by `Type.name`, and
-     * their parameters' names.
+     * The callables the typer makes, which no declaration names (D39, D55, D61), by `Type.name`,
+     * and their parameters' names.
      */
     private val compilerMadeParameters = mapOf(
         "Result.success" to listOf("value"),
         "Result.error" to listOf("value"),
         "Str.of" to listOf("bytes"),
+        "Json.parse" to listOf("text"),
+        "Json.of" to listOf("value"),
+        "Json.error" to emptyList(),
+        "Json.obj" to emptyList(),
+        "Json.arr" to emptyList(),
+        "Json.null" to emptyList(),
     )
 
     /** Top-level function name -> parameter names, across every source. */

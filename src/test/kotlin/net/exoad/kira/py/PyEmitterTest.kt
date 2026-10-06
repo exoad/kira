@@ -487,6 +487,47 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aJsonIsTheValueJsonLoadsGives() {
+        val py = python(
+            """
+            use "kira:json"
+
+            pub class Doc {
+                pub require body: Json
+                pub mut items: List<Json> = []
+            }
+
+            pub fx build: (t: Str, x: Float64, n: Int64, m: Maybe<Float64>, s: Maybe<Str>) Str {
+                d: Doc = Doc { body = Json.parse(t) }
+                o: Json = Json.obj()
+                o.put("x", Json.of(x))
+                o.put("n", Json.of(n))
+                o.put("m", Json.of(m))
+                o.put("s", Json.of(s))
+                o.put("z", Json.null())
+                a: Json = Json.arr()
+                a.add(d.body.get("k").at(2))
+                o.put("a", a)
+                d.items.add(o)
+                if d.body.isObj() && d.body.has("k") && d.body.get("k").isArr() {
+                    return o.pretty(2, false) + Json.error()
+                }
+                return "${'$'}{d.body.get("v").asInt64().unwrapOr(-1)} ${'$'}{d.body.size()} ${'$'}{d.body.keys().size()}" + o.dump()
+            }
+            """
+        )
+        assertTrue(py.contains("d = Doc(body=_k_jparse(t))"), py)
+        assertTrue(py.contains("_k_jput(o, \"x\", float(x))"), "a Float64 is float() of itself:\n$py")
+        assertTrue(py.contains("_k_jput(o, \"n\", n)") && py.contains("_k_jput(o, \"m\", _k_jmaybef(m))") && py.contains("_k_jput(o, \"s\", s)"), py)
+        assertTrue(py.contains("_k_jput(o, \"z\", None)") && py.contains("o = {}") && py.contains("a = []"), py)
+        assertTrue(py.contains("_k_jadd(a, _k_jat(_k_jget(d.body, \"k\"), 2))"), py)
+        assertTrue(py.contains("if (d.body.__class__ is dict) and _k_jhas(d.body, \"k\") and (_k_jget(d.body, \"k\").__class__ is list):"), py)
+        assertTrue(py.contains("return _k_jpretty(o, 2, False) + _k_jerror()"), py)
+        assertTrue(py.contains("_k_or(_k_jasint(_k_jget(d.body, \"v\")), -1)") && py.contains("_k_jsize(d.body)") && py.contains("_k_jkeys(d.body)"), py)
+        assertTrue(py.contains("return _k_json.dumps(j)") && py.contains("import json as _k_json") && py.contains("import threading as _k_threading"), py)
+    }
+
+    @Test
     fun aCharIsItsCodePoint() {
         val py = python(
             """
@@ -1246,6 +1287,31 @@ class PyEmitterTest {
             }
             """,
             "the subclass Kid (class inheritance)",
+        )
+    }
+
+    @Test
+    fun aMaybeOfJsonAndAMapOfJsonAreRefusedForJsonNullIsNone() {
+        refused(
+            """
+            use "kira:json"
+
+            pub fx f: (m: Maybe<Json>) Bool {
+                return m.isSome()
+            }
+            """,
+            "a Maybe<Json> (none and JSON null are both None on the py target)",
+        )
+        refused(
+            """
+            use "kira:json"
+
+            pub fx f: () Size {
+                m: Map<Str, Json> = Map<Str, Json> { }
+                return m.size()
+            }
+            """,
+            "a Map<Str, Json> (get's None could not tell a missing key from JSON null)",
         )
     }
 

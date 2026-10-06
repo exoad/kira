@@ -1,0 +1,38 @@
+module "kira:json"
+
+// Json.parse(text), error(), obj(), arr(), null() and of(v) are called on the type, made by the
+// typer as Str.of is (D61). parse is json.loads (D63); nesting past 512 fails on both targets.
+
+// JSON as Python's json module writes and reads it, hosted only (D60). A Json is a reference:
+// put and add on one are seen through every copy.
+pub @_magic class Json {
+    pub fx isNull: () Bool;
+    pub fx isBool: () Bool;
+    pub fx isInt: () Bool;
+    pub fx isFloat: () Bool;
+    pub fx isStr: () Bool;
+    pub fx isArr: () Bool;
+    pub fx isObj: () Bool;
+
+    pub fx asBool: () Maybe<Bool>;
+    // An integer only: 3.0 is none.
+    pub fx asInt64: () Maybe<Int64>;
+    // A float, or an integer widened.
+    pub fx asFloat64: () Maybe<Float64>;
+    pub fx asStr: () Maybe<Str>;
+
+    // JSON null when the key or index is absent or this is no object or array.
+    pub fx get: (key: Str) Json;
+    pub fx at: (index: Size) Json;
+    pub fx has: (key: Str) Bool;
+    pub fx keys: () List<Str>;
+    pub fx size: () Size;
+
+    // A key put again keeps its place. Either one on the wrong kind of Json panics.
+    pub mut fx put: (key: Str, value: Json) Void;
+    pub mut fx add: (value: Json) Void;
+
+    // json.dumps(v) and json.dumps(v, indent=indent, ensure_ascii=ascii), byte for byte (D62).
+    pub fx dump: () Str;
+    pub fx pretty: (indent: Size, ascii: Bool) Str;
+}

@@ -44,12 +44,12 @@ import java.util.IdentityHashMap
  * - `rules.profile.interpolation`: `"${...}"` producing a `Str`; into a `StrBuf` it appends in place.
  * - `rules.profile.type` again for a `Str` concatenation (`"a" + b`): it allocates a `kira::Str`
  *   even when no `Str` is spelled, so it is reported at the innermost `+` that builds one.
- * - `rules.profile.module`: `kira:os`, `kira:sync` and `kira:time` are hosted.
+ * - `rules.profile.module`: `kira:os`, `kira:sync`, `kira:time` and `kira:json` are hosted.
  */
 internal class ProfilePass : RulePass {
     override val name: String = "profile"
 
-    private val hosted = setOf("kira:os", "kira:sync", "kira:time")
+    private val hosted = setOf("kira:os", "kira:sync", "kira:time", "kira:json")
 
     override fun run(program: TypedProgram) {
         val r = Rules(program)

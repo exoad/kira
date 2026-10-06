@@ -4,9 +4,11 @@
 # of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
 # Python 3.10 is the oldest this must run on (the board's).
 
+import json as _k_json
 import math as _k_math
 import re as _k_re
 import struct as _k_struct
+import threading as _k_threading
 
 
 # A program error stops the program (Kira's panic): a bad index, a failed check, a division
@@ -426,3 +428,152 @@ def _k_rdf64be(b, at):
 def _k_wrf64be(b, at, v):
     _k_span(b, at, 8)
     _k_struct.pack_into(">d", b, at, v)
+
+
+# kira:json (D60): a Json is the value json.loads gives, None for JSON null. bool is an int in
+# Python, so a kind is its exact class.
+def _k_jasbool(j):
+    return j if j.__class__ is bool else None
+
+
+def _k_jasint(j):
+    return j if j.__class__ is int else None
+
+
+def _k_jasfloat(j):
+    return float(j) if j.__class__ is float or j.__class__ is int else None
+
+
+def _k_jasstr(j):
+    return j if j.__class__ is str else None
+
+
+def _k_jget(j, k):
+    return j.get(k) if j.__class__ is dict else None
+
+
+def _k_jat(j, i):
+    return j[i] if j.__class__ is list and i < len(j) else None
+
+
+def _k_jhas(j, k):
+    return j.__class__ is dict and k in j
+
+
+def _k_jkeys(j):
+    return list(j) if j.__class__ is dict else []
+
+
+def _k_jsize(j):
+    return len(j) if j.__class__ is list or j.__class__ is dict else 0
+
+
+def _k_jput(j, k, v):
+    if j.__class__ is not dict:
+        _k_panic("Json.put on a Json that is no object")
+    j[k] = v
+
+
+def _k_jadd(j, v):
+    if j.__class__ is not list:
+        _k_panic("Json.add on a Json that is no array")
+    j.append(v)
+
+
+def _k_jmaybef(m):
+    return None if m is None else float(m)
+
+
+# A ValueError from dumps is its "Circular reference detected".
+def _k_jdump(j):
+    try:
+        return _k_json.dumps(j)
+    except ValueError:
+        _k_panic("a Json that holds itself")
+
+
+def _k_jpretty(j, indent, ascii):
+    try:
+        return _k_json.dumps(j, indent=indent, ensure_ascii=ascii)
+    except ValueError:
+        _k_panic("a Json that holds itself")
+
+
+_k_jstate = _k_threading.local()
+
+
+class _k_JRange(Exception):
+    pass
+
+
+def _k_jint64(s):
+    if len(s) < 21:
+        v = int(s)
+        if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF:
+            return v
+    raise _k_JRange
+
+
+_k_jbrackets = _k_re.compile(r'"(?:[^"\\]|\\.)*"?|[\[\]{}]', _k_re.S)
+
+
+_k_jnumbers = _k_re.compile(r'"(?:[^"\\]|\\.)*"?|-?(?:0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?', _k_re.S)
+
+
+# Where kira::json's scanner stops at a bracket 513 deep, before end; -1 when it does not.
+def _k_jdeep(text, end):
+    if text.count("[", 0, end) + text.count("{", 0, end) <= 512:
+        return -1
+    depth = 0
+    for m in _k_jbrackets.finditer(text, 0, end):
+        c = m.group()
+        if c == "[" or c == "{":
+            depth += 1
+            if depth > 512:
+                return m.start()
+        elif c == "]" or c == "}":
+            depth -= 1
+    return -1
+
+
+def _k_jbig(text):
+    for m in _k_jnumbers.finditer(text):
+        t = m.group()
+        if t[0] != '"' and m.group(1) is None and m.group(2) is None:
+            try:
+                _k_jint64(t)
+            except _k_JRange:
+                return m.start()
+    return 0
+
+
+# Json.parse (D63): json.loads, an integer past Int64 refused where the scanner meets it, and a
+# bracket 513 deep where kira::json's would; the reason in Json.error(), this thread's.
+def _k_jparse(text):
+    _k_jstate.error = ""
+    why = "Nesting deeper than 512"
+    try:
+        v = _k_json.loads(text, parse_int=_k_jint64)
+        at = _k_jdeep(text, len(text))
+        if at < 0:
+            return v
+    except _k_json.JSONDecodeError as e:
+        at = _k_jdeep(text, e.pos)
+        if at < 0:
+            _k_jstate.error = str(e)
+            return None
+    except _k_JRange:
+        big = _k_jbig(text)
+        at = _k_jdeep(text, big)
+        if at < 0:
+            why, at = "Integer out of Int64 range", big
+    except RecursionError:
+        at = _k_jdeep(text, len(text))
+        if at < 0:
+            raise
+    _k_jstate.error = str(_k_json.JSONDecodeError(why, text, at))
+    return None
+
+
+def _k_jerror():
+    return getattr(_k_jstate, "error", "")

@@ -90,7 +90,9 @@ import java.util.IdentityHashMap
  *   and only an ASCII Char agrees; a View<Char> is refused, as text is a Str), the integers,
  *   Float64, Maybe<T> (None or the value), List<T> and Arr<T> (and
  *   Arr<T, N>) as a Python list, a bytearray of UInt8, Map<K, V> as a dict (its order is
- *   kira::Map's) keyed by a Str, an integer, a Bool or a Char, and the module's own classes.
+ *   kira::Map's) keyed by a Str, an integer, a Bool or a Char, kira:json's Json as the value
+ *   json.loads gives (never in a Maybe or as a Map's value: JSON null is None), and the
+ *   module's own classes.
  *   Kira's List and Map are values (D44) and a Python list or dict is shared, so one is copied
  *   wherever a second name could see a write ([asValue]); a `mut` List or Map parameter is the
  *   caller's own, and a field, global or `mut` parameter assigned keeps its list or dict and
@@ -1238,6 +1240,9 @@ class PyModuleEmitter(
 
     private fun isMap(t: KType?): Boolean = magicName(t) == "Map"
 
+    /** kira:json's Json: the value json.loads gives, None for JSON null (D60). */
+    private fun isJson(t: KType?): Boolean = magicName(t) == "Json" && ((t as KType.Nominal).sym.module.uri == "kira:json")
+
     /** A value (D44) Python shares: copied where a second name could see a write. */
     private fun isValue(t: KType): Boolean = isList(t) || isMap(t)
 
@@ -1261,6 +1266,7 @@ class PyModuleEmitter(
                     when {
                         inner == null -> "${article(s.name)} without its element type"
                         isList(inner) || isMap(inner) -> "${article(t.display())} (Python would share the ${magicName(inner)} inside it, which Kira copies)"
+                        s.name == "Maybe" && isJson(inner) -> "${article(t.display())} (none and JSON null are both None on the py target)"
                         isMaybe(inner) || isView(inner) -> article(t.display())
                         // Text is a Str, never a view of Chars; a Str's view would index as a str.
                         isView(t) && inner == KType.CHAR -> "${article(t.display())} (text is a Str on the py target)"
@@ -1270,6 +1276,7 @@ class PyModuleEmitter(
                     }
                 }
                 s.kind == ClassKind.MAGIC && s.name == "Map" -> mapRefusal(t)
+                isJson(t) -> null
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
                 isUserClass(s) -> null
                 s.module !== module -> "the class ${s.name} of another module"
@@ -1294,6 +1301,7 @@ class PyModuleEmitter(
             unsupportedType(k) != null -> unsupportedType(k)
             !keyed -> "${article(t.display())} (a Map's key is a Str, an integer, a Bool or a Char)"
             isMaybe(v) || isValue(v) || isView(v) -> "${article(t.display())} (a Map's value is no Maybe, List, Arr, view or Map)"
+            isJson(v) -> "${article(t.display())} (get's None could not tell a missing key from JSON null)"
             else -> unsupportedType(v)
         }
     }

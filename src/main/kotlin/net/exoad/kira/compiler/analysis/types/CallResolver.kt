@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.core.NamedArguments
 import java.util.IdentityHashMap
@@ -44,8 +45,9 @@ import java.util.IdentityHashMap
  * literals' own defaults, and each inferred argument must satisfy its bound.
  *
  * **Special cases**: `bitCast<T>(v)` (equal sizes), `enumOf<E>(raw)` (an integer enum, a
- * `Maybe<E>`), `Result.success(v)` / `Result.error(e)` (D39, typed by the context), and
- * `Str.of(bytes)` (D55, a Str read from UTF-8).
+ * `Maybe<E>`), `Result.success(v)` / `Result.error(e)` (D39, typed by the context),
+ * `Str.of(bytes)` (D55, a Str read from UTF-8), and kira:json's `Json.parse`, `error`, `obj`,
+ * `arr`, `null` and `of` (D61).
  */
 internal class CallResolver(private val c: PhaseC) {
     private val model get() = c.model
@@ -239,6 +241,9 @@ internal class CallResolver(private val c: PhaseC) {
             }
             if (typeSym is ClassSymbol && typeSym.kind == ClassKind.MAGIC && typeSym.name == "Str" && member.value == "of") {
                 return strOf(e, typeSym, ctx, scope)
+            }
+            if (typeSym is ClassSymbol && typeSym.kind == ClassKind.MAGIC && typeSym.name == "Json" && typeSym.module.uri == JSON_URI) {
+                json(e, typeSym, member, ctx, scope)?.let { return it }
             }
             argsOnly(e, ctx, scope)
             c.report(
@@ -977,6 +982,78 @@ internal class CallResolver(private val c: PhaseC) {
         return KType.Str
     }
 
+    /**
+     * `Json.parse(text)`, `Json.error()`, `Json.obj()`, `Json.arr()` and `Json.null()` (D61), made
+     * as Str.of is, each one magic FnSymbol on Json keyed `Json.<name>`; null for any other name.
+     */
+    private fun json(e: FunctionCallExpr, cls: ClassSymbol, member: Identifier, ctx: BodyContext, scope: Scope): KType? {
+        val name = member.value
+        val json = KType.Nominal(cls, emptyList())
+        if (name == "of") {
+            return jsonOf(e, cls, json, ctx, scope)
+        }
+        val (params, ret) = when (name) {
+            "parse" -> listOf("text" to KType.Str) to json
+            "error" -> emptyList<Pair<String, KType>>() to KType.Str
+            "obj", "arr", "null" -> emptyList<Pair<String, KType>>() to json
+            else -> return null
+        }
+        noTypeArgs(e, "Json.$name", "")
+        val fn = c.stmts.jsonFn(cls, name, "Json.$name", params, ret)
+        val bound = bind(e, "Json.$name", fn.params) ?: run {
+            argsOnly(e, ctx, scope)
+            return ret
+        }
+        typeGiven(e, bound, fn.params.map { it.type }, fn.params.map { false }, fn.params.map { it.name }, IdentityHashMap(), ctx, scope)
+        model.calls[e] = ResolvedCall(CallKind.MAGIC, fn, null, false, emptyList(), bound.args, bound.order, ret, emptyMap())
+        return ret
+    }
+
+    /**
+     * `Json.of(value)` (D61): one FnSymbol, keyed `Json.of(<type>)`, per Bool, Int64, Float64, Str and
+     * Maybe of one, chosen by the argument's type; a number literal is an Int64 unless it is a float.
+     */
+    private fun jsonOf(e: FunctionCallExpr, cls: ClassSymbol, json: KType, ctx: BodyContext, scope: Scope): KType {
+        noTypeArgs(e, "Json.of", "")
+        val probe = c.stmts.jsonFn(cls, "of", "Json.of(Bool)", listOf("value" to KType.BOOL), json)
+        val bound = bind(e, "Json.of", probe.params) ?: run {
+            argsOnly(e, ctx, scope)
+            return json
+        }
+        val arg = (bound.args.single() as ArgBinding.Given).expr
+        val pre = IdentityHashMap<Expr, KType>()
+        val given = if (c.literals.isLiteralOnly(arg)) {
+            var float = false
+            AstTree.walk(arg) { float = float || it is FloatLiteral }
+            if (float) KType.FLOAT64 else KType.INT64
+        } else {
+            c.exprs.synth(arg, ctx, scope).also { pre[arg] = it }
+        }
+        fun kind(t: KType): KType? = when {
+            t == KType.BOOL || t == KType.Str -> t
+            t.prim?.isInteger == true -> KType.INT64
+            t.prim?.isFloat == true -> KType.FLOAT64
+            else -> null
+        }
+        val inner = facts.maybeInner(given)
+        val param = if (inner != null) kind(inner)?.let { facts.maybeOf(it) } else kind(given)
+        if (param == null) {
+            if (!given.containsError()) {
+                c.report(
+                    "types.json.of",
+                    "Json.of takes a Bool, an Int64, a Float64 or a Str, or a Maybe of one; this is ${given.display()}" +
+                        if (given == KType.NullT) ". JSON null is Json.null()." else ".",
+                    arg,
+                )
+            }
+            return json
+        }
+        val fn = c.stmts.jsonFn(cls, "of", "Json.of(${param.display()})", listOf("value" to param), json)
+        typeGiven(e, bound, listOf(param), listOf(false), listOf("value"), pre, ctx, scope)
+        model.calls[e] = ResolvedCall(CallKind.MAGIC, fn, null, false, emptyList(), bound.args, bound.order, json, emptyMap())
+        return json
+    }
+
     /** A compiler-made callable (Result.success, Str.of) takes no type arguments, as a plain function does not. */
     private fun noTypeArgs(e: FunctionCallExpr, calleeName: String, why: String) {
         if (e.typeArguments.isNotEmpty()) {
@@ -1038,6 +1115,8 @@ internal class CallResolver(private val c: PhaseC) {
             cls.kind == ClassKind.MAGIC && (Builtins.prim(cls.name) != null || cls.name in Builtins.SPECIAL || cls.name in setOf("View", "MutView", "Fx", "Unsafe", "Any", "Num")) ->
                 "${t.display()} is not constructed with { }" + if (cls.name == "View" || cls.name == "MutView") "; take a view of a container with .view(), .from() or .slice()" else ""
             cls.kind == ClassKind.OPAQUE || cls.foreign is Foreign.Extern -> "${t.display()} is made by the C/C++ side; call the function that returns one"
+            cls.kind == ClassKind.MAGIC && cls.name == "Json" && cls.module.uri == JSON_URI ->
+                "Json is not constructed with { }; make one with Json.obj(), Json.arr(), Json.null(), Json.of(value) or Json.parse(text)"
             else -> null
         }
         if (refused != null) {
@@ -1121,5 +1200,7 @@ internal class CallResolver(private val c: PhaseC) {
     companion object {
         /** The marker that lets a `@_magic` stdlib function infer its type arguments (D20). */
         const val INFER = "_infer"
+
+        const val JSON_URI = "kira:json"
     }
 }

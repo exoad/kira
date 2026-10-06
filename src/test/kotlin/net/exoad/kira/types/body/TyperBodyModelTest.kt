@@ -438,6 +438,69 @@ class TyperBodyModelTest {
     }
 
     @Test
+    fun jsonsConstructorsAreCalledOnTheTypeAndOfIsChosenByItsArgument() {
+        val p = snippet(
+            """
+            pub fx f: (b: Bool, i: Int64, d: Float64, s: Str, m: Maybe<Float64>, t: Str) Json {
+                o: Json = Json.obj()
+                o.put("a", Json.of(5))
+                o.put("b", Json.of(-2.5))
+                o.put("c", Json.of(b))
+                o.put("d", Json.of(i))
+                o.put("e", Json.of(d))
+                o.put("f", Json.of(s))
+                o.put("g", Json.of(m))
+                o.put("h", Json.of(value = i))
+                a: Json = Json.arr()
+                a.add(Json.null())
+                o.put("i", a)
+                o.put("j", Json.parse(text = t))
+                o.put("k", Json.of(Json.error()))
+                return o
+            }
+            """
+        )
+        expectNoErrors(p)
+        fun keyOf(text: String): String {
+            val rc = p.model.calls[BodyTestSupport.node<FunctionCallExpr>(p, text)]!!
+            assertEquals(CallKind.MAGIC, rc.kind, text)
+            assertEquals(null, rc.receiver, text)
+            return (rc.fn!!.foreign as Foreign.Magic).key
+        }
+        assertEquals("Json.obj", keyOf("Json.obj()"))
+        assertEquals("Json.of(Int64)", keyOf("Json.of(5)"))
+        assertEquals("Json.of(Float64)", keyOf("Json.of(-2.5)"))
+        assertEquals("Json.of(Bool)", keyOf("Json.of(b)"))
+        assertEquals("Json.of(Int64)", keyOf("Json.of(i)"))
+        assertEquals("Json.of(Float64)", keyOf("Json.of(d)"))
+        assertEquals("Json.of(Str)", keyOf("Json.of(s)"))
+        assertEquals("Json.of(Maybe<Float64>)", keyOf("Json.of(m)"))
+        assertEquals("Json.of(Int64)", keyOf("Json.of(value = i)"))
+        assertEquals("Json.null", keyOf("Json.null()"))
+        assertEquals("Json.parse", keyOf("Json.parse(text = t)"))
+        assertEquals("Json.error", keyOf("Json.error()"))
+        assertEquals("Json", p.model.calls[BodyTestSupport.node<FunctionCallExpr>(p, "Json.parse(text = t)")]!!.returnType.display())
+        assertEquals("Str", p.model.calls[BodyTestSupport.node<FunctionCallExpr>(p, "Json.error()")]!!.returnType.display())
+        val wrong = snippet(
+            """
+            pub fx g: (n: Int32, x: Float32) Void {
+                a: Json = Json.of(n)
+                b: Json = Json.of(x)
+                c: Json = Json.of(null)
+                d: Json = Json.of([1, 2])
+                e: Json = Json { }
+                f: Json = Json.make()
+            }
+            """
+        )
+        val codes = net.exoad.kira.types.TyperTestSupport.codes(wrong)
+        assertEquals(2, codes.count { it == "types.json.of" }, "a null and a List are no Json.of argument: $codes")
+        assertTrue(codes.size >= 6, "an Int32 and a Float32 are not widened to an Int64 and a Float64: $codes")
+        assertTrue("types.init.not-constructible" in codes, "Json { } is refused: $codes")
+        assertTrue("types.call.static" in codes, "any other call on Json is refused: $codes")
+    }
+
+    @Test
     fun theCompilerMadeCallablesTakeNoTypeArgumentsAndBindNamedOnes() {
         val typed = snippet(
             """

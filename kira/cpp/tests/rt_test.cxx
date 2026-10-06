@@ -37,6 +37,7 @@
 #if KIRA_PROFILE_HOSTED
 #include "kira/main.hxx"
 #include "kira/rt.hxx"
+#include "kira/json.hxx"
 
 #include <clocale>
 #include <cstdio>
@@ -968,6 +969,65 @@ namespace
       kira::replace(handleSlot) = kira::none;
   }
 
+  // kira:json (D60-D63): json.dumps's text and json.loads's reasons; json_corpus.py holds
+  // thousands more of each against CPython.
+  void testJson()
+  {
+      using kira::json::Json;
+      const kira::Rc<Json> o = kira::json::obj();
+      o->put("b", kira::json::ofInt(1));
+      o->put("a", kira::json::ofFloat(0.5));
+      o->put("b", kira::json::ofStr("x"));
+      check(same(o->dump(), "{\"b\": \"x\", \"a\": 0.5}") && o->keys() == kira::List<kira::Str>{"b", "a"} && o->size() == 2,
+            "Json.put: a key put again keeps its place and takes the value");
+      const auto real = [](double v) { return kira::json::ofFloat(v)->dump(); };
+      check(same(real(1.0) + " " + real(0.0001) + " " + real(0.00001) + " " + real(1e16) + " " + real(1e15) + " " + real(1.5e300) + " " +
+                     real(-0.0) + " " + real(0.1 + 0.2) + " " + real(5e-324),
+                 "1.0 0.0001 1e-05 1e+16 1000000000000000.0 1.5e+300 -0.0 0.30000000000000004 5e-324"),
+            "Json.dump: a float as Python's repr");
+      check(same(real(std::numeric_limits<double>::quiet_NaN()) + " " + real(std::numeric_limits<double>::infinity()) + " " +
+                     real(-std::numeric_limits<double>::infinity()),
+                 "NaN Infinity -Infinity"),
+            "Json.dump: NaN, Infinity, -Infinity");
+      check(same(kira::json::ofInt(std::numeric_limits<std::int64_t>::lowest())->dump(), "-9223372036854775808"), "Json.dump: an Int64 exactly");
+      const kira::Rc<Json> s = kira::json::ofStr("\"\\\n\r\t\b\f\x01\x7f/\xc3\xa9\xf0\x9f\x98\x80");
+      check(same(s->dump(), "\"\\\"\\\\\\n\\r\\t\\b\\f\\u0001\\u007f/\\u00e9\\ud83d\\ude00\""), "Json.dump: ensure_ascii's escapes");
+      check(same(s->pretty(0, false), "\"\\\"\\\\\\n\\r\\t\\b\\f\\u0001\x7f/\xc3\xa9\xf0\x9f\x98\x80\""), "Json.pretty without ascii: a quote, a backslash and C0 only");
+      check(same(kira::json::ofStr("a\xff" "b\xed\xa0\x80")->dump(), "\"a\\ufffdb\\ud800\""),
+            "Json.dump: ill-formed UTF-8 is U+FFFD, a lone surrogate's bytes the surrogate");
+      const kira::Rc<Json> nested = kira::json::parse("{\"a\": [1, {}], \"b\": []}");
+      check(same(nested->pretty(2, true), "{\n  \"a\": [\n    1,\n    {}\n  ],\n  \"b\": []\n}") && same(nested->dump(), "{\"a\": [1, {}], \"b\": []}"),
+            "Json.pretty: an indent per level, {} and [] when empty");
+      check(same(kira::json::parse("[1, 2.0, -0, 1E400, -1e-400, \"\\ud83d\\ude00\\u00e9\"]")->dump(), "[1, 2.0, 0, Infinity, -0.0, \"\\ud83d\\ude00\\u00e9\"]") &&
+                kira::json::error().empty(),
+            "Json.parse: an integer stays one, a float past a double is an infinity or a zero");
+      check(same(kira::json::parse("{\"a\": 1, \"b\": 2, \"a\": 3}")->dump(), "{\"a\": 3, \"b\": 2}"), "Json.parse: a duplicate key keeps its place and takes the last value");
+      const auto reason = [](const char* text) {
+          const kira::Rc<Json> v = kira::json::parse(text);
+          return v->isNull() ? kira::json::error() : kira::Str("parsed");
+      };
+      check(same(reason("[1,]"), "Expecting value: line 1 column 4 (char 3)") && same(reason("{\"a\" 1}"), "Expecting ':' delimiter: line 1 column 6 (char 5)") &&
+                same(reason("[1]\n x"), "Extra data: line 2 column 2 (char 5)") && same(reason(""), "Expecting value: line 1 column 1 (char 0)"),
+            "Json.error: json.loads's reasons, line, column and char");
+      check(same(reason("9223372036854775808"), "Integer out of Int64 range: line 1 column 1 (char 0)") && same(reason("-9223372036854775808"), "parsed"),
+            "Json.parse: an integer past Int64 fails");
+      check(same(reason("[\"\xc3\xa9\", x]"), "Expecting value: line 1 column 7 (char 6)") && same(reason("\"a\x01\""), "Invalid control character at: line 1 column 3 (char 2)") &&
+                same(reason("\xef\xbb\xbf[]"), "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"),
+            "Json.parse: a position counts code points, a control character and a BOM fail");
+      check(same(reason((kira::Str(512, '[') + kira::Str(512, ']')).c_str()), "parsed") &&
+                same(reason((kira::Str(513, '[') + kira::Str(513, ']')).c_str()), "Nesting deeper than 512: line 1 column 513 (char 512)"),
+            "Json.parse: 512 deep parses, 513 fails");
+      check(kira::json::parse("null")->isNull() && kira::json::error().empty() && same(reason("nul"), "Expecting value: line 1 column 1 (char 0)"),
+            "Json.error: \"\" after a parse that did not fail, a JSON null included");
+      check(o->get("nope")->at(5)->get("x")->isNull() && nested->get("a")->at(9)->isNull() && !nested->has("c") && nested->get("a")->keys().empty() &&
+                nested->get("a")->get("x")->isNull() && kira::json::ofInt(3)->size() == 0,
+            "Json.get and Json.at: JSON null when absent or on the wrong kind");
+      check(!kira::json::ofFloat(3.0)->asInt64().has_value() && kira::unwrap(kira::json::ofInt(3)->asFloat64()) == 3.0 &&
+                kira::unwrap(kira::json::ofBool(true)->asBool()) && !kira::json::ofInt(1)->asBool().has_value() &&
+                kira::unwrap(o->get("b")->asStr()) == "x" && kira::json::ofMaybe(kira::Maybe<double>(kira::none))->isNull(),
+            "Json.asInt64 is an integer only, asFloat64 widens one, Json.of a none is null");
+  }
+
   std::int32_t argsSeen = 0;
   [[nodiscard]] std::int32_t mainWithArgs(const kira::List<kira::Str>& args)
   {
@@ -1092,6 +1152,20 @@ namespace
       {
           kira::assert_(opaque(false), "the assertion's own message");
       }
+      else if(std::strcmp(what, "jsonput") == 0)
+      {
+          kira::json::arr()->put("a", kira::json::null());
+      }
+      else if(std::strcmp(what, "jsonadd") == 0)
+      {
+          kira::json::obj()->add(kira::json::null());
+      }
+      else if(std::strcmp(what, "jsoncycle") == 0)
+      {
+          const kira::Rc<kira::json::Json> a = kira::json::arr();
+          a->add(a);
+          sink = static_cast<std::int32_t>(a->dump().size());
+      }
       std::printf("panic mode %s did not panic (%d)\n", what, sink);
       return 3;
   }
@@ -1115,6 +1189,7 @@ int main(int argc, char** argv)
     testClasses();
     testReplace();
     testReplaceHandle();
+    testJson();
     testMain();
     testLocale();
     std::printf("\n%d checks, %d failed\n", checks, failures);
