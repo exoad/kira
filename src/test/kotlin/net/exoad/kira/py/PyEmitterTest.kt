@@ -2467,4 +2467,15 @@ class PyEmitterTest {
         assertTrue(py.contains("def _k_main(main):"), py)
         assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
     }
+
+    @Test
+    fun anOpaqueHandleIsComparedNeitherThroughAStructNorByContains() {
+        val handle = "@_opaque\npub class Sock {\n    pub fx id: () Int32\n}\n"
+        listOf(
+            "${handle}struct Peer {\n    require pub s: Sock\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a == b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}struct Peer {\n    require pub s: List<Sock>\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a != b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}fx f: (xs: List<Sock>, s: Sock) Bool {\n    return xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
+            "${handle}fx f: (m: Map<Str, Sock>, s: Sock) Bool {\n    return m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
+        ).forEach { (body, construct) -> refused(body, construct) }
+    }
 }

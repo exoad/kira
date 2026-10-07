@@ -1373,6 +1373,10 @@ class PyModuleEmitter(
             return call("_k_enumof", "${ref(e, c) ?: "None"}._k_order", wrap(expr(raw, f), PyPrec.TERNARY))
         }
         val receiver = rc.receiver
+        val compared = receiver?.let { model.typeOrNull(it) }?.let { if (fn.name == "containsValue") elementOf(it) else (it as? KType.Nominal)?.typeArgs()?.firstOrNull() }
+        if ((fn.name == "contains" || fn.name == "containsValue") && compared != null && holdsHandle(compared)) {
+            return refusePy(c, "'${fn.name}' on ${article(model.typeOrNull(receiver)!!.display())}, which compares an opaque handle")
+        }
         val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
         val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
             ?: return refusePy(c, "'${keys.firstOrNull() ?: fn.name}' (it has no py binding)")
@@ -1558,6 +1562,9 @@ class PyModuleEmitter(
         val structs = isStruct(lt) && isStruct(rt) && (e.operator == BinaryOp.EQUALS || e.operator == BinaryOp.NOT_EQUAL)
         if (!structs && ((lt != KType.Str && lt !is KType.Scalar && !isEnum(lt)) || (rt != KType.Str && rt !is KType.Scalar && !isEnum(rt)))) {
             return refusePy(e, "a comparison of ${lt.display()} and ${rt.display()}")
+        }
+        if (structs && holdsHandle(lt)) {
+            return refusePy(e, "a comparison of ${lt.display()}, which holds an opaque handle")
         }
         val l = expr(e.leftExpr, f)
         val r = expr(e.rightExpr, f)
@@ -1777,6 +1784,13 @@ class PyModuleEmitter(
         owner is ClassSymbol && (owner.kind == ClassKind.CLASS || owner.kind == ClassKind.STRUCT) && !owner.module.isStdlib && owner.typeParams.isEmpty()
 
     private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && isUserClass(it) } == true
+
+    /** Whether a value of [t] holds an opaque handle, whose == is the sidecar's own on py and the pointer's on C++ (D70). */
+    private fun holdsHandle(t: KType, seen: MutableSet<ClassSymbol> = HashSet()): Boolean {
+        val s = ((t as? KType.Nominal)?.sym as? ClassSymbol)
+        return isOpaque(t) || (isStruct(t) && seen.add(s!!) && s.fields.any { holdsHandle(it.type, seen) }) ||
+            (t as? KType.Nominal)?.takeIf { isValue(it) || isMaybe(it) || isTuple(it) }?.typeArgs()?.any { holdsHandle(it, seen) } == true
+    }
 
     /** A handle of an @_opaque class (D70): the Python object a sidecar made, never copied. */
     private fun isOpaque(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let {
