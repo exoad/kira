@@ -1,4 +1,4 @@
-# Magic binding manifest for kira:test (C++ backend only).
+# Magic binding manifest for kira:test (C++ and py backends).
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips
 # it. Suite is a Kira class, so `{self}` is a kira::Rc<kira::test::Suite>
@@ -7,8 +7,9 @@
 #
 # Runtime: kira/cpp/kira/test.hxx defines kira::test::Suite(const Str& title)
 # with check(bool, const Str&), checkStr(const Str&, const Str&, const Str&)
-# and finish() -> std::int32_t.
+# and finish() -> std::int32_t; py (D80) builds kira/py/runtime.py's _k_Suite,
+# whose methods print the same lines.
 
-Suite.check:    { cpp: { expr: "{self}->check({0}, {1})", includes: ["kira/test.hxx"] } }
-Suite.checkStr: { cpp: { expr: "{self}->checkStr({0}, {1}, {2})", includes: ["kira/test.hxx"] } }
-Suite.finish:   { cpp: { expr: "{self}->finish()", includes: ["kira/test.hxx"] } }
+Suite.check:    { cpp: { expr: "{self}->check({0}, {1})", includes: ["kira/test.hxx"] }, py: { expr: "{self}.check({0}, {1})" } }
+Suite.checkStr: { cpp: { expr: "{self}->checkStr({0}, {1}, {2})", includes: ["kira/test.hxx"] }, py: { expr: "{self}.checkStr({0}, {1}, {2})" } }
+Suite.finish:   { cpp: { expr: "{self}->finish()", includes: ["kira/test.hxx"] }, py: { expr: "{self}.finish()" } }

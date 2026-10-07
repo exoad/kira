@@ -37,6 +37,7 @@ import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBindingTable
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
+import net.exoad.kira.compiler.backend.codegen.cpp.CppTypeSpeller
 import net.exoad.kira.compiler.backend.codegen.cpp.CppUsage
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
@@ -130,10 +131,10 @@ class PyModuleEmitter(
     /** The call being written as a whole statement. */
     private var statementCall: FunctionCallExpr? = null
 
-    /** The module's @_extern functions, each with its arity, which the sidecar must define (D67). */
+    /** The functions the sidecar must define, with their arities, checked at import (D67). */
     private val sidecarNames = mutableListOf<Pair<String, Int>>()
 
-    /** Each `raises =` (D69), as the wrapper's name for messages and its names; the i-th is `_k_r<i>`. */
+    /** The module's `raises =` lists (D69), each resolved once, at import, and named for its wrapper in a panic. */
     private val raised = mutableListOf<Pair<String, List<String>>>()
 
     private val sidecarStem: String get() = Path.of(module.source.file).fileName.toString().removeSuffix(".kira") + "_ext"
@@ -187,7 +188,7 @@ class PyModuleEmitter(
             val fn = shared.pending.removeFirst()
             stdlib += PyModuleEmitter(program, fn.module, bindings, runtime, null, shared).function(fn, null)
         }
-        val sidecar = if (sidecarNames.isNotEmpty() || raised.any { (_, names) -> names.any { '.' in it } }) sidecarPath() else null
+        val sidecar = if (sidecarNames.isNotEmpty() || raised.isNotEmpty()) sidecarPath() else null
         // The constants come before the loads: in a use cycle the other module reads them while this one is half loaded.
         val loads = mutableListOf<String>()
         if (imports != null && imports.cycle.isNotEmpty()) {
@@ -197,7 +198,7 @@ class PyModuleEmitter(
             loads += "_k_x = ${call("_k_extern", "__file__", pyString(sidecar), pyTuple(sidecarNames.map { (n, k) -> pyTuple(listOf(pyString(n), "$k")) })).text}"
         }
         raised.forEachIndexed { i, (where, names) ->
-            loads += "_k_r$i = ${call("_k_raises", if (sidecar != null) "_k_x" else "None", pyString(where), pyTuple(names.map { pyString(it) })).text}"
+            loads += "_k_r$i = ${call("_k_raises", "_k_x", pyString(where), pyTuple(names.map { pyString(it) })).text}"
         }
         used.forEach { (m, name) -> loads += "$name = ${call("_k_use", "__file__", pyString(imports?.path(m) ?: "")).text}" }
         if (diagnostics.any { it.isError }) {
@@ -457,11 +458,13 @@ class PyModuleEmitter(
 
     private fun isEnum(t: KType?): Boolean = (t as? KType.Nominal)?.sym is EnumSymbol
 
+    /** `main: (args: List<Str>) Int32` is handed the program's arguments, as C++'s runMain hands it argv. */
     private fun mainCall(fn: FnSymbol): String? {
-        if (fn.params.isNotEmpty()) {
+        val withArgs = fn.params.size == 1 && fn.ret == KType.INT32 && magicName(fn.params[0].type) == "List" && elementOf(fn.params[0].type) == KType.Str
+        if (fn.params.isNotEmpty() && !withArgs) {
             return null
         }
-        val run = call("_k_main", pyName(fn)).text
+        val run = if (withArgs) call("_k_main", pyName(fn), "list(${helper("_k_sys")}.argv)").text else call("_k_main", pyName(fn)).text
         val call = when (fn.ret) {
             KType.Void -> run
             KType.INT32 -> call("_k_exit", run).text
@@ -492,7 +495,7 @@ class PyModuleEmitter(
 
     // ---- the sidecar (D67-D70) -------------------------------------------------------------------
 
-    /** An @_extern function (D67): under its own Python name, a checked wrapper of the sidecar's function of its Kira name. */
+    /** An @_extern function (D67) keeps the Kira function's Python name, so a Python caller of the module gets the checked call too. */
     private fun externFunction(fn: FnSymbol): List<String> {
         val at: ASTNode = fn.decl ?: module.source.ast
         checkName(fn.name, at)
@@ -548,7 +551,7 @@ class PyModuleEmitter(
         crossing(fn.ret, true)?.let { refuse(at, "the result of $what: $it") }
     }
 
-    /** The exceptions [fn]'s `raises =` lists (D69); a catch-all, or a name that is no Exception, is refused. */
+    /** `raises =`'s names (D69): a catch-all or a BaseException-only spelling is refused here, any other bad name at import. */
     private fun raisesOf(fn: FnSymbol, at: ASTNode): List<String> {
         val text = (fn.foreign as? Foreign.Extern)?.params?.get(ExternIntrinsic.RAISES) ?: return emptyList()
         val names = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -559,29 +562,33 @@ class PyModuleEmitter(
         return names
     }
 
-    /**
-     * [head] and the body of a checked call of [callee] (D68, D69): a view lent for the call, a
-     * value copied out, a listed exception thrown as Kira's, and the result checked outside the try.
-     */
+    /** The call of [callee] (D68, D69); its result is checked outside the try, so a wrong value is a panic, never a throw. */
     private fun boundary(head: String, callee: String, fn: FnSymbol, where: String, at: ASTNode): List<String> {
         val lends = mutableListOf<String>()
         val args = fn.params.mapIndexed { i, p ->
             val t = p.type
+            val element = elementOf(t)
             when {
                 // The call is the Fx's owner while it runs: a throw from it on this thread reaches Kira's try (D76).
                 t is KType.Fn -> "_k_f$i".also {
                     lends += "${call("_k_fx", p.name, fxSpecs(t, at), pyString("the Fx given to $where"), if (isBytes(t.ret)) "bytes" else "None").text} as $it"
                 }
-                isView(p.type) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(p.type) == "MutView") "True" else "False"}) as $it" }
-                isBytes(p.type) -> "bytes(${p.name})"
-                holdsValue(p.type) -> copyOf(Py(p.name, PyPrec.ATOM), p.type).text
+                isView(t) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(t) == "MutView") "True" else "False"}) as $it" }
+                isJson(t) -> p.name
+                isBytes(t) -> "bytes(${p.name})"
+                isList(t) && element != null && !mayHold(element) -> "list(${p.name})"
+                mayHold(t) -> call("_k_out", p.name).text
                 else -> p.name
             }
         }
         val called = "$callee(${args.joinToString(", ")})"
         val names = raisesOf(fn, at)
+        // A Json goes as itself, so what Python wrote into it is checked as a result is.
+        val written = fn.params.filter { isJson(it.type) }.map {
+            call("_k_check", it.name, "(\"J\",)", pyString("$where's argument ${it.name}"), "\"Json\"").text
+        }
         val checked = { r: String -> "return ${call("_k_check", r, spec(fn.ret, at) ?: "None", pyString(where), pyString(fn.ret.display())).text}" }
-        if (names.isEmpty() && lends.isEmpty()) {
+        if (names.isEmpty() && lends.isEmpty() && written.isEmpty()) {
             return listOf(head) + indent(listOf(checked(called)))
         }
         var body = listOf("_k_r = $called")
@@ -593,8 +600,12 @@ class PyModuleEmitter(
         if (lends.isNotEmpty()) {
             body = listOf("with ${lends.joinToString(", ")}:") + indent(body)
         }
-        return listOf(head) + indent(body + checked("_k_r"))
+        return listOf(head) + indent(body + written + checked("_k_r"))
     }
+
+    /** Whether a value of [t] may hold a Python list, dict or tuple, which a sidecar is handed as a copy (D68). */
+    private fun mayHold(t: KType): Boolean =
+        isValue(t) || isStruct(t) || isTuple(t) || isJson(t) || (isMaybe(t) && mayHold((t as KType.Nominal).typeArgs()[0]))
 
     /** Why a value of [t] cannot cross between Kira and the sidecar ([back]: Python hands it to Kira), or null (D68). */
     private fun crossing(t: KType, back: Boolean, top: Boolean = true): String? {
@@ -1494,6 +1505,10 @@ class PyModuleEmitter(
         if (fn.name == "add" && syncClass(receiver?.let { model.typeOrNull(it) }) == "Atomic" && (model.typeOrNull(receiver!!) as KType.Nominal).typeArgs().first().prim == Prim.BOOL) {
             return refusePy(c, "Atomic<Bool>.add (C++'s Atomic has none)")
         }
+        val compared = receiver?.let { model.typeOrNull(it) }?.let { if (fn.name == "containsValue") elementOf(it) else (it as? KType.Nominal)?.typeArgs()?.firstOrNull() }
+        if ((fn.name == "contains" || fn.name == "containsValue") && compared != null && holdsHandle(compared)) {
+            return refusePy(c, "'${fn.name}' on ${article(model.typeOrNull(receiver)!!.display())}, which compares an opaque handle")
+        }
         val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
         val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
             ?: return refusePy(c, "'${keys.firstOrNull() ?: fn.name}' (it has no py binding)")
@@ -1572,20 +1587,36 @@ class PyModuleEmitter(
         return name
     }
 
-    /** A Tuple is a Python tuple, its values copies in field order, which must be the written order unless each is PURE (D33). */
+    /** A Tuple is a Python tuple, its values copies in field order. */
     private fun tuple(o: ObjectInitExpr, init: ResolvedInit, f: Frame): Py {
-        val given = init.fields.map { it as? FieldInit.Given ?: return refusePy(o, "a Tuple without its ${it.field.name}") }
-        if (init.sourceOrder != init.sourceOrder.sorted() && given.any { model.effect(it.expr) != Effect.PURE }) {
-            return refusePy(o, "a Tuple whose values, written out of their order, have effects")
-        }
-        val items = given.map { wrap(asValue(it.expr, f, Use.STORE), PyPrec.TERNARY) }
+        val items = inFieldOrder(o, init, f, "a Tuple") ?: return Py("None", PyPrec.ATOM)
         return Py("(${items.joinToString(", ")}${if (items.size == 1) "," else ""})", PyPrec.ATOM)
+    }
+
+    /** Every field's value, copied, in field order, which must be the written order unless each is PURE (D33); null when refused. */
+    private fun inFieldOrder(o: ObjectInitExpr, init: ResolvedInit, f: Frame, what: String): List<String>? {
+        init.fields.firstOrNull { it !is FieldInit.Given }?.let {
+            refuse(o, "$what without its ${it.field.name}")
+            return null
+        }
+        val given = init.fields.filterIsInstance<FieldInit.Given>()
+        if (init.sourceOrder != init.sourceOrder.sorted() && given.any { model.effect(it.expr) != Effect.PURE }) {
+            refuse(o, "$what whose values, written out of their order, have effects")
+            return null
+        }
+        return given.map { wrap(asValue(it.expr, f, Use.STORE), PyPrec.TERNARY) }
     }
 
     private fun construction(o: ObjectInitExpr, f: Frame): Py {
         val init = model.init(o) ?: return refusePy(o, "a construction the typer did not resolve")
         val cls = init.cls ?: return refusePy(o, "this construction")
         if (cls.kind == ClassKind.MAGIC) {
+            // kira:sync keeps its own construction: its refusals and an Atomic's integer width (D77).
+            syncClass(typeOf(o))?.let { return syncConstruction(o, init, it, typeOf(o) as KType.Nominal, f) }
+            // Built as C++'s make_shared builds it, from every field in declaration order (D80).
+            runtimeClass(cls)?.let { name ->
+                return inFieldOrder(o, init, f, article(cls.name))?.let { call(name, *it.toTypedArray()) } ?: Py("None", PyPrec.ATOM)
+            }
             val t = typeOf(o) ?: return Py("None", PyPrec.ATOM)
             if (isTuple(t)) {
                 return tuple(o, init, f)
@@ -1594,7 +1625,6 @@ class PyModuleEmitter(
                 val v = init.fields.filterIsInstance<FieldInit.Given>().singleOrNull()?.expr
                 return call("_k_Ref", v?.let { asValue(it, f, Use.STORE).text } ?: zeroValue((t as KType.Nominal).typeArgs()[0], o))
             }
-            syncClass(t)?.let { return syncConstruction(o, init, it, t as KType.Nominal, f) }
             if (!isValue(t)) {
                 return refusePy(o, "a construction of ${t.display()}")
             }
@@ -1697,6 +1727,9 @@ class PyModuleEmitter(
         val structs = isStruct(lt) && isStruct(rt) && (e.operator == BinaryOp.EQUALS || e.operator == BinaryOp.NOT_EQUAL)
         if (!structs && ((lt != KType.Str && lt !is KType.Scalar && !isEnum(lt)) || (rt != KType.Str && rt !is KType.Scalar && !isEnum(rt)))) {
             return refusePy(e, "a comparison of ${lt.display()} and ${rt.display()}")
+        }
+        if (structs && holdsHandle(lt)) {
+            return refusePy(e, "a comparison of ${lt.display()}, which holds an opaque handle")
         }
         val l = expr(e.leftExpr, f)
         val r = expr(e.rightExpr, f)
@@ -1917,6 +1950,17 @@ class PyModuleEmitter(
 
     private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && isUserClass(it) } == true
 
+    /** A hosted system module's magic class as the runtime's `_k_<Name>` (D80), as C++ has kira::<m>::<Name>; null where the runtime has none. */
+    private fun runtimeClass(s: ClassSymbol): String? =
+        "_k_${s.name}".takeIf { s.kind == ClassKind.MAGIC && CppTypeSpeller.systemHeaderFor(s.module.uri) != null && it in runtime.names }
+
+    /** Whether a value of [t] holds an opaque handle, whose == is the sidecar's own on py and the pointer's on C++ (D70). */
+    private fun holdsHandle(t: KType, seen: MutableSet<ClassSymbol> = HashSet()): Boolean {
+        val s = ((t as? KType.Nominal)?.sym as? ClassSymbol)
+        return isOpaque(t) || (isStruct(t) && seen.add(s!!) && s.fields.any { holdsHandle(it.type, seen) }) ||
+            (t as? KType.Nominal)?.takeIf { isValue(it) || isMaybe(it) || isTuple(it) }?.typeArgs()?.any { holdsHandle(it, seen) } == true
+    }
+
     /** A handle of an @_opaque class (D70): the Python object a sidecar made, never copied. */
     private fun isOpaque(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let {
         it.kind == ClassKind.OPAQUE && it.foreign == null && !it.module.isStdlib && it.typeParams.isEmpty()
@@ -1970,6 +2014,7 @@ class PyModuleEmitter(
                 s.kind == ClassKind.MAGIC && isTuple(t) -> t.typeArgs().firstNotNullOfOrNull { a ->
                     unsupportedType(a) ?: if (isView(a)) "${article(t.display())} (a view lives only as long as the call it is lent to)" else null
                 }
+                runtimeClass(s) != null -> t.typeArgs().firstNotNullOfOrNull { unsupportedType(it) }
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
                 isUserClass(s) || isOpaque(t) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"
@@ -2154,7 +2199,7 @@ class PyModuleEmitter(
     companion object {
         const val UNSUPPORTED_CODE = "py.unsupported"
 
-        /** A module with externs whose sidecar is missing (D67). */
+        /** A missing sidecar that a module's externs or `raises =` need (D67). */
         const val EXTERN_CODE = "py.extern"
 
         /** What `raises =` may not list (D69), and why. */

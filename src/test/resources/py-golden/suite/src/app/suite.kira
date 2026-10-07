@@ -1,0 +1,27 @@
+module "app:suite"
+
+// kira:test on py (D80): a Suite prints bibo's check format as the C++ target's does, and finish's
+// 1 or 0 is the exit status. driver.py runs it as a program; an argument adds two failing checks.
+
+use "kira:os"
+use "kira:test"
+
+fx half: (n: Int32) Int32 {
+    return n / 2
+}
+
+// A helper takes the Suite as it takes any class: one object, which every check counts in.
+fx halves: (t: Suite, n: Int32, want: Int32) Void {
+    t.check(half(n) == want, "half of ${n} is ${want}")
+    t.checkStr("${half(n)}", "${want}", "and reads as ${want}")
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "suite - kira:test on py" }
+    halves(t, 6, 3)
+    halves(t, -7, -3)
+    if args().size() > 1 {
+        halves(t, 9, 5)
+    }
+    return t.finish()
+}

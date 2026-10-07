@@ -23,9 +23,8 @@ import net.exoad.kira.source.SourceContext
  * - one positional, the symbol for the current target (`@_extern("fopen")`);
  * - `c =`, the C symbol, and `cpp =`, the C++ name (`bibo::Car`, `ImGui::Button`);
  * - `header =`, the C++ header the name is declared in, which the C++ backend includes;
- * - `raises =`, py only (D69): the Python exceptions, separated by spaces, that the call throws
- *   as a Kira throw. On py an extern binds the sidecar function of its own name (D67), so the
- *   positional, `cpp =`, `c =` and `header =` are refused there.
+ * - `raises =` (D69): the Python exceptions, space-separated, a py extern's call throws as a Kira
+ *   throw; py binds an extern by its Kira name (D67) and refuses the four C and C++ names.
  *
  * Targets: a function (its body, if any, is ignored: the C backend emits a prototype and
  * calls the symbol unmangled), a class or a struct (the C++ backend emits drift checks
@@ -122,9 +121,10 @@ object ExternIntrinsic : CompilerIntrinsic(
             )
         }
         val mode = GeneratedProvider.outputMode
-        // On py a method of an @_opaque class is the Python object's own (D70), and may take raises =.
-        val opaqueOnPy = mode == GeneratedProvider.OutputTarget.PY && scope is SemanticScope.Class && isMarked(context, scope.name, OpaqueIntrinsic.name)
-        if (target is FunctionDecl && scope is SemanticScope.Class && !isMarked(context, scope.name, this.name) && !opaqueOnPy) {
+        // A method of an @_opaque class takes the marker for py (D70), so under none too, as the language server runs.
+        val opaqueMethod = (mode == GeneratedProvider.OutputTarget.PY || mode == GeneratedProvider.OutputTarget.NONE) &&
+            scope is SemanticScope.Class && isMarked(context, scope.name, OpaqueIntrinsic.name)
+        if (target is FunctionDecl && scope is SemanticScope.Class && !isMarked(context, scope.name, this.name) && !opaqueMethod) {
             throw KiraRuntimeException(
                 "@_extern on the method '${nameOf(target)}': its class or struct '${scope.name}' must be extern itself " +
                     "(@_extern(cpp = \"ns::Name\", header = \"name.hxx\") on the declaration)"

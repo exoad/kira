@@ -27,7 +27,7 @@ class PyImports(program: TypedProgram, private val module: ModuleSymbol, private
     /** Null across Windows drives. */
     fun path(used: ModuleSymbol): String? = targets[used]?.let { relative(it) }
 
-    /** [file] from the directory of [module]'s generated file; null across Windows drives. */
+    /** Null across Windows drives. */
     fun relative(file: Path): String? {
         val from = targets[module]?.parent ?: return null
         return runCatching { from.relativize(file).toString().replace('\\', '/') }.getOrNull()?.takeIf { it.isNotEmpty() }

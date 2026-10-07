@@ -1357,6 +1357,32 @@ class PyEmitterTest {
         assertEquals(emptyList(), PyTestSupport.unreservedBuiltins(listOf(runtime, bindings.toPath()), PyNames.RESERVED))
     }
 
+    /** kira/cpp/kira/test.hxx's lines, byte for byte, and finish's 1 or 0. */
+    @Test
+    fun theSuiteBlockPrintsBibosCheckFormat() {
+        assumeTrue(PyTestSupport.python != null, "no Python on PATH (set KIRA_PYTHON)")
+        val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
+        val script = File(PyTestSupport.repoRoot, "build/tmp/py-suite/suite.py").apply { parentFile.mkdirs() }
+        val driver = """
+            t = _k_Suite("suite - its lines")
+            t.check(True, "kept")
+            t.checkStr("a", "a", "same text")
+            t.check(False, "broken")
+            t.checkStr("got", "want", "other text")
+            failed = t.finish()
+            print(failed, _k_Suite("empty").finish())
+        """.trimIndent()
+        script.writeText(runtime.select(setOf("_k_Suite")) + "\n\n\n" + driver + "\n")
+        val ran = PyTestSupport.run(listOf(PyTestSupport.python!!, script.absolutePath), script.parentFile)
+        assertEquals(0, ran.exitCode, ran.all)
+        assertEquals(
+            "\nsuite - its lines\n\n  ok    kept\n  ok    same text\n  FAIL  broken\n  FAIL  other text\n" +
+                "        got  \"got\"\n        want \"want\"\n\n4 checks, 2 failed\n\n" +
+                "\nempty\n\n\n0 checks, 0 failed\n\n1 0\n",
+            ran.stdout,
+        )
+    }
+
     @Test
     fun aStructsCloneAndAUseCycleNameNoBuiltinAKiraNameCouldShadow() {
         val (py, errors) = PyTestSupport.emitProgram(
@@ -2477,7 +2503,7 @@ class PyEmitterTest {
             py.contains(
                 "def _send(data, into, raw, xs, p, m):\n" +
                     "    with _k_lend(data, False) as _k_v0, _k_lend(into, True) as _k_v1:\n" +
-                    "        _k_r = _k_x.send(_k_v0, _k_v1, bytes(raw), list(xs), p._k_clone(), dict(m))\n" +
+                    "        _k_r = _k_x.send(_k_v0, _k_v1, bytes(raw), list(xs), _k_out(p), _k_out(m))\n" +
                     "    return _k_check(_k_r, (\"I\", -9223372036854775808, 9223372036854775807), \"lend_ext.send\", \"Int64\")"
             ),
             py,
@@ -2500,11 +2526,9 @@ class PyEmitterTest {
             }
             """,
             "handle",
-            sidecar = null,
         ).python()
         assertFalse(py.contains("class Sock"), py)
-        assertFalse(py.contains("_k_extern("), "a builtin name in raises = needs no sidecar:\n$py")
-        assertTrue(py.contains("_k_r0 = _k_raises(None, \"Sock.recv\", (\"TimeoutError\",))"), py)
+        assertTrue(py.contains("_k_x = _k_extern(__file__, \"handle_ext.py\", ())\n_k_r0 = _k_raises(_k_x, \"Sock.recv\", (\"TimeoutError\",))"), py)
         assertTrue(py.contains("def _k_o_Sock_recv(_k_o, size):\n    try:\n        _k_r = _k_o.recv(size)\n"), py)
         assertTrue(py.contains("    return _k_check(_k_r, (\"Y\",), \"Sock.recv\", \"List<UInt8>\")"), py)
         assertTrue(py.contains("kept = list(socks)"), py)
@@ -2516,8 +2540,8 @@ class PyEmitterTest {
         val e = besideSidecar("@_extern\nfx f: () Int32", "lonely", sidecar = null)
         assertNull(e.text)
         assertTrue(e.errors.any { it.contains("error: py.extern: lonely.kira declares externs, whose sidecar lonely_ext.py is not beside it") }, e.errors.joinToString("\n"))
-        val dotted = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"socket.timeout\")\n    pub fx recv: () Int32\n}", "dotted", sidecar = null)
-        assertTrue(dotted.errors.any { it.contains("py.extern: dotted.kira") }, "a dotted raises = name resolves in the sidecar:\n${dotted.errors.joinToString("\n")}")
+        val raises = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"TimeoutError\")\n    pub fx recv: () Int32\n}", "raising", sidecar = null)
+        assertTrue(raises.errors.any { it.contains("py.extern: raising.kira") }, "a raises = name resolves in the sidecar first:\n${raises.errors.joinToString("\n")}")
     }
 
     @Test
@@ -2588,11 +2612,11 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("_k_time.monotonic_ns() + (_k_time.monotonic_ns() // 1000000)"), py)
+        assertTrue(py.contains("_k_time.perf_counter_ns() + (_k_time.perf_counter_ns() // 1000000)"), py)
         assertTrue(py.contains("_k_time.time_ns()"), py)
         assertTrue(py.contains("    _k_sleep(5)\n"), py)
         assertTrue(py.contains("print(len(list(_k_sys.argv)))"), py)
-        assertTrue(py.contains("def _k_main(main):"), py)
+        assertTrue(py.contains("def _k_main(main, *args):"), py)
         assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
     }
 
@@ -2657,5 +2681,56 @@ class PyEmitterTest {
         refused("use \"kira:sync\"\nfx f: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map or a struct)")
         refused("use \"kira:sync\"\nfx f: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
         refused("use \"kira:sync\"\nfx f: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    return a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
+    }
+
+    @Test
+    fun anOpaqueHandleIsComparedNeitherThroughAStructNorByContains() {
+        val handle = "@_opaque\npub class Sock {\n    pub fx id: () Int32\n}\n"
+        listOf(
+            "${handle}struct Peer {\n    require pub s: Sock\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a == b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}struct Peer {\n    require pub s: List<Sock>\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a != b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}fx f: (xs: List<Sock>, s: Sock) Bool {\n    return xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
+            "${handle}fx f: (m: Map<Str, Sock>, s: Sock) Bool {\n    return m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
+        ).forEach { (body, construct) -> refused(body, construct) }
+    }
+
+    // ---- kira:test (D80) -------------------------------------------------------------------------
+
+    @Test
+    fun aSuiteIsTheRuntimesClassBuiltFromItsTitleAndItsMethodsBind() {
+        val py = python(
+            """
+            use "kira:test"
+
+            class Runner {
+                require pub t: Suite
+            }
+
+            fx both: (t: Suite, n: Int32) Void {
+                t.check(n > 1, "above one")
+                t.checkStr("${'$'}{n}", "3", "reads as 3")
+            }
+
+            pub fx main: () Int32 {
+                name: Str = "suite"
+                t: Suite = Suite { title = name + "!" }
+                r: Runner = Runner { t }
+                both(r.t, 3)
+                kept: List<Suite> = [t, Suite { "other" }]
+                return kept[0].finish()
+            }
+            """
+        )
+        assertTrue(py.contains("\nclass _k_Suite:\n"), py)
+        assertTrue(py.contains("    t.check(n > 1, \"above one\")\n    t.checkStr(str(n), \"3\", \"reads as 3\")\n"), py)
+        assertTrue(py.contains("    t = _k_Suite(name + \"!\")\n    r = _Runner(t)\n    _both(r.t, 3)\n"), py)
+        assertTrue(py.contains("    kept = [t, _k_Suite(\"other\")]\n    return kept[0].finish()\n"), py)
+        assertTrue(py.contains("        self.t = t\n"), "a Suite is one object, never copied:\n$py")
+        assertTrue(py.trimEnd().endsWith("_k_exit(_k_main(main))"), py)
+    }
+
+    @Test
+    fun aSystemClassTheRuntimeLacksIsStillRefused() {
+        refused("use \"kira:os\"\n\nfx f: (u: UdpSocket) Void {\n}", "the parameter 'u': the type UdpSocket")
     }
 }
