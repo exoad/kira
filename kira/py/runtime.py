@@ -873,7 +873,7 @@ def _k_jerror():
 
 
 # An uncaught throw at main (D73) ends the program with C++'s runMain status, 70; the traceback,
-# with the cause of a raises= throw, stays on stderr.
+# with the cause of a raises= throw, stays on stderr. A panic aborts as a callback's does (D81).
 def _k_main(main, *args):
     try:
         return main(*args)
@@ -881,6 +881,10 @@ def _k_main(main, *args):
         _k_sys.stdout.flush()
         _k_traceback.print_exc()
         raise _k_builtins.SystemExit(70)
+    except (_k_builtins.SystemExit, _k_builtins.KeyboardInterrupt):
+        raise
+    except _k_builtins.BaseException:
+        _k_end(None, True)
 
 
 # kira:os onSignal (D78): a handler that only stores true, which Python runs on the main thread;

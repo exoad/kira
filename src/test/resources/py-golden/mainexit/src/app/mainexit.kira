@@ -1,7 +1,7 @@
 module "app:mainexit"
 
-// main as a program, which driver.py runs: kira:os args (D71), kira:time's clocks and sleep (D72),
-// and an uncaught throw, which exits 70 keeping Python's traceback and its cause (D73).
+// main as a program, which driver.py runs: kira:os args (D71), kira:time's clocks and sleep (D72), an
+// uncaught throw, which exits 70 keeping Python's traceback and its cause (D73), and a panic, which aborts (D81).
 
 use "kira:os"
 use "kira:time"
@@ -31,6 +31,9 @@ fx main: () Void {
     }
     if a.size() == 2 && a[1] == "exit" {
         exit(4)
+    }
+    if a.size() == 2 && a[1] == "panic" {
+        trace(1 / (a.size() as Int32 - 2))
     }
     trace("done")
 }
