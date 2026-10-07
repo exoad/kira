@@ -177,7 +177,7 @@ pub SIGNAL_TERM: Int32 = 15
 // they resume until the child ends, the predicate holds or the timeout
 // runs out, so a loop that must see the flag polls with a timeout. Safe to
 // call from several threads at once. False when the signal cannot be
-// caught.
+// caught. On py only the main thread installs one; elsewhere it is false (D78).
 pub @_magic fx onSignal: (sig: Int32, flag: Atomic<Bool>) Bool;
 
 pub @_magic fx env: (name: Str) Maybe<Str>;

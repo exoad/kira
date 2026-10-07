@@ -11,6 +11,7 @@ module "kira:sync"
 // it is dropped, so a Thread that goes out of scope waits for its body to
 // finish; a body that loops must watch a flag (an Atomic<Bool>, or
 // stopRequested() through a handle it was given) or the drop never returns.
+// On py the drop never joins (D77): a program joins what must finish.
 //
 // A body can hold its own handle (through a Ref it captured, or a class
 // that owns its worker). When that body's copy is the last one, the drop
