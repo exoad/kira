@@ -8,6 +8,7 @@ import builtins as _k_builtins
 import collections as _k_collections
 import functools as _k_functools
 import importlib.util as _k_importlib
+import inspect as _k_inspect
 import itertools as _k_itertools
 import json as _k_json
 import math as _k_math
@@ -866,3 +867,133 @@ def _k_jstrict(text):
 
 def _k_jerror():
     return _k_builtins.getattr(_k_jstate, "error", "")
+
+
+# The sidecar X_ext.py beside X.kira (D67), loaded once per process by its real path; an extern it
+# does not define as a function of the extern's arity is a panic here, at import.
+def _k_extern(here, path, names):
+    m = _k_use(here, path)
+    for n, k in names:
+        try:
+            _k_inspect.signature(m.__dict__.get(n)).bind(*range(k))
+        except _k_builtins.TypeError:
+            _k_panic("%s defines no function %s taking %d argument%s" % (_k_os.path.basename(path), n, k, "" if k == 1 else "s"))
+        except ValueError:
+            # A builtin such as time.sleep has no signature to check.
+            pass
+    return m
+
+
+# raises= (D69): each name resolves in the sidecar's globals, then the builtins, dotted by attribute,
+# to an Exception that catches neither Kira's throw nor its panic, nor follows one that catches it.
+def _k_raises(ext, where, names):
+    out = []
+    for n in names:
+        parts = n.split(".")
+        c = (ext.__dict__ if ext is not None else {}).get(parts[0], _k_builtins.__dict__.get(parts[0]))
+        for p in parts[1:]:
+            c = _k_builtins.getattr(c, p, None)
+        if not (isinstance(c, _k_builtins.type) and _k_builtins.issubclass(c, _k_builtins.Exception)):
+            _k_panic("%s raises %s, which is no Exception class" % (where, n))
+        if _k_builtins.issubclass(RuntimeError, c) or _k_builtins.issubclass(_k_Error, c):
+            _k_panic("%s raises %s, which would catch Kira's own throw or panic" % (where, n))
+        for d, m in _k_builtins.zip(out, names):
+            if _k_builtins.issubclass(c, d):
+                _k_panic("%s raises %s after %s, which catches it first" % (where, n, m))
+        out.append(c)
+    return _k_builtins.tuple(out)
+
+
+# A listed exception is the Kira throw "Name: str(e)" (D69), Name the first listed class it is.
+def _k_thrown(e, classes, names):
+    for c, n in _k_builtins.zip(classes, names):
+        if isinstance(e, c):
+            text = str(e)
+            raise _k_Error(n + ": " + text if text else n) from e
+
+
+def _k_shown(v):
+    r = _k_builtins.repr(v)
+    return (r if len(r) <= 40 else r[:37] + "...") + " (" + _k_builtins.type(v).__name__ + ")"
+
+
+# What Python hands back (D68), checked against the declared type's spec and rebuilt where Kira holds
+# a value, so a list, dict or bytes the sidecar keeps is never Kira's; an int is a Float64 if exact.
+def _k_check(v, spec, where, declared):
+    k = spec[0]
+    c = v.__class__
+    if k == "I":
+        if c is int and spec[1] <= v <= spec[2]:
+            return v
+    elif k == "F":
+        if c is float:
+            return v
+        if c is int and -0x20000000000000 <= v <= 0x20000000000000:
+            return float(v)
+    elif k == "B":
+        if c is bool:
+            return v
+    elif k == "S":
+        if c is str:
+            return v
+    elif k == "Y":
+        if c is bytes or c is bytearray:
+            return bytearray(v)
+    elif k == "M":
+        return None if v is None else _k_check(v, spec[1], where, declared)
+    elif k == "L":
+        if c is list:
+            return [_k_check(x, spec[1], where, declared) for x in v]
+    elif k == "D":
+        if c is dict:
+            return {_k_check(a, spec[1], where, declared): _k_check(b, spec[2], where, declared) for a, b in v.items()}
+    elif k == "T":
+        if c is _k_builtins.tuple and len(v) == len(spec) - 1:
+            return _k_builtins.tuple([_k_check(x, s, where, declared) for x, s in _k_builtins.zip(v, spec[1:])])
+    elif k == "E":
+        if c is int and v in spec[1]:
+            return v
+    elif k == "J":
+        if _k_jcheck(v):
+            return v
+    elif k == "O":
+        if v is not None:
+            return v
+    elif k == "V":
+        if v is None:
+            return v
+    _k_panic("%s gave %s where %s was declared" % (where, _k_shown(v), declared))
+
+
+# A Json from Python: only what json.loads makes, every int in Int64, no container 513 deep.
+def _k_jcheck(v):
+    level, depth = [v], 0
+    while level:
+        nxt = []
+        for x in level:
+            t = x.__class__
+            if t is dict or t is list:
+                if depth == 512 or t is dict and not _k_builtins.all([k.__class__ is str for k in x]):
+                    return False
+                nxt.extend(x.values() if t is dict else x)
+            elif not (t is str or t is float or t is bool or x is None or t is int and -0x8000000000000000 <= x <= 0x7FFFFFFFFFFFFFFF):
+                return False
+        level, depth = nxt, depth + 1
+    return True
+
+
+# A View<UInt8> or MutView<UInt8> lent to Python for the call only (D68): released after it, so a
+# sidecar that keeps it fails where it uses it, and the bytearray can grow again.
+class _k_lend:
+    __slots__ = ("b", "m")
+
+    def __init__(self, b, writable):
+        self.b = memoryview(b)
+        self.m = self.b if writable else self.b.toreadonly()
+
+    def __enter__(self):
+        return self.m
+
+    def __exit__(self, *exc):
+        self.m.release()
+        self.b.release()
