@@ -243,4 +243,47 @@ class ExternIntrinsicTest {
             GeneratedProvider.outputMode = previous
         }
     }
+
+    /** `raises =` names Python exceptions (D69), and py binds an extern by its Kira name alone (D67). */
+    @Test
+    fun raisesReachesPyOnlyAndPyTakesNoOtherName() {
+        val raises = "@_extern(raises = \"OSError\")\npub fx readText: (path: Str) Str;"
+        val previous = GeneratedProvider.outputMode
+        try {
+            GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
+            assertEquals(emptyList(), semantic(raises))
+            for (mode in listOf(GeneratedProvider.OutputTarget.C, GeneratedProvider.OutputTarget.JS, GeneratedProvider.OutputTarget.CPP)) {
+                GeneratedProvider.outputMode = mode
+                assertRefused(raises, "@_extern's raises = names Python exceptions, which the ${mode.name} backend has none of")
+            }
+            GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.PY
+            assertEquals(emptyList(), semantic("$raises\n@_extern\npub fx home: () Str;"))
+            listOf(
+                "@_extern(cpp = \"ns::f\", header = \"f.hxx\")\npub fx f: () Int32;" to "names cpp =, header =",
+                "@_extern(c = \"f_c\", raises = \"OSError\")\npub fx f: () Int32;" to "names c =",
+                "@_extern(\"f_c\")\npub fx f: () Int32;" to "names a positional symbol",
+            ).forEach { (body, names) ->
+                assertRefused(body, "@_extern on 'f' $names; the py backend binds an extern to the function of its own name in the module's sidecar")
+            }
+        } finally {
+            GeneratedProvider.outputMode = previous
+        }
+    }
+
+    /** On py a method of an @_opaque class is the Python object's own and takes `raises =` (D70); elsewhere its class must be extern. */
+    @Test
+    fun anOpaqueClassesMethodTakesTheMarkerOnPyOnly() {
+        val body = "@_opaque\npub class Sock {\n    @_extern(raises = \"TimeoutError\") pub fx recv: (n: Int32) List<UInt8>;\n}"
+        val previous = GeneratedProvider.outputMode
+        try {
+            GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.PY
+            assertEquals(emptyList(), semantic(body))
+            for (mode in listOf(GeneratedProvider.OutputTarget.CPP, GeneratedProvider.OutputTarget.NONE)) {
+                GeneratedProvider.outputMode = mode
+                assertRefused(body, "@_extern on the method 'recv': its class or struct 'Sock' must be extern itself")
+            }
+        } finally {
+            GeneratedProvider.outputMode = previous
+        }
+    }
 }

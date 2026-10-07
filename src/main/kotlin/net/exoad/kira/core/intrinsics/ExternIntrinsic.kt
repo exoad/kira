@@ -22,7 +22,10 @@ import net.exoad.kira.source.SourceContext
  * Parameters, every one a string literal:
  * - one positional, the symbol for the current target (`@_extern("fopen")`);
  * - `c =`, the C symbol, and `cpp =`, the C++ name (`bibo::Car`, `ImGui::Button`);
- * - `header =`, the C++ header the name is declared in, which the C++ backend includes.
+ * - `header =`, the C++ header the name is declared in, which the C++ backend includes;
+ * - `raises =`, py only (D69): the Python exceptions, separated by spaces, that the call throws
+ *   as a Kira throw. On py an extern binds the sidecar function of its own name (D67), so the
+ *   positional, `cpp =`, `c =` and `header =` are refused there.
  *
  * Targets: a function (its body, if any, is ignored: the C backend emits a prototype and
  * calls the symbol unmangled), a class or a struct (the C++ backend emits drift checks
@@ -40,9 +43,10 @@ object ExternIntrinsic : CompilerIntrinsic(
     const val CPP = "cpp"
     const val C = "c"
     const val HEADER = "header"
+    const val RAISES = "raises"
 
     /** The named parameters `@_extern` accepts. */
-    val namedParameters: Set<String> = setOf(CPP, C, HEADER)
+    val namedParameters: Set<String> = setOf(CPP, C, HEADER, RAISES)
 
     override fun validate(
         invocation: IntrinsicExpr,
@@ -64,7 +68,7 @@ object ExternIntrinsic : CompilerIntrinsic(
         invocation.namedParameters.forEach { (name, value) ->
             if (name !in namedParameters) {
                 throw KiraRuntimeException(
-                    "@_extern does not take '$name'; it takes cpp = (the C++ name), c = (the C symbol) and header = (the C++ header)"
+                    "@_extern does not take '$name'; it takes cpp = (the C++ name), c = (the C symbol), header = (the C++ header) and raises = (the Python exceptions, py only)"
                 )
             }
             if (value !is StringLiteral) {
@@ -117,13 +121,30 @@ object ExternIntrinsic : CompilerIntrinsic(
                 }"
             )
         }
-        if (target is FunctionDecl && scope is SemanticScope.Class && !isExternType(context, scope.name)) {
+        val mode = GeneratedProvider.outputMode
+        // On py a method of an @_opaque class is the Python object's own (D70), and may take raises =.
+        val opaqueOnPy = mode == GeneratedProvider.OutputTarget.PY && scope is SemanticScope.Class && isMarked(context, scope.name, OpaqueIntrinsic.name)
+        if (target is FunctionDecl && scope is SemanticScope.Class && !isMarked(context, scope.name, this.name) && !opaqueOnPy) {
             throw KiraRuntimeException(
                 "@_extern on the method '${nameOf(target)}': its class or struct '${scope.name}' must be extern itself " +
                     "(@_extern(cpp = \"ns::Name\", header = \"name.hxx\") on the declaration)"
             )
         }
-        val mode = GeneratedProvider.outputMode
+        if (RAISES in invocation.namedParameters && mode != GeneratedProvider.OutputTarget.PY && mode != GeneratedProvider.OutputTarget.NONE) {
+            throw KiraRuntimeException(
+                "@_extern's raises = names Python exceptions, which the ${mode.name} backend has none of: it reaches --target py only"
+            )
+        }
+        if (mode == GeneratedProvider.OutputTarget.PY) {
+            val named = invocation.namedParameters.keys.filter { it != RAISES }.map { "$it =" } +
+                listOfNotNull(invocation.parameters?.firstOrNull()?.let { "a positional symbol" })
+            if (named.isNotEmpty()) {
+                throw KiraRuntimeException(
+                    "@_extern on '${nameOf(target)}' names ${named.joinToString(", ")}; " +
+                        "the py backend binds an extern to the function of its own name in the module's sidecar (X_ext.py beside X.kira), and takes raises = only"
+                )
+            }
+        }
         if (mode == GeneratedProvider.OutputTarget.C || mode == GeneratedProvider.OutputTarget.JS) {
             val what = when {
                 target is FunctionDecl && scope is SemanticScope.Class -> "the method '${nameOf(target)}'"
@@ -157,8 +178,8 @@ object ExternIntrinsic : CompilerIntrinsic(
         return NoExpr
     }
 
-    /** Whether the class or struct named [typeName] in [context] carries `@_extern` itself. */
-    private fun isExternType(context: SourceContext, typeName: String): Boolean {
+    /** Whether the class or struct named [typeName] in [context] carries the intrinsic [marker] itself. */
+    private fun isMarked(context: SourceContext, typeName: String, marker: String): Boolean {
         val marks = runCatching { context.astIntrinsicMarked }.getOrNull() ?: return false
         return marks.any { (node, intrinsics) ->
             val name = when (node) {
@@ -166,7 +187,7 @@ object ExternIntrinsic : CompilerIntrinsic(
                 is StructDecl -> (node.name.identifier as? Identifier)?.value
                 else -> null
             }
-            name == typeName && intrinsics.any { it.name == this.name }
+            name == typeName && intrinsics.any { it.name == marker }
         }
     }
 
