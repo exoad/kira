@@ -10,7 +10,7 @@ all -> exit 0
   Float64 3.75 false
   stopRequested false true, spun true
   all done
-throw -> exit 70
+throw -> exit abort
   stderr: kira:errors.Error: thrown on a Kira thread
 panic -> exit abort
   stderr: RuntimeError: kira: integer division by zero

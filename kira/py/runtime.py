@@ -1095,14 +1095,14 @@ class _k_lend:
 
 
 # A callback Python runs (D76) ends the process on what no Kira try below it can catch: a panic
-# as C++'s abort does, exit with its code, a throw with 70 (D73) unless owner is this thread.
-def _k_callback(f, args, owner):
+# as C++'s abort does, exit with its code, a throw with thrown (70, D73) unless owner is this thread.
+def _k_callback(f, args, owner, thrown=70):
     try:
         return f(*args)
     except _k_Error:
         if owner == _k_threading.get_ident():
             raise
-        _k_end(70, True)
+        _k_end(thrown, True)
     except _k_builtins.SystemExit as e:
         _k_end(e.code if e.code.__class__ is int else 0 if e.code is None else 1, False)
     except _k_builtins.KeyboardInterrupt:
@@ -1162,14 +1162,14 @@ class _k_Ref:
         self.value = value
 
 
-# kira:sync (D77). A Thread is a daemon thread started at once, its body a callback Python runs
-# (D76); dropping the handle never joins it, so a program joins what must finish.
+# kira:sync (D77). A Thread is a daemon thread started at once and joined only by join(); its body
+# is a callback whose throw aborts as C++'s std::terminate does (D82).
 class _k_Thread:
     __slots__ = ("t", "stop")
 
     def __init__(self, name, body):
         self.stop = False
-        self.t = _k_threading.Thread(target=_k_callback, args=(body, (), None), name=name, daemon=True)
+        self.t = _k_threading.Thread(target=_k_callback, args=(body, (), None, None), name=name, daemon=True)
         self.t.start()
 
     def stopRequested(self):

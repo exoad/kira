@@ -2656,7 +2656,8 @@ class PyEmitterTest {
         assertTrue(py.contains("        hits.add(1)\n        q.push(list(row))\n        tally.lock(_k_lam1)"), py)
         assertTrue(py.contains("def _k_lam1(s):\n    s.count = _k_i32(s.count + 1)"), py)
         assertTrue(py.contains("    t.join()\n"), py)
-        assertTrue(py.contains("class _k_Thread:") && py.contains("def _k_callback(f, args, owner):"), py)
+        assertTrue(py.contains("class _k_Thread:") && py.contains("def _k_callback(f, args, owner, thrown=70):"), py)
+        assertTrue(py.contains("target=_k_callback, args=(body, (), None, None)"), py)
     }
 
     @Test
