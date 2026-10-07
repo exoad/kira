@@ -1187,7 +1187,7 @@ class _k_Atomic:
             return True
 
 
-class _k_Queue:
+class _k_BlockingQueue:
     __slots__ = ("q", "cv", "closed")
 
     def __init__(self):

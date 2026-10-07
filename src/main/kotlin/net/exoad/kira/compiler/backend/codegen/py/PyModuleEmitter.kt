@@ -1638,19 +1638,17 @@ class PyModuleEmitter(
         return Py("$clsName(${parts.joinToString(", ")})", PyPrec.POSTFIX)
     }
 
-    /** `Thread { name, body }` starts it (D77); an Atomic's integer add wraps as C++'s does. */
+    /** The runtime's class of the Kira name (D77): `Thread { name, body }` starts it, an Atomic's integer add wraps as C++'s does. */
     private fun syncConstruction(o: ObjectInitExpr, init: ResolvedInit, name: String, t: KType.Nominal, f: Frame): Py {
         val given = init.fields.map { it as? FieldInit.Given ?: return refusePy(o, "${article(t.display())} without its ${it.field.name}") }
         if (init.sourceOrder != init.sourceOrder.sorted() && given.any { model.effect(it.expr) != Effect.PURE }) {
             return refusePy(o, "${article(t.display())} whose values, written out of their order, have effects")
         }
         val values = given.map { wrap(asValue(it.expr, f, Use.STORE), PyPrec.TERNARY) }
-        return when (name) {
-            "Thread" -> call("_k_Thread", *values.toTypedArray())
-            "Mutex" -> call("_k_Mutex", *values.toTypedArray())
-            "Atomic" -> call("_k_Atomic", values.first(), t.typeArgs().first().prim?.takeIf { it.isInteger }?.let { helper(AS_HELPERS.getValue(it)) } ?: "None")
-            else -> call("_k_Queue")
+        if (name == "Atomic") {
+            return call("_k_Atomic", values.first(), t.typeArgs().first().prim?.takeIf { it.isInteger }?.let { helper(AS_HELPERS.getValue(it)) } ?: "None")
         }
+        return call("_k_$name", *values.toTypedArray())
     }
 
     private fun index(e: ArrayIndexExpr, f: Frame): Py {

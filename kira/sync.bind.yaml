@@ -3,8 +3,8 @@
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips
 # it (the C backend has no threads). Keys are `Type.method` and the bare
 # name of the free function; placeholders and flags as in core.bind.yaml.
-# A `py` entry calls the runtime's _k_Thread, _k_Mutex, _k_Atomic or _k_Queue
-# (D77, kira/py/runtime.py).
+# A `py` entry calls the runtime's class of the same name, _k_Thread, _k_Mutex, _k_Atomic or
+# _k_BlockingQueue (D77, kira/py/runtime.py).
 #
 # Every class here is a Kira class, so `{self}` is a kira::Rc<C> (design 5.1)
 # and the member is reached with `->`. Nothing is pure: every call reads or

@@ -2627,7 +2627,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("hits = _k_Atomic(0, _k_as_i32)"), py)
         assertTrue(py.contains("tally = _k_Mutex(_Tally())"), py)
-        assertTrue(py.contains("q = _k_Queue()"), py)
+        assertTrue(py.contains("q = _k_BlockingQueue()"), py)
         assertTrue(py.contains("t = _k_Thread(\"w\", _k_lam0(hits, q, list(row), tally))"), py)
         assertTrue(py.contains("        hits.add(1)\n        q.push(list(row))\n        tally.lock(_k_lam1)"), py)
         assertTrue(py.contains("def _k_lam1(s):\n    s.count = _k_i32(s.count + 1)"), py)
