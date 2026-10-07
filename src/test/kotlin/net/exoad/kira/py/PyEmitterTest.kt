@@ -2566,7 +2566,31 @@ class PyEmitterTest {
             "@_extern\nfx f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
             "@_extern\nfx f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
             "@_extern\nfx f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
+            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern\nfx f: (h: Holder) Void" to
+                "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
+            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern\nfx f: (g: Fx<Tuple0, Holder>) Void" to
+                "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value",
+            "struct In {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nstruct Out {\n    pub i: In = In { }\n}\n@_extern\nfx f: (o: Out) Void" to
+                "the parameter 'o' of the extern 'f': Out, whose field 'i' is In, whose field 's' is a Set<Int32>",
+            "struct C {\n    pub c: Char = 'x'\n}\n@_extern\nfx f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
+    }
+
+    @Test
+    fun aClassThatHoldsItselfCrossesOnceChecked() {
+        val e = besideSidecar(
+            """
+            pub class Node {
+                pub mut next: Maybe<Node> = null
+                pub mut items: List<Node> = List<Node> { }
+            }
+
+            @_extern
+            fx visit: (n: Node, f: Fx<Tuple0, Node>) Void
+            """,
+            "selfref",
+        )
+        assertTrue(e.text != null, e.errors.joinToString("\n"))
     }
 
     @Test
