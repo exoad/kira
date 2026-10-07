@@ -270,15 +270,17 @@ class ExternIntrinsicTest {
         }
     }
 
-    /** On py a method of an @_opaque class is the Python object's own and takes `raises =` (D70); elsewhere its class must be extern. */
+    /** A method of an @_opaque class takes `raises =` for py (D70), so under none too; elsewhere its class must be extern. */
     @Test
-    fun anOpaqueClassesMethodTakesTheMarkerOnPyOnly() {
+    fun anOpaqueClassesMethodTakesTheMarkerOnPyAndNone() {
         val body = "@_opaque\npub class Sock {\n    @_extern(raises = \"TimeoutError\") pub fx recv: (n: Int32) List<UInt8>;\n}"
         val previous = GeneratedProvider.outputMode
         try {
-            GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.PY
-            assertEquals(emptyList(), semantic(body))
-            for (mode in listOf(GeneratedProvider.OutputTarget.CPP, GeneratedProvider.OutputTarget.NONE)) {
+            for (mode in listOf(GeneratedProvider.OutputTarget.PY, GeneratedProvider.OutputTarget.NONE)) {
+                GeneratedProvider.outputMode = mode
+                assertEquals(emptyList(), semantic(body), mode.name)
+            }
+            for (mode in listOf(GeneratedProvider.OutputTarget.CPP, GeneratedProvider.OutputTarget.C)) {
                 GeneratedProvider.outputMode = mode
                 assertRefused(body, "@_extern on the method 'recv': its class or struct 'Sock' must be extern itself")
             }

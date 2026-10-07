@@ -122,9 +122,10 @@ object ExternIntrinsic : CompilerIntrinsic(
             )
         }
         val mode = GeneratedProvider.outputMode
-        // On py a method of an @_opaque class is the Python object's own (D70), and may take raises =.
-        val opaqueOnPy = mode == GeneratedProvider.OutputTarget.PY && scope is SemanticScope.Class && isMarked(context, scope.name, OpaqueIntrinsic.name)
-        if (target is FunctionDecl && scope is SemanticScope.Class && !isMarked(context, scope.name, this.name) && !opaqueOnPy) {
+        // A method of an @_opaque class takes the marker for py (D70), so under none too, as the language server runs.
+        val opaqueMethod = (mode == GeneratedProvider.OutputTarget.PY || mode == GeneratedProvider.OutputTarget.NONE) &&
+            scope is SemanticScope.Class && isMarked(context, scope.name, OpaqueIntrinsic.name)
+        if (target is FunctionDecl && scope is SemanticScope.Class && !isMarked(context, scope.name, this.name) && !opaqueMethod) {
             throw KiraRuntimeException(
                 "@_extern on the method '${nameOf(target)}': its class or struct '${scope.name}' must be extern itself " +
                     "(@_extern(cpp = \"ns::Name\", header = \"name.hxx\") on the declaration)"
