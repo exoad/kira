@@ -48,6 +48,18 @@ namespace kira::rt
       return impl_::argValues;
   }
 
+  // kira:os args (D71): the arguments runMain kept, args()[0] the program; empty outside runMain.
+  [[nodiscard]] inline List<Str> args()
+  {
+      List<Str> out;
+      out.reserve(impl_::argCount > 0 ? static_cast<Size>(impl_::argCount) : 0u);
+      for(int i = 0; i < impl_::argCount; ++i)
+      {
+          out.emplace_back(impl_::argValues[i] != nullptr ? impl_::argValues[i] : "");
+      }
+      return out;
+  }
+
   // fx main: () Void
   inline int runMain(int count, char** values, void (*body)())
   {
@@ -83,13 +95,7 @@ namespace kira::rt
       impl_::keep(count, values);
       try
       {
-          List<Str> args;
-          args.reserve(count > 0 ? static_cast<Size>(count) : 0u);
-          for(int i = 0; i < count; ++i)
-          {
-              args.emplace_back(values[i] != nullptr ? values[i] : "");
-          }
-          return static_cast<int>(body(args));
+          return static_cast<int>(body(args()));
       }
       catch(const Error& e)
       {

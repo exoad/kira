@@ -1,4 +1,4 @@
-# Magic binding manifest for kira:os (C++ backend; py: exit only).
+# Magic binding manifest for kira:os (C++ backend; py: args and exit).
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips
 # it (the C backend has no sockets). Keys are `Type.method` and the bare
@@ -20,7 +20,8 @@
 # (add, remove, wait); Serial (open, read, write, isOpen, handle, close);
 # readFile, readText, writeFileAtomic, listDir, exists, makeDirs, freeBytes;
 # Process (readStdout, kill, wait, isRunning, stdoutHandle), spawnProcess;
-# onSignal, env, exit.
+# onSignal, env, exit. args (D71) is kira::rt::args in kira/main.hxx, from the
+# argv runMain keeps.
 
 lastError: { cpp: { expr: "kira::os::lastError()", includes: ["kira/os.hxx"] } }
 
@@ -77,7 +78,8 @@ Process.isRunning:    { cpp: { expr: "{self}->isRunning()", includes: ["kira/os.
 Process.stdoutHandle: { cpp: { expr: "{self}->stdoutHandle()", includes: ["kira/os.hxx"] } }
 spawnProcess:         { cpp: { expr: "kira::os::spawnProcess({0})", includes: ["kira/os.hxx"] } }
 
-# --- signals, environment, exit --------------------------------------------
+# --- signals, environment, arguments, exit ---------------------------------
+args:     { cpp: { expr: "kira::rt::args()", includes: ["kira/main.hxx"] }, py: { expr: "list(_k_sys.argv)" } }
 onSignal: { cpp: { expr: "kira::os::onSignal({0}, {1})", includes: ["kira/os.hxx"] } }
 env:      { cpp: { expr: "kira::os::env({0})", includes: ["kira/os.hxx"] } }
 exit:     { cpp: { expr: "kira::os::exit({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_exit({0})" } }

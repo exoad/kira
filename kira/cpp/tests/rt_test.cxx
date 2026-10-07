@@ -1136,6 +1136,7 @@ namespace
       char* args[] = {program, second, nullptr};
       check(kira::rt::runMain(2, args, &mainWithArgs) == 12 && argsSeen == 2, "runMain hands main its args");
       check(kira::rt::argc() == 2 && std::strcmp(kira::rt::argv()[1], "two") == 0, "and keeps argc and argv for seams");
+      check(kira::rt::args().size() == 2 && kira::rt::args()[0] == "rt_test" && kira::rt::args()[1] == "two", "and kira:os args reads them back");
       check(kira::rt::runMain(1, args, &voidMain) == 0, "a Void main exits 0");
       std::fprintf(stderr, "rt_test: the next line is runMain reporting an uncaught error on purpose\n");
       check(kira::rt::runMain(1, args, &mainThatThrows) == 70, "an uncaught kira::Error exits 70");

@@ -455,9 +455,10 @@ class PyModuleEmitter(
         if (fn.params.isNotEmpty()) {
             return null
         }
+        val run = call("_k_main", pyName(fn)).text
         val call = when (fn.ret) {
-            KType.Void -> "${pyName(fn)}()"
-            KType.INT32 -> call("_k_exit", "${pyName(fn)}()").text
+            KType.Void -> run
+            KType.INT32 -> call("_k_exit", run).text
             else -> return null
         }
         return "if __name__ == \"__main__\":\n    $call"

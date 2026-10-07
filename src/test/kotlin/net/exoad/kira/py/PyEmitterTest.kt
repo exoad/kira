@@ -1390,7 +1390,7 @@ class PyEmitterTest {
         assertTrue(main.contains("        c = object.__new__(self.__class__)"), main)
         assertTrue(main.contains("_k_self()\n_k_m_app_other = _k_use("), main)
         assertTrue(main.contains("    g = _k_self.__globals__"), main)
-        assertTrue(main.contains("if __name__ == \"__main__\":\n    _k_exit(main())"), main)
+        assertTrue(main.contains("if __name__ == \"__main__\":\n    _k_exit(_k_main(main))"), main)
     }
 
     @Test
@@ -2446,5 +2446,27 @@ class PyEmitterTest {
             "@_extern\nfx f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
             "pub fx f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
+    }
+
+    @Test
+    fun kiraTimeAndArgsAreBoundAndMainRunsUnderKMain() {
+        val py = python(
+            """
+            use "kira:os"
+            use "kira:time"
+
+            fx main: () Void {
+                t: Int64 = monoNowNs() + monoNowMs() + wallNowNs()
+                sleepMs(5)
+                trace(args().size())
+            }
+            """
+        )
+        assertTrue(py.contains("_k_time.monotonic_ns() + (_k_time.monotonic_ns() // 1000000)"), py)
+        assertTrue(py.contains("_k_time.time_ns()"), py)
+        assertTrue(py.contains("    _k_sleep(5)\n"), py)
+        assertTrue(py.contains("print(len(list(_k_sys.argv)))"), py)
+        assertTrue(py.contains("def _k_main(main):"), py)
+        assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
     }
 }

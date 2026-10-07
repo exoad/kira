@@ -162,7 +162,7 @@ pub @_magic class Process {
 // files or ports.
 pub @_magic fx spawnProcess: (argv: List<Str>) Maybe<Process>;
 
-// --- signals, environment, exit --------------------------------------------
+// --- signals, environment, arguments, exit ---------------------------------
 
 // Signal numbers common to POSIX and the C runtime on Windows.
 pub SIGNAL_INT: Int32 = 2
@@ -181,6 +181,10 @@ pub SIGNAL_TERM: Int32 = 15
 pub @_magic fx onSignal: (sig: Int32, flag: Atomic<Bool>) Bool;
 
 pub @_magic fx env: (name: Str) Maybe<Str>;
+
+// The program's arguments, args()[0] the program itself, as main's
+// `args: List<Str>` holds them.
+pub @_magic fx args: () List<Str>;
 
 // Flushes stdio and ends the process with `code`.
 pub @_magic fx exit: (code: Int32) Never;

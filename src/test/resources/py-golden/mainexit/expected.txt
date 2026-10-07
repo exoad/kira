@@ -1,0 +1,30 @@
+mainexit x y z -> exit 0
+  3
+  1
+  x
+  y z
+  1
+  1
+  1
+  done
+mainexit throw absent.txt -> exit 70
+  3
+  1
+  throw
+  absent.txt
+  1
+  1
+  1
+  traceback: True | cause: True | direct cause: True
+  last: kira:errors.Error: OSError: [Errno 2] No such file or directory: 'absent.txt'
+mainexit exit -> exit 4
+  2
+  1
+  exit
+  1
+  1
+  1
+intmain  -> exit 3
+intmain stop -> exit 70
+  traceback: True | cause: False | direct cause: False
+  last: kira:errors.Error: asked to: stop

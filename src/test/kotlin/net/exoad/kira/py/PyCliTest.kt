@@ -50,7 +50,7 @@ class PyCliTest {
         val text = generated.readText()
         assertTrue(text.contains("from src/app/main.kira, module app:main."), text)
         assertTrue(text.contains("def _main():\n    print(\"py-cli\")"), text)
-        assertTrue(text.trimEnd().endsWith("if __name__ == \"__main__\":\n    _main()"), text)
+        assertTrue(text.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), text)
 
         val current = PyTestSupport.cli(dir, "--check")
         assertEquals(0, current.exitCode, current.all)

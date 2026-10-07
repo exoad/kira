@@ -1,14 +1,16 @@
-# Magic binding manifest for kira:time (C++ backend only).
+# Magic binding manifest for kira:time (C++ and py backends).
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips
-# it: the C backend has no clock (the module is hosted C++ only). The
+# it: the C backend has no clock (the module is hosted only). The
 # placeholders and flags are those of core.bind.yaml. None of these calls is
 # pure: a clock read changes between two calls, and sleepMs blocks.
 #
 # Runtime: kira/cpp/kira/time.hxx defines kira::time::{monoNowNs, monoNowMs,
-# wallNowNs, sleepMs}, all inline, on std::chrono's steady and system clocks.
+# wallNowNs, sleepMs}, all inline, on std::chrono's steady and system clocks;
+# py (D72) reads time.monotonic_ns, CLOCK_MONOTONIC as steady_clock is, and
+# time.time_ns.
 
-monoNowNs: { cpp: { expr: "kira::time::monoNowNs()", includes: ["kira/time.hxx"] } }
-monoNowMs: { cpp: { expr: "kira::time::monoNowMs()", includes: ["kira/time.hxx"] } }
-wallNowNs: { cpp: { expr: "kira::time::wallNowNs()", includes: ["kira/time.hxx"] } }
-sleepMs:   { cpp: { expr: "kira::time::sleepMs({0})", includes: ["kira/time.hxx"] } }
+monoNowNs: { cpp: { expr: "kira::time::monoNowNs()", includes: ["kira/time.hxx"] }, py: { expr: "_k_time.monotonic_ns()" } }
+monoNowMs: { cpp: { expr: "kira::time::monoNowMs()", includes: ["kira/time.hxx"] }, py: { expr: "(_k_time.monotonic_ns() // 1000000)" } }
+wallNowNs: { cpp: { expr: "kira::time::wallNowNs()", includes: ["kira/time.hxx"] }, py: { expr: "_k_time.time_ns()" } }
+sleepMs:   { cpp: { expr: "kira::time::sleepMs({0})", includes: ["kira/time.hxx"] }, py: { expr: "_k_sleep({0})" } }

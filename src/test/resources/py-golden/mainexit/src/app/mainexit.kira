@@ -1,0 +1,35 @@
+module "app:mainexit"
+
+// main as a program, which driver.py runs: kira:os args (D71), kira:time's clocks and sleep (D72),
+// and an uncaught throw, which exits 70 keeping Python's traceback and its cause (D73).
+
+use "kira:os"
+use "kira:time"
+
+@_extern(raises = "OSError")
+fx readText: (path: Str) Str
+
+fx main: () Void {
+    a: List<Str> = args()
+    trace(a.size())
+    trace(a[0].endsWith("mainexit.kira.py"))
+    mut i: Size = 1
+    while i < a.size() {
+        trace(a[i])
+        i += 1
+    }
+    t0: Int64 = monoNowNs()
+    m0: Int64 = monoNowMs()
+    sleepMs(30)
+    sleepMs(-1)
+    trace(monoNowNs() - t0 >= 30000000)
+    trace(monoNowMs() - m0 >= 29)
+    trace(wallNowNs() > 1700000000000000000)
+    if a.size() == 3 && a[1] == "throw" {
+        trace(readText(a[2]))
+    }
+    if a.size() == 2 && a[1] == "exit" {
+        exit(4)
+    }
+    trace("done")
+}

@@ -18,6 +18,8 @@ import re as _k_re
 import struct as _k_struct
 import sys as _k_sys
 import threading as _k_threading
+import time as _k_time
+import traceback as _k_traceback
 
 
 # x.kira.py is no name an import statement can give: a used module is loaded by its path, once
@@ -867,6 +869,23 @@ def _k_jstrict(text):
 
 def _k_jerror():
     return _k_builtins.getattr(_k_jstate, "error", "")
+
+
+# An uncaught throw at main (D73) ends the program with C++'s runMain status, 70; the traceback,
+# with the cause of a raises= throw, stays on stderr.
+def _k_main(main):
+    try:
+        return main()
+    except _k_Error:
+        _k_sys.stdout.flush()
+        _k_traceback.print_exc()
+        raise _k_builtins.SystemExit(70)
+
+
+# kira:time sleepMs (D72): at least ms milliseconds; zero or less returns at once.
+def _k_sleep(ms):
+    if ms > 0:
+        _k_time.sleep(ms / 1000)
 
 
 # The sidecar X_ext.py beside X.kira (D67), loaded once per process by its real path; an extern it
