@@ -124,7 +124,7 @@ pub fx run: () Void {
     box.items.add("later")
     trace(kept())
 
-    // What the sidecar returned and kept is Kira's own copy.
+    // A List the sidecar returned and still holds: Kira's copy is its own.
     s: List<Str> = sharedList()
     touchShared()
     trace(s.size())

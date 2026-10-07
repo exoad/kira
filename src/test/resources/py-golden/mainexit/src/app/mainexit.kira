@@ -22,7 +22,7 @@ fx main: () Void {
     m0: Int64 = monoNowMs()
     sleepMs(30)
     sleepMs(-1)
-    // Within what any platform's sleep and clock agree on.
+    // Well under the 30 ms slept, as timer resolution differs between platforms.
     trace(monoNowNs() - t0 >= 20000000)
     trace(monoNowMs() - m0 >= 20)
     trace(wallNowNs() > 1700000000000000000)

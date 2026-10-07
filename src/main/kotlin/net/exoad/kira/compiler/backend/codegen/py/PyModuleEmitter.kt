@@ -125,10 +125,10 @@ class PyModuleEmitter(
     /** The call being written as a whole statement. */
     private var statementCall: FunctionCallExpr? = null
 
-    /** The module's @_extern functions, each with its arity, which the sidecar must define (D67). */
+    /** The functions the sidecar must define, with their arities, checked at import (D67). */
     private val sidecarNames = mutableListOf<Pair<String, Int>>()
 
-    /** Each `raises =` (D69), as the wrapper's name for messages and its names; the i-th is `_k_r<i>`. */
+    /** The module's `raises =` lists (D69), each resolved once, at import, and named for its wrapper in a panic. */
     private val raised = mutableListOf<Pair<String, List<String>>>()
 
     private val sidecarStem: String get() = Path.of(module.source.file).fileName.toString().removeSuffix(".kira") + "_ext"
@@ -488,7 +488,7 @@ class PyModuleEmitter(
 
     // ---- the sidecar (D67-D70) -------------------------------------------------------------------
 
-    /** An @_extern function (D67): under its own Python name, a checked wrapper of the sidecar's function of its Kira name. */
+    /** An @_extern function (D67) keeps the Kira function's Python name, so a Python caller of the module gets the checked call too. */
     private fun externFunction(fn: FnSymbol): List<String> {
         val at: ASTNode = fn.decl ?: module.source.ast
         checkName(fn.name, at)
@@ -544,7 +544,7 @@ class PyModuleEmitter(
         crossing(fn.ret, true)?.let { refuse(at, "the result of $what: $it") }
     }
 
-    /** The exceptions [fn]'s `raises =` lists (D69); a catch-all, or a name that is no Exception, is refused. */
+    /** `raises =`'s names (D69): a catch-all or a BaseException-only spelling is refused here, any other bad name at import. */
     private fun raisesOf(fn: FnSymbol, at: ASTNode): List<String> {
         val text = (fn.foreign as? Foreign.Extern)?.params?.get(ExternIntrinsic.RAISES) ?: return emptyList()
         val names = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -555,10 +555,7 @@ class PyModuleEmitter(
         return names
     }
 
-    /**
-     * [head] and the body of a checked call of [callee] (D68, D69): a view lent for the call, a
-     * value copied out, a listed exception thrown as Kira's, and the result checked outside the try.
-     */
+    /** The call of [callee] (D68, D69); its result is checked outside the try, so a wrong value is a panic, never a throw. */
     private fun boundary(head: String, callee: String, fn: FnSymbol, where: String, at: ASTNode): List<String> {
         val lends = mutableListOf<String>()
         val args = fn.params.mapIndexed { i, p ->
@@ -1991,7 +1988,7 @@ class PyModuleEmitter(
     companion object {
         const val UNSUPPORTED_CODE = "py.unsupported"
 
-        /** A module with externs whose sidecar is missing (D67). */
+        /** A missing sidecar that a module's externs or `raises =` need (D67). */
         const val EXTERN_CODE = "py.extern"
 
         /** What `raises =` may not list (D69), and why. */

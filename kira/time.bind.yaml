@@ -7,9 +7,8 @@
 #
 # Runtime: kira/cpp/kira/time.hxx defines kira::time::{monoNowNs, monoNowMs,
 # wallNowNs, sleepMs}, all inline, on std::chrono's steady and system clocks;
-# py (D72) reads time.perf_counter_ns, monotonic at the platform's finest
-# (CLOCK_MONOTONIC on Linux as steady_clock, QueryPerformanceCounter on
-# Windows, where time.monotonic ticks every 15.6 ms), and time.time_ns.
+# py (D72): time.perf_counter_ns, steady and fine everywhere (time.monotonic
+# ticks 15.6 ms on Windows), and time.time_ns.
 
 monoNowNs: { cpp: { expr: "kira::time::monoNowNs()", includes: ["kira/time.hxx"] }, py: { expr: "_k_time.perf_counter_ns()" } }
 monoNowMs: { cpp: { expr: "kira::time::monoNowMs()", includes: ["kira/time.hxx"] }, py: { expr: "(_k_time.perf_counter_ns() // 1000000)" } }

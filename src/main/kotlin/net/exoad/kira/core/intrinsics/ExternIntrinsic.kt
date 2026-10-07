@@ -23,9 +23,8 @@ import net.exoad.kira.source.SourceContext
  * - one positional, the symbol for the current target (`@_extern("fopen")`);
  * - `c =`, the C symbol, and `cpp =`, the C++ name (`bibo::Car`, `ImGui::Button`);
  * - `header =`, the C++ header the name is declared in, which the C++ backend includes;
- * - `raises =`, py only (D69): the Python exceptions, separated by spaces, that the call throws
- *   as a Kira throw. On py an extern binds the sidecar function of its own name (D67), so the
- *   positional, `cpp =`, `c =` and `header =` are refused there.
+ * - `raises =` (D69): the Python exceptions, space-separated, a py extern's call throws as a Kira
+ *   throw; py binds an extern by its Kira name (D67) and refuses the four C and C++ names.
  *
  * Targets: a function (its body, if any, is ignored: the C backend emits a prototype and
  * calls the symbol unmangled), a class or a struct (the C++ backend emits drift checks
