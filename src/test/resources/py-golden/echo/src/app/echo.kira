@@ -1,8 +1,7 @@
 module "app:echo"
 
-// A threaded socketserver whose handler is a Kira Fx (decision 4's adapter, D75): every line a
-// client sends comes back upper-cased from the handler thread Python starts for its connection,
-// the lines counted in an Atomic. A line "boom" throws, which ends the process (D76).
+// A threaded socketserver whose handler is a Kira Fx (decision 4's adapter, D75), on the thread
+// Python starts per connection; a line "boom" throws there, which ends the process (D76).
 
 use "kira:os"
 use "kira:sync"

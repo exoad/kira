@@ -1,8 +1,7 @@
 module "app:threads"
 
-// kira:sync (D77), which driver.py runs once per case: threads joined by hand, a Mutex owning a
-// struct and a List, Atomics, a BlockingQueue between two threads, and what a thread's body
-// ending in a panic, a throw or an exit does to the process.
+// kira:sync (D77) per driver.py case: threads joined by hand, Mutexes, Atomics, a BlockingQueue,
+// and the process a thread's body ends with a panic, a throw or an exit.
 
 use "kira:os"
 use "kira:sync"
