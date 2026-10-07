@@ -931,8 +931,12 @@ def _k_thrown(e, classes, names):
             raise _k_Error(n + ": " + text if text else n) from e
 
 
+# A value a panic names, its repr cut to 40 characters; a repr that raises must not hide the panic.
 def _k_shown(v):
-    r = _k_builtins.repr(v)
+    try:
+        r = _k_builtins.repr(v)
+    except _k_builtins.Exception:
+        r = "an object whose repr raises"
     return (r if len(r) <= 40 else r[:37] + "...") + " (" + _k_builtins.type(v).__name__ + ")"
 
 
@@ -960,15 +964,20 @@ def _k_out(v):
 # a value, so a list, dict or bytes the sidecar keeps is never Kira's; an int is a Float64 if exact.
 def _k_check(v, spec, where, declared):
     k = spec[0]
-    c = v.__class__
+    c = _k_builtins.type(v)
     if k == "I":
         if c is int and spec[1] <= v <= spec[2]:
             return v
     elif k == "F":
         if c is float:
             return v
-        if c is int and -0x20000000000000 <= v <= 0x20000000000000:
-            return float(v)
+        if c is int:
+            try:
+                f = float(v)
+            except OverflowError:
+                f = None
+            if f == v:
+                return f
     elif k == "B":
         if c is bool:
             return v
@@ -1004,21 +1013,47 @@ def _k_check(v, spec, where, declared):
     _k_panic("%s gave %s where %s was declared" % (where, _k_shown(v), declared))
 
 
-# A Json from Python: only what json.loads makes, every int in Int64, no container 513 deep.
+# A Json from Python: what json.loads makes, no container 513 deep nor inside itself. Depth first, as
+# _k_jfault walks, each container once however often it is shared, its height kept for the next.
 def _k_jcheck(v):
-    level, depth = [v], 0
-    while level:
-        nxt = []
-        for x in level:
-            t = x.__class__
-            if t is dict or t is list:
-                if depth == 512 or t is dict and not _k_builtins.all([k.__class__ is str for k in x]):
-                    return False
-                nxt.extend(x.values() if t is dict else x)
-            elif not (t is str or t is float or t is bool or x is None or t is int and -0x8000000000000000 <= x <= 0x7FFFFFFFFFFFFFFF):
+    t = _k_builtins.type(v)
+    if not _k_jone(v):
+        return False
+    if t is not dict and t is not list:
+        return True
+    height = {}
+    path = [[v, _k_builtins.iter(v.values() if t is dict else v), 0]]
+    on = {_k_builtins.id(v)}
+    while path:
+        top = path[-1]
+        for x in top[1]:
+            c = _k_builtins.type(x)
+            if c is dict or c is list:
+                h = height.get(_k_builtins.id(x))
+                if h is None:
+                    if _k_builtins.id(x) in on or len(path) == 512 or not _k_jone(x):
+                        return False
+                    path.append([x, _k_builtins.iter(x.values() if c is dict else x), 0])
+                    on.add(_k_builtins.id(x))
+                    break
+                top[2] = max(top[2], h)
+            elif not _k_jone(x):
                 return False
-        level, depth = nxt, depth + 1
-    return True
+        else:
+            path.pop()
+            on.discard(_k_builtins.id(top[0]))
+            height[_k_builtins.id(top[0])] = top[2] + 1
+            if path:
+                path[-1][2] = max(path[-1][2], top[2] + 1)
+    return height[_k_builtins.id(v)] <= 512
+
+
+# One Json node: a scalar json.loads makes, an int within Int64, a list, or a dict whose keys are str.
+def _k_jone(x):
+    c = _k_builtins.type(x)
+    if c is dict:
+        return _k_builtins.all([_k_builtins.type(k) is str for k in x])
+    return c is list or c is str or c is float or c is bool or x is None or c is int and -0x8000000000000000 <= x <= 0x7FFFFFFFFFFFFFFF
 
 
 # A View<UInt8> or MutView<UInt8> lent to Python for the call only (D68): released after it, so a

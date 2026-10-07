@@ -16,7 +16,8 @@ m.run()
 def attempt(f, k):
     try:
         v = f(k)
-        print(f.__name__, k, "->", type(v).__name__, repr(v) if len(repr(v)) < 60 else "%d deep" % depth(v))
+        shown = "%d deep" % depth(v) if k == "dag" or len(repr(v)) >= 60 else repr(v)
+        print(f.__name__, k, "->", type(v).__name__, shown)
     except RuntimeError as e:
         print(f.__name__, k, "-> panic:", e)
 
@@ -29,19 +30,19 @@ def depth(v):
 
 
 for f, keys in (
-    (m.giveInt32, ("int", "none", "true", "2^31", "1.5", "str")),
+    (m.giveInt32, ("int", "none", "true", "2^31", "1.5", "str", "posing int")),
     (m.giveUInt8, ("255", "-1")),
     (m.giveSize, ("2^64-1", "-1")),
-    (m.giveFloat, ("1.5", "int", "2^53", "2^53+1", "true", "none")),
+    (m.giveFloat, ("1.5", "int", "2^53", "2^53+1", "2^60", "2^60+1", "10^400", "true", "none")),
     (m.giveBool, ("true", "int")),
-    (m.giveStr, ("str", "bytes", "none")),
+    (m.giveStr, ("str", "bytes", "none", "posing str", "unprintable")),
     (m.giveMaybe, ("none", "int", "str")),
     (m.giveList, ("list", "tuple", "holey")),
     (m.giveBytes, ("bytes", "bytearray", "ints")),
     (m.giveMap, ("map", "intkey")),
     (m.giveTuple, ("pair", "tuple", "pairlist")),
     (m.giveLevel, ("int", "3")),
-    (m.giveJson, ("json", "none", "set", "2^64", "intkeyjson", "512 deep", "513 deep")),
+    (m.giveJson, ("json", "none", "set", "2^64", "intkeyjson", "512 deep", "513 deep", "dag", "loop")),
     (m.giveVoid, ("none", "int")),
 ):
     for k in keys:

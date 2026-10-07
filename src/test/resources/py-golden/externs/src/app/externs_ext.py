@@ -71,6 +71,44 @@ def annotate(j, key):
     j[key] = "written"
 
 
+class Posing:
+    # What a test's Mock(spec=str) or a transparent proxy does: it reports another class.
+    def __init__(self, cls):
+        self.cls = cls
+
+    @property
+    def __class__(self):
+        return self.cls
+
+    def __le__(self, o):
+        return True
+
+    def __ge__(self, o):
+        return True
+
+    def __repr__(self):
+        return "Posing()"
+
+
+class Unprintable:
+    def __repr__(self):
+        raise ValueError("no repr")
+
+
+def dag(levels):
+    v = []
+    for _ in range(levels):
+        v = [v, v]
+    return v
+
+
+def loop():
+    v = []
+    v.append(v)
+    v.append(v)
+    return v
+
+
 def nested(n):
     v = []
     for _ in range(n - 1):
@@ -85,6 +123,8 @@ GIVE = {
     "ints": [1, 2], "map": {"a": 1}, "intkey": {1: 1}, "pair": ("a", 1), "pairlist": ["a", 1],
     "3": 3, "json": {"a": [1, 2.5, None, True, "s"]}, "set": {1}, "2^64": [2 ** 64],
     "512 deep": nested(512), "513 deep": nested(513), "intkeyjson": {1: "a"},
+    "posing str": Posing(str), "posing int": Posing(int), "unprintable": Unprintable(),
+    "2^60": 2 ** 60, "2^60+1": 2 ** 60 + 1, "10^400": 10 ** 400, "dag": dag(40), "loop": loop(),
 }
 
 
