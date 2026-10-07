@@ -69,14 +69,16 @@ internal class TypeFacts(private val builtins: Builtins) {
 
     /**
      * A value whose copies share one object: a class or trait reference, a `Ref<T>` (D46), a
-     * `Weak<T>`, an `Unsafe<T>`. Writing through one does not write a copy. A type parameter
+     * `Weak<T>`, an `Unsafe<T>`, a stdlib module's class (kira:sync's Atomic, an `Rc` as the
+     * rule passes hold it). Writing through one does not write a copy. A type parameter
      * is one when a bound of it is a class: only that class and its subclasses satisfy the
      * bound, and every one is an `Rc`. A trait bound is not enough (a struct may implement
      * the trait, and a struct is copied).
      */
     fun isReference(t: KType): Boolean = when (t) {
         is KType.Param -> boundNominals(t).any { isClass(it) }
-        else -> isClass(t) || isTrait(t) || isMagic(t, "Ref") || isMagic(t, "Weak") || isMagic(t, "Unsafe")
+        else -> isClass(t) || isTrait(t) || isMagic(t, "Ref") || isMagic(t, "Weak") || isMagic(t, "Unsafe") ||
+            ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.MAGIC && it.name !in Builtins.NOMINAL_PARAMS } == true
     }
 
     /**

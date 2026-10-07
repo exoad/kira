@@ -168,6 +168,16 @@ class TyperBodyNegativeTest {
     }
 
     @Test
+    fun aMutFxOnACapturedSyncObjectWritesTheOneObject() {
+        // sync.kira: a body captures the Atomic and the BlockingQueue it shares by reference.
+        val p = snippet(
+            "use \"kira:sync\"\npub fx lam: () Fx<Tuple0, Void> {\n    hits: Atomic<Int64> = Atomic<Int64> { value = 0 }\n" +
+                "    q: BlockingQueue<Int32> = BlockingQueue<Int32> { }\n    return fx() Void {\n        hits.add(1)\n        q.push(1)\n        q.close()\n    }\n}",
+        )
+        TyperTestSupport.expectNoErrors(p)
+    }
+
+    @Test
     fun aConstructionRunsTheDefaultsItLeavesOut() {
         // `W{}` in C++ runs the default member initializer `n = seed()`: g++ refuses
         // `inline constexpr W K = W{};` with 'call to non-constexpr function seed()'.
