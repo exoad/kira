@@ -36,6 +36,7 @@ import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBindingTable
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
+import net.exoad.kira.compiler.backend.codegen.cpp.CppTypeSpeller
 import net.exoad.kira.compiler.backend.codegen.cpp.CppUsage
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
@@ -1439,20 +1440,34 @@ class PyModuleEmitter(
         return name
     }
 
-    /** A Tuple is a Python tuple, its values copies in field order, which must be the written order unless each is PURE (D33). */
+    /** A Tuple is a Python tuple, its values copies in field order. */
     private fun tuple(o: ObjectInitExpr, init: ResolvedInit, f: Frame): Py {
-        val given = init.fields.map { it as? FieldInit.Given ?: return refusePy(o, "a Tuple without its ${it.field.name}") }
-        if (init.sourceOrder != init.sourceOrder.sorted() && given.any { model.effect(it.expr) != Effect.PURE }) {
-            return refusePy(o, "a Tuple whose values, written out of their order, have effects")
-        }
-        val items = given.map { wrap(asValue(it.expr, f, Use.STORE), PyPrec.TERNARY) }
+        val items = inFieldOrder(o, init, f, "a Tuple") ?: return Py("None", PyPrec.ATOM)
         return Py("(${items.joinToString(", ")}${if (items.size == 1) "," else ""})", PyPrec.ATOM)
+    }
+
+    /** Every field's value, copied, in field order, which must be the written order unless each is PURE (D33); null when refused. */
+    private fun inFieldOrder(o: ObjectInitExpr, init: ResolvedInit, f: Frame, what: String): List<String>? {
+        init.fields.firstOrNull { it !is FieldInit.Given }?.let {
+            refuse(o, "$what without its ${it.field.name}")
+            return null
+        }
+        val given = init.fields.filterIsInstance<FieldInit.Given>()
+        if (init.sourceOrder != init.sourceOrder.sorted() && given.any { model.effect(it.expr) != Effect.PURE }) {
+            refuse(o, "$what whose values, written out of their order, have effects")
+            return null
+        }
+        return given.map { wrap(asValue(it.expr, f, Use.STORE), PyPrec.TERNARY) }
     }
 
     private fun construction(o: ObjectInitExpr, f: Frame): Py {
         val init = model.init(o) ?: return refusePy(o, "a construction the typer did not resolve")
         val cls = init.cls ?: return refusePy(o, "this construction")
         if (cls.kind == ClassKind.MAGIC) {
+            // Built as C++'s make_shared builds it, from every field in declaration order (D80).
+            runtimeClass(cls)?.let { name ->
+                return inFieldOrder(o, init, f, article(cls.name))?.let { call(name, *it.toTypedArray()) } ?: Py("None", PyPrec.ATOM)
+            }
             val t = typeOf(o) ?: return Py("None", PyPrec.ATOM)
             if (isTuple(t)) {
                 return tuple(o, init, f)
@@ -1766,6 +1781,10 @@ class PyModuleEmitter(
 
     private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && isUserClass(it) } == true
 
+    /** A hosted system module's magic class as the runtime's `_k_<Name>` (D80), as C++ has kira::<m>::<Name>; null where the runtime has none. */
+    private fun runtimeClass(s: ClassSymbol): String? =
+        "_k_${s.name}".takeIf { s.kind == ClassKind.MAGIC && CppTypeSpeller.systemHeaderFor(s.module.uri) != null && it in runtime.names }
+
     /** A handle of an @_opaque class (D70): the Python object a sidecar made, never copied. */
     private fun isOpaque(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let {
         it.kind == ClassKind.OPAQUE && it.foreign == null && !it.module.isStdlib && it.typeParams.isEmpty()
@@ -1814,6 +1833,7 @@ class PyModuleEmitter(
                 s.kind == ClassKind.MAGIC && isTuple(t) -> t.typeArgs().firstNotNullOfOrNull { a ->
                     unsupportedType(a) ?: if (isView(a)) "${article(t.display())} (a view lives only as long as the call it is lent to)" else null
                 }
+                runtimeClass(s) != null -> t.typeArgs().firstNotNullOfOrNull { unsupportedType(it) }
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
                 isUserClass(s) || isOpaque(t) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"

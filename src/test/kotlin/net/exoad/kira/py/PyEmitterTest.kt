@@ -2495,4 +2495,45 @@ class PyEmitterTest {
         assertTrue(py.contains("def _k_main(main):"), py)
         assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
     }
+
+    // ---- kira:test (D80) -------------------------------------------------------------------------
+
+    @Test
+    fun aSuiteIsTheRuntimesClassBuiltFromItsTitleAndItsMethodsBind() {
+        val py = python(
+            """
+            use "kira:test"
+
+            class Runner {
+                require pub t: Suite
+            }
+
+            fx both: (t: Suite, n: Int32) Void {
+                t.check(n > 1, "above one")
+                t.checkStr("${'$'}{n}", "3", "reads as 3")
+            }
+
+            pub fx main: () Int32 {
+                name: Str = "suite"
+                t: Suite = Suite { title = name + "!" }
+                r: Runner = Runner { t }
+                both(r.t, 3)
+                kept: List<Suite> = [t, Suite { "other" }]
+                return kept[0].finish()
+            }
+            """
+        )
+        assertTrue(py.contains("\nclass _k_Suite:\n"), py)
+        assertTrue(py.contains("    t.check(n > 1, \"above one\")\n    t.checkStr(str(n), \"3\", \"reads as 3\")\n"), py)
+        assertTrue(py.contains("    t = _k_Suite(name + \"!\")\n    r = _Runner(t)\n    _both(r.t, 3)\n"), py)
+        assertTrue(py.contains("    kept = [t, _k_Suite(\"other\")]\n    return kept[0].finish()\n"), py)
+        assertTrue(py.contains("        self.t = t\n"), "a Suite is one object, never copied:\n$py")
+        assertTrue(py.trimEnd().endsWith("_k_exit(_k_main(main))"), py)
+    }
+
+    @Test
+    fun aSystemClassTheRuntimeLacksIsStillRefused() {
+        refused("use \"kira:os\"\n\nfx f: (u: UdpSocket) Void {\n}", "the parameter 'u': the type UdpSocket")
+        refused("use \"kira:sync\"\n\nfx f: (m: Mutex<Int32>) Void {\n}", "the parameter 'm': the type Mutex")
+    }
 }

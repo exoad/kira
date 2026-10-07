@@ -1,0 +1,26 @@
+
+suite - kira:test on py
+
+  ok    half of 6 is 3
+  ok    and reads as 3
+  ok    half of -7 is -3
+  ok    and reads as -3
+
+4 checks, 0 failed
+
+-> exit 0
+
+suite - kira:test on py
+
+  ok    half of 6 is 3
+  ok    and reads as 3
+  ok    half of -7 is -3
+  ok    and reads as -3
+  FAIL  half of 9 is 5
+  FAIL  and reads as 5
+        got  "4"
+        want "5"
+
+6 checks, 2 failed
+
+-> exit 1
