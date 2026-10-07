@@ -1,0 +1,55 @@
+module "app:echo"
+
+// A threaded socketserver whose handler is a Kira Fx (decision 4's adapter, D75): every line a
+// client sends comes back upper-cased from the handler thread Python starts for its connection,
+// the lines counted in an Atomic. A line "boom" throws, which ends the process (D76).
+
+use "kira:os"
+use "kira:sync"
+
+@_extern
+fx serveLines: (reply: Fx<Tuple1<Str>, Str>) Int32
+
+@_extern
+fx talk: (port: Int32, lines: List<Str>) List<Str>
+
+@_extern
+fx stopServing: () Void
+
+pub fx main: () Void {
+    a: List<Str> = args()
+    served: Atomic<Int32> = Atomic<Int32> { value = 0 }
+    port: Int32 = serveLines(fx(line: Str) Str {
+        if line == "boom" {
+            throw "a handler threw on ${line}"
+        }
+        served.add(1)
+        return line.toUpper()
+    })
+    if a.size() > 1 {
+        line: Str = a[1]
+        println("talking")
+        println(talk(port, [line]).joinToString(" "))
+    }
+    replies: Mutex<List<Str>> = Mutex<List<Str>> { value = List<Str> { } }
+    mut clients: List<Thread> = List<Thread> { }
+    for c: Int32 in 0..3 {
+        clients.add(spawn("client ${c}", fx() Void {
+            got: List<Str> = talk(port, ["c${c} one", "c${c} two"])
+            replies.lock(fx(mut all: List<Str>) Void {
+                all.add(got.joinToString(" | "))
+            })
+        }))
+    }
+    for t: Thread in clients {
+        t.join()
+    }
+    stopServing()
+    replies.lock(fx(mut all: List<Str>) Void {
+        all.sort()
+        for r: Str in all {
+            println(r)
+        }
+    })
+    println("served ${served.load()} lines")
+}
