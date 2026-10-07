@@ -1,0 +1,20 @@
+all -> exit 0
+  counted 2000 and 2000, from w0 w1 w2 w3
+  popped 3, total 30, closed true, then true
+  a push after close is dropped: 0
+  a pushed List is a copy: 1, none waiting: true
+  waitUntil true false true
+  Int32 add wraps: -2147483648
+  UInt8 4 swap 4 now 3
+  compareSwap true false true
+  Float64 3.75 false
+  stopRequested false true, spun true
+  all done
+throw -> exit 70
+  stderr: kira:errors.Error: thrown on a Kira thread
+panic -> exit abort
+  stderr: RuntimeError: kira: integer division by zero
+exit -> exit 9
+  unflushed
+joinself -> exit abort
+  stderr: RuntimeError: kira: Thread.join from its own body: a thread cannot wait for itself

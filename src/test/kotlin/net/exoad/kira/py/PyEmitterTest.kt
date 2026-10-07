@@ -2595,4 +2595,50 @@ class PyEmitterTest {
         assertTrue(py.contains("def _k_main(main):"), py)
         assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
     }
+
+    // ---- kira:sync (D77) ---------------------------------------------------------------------------
+
+    @Test
+    fun kiraSyncIsTheRuntimesThreadMutexAtomicAndQueue() {
+        val py = python(
+            """
+            use "kira:sync"
+
+            struct Tally {
+                pub count: Int32 = 0
+            }
+
+            fx f: () Int64 {
+                hits: Atomic<Int32> = Atomic<Int32> { value = 0 }
+                tally: Mutex<Tally> = Mutex<Tally> { value = Tally { } }
+                q: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
+                mut row: List<Int32> = [1]
+                t: Thread = spawn("w", fx() Void {
+                    hits.add(1)
+                    q.push(row)
+                    tally.lock(fx(mut s: Tally) Void {
+                        s.count += 1
+                    })
+                })
+                t.join()
+                return q.size() as Int64 + hits.load() as Int64
+            }
+            """
+        )
+        assertTrue(py.contains("hits = _k_Atomic(0, _k_as_i32)"), py)
+        assertTrue(py.contains("tally = _k_Mutex(_Tally())"), py)
+        assertTrue(py.contains("q = _k_Queue()"), py)
+        assertTrue(py.contains("t = _k_Thread(\"w\", _k_lam0(hits, q, list(row), tally))"), py)
+        assertTrue(py.contains("        hits.add(1)\n        q.push(list(row))\n        tally.lock(_k_lam1)"), py)
+        assertTrue(py.contains("def _k_lam1(s):\n    s.count = _k_i32(s.count + 1)"), py)
+        assertTrue(py.contains("    t.join()\n"), py)
+        assertTrue(py.contains("class _k_Thread:") && py.contains("def _k_callback(f, args, owner):"), py)
+    }
+
+    @Test
+    fun kiraSyncRefusesWhatPythonCannotHoldAsCDoes() {
+        refused("use \"kira:sync\"\nfx f: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map or a struct)")
+        refused("use \"kira:sync\"\nfx f: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
+        refused("use \"kira:sync\"\nfx f: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    return a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
+    }
 }

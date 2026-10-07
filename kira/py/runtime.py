@@ -1084,3 +1084,124 @@ class _k_Ref:
 
     def __init__(self, value):
         self.value = value
+
+
+# kira:sync (D77). A Thread is a daemon thread started at once, its body a callback Python runs
+# (D76); dropping the handle never joins it, so a program joins what must finish.
+class _k_Thread:
+    __slots__ = ("t", "stop")
+
+    def __init__(self, name, body):
+        self.stop = False
+        self.t = _k_threading.Thread(target=_k_callback, args=(body, (), None), name=name, daemon=True)
+        self.t.start()
+
+    def stopRequested(self):
+        return self.stop
+
+    def requestStop(self):
+        self.stop = True
+
+    def join(self):
+        if self.t is _k_threading.current_thread():
+            _k_panic("Thread.join from its own body: a thread cannot wait for itself")
+        self.t.join()
+
+
+# A wait as kira::sync's: negative without limit, zero a check, else in waits of at most an hour,
+# as Condition.wait refuses one past threading.TIMEOUT_MAX.
+def _k_waitfor(cv, pred, ms):
+    if ms < 0:
+        return cv.wait_for(pred)
+    end = _k_time.monotonic() + ms / 1000
+    while not pred():
+        left = end - _k_time.monotonic()
+        if left <= 0:
+            return pred()
+        cv.wait(min(left, 3600.0))
+    return True
+
+
+# The body gets the value itself, a list, dict or struct it writes in place, under the lock.
+class _k_Mutex:
+    __slots__ = ("value", "cv")
+
+    def __init__(self, value):
+        self.value = value
+        self.cv = _k_threading.Condition(_k_threading.Lock())
+
+    def lock(self, body):
+        with self.cv:
+            body(self.value)
+            self.cv.notify_all()
+
+    def waitUntil(self, pred, ms):
+        with self.cv:
+            return _k_waitfor(self.cv, lambda: pred(self.value), ms)
+
+
+# Every write under one lock, reentrant so an onSignal handler can store while its thread holds it;
+# an integer add wraps as C++'s fetch_add does.
+class _k_Atomic:
+    __slots__ = ("v", "wrap", "lk")
+
+    def __init__(self, value, wrap):
+        self.v = value
+        self.wrap = wrap
+        self.lk = _k_threading.RLock()
+
+    def load(self):
+        return self.v
+
+    def store(self, value):
+        with self.lk:
+            self.v = value
+
+    def add(self, delta):
+        with self.lk:
+            self.v = self.v + delta if self.wrap is None else self.wrap(self.v + delta)
+            return self.v
+
+    def swap(self, value):
+        with self.lk:
+            old = self.v
+            self.v = value
+            return old
+
+    def compareSwap(self, expected, desired):
+        with self.lk:
+            if self.v != expected:
+                return False
+            self.v = desired
+            return True
+
+
+class _k_Queue:
+    __slots__ = ("q", "cv", "closed")
+
+    def __init__(self):
+        self.q = _k_collections.deque()
+        self.cv = _k_threading.Condition(_k_threading.Lock())
+        self.closed = False
+
+    def push(self, value):
+        with self.cv:
+            if not self.closed:
+                self.q.append(value)
+                self.cv.notify()
+
+    def pop(self, ms):
+        with self.cv:
+            _k_waitfor(self.cv, lambda: self.closed or len(self.q) > 0, ms)
+            return self.q.popleft() if self.q else None
+
+    def close(self):
+        with self.cv:
+            self.closed = True
+            self.cv.notify_all()
+
+    def isClosed(self):
+        return self.closed
+
+    def size(self):
+        return len(self.q)

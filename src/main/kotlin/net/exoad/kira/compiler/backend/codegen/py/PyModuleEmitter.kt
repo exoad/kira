@@ -1491,6 +1491,9 @@ class PyModuleEmitter(
             return call("_k_enumof", "${ref(e, c) ?: "None"}._k_order", wrap(expr(raw, f), PyPrec.TERNARY))
         }
         val receiver = rc.receiver
+        if (fn.name == "add" && syncClass(receiver?.let { model.typeOrNull(it) }) == "Atomic" && (model.typeOrNull(receiver!!) as KType.Nominal).typeArgs().first().prim == Prim.BOOL) {
+            return refusePy(c, "Atomic<Bool>.add (C++'s Atomic has none)")
+        }
         val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
         val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
             ?: return refusePy(c, "'${keys.firstOrNull() ?: fn.name}' (it has no py binding)")
@@ -1591,6 +1594,7 @@ class PyModuleEmitter(
                 val v = init.fields.filterIsInstance<FieldInit.Given>().singleOrNull()?.expr
                 return call("_k_Ref", v?.let { asValue(it, f, Use.STORE).text } ?: zeroValue((t as KType.Nominal).typeArgs()[0], o))
             }
+            syncClass(t)?.let { return syncConstruction(o, init, it, t as KType.Nominal, f) }
             if (!isValue(t)) {
                 return refusePy(o, "a construction of ${t.display()}")
             }
@@ -1632,6 +1636,21 @@ class PyModuleEmitter(
             }
         }
         return Py("$clsName(${parts.joinToString(", ")})", PyPrec.POSTFIX)
+    }
+
+    /** `Thread { name, body }` starts it (D77); an Atomic's integer add wraps as C++'s does. */
+    private fun syncConstruction(o: ObjectInitExpr, init: ResolvedInit, name: String, t: KType.Nominal, f: Frame): Py {
+        val given = init.fields.map { it as? FieldInit.Given ?: return refusePy(o, "${article(t.display())} without its ${it.field.name}") }
+        if (init.sourceOrder != init.sourceOrder.sorted() && given.any { model.effect(it.expr) != Effect.PURE }) {
+            return refusePy(o, "${article(t.display())} whose values, written out of their order, have effects")
+        }
+        val values = given.map { wrap(asValue(it.expr, f, Use.STORE), PyPrec.TERNARY) }
+        return when (name) {
+            "Thread" -> call("_k_Thread", *values.toTypedArray())
+            "Mutex" -> call("_k_Mutex", *values.toTypedArray())
+            "Atomic" -> call("_k_Atomic", values.first(), t.typeArgs().first().prim?.takeIf { it.isInteger }?.let { helper(AS_HELPERS.getValue(it)) } ?: "None")
+            else -> call("_k_Queue")
+        }
     }
 
     private fun index(e: ArrayIndexExpr, f: Frame): Py {
@@ -1949,6 +1968,7 @@ class PyModuleEmitter(
                     null -> "a Ref without its type"
                     else -> unsupportedType(a) ?: if (isView(a)) article(t.display()) else null
                 }
+                syncClass(t) != null -> syncRefusal(t)
                 s.kind == ClassKind.MAGIC && isTuple(t) -> t.typeArgs().firstNotNullOfOrNull { a ->
                     unsupportedType(a) ?: if (isView(a)) "${article(t.display())} (a view lives only as long as the call it is lent to)" else null
                 }
@@ -2001,6 +2021,30 @@ class PyModuleEmitter(
     }
 
     private fun isTuple(t: KType?): Boolean = magicName(t)?.let { TUPLE.matches(it) } == true
+
+    /** Thread, Mutex, Atomic or BlockingQueue of kira:sync (D77), each one runtime object shared by reference. */
+    private fun syncClass(t: KType?): String? = magicName(t)?.takeIf { (t as KType.Nominal).sym.module.uri == "kira:sync" }
+
+    private fun syncRefusal(t: KType.Nominal): String? {
+        val a = t.typeArgs().firstOrNull()
+        return when (syncClass(t)) {
+            "Thread" -> null
+            "Mutex" -> when {
+                a == null -> "a Mutex without its type"
+                unsupportedType(a) != null -> unsupportedType(a)
+                // Python cannot hand the body an Int32 by reference: the value is one Python writes in place.
+                !isValue(a) && !isStruct(a) -> "${article(t.display())} (a Mutex on py holds a List, a Map or a struct)"
+                else -> null
+            }
+            "Atomic" -> if (a?.prim?.let { it == Prim.BOOL || it == Prim.FLOAT64 || it.isInteger } == true) null else "${article(t.display())} (an Atomic holds a Bool, an integer or a Float64)"
+            "BlockingQueue" -> when {
+                a == null -> "a BlockingQueue without its type"
+                isView(a) -> article(t.display())
+                else -> unsupportedType(a)
+            }
+            else -> "the type ${t.sym.name}"
+        }
+    }
 
     /** A Ref<T> (D74): one `_k_Ref` cell, shared by every copy of the reference. */
     private fun isRef(t: KType?): Boolean = magicName(t) == "Ref" && (t as KType.Nominal).sym.module.isStdlib
