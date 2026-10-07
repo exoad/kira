@@ -3,6 +3,7 @@
 import threading
 
 kept = []
+held = []
 
 
 def each(xs, f):
@@ -57,3 +58,27 @@ def positive(f):
     if v < 0:
         raise ValueError("%d is not positive" % v)
     return v
+
+
+def giveJson(f):
+    held.append({"a": 1})
+    f(held[0])
+
+
+def scribble():
+    held[0]["b"] = {1, 2}
+    held[0][3] = "an int key"
+
+
+def takeJson(f):
+    j = f()
+    j[9] = {1}
+    return "%s of %d keys" % (type(j).__name__, len(j))
+
+
+def kinds(f, g, h):
+    return " ".join(type(x).__name__ for x in (f(), g()[0], h()[0]))
+
+
+def pair(f, g):
+    return f(1) + g(None)

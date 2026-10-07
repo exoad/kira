@@ -3,7 +3,10 @@ module "app:callbacks"
 // Kira code handed to the sidecar as an Fx (D75), which driver.py runs once per case: what
 // Python may pass in, what it gets back, and what a callback's panic, throw or exit does.
 
+use "kira:json"
 use "kira:os"
+
+mut kept: List<Json> = List<Json> { }
 
 pub class Reply {
     require pub status: Int32
@@ -33,6 +36,21 @@ fx onThread: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32
 
 @_extern
 fx swallow: (f: Fx<Tuple0, Int32>) Str
+
+@_extern
+fx giveJson: (f: Fx<Tuple1<Json>, Void>) Void
+
+@_extern
+fx scribble: () Void
+
+@_extern
+fx takeJson: (f: Fx<Tuple0, Json>) Str
+
+@_extern
+fx kinds: (f: Fx<Tuple0, Maybe<List<UInt8>>>, g: Fx<Tuple0, Tuple2<List<UInt8>, Int32>>, h: Fx<Tuple0, List<List<UInt8>>>) Str
+
+@_extern
+fx pair: (f: Fx<Tuple1<Int32>, Int32>, g: Fx<Tuple1<Int32>, Int32>) Int32
 
 @_extern(raises = "ValueError")
 fx positive: (f: Fx<Tuple0, Int32>) Int32
@@ -83,6 +101,22 @@ fx happy: () Void {
     } on e: Str {
         println("caught from raises: ${e}")
     }
+    giveJson(fx(j: Json) Void {
+        kept.add(j)
+    })
+    scribble()
+    println("a Json Python passed, after Python wrote its own: ${kept[0].dump()}")
+    cfg: Json = Json.parse("{\"a\": 1}")
+    println("takeJson ${takeJson(fx() Json {
+        return cfg
+    })}, Kira's after Python wrote what it got: ${cfg.dump()}")
+    println("kinds ${kinds(fx() Maybe<List<UInt8>> {
+        return [1, 2]
+    }, fx() Tuple2<List<UInt8>, Int32> {
+        return Tuple2<List<UInt8>, Int32> { [3], 4 }
+    }, fx() List<List<UInt8>> {
+        return [[5]]
+    })}")
 }
 
 pub fx main: () Int32 {
@@ -93,6 +127,12 @@ pub fx main: () Int32 {
     } else if how == "none" || how == "bool" || how == "arity" {
         println(callWith(how, fx(n: Int32, s: Str) Str {
             return s
+        }))
+    } else if how == "pair" {
+        println(pair(fx(x: Int32) Int32 {
+            return x
+        }, fx(x: Int32) Int32 {
+            return x
         }))
     } else if how == "panic" {
         println(each(["a"], fx(s: Str) Int32 {

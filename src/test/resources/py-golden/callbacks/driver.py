@@ -22,5 +22,5 @@ def run(*args):
 
 
 run()
-for case in ("none", "bool", "arity", "panic", "swallow-throw", "swallow-panic", "exit", "thread-throw", "thread-panic", "thread-exit", "kept-throw"):
+for case in ("none", "bool", "arity", "pair", "panic", "swallow-throw", "swallow-panic", "exit", "thread-throw", "thread-panic", "thread-exit", "kept-throw"):
     run(case)

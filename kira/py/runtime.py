@@ -1124,16 +1124,16 @@ def _k_end(code, shown):
         _k_os._exit(3 if code is None else code)
 
 
-# An Fx handed to a sidecar (D75): what Python passes in is checked as a result is (D68), a
-# List<UInt8> result goes back as bytes, and the extern call it was handed to owns it (D76).
+# An Fx handed to a sidecar (D75): what Python passes in is checked as a result is and a Json copied
+# for Kira (D68), its result goes back as _k_out makes an argument, and its extern call owns it (D76).
 class _k_fx:
-    __slots__ = ("f", "specs", "where", "out", "owner")
+    __slots__ = ("f", "specs", "where", "json", "owner")
 
-    def __init__(self, f, specs, where, out):
+    def __init__(self, f, specs, where):
         self.f = f
         self.specs = specs
         self.where = where
-        self.out = out
+        self.json = _k_builtins.tuple([_k_hasjson(s) for s, d in specs])
         self.owner = None
 
     def __enter__(self):
@@ -1150,8 +1150,12 @@ class _k_fx:
         n = len(self.specs)
         if len(args) != n:
             _k_panic("%s was called with %d argument%s where %d %s declared" % (self.where, len(args), "" if len(args) == 1 else "s", n, "was" if n == 1 else "were"))
-        r = self.f(*[_k_check(a, s, self.where, d) for a, (s, d) in _k_builtins.zip(args, self.specs)])
-        return r if self.out is None else self.out(r)
+        given = [_k_check(a, s, self.where, d) for a, (s, d) in _k_builtins.zip(args, self.specs)]
+        return _k_out(self.f(*[_k_out(v) if j else v for v, j in _k_builtins.zip(given, self.json)]))
+
+
+def _k_hasjson(spec):
+    return spec[0] == "J" or _k_builtins.any([_k_hasjson(x) for x in spec[1:] if _k_builtins.type(x) is _k_builtins.tuple and x and _k_builtins.type(x[0]) is str])
 
 
 # Ref<T> (D74): one cell, shared by every copy of the reference, a closure's capture included.

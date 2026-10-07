@@ -571,7 +571,7 @@ class PyModuleEmitter(
             when {
                 // The call is the Fx's owner while it runs: a throw from it on this thread reaches Kira's try (D76).
                 t is KType.Fn -> "_k_f$i".also {
-                    lends += "${call("_k_fx", p.name, fxSpecs(t, at), pyString("the Fx given to $where"), if (isBytes(t.ret)) "bytes" else "None").text} as $it"
+                    lends += "${call("_k_fx", p.name, fxSpecs(t, at), pyString("the Fx ${p.name} given to $where")).text} as $it"
                 }
                 isView(t) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(t) == "MutView") "True" else "False"}) as $it" }
                 isJson(t) -> p.name

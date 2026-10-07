@@ -10,13 +10,18 @@ happy -> exit 0
   caught from a callback: no x
   positive 4
   caught from raises: ValueError: -1 is not positive
+  a Json Python passed, after Python wrote its own: {"a": 1}
+  takeJson dict of 2 keys, Kira's after Python wrote what it got: {"a": 1}
+  kinds bytes bytes bytes
   happy done
 none -> exit abort
-  stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith gave None (NoneType) where Int32 was declared
+  stderr: RuntimeError: kira: the Fx f given to callbacks_ext.callWith gave None (NoneType) where Int32 was declared
 bool -> exit abort
-  stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith gave True (bool) where Int32 was declared
+  stderr: RuntimeError: kira: the Fx f given to callbacks_ext.callWith gave True (bool) where Int32 was declared
 arity -> exit abort
-  stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith was called with 1 argument where 2 were declared
+  stderr: RuntimeError: kira: the Fx f given to callbacks_ext.callWith was called with 1 argument where 2 were declared
+pair -> exit abort
+  stderr: RuntimeError: kira: the Fx g given to callbacks_ext.pair gave None (NoneType) where Int32 was declared
 panic -> exit abort
   stderr: IndexError: list index out of range
 swallow-throw -> exit 0

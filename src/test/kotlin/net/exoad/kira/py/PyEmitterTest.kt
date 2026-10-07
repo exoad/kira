@@ -2613,7 +2613,7 @@ class PyEmitterTest {
         assertTrue(
             py.contains(
                 "def _each(xs, f):\n    with _k_fx(f, (((\"S\",), \"Str\"), ((\"M\", (\"I\", -9223372036854775808, 9223372036854775807)), " +
-                    "\"Maybe<Int64>\")), \"the Fx given to fxarg_ext.each\", bytes) as _k_f1:\n        _k_r = _k_x.each(list(xs), _k_f1)\n" +
+                    "\"Maybe<Int64>\")), \"the Fx f given to fxarg_ext.each\") as _k_f1:\n        _k_r = _k_x.each(list(xs), _k_f1)\n" +
                     "    return _k_check(_k_r, (\"I\", -2147483648, 2147483647), \"fxarg_ext.each\", \"Int32\")"
             ),
             py,
