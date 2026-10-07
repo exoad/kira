@@ -1,0 +1,6 @@
+module "app:order"
+
+// A raises = name after one that already catches it: a panic at import.
+
+@_extern(raises = "OSError TimeoutError")
+pub fx f: () Void

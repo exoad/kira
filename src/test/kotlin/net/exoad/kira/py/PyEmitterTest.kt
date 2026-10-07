@@ -23,8 +23,7 @@ class PyEmitterTest {
     private fun python(body: String): String = PyTestSupport.emit(body).python()
 
     /** The refusal [body] gets: exactly the py target's, naming [construct]. */
-    private fun refused(body: String, construct: String) {
-        val e = PyTestSupport.emit(body)
+    private fun refused(body: String, construct: String, e: PyTestSupport.Emitted = PyTestSupport.emit(body)) {
         assertNull(e.text, "the module was emitted:\n${e.text}")
         val errors = e.errors
         assertTrue(errors.isNotEmpty(), "no diagnostic")
@@ -2329,5 +2328,123 @@ class PyEmitterTest {
         assertTrue(py.contains("return _k_kira_math_clamp(_k_kira_math_deg2rad(x), _k_kira_math_lerp(0.0, -1.0, 0.5), 1.0)"), py)
         assertTrue(py.contains("return _k_i32(2 + 15)"), py)
         assertFalse(py.contains("_k_use"), py)
+    }
+
+    // ---- the sidecar (D67-D70) -------------------------------------------------------------------
+
+    /** [body] as module build:tmp.pyext.[name], its source build/tmp/pyext/[name].kira, beside a sidecar holding [sidecar] (null: none). */
+    private fun besideSidecar(body: String, name: String, sidecar: String? = ""): PyTestSupport.Emitted {
+        val file = File(PyTestSupport.repoRoot, "build/tmp/pyext/${name}_ext.py").apply { parentFile.mkdirs() }
+        if (sidecar == null) file.delete() else file.writeText(sidecar)
+        return PyTestSupport.emit(body, "build:tmp.pyext.$name")
+    }
+
+    @Test
+    fun anExternIsAWrapperOfItsSidecarsFunctionThatChecksWhatComesBack() {
+        val py = besideSidecar(
+            """
+            @_extern(raises = "OSError json.JSONDecodeError")
+            fx readText: (path: Str) Str
+
+            @_extern
+            pub fx globSorted: (pattern: Str) List<Str>
+
+            fx f: () Size {
+                return globSorted(readText("p")).size()
+            }
+            """,
+            "wrapper",
+        ).python()
+        assertTrue(py.contains("_k_x = _k_extern(__file__, \"wrapper_ext.py\", ((\"readText\", 1), (\"globSorted\", 1)))"), py)
+        assertTrue(py.contains("_k_r0 = _k_raises(_k_x, \"wrapper_ext.readText\", (\"OSError\", \"json.JSONDecodeError\"))"), py)
+        assertTrue(
+            py.contains(
+                "def _readText(path):\n    try:\n        _k_r = _k_x.readText(path)\n    except _k_r0 as _k_e:\n" +
+                    "        _k_thrown(_k_e, _k_r0, (\"OSError\", \"json.JSONDecodeError\"))\n" +
+                    "    return _k_check(_k_r, (\"S\",), \"wrapper_ext.readText\", \"Str\")"
+            ),
+            py,
+        )
+        assertTrue(py.contains("def globSorted(pattern):\n    return _k_check(_k_x.globSorted(pattern), (\"L\", (\"S\",)), \"wrapper_ext.globSorted\", \"List<Str>\")"), py)
+        assertTrue(py.contains("return len(globSorted(_readText(\"p\")))"), py)
+    }
+
+    @Test
+    fun aViewIsLentForTheCallAndAValueGoesOutAsACopy() {
+        val py = besideSidecar(
+            """
+            struct Pt {
+                pub x: Int32 = 0
+            }
+
+            @_extern
+            fx send: (data: View<UInt8>, into: MutView<UInt8>, raw: List<UInt8>, xs: List<Int32>, p: Pt, m: Map<Str, Int32>) Int64
+            """,
+            "lend",
+        ).python()
+        assertTrue(
+            py.contains(
+                "def _send(data, into, raw, xs, p, m):\n" +
+                    "    with _k_lend(data, False) as _k_v0, _k_lend(into, True) as _k_v1:\n" +
+                    "        _k_r = _k_x.send(_k_v0, _k_v1, bytes(raw), list(xs), p._k_clone(), dict(m))\n" +
+                    "    return _k_check(_k_r, (\"I\", -9223372036854775808, 9223372036854775807), \"lend_ext.send\", \"Int64\")"
+            ),
+            py,
+        )
+    }
+
+    @Test
+    fun anOpaqueClassIsNoPythonClassAndItsMethodIsCalledOnTheHandle() {
+        val py = besideSidecar(
+            """
+            @_opaque
+            pub class Sock {
+                @_extern(raises = "TimeoutError")
+                pub fx recv: (size: Int32) List<UInt8>
+            }
+
+            fx f: (s: Sock, socks: List<Sock>, spare: Maybe<Sock>) Size {
+                kept: List<Sock> = socks
+                return s.recv(4).size() + kept.size()
+            }
+            """,
+            "handle",
+            sidecar = null,
+        ).python()
+        assertFalse(py.contains("class Sock"), py)
+        assertFalse(py.contains("_k_extern("), "a builtin name in raises = needs no sidecar:\n$py")
+        assertTrue(py.contains("_k_r0 = _k_raises(None, \"Sock.recv\", (\"TimeoutError\",))"), py)
+        assertTrue(py.contains("def _k_o_Sock_recv(_k_o, size):\n    try:\n        _k_r = _k_o.recv(size)\n"), py)
+        assertTrue(py.contains("    return _k_check(_k_r, (\"Y\",), \"Sock.recv\", \"List<UInt8>\")"), py)
+        assertTrue(py.contains("kept = list(socks)"), py)
+        assertTrue(py.contains("len(_k_o_Sock_recv(s, 4))"), py)
+    }
+
+    @Test
+    fun aModuleWithExternsAndNoSidecarIsAnError() {
+        val e = besideSidecar("@_extern\nfx f: () Int32", "lonely", sidecar = null)
+        assertNull(e.text)
+        assertTrue(e.errors.any { it.contains("error: py.extern: lonely.kira declares externs, whose sidecar lonely_ext.py is not beside it") }, e.errors.joinToString("\n"))
+        val dotted = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"socket.timeout\")\n    pub fx recv: () Int32\n}", "dotted", sidecar = null)
+        assertTrue(dotted.errors.any { it.contains("py.extern: dotted.kira") }, "a dotted raises = name resolves in the sidecar:\n${dotted.errors.joinToString("\n")}")
+    }
+
+    @Test
+    fun anExternIsRefusedWhatCannotCrossToOrFromPython() {
+        listOf(
+            "@_extern(cpp = \"ns::f\", header = \"f.hxx\")\nfx f: () Int32" to "@_extern's cpp =, header = on the extern 'f'",
+            "@_extern(\"sym\")\nfx f: () Int32" to "@_extern's positional symbol on the extern 'f'",
+            "@_extern(raises = \"OSError Exception\")\nfx f: () Int32" to "raises = \"Exception\" (it would catch Kira's own throw and panic)",
+            "@_extern(raises = \"KeyboardInterrupt\")\nfx f: () Int32" to "raises = \"KeyboardInterrupt\" (no Exception, it always passes through)",
+            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern\nfx f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
+            "@_extern\nfx f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
+            "@_extern\nfx f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
+            "@_extern\nfx f: (s: Set<Int32>) Void" to "the parameter 's' of the extern 'f': a Set<Int32>",
+            "@_extern\nfx f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
+            "@_extern\nfx f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
+            "@_extern\nfx f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
+            "@_extern\nfx f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
+            "pub fx f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
+        ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
     }
 }

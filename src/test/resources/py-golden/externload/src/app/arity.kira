@@ -1,0 +1,6 @@
+module "app:arity"
+
+// A sidecar function that takes another number of arguments than the extern: a panic at import.
+
+@_extern
+pub fx pair: (a: Int32, b: Int32) Int32

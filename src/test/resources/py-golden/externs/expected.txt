@@ -1,0 +1,56 @@
+int -5 | int 18446744073709551615 | int 3 | float 2.5 | bool True | str 'hi' | int 7
+list [1, 2] | bytes b'\x07\x08' | dict {'a': 1} | tuple ('t', 2) | str 's' | NoneType None
+Pt 1 2 | Box ['first'] | dict {'k': [1, 2.5, None]}
+xs [1, 2, 3], p.x 1, box ['first', 'later']
+2
+3
+abc
+operation forbidden on released memoryview object
+5
+cannot modify read-only memory, 5 bytes
+giveInt32 int -> int 7
+giveInt32 none -> panic: kira: externs_ext.giveInt32 gave None (NoneType) where Int32 was declared
+giveInt32 true -> panic: kira: externs_ext.giveInt32 gave True (bool) where Int32 was declared
+giveInt32 2^31 -> panic: kira: externs_ext.giveInt32 gave 2147483648 (int) where Int32 was declared
+giveInt32 1.5 -> panic: kira: externs_ext.giveInt32 gave 1.5 (float) where Int32 was declared
+giveInt32 str -> panic: kira: externs_ext.giveInt32 gave 's' (str) where Int32 was declared
+giveUInt8 255 -> int 255
+giveUInt8 -1 -> panic: kira: externs_ext.giveUInt8 gave -1 (int) where UInt8 was declared
+giveSize 2^64-1 -> int 18446744073709551615
+giveSize -1 -> panic: kira: externs_ext.giveSize gave -1 (int) where Size was declared
+giveFloat 1.5 -> float 1.5
+giveFloat int -> float 7.0
+giveFloat 2^53 -> float 9007199254740992.0
+giveFloat 2^53+1 -> panic: kira: externs_ext.giveFloat gave 9007199254740993 (int) where Float64 was declared
+giveFloat true -> panic: kira: externs_ext.giveFloat gave True (bool) where Float64 was declared
+giveFloat none -> panic: kira: externs_ext.giveFloat gave None (NoneType) where Float64 was declared
+giveBool true -> bool True
+giveBool int -> panic: kira: externs_ext.giveBool gave 7 (int) where Bool was declared
+giveStr str -> str 's'
+giveStr bytes -> panic: kira: externs_ext.giveStr gave b'xy' (bytes) where Str was declared
+giveStr none -> panic: kira: externs_ext.giveStr gave None (NoneType) where Str was declared
+giveMaybe none -> NoneType None
+giveMaybe int -> int 7
+giveMaybe str -> panic: kira: externs_ext.giveMaybe gave 's' (str) where Maybe<Int32> was declared
+giveList list -> list ['a', 'b']
+giveList tuple -> panic: kira: externs_ext.giveList gave ('a',) (tuple) where List<Str> was declared
+giveList holey -> panic: kira: externs_ext.giveList gave None (NoneType) where List<Str> was declared
+giveBytes bytes -> bytearray bytearray(b'xy')
+giveBytes bytearray -> bytearray bytearray(b'z')
+giveBytes ints -> panic: kira: externs_ext.giveBytes gave [1, 2] (list) where List<UInt8> was declared
+giveMap map -> dict {'a': 1}
+giveMap intkey -> panic: kira: externs_ext.giveMap gave 1 (int) where Map<Str, Int64> was declared
+giveTuple pair -> tuple ('a', 1)
+giveTuple tuple -> panic: kira: externs_ext.giveTuple gave ('a',) (tuple) where Tuple2<Str, Int32> was declared
+giveTuple pairlist -> panic: kira: externs_ext.giveTuple gave ['a', 1] (list) where Tuple2<Str, Int32> was declared
+giveLevel int -> int 7
+giveLevel 3 -> panic: kira: externs_ext.giveLevel gave 3 (int) where Level was declared
+giveJson json -> dict {'a': [1, 2.5, None, True, 's']}
+giveJson none -> NoneType None
+giveJson set -> panic: kira: externs_ext.giveJson gave {1} (set) where Json was declared
+giveJson 2^64 -> panic: kira: externs_ext.giveJson gave [18446744073709551616] (list) where Json was declared
+giveJson intkeyjson -> panic: kira: externs_ext.giveJson gave {1: 'a'} (dict) where Json was declared
+giveJson 512 deep -> list 512 deep
+giveJson 513 deep -> panic: kira: externs_ext.giveJson gave [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[... (list) where Json was declared
+giveVoid none -> NoneType None
+giveVoid int -> panic: kira: externs_ext.giveVoid gave 7 (int) where Void was declared

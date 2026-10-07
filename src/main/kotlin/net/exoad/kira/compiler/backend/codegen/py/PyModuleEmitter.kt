@@ -79,7 +79,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStateme
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStatement
+import net.exoad.kira.core.intrinsics.ExternIntrinsic
 import java.math.BigInteger
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.Collections
 import java.util.IdentityHashMap
 
@@ -122,6 +125,14 @@ class PyModuleEmitter(
     /** The call being written as a whole statement. */
     private var statementCall: FunctionCallExpr? = null
 
+    /** The module's @_extern functions, each with its arity, which the sidecar must define (D67). */
+    private val sidecarNames = mutableListOf<Pair<String, Int>>()
+
+    /** Each `raises =` (D69), as the wrapper's name for messages and its names; the i-th is `_k_r<i>`. */
+    private val raised = mutableListOf<Pair<String, List<String>>>()
+
+    private val sidecarStem: String get() = Path.of(module.source.file).fileName.toString().removeSuffix(".kira") + "_ext"
+
     /** The module's text, [header] lines first, or null when anything was refused. */
     fun emit(header: List<String>): String? {
         module.uses.forEach { use ->
@@ -158,7 +169,7 @@ class PyModuleEmitter(
                         main = sym
                     }
                 }
-                is ClassSymbol -> definitions += classDecl(sym)
+                is ClassSymbol -> classDecl(sym).takeIf { it.isNotEmpty() }?.let { definitions.add(it) }
                 is AliasSymbol -> {}
                 is EnumSymbol -> definitions += enumDecl(sym)
                 is TraitSymbol -> refuse(sym.decl ?: module.source.ast, "the trait ${sym.name}")
@@ -171,10 +182,17 @@ class PyModuleEmitter(
             val fn = shared.pending.removeFirst()
             stdlib += PyModuleEmitter(program, fn.module, bindings, runtime, null, shared).function(fn, null)
         }
+        val sidecar = if (sidecarNames.isNotEmpty() || raised.any { (_, names) -> names.any { '.' in it } }) sidecarPath() else null
         // The constants come before the loads: in a use cycle the other module reads them while this one is half loaded.
         val loads = mutableListOf<String>()
         if (imports != null && imports.cycle.isNotEmpty()) {
             loads += call("_k_self").text
+        }
+        if (sidecar != null) {
+            loads += "_k_x = ${call("_k_extern", "__file__", pyString(sidecar), pyTuple(sidecarNames.map { (n, k) -> pyTuple(listOf(pyString(n), "$k")) })).text}"
+        }
+        raised.forEachIndexed { i, (where, names) ->
+            loads += "_k_r$i = ${call("_k_raises", if (sidecar != null) "_k_x" else "None", pyString(where), pyTuple(names.map { pyString(it) })).text}"
         }
         used.forEach { (m, name) -> loads += "$name = ${call("_k_use", "__file__", pyString(imports?.path(m) ?: "")).text}" }
         if (diagnostics.any { it.isError }) {
@@ -289,13 +307,16 @@ class PyModuleEmitter(
     }
 
     private fun function(fn: FnSymbol, cls: ClassSymbol?): List<String> {
+        if (cls == null && fn.foreign is Foreign.Extern) {
+            return externFunction(fn)
+        }
         val at: ASTNode = fn.decl ?: module.source.ast
         checkName(fn.name, at)
         when {
             fn.isOperator -> refuse(at, "an operator overload")
             fn.foreign != null -> refuse(at, "the foreign function '${fn.name}'")
             fn.typeParams.isNotEmpty() -> refuse(at, "the generic function '${fn.name}'")
-            !fn.hasBody || fn.body == null -> refuse(at, "the body-less method '${fn.name}'")
+            !fn.hasBody || fn.body == null -> refuse(at, if (cls == null) "the body-less function '${fn.name}' (a sidecar's function is an @_extern fx)" else "the body-less method '${fn.name}'")
         }
         checkType(fn.ret, at, "the return type of '${fn.name}'")
         val frame = Frame(cls, fn)
@@ -318,6 +339,9 @@ class PyModuleEmitter(
     }
 
     private fun classDecl(c: ClassSymbol): List<String> {
+        if (c.kind == ClassKind.OPAQUE) {
+            return opaqueDecl(c)
+        }
         val at: ASTNode = c.decl ?: module.source.ast
         checkName(c.name, at)
         when {
@@ -458,6 +482,175 @@ class PyModuleEmitter(
         }
         return out.toList()
     }
+
+    // ---- the sidecar (D67-D70) -------------------------------------------------------------------
+
+    /** An @_extern function (D67): under its own Python name, a checked wrapper of the sidecar's function of its Kira name. */
+    private fun externFunction(fn: FnSymbol): List<String> {
+        val at: ASTNode = fn.decl ?: module.source.ast
+        checkName(fn.name, at)
+        externChecks(fn, at, "the extern '${fn.name}'")
+        sidecarNames += fn.name to fn.params.size
+        val head = "def ${pyName(fn)}(${fn.params.joinToString(", ") { it.name }}):"
+        return boundary(head, "_k_x.${fn.name}", fn, "$sidecarStem.${fn.name}", at)
+    }
+
+    /** An @_opaque class (D70): no Python class, as the sidecar makes the object, and a checked wrapper per method calling the object's own. */
+    private fun opaqueDecl(c: ClassSymbol): List<String> {
+        val at: ASTNode = c.decl ?: module.source.ast
+        checkName(c.name, at)
+        when {
+            c.foreign != null -> refuse(at, "the foreign class ${c.name}")
+            c.typeParams.isNotEmpty() -> refuse(at, "the generic class ${c.name}")
+            c.fields.isNotEmpty() -> refuse(at, "a field of the opaque ${c.name}")
+        }
+        val out = mutableListOf<String>()
+        c.methods.forEach { m ->
+            val node: ASTNode = m.decl ?: at
+            checkName(m.name, node)
+            externChecks(m, node, "the method '${c.name}.${m.name}'")
+            if (out.isNotEmpty()) {
+                out += listOf("", "")
+            }
+            val head = "def ${opaqueWrapper(c, m)}(${(listOf("_k_o") + m.params.map { it.name }).joinToString(", ")}):"
+            out += boundary(head, "_k_o.${m.name}", m, "${c.name}.${m.name}", node)
+        }
+        return out
+    }
+
+    private fun opaqueWrapper(c: ClassSymbol, m: FnSymbol): String = "_k_o_${c.name}_${m.name}"
+
+    /** What [what], an extern or an opaque method, cannot declare on py. */
+    private fun externChecks(fn: FnSymbol, at: ASTNode, what: String) {
+        val named = (fn.foreign as? Foreign.Extern)?.params?.keys.orEmpty().filter { it != ExternIntrinsic.RAISES }
+        when {
+            named.isNotEmpty() -> refuse(at, "@_extern's ${named.joinToString(", ") { if (it.startsWith("symbol")) "positional symbol" else "$it =" }} on $what (py calls the sidecar's function of its own name)")
+            fn.hasBody -> refuse(at, "$what with a body")
+            fn.typeParams.isNotEmpty() -> refuse(at, "the generic $what")
+        }
+        fn.params.forEach { p ->
+            val node: ASTNode = p.decl ?: at
+            checkName(p.name, node)
+            checkLocalName(p.name, node)
+            when {
+                p.default != null -> refuse(node, "a default on the parameter '${p.name}' of $what")
+                p.byRef -> refuse(node, "the mut parameter '${p.name}' of $what (Python writes only into a MutView<UInt8> it is lent)")
+                else -> crossing(p.type, false)?.let { refuse(node, "the parameter '${p.name}' of $what: $it") }
+            }
+        }
+        crossing(fn.ret, true)?.let { refuse(at, "the result of $what: $it") }
+    }
+
+    /** The exceptions [fn]'s `raises =` lists (D69); a catch-all, or a name that is no Exception, is refused. */
+    private fun raisesOf(fn: FnSymbol, at: ASTNode): List<String> {
+        val text = (fn.foreign as? Foreign.Extern)?.params?.get(ExternIntrinsic.RAISES) ?: return emptyList()
+        val names = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (names.isEmpty()) {
+            refuse(at, "a raises = that names no exception")
+        }
+        names.firstOrNull { it in UNLISTABLE }?.let { refuse(at, "raises = \"$it\" (${UNLISTABLE.getValue(it)})") }
+        return names
+    }
+
+    /**
+     * [head] and the body of a checked call of [callee] (D68, D69): a view lent for the call, a
+     * value copied out, a listed exception thrown as Kira's, and the result checked outside the try.
+     */
+    private fun boundary(head: String, callee: String, fn: FnSymbol, where: String, at: ASTNode): List<String> {
+        val lends = mutableListOf<String>()
+        val args = fn.params.mapIndexed { i, p ->
+            when {
+                isView(p.type) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(p.type) == "MutView") "True" else "False"}) as $it" }
+                isBytes(p.type) -> "bytes(${p.name})"
+                holdsValue(p.type) -> copyOf(Py(p.name, PyPrec.ATOM), p.type).text
+                else -> p.name
+            }
+        }
+        val called = "$callee(${args.joinToString(", ")})"
+        val names = raisesOf(fn, at)
+        val checked = { r: String -> "return ${call("_k_check", r, spec(fn.ret, at) ?: "None", pyString(where), pyString(fn.ret.display())).text}" }
+        if (names.isEmpty() && lends.isEmpty()) {
+            return listOf(head) + indent(listOf(checked(called)))
+        }
+        var body = listOf("_k_r = $called")
+        if (names.isNotEmpty()) {
+            val r = "_k_r${raised.size}"
+            raised += where to names
+            body = listOf("try:") + indent(body) + "except $r as _k_e:" + indent(listOf(call("_k_thrown", "_k_e", r, pyTuple(names.map { pyString(it) })).text))
+        }
+        if (lends.isNotEmpty()) {
+            body = listOf("with ${lends.joinToString(", ")}:") + indent(body)
+        }
+        return listOf(head) + indent(body + checked("_k_r"))
+    }
+
+    /** Why a value of [t] cannot cross between Kira and the sidecar ([back]: Python hands it to Kira), or null (D68). */
+    private fun crossing(t: KType, back: Boolean): String? {
+        unsupportedType(t)?.let { return it }
+        val prim = t.prim
+        val args = (t as? KType.Nominal)?.typeArgs().orEmpty()
+        val enum = (t as? KType.Nominal)?.sym as? EnumSymbol
+        return when {
+            prim == Prim.CHAR -> "a Char (a one-character Str crosses)"
+            prim != null || t == KType.Str || t == KType.Void || isJson(t) || isOpaque(t) -> null
+            enum != null -> if (enum.base == KType.Str || enum.base.prim?.isFloat == true) "the enum ${enum.name}, whose py value is an index" else null
+            isView(t) -> when {
+                back -> "${article(t.display())} (Python is lent a view, never gives one)"
+                args.firstOrNull() == KType.UINT8 -> null
+                else -> "${article(t.display())} (a View or MutView of UInt8 is what is lent)"
+            }
+            isMaybe(t) -> crossing(args[0], back)
+            isList(t) -> if (back && magicName(t) == "Arr") "${article(t.display())} (a List comes back)" else crossing(args[0], back)
+            isMap(t) -> crossing(args[0], back) ?: crossing(args[1], back)
+            isTuple(t) -> args.firstNotNullOfOrNull { crossing(it, back) }
+            isUserClass((t as? KType.Nominal)?.sym) -> if (back) "${t.display()}, a Kira object Python cannot make" else null
+            else -> article(t.display())
+        }
+    }
+
+    /** The `_k_check` spec of a result of [t] that [crossing] lets back (D68). */
+    private fun spec(t: KType, at: ASTNode): String? {
+        val prim = t.prim
+        val args = (t as? KType.Nominal)?.typeArgs().orEmpty()
+        fun of(kind: String, vararg parts: String) = pyTuple(listOf("\"$kind\"") + parts)
+        return when {
+            t == KType.Void -> of("V")
+            prim == Prim.BOOL -> of("B")
+            prim == Prim.FLOAT64 -> of("F")
+            prim != null && prim.isInteger -> {
+                val lo = if (prim.signed) BigInteger.ONE.shiftLeft(prim.bits - 1).negate() else BigInteger.ZERO
+                val hi = BigInteger.ONE.shiftLeft(if (prim.signed) prim.bits - 1 else prim.bits) - BigInteger.ONE
+                of("I", "$lo", "$hi")
+            }
+            t == KType.Str -> of("S")
+            isMaybe(t) -> spec(args[0], at)?.let { of("M", it) }
+            isBytes(t) -> of("Y")
+            isList(t) -> spec(args[0], at)?.let { of("L", it) }
+            isMap(t) -> of("D", spec(args[0], at) ?: return null, spec(args[1], at) ?: return null)
+            isTuple(t) -> of("T", *args.map { spec(it, at) ?: return null }.toTypedArray())
+            isEnum(t) -> ref((t as KType.Nominal).sym as EnumSymbol, at)?.let { of("E", "$it._k_order") }
+            isJson(t) -> of("J")
+            isOpaque(t) -> of("O")
+            else -> null
+        }
+    }
+
+    /** The sidecar beside the module's source (D67), as a path from the generated file; null, with an error, when it is missing. */
+    private fun sidecarPath(): String? {
+        val source = Path.of(module.source.file).toAbsolutePath().normalize()
+        val file = source.resolveSibling("$sidecarStem.py")
+        if (!Files.isRegularFile(file)) {
+            diagnostics += CppDiagnostic(
+                EXTERN_CODE,
+                "${source.fileName} declares externs, whose sidecar ${file.fileName} is not beside it",
+                file = module.source.file,
+            )
+            return null
+        }
+        return imports?.relative(file) ?: refuseText(module.source.ast, "the sidecar ${file.fileName}, which has no path from the generated file")
+    }
+
+    private fun pyTuple(items: List<String>): String = "(${items.joinToString(", ")}${if (items.size == 1) "," else ""})"
 
     // ---- statements --------------------------------------------------------------------------
 
@@ -1100,8 +1293,24 @@ class PyModuleEmitter(
                 Py("$obj.${pyName(fn)}(${userArgs(c, rc, f)})", PyPrec.POSTFIX)
             }
             CallKind.MAGIC -> magicCall(c, rc, f)
+            CallKind.EXTERN -> externCall(c, rc, f)
             else -> refusePy(c, "a ${rc.kind.name.lowercase().replace('_', ' ')} call")
         }
+    }
+
+    /** An extern's wrapper (D67), or the declaring module's wrapper of an opaque handle's method with the handle first (D70). */
+    private fun externCall(c: FunctionCallExpr, rc: ResolvedCall, f: Frame): Py {
+        val fn = rc.fn ?: return refusePy(c, "this extern call")
+        val owner = fn.owner as? ClassSymbol
+        val receiver = rc.receiver
+        val name = when {
+            owner == null && fn.foreign is Foreign.Extern -> ref(fn, c)
+            owner?.kind == ClassKind.OPAQUE && receiver != null ->
+                if (owner.module === module) opaqueWrapper(owner, fn) else alias(owner.module, c)?.let { "$it.${opaqueWrapper(owner, fn)}" }
+            else -> return refusePy(c, "a call of '${fn.name}', whose body C++ supplies")
+        } ?: return Py("None", PyPrec.ATOM)
+        val args = listOfNotNull(receiver?.let { wrap(expr(it, f), PyPrec.TERNARY) }, userArgs(c, rc, f).ifEmpty { null })
+        return Py("$name(${args.joinToString(", ")})", PyPrec.POSTFIX)
     }
 
     /** A user function's arguments as written: positionally, then by name, in source order (D33). */
@@ -1556,6 +1765,11 @@ class PyModuleEmitter(
 
     private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && isUserClass(it) } == true
 
+    /** A handle of an @_opaque class (D70): the Python object a sidecar made, never copied. */
+    private fun isOpaque(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let {
+        it.kind == ClassKind.OPAQUE && it.foreign == null && !it.module.isStdlib && it.typeParams.isEmpty()
+    } == true
+
     /** A value Python would share where Kira copies it: a container, a struct, a Maybe of one. */
     private fun holdsValue(t: KType?): Boolean =
         t != null && (isValue(t) || isStruct(t) || (isMaybe(t) && holdsValue((t as KType.Nominal).typeArgs().firstOrNull())))
@@ -1600,7 +1814,7 @@ class PyModuleEmitter(
                     unsupportedType(a) ?: if (isView(a)) "${article(t.display())} (a view lives only as long as the call it is lent to)" else null
                 }
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
-                isUserClass(s) -> null
+                isUserClass(s) || isOpaque(t) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"
             }
             is EnumSymbol -> if (s.module.isStdlib || s.foreign != null) "the enum ${s.name}" else null
@@ -1747,6 +1961,19 @@ class PyModuleEmitter(
 
     companion object {
         const val UNSUPPORTED_CODE = "py.unsupported"
+
+        /** A module with externs whose sidecar is missing (D67). */
+        const val EXTERN_CODE = "py.extern"
+
+        /** What `raises =` may not list (D69), and why. */
+        private val UNLISTABLE = mapOf(
+            "BaseException" to "it would catch Kira's own throw and panic",
+            "Exception" to "it would catch Kira's own throw and panic",
+            "RuntimeError" to "it would catch Kira's panic",
+            "KeyboardInterrupt" to "no Exception, it always passes through",
+            "SystemExit" to "no Exception, it always passes through",
+            "GeneratorExit" to "no Exception, it always passes through",
+        )
 
         /** The methods that lend a view of their receiver, a MutView of a mutable List or Arr. */
         private val LENDERS = setOf("from", "slice", "view")

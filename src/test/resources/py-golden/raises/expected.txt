@@ -1,0 +1,15 @@
+42
+caught OSError: [Errno 2] No such file or directory: 'absent.txt'
+caught KeyError: 'absent'
+caught ValueError
+caught json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+caught TimeoutError: slow
+caught OSError: [Errno 2] gone
+caught OSError: [Errno 13] denied
+no throw
+readText -> Kira throw: OSError: [Errno 2] No such file or directory: 'absent.txt' | cause: FileNotFoundError
+lookup -> Kira throw: KeyError: 'absent' | cause: KeyError
+escape value -> passed through: ValueError not listed
+escape interrupt -> passed through: KeyboardInterrupt 
+escape exit -> passed through: SystemExit 3
+wrongResult -> panic: kira: raises_ext.wrongResult gave None (NoneType) where Str was declared

@@ -36,8 +36,9 @@ object PyTestSupport {
         val all: String get() = "$stdout\n$stderr"
     }
 
+    /** [command] in [dir]; a golden's sidecar, imported from the source tree, leaves no __pycache__ there. */
     fun run(command: List<String>, dir: File): Run {
-        val proc = ProcessBuilder(command).directory(dir).start()
+        val proc = ProcessBuilder(command).directory(dir).apply { environment()["PYTHONDONTWRITEBYTECODE"] = "1" }.start()
         val err = StringBuilder()
         val reader = Thread { err.append(proc.errorStream.bufferedReader(Charsets.UTF_8).readText()) }
         reader.start()

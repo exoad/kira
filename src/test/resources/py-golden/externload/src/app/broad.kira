@@ -1,0 +1,6 @@
+module "app:broad"
+
+// A raises = name that is Exception under another name, which would catch Kira's own throw: a panic at import.
+
+@_extern(raises = "Broad")
+pub fx f: () Void

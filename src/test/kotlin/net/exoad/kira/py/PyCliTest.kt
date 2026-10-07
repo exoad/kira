@@ -94,4 +94,51 @@ class PyCliTest {
         assertFalse(File(dir, "src/app/main.kira.py").exists())
         assertFalse(result.all.contains("\tat "), "a diagnostic, not a stack trace:\n${result.all}")
     }
+
+    /** D67: an extern's sidecar sits beside its source; the generated file reaches it from beside it or from under --out. */
+    @Test
+    fun anExternNeedsItsSidecarBesideTheSourceWithOrWithoutOut() {
+        val dir = project("sidecar", "py")
+        val main = { marker: String ->
+            File(dir, "src/app/main.kira").writeText(
+                """
+                module "app:main"
+
+                $marker
+                fx home: () Str
+
+                fx main: () Void {
+                    trace(home())
+                }
+                """.trimIndent()
+            )
+        }
+        main("@_extern(cpp = \"ns::home\")")
+        val named = PyTestSupport.cli(dir)
+        assertEquals(1, named.exitCode, named.all)
+        assertTrue(named.all.contains("@_extern on 'home' names cpp =; the py backend binds an extern to the function of its own name"), named.all)
+
+        main("@_extern")
+        val out = File(dir, "out")
+        for (args in listOf(emptyArray(), arrayOf("--out", out.absolutePath))) {
+            val missing = PyTestSupport.cli(dir, *args)
+            assertEquals(1, missing.exitCode, missing.all)
+            assertTrue(missing.all.contains("error: py.extern: main.kira declares externs, whose sidecar main_ext.py is not beside it"), missing.all)
+        }
+        assertFalse(File(dir, "src/app/main.kira.py").exists())
+        assertFalse(File(out, "src/app/main.kira.py").exists())
+
+        File(dir, "src/app/main_ext.py").writeText("def home():\n    return \"from the sidecar\"\n")
+        assertEquals(0, PyTestSupport.cli(dir).exitCode)
+        assertTrue(File(dir, "src/app/main.kira.py").readText().contains("_k_x = _k_extern(__file__, \"main_ext.py\", ((\"home\", 0),))"))
+        val written = PyTestSupport.cli(dir, "--out", out.absolutePath)
+        assertEquals(0, written.exitCode, written.all)
+        val generated = File(out, "src/app/main.kira.py")
+        assertTrue(generated.readText().contains("_k_x = _k_extern(__file__, \"../../../src/app/main_ext.py\", "), generated.readText())
+        val python = PyTestSupport.python ?: return
+        for (file in listOf(File(dir, "src/app/main.kira.py"), generated)) {
+            val ran = PyTestSupport.run(listOf(python, file.absolutePath), dir)
+            assertEquals("from the sidecar\n", ran.stdout, ran.all)
+        }
+    }
 }

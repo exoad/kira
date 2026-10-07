@@ -1,0 +1,25 @@
+module "app:opaque"
+
+// @_opaque handles (D70): the sidecar makes the object and Kira calls its methods by their
+// Kira names; user.kira holds them in fields, Lists and Maybes, never copied.
+
+@_opaque
+pub class Counter {
+    pub mut fx bump: (by: Int32) Int32
+    pub fx total: () Int32
+    @_extern(raises = "ValueError")
+    pub fx label: () Str
+    pub fx wrong: () Str
+}
+
+@_extern
+pub fx counter: (label: Str) Counter
+
+@_extern
+pub fx maybeCounter: (label: Str) Maybe<Counter>
+
+@_extern
+pub fx sameObject: (a: Counter, b: Counter) Bool
+
+@_extern
+pub fx broken: () Counter

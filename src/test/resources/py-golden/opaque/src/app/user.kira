@@ -1,0 +1,36 @@
+module "app:user"
+
+// A module that uses opaque.kira's handles: each call goes through opaque.kira's checked wrapper.
+
+use "app:opaque"
+
+class Pair {
+    require pub left: Counter
+    pub mut spare: Maybe<Counter> = null
+}
+
+fx labelOf: (c: Counter) Str {
+    try {
+        return c.label()
+    } on e: Str {
+        return "no label, ${e}"
+    }
+}
+
+fx main: () Void {
+    mut a: Counter = counter("a")
+    mut all: List<Counter> = [a, counter("")]
+    trace(a.bump(2))
+    trace(all[0].bump(3))
+    trace(sameObject(a, all[0]))
+    copied: List<Counter> = all
+    trace(sameObject(copied[1], all[1]))
+    mut p: Pair = Pair { a }
+    p.spare = maybeCounter("")
+    trace(p.spare.isNone())
+    p.spare = maybeCounter("c")
+    trace(p.spare.value.bump(4))
+    trace(p.left.total())
+    trace(labelOf(a))
+    trace(labelOf(all[1]))
+}

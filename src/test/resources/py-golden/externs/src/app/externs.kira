@@ -1,0 +1,126 @@
+module "app:externs"
+
+// The sidecar boundary (D68), which driver.py runs: what each Kira type is in externs_ext.py,
+// what the sidecar may keep, and what it may hand back (a wrong value is a panic).
+
+use "kira:json"
+
+pub enum Level: Int32 {
+    LOW = 1,
+    HIGH = 7
+}
+
+pub struct Pt {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+}
+
+pub class Box {
+    pub mut items: List<Str> = List<Str> { }
+}
+
+@_extern
+pub fx seenScalars: (a: Int8, b: UInt64, c: Size, d: Float64, e: Bool, f: Str, g: Level) Str
+
+@_extern
+pub fx seenValues: (xs: List<Int32>, b: List<UInt8>, m: Map<Str, Int32>, t: Tuple2<Str, Int32>, some: Maybe<Str>, absent: Maybe<Str>) Str
+
+@_extern
+pub fx seenObjects: (p: Pt, b: Box, j: Json) Str
+
+@_extern
+pub fx keep: (xs: List<Int32>, p: Pt, b: Box) Void
+
+@_extern
+pub fx kept: () Str
+
+@_extern
+pub fx sharedList: () List<Str>
+
+@_extern
+pub fx touchShared: () Void
+
+@_extern
+pub fx fillInto: (buf: MutView<UInt8>) Int64
+
+@_extern
+pub fx tryWrite: (data: View<UInt8>) Str
+
+@_extern
+pub fx useKept: () Str
+
+@_extern
+pub fx giveInt32: (k: Str) Int32
+
+@_extern
+pub fx giveUInt8: (k: Str) UInt8
+
+@_extern
+pub fx giveSize: (k: Str) Size
+
+@_extern
+pub fx giveFloat: (k: Str) Float64
+
+@_extern
+pub fx giveBool: (k: Str) Bool
+
+@_extern
+pub fx giveStr: (k: Str) Str
+
+@_extern
+pub fx giveMaybe: (k: Str) Maybe<Int32>
+
+@_extern
+pub fx giveList: (k: Str) List<Str>
+
+@_extern
+pub fx giveBytes: (k: Str) List<UInt8>
+
+@_extern
+pub fx giveMap: (k: Str) Map<Str, Int64>
+
+@_extern
+pub fx giveTuple: (k: Str) Tuple2<Str, Int32>
+
+@_extern
+pub fx giveLevel: (k: Str) Level
+
+@_extern
+pub fx giveJson: (k: Str) Json
+
+@_extern
+pub fx giveVoid: (k: Str) Void
+
+pub fx run: () Void {
+    top: UInt64 = 0
+    trace(seenScalars(-5, top - 1, 3, 2.5, true, "hi", Level.HIGH))
+    mut m: Map<Str, Int32> = Map<Str, Int32> { }
+    m.put("a", 1)
+    trace(seenValues([1, 2], [7, 8], m, Tuple2<Str, Int32> { "t", 2 }, "s", null))
+    mut box: Box = Box { }
+    box.items.add("first")
+    trace(seenObjects(Pt { 1, 2 }, box, Json.parse("{\"k\": [1, 2.5, null]}")))
+
+    // The sidecar keeps a copy of a List and a struct, and the Box itself.
+    mut xs: List<Int32> = [1, 2, 3]
+    mut p: Pt = Pt { 1, 2 }
+    keep(xs, p, box)
+    xs.add(4)
+    p.x = 9
+    box.items.add("later")
+    trace(kept())
+
+    // What the sidecar returned and kept is Kira's own copy.
+    s: List<Str> = sharedList()
+    touchShared()
+    trace(s.size())
+
+    // A view is lent for the call: written through, released after, and the List grows again.
+    mut buf: List<UInt8> = [0, 0, 0, 0]
+    trace(fillInto(buf.from(0)))
+    trace(Str.of(buf.slice(0, 3)))
+    trace(useKept())
+    buf.add(9)
+    trace(buf.size())
+    trace(tryWrite(buf))
+}

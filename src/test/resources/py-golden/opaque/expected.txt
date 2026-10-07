@@ -1,0 +1,12 @@
+2
+5
+1
+1
+1
+4
+5
+a
+no label, ValueError: unlabelled
+broken -> panic: kira: opaque_ext.broken gave None (NoneType) where Counter was declared
+wrong -> panic: kira: Counter.wrong gave None (NoneType) where Str was declared
+maybeCounter('') -> None

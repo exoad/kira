@@ -1,0 +1,10 @@
+project:
+  name: golden-py-externs
+srcDir: src
+build:
+  target: py
+compiler:
+  types: strict
+dependencies:
+  kira_stdlib:
+    path: ../../../../../kira

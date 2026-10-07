@@ -1,0 +1,8 @@
+missing -> kira: missing_ext.py defines no function absent taking 1 argument
+arity -> kira: arity_ext.py defines no function pair taking 2 arguments
+badname -> kira: badname_ext.f raises nosuch.Error, which is no Exception class
+order -> kira: order_ext.f raises TimeoutError after OSError, which catches it first
+broad -> kira: broad_ext.f raises Broad, which would catch Kira's own throw or panic
+notclass -> kira: notclass_ext.f raises len, which is no Exception class
+fine -> loaded
+fine.g -> Missing: nothing here
