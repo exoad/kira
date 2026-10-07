@@ -6,11 +6,9 @@ module "app:mainexit"
 use "kira:os"
 use "kira:time"
 
-@_extern(raises = "OSError")
-fx readText: (path: Str) Str
+@_extern(raises = "OSError") fx readText: (path: Str) Str
 
-@_extern
-fx linger: () Void
+@_extern fx linger: () Void
 
 fx main: () Void {
     a: List<Str> = args()

@@ -73,8 +73,7 @@ class SharedPredicatesTest {
     }
 
     private val callees = """
-        @_extern(cpp = "ext::ext", header = "ext.hxx")
-        pub fx ext: (p: Unsafe<Int32>) Int32;
+        pub @_extern(cpp = "ext::ext", header = "ext.hxx") fx ext: (p: Unsafe<Int32>) Int32;
         pub fx proto: (p: Unsafe<Int32>) Int32;
         pub @_opaque class Handle {
             pub fx op: (p: Unsafe<Int32>) Int32;
@@ -134,14 +133,10 @@ class SharedPredicatesTest {
             pub class Box {
                 pub f: Maybe<Fx<Tuple0, Void>> = null
             }
-            @_extern(cpp = "ext::a", header = "ext.hxx")
-            pub fx a: (n: Int32, s: Str) Int32;
-            @_extern(cpp = "ext::b", header = "ext.hxx")
-            pub fx b: (fs: List<Fx<Tuple0, Void>>) Int32;
-            @_extern(cpp = "ext::c", header = "ext.hxx")
-            pub fx c: (x: Box) Int32;
-            @_extern(cpp = "ext::d", header = "ext.hxx")
-            pub fx d: (f: Fx<Tuple0, Void>) Int32;
+            pub @_extern(cpp = "ext::a", header = "ext.hxx") fx a: (n: Int32, s: Str) Int32;
+            pub @_extern(cpp = "ext::b", header = "ext.hxx") fx b: (fs: List<Fx<Tuple0, Void>>) Int32;
+            pub @_extern(cpp = "ext::c", header = "ext.hxx") fx c: (x: Box) Int32;
+            pub @_extern(cpp = "ext::d", header = "ext.hxx") fx d: (f: Fx<Tuple0, Void>) Int32;
             pub fx k: (x: Box) Int32 {
                 return 0
             }

@@ -1572,8 +1572,7 @@ class ExclusivityPassTest {
                 f(this.v)
             }
         }
-        @_extern(cpp = "e::callWith", header = "e.hxx")
-        pub fx callWith: (f: Fx<Tuple1<Fx<Tuple0, Void>>, Void>) Void;
+        pub @_extern(cpp = "e::callWith", header = "e.hxx") fx callWith: (f: Fx<Tuple1<Fx<Tuple0, Void>>, Void>) Void;
     """
 
     /** The five routes round 4 lent through (each printed wrong values, with an MSVC ASan heap-use-after-free). */

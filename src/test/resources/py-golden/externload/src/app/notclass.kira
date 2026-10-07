@@ -2,5 +2,4 @@ module "app:notclass"
 
 // A raises = name that is a builtin but no exception: a panic at import.
 
-@_extern(raises = "len")
-pub fx f: () Void
+pub @_extern(raises = "len") fx f: () Void

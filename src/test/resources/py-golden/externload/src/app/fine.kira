@@ -2,8 +2,6 @@ module "app:fine"
 
 // A sidecar that matches its externs, a builtin standing in for one: it loads.
 
-@_extern
-pub fx sleepS: (seconds: Float64) Void
+pub @_extern fx sleepS: (seconds: Float64) Void
 
-@_extern(raises = "Missing")
-pub fx g: () Void
+pub @_extern(raises = "Missing") fx g: () Void

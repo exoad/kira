@@ -88,7 +88,7 @@ object ExternIntrinsic : CompilerIntrinsic(
      *
      * The C and JS backends lower `@_extern` on a free function only: they call its symbol.
      * A class, a struct, a constant or a method is C++'s (design 7.2), and under `--target c`
-     * the constant `@_extern(c = "INT_MAX", header = "limits.h") pub IMAX: Int32;` was written
+     * the constant `pub @_extern(c = "INT_MAX", header = "limits.h") IMAX: Int32;` was written
      * as a new zero global `Int32 IMAX;` and the program printed 0 for it, `--target js` wrote
      * `const IMAX;`, which node refuses, and both exited 0 (measured). Refused here, with the
      * target named; `--target none` and the tests (mode NONE) take every target of 7.2. A free

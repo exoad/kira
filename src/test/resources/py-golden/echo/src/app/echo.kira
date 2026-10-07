@@ -6,14 +6,11 @@ module "app:echo"
 use "kira:os"
 use "kira:sync"
 
-@_extern
-fx serveLines: (reply: Fx<Tuple1<Str>, Str>) Int32
+@_extern fx serveLines: (reply: Fx<Tuple1<Str>, Str>) Int32
 
-@_extern
-fx talk: (port: Int32, lines: List<Str>) List<Str>
+@_extern fx talk: (port: Int32, lines: List<Str>) List<Str>
 
-@_extern
-fx stopServing: () Void
+@_extern fx stopServing: () Void
 
 pub fx main: () Void {
     a: List<Str> = args()

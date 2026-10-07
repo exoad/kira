@@ -26,23 +26,17 @@ class ExternCoercionRunTest {
     private val maybes = Module(
         "app:m",
         """
-        @_extern(cpp = "m3::pick", header = "m3.hxx")
-        pub fx pick: (m: Maybe<Str>) Int32;
+        pub @_extern(cpp = "m3::pick", header = "m3.hxx") fx pick: (m: Maybe<Str>) Int32;
 
-        @_extern(cpp = "m3::pickN", header = "m3.hxx")
-        pub fx pickN: (m: Maybe<Int32>) Int32;
+        pub @_extern(cpp = "m3::pickN", header = "m3.hxx") fx pickN: (m: Maybe<Int32>) Int32;
 
-        @_extern(cpp = "m3::lenAfter", header = "m3.hxx")
-        pub fx lenAfter: (m: Maybe<Str>, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m3::lenAfter", header = "m3.hxx") fx lenAfter: (m: Maybe<Str>, f: Fx<Tuple0, Void>) Int32;
 
-        @_extern(cpp = "m3::sizeOrNeg", header = "m3.hxx")
-        pub fx sizeOrNeg: (m: Maybe<Str>) Int32;
+        pub @_extern(cpp = "m3::sizeOrNeg", header = "m3.hxx") fx sizeOrNeg: (m: Maybe<Str>) Int32;
 
-        @_extern(cpp = "m3::sizeThen", header = "m3.hxx")
-        pub fx sizeThen: (m: Maybe<Str>, k: Int32) Int32;
+        pub @_extern(cpp = "m3::sizeThen", header = "m3.hxx") fx sizeThen: (m: Maybe<Str>, k: Int32) Int32;
 
-        @_extern(cpp = "m3::callKind", header = "m3.hxx")
-        pub fx callKind: (f: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "m3::callKind", header = "m3.hxx") fx callKind: (f: Fx<Tuple0, Int32>) Int32;
 
         mut gs: Str = "$OLD"
         mut gm: Maybe<Str> = "$OLD"
@@ -183,14 +177,11 @@ class ExternCoercionRunTest {
 
         mut gks: List<Kid> = []
 
-        @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx")
-        pub fx nameLenAfter: (b: Base, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") fx nameLenAfter: (b: Base, f: Fx<Tuple0, Void>) Int32;
 
-        @_extern(cpp = "m4::nmLenAfter", header = "m4.hxx")
-        pub fx nmLenAfter: (t: Named, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m4::nmLenAfter", header = "m4.hxx") fx nmLenAfter: (t: Named, f: Fx<Tuple0, Void>) Int32;
 
-        @_extern(cpp = "m4::maybeNameLenAfter", header = "m4.hxx")
-        pub fx maybeNameLenAfter: (b: Maybe<Base>, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m4::maybeNameLenAfter", header = "m4.hxx") fx maybeNameLenAfter: (b: Maybe<Base>, f: Fx<Tuple0, Void>) Int32;
 
         pub fx kParent: () Int32 {
             h: H = H { }

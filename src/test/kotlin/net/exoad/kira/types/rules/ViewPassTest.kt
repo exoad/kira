@@ -389,10 +389,8 @@ class ViewPassTest {
     fun anExternTakesViewsCStrsAndUnsafePointersAsParameters() {
         val p = snippet(
             """
-            @_extern(cpp = "ext::put", header = "ext.hxx")
-            pub fx put: (p: Unsafe<Int32>, mut q: Unsafe<Int32>, v: View<UInt8>, t: CStr) Int32;
-            @_extern(cpp = "ext::name", header = "ext.hxx")
-            pub fx name: () Str;
+            pub @_extern(cpp = "ext::put", header = "ext.hxx") fx put: (p: Unsafe<Int32>, mut q: Unsafe<Int32>, v: View<UInt8>, t: CStr) Int32;
+            pub @_extern(cpp = "ext::name", header = "ext.hxx") fx name: () Str;
             pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
             pub fx total: (points: View<Int32>, mut sum: Int32) Bool;
             """,
@@ -1771,8 +1769,7 @@ class ViewPassTest {
                     }
                 }
                 mut GD: Maybe<Dropper> = null
-                @_extern(cpp = "ext::apply", header = "ext.hxx")
-                pub fx apply: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
+                pub @_extern(cpp = "ext::apply", header = "ext.hxx") fx apply: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
                 pub fx p2a: () Int32 {
                     GL.add(1000)
                     GD = Dropper {}
@@ -1796,8 +1793,7 @@ class ViewPassTest {
                     pub mut d: Maybe<Dropper> = null
                 }
                 mut GH: Maybe<Holder> = null
-                @_extern(cpp = "ext::apply", header = "ext.hxx")
-                pub fx apply: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
+                pub @_extern(cpp = "ext::apply", header = "ext.hxx") fx apply: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
                 pub fx p2d: () Int32 {
                     GL.add(1000)
                     GH = Holder {}
@@ -1818,8 +1814,7 @@ class ViewPassTest {
                     }
                 }
                 mut GFS: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> {}
-                @_extern(cpp = "ext::apply", header = "ext.hxx")
-                pub fx apply: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
+                pub @_extern(cpp = "ext::apply", header = "ext.hxx") fx apply: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
                 pub fx arm: () Void {
                     d: Dropper = Dropper {}
                     GFS.add(fx() Void {
@@ -2026,8 +2021,7 @@ class ViewPassTest {
             "r1-p13a" to Probe(
                 """
                 mut GL: List<Int32> = List<Int32> {}
-                @_extern(cpp = "ext::applyAll", header = "ext.hxx")
-                pub fx applyAll: (v: View<Int32>, fs: Arr<Fx<Tuple0, Void>>) Int32;
+                pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") fx applyAll: (v: View<Int32>, fs: Arr<Fx<Tuple0, Void>>) Int32;
                 pub fx p13a: () Int32 {
                     return applyAll(GL.view(), [fx() Void {
                         GL = List<Int32> {}
@@ -2042,8 +2036,7 @@ class ViewPassTest {
                 pub struct Cb {
                     pub f: Fx<Tuple0, Void> = fx() Void {}
                 }
-                @_extern(cpp = "ext::applyCb", header = "ext.hxx")
-                pub fx applyCb: (v: View<Int32>, c: Cb) Int32;
+                pub @_extern(cpp = "ext::applyCb", header = "ext.hxx") fx applyCb: (v: View<Int32>, c: Cb) Int32;
                 pub fx p13b: () Int32 {
                     return applyCb(GL.view(), Cb { f = fx() Void {
                         GL = List<Int32> {}
@@ -2057,8 +2050,7 @@ class ViewPassTest {
                 pub struct Cb {
                     pub f: Fx<Tuple0, Void> = fx() Void {}
                 }
-                @_extern(cpp = "ext::applyCb", header = "ext.hxx")
-                pub fx applyCb: (v: View<Int32>, c: Cb) Int32;
+                pub @_extern(cpp = "ext::applyCb", header = "ext.hxx") fx applyCb: (v: View<Int32>, c: Cb) Int32;
                 pub class Rx {
                     pub mut data: List<Int32> = List<Int32> {}
                     pub mut fx reset: () Void {
@@ -2085,16 +2077,11 @@ class ViewPassTest {
         // returning a CStr).
         val p = snippet(
             """
-            @_extern(cpp = "ext::name", header = "ext.hxx")
-            pub fx name: () CStr;
-            @_extern(cpp = "ext::text", header = "ext.hxx")
-            pub fx text: () View<Char>;
-            @_extern(cpp = "ext::tokens", header = "ext.hxx")
-            pub fx tokens: (line: Str) List<CStr>;
-            @_extern(cpp = "ext::slot", header = "ext.hxx")
-            pub fx slot: () Unsafe<Int32>;
-            @_extern(cpp = "ext::tailFn", header = "ext.hxx")
-            pub fx tailFn: () Fx<Tuple0, CStr>;
+            pub @_extern(cpp = "ext::name", header = "ext.hxx") fx name: () CStr;
+            pub @_extern(cpp = "ext::text", header = "ext.hxx") fx text: () View<Char>;
+            pub @_extern(cpp = "ext::tokens", header = "ext.hxx") fx tokens: (line: Str) List<CStr>;
+            pub @_extern(cpp = "ext::slot", header = "ext.hxx") fx slot: () Unsafe<Int32>;
+            pub @_extern(cpp = "ext::tailFn", header = "ext.hxx") fx tailFn: () Fx<Tuple0, CStr>;
             pub @_opaque class Buf {
                 pub fx label: () CStr;
                 pub fx bytes: () View<UInt8>;
@@ -2120,8 +2107,7 @@ class ViewPassTest {
             pub fx made: () Unsafe<Int32> {
                 return made()
             }
-            @_extern(cpp = "ext::fill", header = "ext.hxx")
-            pub fx fill: (mut out: Unsafe<CStr>) Void;
+            pub @_extern(cpp = "ext::fill", header = "ext.hxx") fx fill: (mut out: Unsafe<CStr>) Void;
             pub mut SAVED: Maybe<CStr> = null
             """,
         )
@@ -2140,12 +2126,9 @@ class ViewPassTest {
         // sets byRef on the binding as W2.6's CallResolver does, then runs the passes again: no new refusal.
         val p = snippet(
             """
-            @_extern(cpp = "ext::fillP", header = "ext.hxx")
-            pub fx fillP: (p: MutView<Int32>, n: Size, v: Int32) Void;
-            @_extern(cpp = "ext::setFirst", header = "ext.hxx")
-            pub fx setFirst: (p: MutView<Int32>, v: Int32) Void;
-            @_extern(cpp = "ext::peek", header = "ext.hxx")
-            pub fx peek: (p: View<Int32>, q: MutView<Int32>) Int32;
+            pub @_extern(cpp = "ext::fillP", header = "ext.hxx") fx fillP: (p: MutView<Int32>, n: Size, v: Int32) Void;
+            pub @_extern(cpp = "ext::setFirst", header = "ext.hxx") fx setFirst: (p: MutView<Int32>, v: Int32) Void;
+            pub @_extern(cpp = "ext::peek", header = "ext.hxx") fx peek: (p: View<Int32>, q: MutView<Int32>) Int32;
             pub fx locals: () Int32 {
                 mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
                 mut arr: Arr<Int32, 3> = [1, 2, 3]

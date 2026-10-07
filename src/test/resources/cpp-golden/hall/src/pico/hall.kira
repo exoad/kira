@@ -29,7 +29,7 @@ pub struct Decoder {
         return skips + invalid
     }
 
-    pub @_const mut fx feed: (next: UInt8, nowUs: UInt64) Void {
+    pub mut @_const fx feed: (next: UInt8, nowUs: UInt64) Void {
         bits: UInt8 = next & 7
         idx: Int8 = INDEX_OF[bits as Size]
         if idx < 0 {

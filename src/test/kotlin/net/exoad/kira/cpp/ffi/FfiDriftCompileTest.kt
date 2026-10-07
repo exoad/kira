@@ -61,13 +61,11 @@ class FfiDriftCompileTest {
     private val options = CppOptions(lineDirectives = false, namespaces = mapOf("pilot:car" to "bibo"))
 
     private fun carModule(finishReturns: String): String = """
-        @_extern(cpp = "bibo::Scan", header = "car.hxx")
-        pub struct Scan {
+        pub @_extern(cpp = "bibo::Scan", header = "car.hxx") struct Scan {
             pub fx ahead: () Float32;
         }
 
-        @_extern(cpp = "bibo::Car", header = "car.hxx")
-        pub class Car {
+        pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
             pub mut fx arm: () Bool;
             pub fx ok: () Bool;
             pub fx drivable: () Bool;
@@ -76,25 +74,21 @@ class FfiDriftCompileTest {
             pub mut fx finish: () $finishReturns;
         }
 
-        @_extern(cpp = "bibo::openCar", header = "car.seam.hxx")
-        pub fx openCar: () Car;
+        pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") fx openCar: () Car;
     """
 
     /** Kira's view of `pt.h`: the fields as given, and the C function through `c =`. */
     private fun ptModule(fields: String): String = """
-        @_extern(c = "Pt", header = "pt.h")
-        pub struct Pt {
+        pub @_extern(c = "Pt", header = "pt.h") struct Pt {
             $fields
         }
 
-        @_extern(c = "pt_len", header = "pt.h")
-        pub fx ptLen: (s: CStr) Int32;
+        pub @_extern(c = "pt_len", header = "pt.h") fx ptLen: (s: CStr) Int32;
     """
 
     /** Kira's view of `pt.h`'s `PtCfg`, whose first field is a C enum: declared as the integer given. */
     private fun cfgModule(modeType: String): String = """
-        @_extern(c = "PtCfg", header = "pt.h")
-        pub struct Cfg {
+        pub @_extern(c = "PtCfg", header = "pt.h") struct Cfg {
             pub mode: $modeType = 0
             pub n: Int32 = 0
         }
@@ -142,17 +136,14 @@ class FfiDriftCompileTest {
      * `cpp =` and the Kira name.
      */
     private val cfgCallModule = """
-        @_extern(c = "PtCfg", header = "pt.h")
-        pub struct Cfg {
+        pub @_extern(c = "PtCfg", header = "pt.h") struct Cfg {
             pub mode: Int32 = 0
             pub n: Int32 = 0
         }
 
-        @_extern(c = "pt_cfg_get", header = "pt.h")
-        pub fx cfgGet: () Cfg;
+        pub @_extern(c = "pt_cfg_get", header = "pt.h") fx cfgGet: () Cfg;
 
-        @_extern(c = "pt_cfg_put", header = "pt.h")
-        pub fx cfgPut: (mut c: Cfg) Void;
+        pub @_extern(c = "pt_cfg_put", header = "pt.h") fx cfgPut: (mut c: Cfg) Void;
     """
 
     /** Kira's view of `pt.h`'s scalar functions and its `int` struct: the declarations as given. */
@@ -305,8 +296,7 @@ class FfiDriftCompileTest {
         val (text, header) = callText(
             "c:sc",
             """
-            @_extern(cpp = "probe::none", header = "probe.hxx")
-            pub fx none: () Str;
+            pub @_extern(cpp = "probe::none", header = "probe.hxx") fx none: () Str;
 
             fx run: () Str {
                 return none()
@@ -328,7 +318,7 @@ class FfiDriftCompileTest {
 
     /** `char letter()` declared `() Int8`: a scalar of Int8's size and (on x86) signedness, and trace(letter()) printed A where an Int8 prints 65 (measured). char is only Char. */
     private fun charResultDeclaredInt8Drift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "char-int8", "@_extern(cpp = \"probe::letter\", header = \"probe.hxx\")\npub fx letter: () Int8;")
+        val (header, result) = compileProbe(tc, "char-int8", "pub @_extern(cpp = \"probe::letter\", header = \"probe.hxx\") fx letter: () Int8;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::letter(), std::int8_t, \"letter\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'letter: () Int8' against C++'s char letter() compiled (a scalar of the size would let it):\n${result.describe()}")
         assertMessage(tc, result, "Kira's letter ${CppExternEmitter.DRIFT_MESSAGE}")
@@ -336,7 +326,7 @@ class FfiDriftCompileTest {
 
     /** `std::int8_t code()` declared `() Char`: the same rule from the other side (trace(code()) printed 66 where a Char prints B, measured). */
     private fun int8ResultDeclaredCharDrift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "int8-char", "@_extern(cpp = \"probe::code\", header = \"probe.hxx\")\npub fx code: () Char;")
+        val (header, result) = compileProbe(tc, "int8-char", "pub @_extern(cpp = \"probe::code\", header = \"probe.hxx\") fx code: () Char;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::code(), char, \"code\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'code: () Char' against C++'s std::int8_t code() compiled:\n${result.describe()}")
         assertMessage(tc, result, "Kira's code ${CppExternEmitter.DRIFT_MESSAGE}")
@@ -353,8 +343,7 @@ class FfiDriftCompileTest {
         val (text, header) = callText(
             "c:sc",
             """
-            @_extern(c = "pt_mode", header = "pt.h")
-            pub fx ptMode: () Int32;
+            pub @_extern(c = "pt_mode", header = "pt.h") fx ptMode: () Int32;
 
             fx run: () Int32 {
                 return ptMode()
@@ -424,7 +413,7 @@ class FfiDriftCompileTest {
      * (measured, g++ 13.2).
      */
     private fun fnParameterDirectionDrift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "fn-direction", "@_extern(cpp = \"probe::on_c\", header = \"probe.hxx\")\npub fx onC: () Fx<Tuple1<Str>, Void>;")
+        val (header, result) = compileProbe(tc, "fn-direction", "pub @_extern(cpp = \"probe::on_c\", header = \"probe.hxx\") fx onC: () Fx<Tuple1<Str>, Void>;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::on_c(), kira::Fn<void(const kira::Str&)>, \"onC\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'onC: () Fx<Tuple1<Str>, Void>' against C++'s std::function<void(const char*)> compiled:\n${result.describe()}")
         assertMessage(tc, result, "Kira's onC ${CppExternEmitter.DRIFT_MESSAGE}")
@@ -435,8 +424,7 @@ class FfiDriftCompileTest {
         val (text, header) = callText(
             "c:sc",
             """
-            @_extern(cpp = "probe::on_s", header = "probe.hxx")
-            pub fx onS: () Fx<Tuple1<CStr>, Void>;
+            pub @_extern(cpp = "probe::on_s", header = "probe.hxx") fx onS: () Fx<Tuple1<CStr>, Void>;
 
             fx run: () Fx<Tuple1<CStr>, Void> {
                 return onS()
@@ -467,7 +455,7 @@ class FfiDriftCompileTest {
 
     /** `std::optional<std::uint32_t> find_u()` declared `() Maybe<Int32>`: optional's converting constructor passed it, and `unwrap(find()) - 1` printed 4294967295 (measured). */
     private fun maybeReturnDrift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "maybe-return", "@_extern(cpp = \"probe::find_u\", header = \"probe.hxx\")\npub fx findU: () Maybe<Int32>;")
+        val (header, result) = compileProbe(tc, "maybe-return", "pub @_extern(cpp = \"probe::find_u\", header = \"probe.hxx\") fx findU: () Maybe<Int32>;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::find_u(), kira::Maybe<std::int32_t>, \"findU\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'findU: () Maybe<Int32>' against C++'s std::optional<std::uint32_t> compiled (is_convertible would let it):\n${result.describe()}")
         assertMessage(tc, result, "Kira's findU ${CppExternEmitter.DRIFT_MESSAGE}")
@@ -475,7 +463,7 @@ class FfiDriftCompileTest {
 
     /** `void put_u8(std::optional<std::uint8_t>)` declared `(m: Maybe<Int32>)`: a declval of the Maybe converted, and 300 reached C++ as 44 (measured). */
     private fun maybeParameterDrift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "maybe-param", "@_extern(cpp = \"probe::put_u8\", header = \"probe.hxx\")\npub fx putU8: (m: Maybe<Int32>) Void;")
+        val (header, result) = compileProbe(tc, "maybe-param", "pub @_extern(cpp = \"probe::put_u8\", header = \"probe.hxx\") fx putU8: (m: Maybe<Int32>) Void;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK((probe::put_u8(kira::ffi::arg<kira::Maybe<std::int32_t>>()), 0), int, \"putU8\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'putU8: (m: Maybe<Int32>)' against C++'s put_u8(std::optional<std::uint8_t>) compiled (declval would let it):\n${result.describe()}")
         assertTrue(result.diagnostics.contains("Arg<"), "${tc.id}: the build failed, but not at the kira::ffi::Arg proxy:\n${result.describe()}")
@@ -483,7 +471,7 @@ class FfiDriftCompileTest {
 
     /** `std::function<void(unsigned)> on_u()` declared `() Fx<Tuple1<Int32>, Void>`: std::function converts from any callable of a compatible signature. */
     private fun fnReturnDrift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "fn-return", "@_extern(cpp = \"probe::on_u\", header = \"probe.hxx\")\npub fx onU: () Fx<Tuple1<Int32>, Void>;")
+        val (header, result) = compileProbe(tc, "fn-return", "pub @_extern(cpp = \"probe::on_u\", header = \"probe.hxx\") fx onU: () Fx<Tuple1<Int32>, Void>;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::on_u(), kira::Fn<void(std::int32_t)>, \"onU\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'onU: () Fx<Tuple1<Int32>, Void>' against C++'s std::function<void(unsigned)> compiled (is_convertible would let it):\n${result.describe()}")
         assertMessage(tc, result, "Kira's onU ${CppExternEmitter.DRIFT_MESSAGE}")
@@ -493,14 +481,10 @@ class FfiDriftCompileTest {
         val (_, result) = compileProbe(
             tc, "maybe-fn-clean",
             """
-            @_extern(cpp = "probe::find_i", header = "probe.hxx")
-            pub fx findI: () Maybe<Int32>;
-            @_extern(cpp = "probe::put_i", header = "probe.hxx")
-            pub fx putI: (m: Maybe<Int32>) Void;
-            @_extern(cpp = "probe::on_i", header = "probe.hxx")
-            pub fx onI: () Fx<Tuple1<Int32>, Void>;
-            @_extern(cpp = "probe::set_i", header = "probe.hxx")
-            pub fx setI: (f: Fx<Tuple1<Int32>, Void>) Void;
+            pub @_extern(cpp = "probe::find_i", header = "probe.hxx") fx findI: () Maybe<Int32>;
+            pub @_extern(cpp = "probe::put_i", header = "probe.hxx") fx putI: (m: Maybe<Int32>) Void;
+            pub @_extern(cpp = "probe::on_i", header = "probe.hxx") fx onI: () Fx<Tuple1<Int32>, Void>;
+            pub @_extern(cpp = "probe::set_i", header = "probe.hxx") fx setI: (f: Fx<Tuple1<Int32>, Void>) Void;
             """.trimIndent(),
         )
         if (!result.success) {
@@ -518,8 +502,7 @@ class FfiDriftCompileTest {
     private fun strResultIsConvertedAtTheCall(tc: CppToolchain) {
         val uri = "c:sc"
         val decls = """
-            @_extern(cpp = "probe::name", header = "probe.hxx")
-            pub fx name: () Str;
+            pub @_extern(cpp = "probe::name", header = "probe.hxx") fx name: () Str;
 
             fx run: () Bool {
                 return name() == "abc"
@@ -567,7 +550,7 @@ class FfiDriftCompileTest {
 
     /** `std::uint32_t pt_count()` declared `() Int32`: is_convertible passed it, and Kira's `count() - 1` then printed 4294967295 (measured). */
     private fun returnSignednessDrift(tc: CppToolchain) {
-        val (header, result) = compileScalar(tc, "return-sign", "@_extern(c = \"pt_count\", header = \"pt.h\")\npub fx ptCount: () Int32;")
+        val (header, result) = compileScalar(tc, "return-sign", "pub @_extern(c = \"pt_count\", header = \"pt.h\") fx ptCount: () Int32;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(pt_count(), std::int32_t, \"ptCount\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'ptCount: () Int32' against C's uint32_t pt_count() compiled (is_convertible would let it):\n${result.describe()}")
         assertMessage(tc, result, "Kira's ptCount ${CppExternEmitter.DRIFT_MESSAGE}")
@@ -581,7 +564,7 @@ class FfiDriftCompileTest {
      * static_assert sees a type (as a wrong parameter count did already).
      */
     private fun parameterWidthDrift(tc: CppToolchain) {
-        val (header, result) = compileScalar(tc, "param-width", "@_extern(c = \"pt_take\", header = \"pt.h\")\npub fx ptTake: (v: Int32) Void;")
+        val (header, result) = compileScalar(tc, "param-width", "pub @_extern(c = \"pt_take\", header = \"pt.h\") fx ptTake: (v: Int32) Void;")
         assertTrue(header.contains("KIRA_EXTERN_CHECK((pt_take(kira::ffi::arg<std::int32_t>()), 0), int, \"ptTake\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'ptTake: (v: Int32)' against C's pt_take(uint8_t) compiled (declval would let it):\n${result.describe()}")
         assertTrue(result.diagnostics.contains("Arg<"), "${tc.id}: the build failed, but not at the kira::ffi::Arg proxy:\n${result.describe()}")
@@ -589,7 +572,7 @@ class FfiDriftCompileTest {
 
     /** `struct PtInt { int x; int y; }` declared with Int32 fields: int and std::int32_t are one scalar (on arm-none-eabi too, where is_same was not enough). */
     private fun cIntFieldClean(tc: CppToolchain) {
-        val (header, result) = compileScalar(tc, "int-field", "@_extern(c = \"PtInt\", header = \"pt.h\")\npub struct PtI {\n    pub x: Int32 = 0\n    pub y: Int32 = 0\n}")
+        val (header, result) = compileScalar(tc, "int-field", "pub @_extern(c = \"PtInt\", header = \"pt.h\") struct PtI {\n    pub x: Int32 = 0\n    pub y: Int32 = 0\n}")
         assertTrue(header.contains("KIRA_EXTERN_FIELD(PtInt, sc::ffi_::PtI, x, std::int32_t, \"PtI.x\");"), header)
         if (!result.success) {
             fail("${tc.id}: a C int field declared Int32 does not build:\n${result.describe()}")

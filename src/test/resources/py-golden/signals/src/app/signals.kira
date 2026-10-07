@@ -7,8 +7,7 @@ use "kira:os"
 use "kira:sync"
 use "kira:time"
 
-@_extern
-fx raiseInt: () Void
+@_extern fx raiseInt: () Void
 
 pub fx main: () Int32 {
     a: List<Str> = args()

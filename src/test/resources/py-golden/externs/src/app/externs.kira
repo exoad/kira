@@ -24,86 +24,59 @@ pub struct Holder {
     pub raw: List<UInt8> = [1]
 }
 
-@_extern
-pub fx scribble: (t: Tuple2<List<Int32>, Int32>, h: Holder, ts: List<Tuple2<List<Int32>, Int32>>, mt: Maybe<Tuple2<List<Int32>, Int32>>) Void
+pub @_extern fx scribble: (t: Tuple2<List<Int32>, Int32>, h: Holder, ts: List<Tuple2<List<Int32>, Int32>>, mt: Maybe<Tuple2<List<Int32>, Int32>>) Void
 
-@_extern
-pub fx bytesKinds: (a: List<UInt8>, b: Maybe<List<UInt8>>, c: List<List<UInt8>>, d: Map<Str, List<UInt8>>, e: Tuple2<List<UInt8>, Int32>, h: Holder) Str
+pub @_extern fx bytesKinds: (a: List<UInt8>, b: Maybe<List<UInt8>>, c: List<List<UInt8>>, d: Map<Str, List<UInt8>>, e: Tuple2<List<UInt8>, Int32>, h: Holder) Str
 
-@_extern
-pub fx annotate: (j: Json, key: Str) Void
+pub @_extern fx annotate: (j: Json, key: Str) Void
 
-@_extern
-pub fx seenScalars: (a: Int8, b: UInt64, c: Size, d: Float64, e: Bool, f: Str, g: Level) Str
+pub @_extern fx seenScalars: (a: Int8, b: UInt64, c: Size, d: Float64, e: Bool, f: Str, g: Level) Str
 
-@_extern
-pub fx seenValues: (xs: List<Int32>, b: List<UInt8>, m: Map<Str, Int32>, t: Tuple2<Str, Int32>, some: Maybe<Str>, absent: Maybe<Str>) Str
+pub @_extern fx seenValues: (xs: List<Int32>, b: List<UInt8>, m: Map<Str, Int32>, t: Tuple2<Str, Int32>, some: Maybe<Str>, absent: Maybe<Str>) Str
 
-@_extern
-pub fx seenObjects: (p: Pt, b: Box, j: Json) Str
+pub @_extern fx seenObjects: (p: Pt, b: Box, j: Json) Str
 
-@_extern
-pub fx keep: (xs: List<Int32>, p: Pt, b: Box) Void
+pub @_extern fx keep: (xs: List<Int32>, p: Pt, b: Box) Void
 
-@_extern
-pub fx kept: () Str
+pub @_extern fx kept: () Str
 
-@_extern
-pub fx sharedList: () List<Str>
+pub @_extern fx sharedList: () List<Str>
 
-@_extern
-pub fx touchShared: () Void
+pub @_extern fx touchShared: () Void
 
-@_extern
-pub fx fillInto: (buf: MutView<UInt8>) Int64
+pub @_extern fx fillInto: (buf: MutView<UInt8>) Int64
 
-@_extern
-pub fx tryWrite: (data: View<UInt8>) Str
+pub @_extern fx tryWrite: (data: View<UInt8>) Str
 
-@_extern
-pub fx useKept: () Str
+pub @_extern fx useKept: () Str
 
-@_extern
-pub fx giveInt32: (k: Str) Int32
+pub @_extern fx giveInt32: (k: Str) Int32
 
-@_extern
-pub fx giveUInt8: (k: Str) UInt8
+pub @_extern fx giveUInt8: (k: Str) UInt8
 
-@_extern
-pub fx giveSize: (k: Str) Size
+pub @_extern fx giveSize: (k: Str) Size
 
-@_extern
-pub fx giveFloat: (k: Str) Float64
+pub @_extern fx giveFloat: (k: Str) Float64
 
-@_extern
-pub fx giveBool: (k: Str) Bool
+pub @_extern fx giveBool: (k: Str) Bool
 
-@_extern
-pub fx giveStr: (k: Str) Str
+pub @_extern fx giveStr: (k: Str) Str
 
-@_extern
-pub fx giveMaybe: (k: Str) Maybe<Int32>
+pub @_extern fx giveMaybe: (k: Str) Maybe<Int32>
 
-@_extern
-pub fx giveList: (k: Str) List<Str>
+pub @_extern fx giveList: (k: Str) List<Str>
 
-@_extern
-pub fx giveBytes: (k: Str) List<UInt8>
+pub @_extern fx giveBytes: (k: Str) List<UInt8>
 
-@_extern
-pub fx giveMap: (k: Str) Map<Str, Int64>
+pub @_extern fx giveMap: (k: Str) Map<Str, Int64>
 
-@_extern
-pub fx giveTuple: (k: Str) Tuple2<Str, Int32>
+pub @_extern fx giveTuple: (k: Str) Tuple2<Str, Int32>
 
-@_extern
-pub fx giveLevel: (k: Str) Level
+pub @_extern fx giveLevel: (k: Str) Level
 
-@_extern
-pub fx giveJson: (k: Str) Json
+pub @_extern fx giveJson: (k: Str) Json
 
-@_extern
-pub fx giveVoid: (k: Str) Void
+pub @_extern fx giveVoid: (k: Str) Void
 
 pub fx run: () Void {
     top: UInt64 = 0

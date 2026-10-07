@@ -32,76 +32,53 @@ class ExternCallRunTest {
     private val calls = Module(
         "app:w",
         """
-        @_extern(cpp = "nat::lenAfterL", header = "nat.hxx")
-        pub fx lenAfterL: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::lenAfterL", header = "nat.hxx") fx lenAfterL: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::lenAfterCL", header = "nat.hxx")
-        pub fx lenAfterCL: (s: CStr, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::lenAfterCL", header = "nat.hxx") fx lenAfterCL: (s: CStr, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::lenAfterCb", header = "nat.hxx")
-        pub fx lenAfterCb: (s: Str, c: Cb) Int32;
+        pub @_extern(cpp = "nat::lenAfterCb", header = "nat.hxx") fx lenAfterCb: (s: Str, c: Cb) Int32;
 
-        @_extern(cpp = "nat::lenAfterF", header = "nat.hxx")
-        pub fx lenAfterF: (s: Str, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "nat::lenAfterF", header = "nat.hxx") fx lenAfterF: (s: Str, f: Fx<Tuple0, Void>) Int32;
 
-        @_extern(cpp = "nat::appendLen", header = "nat.hxx")
-        pub fx appendLen: (s: Str, mut out: Str) Int32;
+        pub @_extern(cpp = "nat::appendLen", header = "nat.hxx") fx appendLen: (s: Str, mut out: Str) Int32;
 
-        @_extern(cpp = "nat::appendLenC", header = "nat.hxx")
-        pub fx appendLenC: (s: CStr, mut out: Str) Int32;
+        pub @_extern(cpp = "nat::appendLenC", header = "nat.hxx") fx appendLenC: (s: CStr, mut out: Str) Int32;
 
-        @_extern(cpp = "nat::appendLenI", header = "nat.hxx")
-        pub fx appendLenI: (s: Str, mut n: Int32) Int32;
+        pub @_extern(cpp = "nat::appendLenI", header = "nat.hxx") fx appendLenI: (s: Str, mut n: Int32) Int32;
 
-        @_extern(cpp = "nat::sumListL", header = "nat.hxx")
-        pub fx sumListL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::sumListL", header = "nat.hxx") fx sumListL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::sumArrL", header = "nat.hxx")
-        pub fx sumArrL: (a: Arr<Int32, 3>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::sumArrL", header = "nat.hxx") fx sumArrL: (a: Arr<Int32, 3>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::lenMaybeL", header = "nat.hxx")
-        pub fx lenMaybeL: (m: Maybe<Str>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::lenMaybeL", header = "nat.hxx") fx lenMaybeL: (m: Maybe<Str>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::ptLenL", header = "nat.hxx")
-        pub fx ptLenL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::ptLenL", header = "nat.hxx") fx ptLenL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::boxLenL", header = "nat.hxx")
-        pub fx boxLenL: (b: Box, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::boxLenL", header = "nat.hxx") fx boxLenL: (b: Box, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::lenS", header = "nat.hxx")
-        pub fx lenS: (s: Str) Int32;
+        pub @_extern(cpp = "nat::lenS", header = "nat.hxx") fx lenS: (s: Str) Int32;
 
-        @_extern(cpp = "nat::newBox", header = "nat.hxx")
-        pub fx newBox: (n: Int32) Box;
+        pub @_extern(cpp = "nat::newBox", header = "nat.hxx") fx newBox: (n: Int32) Box;
 
-        @_extern(cpp = "nat::pumpWith", header = "nat.hxx")
-        pub fx pumpWith: (fs: List<Fx<Tuple0, Void>>) Pump;
+        pub @_extern(cpp = "nat::pumpWith", header = "nat.hxx") fx pumpWith: (fs: List<Fx<Tuple0, Void>>) Pump;
 
-        @_extern(cpp = "nat::ptNAfterMut", header = "nat.hxx")
-        pub fx ptNAfterMut: (p: Pt, mut n: Int32) Int32;
+        pub @_extern(cpp = "nat::ptNAfterMut", header = "nat.hxx") fx ptNAfterMut: (p: Pt, mut n: Int32) Int32;
 
-        @_extern(cpp = "nat::firstAfterMut", header = "nat.hxx")
-        pub fx firstAfterMut: (xs: List<Int32>, mut n: Int32) Int32;
+        pub @_extern(cpp = "nat::firstAfterMut", header = "nat.hxx") fx firstAfterMut: (xs: List<Int32>, mut n: Int32) Int32;
 
-        @_extern(cpp = "nat::nameAfterMutS", header = "nat.hxx")
-        pub fx nameAfterMutS: (p: Pt, mut out: Str) Int32;
+        pub @_extern(cpp = "nat::nameAfterMutS", header = "nat.hxx") fx nameAfterMutS: (p: Pt, mut out: Str) Int32;
 
-        @_extern(cpp = "nat::firstAfterMutInner", header = "nat.hxx")
-        pub fx firstAfterMutInner: (ls: List<List<Int32>>, mut o: List<Int32>) Int32;
+        pub @_extern(cpp = "nat::firstAfterMutInner", header = "nat.hxx") fx firstAfterMutInner: (ls: List<List<Int32>>, mut o: List<Int32>) Int32;
 
-        @_extern(cpp = "nat::firstAfterL", header = "nat.hxx")
-        pub fx firstAfterL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::firstAfterL", header = "nat.hxx") fx firstAfterL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::ptNAfterL", header = "nat.hxx")
-        pub fx ptNAfterL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::ptNAfterL", header = "nat.hxx") fx ptNAfterL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        @_extern(cpp = "nat::Box", header = "nat.hxx")
-        pub class Box {
+        pub @_extern(cpp = "nat::Box", header = "nat.hxx") class Box {
             pub fx size: () Int32;
         }
 
-        @_extern(cpp = "nat::Pump", header = "nat.hxx")
-        pub class Pump {
+        pub @_extern(cpp = "nat::Pump", header = "nat.hxx") class Pump {
             pub mut fx lenAfter: (s: Str) Int32;
         }
 

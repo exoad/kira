@@ -2,5 +2,4 @@ module "app:badname"
 
 // A raises = name that is no Exception class the sidecar or the builtins hold: a panic at import (D69).
 
-@_extern(raises = "nosuch.Error")
-pub fx f: () Void
+pub @_extern(raises = "nosuch.Error") fx f: () Void

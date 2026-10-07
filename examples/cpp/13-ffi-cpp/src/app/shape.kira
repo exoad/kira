@@ -4,8 +4,7 @@ module "app:shape"
 // An extern module emits drift checks against those headers, never a copy of them
 // (design 7.2); the C++ side stays C++.
 
-@_extern(cpp = "shape::Box", header = "shape.hxx")
-pub class Box {
+pub @_extern(cpp = "shape::Box", header = "shape.hxx") class Box {
     pub fx width: () Int32;
     pub fx height: () Int32;
     pub fx area: () Int32;
@@ -13,22 +12,17 @@ pub class Box {
 }
 
 // The seam: a 3-line C++ factory, since a Kira class value is a kira::Rc<Box>.
-@_extern(cpp = "shape::makeBox", header = "shape.hxx")
-pub fx makeBox: (w: Int32, h: Int32) Box;
+pub @_extern(cpp = "shape::makeBox", header = "shape.hxx") fx makeBox: (w: Int32, h: Int32) Box;
 
 // C functions (design 7.3): `c =` names the C symbol, and the C++ backend includes
 // cshape.h inside extern "C" { }, which cshape.h's own guard tolerates and a header
 // without one needs. A Str goes in as const char*, a mut Int32 goes out as int32_t*.
-@_extern(c = "cshape_hypot_sq", header = "cshape.h")
-pub fx hypotSq: (a: Int32, b: Int32) Int32;
+pub @_extern(c = "cshape_hypot_sq", header = "cshape.h") fx hypotSq: (a: Int32, b: Int32) Int32;
 
-@_extern(c = "cshape_len", header = "cshape.h")
-pub fx cLen: (s: Str) Size;
+pub @_extern(c = "cshape_len", header = "cshape.h") fx cLen: (s: Str) Size;
 
-@_extern(c = "cshape_count", header = "cshape.h")
-pub fx countTo: (mut out: Int32, n: Int32) Void;
+pub @_extern(c = "cshape_count", header = "cshape.h") fx countTo: (mut out: Int32, n: Int32) Void;
 
 // A C constant is a macro (`#define CSHAPE_LIMIT 42`): the check and the read both
 // spell it as written, since `::CSHAPE_LIMIT` would be `::42`.
-@_extern(c = "CSHAPE_LIMIT", header = "cshape.h")
-pub LIMIT: Int32;
+pub @_extern(c = "CSHAPE_LIMIT", header = "cshape.h") LIMIT: Int32;

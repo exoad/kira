@@ -2,8 +2,6 @@ module "app:missing"
 
 // A sidecar that lacks an extern: a panic at import (D67), which driver.py catches.
 
-@_extern
-pub fx present: (n: Int32) Int32
+pub @_extern fx present: (n: Int32) Int32
 
-@_extern
-pub fx absent: (n: Int32) Int32
+pub @_extern fx absent: (n: Int32) Int32

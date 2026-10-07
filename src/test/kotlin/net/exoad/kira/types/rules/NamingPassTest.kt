@@ -46,8 +46,7 @@ class NamingPassTest {
         expectClean(
             snippet(
                 """
-                @_extern(cpp = "ext::ReadBytes", header = "ext.hxx")
-                pub fx ReadBytes: () Int32;
+                pub @_extern(cpp = "ext::ReadBytes", header = "ext.hxx") fx ReadBytes: () Int32;
                 pub struct V2 {
                     pub x: Int32 = 0
                 }

@@ -200,8 +200,7 @@ class LentPlacesTest {
                 }
             """, listOf("rules.view.write")),
             "c2c" to Probe("""
-                @_extern(cpp = "w::sumVF", header = "w.hxx")
-                pub fx sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
+                pub @_extern(cpp = "w::sumVF", header = "w.hxx") fx sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
                 pub fx f: () Int32 {
                     return sumVF(gll.get(0).view(), fx () Void { gll = List<List<Int32>> { } })
                 }

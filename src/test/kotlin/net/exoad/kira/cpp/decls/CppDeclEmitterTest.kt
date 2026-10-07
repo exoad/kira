@@ -363,7 +363,7 @@ class CppDeclEmitterTest {
                 pub struct Pt {
                     pub x: Int32 = 0
                     pub fx width: () Int32 { return x }
-                    pub @_const mut fx grow: (by: Int32) Void { x += by }
+                    pub mut @_const fx grow: (by: Int32) Void { x += by }
                 }
                 """,
             ),
@@ -487,8 +487,7 @@ class CppDeclEmitterTest {
                 pub class Node { pub v: Int32 = 0 }
                 pub trait Shape { pub fx area: () Int32; }
                 pub fx f: () Void { }
-                @_extern(cpp = "bibo::openCar", header = "car.hxx")
-                pub fx openCar: () Int32;
+                pub @_extern(cpp = "bibo::openCar", header = "car.hxx") fx openCar: () Int32;
                 """,
             ),
             uri = "test:main",

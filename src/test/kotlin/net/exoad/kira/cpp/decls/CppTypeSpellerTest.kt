@@ -29,14 +29,11 @@ class CppTypeSpellerTest {
 
         pub trait Shape { pub fx area: () Int32; }
 
-        @_opaque
-        pub class Handle { }
+        pub @_opaque class Handle { }
 
-        @_extern(cpp = "bibo::Scan", header = "scan.hxx")
-        pub struct Scan { }
+        pub @_extern(cpp = "bibo::Scan", header = "scan.hxx") struct Scan { }
 
-        @_extern(cpp = "bibo::Car", header = "car.hxx")
-        pub class Car { }
+        pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car { }
 
         pub alias Frame as Arr<UInt8, 32>
 

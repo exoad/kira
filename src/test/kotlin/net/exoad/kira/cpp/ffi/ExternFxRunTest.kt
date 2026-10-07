@@ -48,30 +48,23 @@ class ExternFxRunTest {
 
         $EXTERNS
 
-        @_extern(cpp = "f7::ptr", header = "f7.hxx")
-        pub fx ptr: (g: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") fx ptr: (g: Fx<Tuple0, Int32>) Int32;
 
-        @_extern(cpp = "f7::fwdKind", header = "f7.hxx")
-        pub fx fwdKind: (g: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "f7::fwdKind", header = "f7.hxx") fx fwdKind: (g: Fx<Tuple0, Int32>) Int32;
 
-        @_extern(cpp = "f7::callKind1", header = "f7.hxx")
-        pub fx callKind1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
+        pub @_extern(cpp = "f7::callKind1", header = "f7.hxx") fx callKind1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
 
-        @_extern(cpp = "f7::pick1", header = "f7.hxx")
-        pub fx pick1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
+        pub @_extern(cpp = "f7::pick1", header = "f7.hxx") fx pick1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
 
-        @_extern(cpp = "f7::mkind", header = "f7.hxx")
-        pub fx mkind: (m: Maybe<Fx<Tuple0, Int32>>) Int32;
+        pub @_extern(cpp = "f7::mkind", header = "f7.hxx") fx mkind: (m: Maybe<Fx<Tuple0, Int32>>) Int32;
 
-        @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx")
-        pub class Box {
+        pub @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx") class Box {
             pub fx kind: (g: Fx<Tuple0, Int32>) Int32;
             pub fx pick: (g: Fx<Tuple0, Int32>) Int32;
             pub fx get: () Int32;
         }
 
-        @_extern(cpp = "f7::newBox", header = "f7.hxx")
-        pub fx newBox: () Box;
+        pub @_extern(cpp = "f7::newBox", header = "f7.hxx") fx newBox: () Box;
 
         mut gc: Bool = true
 
@@ -341,8 +334,7 @@ class ExternFxRunTest {
         """
         $EXTERNS
 
-        @_extern(cpp = "f7::ptr", header = "f7.hxx")
-        pub fx ptr: (g: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") fx ptr: (g: Fx<Tuple0, Int32>) Int32;
 
         pub fx ptrLambda: () Int32 {
             return ptr(fx () Int32 { return 2 })
@@ -454,13 +446,11 @@ class ExternFxRunTest {
             """
             $EXTERNS
 
-            @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx")
-            pub class Box {
+            pub @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx") class Box {
                 pub fx get: () Int32;
             }
 
-            @_extern(cpp = "f7::newBox", header = "f7.hxx")
-            pub fx newBox: () Box;
+            pub @_extern(cpp = "f7::newBox", header = "f7.hxx") fx newBox: () Box;
 
             pub fx mValue: () Int32 {
                 bx: Box = newBox()
@@ -493,11 +483,9 @@ class ExternFxRunTest {
         val TOOLCHAINS = listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC)
 
         /** The two externs every module here declares: a2_fx's template and an overload set. */
-        const val EXTERNS = """@_extern(cpp = "f7::callKind", header = "f7.hxx")
-        pub fx callKind: (g: Fx<Tuple0, Int32>) Int32;
+        const val EXTERNS = """pub @_extern(cpp = "f7::callKind", header = "f7.hxx") fx callKind: (g: Fx<Tuple0, Int32>) Int32;
 
-        @_extern(cpp = "f7::pick", header = "f7.hxx")
-        pub fx pick: (g: Fx<Tuple0, Int32>) Int32;"""
+        pub @_extern(cpp = "f7::pick", header = "f7.hxx") fx pick: (g: Fx<Tuple0, Int32>) Int32;"""
 
         /**
          * Templates and overload sets that tell a std::function (the kira::Fn the check states)

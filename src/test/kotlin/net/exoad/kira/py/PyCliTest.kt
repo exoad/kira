@@ -104,8 +104,7 @@ class PyCliTest {
                 """
                 module "app:main"
 
-                $marker
-                fx home: () Str
+                $marker fx home: () Str
 
                 fx main: () Void {
                     trace(home())

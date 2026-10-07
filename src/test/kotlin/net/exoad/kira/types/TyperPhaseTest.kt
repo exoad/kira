@@ -311,12 +311,10 @@ class TyperPhaseTest {
         TyperTestSupport.assumeDialectParser("reading @_extern arguments")
         val p = snippet(
             """
-            @_extern(cpp = "bibo::Car", header = "car.hxx")
-            pub class Car {
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
                 pub fx ok: () Bool;
             }
-            @_extern("c_cos")
-            pub fx cosine: (x: Float64) Float64;
+            pub @_extern("c_cos") fx cosine: (x: Float64) Float64;
             """
         )
         assertEquals(Foreign.Extern(mapOf("cpp" to "bibo::Car", "header" to "car.hxx")), (p.member("test:main", "Car") as ClassSymbol).foreign)

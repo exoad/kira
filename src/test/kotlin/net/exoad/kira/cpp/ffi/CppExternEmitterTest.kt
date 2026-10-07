@@ -56,14 +56,11 @@ class CppExternEmitterTest {
     fun aFreeFunctionIsCheckedWithTheProxiesItsCallWouldPass() {
         val h = header(
             """
-            @_extern(cpp = "ImGui::SliderFloat", header = "imgui.h")
-            pub fx sliderFloat: (label: Str, mut v: Float32, lo: Float32, hi: Float32) Bool;
+            pub @_extern(cpp = "ImGui::SliderFloat", header = "imgui.h") fx sliderFloat: (label: Str, mut v: Float32, lo: Float32, hi: Float32) Bool;
 
-            @_extern(cpp = "ImGui::Text", header = "imgui.h")
-            pub fx text: (s: CStr) Void;
+            pub @_extern(cpp = "ImGui::Text", header = "imgui.h") fx text: (s: CStr) Void;
 
-            @_extern("bare_c_name")
-            pub fx bare: (p: Unsafe<UInt8>, n: Size) Int64;
+            pub @_extern("bare_c_name") fx bare: (p: Unsafe<UInt8>, n: Size) Int64;
             """
         )
         assertLines(
@@ -83,14 +80,11 @@ class CppExternEmitterTest {
         // `const T*` never gives; the mut form is the T* and takes no proxy.
         val h = header(
             """
-            @_extern(cpp = "fill_buf", header = "probe.h")
-            pub fx fill: (mut p: Unsafe<UInt8>, n: Size) Void;
+            pub @_extern(cpp = "fill_buf", header = "probe.h") fx fill: (mut p: Unsafe<UInt8>, n: Size) Void;
 
-            @_extern(cpp = "ImGui::InputText", header = "imgui.h")
-            pub fx inputText: (label: Str, mut buf: Unsafe<Char>, size: Size) Bool;
+            pub @_extern(cpp = "ImGui::InputText", header = "imgui.h") fx inputText: (label: Str, mut buf: Unsafe<Char>, size: Size) Bool;
 
-            @_extern(cpp = "read_buf", header = "probe.h")
-            pub fx read: (p: Unsafe<UInt8>, n: Size) Void;
+            pub @_extern(cpp = "read_buf", header = "probe.h") fx read: (p: Unsafe<UInt8>, n: Size) Void;
             """
         )
         assertLines(
@@ -108,17 +102,13 @@ class CppExternEmitterTest {
         // and one with a guard tolerates. A `cpp =` beside it wins for this backend.
         val h = header(
             """
-            @_extern(cpp = "ImGui::Text", header = "imgui.h")
-            pub fx text: (s: CStr) Void;
+            pub @_extern(cpp = "ImGui::Text", header = "imgui.h") fx text: (s: CStr) Void;
 
-            @_extern(c = "c_only_fn", header = "probe.h")
-            pub fx cOnly: (a: Int32) Int32;
+            pub @_extern(c = "c_only_fn", header = "probe.h") fx cOnly: (a: Int32) Int32;
 
-            @_extern(c = "c_len", header = "probe.h")
-            pub fx cLen: (s: Str) Size;
+            pub @_extern(c = "c_len", header = "probe.h") fx cLen: (s: Str) Size;
 
-            @_extern(c = "both_c", cpp = "both::cpp", header = "both.hxx")
-            pub fx both: () Int32;
+            pub @_extern(c = "both_c", cpp = "both::cpp", header = "both.hxx") fx both: () Int32;
             """
         )
         assertLines(
@@ -145,23 +135,19 @@ class CppExternEmitterTest {
     fun aClassIsCheckedThroughItsReceiverAndAMethodMayNameItself() {
         val h = header(
             """
-            @_extern(cpp = "bibo::Car", header = "car.hxx")
-            pub class Car {
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
                 pub mut fx arm: () Bool;
                 pub fx ok: () Bool;
-                @_extern(cpp = "Finish", header = "car.extra.hxx") pub mut fx finish: () Int32;
+                pub mut @_extern(cpp = "Finish", header = "car.extra.hxx") fx finish: () Int32;
             }
 
-            @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
-            pub class DrawList {
-                @_extern(cpp = "AddLine") pub mut fx addLine: (color: UInt32) Void;
+            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") class DrawList {
+                pub mut @_extern(cpp = "AddLine") fx addLine: (color: UInt32) Void;
             }
 
-            @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h")
-            pub fx drawList: () DrawList;
+            pub @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h") fx drawList: () DrawList;
 
-            @_extern(cpp = "bibo::openCar", header = "car.hxx")
-            pub fx openCar: () Car;
+            pub @_extern(cpp = "bibo::openCar", header = "car.hxx") fx openCar: () Car;
             """
         )
         assertLines(
@@ -185,24 +171,20 @@ class CppExternEmitterTest {
         // catches two same-typed fields declared in the other order.
         val h = header(
             """
-            @_extern(cpp = "ImVec2", header = "imgui.h")
-            pub struct Vec2 {
+            pub @_extern(cpp = "ImVec2", header = "imgui.h") struct Vec2 {
                 pub x: Float32 = 0.0
                 pub y: Float32 = 0.0
             }
 
-            @_opaque @_extern(cpp = "bibo::Buf", header = "car.hxx")
-            pub class Buf {
+            pub @_opaque @_extern(cpp = "bibo::Buf", header = "car.hxx") class Buf {
             }
 
-            @_extern(cpp = "bibo::Frame", header = "car.hxx")
-            pub struct Frame {
+            pub @_extern(cpp = "bibo::Frame", header = "car.hxx") struct Frame {
                 require pub mut data: Buf
                 pub len: Size
             }
 
-            @_extern(cpp = "bibo::Scan", header = "car.hxx")
-            pub struct Scan {
+            pub @_extern(cpp = "bibo::Scan", header = "car.hxx") struct Scan {
                 pub fx ahead: () Float32;
             }
             """,
@@ -228,11 +210,9 @@ class CppExternEmitterTest {
     fun anExternConstantIsCheckedAgainstItsType() {
         val h = header(
             """
-            @_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h")
-            pub NO_TITLE_BAR: Int32;
+            pub @_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h") NO_TITLE_BAR: Int32;
 
-            @_extern(cpp = "bibo::VERSION", header = "car.hxx")
-            pub VERSION: Str;
+            pub @_extern(cpp = "bibo::VERSION", header = "car.hxx") VERSION: Str;
             """
         )
         assertLines(
@@ -247,12 +227,10 @@ class CppExternEmitterTest {
     fun namesAreSpelledAsTheMarkerWroteThemNeverFromTheGlobalScope() {
         val h = header(
             """
-            @_extern(cpp = "::bibo::Car", header = "car.hxx")
-            pub class Car {
+            pub @_extern(cpp = "::bibo::Car", header = "car.hxx") class Car {
                 pub fx ok: () Bool;
             }
-            @_extern(cpp = "bibo::openCar", header = "car.hxx")
-            pub fx openCar: () Car;
+            pub @_extern(cpp = "bibo::openCar", header = "car.hxx") fx openCar: () Car;
             """
         )
         assertLines(
@@ -268,27 +246,21 @@ class CppExternEmitterTest {
     fun whatSection72DoesNotCoverIsRefusedAtTheDeclaration() {
         val errors = errorsOf(
             """
-            @_extern(cpp = "bibo::Box", header = "box.hxx")
-            pub class Box<T> {
+            pub @_extern(cpp = "bibo::Box", header = "box.hxx") class Box<T> {
                 pub fx get: () T;
             }
 
-            @_extern(cpp = "bibo::Car", header = "car.hxx")
-            pub class Car {
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
                 pub speed: Float32 = 0.0
             }
 
-            @_extern(cpp = "bibo::counter", header = "car.hxx")
-            pub mut COUNTER: Int32 = 0
+            pub mut @_extern(cpp = "bibo::counter", header = "car.hxx") COUNTER: Int32 = 0
 
-            @_extern(cpp = "bibo::LIMIT", header = "car.hxx")
-            pub LIMIT: Int32 = 5
+            pub @_extern(cpp = "bibo::LIMIT", header = "car.hxx") LIMIT: Int32 = 5
 
-            @_extern(cpp = "std::sqrt", header = "<cmath>")
-            pub fx sqrt: (x: Float64) Float64;
+            pub @_extern(cpp = "std::sqrt", header = "<cmath>") fx sqrt: (x: Float64) Float64;
 
-            @_extern(cpp = "bibo::Pt", header = "car.hxx")
-            pub struct Pt {
+            pub @_extern(cpp = "bibo::Pt", header = "car.hxx") struct Pt {
                 pub new: Int32 = 0
             }
             """
@@ -309,8 +281,7 @@ class CppExternEmitterTest {
         // the declaration, so a call's bindings are always given arguments.
         val errors = errorsOf(
             """
-            @_extern(cpp = "ImGui::Button", header = "imgui.h")
-            pub fx button: (label: Str, width: Float32 = 10.0) Bool;
+            pub @_extern(cpp = "ImGui::Button", header = "imgui.h") fx button: (label: Str, width: Float32 = 10.0) Bool;
 
             fx main: () Void {
                 pressed: Bool = button("go")
@@ -344,42 +315,32 @@ class CppExternEmitterTest {
     fun aCallSpellsTheCppNameAndTheProxies() {
         val c = callsOf(
             """
-            @_extern(cpp = "bibo::Car", header = "car.hxx")
-            pub class Car {
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
                 pub mut fx arm: () Bool;
-                @_extern(cpp = "Drive") pub mut fx drive: (throttle: Float32, steer: Float32) Void;
+                pub mut @_extern(cpp = "Drive") fx drive: (throttle: Float32, steer: Float32) Void;
             }
 
-            @_extern(cpp = "bibo::Scan", header = "car.hxx")
-            pub struct Scan {
+            pub @_extern(cpp = "bibo::Scan", header = "car.hxx") struct Scan {
                 pub fx ahead: () Float32;
             }
 
-            @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
-            pub class DrawList {
-                @_extern(cpp = "AddLine") pub mut fx addLine: (color: UInt32) Void;
+            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") class DrawList {
+                pub mut @_extern(cpp = "AddLine") fx addLine: (color: UInt32) Void;
             }
 
-            @_extern(cpp = "bibo::openCar", header = "car.hxx")
-            pub fx openCar: () Car;
+            pub @_extern(cpp = "bibo::openCar", header = "car.hxx") fx openCar: () Car;
 
-            @_extern(cpp = "bibo::scanOf", header = "car.hxx")
-            pub fx scanOf: (car: Car) Scan;
+            pub @_extern(cpp = "bibo::scanOf", header = "car.hxx") fx scanOf: (car: Car) Scan;
 
-            @_extern(cpp = "ImGui::SliderFloat", header = "imgui.h")
-            pub fx sliderFloat: (label: Str, mut v: Float32, lo: Float32, hi: Float32) Bool;
+            pub @_extern(cpp = "ImGui::SliderFloat", header = "imgui.h") fx sliderFloat: (label: Str, mut v: Float32, lo: Float32, hi: Float32) Bool;
 
-            @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h")
-            pub fx drawList: () DrawList;
+            pub @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h") fx drawList: () DrawList;
 
-            @_extern("c_hypot")
-            pub fx hypot: (a: Int32, b: Int32) Int32;
+            pub @_extern("c_hypot") fx hypot: (a: Int32, b: Int32) Int32;
 
-            @_extern(c = "c_only_fn", header = "probe.h")
-            pub fx cOnly: (a: Int32) Int32;
+            pub @_extern(c = "c_only_fn", header = "probe.h") fx cOnly: (a: Int32) Int32;
 
-            @_extern(cpp = "fill_buf", header = "probe.h")
-            pub fx fill: (mut p: Unsafe<UInt8>, n: Size) Void;
+            pub @_extern(cpp = "fill_buf", header = "probe.h") fx fill: (mut p: Unsafe<UInt8>, n: Size) Void;
 
             fx main: () Int32 {
                 car: Car = openCar()
@@ -447,34 +408,25 @@ class CppExternEmitterTest {
                 }
             }
 
-            @_extern(cpp = "m4::nameLen", header = "m4.hxx")
-            pub fx nameLen: (b: Base) Int32;
+            pub @_extern(cpp = "m4::nameLen", header = "m4.hxx") fx nameLen: (b: Base) Int32;
 
-            @_extern(cpp = "m4::nmLen", header = "m4.hxx")
-            pub fx nmLen: (t: Named) Int32;
+            pub @_extern(cpp = "m4::nmLen", header = "m4.hxx") fx nmLen: (t: Named) Int32;
 
-            @_extern(cpp = "m4::maybeNameLen", header = "m4.hxx")
-            pub fx maybeNameLen: (b: Maybe<Base>) Int32;
+            pub @_extern(cpp = "m4::maybeNameLen", header = "m4.hxx") fx maybeNameLen: (b: Maybe<Base>) Int32;
 
-            @_extern(cpp = "m3::pick", header = "m3.hxx")
-            pub fx pick: (m: Maybe<Str>) Int32;
+            pub @_extern(cpp = "m3::pick", header = "m3.hxx") fx pick: (m: Maybe<Str>) Int32;
 
-            @_extern(cpp = "m3::pickNull", header = "m3.hxx")
-            pub fx pickNull: (m: Maybe<Str>) Int32;
+            pub @_extern(cpp = "m3::pickNull", header = "m3.hxx") fx pickNull: (m: Maybe<Str>) Int32;
 
-            @_extern(cpp = "m3::pickN", header = "m3.hxx")
-            pub fx pickN: (m: Maybe<Int32>) Int32;
+            pub @_extern(cpp = "m3::pickN", header = "m3.hxx") fx pickN: (m: Maybe<Int32>) Int32;
 
-            @_extern(cpp = "m3::callKind", header = "m3.hxx")
-            pub fx callKind: (f: Fx<Tuple0, Int32>) Int32;
+            pub @_extern(cpp = "m3::callKind", header = "m3.hxx") fx callKind: (f: Fx<Tuple0, Int32>) Int32;
 
-            @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
-            pub class DrawList {
-                @_extern(cpp = "AddText") pub mut fx addText: (text: Maybe<Str>) Void;
+            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") class DrawList {
+                pub mut @_extern(cpp = "AddText") fx addText: (text: Maybe<Str>) Void;
             }
 
-            @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h")
-            pub fx drawList: () DrawList;
+            pub @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h") fx drawList: () DrawList;
 
             pub fx protoPick: (m: Maybe<Str>) Int32;
 
@@ -523,27 +475,20 @@ class CppExternEmitterTest {
     fun aResultAndAConstantReachKiraAsTheDeclaredType() {
         val c = callsOf(
             """
-            @_extern(cpp = "probe::name", header = "probe.hxx")
-            pub fx name: () Str;
+            pub @_extern(cpp = "probe::name", header = "probe.hxx") fx name: () Str;
 
-            @_extern(cpp = "probe::find", header = "probe.hxx")
-            pub fx find: () Maybe<Int32>;
+            pub @_extern(cpp = "probe::find", header = "probe.hxx") fx find: () Maybe<Int32>;
 
-            @_extern(cpp = "probe::count", header = "probe.hxx")
-            pub fx count: () Int32;
+            pub @_extern(cpp = "probe::count", header = "probe.hxx") fx count: () Int32;
 
-            @_opaque @_extern(cpp = "probe::Buffer", header = "probe.hxx")
-            pub class Buffer {
+            pub @_opaque @_extern(cpp = "probe::Buffer", header = "probe.hxx") class Buffer {
             }
 
-            @_extern(cpp = "probe::buffer", header = "probe.hxx")
-            pub fx buffer: () Buffer;
+            pub @_extern(cpp = "probe::buffer", header = "probe.hxx") fx buffer: () Buffer;
 
-            @_extern(cpp = "probe::VERSION", header = "probe.hxx")
-            pub VERSION: Str;
+            pub @_extern(cpp = "probe::VERSION", header = "probe.hxx") VERSION: Str;
 
-            @_extern(cpp = "probe::LIMIT", header = "probe.hxx")
-            pub LIMIT: Int32;
+            pub @_extern(cpp = "probe::LIMIT", header = "probe.hxx") LIMIT: Int32;
 
             fx main: () Int32 {
                 s: Str = name()
@@ -577,12 +522,10 @@ class CppExternEmitterTest {
     fun aFieldReadOfAnExternStructReachesKiraAsTheDeclaredType() {
         val (_, ctx) = emit(
             """
-            @_opaque @_extern(cpp = "probe::Buf", header = "probe.hxx")
-            pub class Buf {
+            pub @_opaque @_extern(cpp = "probe::Buf", header = "probe.hxx") class Buf {
             }
 
-            @_extern(cpp = "probe::Rec", header = "probe.hxx")
-            pub struct Rec {
+            pub @_extern(cpp = "probe::Rec", header = "probe.hxx") struct Rec {
                 pub c: Int8 = 0
                 pub mode: Int32 = 0
                 pub x: Float32 = 0.0
@@ -619,26 +562,20 @@ class CppExternEmitterTest {
     fun aMaybeOrFnParameterIsStatedAsTheProxyAndAStructAsTheLvalue() {
         val h = header(
             """
-            @_extern(cpp = "probe::put", header = "probe.hxx")
-            pub fx put: (m: Maybe<Int32>) Void;
+            pub @_extern(cpp = "probe::put", header = "probe.hxx") fx put: (m: Maybe<Int32>) Void;
 
-            @_extern(cpp = "probe::onTick", header = "probe.hxx")
-            pub fx onTick: (f: Fx<Tuple1<Int32>, Void>) Void;
+            pub @_extern(cpp = "probe::onTick", header = "probe.hxx") fx onTick: (f: Fx<Tuple1<Int32>, Void>) Void;
 
-            @_extern(cpp = "probe::ticker", header = "probe.hxx")
-            pub fx ticker: () Fx<Tuple1<Int32>, Int32>;
+            pub @_extern(cpp = "probe::ticker", header = "probe.hxx") fx ticker: () Fx<Tuple1<Int32>, Int32>;
 
-            @_extern(cpp = "probe::find", header = "probe.hxx")
-            pub fx find: () Maybe<Int32>;
+            pub @_extern(cpp = "probe::find", header = "probe.hxx") fx find: () Maybe<Int32>;
 
-            @_extern(cpp = "ImVec2", header = "imgui.h")
-            pub struct Vec2 {
+            pub @_extern(cpp = "ImVec2", header = "imgui.h") struct Vec2 {
                 pub x: Float32 = 0.0
                 pub y: Float32 = 0.0
             }
 
-            @_extern(cpp = "ImGui::Dummy", header = "imgui.h")
-            pub fx dummy: (size: Vec2) Void;
+            pub @_extern(cpp = "ImGui::Dummy", header = "imgui.h") fx dummy: (size: Vec2) Void;
             """
         )
         assertLines(
@@ -666,14 +603,11 @@ class CppExternEmitterTest {
         // unreachable from Kira. Every call here goes through the typer.
         val c = callsOf(
             """
-            @_extern(cpp = "ImGui::Text", header = "imgui.h")
-            pub fx text: (s: CStr) Void;
+            pub @_extern(cpp = "ImGui::Text", header = "imgui.h") fx text: (s: CStr) Void;
 
-            @_extern(cpp = "bibo::nameOf", header = "car.hxx")
-            pub fx nameOf: (i: Int32) Str;
+            pub @_extern(cpp = "bibo::nameOf", header = "car.hxx") fx nameOf: (i: Int32) Str;
 
-            @_extern(cpp = "bibo::BANNER", header = "car.hxx")
-            pub BANNER: Str;
+            pub @_extern(cpp = "bibo::BANNER", header = "car.hxx") BANNER: Str;
 
             pub GREETING: Str = "hi"
             pub mut TITLE: Str = "t"
@@ -756,8 +690,7 @@ class CppExternEmitterTest {
         // (decision 4b), which ViewPassTest pins.
         val literal = diagsOf(
             """
-            @_extern(cpp = "probe::after", header = "probe.hxx")
-            pub fx after: (s: CStr, c: Int32) Int32;
+            pub @_extern(cpp = "probe::after", header = "probe.hxx") fx after: (s: CStr, c: Int32) Int32;
             fx cat: () Void {
                 r: Int32 = after("literal", 1)
             }
@@ -768,8 +701,7 @@ class CppExternEmitterTest {
 
         val namedCStr = diagsOf(
             """
-            @_extern(cpp = "probe::after", header = "probe.hxx")
-            pub fx after: (s: CStr, c: Int32) Int32;
+            pub @_extern(cpp = "probe::after", header = "probe.hxx") fx after: (s: CStr, c: Int32) Int32;
             fx cat: (a: Str) Void {
                 r: Int32 = after(a, 1)
             }
@@ -780,8 +712,7 @@ class CppExternEmitterTest {
 
         val constantCStr = diagsOf(
             """
-            @_extern(cpp = "probe::after", header = "probe.hxx")
-            pub fx after: (s: CStr, c: Int32) Int32;
+            pub @_extern(cpp = "probe::after", header = "probe.hxx") fx after: (s: CStr, c: Int32) Int32;
             pub GREETING: Str = "hi"
             fx cat: () Void {
                 r: Int32 = after(GREETING, 1)
@@ -793,8 +724,7 @@ class CppExternEmitterTest {
 
         val namedStr = diagsOf(
             """
-            @_extern(cpp = "probe::afterS", header = "probe.hxx")
-            pub fx afterS: (s: Str, c: Int32) Int32;
+            pub @_extern(cpp = "probe::afterS", header = "probe.hxx") fx afterS: (s: Str, c: Int32) Int32;
             fx cat: (a: Str) Void {
                 r: Int32 = afterS(a, 1)
             }
@@ -806,8 +736,7 @@ class CppExternEmitterTest {
         // Against a call whose result carries no pointer at all, a literal was always fine too.
         val literalIntoScalarResult = diagsOf(
             """
-            @_extern(cpp = "probe::lengthOfS", header = "probe.hxx")
-            pub fx lengthOfS: (s: Str) Int32;
+            pub @_extern(cpp = "probe::lengthOfS", header = "probe.hxx") fx lengthOfS: (s: Str) Int32;
             fx cat: () Void {
                 n: Int32 = lengthOfS("harmless")
             }
@@ -827,10 +756,8 @@ class CppExternEmitterTest {
     fun aMutUnsafeOutBufferBesideAComputedStrArgumentIsNeverRefused() {
         val mutUnsafeAlone = diagsOf(
             """
-            @_extern(cpp = "probe::nameOf", header = "probe.hxx")
-            pub fx nameOf: (i: Int32) Str;
-            @_extern(cpp = "probe::fillFrom", header = "probe.hxx")
-            pub fx fillFrom: (s: Str, mut buf: Unsafe<UInt8>) Void;
+            pub @_extern(cpp = "probe::nameOf", header = "probe.hxx") fx nameOf: (i: Int32) Str;
+            pub @_extern(cpp = "probe::fillFrom", header = "probe.hxx") fx fillFrom: (s: Str, mut buf: Unsafe<UInt8>) Void;
             fx cat: () Void {
                 mut b: List<UInt8> = List<UInt8> { values = [0, 0, 0, 0] }
                 fillFrom(nameOf(1), b.view())
@@ -856,11 +783,9 @@ class CppExternEmitterTest {
     fun anUnsafeParameterTakesAViewOrAMutViewLoweredDotData() {
         val c = callsOf(
             """
-            @_extern(cpp = "probe::readBuf", header = "probe.hxx")
-            pub fx readBuf: (p: Unsafe<UInt8>, n: Size) Int64;
+            pub @_extern(cpp = "probe::readBuf", header = "probe.hxx") fx readBuf: (p: Unsafe<UInt8>, n: Size) Int64;
 
-            @_extern(cpp = "probe::fillBuf", header = "probe.hxx")
-            pub fx fillBuf: (mut p: Unsafe<UInt8>, n: Size) Void;
+            pub @_extern(cpp = "probe::fillBuf", header = "probe.hxx") fx fillBuf: (mut p: Unsafe<UInt8>, n: Size) Void;
 
             fx read: (v: View<UInt8>) Int64 {
                 return readBuf(v, 4)
@@ -908,22 +833,14 @@ class CppExternEmitterTest {
     fun aByReferenceArgumentThatIsAPlaceIsCopiedWhenTheCallMayWriteIt() {
         val c = callsOf(
             """
-            @_extern(cpp = "probe::lenAfterL", header = "probe.hxx")
-            pub fx lenAfterL: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
-            @_extern(cpp = "probe::lenAfterCb", header = "probe.hxx")
-            pub fx lenAfterCb: (s: Str, c: Cb) Int32;
-            @_extern(cpp = "probe::lenAfter", header = "probe.hxx")
-            pub fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
-            @_extern(cpp = "probe::sumListL", header = "probe.hxx")
-            pub fx sumListL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
-            @_extern(cpp = "probe::appendLen", header = "probe.hxx")
-            pub fx appendLen: (s: Str, mut out: Str) Int32;
-            @_extern(cpp = "probe::appendLenI", header = "probe.hxx")
-            pub fx appendLenI: (s: Str, mut n: Int32) Int32;
-            @_extern(cpp = "probe::ptNAfterMut", header = "probe.hxx")
-            pub fx ptNAfterMut: (p: Pt, mut n: Int32) Int32;
-            @_extern(cpp = "probe::lengthOfS", header = "probe.hxx")
-            pub fx lengthOfS: (s: Str) Int32;
+            pub @_extern(cpp = "probe::lenAfterL", header = "probe.hxx") fx lenAfterL: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
+            pub @_extern(cpp = "probe::lenAfterCb", header = "probe.hxx") fx lenAfterCb: (s: Str, c: Cb) Int32;
+            pub @_extern(cpp = "probe::lenAfter", header = "probe.hxx") fx lenAfter: (s: Str, whenDone: Fx<Tuple0, Void>) Int32;
+            pub @_extern(cpp = "probe::sumListL", header = "probe.hxx") fx sumListL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
+            pub @_extern(cpp = "probe::appendLen", header = "probe.hxx") fx appendLen: (s: Str, mut out: Str) Int32;
+            pub @_extern(cpp = "probe::appendLenI", header = "probe.hxx") fx appendLenI: (s: Str, mut n: Int32) Int32;
+            pub @_extern(cpp = "probe::ptNAfterMut", header = "probe.hxx") fx ptNAfterMut: (p: Pt, mut n: Int32) Int32;
+            pub @_extern(cpp = "probe::lengthOfS", header = "probe.hxx") fx lengthOfS: (s: Str) Int32;
             pub struct Cb {
                 require pub f: Fx<Tuple0, Void>
             }
@@ -1001,8 +918,7 @@ class CppExternEmitterTest {
     fun aListOrArrPlaceOrAStrLiteralCoercesToUnsafeViaToView() {
         val list = callsOf(
             """
-            @_extern(cpp = "probe::sumP", header = "probe.hxx")
-            pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
+            pub @_extern(cpp = "probe::sumP", header = "probe.hxx") fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
             fx cat: () Int32 {
                 ys: List<Int32> = List<Int32> { values = [1, 2] }
                 return sumP(ys, ys.size())
@@ -1021,8 +937,7 @@ class CppExternEmitterTest {
 
         val arr = callsOf(
             """
-            @_extern(cpp = "probe::sumP", header = "probe.hxx")
-            pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
+            pub @_extern(cpp = "probe::sumP", header = "probe.hxx") fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
             fx cat: () Int32 {
                 xs: Arr<Int32, 4> = [1, 2, 3, 4]
                 return sumP(xs, 4)
@@ -1033,8 +948,7 @@ class CppExternEmitterTest {
 
         val literal = callsOf(
             """
-            @_extern(cpp = "probe::lenBuf", header = "probe.hxx")
-            pub fx lenBuf: (p: Unsafe<Char>) Int32;
+            pub @_extern(cpp = "probe::lenBuf", header = "probe.hxx") fx lenBuf: (p: Unsafe<Char>) Int32;
             fx cat: () Int32 {
                 return lenBuf("abc")
             }
@@ -1052,8 +966,7 @@ class CppExternEmitterTest {
         // the moment the typer has any error (DeclTestSupport.emitWith).
         val wrong = TyperTestSupport.snippet(
             """
-            @_extern(cpp = "probe::sumP", header = "probe.hxx")
-            pub fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
+            pub @_extern(cpp = "probe::sumP", header = "probe.hxx") fx sumP: (p: Unsafe<Int32>, n: Size) Int32;
             fx cat: (ys: List<Int64>) Int32 {
                 return sumP(ys, ys.size())
             }
@@ -1065,8 +978,7 @@ class CppExternEmitterTest {
         // design 1.4 gives the "anything the typer converts" clause to the non-mut case alone.
         val mutList = TyperTestSupport.snippet(
             """
-            @_extern(cpp = "probe::fillP", header = "probe.hxx")
-            pub fx fillP: (mut p: Unsafe<Int32>, n: Size) Void;
+            pub @_extern(cpp = "probe::fillP", header = "probe.hxx") fx fillP: (mut p: Unsafe<Int32>, n: Size) Void;
             fx cat: (mut ys: List<Int32>) Void {
                 fillP(mut ys, ys.size())
             }
@@ -1146,8 +1058,7 @@ class CppExternEmitterTest {
         // the extern callee, so a Kira function declared with CStr still refuses a Str.
         val program = TyperTestSupport.snippet(
             """
-            @_extern(cpp = "bibo::version", header = "car.hxx")
-            pub fx version: () CStr;
+            pub @_extern(cpp = "bibo::version", header = "car.hxx") fx version: () CStr;
 
             fx own: (s: CStr) Void { }
 
@@ -1176,17 +1087,13 @@ class CppExternEmitterTest {
     fun anExternConstantReadsByItsCppNameAsTheMarkerSpellsIt() {
         val (emitted, ctx) = emit(
             """
-            @_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h")
-            pub NO_TITLE_BAR: Int32;
+            pub @_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h") NO_TITLE_BAR: Int32;
 
-            @_extern(cpp = "::bibo::LIMIT", header = "car.hxx")
-            pub LIMIT: Int32;
+            pub @_extern(cpp = "::bibo::LIMIT", header = "car.hxx") LIMIT: Int32;
 
-            @_extern(c = "C_LIMIT", header = "limits.h")
-            pub C_LIMIT: Int32;
+            pub @_extern(c = "C_LIMIT", header = "limits.h") C_LIMIT: Int32;
 
-            @_extern(c = "C_VERSION", header = "limits.h")
-            pub C_VERSION: Str;
+            pub @_extern(c = "C_VERSION", header = "limits.h") C_VERSION: Str;
             """
         )
         val noTitle = ctx.symbol.members["NO_TITLE_BAR"] as GlobalSymbol
@@ -1207,7 +1114,7 @@ class CppExternEmitterTest {
      * A struct or an opaque class marked `c =` is spelled by its C name wherever the type
      * appears (a check's result or parameter, a signature, a body), exactly as its sizeof and
      * field checks name it: the type speller reads the marker through [CppExternEmitter.cppName].
-     * Read through `cpp =` alone, `@_extern(c = "cnt_state") pub struct CntState` was spelled
+     * Read through `cpp =` alone, `pub @_extern(c = "cnt_state") struct CntState` was spelled
      * `CntState` in the check of `cnt_get()` and `File*` for `fopen`'s result, and the header
      * failed with 'CntState was not declared' (measured, g++ 13.2): the normal case for C,
      * where the C name is snake_case and the Kira name is not. A C struct its header never
@@ -1217,31 +1124,24 @@ class CppExternEmitterTest {
     fun aCTypeIsSpelledByItsCNameWhereverTheTypeAppears() {
         val (emitted, ctx) = emit(
             """
-            @_extern(c = "cnt_state", header = "cnt.h")
-            pub struct CntState {
+            pub @_extern(c = "cnt_state", header = "cnt.h") struct CntState {
                 pub n: Int32 = 0
             }
 
-            @_extern(c = "cnt_get", header = "cnt.h")
-            pub fx cntGet: () CntState;
+            pub @_extern(c = "cnt_get", header = "cnt.h") fx cntGet: () CntState;
 
-            @_extern(c = "cnt_put", header = "cnt.h")
-            pub fx cntPut: (mut s: CntState) Void;
+            pub @_extern(c = "cnt_put", header = "cnt.h") fx cntPut: (mut s: CntState) Void;
 
-            @_extern(c = "struct raw_pt", header = "cnt.h")
-            pub struct RawPt {
+            pub @_extern(c = "struct raw_pt", header = "cnt.h") struct RawPt {
                 pub x: Int32 = 0
             }
 
-            @_extern(c = "raw_origin", header = "cnt.h")
-            pub fx rawOrigin: () RawPt;
+            pub @_extern(c = "raw_origin", header = "cnt.h") fx rawOrigin: () RawPt;
 
-            @_opaque @_extern(c = "FILE", header = "stdio.h")
-            pub class File {
+            pub @_opaque @_extern(c = "FILE", header = "stdio.h") class File {
             }
 
-            @_extern(c = "fopen", header = "stdio.h")
-            pub fx fopen: (path: CStr, mode: CStr) File;
+            pub @_extern(c = "fopen", header = "stdio.h") fx fopen: (path: CStr, mode: CStr) File;
             """
         )
         val errors = emitted.diagnostics.filter { it.isError }
@@ -1289,26 +1189,21 @@ class CppExternEmitterTest {
     fun everyCalleeWhoseBodyCppSuppliesIsCalledAsAnExternAndNoOther() {
         val c = callsOf(
             """
-            @_extern(cpp = "probe::ext", header = "probe.hxx")
-            pub fx ext: () Int32;
+            pub @_extern(cpp = "probe::ext", header = "probe.hxx") fx ext: () Int32;
 
-            @_extern(cpp = "probe::Car", header = "probe.hxx")
-            pub class Car {
+            pub @_extern(cpp = "probe::Car", header = "probe.hxx") class Car {
                 pub fx speed: () Int32;
             }
 
-            @_extern(cpp = "probe::openCar", header = "probe.hxx")
-            pub fx openCar: () Car;
+            pub @_extern(cpp = "probe::openCar", header = "probe.hxx") fx openCar: () Car;
 
             pub fx proto: () Int32;
 
-            @_opaque
-            pub class Handle {
+            pub @_opaque class Handle {
                 pub fx size: () Int32;
             }
 
-            @_extern(cpp = "probe::openHandle", header = "probe.hxx")
-            pub fx openHandle: () Handle;
+            pub @_extern(cpp = "probe::openHandle", header = "probe.hxx") fx openHandle: () Handle;
 
             fx kira: () Int32 {
                 return 1
@@ -1346,10 +1241,8 @@ class CppExternEmitterTest {
     @Test
     fun aMutUnsafeTakesAMutViewOfALocalAndAMutViewOfACaptureIsRefused() {
         val decls = """
-            @_extern(cpp = "probe::fillP", header = "probe.hxx")
-            pub fx fillP: (mut p: Unsafe<Int32>, n: Size, v: Int32) Void;
-            @_extern(cpp = "probe::setFirst", header = "probe.hxx")
-            pub fx setFirst: (mut p: Unsafe<Int32>, v: Int32) Int32;
+            pub @_extern(cpp = "probe::fillP", header = "probe.hxx") fx fillP: (mut p: Unsafe<Int32>, n: Size, v: Int32) Void;
+            pub @_extern(cpp = "probe::setFirst", header = "probe.hxx") fx setFirst: (mut p: Unsafe<Int32>, v: Int32) Int32;
             pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
             fx zero: (v: MutView<Int32>) Void {
                 v[0] = 0

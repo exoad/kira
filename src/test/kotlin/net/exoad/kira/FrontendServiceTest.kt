@@ -91,14 +91,11 @@ class FrontendServiceTest {
                 """
                 module "app:main"
 
-                @_opaque
-                pub class Sock {
-                    @_extern(raises = "TimeoutError")
-                    pub fx recv: (n: Int32) List<UInt8>
+                pub @_opaque class Sock {
+                    pub @_extern(raises = "TimeoutError") fx recv: (n: Int32) List<UInt8>
                 }
 
-                @_extern(raises = "OSError")
-                fx open: () Sock
+                @_extern(raises = "OSError") fx open: () Sock
                 """.trimIndent()
             )
             val result = FrontendService.compileProject(dir)

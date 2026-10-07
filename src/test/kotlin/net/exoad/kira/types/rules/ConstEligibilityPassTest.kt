@@ -14,7 +14,7 @@ class ConstEligibilityPassTest {
 
     @Test
     fun aStructMachineWithLoopsIsConstant() {
-        // hall's shape: a struct's @_const mut fx writing its fields, a global Arr<T, N>, loops.
+        // hall's shape: a struct's mut @_const fx writing its fields, a global Arr<T, N>, loops.
         expectClean(
             snippet(
                 """
@@ -25,7 +25,7 @@ class ConstEligibilityPassTest {
                     pub @_const fx errors: () Int32 {
                         return ticks
                     }
-                    pub @_const mut fx feed: (next: UInt8) Void {
+                    pub mut @_const fx feed: (next: UInt8) Void {
                         idx: Int8 = INDEX_OF[(next & 3) as Size]
                         if idx < 0 {
                             state = next
@@ -173,8 +173,7 @@ class ConstEligibilityPassTest {
         val p = snippet(
             """
             use "kira:math"
-            @_extern(cpp = "ext::read", header = "ext.hxx")
-            pub fx read: () Int32;
+            pub @_extern(cpp = "ext::read", header = "ext.hxx") fx read: () Int32;
             pub fx slow: (v: Int32) Int32 {
                 return v
             }

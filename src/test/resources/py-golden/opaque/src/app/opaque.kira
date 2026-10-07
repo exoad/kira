@@ -5,27 +5,20 @@ module "app:opaque"
 
 use "app:conn"
 
-@_opaque
-pub class Counter {
+pub @_opaque class Counter {
     pub mut fx bump: (by: Int32) Int32
     pub fx total: () Int32
-    @_extern(raises = "ValueError")
-    pub fx label: () Str
+    pub @_extern(raises = "ValueError") fx label: () Str
     pub fx wrong: () Str
     pub fx absorb: (pair: Tuple2<List<Int32>, Int32>) Int32
 }
 
-@_extern
-pub fx counter: (label: Str) Counter
+pub @_extern fx counter: (label: Str) Counter
 
-@_extern
-pub fx maybeCounter: (label: Str) Maybe<Counter>
+pub @_extern fx maybeCounter: (label: Str) Maybe<Counter>
 
-@_extern
-pub fx sameObject: (a: Counter, b: Counter) Bool
+pub @_extern fx sameObject: (a: Counter, b: Counter) Bool
 
-@_extern
-pub fx broken: () Counter
+pub @_extern fx broken: () Counter
 
-@_extern
-pub fx dialer: () Conn
+pub @_extern fx dialer: () Conn

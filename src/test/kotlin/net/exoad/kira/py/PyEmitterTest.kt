@@ -2460,11 +2460,9 @@ class PyEmitterTest {
     fun anExternIsAWrapperOfItsSidecarsFunctionThatChecksWhatComesBack() {
         val py = besideSidecar(
             """
-            @_extern(raises = "OSError json.JSONDecodeError")
-            fx readText: (path: Str) Str
+            @_extern(raises = "OSError json.JSONDecodeError") fx readText: (path: Str) Str
 
-            @_extern
-            pub fx globSorted: (pattern: Str) List<Str>
+            pub @_extern fx globSorted: (pattern: Str) List<Str>
 
             fx f: () Size {
                 return globSorted(readText("p")).size()
@@ -2494,8 +2492,7 @@ class PyEmitterTest {
                 pub x: Int32 = 0
             }
 
-            @_extern
-            fx send: (data: View<UInt8>, into: MutView<UInt8>, raw: List<UInt8>, xs: List<Int32>, p: Pt, m: Map<Str, Int32>) Int64
+            @_extern fx send: (data: View<UInt8>, into: MutView<UInt8>, raw: List<UInt8>, xs: List<Int32>, p: Pt, m: Map<Str, Int32>) Int64
             """,
             "lend",
         ).python()
@@ -2514,10 +2511,8 @@ class PyEmitterTest {
     fun anOpaqueClassIsNoPythonClassAndItsMethodIsCalledOnTheHandle() {
         val py = besideSidecar(
             """
-            @_opaque
-            pub class Sock {
-                @_extern(raises = "TimeoutError")
-                pub fx recv: (size: Int32) List<UInt8>
+            pub @_opaque class Sock {
+                pub @_extern(raises = "TimeoutError") fx recv: (size: Int32) List<UInt8>
             }
 
             fx f: (s: Sock, socks: List<Sock>, spare: Maybe<Sock>) Size {
@@ -2537,42 +2532,42 @@ class PyEmitterTest {
 
     @Test
     fun aModuleWithExternsAndNoSidecarIsAnError() {
-        val e = besideSidecar("@_extern\nfx f: () Int32", "lonely", sidecar = null)
+        val e = besideSidecar("@_extern fx f: () Int32", "lonely", sidecar = null)
         assertNull(e.text)
         assertTrue(e.errors.any { it.contains("error: py.extern: lonely.kira declares externs, whose sidecar lonely_ext.py is not beside it") }, e.errors.joinToString("\n"))
-        val raises = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"TimeoutError\")\n    pub fx recv: () Int32\n}", "raising", sidecar = null)
+        val raises = besideSidecar("pub @_opaque class Sock {\n    pub @_extern(raises = \"TimeoutError\") fx recv: () Int32\n}", "raising", sidecar = null)
         assertTrue(raises.errors.any { it.contains("py.extern: raising.kira") }, "a raises = name resolves in the sidecar first:\n${raises.errors.joinToString("\n")}")
     }
 
     @Test
     fun anExternIsRefusedWhatCannotCrossToOrFromPython() {
         listOf(
-            "@_extern(cpp = \"ns::f\", header = \"f.hxx\")\nfx f: () Int32" to "@_extern's cpp =, header = on the extern 'f'",
-            "@_extern(\"sym\")\nfx f: () Int32" to "@_extern's positional symbol on the extern 'f'",
-            "@_extern(raises = \"OSError Exception\")\nfx f: () Int32" to "raises = \"Exception\" (it would catch Kira's own throw and panic)",
-            "@_extern(raises = \"KeyboardInterrupt\")\nfx f: () Int32" to "raises = \"KeyboardInterrupt\" (no Exception, it always passes through)",
-            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern\nfx f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
-            "@_extern\nfx f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
-            "@_extern\nfx f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
-            "@_extern\nfx f: (s: Set<Int32>) Void" to "the parameter 's' of the extern 'f': a Set<Int32>",
-            "@_extern\nfx f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
-            "@_extern\nfx f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
-            "@_extern\nfx f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
-            "@_extern\nfx f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
+            "@_extern(cpp = \"ns::f\", header = \"f.hxx\") fx f: () Int32" to "@_extern's cpp =, header = on the extern 'f'",
+            "@_extern(\"sym\") fx f: () Int32" to "@_extern's positional symbol on the extern 'f'",
+            "@_extern(raises = \"OSError Exception\") fx f: () Int32" to "raises = \"Exception\" (it would catch Kira's own throw and panic)",
+            "@_extern(raises = \"KeyboardInterrupt\") fx f: () Int32" to "raises = \"KeyboardInterrupt\" (no Exception, it always passes through)",
+            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern fx f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
+            "@_extern fx f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
+            "@_extern fx f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
+            "@_extern fx f: (s: Set<Int32>) Void" to "the parameter 's' of the extern 'f': a Set<Int32>",
+            "@_extern fx f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
+            "@_extern fx f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
+            "@_extern fx f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
+            "@_extern fx f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
             "pub fx f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
-            "@_extern\nfx f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
-            "@_extern\nfx f: (g: Fx<Tuple1<mut List<Int32>>, Void>) Void" to "(Python writes back through no mut parameter)",
-            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern\nfx f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
-            "@_extern\nfx f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
-            "@_extern\nfx f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
-            "@_extern\nfx f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
-            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern\nfx f: (h: Holder) Void" to
+            "@_extern fx f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
+            "@_extern fx f: (g: Fx<Tuple1<mut List<Int32>>, Void>) Void" to "(Python writes back through no mut parameter)",
+            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern fx f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
+            "@_extern fx f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
+            "@_extern fx f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
+            "@_extern fx f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
+            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern fx f: (h: Holder) Void" to
                 "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
-            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern\nfx f: (g: Fx<Tuple0, Holder>) Void" to
+            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern fx f: (g: Fx<Tuple0, Holder>) Void" to
                 "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value",
-            "struct In {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nstruct Out {\n    pub i: In = In { }\n}\n@_extern\nfx f: (o: Out) Void" to
+            "struct In {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nstruct Out {\n    pub i: In = In { }\n}\n@_extern fx f: (o: Out) Void" to
                 "the parameter 'o' of the extern 'f': Out, whose field 'i' is In, whose field 's' is a Set<Int32>",
-            "struct C {\n    pub c: Char = 'x'\n}\n@_extern\nfx f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
+            "struct C {\n    pub c: Char = 'x'\n}\n@_extern fx f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
     }
 
@@ -2585,8 +2580,7 @@ class PyEmitterTest {
                 pub mut items: List<Node> = List<Node> { }
             }
 
-            @_extern
-            fx visit: (n: Node, f: Fx<Tuple0, Node>) Void
+            @_extern fx visit: (n: Node, f: Fx<Tuple0, Node>) Void
             """,
             "selfref",
         )
@@ -2597,8 +2591,7 @@ class PyEmitterTest {
     fun anFxHandedToTheSidecarChecksWhatPythonPassesIt() {
         val py = besideSidecar(
             """
-            @_extern
-            fx each: (xs: List<Str>, f: Fx<Tuple2<Str, Maybe<Int64>>, List<UInt8>>) Int32
+            @_extern fx each: (xs: List<Str>, f: Fx<Tuple2<Str, Maybe<Int64>>, List<UInt8>>) Int32
 
             fx size: (s: Str, n: Maybe<Int64>) List<UInt8> {
                 return s.bytes()
@@ -2710,7 +2703,7 @@ class PyEmitterTest {
 
     @Test
     fun anOpaqueHandleIsComparedNeitherThroughAStructNorByContains() {
-        val handle = "@_opaque\npub class Sock {\n    pub fx id: () Int32\n}\n"
+        val handle = "pub @_opaque class Sock {\n    pub fx id: () Int32\n}\n"
         listOf(
             "${handle}struct Peer {\n    require pub s: Sock\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a == b\n}" to "a comparison of Peer, which holds an opaque handle",
             "${handle}struct Peer {\n    require pub s: List<Sock>\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a != b\n}" to "a comparison of Peer, which holds an opaque handle",

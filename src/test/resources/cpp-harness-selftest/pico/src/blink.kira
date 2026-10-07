@@ -1,6 +1,6 @@
 module "selftest:blink"
 
-@_const pub val PERIOD_TICKS: Int32 = 4;
+pub @_const val PERIOD_TICKS: Int32 = 4;
 
 pub fx isOn: (tick: Int32) Bool
 {

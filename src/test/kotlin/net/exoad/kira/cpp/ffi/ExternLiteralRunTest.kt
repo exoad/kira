@@ -28,74 +28,52 @@ class ExternLiteralRunTest {
 
         mut gc: Bool = true
 
-        @_extern(cpp = "q::w", header = "q.hxx")
-        pub fx w: (x: Int64) Int32;
+        pub @_extern(cpp = "q::w", header = "q.hxx") fx w: (x: Int64) Int32;
 
-        @_extern(cpp = "q::u", header = "q.hxx")
-        pub fx u: (x: UInt64) Int32;
+        pub @_extern(cpp = "q::u", header = "q.hxx") fx u: (x: UInt64) Int32;
 
-        @_extern(cpp = "q::b", header = "q.hxx")
-        pub fx b: (x: Int8) Int32;
+        pub @_extern(cpp = "q::b", header = "q.hxx") fx b: (x: Int8) Int32;
 
-        @_extern(cpp = "q::ub", header = "q.hxx")
-        pub fx ub: (x: UInt8) Int32;
+        pub @_extern(cpp = "q::ub", header = "q.hxx") fx ub: (x: UInt8) Int32;
 
-        @_extern(cpp = "q::h", header = "q.hxx")
-        pub fx h: (x: Int16) Int32;
+        pub @_extern(cpp = "q::h", header = "q.hxx") fx h: (x: Int16) Int32;
 
-        @_extern(cpp = "q::sz", header = "q.hxx")
-        pub fx sz: (x: Size) Int32;
+        pub @_extern(cpp = "q::sz", header = "q.hxx") fx sz: (x: Size) Int32;
 
-        @_extern(cpp = "q::f", header = "q.hxx")
-        pub fx f: (x: Float32) Int32;
+        pub @_extern(cpp = "q::f", header = "q.hxx") fx f: (x: Float32) Int32;
 
-        @_extern(cpp = "q::width", header = "q.hxx")
-        pub fx width64: (x: Int64) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") fx width64: (x: Int64) Int32;
 
-        @_extern(cpp = "q::width", header = "q.hxx")
-        pub fx width8: (x: Int8) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") fx width8: (x: Int8) Int32;
 
-        @_extern(cpp = "q::width", header = "q.hxx")
-        pub fx width16: (x: UInt16) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") fx width16: (x: UInt16) Int32;
 
-        @_extern(cpp = "l2::w", header = "l2.hxx")
-        pub fx lw: (x: Int64) Int32;
+        pub @_extern(cpp = "l2::w", header = "l2.hxx") fx lw: (x: Int64) Int32;
 
-        @_extern(cpp = "l2::width", header = "l2.hxx")
-        pub fx lwidth64: (x: Int64) Int32;
+        pub @_extern(cpp = "l2::width", header = "l2.hxx") fx lwidth64: (x: Int64) Int32;
 
-        @_extern(cpp = "l2::u32", header = "l2.hxx")
-        pub fx u32: (x: UInt32) Int32;
+        pub @_extern(cpp = "l2::u32", header = "l2.hxx") fx u32: (x: UInt32) Int32;
 
-        @_extern(cpp = "l2::mwidth", header = "l2.hxx")
-        pub fx mwidth: (m: Maybe<Int64>) Int32;
+        pub @_extern(cpp = "l2::mwidth", header = "l2.hxx") fx mwidth: (m: Maybe<Int64>) Int32;
 
-        @_extern(cpp = "l3::f", header = "l3.hxx")
-        pub fx f64: (x: Float64) Int32;
+        pub @_extern(cpp = "l3::f", header = "l3.hxx") fx f64: (x: Float64) Int32;
 
-        @_extern(cpp = "l3::isF64", header = "l3.hxx")
-        pub fx isF64: (x: Float64) Int32;
+        pub @_extern(cpp = "l3::isF64", header = "l3.hxx") fx isF64: (x: Float64) Int32;
 
-        @_extern(cpp = "l3::isBool", header = "l3.hxx")
-        pub fx isBool: (x: Bool) Int32;
+        pub @_extern(cpp = "l3::isBool", header = "l3.hxx") fx isBool: (x: Bool) Int32;
 
-        @_extern(cpp = "l3::isChar", header = "l3.hxx")
-        pub fx isChar: (x: Char) Int32;
+        pub @_extern(cpp = "l3::isChar", header = "l3.hxx") fx isChar: (x: Char) Int32;
 
-        @_extern(cpp = "l3::isCStr", header = "l3.hxx")
-        pub fx isCStr: (x: CStr) Int32;
+        pub @_extern(cpp = "l3::isCStr", header = "l3.hxx") fx isCStr: (x: CStr) Int32;
 
-        @_extern(cpp = "l3::isU8", header = "l3.hxx")
-        pub fx isU8: (x: UInt8) Int32;
+        pub @_extern(cpp = "l3::isU8", header = "l3.hxx") fx isU8: (x: UInt8) Int32;
 
-        @_opaque @_extern(cpp = "l3::Box", header = "l3.hxx")
-        pub class Box {
+        pub @_opaque @_extern(cpp = "l3::Box", header = "l3.hxx") class Box {
             pub fx w: (x: Int64) Int32;
             pub fx width: (x: Int64) Int32;
         }
 
-        @_extern(cpp = "l3::newBox", header = "l3.hxx")
-        pub fx newBox: () Box;
+        pub @_extern(cpp = "l3::newBox", header = "l3.hxx") fx newBox: () Box;
 
         pub fx litW: () Int32 {
             return w(5)

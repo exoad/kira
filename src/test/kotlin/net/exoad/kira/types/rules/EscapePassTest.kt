@@ -165,8 +165,7 @@ class EscapePassTest {
     fun anFxHandedToAnExternOrAnFxValueEscapes() {
         val p = snippet(
             """
-            @_extern(cpp = "ext::later", header = "ext.hxx")
-            pub fx later: (f: Fx<Tuple0, Void>) Void;
+            pub @_extern(cpp = "ext::later", header = "ext.hxx") fx later: (f: Fx<Tuple0, Void>) Void;
             pub fx viaExtern: (e: Fx<Tuple0, Void>) Void {
                 later(e)
             }

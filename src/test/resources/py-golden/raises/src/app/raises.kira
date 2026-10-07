@@ -3,26 +3,19 @@ module "app:raises"
 // raises = (D69), which driver.py runs: an exception the extern lists is the Kira throw
 // "Name: str(e)", Name the first listed class it is; any other passes through unchanged.
 
-@_extern(raises = "OSError")
-pub fx readText: (path: Str) Str
+pub @_extern(raises = "OSError") fx readText: (path: Str) Str
 
-@_extern(raises = "KeyError")
-pub fx lookup: (key: Str) Str
+pub @_extern(raises = "KeyError") fx lookup: (key: Str) Str
 
-@_extern(raises = "ValueError")
-pub fx parse: (text: Str) Int64
+pub @_extern(raises = "ValueError") fx parse: (text: Str) Int64
 
-@_extern(raises = "TimeoutError OSError")
-pub fx fail: (kind: Str) Void
+pub @_extern(raises = "TimeoutError OSError") fx fail: (kind: Str) Void
 
-@_extern(raises = "json.decoder.JSONDecodeError")
-pub fx decode: (text: Str) Int64
+pub @_extern(raises = "json.decoder.JSONDecodeError") fx decode: (text: Str) Int64
 
-@_extern(raises = "OSError")
-pub fx escape: (kind: Str) Void
+pub @_extern(raises = "OSError") fx escape: (kind: Str) Void
 
-@_extern(raises = "ValueError")
-pub fx wrongResult: () Str
+pub @_extern(raises = "ValueError") fx wrongResult: () Str
 
 pub fx caught: (what: Str) Str {
     try {

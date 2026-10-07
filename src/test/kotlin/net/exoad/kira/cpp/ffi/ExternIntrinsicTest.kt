@@ -42,30 +42,24 @@ class ExternIntrinsicTest {
     fun everyTargetOfDesign72IsAccepted() {
         val messages = semantic(
             """
-            @_extern(cpp = "bibo::Scan", header = "car.hxx")
-            pub struct Scan {
+            pub @_extern(cpp = "bibo::Scan", header = "car.hxx") struct Scan {
                 pub fx ahead: () Float32;
             }
 
-            @_extern(cpp = "bibo::Car", header = "car.hxx")
-            pub class Car {
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
                 pub mut fx arm: () Bool;
-                @_extern(cpp = "Ok") pub fx ok: () Bool;
+                pub @_extern(cpp = "Ok") fx ok: () Bool;
             }
 
-            @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
-            pub class DrawList {
-                @_extern(cpp = "AddLine") pub mut fx addLine: (color: UInt32) Void;
+            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") class DrawList {
+                pub mut @_extern(cpp = "AddLine") fx addLine: (color: UInt32) Void;
             }
 
-            @_extern(cpp = "bibo::openCar", header = "car.seam.hxx")
-            pub fx openCar: () Car;
+            pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") fx openCar: () Car;
 
-            @_extern("c_cos", c = "cos", cpp = "std::cos", header = "<cmath>")
-            pub fx cosine: (x: Float64) Float64;
+            pub @_extern("c_cos", c = "cos", cpp = "std::cos", header = "<cmath>") fx cosine: (x: Float64) Float64;
 
-            @_extern(cpp = "ImGuiWindowFlags_None", header = "imgui.h")
-            pub WINDOW_FLAGS_NONE: Int32;
+            pub @_extern(cpp = "ImGuiWindowFlags_None", header = "imgui.h") WINDOW_FLAGS_NONE: Int32;
             """
         )
         assertEquals(emptyList(), messages)
@@ -75,15 +69,12 @@ class ExternIntrinsicTest {
     fun theTypedModelKeepsEveryParameterAndTheMemberInheritsItsOwner() {
         val p = TyperTestSupport.snippet(
             """
-            @_extern(cpp = "bibo::Car", header = "car.hxx")
-            pub class Car {
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
                 pub mut fx arm: () Bool;
-                @_extern(cpp = "Ok") pub fx ok: () Bool;
+                pub @_extern(cpp = "Ok") fx ok: () Bool;
             }
-            @_extern("c_cos", c = "cos", cpp = "std::cos", header = "<cmath>")
-            pub fx cosine: (x: Float64) Float64;
-            @_extern(cpp = "ImGuiWindowFlags_None", header = "imgui.h")
-            pub WINDOW_FLAGS_NONE: Int32;
+            pub @_extern("c_cos", c = "cos", cpp = "std::cos", header = "<cmath>") fx cosine: (x: Float64) Float64;
+            pub @_extern(cpp = "ImGuiWindowFlags_None", header = "imgui.h") WINDOW_FLAGS_NONE: Int32;
             """
         )
         TyperTestSupport.expectNoErrors(p)
@@ -105,8 +96,7 @@ class ExternIntrinsicTest {
     fun anUnknownNamedParameterIsRefusedByName() {
         assertRefused(
             """
-            @_extern(cxx = "bibo::Car", header = "car.hxx")
-            pub class Car { }
+            pub @_extern(cxx = "bibo::Car", header = "car.hxx") class Car { }
             """,
             "@_extern does not take 'cxx'", "cpp =", "c =", "header =",
         )
@@ -116,8 +106,7 @@ class ExternIntrinsicTest {
     fun twoPositionalStringsAreRefused() {
         assertRefused(
             """
-            @_extern("bibo::openCar", "car.hxx")
-            pub fx openCar: () Int32;
+            pub @_extern("bibo::openCar", "car.hxx") fx openCar: () Int32;
             """,
             "@_extern accepts at most one positional string",
         )
@@ -127,15 +116,13 @@ class ExternIntrinsicTest {
     fun aNonStringParameterIsRefused() {
         assertRefused(
             """
-            @_extern(cpp = 16)
-            pub fx sixteen: () Int32;
+            pub @_extern(cpp = 16) fx sixteen: () Int32;
             """,
             "'cpp' is a string literal",
         )
         assertRefused(
             """
-            @_extern(3)
-            pub fx three: () Int32;
+            pub @_extern(3) fx three: () Int32;
             """,
             "symbol is a string literal",
         )
@@ -145,8 +132,7 @@ class ExternIntrinsicTest {
     fun aTargetOutsideTheListIsStillRefused() {
         assertRefused(
             """
-            @_extern(cpp = "bibo::Level")
-            pub enum Level: Int32 { L_A = 0 }
+            pub @_extern(cpp = "bibo::Level") enum Level: Int32 { L_A = 0 }
             """,
             "'@_extern' cannot be applied to EnumDecl",
         )
@@ -167,9 +153,8 @@ class ExternIntrinsicTest {
         )
         assertRefused(
             """
-            @_extern(cpp = "bibo::Pt", header = "car.hxx")
-            pub struct Pt {
-                @_extern(cpp = "X") pub x: Int32 = 0
+            pub @_extern(cpp = "bibo::Pt", header = "car.hxx") struct Pt {
+                pub @_extern(cpp = "X") x: Int32 = 0
             }
             """,
             "@_extern names a module-level constant; 'x' is declared inside a class or struct",
@@ -181,7 +166,7 @@ class ExternIntrinsicTest {
         assertRefused(
             """
             pub class Counter {
-                @_extern(cpp = "VtxCount") pub fx count: () Int32;
+                pub @_extern(cpp = "VtxCount") fx count: () Int32;
             }
             """,
             "@_extern on the method 'count': its class or struct 'Counter' must be extern itself",
@@ -191,13 +176,11 @@ class ExternIntrinsicTest {
             emptyList(),
             semantic(
                 """
-                @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h")
-                pub class DrawList {
-                    @_extern(cpp = "VtxCount") pub fx count: () Int32;
+                pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") class DrawList {
+                    pub @_extern(cpp = "VtxCount") fx count: () Int32;
                 }
-                @_extern(cpp = "bibo::Scan", header = "car.hxx")
-                pub struct Scan {
-                    @_extern(cpp = "Ahead") pub fx ahead: () Float32;
+                pub @_extern(cpp = "bibo::Scan", header = "car.hxx") struct Scan {
+                    pub @_extern(cpp = "Ahead") fx ahead: () Float32;
                 }
                 """
             ),
@@ -215,14 +198,14 @@ class ExternIntrinsicTest {
     @Test
     fun theCAndJsTargetsTakeAFreeFunctionOnly() {
         val cases = listOf(
-            "@_extern(c = \"INT_MAX\", header = \"limits.h\")\npub IMAX: Int32;" to "@_extern on the constant 'IMAX' reaches C++ only (--target cpp, design 7.2): the C backend takes @_extern on a free function",
-            "@_extern(\"INT_MAX\")\npub IMAX: Int32;" to "@_extern on the constant 'IMAX' reaches C++ only",
-            "@_extern(cpp = \"ImVec2\", header = \"imgui.h\")\npub struct Vec2 { pub x: Float32 = 0.0 }" to "@_extern on the struct 'Vec2' reaches C++ only",
-            "@_extern(cpp = \"bibo::Car\", header = \"car.hxx\")\npub class Car { pub fx ok: () Bool; }" to "@_extern on the class 'Car' reaches C++ only",
-            "@_opaque @_extern(cpp = \"ImDrawList\", header = \"imgui.h\")\npub class DrawList {\n    @_extern(cpp = \"VtxCount\") pub fx count: () Int32;\n}" to "@_extern on the method 'count' reaches C++ only",
+            "pub @_extern(c = \"INT_MAX\", header = \"limits.h\") IMAX: Int32;" to "@_extern on the constant 'IMAX' reaches C++ only (--target cpp, design 7.2): the C backend takes @_extern on a free function",
+            "pub @_extern(\"INT_MAX\") IMAX: Int32;" to "@_extern on the constant 'IMAX' reaches C++ only",
+            "pub @_extern(cpp = \"ImVec2\", header = \"imgui.h\") struct Vec2 { pub x: Float32 = 0.0 }" to "@_extern on the struct 'Vec2' reaches C++ only",
+            "pub @_extern(cpp = \"bibo::Car\", header = \"car.hxx\") class Car { pub fx ok: () Bool; }" to "@_extern on the class 'Car' reaches C++ only",
+            "pub @_opaque @_extern(cpp = \"ImDrawList\", header = \"imgui.h\") class DrawList {\n    pub @_extern(cpp = \"VtxCount\") fx count: () Int32;\n}" to "@_extern on the method 'count' reaches C++ only",
             // A free function whose marker names a C++ symbol and no C one: bound to its Kira name,
             // the C backend wrote `extern Int32 twice(Int32 n);` and called it (measured).
-            "@_extern(cpp = \"probe::twice\", header = \"probe.hxx\")\npub fx twice: (n: Int32) Int32;" to "@_extern on the function 'twice' names a C++ symbol only (cpp =); the C backend calls the C symbol: add c = \"name\"",
+            "pub @_extern(cpp = \"probe::twice\", header = \"probe.hxx\") fx twice: (n: Int32) Int32;" to "@_extern on the function 'twice' names a C++ symbol only (cpp =); the C backend calls the C symbol: add c = \"name\"",
         )
         val previous = GeneratedProvider.outputMode
         try {
@@ -232,12 +215,12 @@ class ExternIntrinsicTest {
                     assertRefused(body, message.replace("the C backend", "the ${mode.name} backend"))
                 }
                 // A free function with a C symbol is what these backends lower: still accepted, a cpp = beside it or not.
-                assertEquals(emptyList(), semantic("@_extern(\"fopen\")\npub fx openFile: (path: Str) Int32;"), mode.name)
-                assertEquals(emptyList(), semantic("@_extern(c = \"twice_c\", cpp = \"probe::twice\", header = \"probe.hxx\")\npub fx twice: (n: Int32) Int32;"), mode.name)
-                assertEquals(emptyList(), semantic("@_extern(header = \"probe.h\")\npub fx twice: (n: Int32) Int32;"), "${mode.name}: the Kira name is the symbol")
+                assertEquals(emptyList(), semantic("pub @_extern(\"fopen\") fx openFile: (path: Str) Int32;"), mode.name)
+                assertEquals(emptyList(), semantic("pub @_extern(c = \"twice_c\", cpp = \"probe::twice\", header = \"probe.hxx\") fx twice: (n: Int32) Int32;"), mode.name)
+                assertEquals(emptyList(), semantic("pub @_extern(header = \"probe.h\") fx twice: (n: Int32) Int32;"), "${mode.name}: the Kira name is the symbol")
             }
             GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.CPP
-            val everyTarget = cases.map { it.first }.filterNot { it.startsWith("@_extern(\"INT_MAX\")") }.joinToString("\n")
+            val everyTarget = cases.map { it.first }.filterNot { it.startsWith("pub @_extern(\"INT_MAX\")") }.joinToString("\n")
             assertEquals(emptyList(), semantic(everyTarget), "cpp takes every target of 7.2")
         } finally {
             GeneratedProvider.outputMode = previous
@@ -247,7 +230,7 @@ class ExternIntrinsicTest {
     /** `raises =` names Python exceptions (D69), and py binds an extern by its Kira name alone (D67). */
     @Test
     fun raisesReachesPyOnlyAndPyTakesNoOtherName() {
-        val raises = "@_extern(raises = \"OSError\")\npub fx readText: (path: Str) Str;"
+        val raises = "pub @_extern(raises = \"OSError\") fx readText: (path: Str) Str;"
         val previous = GeneratedProvider.outputMode
         try {
             GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
@@ -257,11 +240,11 @@ class ExternIntrinsicTest {
                 assertRefused(raises, "@_extern's raises = names Python exceptions, which the ${mode.name} backend has none of")
             }
             GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.PY
-            assertEquals(emptyList(), semantic("$raises\n@_extern\npub fx home: () Str;"))
+            assertEquals(emptyList(), semantic("$raises\npub @_extern fx home: () Str;"))
             listOf(
-                "@_extern(cpp = \"ns::f\", header = \"f.hxx\")\npub fx f: () Int32;" to "names cpp =, header =",
-                "@_extern(c = \"f_c\", raises = \"OSError\")\npub fx f: () Int32;" to "names c =",
-                "@_extern(\"f_c\")\npub fx f: () Int32;" to "names a positional symbol",
+                "pub @_extern(cpp = \"ns::f\", header = \"f.hxx\") fx f: () Int32;" to "names cpp =, header =",
+                "pub @_extern(c = \"f_c\", raises = \"OSError\") fx f: () Int32;" to "names c =",
+                "pub @_extern(\"f_c\") fx f: () Int32;" to "names a positional symbol",
             ).forEach { (body, names) ->
                 assertRefused(body, "@_extern on 'f' $names; the py backend binds an extern to the function of its own name in the module's sidecar")
             }
@@ -273,7 +256,7 @@ class ExternIntrinsicTest {
     /** A method of an @_opaque class takes `raises =` for py (D70), so under none too; elsewhere its class must be extern. */
     @Test
     fun anOpaqueClassesMethodTakesTheMarkerOnPyAndNone() {
-        val body = "@_opaque\npub class Sock {\n    @_extern(raises = \"TimeoutError\") pub fx recv: (n: Int32) List<UInt8>;\n}"
+        val body = "pub @_opaque class Sock {\n    pub @_extern(raises = \"TimeoutError\") fx recv: (n: Int32) List<UInt8>;\n}"
         val previous = GeneratedProvider.outputMode
         try {
             for (mode in listOf(GeneratedProvider.OutputTarget.PY, GeneratedProvider.OutputTarget.NONE)) {

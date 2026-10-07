@@ -1916,8 +1916,7 @@ class CppHoisterTest {
         mut gl2: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
         mut gm: Maybe<List<Int32>> = List<Int32> { values = [1, 2, 3] }
 
-        @_extern(cpp = "w::sumVF", header = "w.hxx")
-        pub fx sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "w::sumVF", header = "w.hxx") fx sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
 
         fx sumV: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
