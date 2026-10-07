@@ -2460,7 +2460,7 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("_k_time.monotonic_ns() + (_k_time.monotonic_ns() // 1000000)"), py)
+        assertTrue(py.contains("_k_time.perf_counter_ns() + (_k_time.perf_counter_ns() // 1000000)"), py)
         assertTrue(py.contains("_k_time.time_ns()"), py)
         assertTrue(py.contains("    _k_sleep(5)\n"), py)
         assertTrue(py.contains("print(len(list(_k_sys.argv)))"), py)

@@ -30,3 +30,4 @@ intmain stop -> exit 70
   last: kira:errors.Error: asked to: stop
 argsmain a b -> exit 3
   ran with 3 arguments
+nap(Int64 max) sleeps [86400.0, 86400.0]

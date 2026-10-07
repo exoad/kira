@@ -882,10 +882,13 @@ def _k_main(main, *args):
         raise _k_builtins.SystemExit(70)
 
 
-# kira:time sleepMs (D72): at least ms milliseconds; zero or less returns at once.
+# kira:time sleepMs (D72): at least ms milliseconds, a day at a time, which no platform's sleep
+# overflows on; zero or less returns at once.
 def _k_sleep(ms):
-    if ms > 0:
-        _k_time.sleep(ms / 1000)
+    while ms > 0:
+        step = min(ms, 86400000)
+        _k_time.sleep(step / 1000)
+        ms -= step
 
 
 # The sidecar X_ext.py beside X.kira (D67), found beside this file's real path and loaded once per

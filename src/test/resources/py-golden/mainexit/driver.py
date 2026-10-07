@@ -2,9 +2,11 @@
 # The mainexit golden: each generated main run as a program, its stdout, exit status and stderr.
 #
 #   python driver.py <the directory kira --target py --out wrote>
+import importlib.util
 import os
 import subprocess
 import sys
+import time
 
 
 def run(name, *args):
@@ -27,3 +29,26 @@ run("mainexit", "exit")
 run("intmain")
 run("intmain", "stop")
 run("argsmain", "a", "b")
+
+
+class Stop(BaseException):
+    pass
+
+
+def sleeping(s):
+    slept.append(s)
+    if len(slept) == 2:
+        raise Stop
+
+
+spec = importlib.util.spec_from_file_location("mainexit_kira", os.path.join(sys.argv[1], "src", "app", "mainexit.kira.py"))
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+slept, real = [], time.sleep
+time.sleep = sleeping
+try:
+    m.nap(0x7FFFFFFFFFFFFFFF)
+except Stop:
+    pass
+time.sleep = real
+print("nap(Int64 max) sleeps", slept)
