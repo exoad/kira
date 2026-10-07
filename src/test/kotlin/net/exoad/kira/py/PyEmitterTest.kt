@@ -2412,7 +2412,7 @@ class PyEmitterTest {
             py.contains(
                 "def _send(data, into, raw, xs, p, m):\n" +
                     "    with _k_lend(data, False) as _k_v0, _k_lend(into, True) as _k_v1:\n" +
-                    "        _k_r = _k_x.send(_k_v0, _k_v1, bytes(raw), list(xs), p._k_clone(), dict(m))\n" +
+                    "        _k_r = _k_x.send(_k_v0, _k_v1, bytes(raw), list(xs), _k_out(p), _k_out(m))\n" +
                     "    return _k_check(_k_r, (\"I\", -9223372036854775808, 9223372036854775807), \"lend_ext.send\", \"Int64\")"
             ),
             py,
@@ -2435,11 +2435,9 @@ class PyEmitterTest {
             }
             """,
             "handle",
-            sidecar = null,
         ).python()
         assertFalse(py.contains("class Sock"), py)
-        assertFalse(py.contains("_k_extern("), "a builtin name in raises = needs no sidecar:\n$py")
-        assertTrue(py.contains("_k_r0 = _k_raises(None, \"Sock.recv\", (\"TimeoutError\",))"), py)
+        assertTrue(py.contains("_k_x = _k_extern(__file__, \"handle_ext.py\", ())\n_k_r0 = _k_raises(_k_x, \"Sock.recv\", (\"TimeoutError\",))"), py)
         assertTrue(py.contains("def _k_o_Sock_recv(_k_o, size):\n    try:\n        _k_r = _k_o.recv(size)\n"), py)
         assertTrue(py.contains("    return _k_check(_k_r, (\"Y\",), \"Sock.recv\", \"List<UInt8>\")"), py)
         assertTrue(py.contains("kept = list(socks)"), py)
@@ -2451,8 +2449,8 @@ class PyEmitterTest {
         val e = besideSidecar("@_extern\nfx f: () Int32", "lonely", sidecar = null)
         assertNull(e.text)
         assertTrue(e.errors.any { it.contains("error: py.extern: lonely.kira declares externs, whose sidecar lonely_ext.py is not beside it") }, e.errors.joinToString("\n"))
-        val dotted = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"socket.timeout\")\n    pub fx recv: () Int32\n}", "dotted", sidecar = null)
-        assertTrue(dotted.errors.any { it.contains("py.extern: dotted.kira") }, "a dotted raises = name resolves in the sidecar:\n${dotted.errors.joinToString("\n")}")
+        val raises = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"TimeoutError\")\n    pub fx recv: () Int32\n}", "raising", sidecar = null)
+        assertTrue(raises.errors.any { it.contains("py.extern: raising.kira") }, "a raises = name resolves in the sidecar first:\n${raises.errors.joinToString("\n")}")
     }
 
     @Test
@@ -2488,12 +2486,23 @@ class PyEmitterTest {
             }
             """
         )
-        assertTrue(py.contains("_k_time.monotonic_ns() + (_k_time.monotonic_ns() // 1000000)"), py)
+        assertTrue(py.contains("_k_time.perf_counter_ns() + (_k_time.perf_counter_ns() // 1000000)"), py)
         assertTrue(py.contains("_k_time.time_ns()"), py)
         assertTrue(py.contains("    _k_sleep(5)\n"), py)
         assertTrue(py.contains("print(len(list(_k_sys.argv)))"), py)
-        assertTrue(py.contains("def _k_main(main):"), py)
+        assertTrue(py.contains("def _k_main(main, *args):"), py)
         assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
+    }
+
+    @Test
+    fun anOpaqueHandleIsComparedNeitherThroughAStructNorByContains() {
+        val handle = "@_opaque\npub class Sock {\n    pub fx id: () Int32\n}\n"
+        listOf(
+            "${handle}struct Peer {\n    require pub s: Sock\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a == b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}struct Peer {\n    require pub s: List<Sock>\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a != b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}fx f: (xs: List<Sock>, s: Sock) Bool {\n    return xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
+            "${handle}fx f: (m: Map<Str, Sock>, s: Sock) Bool {\n    return m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
+        ).forEach { (body, construct) -> refused(body, construct) }
     }
 
     // ---- kira:test (D80) -------------------------------------------------------------------------
