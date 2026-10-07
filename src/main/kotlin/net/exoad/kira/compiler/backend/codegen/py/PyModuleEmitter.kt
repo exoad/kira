@@ -182,7 +182,7 @@ class PyModuleEmitter(
             val fn = shared.pending.removeFirst()
             stdlib += PyModuleEmitter(program, fn.module, bindings, runtime, null, shared).function(fn, null)
         }
-        val sidecar = if (sidecarNames.isNotEmpty() || raised.any { (_, names) -> names.any { '.' in it } }) sidecarPath() else null
+        val sidecar = if (sidecarNames.isNotEmpty() || raised.isNotEmpty()) sidecarPath() else null
         // The constants come before the loads: in a use cycle the other module reads them while this one is half loaded.
         val loads = mutableListOf<String>()
         if (imports != null && imports.cycle.isNotEmpty()) {
@@ -192,7 +192,7 @@ class PyModuleEmitter(
             loads += "_k_x = ${call("_k_extern", "__file__", pyString(sidecar), pyTuple(sidecarNames.map { (n, k) -> pyTuple(listOf(pyString(n), "$k")) })).text}"
         }
         raised.forEachIndexed { i, (where, names) ->
-            loads += "_k_r$i = ${call("_k_raises", if (sidecar != null) "_k_x" else "None", pyString(where), pyTuple(names.map { pyString(it) })).text}"
+            loads += "_k_r$i = ${call("_k_raises", "_k_x", pyString(where), pyTuple(names.map { pyString(it) })).text}"
         }
         used.forEach { (m, name) -> loads += "$name = ${call("_k_use", "__file__", pyString(imports?.path(m) ?: "")).text}" }
         if (diagnostics.any { it.isError }) {

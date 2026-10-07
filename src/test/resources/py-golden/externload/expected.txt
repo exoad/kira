@@ -6,3 +6,5 @@ broad -> kira: broad_ext.f raises Broad, which would catch Kira's own throw or p
 notclass -> kira: notclass_ext.f raises len, which is no Exception class
 fine -> loaded
 fine.g -> Missing: nothing here
+copied -> kira: the sidecar .../fine_ext.py is missing, an absolute path: True
+linked -> loaded

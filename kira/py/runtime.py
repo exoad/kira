@@ -888,9 +888,12 @@ def _k_sleep(ms):
         _k_time.sleep(ms / 1000)
 
 
-# The sidecar X_ext.py beside X.kira (D67), loaded once per process by its real path; an extern it
-# does not define as a function of the extern's arity is a panic here, at import.
+# The sidecar X_ext.py beside X.kira (D67), found beside this file's real path and loaded once per
+# process; a missing one, or an extern it lacks or takes other arguments for, is a panic at import.
 def _k_extern(here, path, names):
+    path = _k_os.path.realpath(_k_os.path.join(_k_os.path.dirname(_k_os.path.realpath(here)), path))
+    if not _k_os.path.isfile(path):
+        _k_panic("the sidecar %s is missing" % path)
     m = _k_use(here, path)
     for n, k in names:
         try:
@@ -909,7 +912,7 @@ def _k_raises(ext, where, names):
     out = []
     for n in names:
         parts = n.split(".")
-        c = (ext.__dict__ if ext is not None else {}).get(parts[0], _k_builtins.__dict__.get(parts[0]))
+        c = ext.__dict__.get(parts[0], _k_builtins.__dict__.get(parts[0]))
         for p in parts[1:]:
             c = _k_builtins.getattr(c, p, None)
         if not (isinstance(c, _k_builtins.type) and _k_builtins.issubclass(c, _k_builtins.Exception)):

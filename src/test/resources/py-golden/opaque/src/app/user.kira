@@ -2,6 +2,7 @@ module "app:user"
 
 // A module that uses opaque.kira's handles: each call goes through opaque.kira's checked wrapper.
 
+use "app:conn"
 use "app:opaque"
 
 class Pair {
@@ -37,4 +38,10 @@ fx main: () Void {
     trace(a.absorb(pair))
     kept: List<Int32> = pair.first
     trace(kept.size())
+    c: Conn = dialer()
+    try {
+        trace(c.wait())
+    } on e: Str {
+        trace(e)
+    }
 }

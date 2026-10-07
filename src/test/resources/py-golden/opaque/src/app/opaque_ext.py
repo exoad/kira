@@ -1,4 +1,5 @@
 # The sidecar of opaque.kira: a plain Python class whose one-word methods Kira calls directly.
+import sys
 class Counter:
     def __init__(self, label):
         self.text = label
@@ -38,3 +39,8 @@ def sameObject(a, b):
 
 def broken():
     return None
+
+
+def dialer():
+    # The Conn of the one conn_ext.py the runtime loaded.
+    return next(m for k, m in sys.modules.items() if k.endswith("conn_ext.py")).Conn()

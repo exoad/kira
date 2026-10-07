@@ -2409,11 +2409,9 @@ class PyEmitterTest {
             }
             """,
             "handle",
-            sidecar = null,
         ).python()
         assertFalse(py.contains("class Sock"), py)
-        assertFalse(py.contains("_k_extern("), "a builtin name in raises = needs no sidecar:\n$py")
-        assertTrue(py.contains("_k_r0 = _k_raises(None, \"Sock.recv\", (\"TimeoutError\",))"), py)
+        assertTrue(py.contains("_k_x = _k_extern(__file__, \"handle_ext.py\", ())\n_k_r0 = _k_raises(_k_x, \"Sock.recv\", (\"TimeoutError\",))"), py)
         assertTrue(py.contains("def _k_o_Sock_recv(_k_o, size):\n    try:\n        _k_r = _k_o.recv(size)\n"), py)
         assertTrue(py.contains("    return _k_check(_k_r, (\"Y\",), \"Sock.recv\", \"List<UInt8>\")"), py)
         assertTrue(py.contains("kept = list(socks)"), py)
@@ -2425,8 +2423,8 @@ class PyEmitterTest {
         val e = besideSidecar("@_extern\nfx f: () Int32", "lonely", sidecar = null)
         assertNull(e.text)
         assertTrue(e.errors.any { it.contains("error: py.extern: lonely.kira declares externs, whose sidecar lonely_ext.py is not beside it") }, e.errors.joinToString("\n"))
-        val dotted = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"socket.timeout\")\n    pub fx recv: () Int32\n}", "dotted", sidecar = null)
-        assertTrue(dotted.errors.any { it.contains("py.extern: dotted.kira") }, "a dotted raises = name resolves in the sidecar:\n${dotted.errors.joinToString("\n")}")
+        val raises = besideSidecar("@_opaque\npub class Sock {\n    @_extern(raises = \"TimeoutError\")\n    pub fx recv: () Int32\n}", "raising", sidecar = null)
+        assertTrue(raises.errors.any { it.contains("py.extern: raising.kira") }, "a raises = name resolves in the sidecar first:\n${raises.errors.joinToString("\n")}")
     }
 
     @Test

@@ -3,6 +3,8 @@ module "app:opaque"
 // @_opaque handles (D70): the sidecar makes the object and Kira calls its methods by their
 // Kira names; user.kira holds them in fields, Lists and Maybes, never copied.
 
+use "app:conn"
+
 @_opaque
 pub class Counter {
     pub mut fx bump: (by: Int32) Int32
@@ -24,3 +26,6 @@ pub fx sameObject: (a: Counter, b: Counter) Bool
 
 @_extern
 pub fx broken: () Counter
+
+@_extern
+pub fx dialer: () Conn
