@@ -1357,6 +1357,32 @@ class PyEmitterTest {
         assertEquals(emptyList(), PyTestSupport.unreservedBuiltins(listOf(runtime, bindings.toPath()), PyNames.RESERVED))
     }
 
+    /** kira/cpp/kira/test.hxx's lines, byte for byte, and finish's 1 or 0. */
+    @Test
+    fun theSuiteBlockPrintsBibosCheckFormat() {
+        assumeTrue(PyTestSupport.python != null, "no Python on PATH (set KIRA_PYTHON)")
+        val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
+        val script = File(PyTestSupport.repoRoot, "build/tmp/py-suite/suite.py").apply { parentFile.mkdirs() }
+        val driver = """
+            t = _k_Suite("suite - its lines")
+            t.check(True, "kept")
+            t.checkStr("a", "a", "same text")
+            t.check(False, "broken")
+            t.checkStr("got", "want", "other text")
+            failed = t.finish()
+            print(failed, _k_Suite("empty").finish())
+        """.trimIndent()
+        script.writeText(runtime.select(setOf("_k_Suite")) + "\n\n\n" + driver + "\n")
+        val ran = PyTestSupport.run(listOf(PyTestSupport.python!!, script.absolutePath), script.parentFile)
+        assertEquals(0, ran.exitCode, ran.all)
+        assertEquals(
+            "\nsuite - its lines\n\n  ok    kept\n  ok    same text\n  FAIL  broken\n  FAIL  other text\n" +
+                "        got  \"got\"\n        want \"want\"\n\n4 checks, 2 failed\n\n" +
+                "\nempty\n\n\n0 checks, 0 failed\n\n1 0\n",
+            ran.stdout,
+        )
+    }
+
     @Test
     fun aStructsCloneAndAUseCycleNameNoBuiltinAKiraNameCouldShadow() {
         val (py, errors) = PyTestSupport.emitProgram(

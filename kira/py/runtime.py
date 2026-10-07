@@ -1016,3 +1016,31 @@ class _k_lend:
     def __exit__(self, *exc):
         self.m.release()
         self.b.release()
+
+
+# kira:test's Suite (D80): bibo's check format, printed as kira/cpp/kira/test.hxx prints it;
+# finish's result is main's exit status.
+class _k_Suite:
+    __slots__ = ("checks", "failures")
+
+    def __init__(self, title):
+        self.checks = 0
+        self.failures = 0
+        print("\n" + title + "\n")
+
+    def check(self, ok, what):
+        self.checks += 1
+        if ok:
+            print("  ok    " + what)
+        else:
+            print("  FAIL  " + what)
+            self.failures += 1
+
+    def checkStr(self, got, want, what):
+        self.check(got == want, what)
+        if got != want:
+            print("        got  \"" + got + "\"\n        want \"" + want + "\"")
+
+    def finish(self):
+        print("\n%d checks, %d failed\n" % (self.checks, self.failures))
+        return 0 if self.failures == 0 else 1

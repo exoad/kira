@@ -2,7 +2,8 @@ module "kira:test"
 
 // bibo's check format, so a Kira test prints exactly what its C++ tests
 // print and the same scripts read both (design 5.10; the runtime is
-// kira/cpp/kira/test.hxx). Constructing a Suite prints the header:
+// kira/cpp/kira/test.hxx, and runtime.py's _k_Suite on py). Constructing a
+// Suite prints the header:
 //
 //     <newline>
 //     <title>
