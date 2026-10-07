@@ -383,7 +383,7 @@ class KiraParser(private val context: SourceContext) {
             Token.Type.K_USE -> parseUseStatement()
             Token.Type.K_BREAK -> parseBreakStatement()
             Token.Type.K_CONTINUE -> parseContinueStatement()
-            // Leading known decl intrinsics (@_opaque / @_extern / @_magic) before pub/class/fx.
+            // A declaration intrinsic with no keyword modifier before it (`@_extern fx f`).
             // Callable intrinsics (@op_add, @_trace_) parse as expression statements.
             Token.Type.INTRINSIC_IDENTIFIER -> {
                 val raw = peek().content.removePrefix("@")
@@ -2106,13 +2106,19 @@ class KiraParser(private val context: SourceContext) {
 
     }
 
+    /** A keyword modifier or an intrinsic of a declaration head, as written. */
+    private class HeadWord(val text: String, val at: SourcePosition, val isIntrinsic: Boolean)
+
     fun parseModifiers(): Map<Modifier, SourcePosition> {
         val modifier = mutableMapOf<Modifier, SourcePosition>()
         val intrinsics = mutableListOf<IntrinsicExpr>()
+        val head = mutableListOf<HeadWord>()
         while (true) {
             when {
                 at(Token.Type.INTRINSIC_IDENTIFIER) -> {
                     val startLoc = here()
+                    val startToken = peek()
+                    var endOffset = startToken.pointerPosition + startToken.content.length
                     val intrinsicName = peek().content
                     val intrinsic = IntrinsicRegistry.find(intrinsicName)
                         ?: Diagnostics.panic(
@@ -2152,9 +2158,14 @@ class KiraParser(private val context: SourceContext) {
                                 positional.add(parseMarkerArgument(intrinsicName))
                             }
                         }
+                        endOffset = peek().pointerPosition + 1
                         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
                         parameters = positional
                     }
+                    // As written, for the Help line; arguments over several lines read as one.
+                    val written = context.content.substring(startToken.pointerPosition - 1, endOffset)
+                        .replace(Regex("(?<=\\()\\s*\\n\\s*|\\s*\\n\\s*(?=\\))"), "").replace(Regex("\\s*\\n\\s*"), " ")
+                    head.add(HeadWord(written, startLoc.offsetBy(0, -1), isIntrinsic = true))
                     intrinsics.add(
                         putOrigin(
                             IntrinsicExpr(intrinsic, startLoc.toLocationFromContext(context), parameters, named),
@@ -2182,6 +2193,7 @@ class KiraParser(private val context: SourceContext) {
                         )
                     }
                     modifier[currentModifier!!] = peek().canonicalLocation
+                    head.add(HeadWord(peek().content, peek().canonicalLocation, isIntrinsic = false))
                     advancePointer()
                 }
 
@@ -2189,9 +2201,50 @@ class KiraParser(private val context: SourceContext) {
             }
         }
         if (intrinsics.isNotEmpty()) {
+            if (peek().type in declarationStarters) {
+                expectIntrinsicSlot(head)
+            }
             pendingIntrinsicExprs = intrinsics
         }
         return modifier
+    }
+
+    /**
+     * A declaration intrinsic is keyword-level: written after every keyword modifier, on the
+     * line of the declaration keyword or name it marks (`pub @_opaque class Tag {`).
+     */
+    private fun expectIntrinsicSlot(head: List<HeadWord>) {
+        val target = peek().canonicalLocation
+        val marks = head.filter { it.isIntrinsic }
+        val apart = marks.firstOrNull { it.at.lineNumber != target.lineNumber }
+        val first = head.indexOfFirst { it.isIntrinsic }
+        val modifierAfter = head.drop(first).firstOrNull { !it.isIntrinsic }
+        if (apart == null && modifierAfter == null) {
+            return
+        }
+        val rest = context.findCanonicalLine(target.lineNumber).substring(target.column - 1).trimEnd()
+        val rewritten = (head.filter { !it.isIntrinsic } + marks).joinToString(" ") { it.text } + " " + rest
+        val (code, offending, message) = when {
+            apart == null -> Triple(
+                "parse.intrinsic.order", head[first],
+                "'${head[first].text}' is written before the modifier '${modifierAfter!!.text}'; an intrinsic follows every keyword modifier."
+            )
+            head.none { !it.isIntrinsic && it.at.lineNumber == apart.at.lineNumber && it.at < apart.at } -> Triple(
+                "parse.intrinsic.line", apart,
+                "'${apart.text}' stands on a line of its own; an intrinsic is keyword-level, written on the line of the declaration it marks."
+            )
+            else -> Triple(
+                "parse.intrinsic.newline", apart,
+                "A newline separates '${apart.text}' from the declaration it marks; an intrinsic is keyword-level, written on the declaration's line."
+            )
+        }
+        Diagnostics.panic(
+            code,
+            "$message\n\nHelp: write it as '$rewritten'.",
+            location = offending.at,
+            selectorLength = max(1, offending.text.length),
+            context = context
+        )
     }
 
     /**
