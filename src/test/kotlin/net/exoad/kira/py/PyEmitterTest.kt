@@ -2090,9 +2090,9 @@ class PyEmitterTest {
             """
         )
         assertTrue(py.contains("    print(1 if ok else 0, end=\"\")\n    print(_k_gtext(2.5))\n"), py)
-        assertTrue(py.contains("    print(\"e\", end=\"\", file=_k_sys.stderr, flush=True)\n    _k_assert(ok, \"bad\")\n    _k_exit(3)"), py)
+        assertTrue(py.contains("    print(\"e\", end=\"\", file=_k_sys.stderr, flush=True)\n    _k_assert(ok, \"bad\")\n    _k_end(3, False)"), py)
         assertTrue(py.contains("import sys as _k_sys"), py)
-        assertTrue(py.contains("raise _k_builtins.SystemExit(code)"), py)
+        assertTrue(py.contains("def _k_end(code, shown):") && py.contains("_k_os._exit(3 if code is None else code)"), py)
     }
 
     @Test

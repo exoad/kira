@@ -9,6 +9,9 @@ use "kira:time"
 @_extern(raises = "OSError")
 fx readText: (path: Str) Str
 
+@_extern
+fx linger: () Void
+
 fx main: () Void {
     a: List<Str> = args()
     trace(a.size())
@@ -31,6 +34,10 @@ fx main: () Void {
     }
     if a.size() == 2 && a[1] == "exit" {
         exit(4)
+    }
+    if a.size() == 2 && a[1] == "linger" {
+        linger()
+        exit(5)
     }
     if a.size() == 2 && a[1] == "panic" {
         trace(1 / (a.size() as Int32 - 2))

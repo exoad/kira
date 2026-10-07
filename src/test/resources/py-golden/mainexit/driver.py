@@ -12,7 +12,10 @@ import time
 # C++'s abort is SIGABRT on POSIX and 3 on Windows, where intmain's own 3 is no abort.
 def run(name, *args, aborts=False):
     path = os.path.join(sys.argv[1], "src", "app", name + ".kira.py")
+    began = time.monotonic()
     r = subprocess.run([sys.executable, path] + list(args), capture_output=True, text=True)
+    if "linger" in args:
+        print("linger took under 10 s:", time.monotonic() - began < 10)
     aborted = r.returncode in (-6, 134) or (os.name == "nt" and r.returncode == 3)
     print("%s %s -> exit %s" % (name, " ".join(args), "abort" if aborts and aborted else r.returncode))
     for line in r.stdout.splitlines():
@@ -29,6 +32,7 @@ run("mainexit", "x", "y z")
 run("mainexit", "throw", "absent.txt")
 run("mainexit", "exit")
 run("mainexit", "panic", aborts=True)
+run("mainexit", "linger")
 run("intmain")
 run("intmain", "stop")
 run("argsmain", "a", "b")

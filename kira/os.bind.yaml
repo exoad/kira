@@ -82,4 +82,4 @@ spawnProcess:         { cpp: { expr: "kira::os::spawnProcess({0})", includes: ["
 args:     { cpp: { expr: "kira::rt::args()", includes: ["kira/main.hxx"] }, py: { expr: "list(_k_sys.argv)" } }
 onSignal: { cpp: { expr: "kira::os::onSignal({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_onsignal({0}, {1})" } }
 env:      { cpp: { expr: "kira::os::env({0})", includes: ["kira/os.hxx"] } }
-exit:     { cpp: { expr: "kira::os::exit({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_exit({0})" } }
+exit:     { cpp: { expr: "kira::os::exit({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_end({0}, False)" } }

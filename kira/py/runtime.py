@@ -68,7 +68,7 @@ def _k_assert(ok, message):
         _k_panic("assertion failed: " + message)
 
 
-# kira:os exit: SystemExit, which no Kira try catches, flushes stdout as C++'s exit does.
+# An Int32 main's status, as Python's own exit; kira:os exit ends the process at once (_k_end).
 def _k_exit(code):
     raise _k_builtins.SystemExit(code)
 
@@ -1111,7 +1111,8 @@ def _k_callback(f, args, owner, thrown=70):
         _k_end(None, True)
 
 
-# Abort is 3 on Windows, where os.abort could raise Windows Error Reporting's dialog.
+# Ends the process at once, as C++'s exit (fflush, then _Exit) and abort do; a None code aborts, which
+# is status 3 on Windows, where os.abort could raise Windows Error Reporting's dialog.
 def _k_end(code, shown):
     try:
         _k_sys.stdout.flush()
