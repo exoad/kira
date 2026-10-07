@@ -107,6 +107,15 @@ fx atomics: () Void {
     flag.storeRelease(false)
     f: Atomic<Float64> = Atomic<Float64> { value = 1.5 }
     println("Float64 ${f.add(2.25)} ${flag.load()}")
+    z: Atomic<Float64> = Atomic<Float64> { value = 0.0 }
+    zeroBits: Bool = z.compareSwap(-0.0, 1.0)
+    q: Atomic<Float64> = Atomic<Float64> { value = nanOf(0.0) }
+    nanBits: Bool = q.compareSwap(q.load(), 2.0)
+    println("Float64 compareSwap by bits: ${zeroBits} ${nanBits} ${q.load()}")
+}
+
+fx nanOf: (zero: Float64) Float64 {
+    return zero / zero
 }
 
 fx stopping: () Void {

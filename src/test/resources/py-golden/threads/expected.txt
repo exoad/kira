@@ -8,6 +8,7 @@ all -> exit 0
   UInt8 4 swap 4 now 3
   compareSwap true false true
   Float64 3.75 false
+  Float64 compareSwap by bits: false true 2
   stopRequested false true, spun true
   all done
 throw -> exit abort

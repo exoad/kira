@@ -1221,7 +1221,7 @@ class _k_Mutex:
 
 
 # Every write under one lock, reentrant so an onSignal handler can store while its thread holds it;
-# an integer add wraps as C++'s fetch_add does.
+# an integer add wraps as C++'s fetch_add does, and a float compareSwap compares bits as it does.
 class _k_Atomic:
     __slots__ = ("v", "wrap", "lk")
 
@@ -1250,7 +1250,8 @@ class _k_Atomic:
 
     def compareSwap(self, expected, desired):
         with self.lk:
-            if self.v != expected:
+            v = self.v
+            if (_k_struct.pack("<d", v) != _k_struct.pack("<d", expected)) if v.__class__ is float else v != expected:
                 return False
             self.v = desired
             return True
