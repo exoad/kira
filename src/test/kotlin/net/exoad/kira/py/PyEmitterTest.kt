@@ -2464,7 +2464,7 @@ class PyEmitterTest {
         assertTrue(py.contains("_k_time.time_ns()"), py)
         assertTrue(py.contains("    _k_sleep(5)\n"), py)
         assertTrue(py.contains("print(len(list(_k_sys.argv)))"), py)
-        assertTrue(py.contains("def _k_main(main):"), py)
+        assertTrue(py.contains("def _k_main(main, *args):"), py)
         assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
     }
 

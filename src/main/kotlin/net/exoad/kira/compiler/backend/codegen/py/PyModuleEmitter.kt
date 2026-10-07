@@ -451,11 +451,13 @@ class PyModuleEmitter(
 
     private fun isEnum(t: KType?): Boolean = (t as? KType.Nominal)?.sym is EnumSymbol
 
+    /** `main: (args: List<Str>) Int32` is handed the program's arguments, as C++'s runMain hands it argv. */
     private fun mainCall(fn: FnSymbol): String? {
-        if (fn.params.isNotEmpty()) {
+        val withArgs = fn.params.size == 1 && fn.ret == KType.INT32 && magicName(fn.params[0].type) == "List" && elementOf(fn.params[0].type) == KType.Str
+        if (fn.params.isNotEmpty() && !withArgs) {
             return null
         }
-        val run = call("_k_main", pyName(fn)).text
+        val run = if (withArgs) call("_k_main", pyName(fn), "list(${helper("_k_sys")}.argv)").text else call("_k_main", pyName(fn)).text
         val call = when (fn.ret) {
             KType.Void -> run
             KType.INT32 -> call("_k_exit", run).text

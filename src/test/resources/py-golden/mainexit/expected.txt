@@ -28,3 +28,5 @@ intmain  -> exit 3
 intmain stop -> exit 70
   traceback: True | cause: False | direct cause: False
   last: kira:errors.Error: asked to: stop
+argsmain a b -> exit 3
+  ran with 3 arguments

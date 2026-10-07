@@ -873,9 +873,9 @@ def _k_jerror():
 
 # An uncaught throw at main (D73) ends the program with C++'s runMain status, 70; the traceback,
 # with the cause of a raises= throw, stays on stderr.
-def _k_main(main):
+def _k_main(main, *args):
     try:
-        return main()
+        return main(*args)
     except _k_Error:
         _k_sys.stdout.flush()
         _k_traceback.print_exc()
