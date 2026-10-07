@@ -1,7 +1,7 @@
 module "app:callbacks"
 
 // Kira code handed to the sidecar as an Fx (D75), which driver.py runs once per case: what
-// Python may pass in and what it gets back.
+// Python may pass in, what it gets back, and what a callback's panic, throw or exit does.
 
 use "kira:os"
 
@@ -30,6 +30,9 @@ fx callKept: (x: Int32) Int32
 
 @_extern
 fx onThread: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32
+
+@_extern
+fx swallow: (f: Fx<Tuple0, Int32>) Str
 
 @_extern(raises = "ValueError")
 fx positive: (f: Fx<Tuple0, Int32>) Int32
@@ -91,6 +94,45 @@ pub fx main: () Int32 {
         println(callWith(how, fx(n: Int32, s: Str) Str {
             return s
         }))
+    } else if how == "panic" {
+        println(each(["a"], fx(s: Str) Int32 {
+            xs: List<Int32> = [1]
+            return xs[s.length() + 1]
+        }))
+    } else if how == "swallow-throw" {
+        println(swallow(fx() Int32 {
+            throw "thrown to a sidecar that catches"
+        }))
+    } else if how == "swallow-panic" {
+        println(swallow(fx() Int32 {
+            return 1 / (a.size() as Int32 - 2)
+        }))
+    } else if how == "thread-throw" {
+        println(onThread(fx(x: Int32) Int32 {
+            throw "thrown on Python's thread"
+        }, 1))
+    } else if how == "thread-panic" {
+        println(onThread(fx(x: Int32) Int32 {
+            return x / (a.size() as Int32 - 2)
+        }, 1))
+    } else if how == "exit" {
+        println(each(["a"], fx(s: Str) Int32 {
+            print("in the callback, unflushed")
+            exit(6)
+        }))
+    } else if how == "thread-exit" {
+        println(onThread(fx(x: Int32) Int32 {
+            exit(5)
+        }, 1))
+    } else if how == "kept-throw" {
+        keep(fx(x: Int32) Int32 {
+            throw "thrown after its extern returned"
+        })
+        try {
+            println(callKept(1))
+        } on e: Str {
+            println("caught: ${e}")
+        }
     }
     println("${how} done")
     return 0

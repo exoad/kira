@@ -1,5 +1,5 @@
-# The sidecar of callbacks.kira: it calls the Fx it is handed at once, after its extern returned
-# and on a thread of its own.
+# The sidecar of callbacks.kira: it calls the Fx it is handed at once, after its extern returned,
+# on a thread of its own, and inside a try that catches every Exception.
 import threading
 
 kept = []
@@ -43,6 +43,13 @@ def onThread(f, x):
     t.start()
     t.join()
     return out[0] if out else -1
+
+
+def swallow(f):
+    try:
+        return "returned %d" % f()
+    except Exception as e:
+        return "swallowed " + type(e).__name__
 
 
 def positive(f):

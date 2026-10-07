@@ -11,9 +11,25 @@ happy -> exit 0
   positive 4
   caught from raises: ValueError: -1 is not positive
   happy done
-none -> exit 1
+none -> exit abort
   stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith gave None (NoneType) where Int32 was declared
-bool -> exit 1
+bool -> exit abort
   stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith gave True (bool) where Int32 was declared
-arity -> exit 1
+arity -> exit abort
   stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith was called with 1 argument where 2 were declared
+panic -> exit abort
+  stderr: IndexError: list index out of range
+swallow-throw -> exit 0
+  swallowed Error
+  swallow-throw done
+swallow-panic -> exit abort
+  stderr: RuntimeError: kira: integer division by zero
+exit -> exit 6
+  in the callback, unflushed
+thread-throw -> exit 70
+  stderr: kira:errors.Error: thrown on Python's thread
+thread-panic -> exit abort
+  stderr: RuntimeError: kira: integer division by zero
+thread-exit -> exit 5
+kept-throw -> exit 70
+  stderr: kira:errors.Error: thrown after its extern returned

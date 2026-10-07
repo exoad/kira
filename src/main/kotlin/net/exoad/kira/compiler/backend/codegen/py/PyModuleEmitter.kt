@@ -568,7 +568,10 @@ class PyModuleEmitter(
         val args = fn.params.mapIndexed { i, p ->
             val t = p.type
             when {
-                t is KType.Fn -> call("_k_fx", p.name, fxSpecs(t, at), pyString("the Fx given to $where"), if (isBytes(t.ret)) "bytes" else "None").text
+                // The call is the Fx's owner while it runs: a throw from it on this thread reaches Kira's try (D76).
+                t is KType.Fn -> "_k_f$i".also {
+                    lends += "${call("_k_fx", p.name, fxSpecs(t, at), pyString("the Fx given to $where"), if (isBytes(t.ret)) "bytes" else "None").text} as $it"
+                }
                 isView(p.type) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(p.type) == "MutView") "True" else "False"}) as $it" }
                 isBytes(p.type) -> "bytes(${p.name})"
                 holdsValue(p.type) -> copyOf(Py(p.name, PyPrec.ATOM), p.type).text

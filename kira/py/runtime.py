@@ -1018,18 +1018,59 @@ class _k_lend:
         self.b.release()
 
 
-# An Fx handed to a sidecar (D75): what Python passes in is checked as a result is (D68), and a
-# List<UInt8> result goes back to Python as bytes.
+# A callback Python runs (D76) ends the process on what no Kira try below it can catch: a panic
+# as C++'s abort does, exit with its code, a throw with 70 (D73) unless owner is this thread.
+def _k_callback(f, args, owner):
+    try:
+        return f(*args)
+    except _k_Error:
+        if owner == _k_threading.get_ident():
+            raise
+        _k_end(70, True)
+    except _k_builtins.SystemExit as e:
+        _k_end(e.code if e.code.__class__ is int else 0 if e.code is None else 1, False)
+    except _k_builtins.KeyboardInterrupt:
+        raise
+    except _k_builtins.BaseException:
+        _k_end(None, True)
+
+
+# Abort is 3 on Windows, where os.abort could raise Windows Error Reporting's dialog.
+def _k_end(code, shown):
+    try:
+        _k_sys.stdout.flush()
+        if shown:
+            _k_traceback.print_exc()
+        _k_sys.stderr.flush()
+    finally:
+        if code is None and _k_os.name != "nt":
+            _k_os.abort()
+        _k_os._exit(3 if code is None else code)
+
+
+# An Fx handed to a sidecar (D75): what Python passes in is checked as a result is (D68), a
+# List<UInt8> result goes back as bytes, and the extern call it was handed to owns it (D76).
 class _k_fx:
-    __slots__ = ("f", "specs", "where", "out")
+    __slots__ = ("f", "specs", "where", "out", "owner")
 
     def __init__(self, f, specs, where, out):
         self.f = f
         self.specs = specs
         self.where = where
         self.out = out
+        self.owner = None
+
+    def __enter__(self):
+        self.owner = _k_threading.get_ident()
+        return self
+
+    def __exit__(self, *exc):
+        self.owner = None
 
     def __call__(self, *args):
+        return _k_callback(self.run, args, self.owner)
+
+    def run(self, *args):
         n = len(self.specs)
         if len(args) != n:
             _k_panic("%s was called with %d argument%s where %d %s declared" % (self.where, len(args), "" if len(args) == 1 else "s", n, "was" if n == 1 else "were"))
