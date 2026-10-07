@@ -29,6 +29,11 @@ class PyGoldenRunTest {
             val source = "src/lang/jsondoc.kira"
             assertEquals(File(cpp, source).readText(), File(root, "jsondoc/$source").readText())
             assertTrue(File(root, "jsondoc/expected.txt").readText().startsWith(File(cpp, "expected.txt").readText()))
+        } + DynamicTest.dynamicTest("closures is cpp-golden/closures' source and output") {
+            val cpp = File(PyTestSupport.repoRoot, "src/test/resources/cpp-golden/closures")
+            val source = "src/lang/closures.kira"
+            assertEquals(File(cpp, source).readText(), File(root, "closures/$source").readText())
+            assertTrue(File(root, "closures/expected.txt").readText().startsWith(File(cpp, "expected.txt").readText()))
         }
     }
 

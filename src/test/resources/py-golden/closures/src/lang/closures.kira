@@ -1,0 +1,81 @@
+module "lang:closures"
+
+// Every capture lowering of the design's closure table. Captures are by value
+// and immutable (the spec); a Ref<T> is how two closures share mutable state.
+
+// A free function capturing a local: [k].
+pub fx scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+    return fx(x: Int32) Int32 {
+        return x * k
+    }
+}
+
+// A non-escaping Fx parameter: a template, so a lambda costs no heap.
+pub fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    return f(x)
+}
+
+// A free function passing a capturing lambda to a template parameter.
+pub fx addAll: (xs: List<Int32>, k: Int32) Int32 {
+    mut total: Int32 = 0
+    for x: Int32 in xs {
+        total += applyTo(fx(v: Int32) Int32 {
+            return v + k
+        }, x)
+    }
+    return total
+}
+
+pub struct Gain {
+    pub k: Int32 = 3
+
+    // A struct method reading a field: a copy of the field, under its own name.
+    pub fx scaler: () Fx<Tuple1<Int32>, Int32> {
+        return fx(x: Int32) Int32 {
+            return x * k
+        }
+    }
+
+    pub fx twice: (x: Int32) Int32 {
+        return x * k * 2
+    }
+
+    // A struct method calling a struct method: a copy of the whole struct.
+    pub fx twicer: () Fx<Tuple1<Int32>, Int32> {
+        return fx(x: Int32) Int32 {
+            return twice(x)
+        }
+    }
+}
+
+pub class Counter {
+    pub mut k: Int32 = 5
+
+    pub fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+        return f(x)
+    }
+
+    // A class method whose lambda does not escape: [this].
+    pub fx offset: (x: Int32) Int32 {
+        return apply(fx(y: Int32) Int32 {
+            return y + k
+        }, x)
+    }
+
+    // A class method whose lambda escapes: it keeps the object alive and sees
+    // later writes to it (reference semantics).
+    pub fx multiplier: () Fx<Tuple1<Int32>, Int32> {
+        return fx(x: Int32) Int32 {
+            return x * k
+        }
+    }
+}
+
+// Shared, mutable state is a Ref<T>: the closure copies the reference.
+pub fx tally: () Fx<Tuple0, Int32> {
+    counter: Ref<Int32> = Ref<Int32> { value = 0 }
+    return fx() Int32 {
+        counter.value = counter.value + 1
+        return counter.value
+    }
+}

@@ -1016,3 +1016,11 @@ class _k_lend:
     def __exit__(self, *exc):
         self.m.release()
         self.b.release()
+
+
+# Ref<T> (D74): one cell, shared by every copy of the reference, a closure's capture included.
+class _k_Ref:
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        self.value = value

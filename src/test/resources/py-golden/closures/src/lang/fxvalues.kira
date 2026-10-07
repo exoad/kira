@@ -1,0 +1,186 @@
+module "lang:fxvalues"
+
+// Fx values past cpp-golden closures: calls through fields, Lists and Maybes of them, named
+// functions as values, and what each capture copies when the captured place is written later.
+
+pub struct Pt {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+
+    pub mut fx shift: (d: Int32) Void {
+        x += d
+    }
+
+    pub fx sum: () Int32 {
+        return x + y
+    }
+
+    pub fx summer: () Fx<Tuple0, Int32> {
+        return fx() Int32 {
+            return sum()
+        }
+    }
+
+    pub fx xs: () Fx<Tuple0, Int32> {
+        return fx() Int32 {
+            return x
+        }
+    }
+}
+
+pub class Bank {
+    require pub onAdd: Fx<Tuple1<Int32>, Int32>
+    pub mut items: List<Int32> = List<Int32> { }
+
+    pub mut fx add: (v: Int32) Void {
+        items.add(onAdd(v))
+    }
+}
+
+pub class Hooks {
+    pub mut hooks: List<Fx<Tuple1<Int32>, Int32>> = List<Fx<Tuple1<Int32>, Int32>> { }
+
+    pub mut fx keep: (f: Fx<Tuple1<Int32>, Int32>) Void {
+        hooks.add(f)
+    }
+
+    pub fx run: (v: Int32) Int32 {
+        mut t: Int32 = 0
+        for h: Fx<Tuple1<Int32>, Int32> in hooks {
+            t += h(v)
+        }
+        return t
+    }
+}
+
+fx double: (x: Int32) Int32 {
+    return x * 2
+}
+
+fx applyTwice: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    return f(f(x))
+}
+
+fx counterOf: (xs: List<Int32>) Fx<Tuple0, Size> {
+    return fx() Size {
+        return xs.size()
+    }
+}
+
+fx adder: (k: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
+    return fx(x: Int32) Fx<Tuple1<Int32>, Int32> {
+        return fx(y: Int32) Int32 {
+            return x + y + k
+        }
+    }
+}
+
+fx failing: (n: Int32) Int32 {
+    if n > 2 {
+        throw "too big: ${n}"
+    }
+    return n
+}
+
+pub fx main: () Void {
+    println("fxvalues")
+    println("named ${applyTwice(double, 3)}")
+
+    mut fs: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> { }
+    for i: Int32 in 0..3 {
+        fs.add(fx() Int32 {
+            return i * 10
+        })
+    }
+    mut seen: Str = ""
+    for f: Fx<Tuple0, Int32> in fs {
+        seen = seen + " ${f()}"
+    }
+    println("loop variable copied:${seen}")
+
+    mut xs: List<Int32> = [1, 2]
+    size: Fx<Tuple0, Size> = fx() Size {
+        return xs.size()
+    }
+    xs.add(3)
+    println("captured local after a write: ${size()} of ${xs.size()}")
+
+    give: Fx<Tuple0, List<Int32>> = fx() List<Int32> {
+        return xs
+    }
+    mut got: List<Int32> = give()
+    got.add(9)
+    println("a returned capture is a copy: ${give().size()} then ${got.size()}")
+
+    mut mine: List<Int32> = [7]
+    counted: Fx<Tuple0, Size> = counterOf(mine)
+    mine.add(8)
+    println("a captured parameter: ${counted()} of ${mine.size()}")
+
+    mut p: Pt = Pt { 1, 2 }
+    sumNow: Fx<Tuple0, Int32> = p.summer()
+    xNow: Fx<Tuple0, Int32> = p.xs()
+    holdP: Fx<Tuple0, Int32> = fx() Int32 {
+        return p.x * 100
+    }
+    p.shift(10)
+    println("struct copies: ${sumNow()} ${xNow()} ${holdP()} now ${p.sum()}")
+
+    println("nested ${adder(100)(10)(1)}")
+
+    bank: Bank = Bank { fx(v: Int32) Int32 {
+        return v + 1000
+    } }
+    bank.add(1)
+    bank.add(2)
+    println("an Fx field: ${bank.items[0]} ${bank.items[1]} ${bank.onAdd(5)}")
+
+    hooks: Hooks = Hooks { }
+    hooks.keep(double)
+    hooks.keep(fx(v: Int32) Int32 {
+        return v - 1
+    })
+    println("a List of Fx: ${hooks.run(10)}")
+
+    mut maybe: Maybe<Fx<Tuple1<Int32>, Int32>> = null
+    println("none: ${maybe.isNone()}")
+    maybe = double
+    println("some: ${maybe.unwrap()(21)}")
+
+    fill: Fx<Tuple1<mut List<Int32>>, Void> = fx(mut out: List<Int32>) Void {
+        out.add(42)
+    }
+    mut filled: List<Int32> = List<Int32> { }
+    fill(mut filled)
+    fill(mut filled)
+    println("a mut List parameter: ${filled.size()} ${filled[1]}")
+
+    count: Ref<Int32> = Ref<Int32> { value = 0 }
+    bump: Fx<Tuple0, Void> = fx() Void {
+        count.value = count.value + 1
+    }
+    read: Fx<Tuple0, Int32> = fx() Int32 {
+        return count.value
+    }
+    bump()
+    bump()
+    println("two closures, one Ref: ${read()} ${count.value}")
+
+    cells: Ref<List<Int32>> = Ref<List<Int32>> { value = [1] }
+    grow: Fx<Tuple0, Void> = fx() Void {
+        cells.value.add(cells.value.size() as Int32 + 1)
+    }
+    grow()
+    grow()
+    println("a Ref of a List: ${cells.value.size()} ${cells.value[2]}")
+
+    check: Fx<Tuple1<Int32>, Int32> = fx(n: Int32) Int32 {
+        return failing(n) * 10
+    }
+    try {
+        println("in range: ${check(2)}")
+        println("never: ${check(3)}")
+    } on e: Str {
+        println("caught: ${e}")
+    }
+}

@@ -1902,17 +1902,108 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aLambdaIsRefused() {
-        refused(
+    fun aLambdaIsAModuleFunctionOrAFactoryOfItsCaptures() {
+        val py = python(
             """
-            fx f: () Int32 {
+            fx f: (k: Int32, xs: List<Int32>) Int32 {
                 g: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 {
                     return x
                 }
-                return g(1)
+                h: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 {
+                    return x * k + xs.size() as Int32
+                }
+                return g(1) + h(2)
+            }
+            """
+        )
+        assertTrue(py.contains("    g = _k_lam0\n    h = _k_lam1(k, list(xs))\n    return _k_i32(g(1) + h(2))"), py)
+        assertTrue(py.contains("def _k_lam0(x):\n    return x\n"), py)
+        assertTrue(py.contains("def _k_lam1(k, xs):\n    def _k_fn(x):\n        return _k_i32(_k_i32(x * k) + _k_as_i32(len(xs)))\n    return _k_fn"), py)
+    }
+
+    @Test
+    fun aCaptureIsTheClosuresOwnSoWhatItHandsOnIsACopy() {
+        val py = python(
+            """
+            struct Pt {
+                pub x: Int32 = 0
+
+                pub fx later: () Fx<Tuple0, Int32> {
+                    return fx() Int32 {
+                        return x
+                    }
+                }
+
+                pub fx whole: () Fx<Tuple0, Pt> {
+                    return fx() Pt {
+                        return this
+                    }
+                }
+            }
+
+            fx f: (xs: List<Int32>) Fx<Tuple0, List<Int32>> {
+                return fx() List<Int32> {
+                    inner: Fx<Tuple0, Size> = fx() Size {
+                        return xs.size()
+                    }
+                    return xs
+                }
+            }
+            """
+        )
+        assertTrue(py.contains("return _k_lam0(self.x)"), py)
+        assertTrue(py.contains("return _k_lam1(self._k_clone())"), py)
+        assertTrue(py.contains("def _k_lam1(self):\n    def _k_fn():\n        return self._k_clone()"), py)
+        assertTrue(py.contains("return _k_lam2(list(xs))"), py)
+        assertTrue(py.contains("        inner = _k_lam3(xs)\n        return list(xs)"), py)
+    }
+
+    @Test
+    fun aNamedFunctionARefAndAnFxFieldAreValuesPythonCalls() {
+        val py = python(
+            """
+            pub class Bank {
+                require pub onAdd: Fx<Tuple1<Int32>, Int32>
+
+                pub fx add: (v: Int32) Int32 {
+                    return onAdd(v)
+                }
+            }
+
+            pub fx double: (x: Int32) Int32 {
+                return x * 2
+            }
+
+            fx f: (b: Bank) Int32 {
+                n: Ref<Int32> = Ref<Int32> { value = 1 }
+                n.value = n.value + b.onAdd(2)
+                fill: Fx<Tuple1<mut List<Int32>>, Void> = fx(mut out: List<Int32>) Void {
+                    out.add(n.value)
+                }
+                mut xs: List<Int32> = List<Int32> { }
+                fill(mut xs)
+                return Bank { double }.add(n.value)
+            }
+            """
+        )
+        assertTrue(py.contains("return self.onAdd(v)"), py)
+        assertTrue(py.contains("n = _k_Ref(1)\n    n.value = _k_i32(n.value + b.onAdd(2))"), py)
+        assertTrue(py.contains("    fill(xs)\n"), py)
+        assertTrue(py.contains("return Bank(double).add(n.value)"), py)
+        assertTrue(py.contains("class _k_Ref:"), py)
+    }
+
+    @Test
+    fun anFxThatWouldWriteAScalarThroughMutIsRefused() {
+        refused(
+            """
+            fx f: () Void {
+                g: Fx<Tuple1<mut Int32>, Void> = fx (mut x: Int32) Void {
+                    x += 1
+                }
             }
             """,
-            "Fx value",
+            "an Fx taking a mut Int32 (only a List, a Map or a struct is passed by reference)",
         )
     }
 
