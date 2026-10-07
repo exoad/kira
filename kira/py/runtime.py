@@ -936,6 +936,26 @@ def _k_shown(v):
     return (r if len(r) <= 40 else r[:37] + "...") + " (" + _k_builtins.type(v).__name__ + ")"
 
 
+# What Kira hands a sidecar (D68): each list, dict, tuple and struct a new one at every level and each
+# List<UInt8> an immutable bytes, so nothing Python writes reaches Kira; anything else goes as itself.
+def _k_out(v):
+    c = _k_builtins.type(v)
+    if c is list:
+        return [_k_out(x) for x in v]
+    if c is bytearray:
+        return bytes(v)
+    if c is _k_builtins.tuple:
+        return _k_builtins.tuple([_k_out(x) for x in v])
+    if c is dict:
+        return {k: _k_out(x) for k, x in v.items()}
+    if _k_builtins.hasattr(c, "_k_clone"):
+        o = object.__new__(c)
+        for s in c.__slots__:
+            _k_builtins.setattr(o, s, _k_out(_k_builtins.getattr(v, s)))
+        return o
+    return v
+
+
 # What Python hands back (D68), checked against the declared type's spec and rebuilt where Kira holds
 # a value, so a list, dict or bytes the sidecar keeps is never Kira's; an int is a Float64 if exact.
 def _k_check(v, spec, where, declared):

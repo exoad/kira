@@ -560,17 +560,25 @@ class PyModuleEmitter(
     private fun boundary(head: String, callee: String, fn: FnSymbol, where: String, at: ASTNode): List<String> {
         val lends = mutableListOf<String>()
         val args = fn.params.mapIndexed { i, p ->
+            val t = p.type
+            val element = elementOf(t)
             when {
-                isView(p.type) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(p.type) == "MutView") "True" else "False"}) as $it" }
-                isBytes(p.type) -> "bytes(${p.name})"
-                holdsValue(p.type) -> copyOf(Py(p.name, PyPrec.ATOM), p.type).text
+                isView(t) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(t) == "MutView") "True" else "False"}) as $it" }
+                isJson(t) -> p.name
+                isBytes(t) -> "bytes(${p.name})"
+                isList(t) && element != null && !mayHold(element) -> "list(${p.name})"
+                mayHold(t) -> call("_k_out", p.name).text
                 else -> p.name
             }
         }
         val called = "$callee(${args.joinToString(", ")})"
         val names = raisesOf(fn, at)
+        // A Json goes as itself, so what Python wrote into it is checked as a result is.
+        val written = fn.params.filter { isJson(it.type) }.map {
+            call("_k_check", it.name, "(\"J\",)", pyString("$where's argument ${it.name}"), "\"Json\"").text
+        }
         val checked = { r: String -> "return ${call("_k_check", r, spec(fn.ret, at) ?: "None", pyString(where), pyString(fn.ret.display())).text}" }
-        if (names.isEmpty() && lends.isEmpty()) {
+        if (names.isEmpty() && lends.isEmpty() && written.isEmpty()) {
             return listOf(head) + indent(listOf(checked(called)))
         }
         var body = listOf("_k_r = $called")
@@ -582,8 +590,12 @@ class PyModuleEmitter(
         if (lends.isNotEmpty()) {
             body = listOf("with ${lends.joinToString(", ")}:") + indent(body)
         }
-        return listOf(head) + indent(body + checked("_k_r"))
+        return listOf(head) + indent(body + written + checked("_k_r"))
     }
+
+    /** Whether a value of [t] may hold a Python list, dict or tuple, which a sidecar is handed as a copy (D68). */
+    private fun mayHold(t: KType): Boolean =
+        isValue(t) || isStruct(t) || isTuple(t) || isJson(t) || (isMaybe(t) && mayHold((t as KType.Nominal).typeArgs()[0]))
 
     /** Why a value of [t] cannot cross between Kira and the sidecar ([back]: Python hands it to Kira), or null (D68). */
     private fun crossing(t: KType, back: Boolean): String? {

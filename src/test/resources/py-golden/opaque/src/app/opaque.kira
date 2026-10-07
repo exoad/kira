@@ -10,6 +10,7 @@ pub class Counter {
     @_extern(raises = "ValueError")
     pub fx label: () Str
     pub fx wrong: () Str
+    pub fx absorb: (pair: Tuple2<List<Int32>, Int32>) Int32
 }
 
 @_extern

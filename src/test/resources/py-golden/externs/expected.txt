@@ -8,6 +8,9 @@ abc
 operation forbidden on released memoryview object
 5
 cannot modify read-only memory, 5 bytes
+1 1 1 1
+bytes bytes bytes bytes bytes bytes
+1
 giveInt32 int -> int 7
 giveInt32 none -> panic: kira: externs_ext.giveInt32 gave None (NoneType) where Int32 was declared
 giveInt32 true -> panic: kira: externs_ext.giveInt32 gave True (bool) where Int32 was declared
@@ -54,3 +57,4 @@ giveJson 512 deep -> list 512 deep
 giveJson 513 deep -> panic: kira: externs_ext.giveJson gave [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[... (list) where Json was declared
 giveVoid none -> NoneType None
 giveVoid int -> panic: kira: externs_ext.giveVoid gave 7 (int) where Void was declared
+annotate with an int key -> panic: kira: externs_ext.annotate's argument j gave {7: 'written'} (dict) where Json was declared

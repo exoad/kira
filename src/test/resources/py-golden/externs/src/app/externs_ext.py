@@ -58,6 +58,19 @@ def useKept():
     return "still usable"
 
 
+def scribble(t, h, ts, mt):
+    for v in (t[0], h.t[0], ts[0][0], mt[0]):
+        v.append(99)
+
+
+def bytesKinds(a, b, c, d, e, h):
+    return " ".join(type(v).__name__ for v in (a, b, c[0], d["k"], e[0], h.raw))
+
+
+def annotate(j, key):
+    j[key] = "written"
+
+
 def nested(n):
     v = []
     for _ in range(n - 1):

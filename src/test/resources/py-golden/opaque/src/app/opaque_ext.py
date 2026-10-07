@@ -19,6 +19,10 @@ class Counter:
     def wrong(self):
         return None
 
+    def absorb(self, pair):
+        pair[0].append(99)
+        return len(pair[0])
+
 
 def counter(label):
     return Counter(label)

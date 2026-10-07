@@ -46,3 +46,8 @@ for f, keys in (
 ):
     for k in keys:
         attempt(f, k)
+
+try:
+    m.annotate({}, 7)
+except RuntimeError as e:
+    print("annotate with an int key -> panic:", e)

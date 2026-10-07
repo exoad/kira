@@ -19,6 +19,20 @@ pub class Box {
     pub mut items: List<Str> = List<Str> { }
 }
 
+pub struct Holder {
+    pub t: Tuple2<List<Int32>, Int32> = Tuple2<List<Int32>, Int32> { [1], 0 }
+    pub raw: List<UInt8> = [1]
+}
+
+@_extern
+pub fx scribble: (t: Tuple2<List<Int32>, Int32>, h: Holder, ts: List<Tuple2<List<Int32>, Int32>>, mt: Maybe<Tuple2<List<Int32>, Int32>>) Void
+
+@_extern
+pub fx bytesKinds: (a: List<UInt8>, b: Maybe<List<UInt8>>, c: List<List<UInt8>>, d: Map<Str, List<UInt8>>, e: Tuple2<List<UInt8>, Int32>, h: Holder) Str
+
+@_extern
+pub fx annotate: (j: Json, key: Str) Void
+
 @_extern
 pub fx seenScalars: (a: Int8, b: UInt64, c: Size, d: Float64, e: Bool, f: Str, g: Level) Str
 
@@ -123,4 +137,25 @@ pub fx run: () Void {
     buf.add(9)
     trace(buf.size())
     trace(tryWrite(buf))
+
+    // Python writes into every List it is handed, at any depth, a tuple's included: Kira's stay as they were.
+    t: Tuple2<List<Int32>, Int32> = Tuple2<List<Int32>, Int32> { [1], 0 }
+    h: Holder = Holder { }
+    ts: List<Tuple2<List<Int32>, Int32>> = [Tuple2<List<Int32>, Int32> { [1], 0 }]
+    mt: Maybe<Tuple2<List<Int32>, Int32>> = Tuple2<List<Int32>, Int32> { [1], 0 }
+    scribble(t, h, ts, mt)
+    a: List<Int32> = t.first
+    b: List<Int32> = h.t.first
+    c: List<Int32> = ts[0].first
+    d: List<Int32> = mt.value.first
+    trace("${a.size()} ${b.size()} ${c.size()} ${d.size()}")
+    x: List<UInt8> = [1]
+    mut bm: Map<Str, List<UInt8>> = Map<Str, List<UInt8>> { }
+    bm.put("k", x)
+    trace(bytesKinds(x, x, [x], bm, Tuple2<List<UInt8>, Int32> { x, 0 }, h))
+
+    // A Json goes as itself: what the sidecar writes into it, Kira reads.
+    mut j: Json = Json.parse("{}")
+    annotate(j, "note")
+    trace(j.has("note"))
 }

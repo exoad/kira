@@ -2386,7 +2386,7 @@ class PyEmitterTest {
             py.contains(
                 "def _send(data, into, raw, xs, p, m):\n" +
                     "    with _k_lend(data, False) as _k_v0, _k_lend(into, True) as _k_v1:\n" +
-                    "        _k_r = _k_x.send(_k_v0, _k_v1, bytes(raw), list(xs), p._k_clone(), dict(m))\n" +
+                    "        _k_r = _k_x.send(_k_v0, _k_v1, bytes(raw), list(xs), _k_out(p), _k_out(m))\n" +
                     "    return _k_check(_k_r, (\"I\", -9223372036854775808, 9223372036854775807), \"lend_ext.send\", \"Int64\")"
             ),
             py,
