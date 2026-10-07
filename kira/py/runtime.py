@@ -1018,6 +1018,25 @@ class _k_lend:
         self.b.release()
 
 
+# An Fx handed to a sidecar (D75): what Python passes in is checked as a result is (D68), and a
+# List<UInt8> result goes back to Python as bytes.
+class _k_fx:
+    __slots__ = ("f", "specs", "where", "out")
+
+    def __init__(self, f, specs, where, out):
+        self.f = f
+        self.specs = specs
+        self.where = where
+        self.out = out
+
+    def __call__(self, *args):
+        n = len(self.specs)
+        if len(args) != n:
+            _k_panic("%s was called with %d argument%s where %d %s declared" % (self.where, len(args), "" if len(args) == 1 else "s", n, "was" if n == 1 else "were"))
+        r = self.f(*[_k_check(a, s, self.where, d) for a, (s, d) in _k_builtins.zip(args, self.specs)])
+        return r if self.out is None else self.out(r)
+
+
 # Ref<T> (D74): one cell, shared by every copy of the reference, a closure's capture included.
 class _k_Ref:
     __slots__ = ("value",)

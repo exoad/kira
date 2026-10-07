@@ -1,0 +1,97 @@
+module "app:callbacks"
+
+// Kira code handed to the sidecar as an Fx (D75), which driver.py runs once per case: what
+// Python may pass in and what it gets back.
+
+use "kira:os"
+
+pub class Reply {
+    require pub status: Int32
+    require pub body: List<UInt8>
+}
+
+@_extern
+fx each: (xs: List<Str>, f: Fx<Tuple1<Str>, Int32>) Int32
+
+@_extern
+fx callWith: (how: Str, f: Fx<Tuple2<Int32, Str>, Str>) Str
+
+@_extern
+fx bytesOf: (f: Fx<Tuple0, List<UInt8>>) Str
+
+@_extern
+fx render: (path: Str, get: Fx<Tuple1<Str>, Reply>) Str
+
+@_extern
+fx keep: (f: Fx<Tuple1<Int32>, Int32>) Void
+
+@_extern
+fx callKept: (x: Int32) Int32
+
+@_extern
+fx onThread: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32
+
+@_extern(raises = "ValueError")
+fx positive: (f: Fx<Tuple0, Int32>) Int32
+
+fx width: (s: Str) Int32 {
+    return s.length() as Int32
+}
+
+fx happy: () Void {
+    calls: Ref<Int32> = Ref<Int32> { value = 0 }
+    println("each ${each(["a", "bb", "ccc"], fx(s: Str) Int32 {
+        calls.value = calls.value + 1
+        return s.length() as Int32 * 10
+    })}")
+    println("each, a named function ${each(["abcd"], width)}")
+    println("callWith ${callWith("ok", fx(n: Int32, s: Str) Str {
+        return "${n} ${s}"
+    })}")
+    println("bytesOf ${bytesOf(fx() List<UInt8> {
+        return [1, 2, 255]
+    })}")
+    println("render ${render("/power", fx(path: Str) Reply {
+        return Reply { 200, path.bytes() }
+    })}")
+    keep(fx(x: Int32) Int32 {
+        calls.value = calls.value + 1
+        return x * 3
+    })
+    println("callKept ${callKept(5)} ${callKept(6)}")
+    println("onThread ${onThread(fx(x: Int32) Int32 {
+        return x + 100
+    }, 7)}")
+    println("calls ${calls.value}")
+    try {
+        each(["x"], fx(s: Str) Int32 {
+            throw "no ${s}"
+        })
+    } on e: Str {
+        println("caught from a callback: ${e}")
+    }
+    try {
+        println("positive ${positive(fx() Int32 {
+            return 4
+        })}")
+        positive(fx() Int32 {
+            return -1
+        })
+    } on e: Str {
+        println("caught from raises: ${e}")
+    }
+}
+
+pub fx main: () Int32 {
+    a: List<Str> = args()
+    how: Str = if a.size() > 1 { a[1] } else { "happy" }
+    if how == "happy" {
+        happy()
+    } else if how == "none" || how == "bool" || how == "arity" {
+        println(callWith(how, fx(n: Int32, s: Str) Str {
+            return s
+        }))
+    }
+    println("${how} done")
+    return 0
+}

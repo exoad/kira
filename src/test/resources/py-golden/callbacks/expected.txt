@@ -1,0 +1,19 @@
+happy -> exit 0
+  each 60
+  each, a named function 4
+  callWith 1 a
+  bytesOf bytes b'\x01\x02\xff'
+  render 200 bytearray b'/power'
+  callKept 15 18
+  onThread 107
+  calls 5
+  caught from a callback: no x
+  positive 4
+  caught from raises: ValueError: -1 is not positive
+  happy done
+none -> exit 1
+  stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith gave None (NoneType) where Int32 was declared
+bool -> exit 1
+  stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith gave True (bool) where Int32 was declared
+arity -> exit 1
+  stderr: RuntimeError: kira: the Fx given to callbacks_ext.callWith was called with 1 argument where 2 were declared

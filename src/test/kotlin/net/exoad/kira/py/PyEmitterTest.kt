@@ -2536,7 +2536,41 @@ class PyEmitterTest {
             "@_extern\nfx f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
             "@_extern\nfx f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
             "pub fx f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
+            "@_extern\nfx f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
+            "@_extern\nfx f: (g: Fx<Tuple1<mut List<Int32>>, Void>) Void" to "(Python writes back through no mut parameter)",
+            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern\nfx f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
+            "@_extern\nfx f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
+            "@_extern\nfx f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
+            "@_extern\nfx f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
+    }
+
+    @Test
+    fun anFxHandedToTheSidecarChecksWhatPythonPassesIt() {
+        val py = besideSidecar(
+            """
+            @_extern
+            fx each: (xs: List<Str>, f: Fx<Tuple2<Str, Maybe<Int64>>, List<UInt8>>) Int32
+
+            fx size: (s: Str, n: Maybe<Int64>) List<UInt8> {
+                return s.bytes()
+            }
+
+            fx g: () Int32 {
+                return each(["a"], size)
+            }
+            """,
+            "fxarg",
+        ).python()
+        assertTrue(
+            py.contains(
+                "def _each(xs, f):\n    return _k_check(_k_x.each(list(xs), _k_fx(f, (((\"S\",), \"Str\"), ((\"M\", (\"I\", -9223372036854775808, 9223372036854775807)), " +
+                    "\"Maybe<Int64>\")), \"the Fx given to fxarg_ext.each\", bytes)), (\"I\", -2147483648, 2147483647), \"fxarg_ext.each\", \"Int32\")"
+            ),
+            py,
+        )
+        assertTrue(py.contains("return _each([\"a\"], _size)"), py)
+        assertTrue(py.contains("class _k_fx:"), py)
     }
 
     @Test

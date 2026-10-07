@@ -566,7 +566,9 @@ class PyModuleEmitter(
     private fun boundary(head: String, callee: String, fn: FnSymbol, where: String, at: ASTNode): List<String> {
         val lends = mutableListOf<String>()
         val args = fn.params.mapIndexed { i, p ->
+            val t = p.type
             when {
+                t is KType.Fn -> call("_k_fx", p.name, fxSpecs(t, at), pyString("the Fx given to $where"), if (isBytes(t.ret)) "bytes" else "None").text
                 isView(p.type) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(p.type) == "MutView") "True" else "False"}) as $it" }
                 isBytes(p.type) -> "bytes(${p.name})"
                 holdsValue(p.type) -> copyOf(Py(p.name, PyPrec.ATOM), p.type).text
@@ -592,7 +594,7 @@ class PyModuleEmitter(
     }
 
     /** Why a value of [t] cannot cross between Kira and the sidecar ([back]: Python hands it to Kira), or null (D68). */
-    private fun crossing(t: KType, back: Boolean): String? {
+    private fun crossing(t: KType, back: Boolean, top: Boolean = true): String? {
         unsupportedType(t)?.let { return it }
         val prim = t.prim
         val args = (t as? KType.Nominal)?.typeArgs().orEmpty()
@@ -606,10 +608,19 @@ class PyModuleEmitter(
                 args.firstOrNull() == KType.UINT8 -> null
                 else -> "${article(t.display())} (a View or MutView of UInt8 is what is lent)"
             }
-            isMaybe(t) -> crossing(args[0], back)
-            isList(t) -> if (back && magicName(t) == "Arr") "${article(t.display())} (a List comes back)" else crossing(args[0], back)
-            isMap(t) -> crossing(args[0], back) ?: crossing(args[1], back)
-            isTuple(t) -> args.firstNotNullOfOrNull { crossing(it, back) }
+            isMaybe(t) -> crossing(args[0], back, false)
+            isList(t) -> if (back && magicName(t) == "Arr") "${article(t.display())} (a List comes back)" else crossing(args[0], back, false)
+            isMap(t) -> crossing(args[0], back, false) ?: crossing(args[1], back, false)
+            isTuple(t) -> args.firstNotNullOfOrNull { crossing(it, back, false) }
+            // An Fx parameter goes out wrapped (D75): Python's arguments come back to Kira, its result goes out.
+            t is KType.Fn -> when {
+                back -> "an ${t.display()} (Python hands Kira no function)"
+                !top -> "an ${t.display()} inside a value (only an Fx parameter is wrapped)"
+                t.ret is KType.Fn -> "an ${t.display()} (an Fx returning an Fx)"
+                else -> t.params.firstNotNullOfOrNull { p ->
+                    if (p.byRef) "an ${t.display()} (Python writes back through no mut parameter)" else crossing(p.type, true, false)
+                } ?: crossing(t.ret, false, false)
+            }
             isUserClass((t as? KType.Nominal)?.sym) -> if (back) "${t.display()}, a Kira object Python cannot make" else null
             else -> article(t.display())
         }
@@ -641,6 +652,10 @@ class PyModuleEmitter(
             else -> null
         }
     }
+
+    /** Each parameter of [t] as the `_k_check` spec of what Python passes and the type it names (D75). */
+    private fun fxSpecs(t: KType.Fn, at: ASTNode): String =
+        pyTuple(t.params.map { pyTuple(listOf(spec(it.type, at) ?: "None", pyString(it.type.display()))) })
 
     /** The sidecar beside the module's source (D67), as a path from the generated file; null, with an error, when it is missing. */
     private fun sidecarPath(): String? {
