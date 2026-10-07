@@ -4,6 +4,7 @@ all -> exit 0
   a push after close is dropped: 0
   a pushed List is a copy: 1, none waiting: true
   waitUntil true false true
+  a zero timeout asks a false predicate 1 time: false
   Int32 add wraps: -2147483648
   UInt8 4 swap 4 now 3
   compareSwap true false true

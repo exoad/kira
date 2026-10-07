@@ -31,6 +31,25 @@ pub fx main: () Int32 {
         spawn("installer", fx() Void {
             println("from a thread: ${onSignal(SIGNAL_INT, stop)}")
         }).join()
+    } else if how == "join" || how == "pop" {
+        // Raised on the worker, as Windows delivers Ctrl-C, while the main thread waits on it.
+        onSignal(SIGNAL_INT, stop)
+        q: BlockingQueue<Int32> = BlockingQueue<Int32> { }
+        worker: Thread = spawn("worker", fx() Void {
+            sleepMs(200)
+            raiseInt()
+            mut ticks: Int32 = 0
+            while !stop.load() && ticks < 300 {
+                ticks += 1
+                sleepMs(10)
+            }
+            println("the worker saw the flag: ${stop.load()}")
+            q.close()
+        })
+        if how == "pop" {
+            println("popped: ${q.pop(-1).isSome()}")
+        }
+        worker.join()
     } else if how == "unhandled" {
         raiseInt()
         sleepMs(100)

@@ -5,5 +5,12 @@ flag -> exit 0
 thread -> exit 0
   from a thread: false
   thread done
+join -> exit 0
+  the worker saw the flag: true
+  join done
+pop -> exit 0
+  the worker saw the flag: true
+  popped: false
+  pop done
 unhandled -> exit interrupted
   stderr: KeyboardInterrupt

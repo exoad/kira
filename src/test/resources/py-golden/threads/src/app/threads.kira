@@ -91,6 +91,12 @@ fx waiting: () Void {
         return xs.size() == 1
     }, 0)
     println("waitUntil ${held} ${never} ${now}")
+    calls: Atomic<Int32> = Atomic<Int32> { value = 0 }
+    once: Bool = ready.waitUntil(fx(xs: List<Int32>) Bool {
+        calls.add(1)
+        return xs.size() > 5
+    }, 0)
+    println("a zero timeout asks a false predicate ${calls.load()} time: ${once}")
 }
 
 fx atomics: () Void {

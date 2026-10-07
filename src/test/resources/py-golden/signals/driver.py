@@ -22,5 +22,5 @@ def run(*args):
 
 
 run()
-for case in ("thread", "unhandled"):
+for case in ("thread", "join", "pop", "unhandled"):
     run(case)

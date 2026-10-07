@@ -1183,22 +1183,25 @@ class _k_Thread:
         self.stop = True
 
     def join(self):
-        if self.t is _k_threading.current_thread():
+        me = _k_threading.current_thread()
+        if self.t is me:
             _k_panic("Thread.join from its own body: a thread cannot wait for itself")
-        self.t.join()
+        while self.t.is_alive():
+            self.t.join(0.05 if me is _k_threading.main_thread() else None)
 
 
-# A wait as kira::sync's: negative without limit, zero a check, else in waits of at most an hour,
-# as Condition.wait refuses one past threading.TIMEOUT_MAX.
+# A wait as kira::sync's: negative without limit, zero one check, else up to ms. The main thread waits
+# in slices, between which Python runs an onSignal handler (D78) that another thread's signal left it.
 def _k_waitfor(cv, pred, ms):
-    if ms < 0:
-        return cv.wait_for(pred)
-    end = _k_time.monotonic() + ms / 1000
+    if ms == 0:
+        return pred()
+    end = None if ms < 0 else _k_time.monotonic() + ms / 1000
+    step = 0.05 if _k_threading.current_thread() is _k_threading.main_thread() else 3600.0
     while not pred():
-        left = end - _k_time.monotonic()
+        left = step if end is None else end - _k_time.monotonic()
         if left <= 0:
             return pred()
-        cv.wait(min(left, 3600.0))
+        cv.wait(min(left, step))
     return True
 
 
