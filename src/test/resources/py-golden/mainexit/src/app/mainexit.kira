@@ -49,3 +49,8 @@ fx main: () Void {
 pub fx nap: (ms: Int64) Void {
     sleepMs(ms)
 }
+
+// A Python caller of a Kira function sees exit as SystemExit; only a program's main ends at once.
+pub fx quit: (code: Int32) Void {
+    exit(code)
+}

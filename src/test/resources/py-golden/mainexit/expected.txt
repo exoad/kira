@@ -48,3 +48,4 @@ intmain stop -> exit 70
 argsmain a b -> exit 3
   ran with 3 arguments
 nap(Int64 max) sleeps [86400.0, 86400.0]
+quit(6) is SystemExit 6 to a Python caller

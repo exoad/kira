@@ -59,3 +59,7 @@ except Stop:
     pass
 time.sleep = real
 print("nap(Int64 max) sleeps", slept)
+try:
+    m.quit(6)
+except SystemExit as e:
+    print("quit(6) is SystemExit", e.code, "to a Python caller")

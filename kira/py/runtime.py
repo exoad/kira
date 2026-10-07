@@ -68,7 +68,7 @@ def _k_assert(ok, message):
         _k_panic("assertion failed: " + message)
 
 
-# An Int32 main's status, as Python's own exit; kira:os exit ends the process at once (_k_end).
+# kira:os exit: SystemExit, which no Kira try catches, flushes stdout as C++'s exit does.
 def _k_exit(code):
     raise _k_builtins.SystemExit(code)
 
@@ -872,16 +872,16 @@ def _k_jerror():
     return _k_builtins.getattr(_k_jstate, "error", "")
 
 
-# An uncaught throw at main (D73) ends the program with C++'s runMain status, 70; the traceback,
-# with the cause of a raises= throw, stays on stderr. A panic aborts as a callback's does (D81).
+# Under main a throw ends the program with runMain's 70 and its traceback (D73), a panic aborts (D81)
+# and exit ends it with its code, each at once as C++'s exit and abort do, waiting on no thread.
 def _k_main(main, *args):
     try:
         return main(*args)
     except _k_Error:
-        _k_sys.stdout.flush()
-        _k_traceback.print_exc()
-        raise _k_builtins.SystemExit(70)
-    except (_k_builtins.SystemExit, _k_builtins.KeyboardInterrupt):
+        _k_end(70, True)
+    except _k_builtins.SystemExit as e:
+        _k_end(e.code if e.code.__class__ is int else 0 if e.code is None else 1, False)
+    except _k_builtins.KeyboardInterrupt:
         raise
     except _k_builtins.BaseException:
         _k_end(None, True)
