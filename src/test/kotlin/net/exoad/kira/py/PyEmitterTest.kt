@@ -2636,6 +2636,23 @@ class PyEmitterTest {
     }
 
     @Test
+    fun onSignalSetsAnAtomicFlagFromAPythonHandler() {
+        val py = python(
+            """
+            use "kira:os"
+            use "kira:sync"
+
+            fx f: () Bool {
+                stop: Atomic<Bool> = Atomic<Bool> { value = false }
+                return onSignal(SIGNAL_INT, stop) && onSignal(SIGNAL_TERM, stop)
+            }
+            """
+        )
+        assertTrue(py.contains("stop = _k_Atomic(False, None)\n    return _k_onsignal(2, stop) and _k_onsignal(15, stop)"), py)
+        assertTrue(py.contains("import signal as _k_signal") && py.contains("def _k_onsignal(sig, flag):"), py)
+    }
+
+    @Test
     fun kiraSyncRefusesWhatPythonCannotHoldAsCDoes() {
         refused("use \"kira:sync\"\nfx f: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map or a struct)")
         refused("use \"kira:sync\"\nfx f: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")

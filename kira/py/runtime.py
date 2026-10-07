@@ -15,6 +15,7 @@ import math as _k_math
 import operator as _k_operator
 import os as _k_os
 import re as _k_re
+import signal as _k_signal
 import struct as _k_struct
 import sys as _k_sys
 import threading as _k_threading
@@ -880,6 +881,16 @@ def _k_main(main):
         _k_sys.stdout.flush()
         _k_traceback.print_exc()
         raise _k_builtins.SystemExit(70)
+
+
+# kira:os onSignal (D78): a handler that only stores true, which Python runs on the main thread;
+# false from any other thread, where signal.signal refuses, and for a signal it cannot catch.
+def _k_onsignal(sig, flag):
+    try:
+        _k_signal.signal(sig, lambda n, frame: flag.store(True))
+    except (ValueError, _k_builtins.OSError):
+        return False
+    return True
 
 
 # kira:time sleepMs (D72): at least ms milliseconds; zero or less returns at once.

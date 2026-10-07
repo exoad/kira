@@ -1,0 +1,9 @@
+flag -> exit 0
+  installed true true
+  ESTOP after 3 ticks
+  flag done
+thread -> exit 0
+  from a thread: false
+  thread done
+unhandled -> exit interrupted
+  stderr: KeyboardInterrupt

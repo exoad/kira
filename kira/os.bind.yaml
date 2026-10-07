@@ -1,4 +1,4 @@
-# Magic binding manifest for kira:os (C++ backend; py: args and exit).
+# Magic binding manifest for kira:os (C++ backend; py: args, onSignal and exit).
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips
 # it (the C backend has no sockets). Keys are `Type.method` and the bare
@@ -80,6 +80,6 @@ spawnProcess:         { cpp: { expr: "kira::os::spawnProcess({0})", includes: ["
 
 # --- signals, environment, arguments, exit ---------------------------------
 args:     { cpp: { expr: "kira::rt::args()", includes: ["kira/main.hxx"] }, py: { expr: "list(_k_sys.argv)" } }
-onSignal: { cpp: { expr: "kira::os::onSignal({0}, {1})", includes: ["kira/os.hxx"] } }
+onSignal: { cpp: { expr: "kira::os::onSignal({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_onsignal({0}, {1})" } }
 env:      { cpp: { expr: "kira::os::env({0})", includes: ["kira/os.hxx"] } }
 exit:     { cpp: { expr: "kira::os::exit({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_exit({0})" } }
