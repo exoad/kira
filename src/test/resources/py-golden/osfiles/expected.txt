@@ -76,6 +76,11 @@ osfiles - kira:os on py
 
 osfiles -> 0
 bytearray b'who' float None None
+readFileHead of more than memory holds: b'whole'
 one module's failure, another's reason: True NotFound True
 os.replace refused: False OSError: forced Other []
 restored: True y []
+a target held open, let go at its first refusal: True held []
+a directory at <path>.tmp: True apart
+moduleDir through a linked directory is the real one: True
+and the current directory for code exec'd without a file: True

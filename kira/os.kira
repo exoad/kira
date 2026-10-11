@@ -12,9 +12,8 @@ module "kira:os"
 // Hosts are numeric IPv4 ("127.0.0.1", "0.0.0.0"): the car's devices have
 // addresses, not names, and a static musl binary resolves no names anyway.
 
-// Why the last call on this thread failed, "" when it did not: every call that can fail clears it first (close()
-// and the handle getters leave it), so a quiet socket and a failed one stay apart. The text is a log line's: C++
-// names the call, py the category of what Python raised (OSError for each of its subclasses) and its message.
+// Why the last call that can fail on this thread did, "" when it did not (close() and the handle getters leave it):
+// a log line, C++'s naming the call, py's the category of what Python raised (OSError for each subclass) and its text.
 pub @_magic fx lastError: () Str;
 // The same failure's kind on every target: NotFound, Exists, Permission, Timeout, Interrupted or Other; "" for none.
 pub @_magic fx lastErrorKind: () Str;

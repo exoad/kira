@@ -44,3 +44,7 @@ net - kira:os's sockets on py
 
 main -> 0
 installed true bound true: 0 ready, Interrupted, the flag true, early true
+installed true connected true: read -1, Interrupted, the flag true
+a closed socket's handle beside a live one, as C++ polls them: True
+off the main thread: ["bound true sent 2: 1 ready, kind ''"]
+connected true wrote 4: read 4 'ping', past FD_SETSIZE: True

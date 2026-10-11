@@ -1,9 +1,31 @@
 module "app:serial"
 
 use "kira:os"
+use "kira:sync"
 
-// kira:os's Serial on py without pyserial (K3): open imports it, so a program that never opens a port needs none, and
-// one that does is told which module is missing.
+// kira:os's Serial on py (K3): open imports pyserial, so a program that never opens a port needs none and one that
+// does is told which module is missing; then a read and a signal's end of one on the driver's stand-in for it.
+
+fx text: (buf: List<UInt8>, n: Int64) Str {
+    if n <= 0 {
+        return ""
+    }
+    return Str.of(buf.slice(0, n as Size))
+}
+
+// The driver's stand-in port, whose descriptor is a socket's: the bytes waiting, then a read without limit that the
+// driver's SIGINT 300 ms in ends (D78), as EINTR ends C++'s poll.
+pub fx readOnSignal: () Str {
+    flag: Atomic<Bool> = Atomic<Bool> { value = false }
+    installed: Bool = onSignal(SIGNAL_INT, flag)
+    port: Serial = Serial {}
+    opened: Bool = port.open("stand-in", 115200)
+    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    n: Int64 = port.read(buf.from(0), 2000)
+    first: Str = text(buf, n)
+    m: Int64 = port.read(buf.from(0), -1)
+    return "installed ${installed} open ${opened}: read ${n} '${first}', then ${m}, ${lastErrorKind()}, the flag ${flag.load()}"
+}
 
 pub fx main: () Int32 {
     port: Serial = Serial {}

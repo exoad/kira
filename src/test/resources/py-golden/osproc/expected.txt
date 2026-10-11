@@ -13,7 +13,7 @@ proc - kira:os's processes on py
   ok    its input reached it, CRLF and CR are LF and a bad byte U+FFFD
   ok    and stderr apart
   ok    a child past its timeout is killed: none, Timeout
-  ok    lastError names the timeout
+  ok    lastError names its category, as raises= did
   ok    runCapture of a missing program is none, NotFound
   ok    and of an empty argv
 before a child that inherits stdout
@@ -37,3 +37,4 @@ main -> 0
 a dropped running child is gone: True
 subprocess.Popen refused: False OSError: no ffmpeg
 restored: True
+a SIGINT and readStdout: true True true True

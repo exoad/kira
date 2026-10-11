@@ -1,7 +1,9 @@
 module "app:proc"
 
 use "kira:os"
+use "kira:sync"
 use "kira:test"
+use "kira:time"
 
 // kira:os's processes on py (K3, K4), each child this Python running -c: spawnProcess, runCapture, runInherit and
 // spawnPiped, their exit codes (137 after kill), a missing program, an empty argv, and the reason each failure leaves.
@@ -55,6 +57,18 @@ pub fx reason: () Str {
     return lastError()
 }
 
+// A readStdout of a child asleep for 1 s, which the driver's SIGINT 300 ms in ends on POSIX (D78).
+pub fx readOnSignal: () Str {
+    flag: Atomic<Bool> = Atomic<Bool> { value = false }
+    installed: Bool = onSignal(SIGNAL_INT, flag)
+    p: Process = spawnProcess(py("import time; time.sleep(1)")).value
+    mut buf: List<UInt8> = [0, 0, 0, 0]
+    before: Int64 = monoNowMs()
+    n: Int64 = p.readStdout(buf.from(0))
+    took: Int64 = monoNowMs() - before
+    return "${installed} ${n} ${lastErrorKind()} ${flag.load()} ${took}"
+}
+
 pub fx main: () Int32 {
     t: Suite = Suite { title = "proc - kira:os's processes on py" }
     hi: Process = spawnProcess(py("print('hi from a child')")).value
@@ -76,7 +90,7 @@ pub fx main: () Int32 {
     t.check(ran.value.out == "IN PUTa\nb\nc" + Str.of(fffd), "its input reached it, CRLF and CR are LF and a bad byte U+FFFD")
     t.checkStr(ran.value.err, "err", "and stderr apart")
     t.check(runCapture(py("import time; time.sleep(30)"), null, 200).isNone() && lastErrorKind() == "Timeout", "a child past its timeout is killed: none, Timeout")
-    t.check(lastError().startsWith("TimeoutExpired: "), "lastError names the timeout")
+    t.check(lastError().startsWith("subprocess.SubprocessError: Command "), "lastError names its category, as raises= did")
     t.check(runCapture(["kira-no-such-program-xyz"], null, 0).isNone() && lastErrorKind() == "NotFound", "runCapture of a missing program is none, NotFound")
     t.check(runCapture([], null, 0).isNone() && lastError() == "runCapture: empty argv", "and of an empty argv")
     println("before a child that inherits stdout")

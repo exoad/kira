@@ -23,6 +23,11 @@ pub fx reason: () Str {
     return lastError()
 }
 
+// moduleDir for the driver, which loads this module through a linked directory and with no file.
+pub fx here: () Str {
+    return moduleDir()
+}
+
 pub fx main: () Int32 {
     t: Suite = Suite { title = "osfiles - kira:os on py" }
     made: Maybe<Str> = tempDir("kira-osfiles-")

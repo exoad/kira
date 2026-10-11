@@ -1028,21 +1028,30 @@ class _k_Ran:
 
 
 # kira:os's reasons (D86): a call that can fail clears them, and a failure leaves the category of what Python raised
-# (OSError for each of its subclasses, ValueError for each of its own) with str(e), and a kind every target names alike.
+# with str(e), and a kind every target names alike.
 def _k_osok():
     _k_reasons.os = ""
     _k_reasons.oskind = ""
 
 
 def _k_osfail(e):
-    c = "OSError" if isinstance(e, _k_builtins.OSError) else "ValueError" if isinstance(e, ValueError) else _k_builtins.type(e).__name__
+    c = _k_oscategory(e)
     text = str(e)
     _k_reasons.os = c + ": " + text if text else c
     _k_reasons.oskind = _k_oskind(e)
 
 
-# lastErrorKind's names, as C++ sorts errno and Win32's codes; subprocess's TimeoutExpired by name, so no module that
-# reads a file imports subprocess.
+# The name raises= would give: the first of these the class is (OSError for every subclass), else its own; subprocess's
+# by name, so no module that reads a file imports subprocess.
+def _k_oscategory(e):
+    for c in _k_builtins.type(e).__mro__:
+        n = c.__name__ if c.__module__ == "builtins" else c.__module__ + "." + c.__name__
+        if n in ("OSError", "ValueError", "OverflowError", "ImportError", "subprocess.SubprocessError"):
+            return n
+    return _k_builtins.type(e).__name__
+
+
+# lastErrorKind's names, as C++ sorts errno and Win32's codes; subprocess's TimeoutExpired by name.
 def _k_oskind(e):
     b = _k_builtins
     for c, k in ((b.FileNotFoundError, "NotFound"), (b.FileExistsError, "Exists"), (b.PermissionError, "Permission"), (b.TimeoutError, "Timeout"), (b.InterruptedError, "Interrupted")):
@@ -1092,13 +1101,21 @@ def _k_ostest(f, path):
     return f(path)
 
 
-# readFile (all of it, n < 0) and readFileHead; readText (newline "": the text as it is) and readTextLf (None:
-# universal newlines), strict UTF-8 where C++ returns the bytes.
+# readFile (all of it, n < 0) and readFileHead, in C++'s 64 KiB chunks, as a read of n would take n bytes up front;
+# readText (newline "": the text as it is) and readTextLf (None: universal newlines), strict UTF-8.
 def _k_readfile(path, n):
     _k_osok()
     try:
         with _k_builtins.open(path, "rb") as f:
-            return bytearray(f.read(n if n < 0 else min(n, _k_sys.maxsize)))
+            if n < 0:
+                return bytearray(f.read())
+            out = bytearray()
+            while len(out) < n:
+                chunk = f.read(min(n - len(out), 65536))
+                if not chunk:
+                    break
+                out += chunk
+            return out
     except (_k_builtins.OSError, ValueError) as e:
         _k_osfail(e)
         return None
@@ -1215,9 +1232,11 @@ def _k_nice(increment):
     return f(increment)
 
 
-# moduleDir: the directory of the generated module this helper was copied into, its links resolved.
+# moduleDir: the directory of the generated module this helper was copied into, its links resolved; for code exec'd
+# without a file, the current directory, where its relative paths resolve.
 def _k_moddir():
-    return _k_os.path.dirname(_k_os.path.realpath(_k_moddir.__globals__["__file__"]))
+    f = _k_moddir.__globals__.get("__file__")
+    return _k_os.path.dirname(_k_os.path.realpath(f)) if f else _k_os.path.realpath(".")
 
 
 # FileOut (critique 12): builtins.open in binary with no buffer of Python's, so a write reaches the OS whole and a
@@ -1301,7 +1320,16 @@ def _k_sliced(ms, once):
 # Waits for f (a socket, or on POSIX any descriptor) to be readable, in _k_sliced's slices on the main thread.
 def _k_readable(f):
     if _k_threading.current_thread() is _k_threading.main_thread() and (_k_os.name != "nt" or isinstance(f, _k_socket.socket)):
-        _k_sliced(-1, lambda s: _k_select.select([f], [], [], s)[0])
+        _k_sliced(-1, lambda s: _k_readyin(f, s))
+
+
+# Whether f is readable within s seconds: poll on POSIX, which takes a descriptor past FD_SETSIZE, select on Windows.
+def _k_readyin(f, s):
+    if _k_os.name == "nt":
+        return bool(_k_select.select([f], [], [], s)[0])
+    p = _k_select.poll()
+    p.register(f, _k_select.POLLIN)
+    return bool(p.poll(s * 1000))
 
 
 # kira:os's sockets: IPv4 by number ("" is every interface), non-blocking UDP and listeners, blocking streams. On
@@ -1527,8 +1555,8 @@ class _k_TcpStream:
             self.s = None
 
 
-# Poller: select.poll on POSIX and select.select on Windows over the handles in the order added; a peer's hang-up is
-# POLL_READ and POLL_ERROR as poll(2) reports it, an error the empty List with its reason.
+# Poller over poll on POSIX (POLLHUP is POLL_READ and POLL_ERROR) and select on Windows (a peer's close is POLL_READ
+# alone, where WSAPoll adds POLL_ERROR), in the order added; a negative handle is skipped, POLL_ERROR on Windows, as C++.
 class _k_Poller:
     __slots__ = ("w",)
 
@@ -1546,30 +1574,36 @@ class _k_Poller:
         if not self.w:
             return []
         try:
-            return _k_sliced(ms, self.once)
-        except (_k_builtins.OSError, ValueError) as e:
+            return _k_sliced(min(ms, 2147483647), self.once)
+        except (_k_builtins.OSError, ValueError, OverflowError) as e:
             _k_osfail(e)
             return []
 
     def once(self, s):
         got = {}
         if _k_os.name == "nt":
-            r, w, x = _k_select.select([h for h, e in self.w.items() if e & 1], [h for h, e in self.w.items() if e & 2], list(self.w), s)
-            for bit, hs in ((1, r), (2, w), (4, x)):
-                for h in hs:
-                    got[h] = got.get(h, 0) | bit
+            live = {h: e for h, e in self.w.items() if h >= 0}
+            for h in self.w:
+                if h < 0:
+                    got[h] = 4
+            if live:
+                r, w, x = _k_select.select([h for h, e in live.items() if e & 1], [h for h, e in live.items() if e & 2], list(live), 0 if got else s)
+                for bit, hs in ((1, r), (2, w), (4, x)):
+                    for h in hs:
+                        got[h] = got.get(h, 0) | bit
         else:
             p = _k_select.poll()
             for h, e in self.w.items():
-                p.register(h, (_k_select.POLLIN if e & 1 else 0) | (_k_select.POLLOUT if e & 2 else 0))
+                if h >= 0:
+                    p.register(h, (_k_select.POLLIN if e & 1 else 0) | (_k_select.POLLOUT if e & 2 else 0))
             for h, re in p.poll(None if s is None else s * 1000):
                 hup = re & _k_select.POLLHUP
                 got[h] = (1 if re & _k_select.POLLIN or hup else 0) | (2 if re & _k_select.POLLOUT else 0) | (4 if re & (_k_select.POLLERR | _k_select.POLLNVAL) or hup else 0)
         return [_k_Ready(h, got[h]) for h in self.w if got.get(h)]
 
 
-# Serial on pyserial, imported at open, so a program that opens none needs none. read waits up to ms for the first
-# byte, then takes what has come (in_waiting), as kira::os's poll and read do (critique 14).
+# Serial on pyserial, imported at open. read waits up to ms for the first byte (on the main thread on a POSIX port's
+# descriptor in _k_sliced's slices), then takes in_waiting, as kira::os's poll and read do (critique 14).
 class _k_Serial:
     __slots__ = ("p",)
 
@@ -1595,6 +1629,11 @@ class _k_Serial:
             return 0
         try:
             t = None if ms < 0 else ms / 1000
+            fd = _k_builtins.getattr(self.p, "fd", None)
+            if fd is not None and _k_threading.current_thread() is _k_threading.main_thread():
+                if not _k_sliced(ms, lambda s: _k_readyin(fd, s)):
+                    return 0
+                t = 0
             if self.p.timeout != t:
                 self.p.timeout = t
             data = self.p.read(1)

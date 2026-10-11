@@ -1,6 +1,7 @@
 open false
-ModuleNotFoundError: No module named 'serial'
+ImportError: No module named 'serial'
 Other
 read -1 write -1 open false handle -1
 write: port is not open
 exit 0
+installed true open true: read 5 'hello', then -1, Interrupted, the flag true

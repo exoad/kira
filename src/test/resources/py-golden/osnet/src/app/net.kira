@@ -26,6 +26,73 @@ pub fx waitOnSignal: () Str {
     return "installed ${installed} bound ${bound}: ${got.size()} ready, ${lastErrorKind()}, the flag ${flag.load()}, early ${took < 5000}"
 }
 
+// A TcpStream.read of a quiet connection, which the driver's SIGINT 300 ms in ends as Poller.wait's.
+pub fx readOnSignal: () Str {
+    flag: Atomic<Bool> = Atomic<Bool> { value = false }
+    installed: Bool = onSignal(SIGNAL_INT, flag)
+    l: TcpListener = TcpListener {}
+    c: TcpStream = TcpStream {}
+    connected: Bool = l.listen(0) && c.connect("127.0.0.1", l.localPort())
+    p: Poller = Poller {}
+    p.add(l.handle(), POLL_READ)
+    p.wait(2000)
+    s: TcpStream = l.accept().value
+    mut buf: List<UInt8> = [0, 0, 0, 0]
+    n: Int64 = s.read(buf.from(0))
+    return "installed ${installed} connected ${connected}: read ${n}, ${lastErrorKind()}, the flag ${flag.load()}"
+}
+
+// A blocking read on the main thread, of a stream the driver gives a descriptor past FD_SETSIZE on POSIX.
+pub fx echoRead: () Str {
+    l: TcpListener = TcpListener {}
+    c: TcpStream = TcpStream {}
+    connected: Bool = l.listen(0) && c.connect("127.0.0.1", l.localPort())
+    p: Poller = Poller {}
+    p.add(l.handle(), POLL_READ)
+    p.wait(2000)
+    s: TcpStream = l.accept().value
+    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    wrote: Int64 = c.write("ping".bytes())
+    n: Int64 = s.read(buf.from(0))
+    return "connected ${connected} wrote ${wrote}: read ${n} '${text(buf, n as Size)}' from ${s.handle()}"
+}
+
+// A closed socket's handle (-1) polled beside a live one: poll(2) skips it, WSAPoll flags it POLL_ERROR.
+pub fx closedBeside: () Str {
+    a: UdpSocket = UdpSocket {}
+    b: UdpSocket = UdpSocket {}
+    gone: UdpSocket = UdpSocket {}
+    bound: Bool = a.bind("127.0.0.1", 0) && b.bind("127.0.0.1", 0) && gone.bind("127.0.0.1", 0)
+    gone.close()
+    first: Poller = Poller {}
+    first.add(b.handle(), POLL_READ)
+    sent: Bool = a.sendTo("hi".bytes(), "127.0.0.1", b.localPort()) == 2 && !first.wait(2000).isEmpty()
+    p: Poller = Poller {}
+    p.add(gone.handle(), POLL_READ)
+    p.add(b.handle(), POLL_READ)
+    mut seen: List<Str> = []
+    for r: Ready in p.wait(2000) {
+        if r.handle == b.handle() {
+            seen.add("live ${r.events}")
+        } else {
+            seen.add("closed ${r.events}")
+        }
+    }
+    return "bound ${bound} sent ${sent}: ${seen.joinToString(", ")}, kind '${lastErrorKind()}'"
+}
+
+// A wait past INT_MAX ms with a datagram coming, for a thread the driver starts: C++'s pollTimeout clamps it.
+pub fx waitLong: () Str {
+    a: UdpSocket = UdpSocket {}
+    b: UdpSocket = UdpSocket {}
+    bound: Bool = a.bind("127.0.0.1", 0) && b.bind("127.0.0.1", 0)
+    sent: Int64 = a.sendTo("hi".bytes(), "127.0.0.1", b.localPort())
+    p: Poller = Poller {}
+    p.add(b.handle(), POLL_READ)
+    got: List<Ready> = p.wait(4611686018427387904)
+    return "bound ${bound} sent ${sent}: ${got.size()} ready, kind '${lastErrorKind()}'"
+}
+
 fx udp: (t: Suite) Void {
     a: UdpSocket = UdpSocket {}
     b: UdpSocket = UdpSocket {}
