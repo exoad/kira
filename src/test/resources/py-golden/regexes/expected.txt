@@ -28,7 +28,7 @@ findAll is re's: 88 of 88
 sub is re's: 440 of 440
 split is re's: 88 of 88
 groups: 12- 12 None 12 None [2, 5]
-regexError is str(e) of each bad pattern, read in app:why: 11 of 11
+regexError is str(e) of each bad pattern, read in app:why: 12 of 12
 a LOCALE flag on a str pattern: None cannot use LOCALE flag with a str pattern
 findAll of two groups: kira: Regex.findAll of a pattern of 2 groups
 sub with a bad escape: kira: Regex.sub's replacement: bad escape \q at position 0

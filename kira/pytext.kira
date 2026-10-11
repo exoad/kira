@@ -19,7 +19,7 @@ pub @_magic fx floatRepr: (v: Float64) Str;
 pub @_magic fx jsonRepr: (j: Json) Str;
 // format(v, spec), the whole format-spec mini-language; none for a spec this Python refuses.
 pub @_magic fx formatFloat: (v: Float64, spec: Str) Maybe<Str>;
-// round(v, digits): half to even on the double's exact value, so round(2.675, 2) is 2.67.
+// round(v, digits): half to even on the double's exact value, so round(2.675, 2) is 2.67; inf past the largest double.
 pub @_magic fx roundTo: (v: Float64, digits: Int32) Float64;
 // int(round(v)), half to even; none for a NaN, an infinity or past Int64.
 pub @_magic fx roundHalfEven: (v: Float64) Maybe<Int64>;

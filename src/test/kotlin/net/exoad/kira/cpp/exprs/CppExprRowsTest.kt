@@ -1184,6 +1184,35 @@ class CppExprRowsTest {
             ),
         ),
         row(
+            "k5",
+            """
+            use "kira:math"
+
+            pub fx hyp32: (x: Float32, y: Float32) Float32 {
+                return hypot(x, y)
+            }
+
+            pub fx angle32: (y: Float32, x: Float32) Float32 {
+                return atan2(y, x)
+            }
+
+            pub fx exp32: (v: Float32) Float32 {
+                return exp(v)
+            }
+
+            pub fx mod32: (a: Float32, b: Float32) Float32 {
+                return floorMod(a, b)
+            }
+            """,
+            listOf("return std::hypot(x, y);", "return std::atan2(y, x);", "return std::exp(v);", "return kira::floorMod(a, b);"),
+            listOf(
+                """check(k5::hyp32(3.0f, 4.0f) == 5.0f && std::is_same_v<decltype(k5::hyp32(1.0f, 1.0f)), float>, "critique 16: hypot of a Float32 is float math");""",
+                """check(k5::angle32(1.0f, -1.0f) > 2.3561f && k5::angle32(1.0f, -1.0f) < 2.3563f && std::is_same_v<decltype(k5::angle32(1.0f, 1.0f)), float>, "critique 16: atan2 too, y first");""",
+                """check(k5::exp32(0.0f) == 1.0f && k5::exp32(100.0f) > std::numeric_limits<float>::max() && std::is_same_v<decltype(k5::exp32(1.0f)), float>, "critique 16: exp too, inf past the largest float");""",
+                """check(k5::mod32(-5.0f, 3.0f) == 1.0f && k5::mod32(5.0f, -3.0f) == -1.0f && std::is_same_v<decltype(k5::mod32(1.0f, 1.0f)), float>, "critique 16: floorMod of Float32s is Python's % in float");""",
+            ),
+        ),
+        row(
             "d61",
             """
             pub fx sorted: (xs: List<Int32>) List<Int32> {

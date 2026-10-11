@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-# The regexes golden (K6): main, then each Regex and Match method is re's own over patterns and texts, given patterns
-# re.compile made in Python (E1: no wrapper); regexError is str(e) of each bad pattern, a repeat's OverflowError too;
-# findAll of two groups, a bad template (its IndexError too), split's None and a missing group panic; compile's results
-# and matches are re's own classes.
+# The regexes golden (K6): main, then each Regex and Match method is re's own, on patterns Python compiled too (E1);
+# compile is none where re raises (a repeat's OverflowError, deep nesting's RecursionError), and the rest panic there.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util
@@ -45,12 +43,12 @@ tally("split", [(m.pieces(r, t), r.split(t)) for r in compiled if r.groups == 0 
 named = re.compile(r"(?P<n>\d+)-(?P<m>\d+)?")
 hit = m.searched(named, "x 12- 3")
 print("groups:", m.groupOf(hit, 0), m.groupOf(hit, 1), m.groupOf(hit, 2), m.namedOf(hit, "n"), m.namedOf(hit, "m"), m.span(hit))
-bad = ["(", "a)", "[a", "*a", "a{2,1}", "(?P<x>a)(?P<x>b)", r"\p", "(?<!a+)b", "a\\", "a{4294967296}", "a{1,4294967296}"]
+bad = ["(", "a)", "[a", "*a", "a{2,1}", "(?P<x>a)(?P<x>b)", r"\p", "(?<!a+)b", "a\\", "a{4294967296}", "a{1,4294967296}", "(" * 1000 + ")" * 1000]
 seen = 0
 for p in bad:
     try:
         re.compile(p)
-    except (re.error, OverflowError) as e:
+    except (re.error, OverflowError, RecursionError) as e:
         seen += m.compiled(p, 0) is None and why.whyNot() == str(e)
 print("regexError is str(e) of each bad pattern, read in app:why:", seen, "of", len(bad))
 print("a LOCALE flag on a str pattern:", m.compiled("a", re.LOCALE), why.whyNot())

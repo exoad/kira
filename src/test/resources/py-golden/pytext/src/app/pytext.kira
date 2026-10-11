@@ -88,6 +88,7 @@ pub fx main: () Int32 {
     t.checkStr(formatFloat(1234.5678, ",.2f").unwrapOr("none") + " " + formatFloat(0.000123, "g").unwrapOr("none") + " " + formatFloat(1.5, ".2e").unwrapOr("none"), "1,234.57 0.000123 1.50e+00", "formatFloat is format's")
     t.check(formatFloat(1.0, "d").isNone() && pyTextError() == "ValueError: Unknown format code 'd' for object of type 'float'", "and none for a spec Python refuses")
     t.checkStr("${roundTo(2.675, 2)} ${roundTo(0.5, 0)} ${roundTo(1234.5, -2)}", "2.67 0 1200", "roundTo is round's: the double's own value, half to even")
+    t.check(roundTo(1.7976931348623157e308, -308) > 1.7976931348623157e308 && roundTo(-1.7976931348623157e308, -308) < -1.7976931348623157e308, "and past the largest double the infinity of its sign, where round raises")
     t.check(roundHalfEven(2.5).unwrapOr(9) == 2 && roundHalfEven(-0.5).unwrapOr(9) == 0 && roundHalfEven(3.5).unwrapOr(9) == 4, "roundHalfEven takes a half to even")
     t.check(roundHalfEven(0.0 / zeroOf(0.0)).isNone() && pyTextError() == "ValueError: cannot convert float NaN to integer", "and none for a NaN")
     t.check(roundHalfEven(1.0 / zeroOf(0.0)).isNone() && pyTextError() == "OverflowError: cannot convert float infinity to integer", "and an infinity")

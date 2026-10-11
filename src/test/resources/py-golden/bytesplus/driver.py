@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# The bytesplus golden (K5): main prints cpp-golden/bytesplus's lines; then find is bytes.find over data and over a
-# lent slice (a memoryview), crc is binascii.crc_hqx and hex is bytes.fromhex (None where it raises), each of the
-# value Python gives, over every start, a sweep of data and inits and texts of each kind of space.
+# The bytesplus golden (K5): main prints cpp-golden/bytesplus's lines; then find is bytes.find over data and a lent
+# slice, crc binascii.crc_hqx and hex bytes.fromhex (None where it raises), each of Python's value.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import binascii

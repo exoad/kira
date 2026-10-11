@@ -15,6 +15,7 @@ pytext - kira:pytext on py
   ok    formatFloat is format's
   ok    and none for a spec Python refuses
   ok    roundTo is round's: the double's own value, half to even
+  ok    and past the largest double the infinity of its sign, where round raises
   ok    roundHalfEven takes a half to even
   ok    and none for a NaN
   ok    and an infinity
@@ -27,7 +28,7 @@ pytext - kira:pytext on py
   ok    wrapWords breaks no word
   ok    the character classes are Unicode's
 
-25 checks, 0 failed
+26 checks, 0 failed
 
 pytext -> 0
 pyInt and its reason is Python's: 36 of 36
@@ -36,7 +37,7 @@ strRepr is Python's: 13 of 13
 floatRepr is Python's: 23 of 23
 jsonRepr is Python's: 8 of 8
 formatFloat and its reason is Python's: 598 of 598
-roundTo is Python's: 184 of 184
+roundTo is Python's: 216 of 216
 roundHalfEven and its reason is Python's: 23 of 23
 upper, lower, strip, lstrip, rstrip is Python's: 10 of 10
 isUpper is Python's: 10 of 10

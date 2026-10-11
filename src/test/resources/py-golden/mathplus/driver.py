@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# The mathplus golden (K5): main prints cpp-golden/mathplus's lines; then mod is Python's own % to the bit over signed
-# zeros, subnormals, infinities and NaN (NaN for a zero divisor, where Python raises), and hyp, angle and power are
-# math.hypot, atan2 and exp (inf where exp raises), a float whether a Python caller hands ints or floats.
+# The mathplus golden (K5): main prints cpp-golden/mathplus's lines; then mod is Python's % to the bit (NaN where it
+# raises) and hyp, angle and power math.hypot, atan2 and exp (inf where exp raises), floats for ints too.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util

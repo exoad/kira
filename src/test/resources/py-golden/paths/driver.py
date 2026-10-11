@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# The paths golden (K5): main's checks hold on posixpath and ntpath alike; then each kira:path function is os.path's on
-# this host (a drive, a UNC share and a backslash included, which only ntpath reads as such), relPath None where
-# relpath raises, joinPaths of no parts a panic, and every result a str.
+# The paths golden (K5): main's checks hold on posixpath and ntpath alike; then each kira:path function is this host's
+# os.path, relPath None where relpath raises, joinPaths of no parts a panic.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util

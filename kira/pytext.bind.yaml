@@ -8,7 +8,7 @@ strRepr:       { cpp: { unsupported: "Python's text rules, py only" }, py: { exp
 floatRepr:     { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_builtins.repr(float({0}))" } }
 jsonRepr:      { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_builtins.repr({0})" } }
 formatFloat:   { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_pyformat({0}, {1})" } }
-roundTo:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_builtins.round(float({0}), {1})" } }
+roundTo:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_roundto({0}, {1})" } }
 roundHalfEven: { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_roundeven({0})" } }
 upper:         { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.upper()" } }
 lower:         { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.lower()" } }

@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraTyper
+import net.exoad.kira.compiler.analysis.types.ModuleGraph
 import net.exoad.kira.compiler.analysis.types.Severity
 import net.exoad.kira.compiler.analysis.types.TyperMode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
@@ -234,6 +235,37 @@ class TyperDeclDiagnosticsTest {
             module("app:main", "use \"app:one\"\nuse \"app:two\"\nt: Thing = Thing { }"),
         )
         assertTrue(count(p, "types.type.ambiguous") >= 1, TyperTestSupport.render(p))
+    }
+
+    // bibo's tools/npu uses kira:math and its own pylib, whose hypot, atan2 and exp K5's kira:math gained.
+    @Test
+    fun aUsedProjectModuleBeatsAUsedStdlibModule() {
+        val p = TyperTestSupport.type(
+            module("app:lib", "pub fx exp: (x: Float64) Float64 {\n    return x\n}\npub class Regex { }\npub IGNORE_CASE: Int32 = 7"),
+            module(
+                "app:main",
+                "use \"kira:math\"\nuse \"kira:regex\"\nuse \"app:lib\"\n" +
+                    "fx f: () Float64 {\n    r: Regex = Regex { }\n    return exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n",
+            ),
+        )
+        TyperTestSupport.expectNoErrors(p)
+        val main = p.module("app:main")!!
+        for (name in listOf("exp", "Regex", "IGNORE_CASE")) {
+            val hit = p.graph.lookup(main, name) as ModuleGraph.Lookup.Found
+            assertEquals("app:lib", hit.from.uri, name)
+        }
+        assertEquals("kira:math", (p.graph.lookup(main, "sqrt") as ModuleGraph.Lookup.Found).from.uri)
+    }
+
+    @Test
+    fun twoUsedProjectModulesBesideAStdlibOneAreStillAmbiguous() {
+        val p = TyperTestSupport.type(
+            module("app:one", "pub fx exp: (x: Float64) Float64 {\n    return x\n}"),
+            module("app:two", "pub fx exp: (x: Float64) Float64 {\n    return x\n}"),
+            module("app:main", "use \"kira:math\"\nuse \"app:one\"\nuse \"app:two\"\nfx f: () Float64 {\n    return exp(2.0)\n}\n"),
+        )
+        val d = expectDiagnostic(p, "types.call.ambiguous")
+        assertTrue(d.message.endsWith("module: app:one, app:two."), d.message)
     }
 
     @Test

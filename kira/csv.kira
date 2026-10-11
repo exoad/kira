@@ -5,7 +5,7 @@ module "kira:csv"
 // A file's rows one at a time, read as UTF-8 with newline="" so a quoted line break stays in its cell.
 pub @_magic class CsvReader {
     // The next row; none at the end, or at an error, which csvError() names; either closes the file.
-    pub fx next: () Maybe<List<Str>>;
+    pub mut fx next: () Maybe<List<Str>>;
     // Whether the last next() stopped at a row csv refuses (csv.Error), so a caller can end the program
     // there, as Python's csv ended it: assert(!rows.isMalformed(), "csv.Error: " + csvError()).
     pub fx isMalformed: () Bool;

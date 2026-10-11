@@ -81,4 +81,27 @@ class UnsupportedBindingTest {
         ).forEach { assertTrue(cpp.all.contains("error: cpp.unsupported: $it"), cpp.all) }
         assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
     }
+
+    /** A C++ program that only names a py-only class is refused with the reason its methods give. */
+    @Test
+    fun aPyOnlyClassNamedAloneIsRefusedOnCppWithItsReason() {
+        val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-pyclasses").apply { deleteRecursively(); mkdirs() }
+        val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
+        File(dir, "kira.yaml").writeText("project:\n  name: unsupportedpyclasses\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
+        File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
+            "module \"app:main\"\n\nuse \"kira:regex\"\nuse \"kira:random\"\nuse \"kira:csv\"\n\n" +
+                "fx keep: (r: Regex, m: Maybe<Match>, g: Random, c: Maybe<CsvReader>) Int32 {\n    return 0\n}\n\n" +
+                "fx main: () Int32 {\n    return 0\n}\n"
+        )
+        val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
+        assertEquals(1, cpp.exitCode, cpp.all)
+        listOf(
+            "the type Regex is not supported on the C++ target: Python's re, py only",
+            "the type Match is not supported on the C++ target: Python's re, py only",
+            "the type Random is not supported on the C++ target: Python's random.Random, py only",
+            "the type CsvReader is not supported on the C++ target: Python's csv module, py only",
+        ).forEach { assertTrue(cpp.all.contains("error: cpp.unsupported: $it"), cpp.all) }
+        assertFalse(cpp.all.contains("not lowered yet"), cpp.all)
+        assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
+    }
 }

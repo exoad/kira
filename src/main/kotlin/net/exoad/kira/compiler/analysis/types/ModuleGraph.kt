@@ -5,9 +5,10 @@ package net.exoad.kira.compiler.analysis.types
  * the [TyperOptions] globs (profile, header-only, C++ namespace), and answers the scope
  * question every later phase asks: what does a name mean from inside a module?
  *
- * Scope order (design 3.2): a module's own members, then the `pub` members of the modules it
- * `use`s (in `use` order), then the `pub` members of the ambient stdlib (every `kira:*`
- * module, by URI). Type parameters come before all of these; TypeResolver handles them.
+ * Scope order (design 3.2): a module's own members, then the `pub` members of the project
+ * modules it `use`s, then of the stdlib modules it `use`s (each in `use` order), then the
+ * `pub` members of the ambient stdlib (every `kira:*` module, by URI). Type parameters come
+ * before all of these; TypeResolver handles them.
  */
 class ModuleGraph(private val program: TypedProgram) {
     /** The result of a name lookup. */
@@ -79,10 +80,12 @@ class ModuleGraph(private val program: TypedProgram) {
                 exported.add(Lookup.Found(s, used))
             }
         }
-        if (exported.size > 1) {
-            return Lookup.Ambiguous(exported.first(), exported.drop(1))
+        // A used project module's name beats a used stdlib module's, as it beats the ambient stdlib's: the stdlib grows under a project.
+        val tier = exported.filter { !it.from.isStdlib }.ifEmpty { exported }
+        if (tier.size > 1) {
+            return Lookup.Ambiguous(tier.first(), tier.drop(1))
         }
-        exported.firstOrNull()?.let { return it }
+        tier.firstOrNull()?.let { return it }
         for (std in ambient()) {
             if (std === module) {
                 continue

@@ -322,6 +322,16 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
      */
     fun isSystemClass(sym: ClassSymbol): Boolean = sym.kind == ClassKind.MAGIC && systemHeaderFor(sym.module.uri) != null
 
+    // A py-only stdlib class (kira:regex's Regex): the one reason every method's cpp: { unsupported } gives.
+    private fun unsupportedReason(sym: ClassSymbol): String? {
+        val part = ctx.parts.bindings
+        if (part is CppBindingTable) {
+            part.load(ctx.program)
+        }
+        val reasons = sym.methods.map { part.lookup("${sym.name}.${it.name}")?.unsupported }
+        return reasons.distinct().singleOrNull()
+    }
+
     private fun spellArg(arg: TypeArg): String = when (arg) {
         is TypeArg.Ty -> spell(arg.t, Pos.TEMPLATE_ARG)
         is TypeArg.Const -> arg.n.toString()
@@ -374,6 +384,10 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
                 systemClass(sym)?.let { name ->
                     val targs = if (a.isEmpty()) "" else "<${a.joinToString(", ")}>"
                     return "kira::Rc<$name$targs>"
+                }
+                unsupportedReason(sym)?.let { why ->
+                    report(CppModuleEmitterFactory.UNSUPPORTED_CODE, "the type ${t.display()} is not supported on the C++ target: $why")
+                    return "/* ${t.display()} */"
                 }
                 report(CppModuleEmitterFactory.UNSUPPORTED_CODE, "the type ${t.display()} is not lowered yet")
                 "/* ${t.display()} */"

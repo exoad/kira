@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# The randoms golden (K6): main, then every draw of a Random from newRandom is random.Random's of the same seed, draw for
-# draw and kind after kind; a random.Random Python made is one (critique 21), used and advanced in place; a draw with a
-# bad argument panics.
+# The randoms golden (K6): main, then a Random draws random.Random's of its seed, draw for draw; one Python made is a
+# Random (critique 21), advanced in place; a draw with a bad argument panics.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# The pytext golden (K6): main pins bibo's fixtures; then each kira:pytext function is Python's own on this interpreter
-# (a spec only 3.11 takes, the digit limit's text and the rest come out as this Python has them), each reason is the
-# text Python raised with its category, and every value is of the type Kira declares.
+# The pytext golden (K6): main pins bibo's fixtures; then each kira:pytext function, its reason and its value's type are
+# Python's own on this interpreter, roundTo the infinity of its sign where round raises OverflowError.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util
 import json
+import math
 import os
 import sys
 import textwrap
@@ -63,7 +63,14 @@ tally("jsonRepr", [(m.jsonText(d), repr(json.loads(d))) for d in docs])
 specs = ["", "g", ".2f", ",", ",.2f", "+", "e", ".2e", "E", "%", ".1%", "10.3f", "<10", "*^12.1f", "=+10.2f", "_", "_.3f", "z.2f",
          "#g", ".0f", ".20g", "d", "s", ".x", "10.10.10", "n"]
 tally("formatFloat and its reason", [((m.formatted(v, s), m.why()), raised(format, v, s)) for v in floats for s in specs])
-tally("roundTo", [(m.rounded(v, n), round(v, n)) for v in floats for n in (-400, -2, -1, 0, 1, 2, 5, 400)])
+def roundref(v, n):
+    try:
+        return round(v, n)
+    except OverflowError:
+        return math.copysign(math.inf, v)
+
+
+tally("roundTo", [(m.rounded(v, n), roundref(v, n)) for v in floats + [-1.7976931348623157e308] for n in (-400, -308, -2, -1, 0, 1, 2, 5, 400)])
 rounded = []
 for v in floats:
     r, why = raised(round, v)

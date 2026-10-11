@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# The csvs golden (K6): main, then a CsvReader gives the rows csv.reader gives over the same file (UTF-8, newline="")
-# and stops where it raises, isMalformed for a csv.Error alone (3.10's NUL among them), csvError its str(e); strictRows
-# ends on a csv.Error as Python's csv did (critique 15), and csvLine is csv.writer's line, a panic where it raises.
+# The csvs golden (K6): main, then a CsvReader reads csv.reader's rows and stops where it raises, isMalformed for a
+# csv.Error alone, csvError its str(e), cleared by each call that works (D86); csvLine is csv.writer's line.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import csv
@@ -52,6 +51,21 @@ for t in texts:
         f.write(t)
     same += kira() == reference()
 print("a CsvReader reads csv.reader's rows and stops at its error:", same, "of", len(texts))
+other = os.path.join(work, "y.csv")
+with open(other, "wb") as f:
+    f.write(b"a\nb\n")
+live = m.opened(other)
+m.opened(os.path.join(work, "nope"))
+first = m.nextRow(live), m.why()
+m.opened(os.path.join(work, "nope"))
+again = m.opened(other) is not None, m.why()
+live.close()
+with open(path, "wb") as f:
+    f.write(b"ok\n\"" + b"x" * 131073 + b"\"\n")
+r = m.opened(path)
+stopped = m.nextRow(r), m.nextRow(r), m.malformed(r), m.why() != ""
+print("a next and an openCsv that work clear a failed open's reason:", first, again)
+print("a csv.Error stops a CsvReader, and the next call clears it:", stopped, (m.nextRow(r), m.malformed(r), m.why()))
 with open(path, "wb") as f:
     f.write(b"ok\n\"" + b"x" * 131073 + b"\"\n")
 try:

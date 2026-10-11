@@ -1948,6 +1948,14 @@ def _k_pyformat(v, spec):
         return None
 
 
+# round(v, n) past the largest double is the infinity of v's sign, the double strtod rounds it to, where Python raises.
+def _k_roundto(v, n):
+    try:
+        return _k_builtins.round(float(v), n)
+    except OverflowError:
+        return _k_math.copysign(_k_math.inf, v)
+
+
 def _k_roundeven(v):
     _k_reasons.pytext = ""
     try:

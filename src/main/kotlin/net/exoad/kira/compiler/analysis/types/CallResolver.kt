@@ -143,7 +143,7 @@ internal class CallResolver(private val c: PhaseC) {
                 return KType.Error
             }
         }
-        // 3-5. The module, then what it uses, then the ambient stdlib.
+        // 3-5. The module, then what it uses (project modules before stdlib ones), then the ambient stdlib.
         val found = c.program.graph.lookup(ctx.module, name) { it is FnSymbol || it is GlobalSymbol }
         val sym = when (found) {
             is ModuleGraph.Lookup.Found -> found.symbol
