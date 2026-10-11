@@ -9,7 +9,7 @@ import sys
 import tempfile
 
 for name in ("missing", "arity", "badname", "order", "broad", "notclass", "fine"):
-    path = os.path.join(sys.argv[1], "src", "app", name + ".kira.py")
+    path = os.path.join(sys.argv[1], "src", "app", name + "_kira.py")
     spec = importlib.util.spec_from_file_location(name + "_kira", path)
     m = importlib.util.module_from_spec(spec)
     try:
@@ -24,10 +24,10 @@ try:
 except sys.modules["kira:errors"].Error as e:
     print("fine.g ->", e.args[0])
 
-# fine.kira.py copied where its sidecar is not, and fine.kira.py reached through a symlink.
+# fine_kira.py copied where its sidecar is not, and fine_kira.py reached through a symlink.
 tmp = tempfile.mkdtemp()
-generated = os.path.join(sys.argv[1], "src", "app", "fine.kira.py")
-for label, path in (("copied", os.path.join(tmp, "copied.kira.py")), ("linked", os.path.join(tmp, "linked.kira.py"))):
+generated = os.path.join(sys.argv[1], "src", "app", "fine_kira.py")
+for label, path in (("copied", os.path.join(tmp, "copied_kira.py")), ("linked", os.path.join(tmp, "linked_kira.py"))):
     if label == "copied":
         shutil.copy(generated, path)
     else:

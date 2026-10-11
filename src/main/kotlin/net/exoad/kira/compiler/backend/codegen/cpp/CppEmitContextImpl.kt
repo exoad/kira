@@ -329,6 +329,8 @@ data class CppBinding(
     val includes: List<String> = emptyList(),
     val pure: Boolean = false,
     val constexpr: Boolean = false,
+    /** `cpp: { unsupported: "<why>" }` (D83): a decision, so a call is refused naming why. */
+    val unsupported: String? = null,
 )
 
 /** The `cpp:` blocks of the binding manifests (W2.3). */

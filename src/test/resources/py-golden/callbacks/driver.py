@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-path = os.path.join(sys.argv[1], "src", "app", "callbacks.kira.py")
+path = os.path.join(sys.argv[1], "src", "app", "callbacks_kira.py")
 
 
 def run(*args):

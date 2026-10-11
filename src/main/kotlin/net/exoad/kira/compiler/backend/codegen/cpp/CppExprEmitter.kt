@@ -1656,6 +1656,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             return unsupported(e, "the magic call '${fn.qualifiedName}' (no cpp binding under ${CppBindingTable.keysFor(fn, recvType, program)})")
         }
+        found.second.unsupported?.let { why ->
+            ctx.diag(e, CppModuleEmitterFactory.UNSUPPORTED_CODE, "'${found.first}' is not supported on the C++ target: $why")
+            return CppEx("/* ${CppEmitContextImpl.describe(e)} */", CppPrec.PRIMARY)
+        }
         val original = found.second
         // A write over an element whose drop may run an IMPURE `finally` stores first (CppCopyPolicy.dropsOnWrite).
         val binding = replacing(original, fn, rc)

@@ -1,0 +1,71 @@
+module "app:stdstructs"
+
+use "kira:os"
+
+// kira:os's Datagram and Ready (D84): built with the declaration's defaults, copied where Kira copies a
+// value, compared field by field, as a field, in a List, a Map and a Maybe, and through a mut parameter.
+
+pub struct Seen {
+    pub last: Datagram
+    pub ready: Maybe<Ready> = null
+}
+
+pub fx made: (size: Size, host: Str) Datagram {
+    return Datagram { size = size, host = host }
+}
+
+fx bump: (mut d: Datagram) Void {
+    d.port = d.port + 1
+}
+
+fx show: (d: Datagram) Void {
+    println("${d.size} ${d.host}:${d.port}")
+}
+
+pub fx main: () Int32 {
+    d: Datagram = Datagram { 3, "10.0.0.2", 9 }
+    mut e: Datagram = d
+    e.port = 10
+    show(d)
+    show(e)
+    trace(d == e)
+    trace(d != e)
+    e.port = 9
+    trace(d == e)
+
+    r: Ready = Ready { }
+    trace(r.handle)
+    trace(r.events)
+    p: Ready = Ready { events = POLL_READ | POLL_ERROR }
+    trace(p.handle)
+    trace(p.events)
+
+    mut s: Seen = Seen { }
+    show(s.last)
+    trace(s.ready.isNone())
+    s.last = d
+    s.ready = p
+    mut t: Seen = s
+    t.last.port = 1
+    show(s.last)
+    show(t.last)
+    trace(s.ready.unwrap() == p)
+
+    mut ds: List<Datagram> = [d, made(1, "a")]
+    kept: List<Datagram> = ds
+    ds.add(made(2, "b"))
+    trace(kept.size())
+    trace(ds.contains(Datagram { 1, "a", 0 }))
+    trace(ds.contains(Datagram { 1, "a", 1 }))
+    show(ds[2])
+
+    mut byHost: Map<Str, Ready> = Map<Str, Ready> { }
+    byHost["x"] = p
+    trace(byHost.containsValue(Ready { -1, 5 }))
+
+    mut f: Datagram = made(5, "c")
+    bump(mut f)
+    bump(mut f)
+    show(f)
+    return f.port
+}

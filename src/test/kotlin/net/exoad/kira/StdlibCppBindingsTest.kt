@@ -1,14 +1,7 @@
 package net.exoad.kira
 
 import net.exoad.kira.compiler.backend.codegen.c.CMagicBindingTable
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
-import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
-import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
-import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import org.junit.jupiter.api.Test
-import org.yaml.snakeyaml.Yaml
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -21,18 +14,16 @@ import kotlin.test.fail
  * section 7.4).
  *
  * Three things must hold at once:
- *  1. every `@_magic` method and free function has a `cpp` binding, so the
- *     C++ emitter never meets a magic call it cannot lower (the print family
- *     is the one exception: its format is type-directed per call site);
+ *  1. every `@_magic` method and free function has a `cpp` binding or a
+ *     `cpp: { unsupported }` decision (D83), so the C++ emitter never meets a
+ *     magic call it cannot lower or refuse by name (the print family is the
+ *     one exception: its format is type-directed per call site);
  *  2. no C++-only entry is a bare string, because [CMagicBindingTable] reads
  *     a bare string as a C symbol;
  *  3. the C table resolves exactly what it resolved before the `cpp` maps
  *     arrived -- the C backend must not gain or lose a binding by accident.
  */
 class StdlibCppBindingsTest {
-    /** Magic names the C backend lowers per call site instead of binding. */
-    private val printFamily = setOf("print", "println", "eprint", "trace")
-
     /**
      * What [CMagicBindingTable] resolved at the base commit (8d008e8), read
      * from kira/math.bind.yaml and kira/io.bind.yaml as they were then. A
@@ -53,14 +44,9 @@ class StdlibCppBindingsTest {
         "assert" to ("kira_assert" to emptySet()),
     )
 
-    private val allowedCppKeys = setOf("expr", "includes", "pure", "constexpr")
+    private val allowedCppKeys = setOf("expr", "includes", "pure", "constexpr", "unsupported")
 
-    /**
-     * Magic callables the typer makes, which no `.kira` file can declare: `Str.of` (D55) is
-     * called on the type, as Result.success is (D39), and binds through the manifest.
-     */
-    private val compilerKnown = setOf("Str.of", "Json.parse", "Json.error", "Json.obj", "Json.arr", "Json.null") +
-        listOf("Bool", "Int64", "Float64", "Str").flatMap { listOf("Json.of($it)", "Json.of(Maybe<$it>)") }
+    private val compilerKnown = StdlibManifests.compilerKnown
 
     @Test
     fun everyMagicMethodAndFunctionHasACppBinding() {
@@ -130,8 +116,13 @@ class StdlibCppBindingsTest {
                         }
                         if (cpp is Map<*, *>) {
                             val expr = cpp["expr"]
-                            if (expr !is String || expr.isBlank()) {
-                                problems.add("$label: cpp.expr must be a non-empty string")
+                            val why = cpp["unsupported"]
+                            when {
+                                // A decision (D83): the call is refused naming why, so nothing else may sit beside it.
+                                why != null -> if (why !is String || why.isBlank() || cpp.size != 1) {
+                                    problems.add("$label: cpp.unsupported must be a non-empty string, alone in its map")
+                                }
+                                expr !is String || expr.isBlank() -> problems.add("$label: cpp.expr must be a non-empty string")
                             }
                             cpp.keys.map { it.toString() }.filterNot { it in allowedCppKeys }.forEach {
                                 problems.add("$label: unknown cpp key '$it'")
@@ -181,101 +172,13 @@ class StdlibCppBindingsTest {
 
     // ---- helpers ------------------------------------------------------
 
-    private fun manifestFiles(): List<File> {
-        val root = File("kira")
-        assertTrue(root.isDirectory, "stdlib kira/ dir must be at cwd")
-        return root.walkTopDown()
-            .filter { it.isFile && it.name.endsWith(".bind.yaml") }
-            .sortedBy { it.path }
-            .toList()
-    }
+    private fun magicCallableNames(): Set<String> = StdlibManifests.magicCallableNames()
 
-    private fun parseManifest(file: File): Map<String, Any?> {
-        val loaded = Yaml().load<Any>(file.readText()) ?: return emptyMap()
-        assertTrue(loaded is Map<*, *>, "${file.name} must be a mapping at top level")
-        return (loaded as Map<*, *>).entries.associate { (k, v) -> k.toString() to v }
-    }
+    private fun manifestFiles(): List<File> = StdlibManifests.manifestFiles()
 
-    private fun manifestEntries(): Map<String, Any?> {
-        val out = linkedMapOf<String, Any?>()
-        manifestFiles().forEach { file ->
-            parseManifest(file).forEach { (key, value) ->
-                assertTrue(key !in out, "binding '$key' is declared in two manifests")
-                out[key] = value
-            }
-        }
-        return out
-    }
+    private fun parseManifest(file: File): Map<String, Any?> = StdlibManifests.parseManifest(file)
 
-    private fun cppMapOf(value: Any?): Map<*, *>? {
-        return ((value as? Map<*, *>)?.get("cpp")) as? Map<*, *>
-    }
+    private fun manifestEntries(): Map<String, Any?> = StdlibManifests.manifestEntries()
 
-    /**
-     * `Type.method` for every method of a `@_magic` class -- declared in its
-     * body or taken from a trait it lists as a parent, transitively through
-     * the trait's own parents -- and the bare name of every `@_magic` free
-     * function, across every stdlib module. The print family is not bindable
-     * and is left out.
-     *
-     * A parent that is a class (`Int32: Num`) adds nothing here: the entries
-     * are keyed on the declaring class, and the emitter walks the parent
-     * chain (`Int32.abs` resolves to `Num.abs`).
-     */
-    private fun magicCallableNames(): Set<String> {
-        val traits = linkedMapOf<String, TraitDecl>()
-        val magicClasses = mutableListOf<ClassDecl>()
-        val magicFunctions = mutableListOf<FunctionDecl>()
-        File("kira").walkTopDown()
-            .filter { it.isFile && it.extension == "kira" }
-            .sortedBy { it.path }
-            .forEach { file ->
-                val result = TestCompileSupport.compileFile(file.path, runSemantic = false)
-                val source = result.compilationUnit.getSource(file.canonicalPath)
-                    ?: fail("stdlib source ${file.path} was not registered")
-                source.ast.statements.forEach { stmt ->
-                    val node = if (stmt is Statement) stmt.expr else stmt
-                    if (node is TraitDecl) {
-                        val name = baseNameOf(node.name) ?: return@forEach
-                        assertTrue(name !in traits, "trait '$name' is declared twice in the stdlib")
-                        traits[name] = node
-                    }
-                }
-                val marks = runCatching { source.astIntrinsicMarked }.getOrNull() ?: return@forEach
-                marks.forEach { (node, intrinsics) ->
-                    if (intrinsics.none { it.name == "_magic" }) return@forEach
-                    when (node) {
-                        is ClassDecl -> magicClasses.add(node)
-                        is FunctionDecl -> magicFunctions.add(node)
-                        else -> {}
-                    }
-                }
-            }
-
-        fun traitMethodNames(parent: Type, seen: MutableSet<String>): List<String> {
-            val name = baseNameOf(parent) ?: return emptyList()
-            val trait = traits[name] ?: return emptyList() // a class parent, e.g. Num
-            if (!seen.add(name)) return emptyList()
-            val own = trait.members.mapNotNull { (it.name as? Identifier)?.value }
-            return own + trait.parents.flatMap { traitMethodNames(it, seen) }
-        }
-
-        val out = linkedSetOf<String>()
-        magicClasses.forEach { node ->
-            val className = baseNameOf(node.name) ?: return@forEach
-            val own = node.members.filterIsInstance<FunctionDecl>()
-                .mapNotNull { (it.name as? Identifier)?.value }
-            own.forEach { out.add("$className.$it") }
-            node.parents.flatMap { traitMethodNames(it, mutableSetOf()) }
-                .filterNot { it in own }
-                .forEach { out.add("$className.$it") }
-        }
-        magicFunctions.forEach { node ->
-            val name = (node.name as? Identifier)?.value ?: return@forEach
-            if (name !in printFamily) out.add(name)
-        }
-        return out
-    }
-
-    private fun baseNameOf(type: Type): String? = (type.identifier as? Identifier)?.value
+    private fun cppMapOf(value: Any?): Map<*, *>? = StdlibManifests.targetMapOf(value, "cpp")
 }

@@ -11,7 +11,7 @@ import time
 
 # C++'s abort is SIGABRT on POSIX and 3 on Windows, where intmain's own 3 is no abort.
 def run(name, *args, aborts=False):
-    path = os.path.join(sys.argv[1], "src", "app", name + ".kira.py")
+    path = os.path.join(sys.argv[1], "src", "app", name + "_kira.py")
     began = time.monotonic()
     r = subprocess.run([sys.executable, path] + list(args), capture_output=True, text=True)
     if "linger" in args:
@@ -48,7 +48,7 @@ def sleeping(s):
         raise Stop
 
 
-spec = importlib.util.spec_from_file_location("mainexit_kira", os.path.join(sys.argv[1], "src", "app", "mainexit.kira.py"))
+spec = importlib.util.spec_from_file_location("mainexit_kira", os.path.join(sys.argv[1], "src", "app", "mainexit_kira.py"))
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 slept, real = [], time.sleep

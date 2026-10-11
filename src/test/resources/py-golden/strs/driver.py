@@ -12,7 +12,7 @@ import os
 import runpy
 import sys
 
-path = os.path.join(sys.argv[1], "src", "lang", "strs.kira.py")
+path = os.path.join(sys.argv[1], "src", "lang", "strs_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("strs_kira", path)
 m = importlib.util.module_from_spec(spec)

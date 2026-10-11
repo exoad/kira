@@ -13,7 +13,7 @@ import os
 import struct
 import sys
 
-path = os.path.join(sys.argv[1], "src", "lang", "strings.kira.py")
+path = os.path.join(sys.argv[1], "src", "lang", "strings_kira.py")
 spec = importlib.util.spec_from_file_location("strings_kira", path)
 strings = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(strings)

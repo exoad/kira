@@ -453,6 +453,9 @@ namespace
       t.checkStr(kira::isSome(d) ? textOf(buf, 5) : Str(), "hello", "and its bytes");
       t.checkStr(kira::isSome(d) ? kira::unwrap(d).host : Str(), "127.0.0.1", "and the sender's host");
       t.check(kira::isSome(d) && kira::unwrap(d).port == pa, "and the sender's port");
+      t.check(kira::isSome(d) && kira::unwrap(d) == kira::os::Datagram{5, "127.0.0.1", pa} && kira::unwrap(d) != kira::os::Datagram{},
+              "a Datagram compares field by field, as Kira's == does (D84)");
+      t.check(!ready.empty() && ready[0] == kira::os::Ready{b->handle(), ready[0].events} && kira::os::Ready{} != ready[0], "and a Ready");
       t.check(a->sendTo(bytesOf("x"), "not-a-host", pb) == -1, "sendTo a name is -1: hosts are numeric");
       t.check(kira::os::lastError().find("IPv4") != Str::npos, "and lastError says why");
       t.check(!kira::isSome(b->recvFrom(into)) && kira::os::lastError().empty(),

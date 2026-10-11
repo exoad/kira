@@ -11,7 +11,7 @@ import random
 import runpy
 import sys
 
-path = os.path.join(sys.argv[1], "src", "dbw", "hexpad.kira.py")
+path = os.path.join(sys.argv[1], "src", "dbw", "hexpad_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("hexpad_kira", path)
 m = importlib.util.module_from_spec(spec)

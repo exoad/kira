@@ -81,6 +81,10 @@ class CppBindingTable : CppBindingsPart {
             val yaml = runCatching { Yaml().load<Any>(text) }.getOrNull() as? Map<*, *> ?: return out
             yaml.forEach { (key, value) ->
                 val cpp = (value as? Map<*, *>)?.get("cpp") as? Map<*, *> ?: return@forEach
+                cpp["unsupported"]?.let {
+                    out[key.toString()] = CppBinding("", unsupported = it.toString())
+                    return@forEach
+                }
                 val expr = cpp["expr"]?.toString() ?: return@forEach
                 val includes = (cpp["includes"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
                 out[key.toString()] = CppBinding(expr, includes, cpp["pure"] == true, cpp["constexpr"] == true)

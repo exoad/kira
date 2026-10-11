@@ -1,4 +1,4 @@
-# Magic binding manifest for kira:os (C++ backend; py: args, onSignal and exit).
+# Magic binding manifest for kira:os (C++ backend; py: args, onSignal and exit, the rest unsupported for now).
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips
 # it (the C backend has no sockets). Keys are `Type.method` and the bare
@@ -23,63 +23,63 @@
 # onSignal, env, exit. args (D71) is kira::rt::args in kira/main.hxx, from the
 # argv runMain keeps.
 
-lastError: { cpp: { expr: "kira::os::lastError()", includes: ["kira/os.hxx"] } }
+lastError: { cpp: { expr: "kira::os::lastError()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- UdpSocket -------------------------------------------------------------
-UdpSocket.bind:      { cpp: { expr: "{self}->bind({0}, {1})", includes: ["kira/os.hxx"] } }
-UdpSocket.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] } }
-UdpSocket.sendTo:    { cpp: { expr: "{self}->sendTo({0}, {1}, {2})", includes: ["kira/os.hxx"] } }
-UdpSocket.recvFrom:  { cpp: { expr: "{self}->recvFrom({0})", includes: ["kira/os.hxx"] } }
-UdpSocket.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
-UdpSocket.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+UdpSocket.bind:      { cpp: { expr: "{self}->bind({0}, {1})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+UdpSocket.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+UdpSocket.sendTo:    { cpp: { expr: "{self}->sendTo({0}, {1}, {2})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+UdpSocket.recvFrom:  { cpp: { expr: "{self}->recvFrom({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+UdpSocket.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+UdpSocket.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- TcpListener -----------------------------------------------------------
-TcpListener.listen:    { cpp: { expr: "{self}->listen({0})", includes: ["kira/os.hxx"] } }
-TcpListener.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] } }
-TcpListener.accept:    { cpp: { expr: "{self}->accept()", includes: ["kira/os.hxx"] } }
-TcpListener.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
-TcpListener.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+TcpListener.listen:    { cpp: { expr: "{self}->listen({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpListener.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpListener.accept:    { cpp: { expr: "{self}->accept()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpListener.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpListener.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- TcpStream -------------------------------------------------------------
-TcpStream.connect: { cpp: { expr: "{self}->connect({0}, {1})", includes: ["kira/os.hxx"] } }
-TcpStream.read:    { cpp: { expr: "{self}->read({0})", includes: ["kira/os.hxx"] } }
-TcpStream.write:   { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] } }
-TcpStream.isOpen:  { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] } }
-TcpStream.handle:  { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
-TcpStream.close:   { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+TcpStream.connect: { cpp: { expr: "{self}->connect({0}, {1})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpStream.read:    { cpp: { expr: "{self}->read({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpStream.write:   { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpStream.isOpen:  { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpStream.handle:  { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+TcpStream.close:   { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- Poller ----------------------------------------------------------------
-Poller.add:    { cpp: { expr: "{self}->add({0}, {1})", includes: ["kira/os.hxx"] } }
-Poller.remove: { cpp: { expr: "{self}->remove({0})", includes: ["kira/os.hxx"] } }
-Poller.wait:   { cpp: { expr: "{self}->wait({0})", includes: ["kira/os.hxx"] } }
+Poller.add:    { cpp: { expr: "{self}->add({0}, {1})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Poller.remove: { cpp: { expr: "{self}->remove({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Poller.wait:   { cpp: { expr: "{self}->wait({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- Serial ----------------------------------------------------------------
-Serial.open:   { cpp: { expr: "{self}->open({0}, {1})", includes: ["kira/os.hxx"] } }
-Serial.read:   { cpp: { expr: "{self}->read({0}, {1})", includes: ["kira/os.hxx"] } }
-Serial.write:  { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] } }
-Serial.isOpen: { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] } }
-Serial.handle: { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] } }
-Serial.close:  { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] } }
+Serial.open:   { cpp: { expr: "{self}->open({0}, {1})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Serial.read:   { cpp: { expr: "{self}->read({0}, {1})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Serial.write:  { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Serial.isOpen: { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Serial.handle: { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Serial.close:  { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- files -----------------------------------------------------------------
-readFile:        { cpp: { expr: "kira::os::readFile({0})", includes: ["kira/os.hxx"] } }
-readText:        { cpp: { expr: "kira::os::readText({0})", includes: ["kira/os.hxx"] } }
-writeFileAtomic: { cpp: { expr: "kira::os::writeFileAtomic({0}, {1})", includes: ["kira/os.hxx"] } }
-listDir:         { cpp: { expr: "kira::os::listDir({0})", includes: ["kira/os.hxx"] } }
-exists:          { cpp: { expr: "kira::os::exists({0})", includes: ["kira/os.hxx"] } }
-makeDirs:        { cpp: { expr: "kira::os::makeDirs({0})", includes: ["kira/os.hxx"] } }
-freeBytes:       { cpp: { expr: "kira::os::freeBytes({0})", includes: ["kira/os.hxx"] } }
+readFile:        { cpp: { expr: "kira::os::readFile({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+readText:        { cpp: { expr: "kira::os::readText({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+writeFileAtomic: { cpp: { expr: "kira::os::writeFileAtomic({0}, {1})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+listDir:         { cpp: { expr: "kira::os::listDir({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+exists:          { cpp: { expr: "kira::os::exists({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+makeDirs:        { cpp: { expr: "kira::os::makeDirs({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+freeBytes:       { cpp: { expr: "kira::os::freeBytes({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- Process ---------------------------------------------------------------
-Process.readStdout:   { cpp: { expr: "{self}->readStdout({0})", includes: ["kira/os.hxx"] } }
-Process.kill:         { cpp: { expr: "{self}->kill()", includes: ["kira/os.hxx"] } }
-Process.wait:         { cpp: { expr: "{self}->wait()", includes: ["kira/os.hxx"] } }
-Process.isRunning:    { cpp: { expr: "{self}->isRunning()", includes: ["kira/os.hxx"] } }
-Process.stdoutHandle: { cpp: { expr: "{self}->stdoutHandle()", includes: ["kira/os.hxx"] } }
-spawnProcess:         { cpp: { expr: "kira::os::spawnProcess({0})", includes: ["kira/os.hxx"] } }
+Process.readStdout:   { cpp: { expr: "{self}->readStdout({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Process.kill:         { cpp: { expr: "{self}->kill()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Process.wait:         { cpp: { expr: "{self}->wait()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Process.isRunning:    { cpp: { expr: "{self}->isRunning()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+Process.stdoutHandle: { cpp: { expr: "{self}->stdoutHandle()", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
+spawnProcess:         { cpp: { expr: "kira::os::spawnProcess({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 
 # --- signals, environment, arguments, exit ---------------------------------
 args:     { cpp: { expr: "kira::rt::args()", includes: ["kira/main.hxx"] }, py: { expr: "list(_k_sys.argv)" } }
 onSignal: { cpp: { expr: "kira::os::onSignal({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_onsignal({0}, {1})" } }
-env:      { cpp: { expr: "kira::os::env({0})", includes: ["kira/os.hxx"] } }
+env:      { cpp: { expr: "kira::os::env({0})", includes: ["kira/os.hxx"] }, py: { unsupported: "kira:os is bound on py for args, onSignal and exit so far" } }
 exit:     { cpp: { expr: "kira::os::exit({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_exit({0})" } }

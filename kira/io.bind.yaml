@@ -1,4 +1,4 @@
-# Magic binding manifest for kira:io (C and C++ backends).
+# Magic binding manifest for kira:io (C, C++ and py backends).
 #
 # print / println / eprint / trace are NOT bindable here: their format string
 # is synthesized from the Kira argument type at each call site, so they stay a
@@ -10,3 +10,5 @@
 # so W1.3's rt.hxx names it kira::assert_(bool, const Str&) (it panics with
 # the message when the condition is false); design section 6 names neither.
 assert: { symbol: kira_assert, cpp: { expr: "kira::assert_({0}, {1})" }, py: { expr: "_k_assert({0}, {1})" } }
+# escapeStdout (D87) asks py to write what stdout cannot encode as escapes; C++ writes UTF-8 bytes, which never fail.
+escapeStdout: { cpp: { expr: "static_cast<void>(0)" }, py: { expr: "_k_escapestdout()" } }

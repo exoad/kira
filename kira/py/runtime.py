@@ -3,6 +3,8 @@
 # uses (and the ones those use), in this file's order, so a generated module imports nothing
 # of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
 # Python 3.10 is the oldest this must run on (the board's).
+# A helper calls a stdlib function through its module when it runs (_k_time.sleep, never a name bound at load),
+# so a test's patch reaches it (D88); only _k_deadline, the waits' clock, is bound at load.
 
 import builtins as _k_builtins
 import collections as _k_collections
@@ -23,29 +25,60 @@ import time as _k_time
 import traceback as _k_traceback
 
 
-# x.kira.py is no name an import statement can give: a used module is loaded by its path, once
-# per process under its real path, so every module that uses it shares its globals.
+# A used module is loaded once per process (D85): under its real path, and under the name an import gives it
+# when its directory is on sys.path or it sits in an imported package, so Kira and Python share one.
 def _k_key(path):
     return _k_os.path.normcase(_k_os.path.realpath(path))
 
 
+def _k_named(real):
+    d, base = _k_os.path.split(real)
+    parts = [base[:-3]] if base.endswith(".py") else []
+    roots = {_k_key(p or ".") for p in _k_sys.path if p.__class__ is str}
+    while parts and parts[-1].isidentifier():
+        if _k_key(d) in roots:
+            return ".".join(parts[::-1])
+        if not _k_os.path.isfile(_k_os.path.join(d, "__init__.py")):
+            return None
+        d, pkg = _k_os.path.split(d)
+        parts.append(pkg)
+    return None
+
+
 def _k_use(here, path):
-    key = _k_key(_k_os.path.join(_k_os.path.dirname(_k_os.path.abspath(here)), path))
+    real = _k_os.path.realpath(_k_os.path.join(_k_os.path.dirname(_k_os.path.abspath(here)), path))
+    key = _k_os.path.normcase(real)
     m = _k_sys.modules.get(key)
-    if m is None:
-        spec = _k_importlib.spec_from_file_location(key, key)
-        m = _k_importlib.module_from_spec(spec)
-        _k_sys.modules[key] = m
-        try:
-            spec.loader.exec_module(m)
-        except _k_builtins.BaseException:
-            del _k_sys.modules[key]
-            raise
+    if m is not None:
+        return m
+    name = _k_named(real)
+    m = _k_sys.modules.get(name) if name is not None else None
+    if m is not None:
+        if _k_key(_k_builtins.getattr(m, "__file__", None) or real + "?") == key:
+            return _k_sys.modules.setdefault(key, m)
+        name = None
+    parent, _, child = (name or "").rpartition(".")
+    if parent and parent not in _k_sys.modules:
+        name, parent = None, ""
+    spec = _k_importlib.spec_from_file_location(name or key, real)
+    m = _k_importlib.module_from_spec(spec)
+    names = [key] if name is None else [key, name]
+    for n in names:
+        _k_sys.modules[n] = m
+    try:
+        spec.loader.exec_module(m)
+    except _k_builtins.BaseException:
+        for n in names:
+            if _k_sys.modules.get(n) is m:
+                del _k_sys.modules[n]
+        raise
+    if parent:
+        _k_builtins.setattr(_k_sys.modules[parent], child, m)
     return m
 
 
-# In a use cycle the module run as __main__ must be found by the one that uses it back, not
-# loaded a second time.
+# Every module registers itself under its real path as it loads (D85): a use of it finds the one Python
+# imported, or the one run as __main__, instead of loading it a second time.
 def _k_self():
     g = _k_self.__globals__
     m = _k_sys.modules.get(g["__name__"])
@@ -88,7 +121,8 @@ def _k_mcopy(m, copy):
     return None if m is None else copy(m)
 
 
-_k_map = _k_builtins.map
+def _k_map(f, xs):
+    return _k_builtins.map(f, xs)
 
 
 def _k_enumof(order, raw):
@@ -106,10 +140,15 @@ def _k_errors():
         m = _k_builtins.type(_k_sys)("kira:errors")
         m.Error = _k_builtins.type("Error", (_k_builtins.Exception,), {"__module__": "kira:errors"})
         m = _k_sys.modules.setdefault("kira:errors", m)
-    return m.Error
+    return m
 
 
-_k_Error = _k_errors()
+_k_Error = _k_errors().Error
+
+
+# Why the last stdlib call that can fail did (Json.error's text, ...): per thread, and one for every generated
+# module, as C++ keeps one per thread for the process.
+_k_reasons = _k_errors().__dict__.setdefault("reasons", _k_threading.local())
 
 
 def _k_throw(message):
@@ -236,6 +275,21 @@ def _k_f2i(v, bits, signed):
     if v >= float(hi):
         return hi
     return int(v)
+
+
+# Num.toInt32 and toInt64 are `as`: a Float64 saturates, an integer wraps. A Float64 is a float here, every
+# integer type an int.
+def _k_numi32(v):
+    return _k_f2i(v, 32, True) if v.__class__ is float else _k_as_i32(v)
+
+
+def _k_numi64(v):
+    return _k_f2i(v, 64, True) if v.__class__ is float else _k_as_i64(v)
+
+
+# Num.hashCode is kira::hashCode: an integer's value in an Int64, a Float64's bits.
+def _k_numhash(v):
+    return _k_struct.unpack("<q", _k_struct.pack("<d", v))[0] if v.__class__ is float else _k_as_i64(v)
 
 
 # kira:math min and max: the first argument unless the second is strictly less or greater,
@@ -781,16 +835,13 @@ def _k_jsound(v, ints):
     return not level
 
 
-_k_jstate = _k_threading.local()
-
-
 _k_jdecoder = _k_json.JSONDecoder()
 
 
 # Json.parse (D66): json.loads when nothing is 513 deep nor an integer outside Int64, else the text
 # read again to fail where and as kira::json's scanner does.
 def _k_jparse(text):
-    _k_jstate.error = ""
+    _k_reasons.json = ""
     try:
         v = _k_jdecoder.decode(text)
     except (ValueError, _k_builtins.RecursionError):
@@ -853,7 +904,7 @@ def _k_jstrict(text):
     except _k_json.JSONDecodeError as e:
         at = _k_jdeep(text, e.pos)
         if at < 0:
-            _k_jstate.error = str(e)
+            _k_reasons.json = str(e)
             return None
     except _k_JRange:
         big = _k_jbig(text)
@@ -864,12 +915,12 @@ def _k_jstrict(text):
         at = _k_jdeep(text, len(text))
         if at < 0:
             raise
-    _k_jstate.error = str(_k_json.JSONDecodeError(why, text, at))
+    _k_reasons.json = str(_k_json.JSONDecodeError(why, text, at))
     return None
 
 
 def _k_jerror():
-    return _k_builtins.getattr(_k_jstate, "error", "")
+    return _k_builtins.getattr(_k_reasons, "json", "")
 
 
 # Under main a throw ends the program with runMain's 70 and its traceback (D73), a panic aborts (D81)
@@ -895,6 +946,54 @@ def _k_onsignal(sig, flag):
     except (ValueError, _k_builtins.OSError):
         return False
     return True
+
+
+# kira:os's structs (D84): each the class of its Kira name, the fields in declaration order, built with every value
+# and copied and compared as a user struct is.
+class _k_Datagram:
+    __slots__ = ("size", "host", "port")
+
+    def __init__(self, size, host, port):
+        self.size = size
+        self.host = host
+        self.port = port
+
+    def _k_clone(self):
+        return _k_Datagram(self.size, self.host, self.port)
+
+    def _k_set(self, o):
+        self.size = o.size
+        self.host = o.host
+        self.port = o.port
+
+    def __eq__(self, o):
+        return self.size == o.size and self.host == o.host and self.port == o.port
+
+
+class _k_Ready:
+    __slots__ = ("handle", "events")
+
+    def __init__(self, handle, events):
+        self.handle = handle
+        self.events = events
+
+    def _k_clone(self):
+        return _k_Ready(self.handle, self.events)
+
+    def _k_set(self, o):
+        self.handle = o.handle
+        self.events = o.events
+
+    def __eq__(self, o):
+        return self.handle == o.handle and self.events == o.events
+
+
+# kira:io escapeStdout (D87): from then on a character stdout's encoding lacks is written as a \u escape, not a
+# stop; only a program that asks gets it, so text it pipes to another is never changed unasked.
+def _k_escapestdout():
+    reconfigure = _k_builtins.getattr(_k_sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(errors="backslashreplace")
 
 
 # kira:time sleepMs (D72): at least ms milliseconds, a day at a time, which no platform's sleep
@@ -1111,6 +1210,12 @@ def _k_callback(f, args, owner, thrown=70):
         _k_end(None, True)
 
 
+# A Kira Fx a runtime class calls on a thread Python owns (E6, D76): no Kira try is under it, so a throw
+# ends the process with 70, a panic aborts and an exit ends it, wherever the class would have caught them.
+def _k_kirafx(f, *args):
+    return _k_callback(f, args, None)
+
+
 # Ends the process at once, as C++'s exit (fflush, then _Exit) and abort do; a None code aborts, which
 # is status 3 on Windows, where os.abort could raise Windows Error Reporting's dialog.
 def _k_end(code, shown):
@@ -1191,15 +1296,19 @@ class _k_Thread:
             self.t.join(0.05 if me is _k_threading.main_thread() else None)
 
 
+# The clock a wait's limit is measured on, bound at load (D88): a test that freezes time.monotonic stops no wait.
+_k_deadline = _k_time.monotonic
+
+
 # A wait as kira::sync's: negative without limit, zero one check, else up to ms. The main thread waits
 # in slices, between which Python runs an onSignal handler (D78) that another thread's signal left it.
 def _k_waitfor(cv, pred, ms):
     if ms == 0:
         return pred()
-    end = None if ms < 0 else _k_time.monotonic() + ms / 1000
+    end = None if ms < 0 else _k_deadline() + ms / 1000
     step = 0.05 if _k_threading.current_thread() is _k_threading.main_thread() else 3600.0
     while not pred():
-        left = step if end is None else end - _k_time.monotonic()
+        left = step if end is None else end - _k_deadline()
         if left <= 0:
             return pred()
         cv.wait(min(left, step))

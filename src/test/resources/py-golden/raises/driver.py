@@ -6,7 +6,7 @@ import os
 import runpy
 import sys
 
-path = os.path.join(sys.argv[1], "src", "app", "raises.kira.py")
+path = os.path.join(sys.argv[1], "src", "app", "raises_kira.py")
 m = runpy.run_path(path, run_name="__main__")
 Error = sys.modules["kira:errors"].Error
 

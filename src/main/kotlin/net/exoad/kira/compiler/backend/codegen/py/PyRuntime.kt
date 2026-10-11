@@ -13,8 +13,9 @@ import java.nio.file.Path
  * left-to-right evaluation is Kira's (D33). A `_k_` name in it is a helper of the runtime.
  * [place] and [statement] may name them in any order: the emitter uses them only where the
  * receiver is a variable or field and no argument writes, [statement] only as a whole statement.
+ * [unsupported] is a decision instead (`py: { unsupported: "<why>" }`, D83): a call is refused, naming why.
  */
-data class PyBinding(val expr: String, val place: String? = null, val statement: String? = null) {
+data class PyBinding(val expr: String, val place: String? = null, val statement: String? = null, val unsupported: String? = null) {
     /** The placeholders in the order the expression names them. */
     val placeholders: List<String> get() = PLACEHOLDER.findAll(expr).map { it.groupValues[1] }.toList()
 
@@ -74,6 +75,10 @@ class PyBindingTable {
             val yaml = runCatching { Yaml().load<Any>(text) }.getOrNull() as? Map<*, *> ?: return out
             yaml.forEach { (key, value) ->
                 val py = (value as? Map<*, *>)?.get("py") as? Map<*, *> ?: return@forEach
+                py["unsupported"]?.let {
+                    out[key.toString()] = PyBinding("", unsupported = it.toString())
+                    return@forEach
+                }
                 val expr = py["expr"]?.toString() ?: return@forEach
                 out[key.toString()] = PyBinding(expr, py["place"]?.toString(), py["statement"]?.toString())
             }

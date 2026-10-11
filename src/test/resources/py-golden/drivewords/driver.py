@@ -17,7 +17,7 @@ import runpy
 import sys
 import threading
 
-path = os.path.join(sys.argv[1], "src", "dash", "drivewords.kira.py")
+path = os.path.join(sys.argv[1], "src", "dash", "drivewords_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("drivewords_kira", path)
 m = importlib.util.module_from_spec(spec)

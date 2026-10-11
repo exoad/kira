@@ -1,0 +1,7 @@
+module "pkg:a"
+
+use "pkg:b"
+
+pub fx twice: () Int32 {
+    return tick() + tick()
+}

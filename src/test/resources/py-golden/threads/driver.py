@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-path = os.path.join(sys.argv[1], "src", "app", "threads.kira.py")
+path = os.path.join(sys.argv[1], "src", "app", "threads_kira.py")
 
 
 def run(*args):

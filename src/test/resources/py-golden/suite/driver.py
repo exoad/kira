@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-path = os.path.join(sys.argv[1], "src", "app", "suite.kira.py")
+path = os.path.join(sys.argv[1], "src", "app", "suite_kira.py")
 for args in ([], ["fail"]):
     r = subprocess.run([sys.executable, path] + args, capture_output=True, text=True)
     sys.stdout.write(r.stdout)

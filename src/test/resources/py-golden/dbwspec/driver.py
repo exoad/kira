@@ -9,7 +9,7 @@ import runpy
 import struct
 import sys
 
-path = os.path.join(sys.argv[1], "src", "dbw", "dbwspec.kira.py")
+path = os.path.join(sys.argv[1], "src", "dbw", "dbwspec_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec_ = importlib.util.spec_from_file_location("dbwspec_kira", path)
 m = importlib.util.module_from_spec(spec_)

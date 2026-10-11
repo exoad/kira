@@ -18,7 +18,7 @@ import sys
 import zlib
 from collections import namedtuple
 
-path = os.path.join(sys.argv[1], "src", "dbw", "lebytes.kira.py")
+path = os.path.join(sys.argv[1], "src", "dbw", "lebytes_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("lebytes_kira", path)
 m = importlib.util.module_from_spec(spec)

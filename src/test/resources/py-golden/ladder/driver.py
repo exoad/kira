@@ -274,7 +274,7 @@ def edges():
 
 def main():
     out_dir = sys.argv[1]
-    path = os.path.join(out_dir, "src", "firmware", "pilot", "tools", "dash", "ladder.kira.py")
+    path = os.path.join(out_dir, "src", "firmware", "pilot", "tools", "dash", "ladder_kira.py")
     spec = importlib.util.spec_from_file_location("ladder_kira", path)
     gen = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gen)

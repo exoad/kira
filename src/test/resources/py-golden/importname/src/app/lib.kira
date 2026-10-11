@@ -1,0 +1,10 @@
+module "app:lib"
+
+// One module, whichever side loads it first: its count is the one state every importer sees.
+
+pub mut count: Int32 = 0
+
+pub fx bump: () Int32 {
+    count += 1
+    return count
+}

@@ -17,7 +17,7 @@ object GeneratedProvider {
         /** C++20: one header (and at most one source) per module, see [net.exoad.kira.compiler.backend.codegen.cpp]. */
         CPP,
 
-        /** Python 3.10+: one `x.kira.py` per module, see [net.exoad.kira.compiler.backend.codegen.py]. */
+        /** Python 3.10+: one `x_kira.py` per module, see [net.exoad.kira.compiler.backend.codegen.py]. */
         PY,
         NONE
     }

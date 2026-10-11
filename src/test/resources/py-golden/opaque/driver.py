@@ -6,8 +6,8 @@ import os
 import runpy
 import sys
 
-runpy.run_path(os.path.join(sys.argv[1], "src", "app", "user.kira.py"), run_name="__main__")
-m = runpy.run_path(os.path.join(sys.argv[1], "src", "app", "opaque.kira.py"))
+runpy.run_path(os.path.join(sys.argv[1], "src", "app", "user_kira.py"), run_name="__main__")
+m = runpy.run_path(os.path.join(sys.argv[1], "src", "app", "opaque_kira.py"))
 
 
 def attempt(label, f, *args):

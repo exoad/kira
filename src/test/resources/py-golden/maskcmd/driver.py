@@ -16,7 +16,7 @@ import runpy
 import sys
 import threading
 
-path = os.path.join(sys.argv[1], "src", "dash", "maskcmd.kira.py")
+path = os.path.join(sys.argv[1], "src", "dash", "maskcmd_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("maskcmd_kira", path)
 m = importlib.util.module_from_spec(spec)
@@ -63,7 +63,7 @@ class Mask:
             try:
                 self.start_capture()
             except ImportError:
-                # No maskcapture.kira.py (tools/kira_gen.py was not run): no capture starts,
+                # No maskcapture_kira.py (tools/kira_gen.py was not run): no capture starts,
                 # and the control link that asked goes on reading.
                 return False
         elif words == ["clear"]:

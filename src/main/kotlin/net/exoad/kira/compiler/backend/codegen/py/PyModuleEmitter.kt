@@ -37,7 +37,6 @@ import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.rules.CallReach
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBindingTable
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
-import net.exoad.kira.compiler.backend.codegen.cpp.CppTypeSpeller
 import net.exoad.kira.compiler.backend.codegen.cpp.CppUsage
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
@@ -190,10 +189,8 @@ class PyModuleEmitter(
         }
         val sidecar = if (sidecarNames.isNotEmpty() || raised.isNotEmpty()) sidecarPath() else null
         // The constants come before the loads: in a use cycle the other module reads them while this one is half loaded.
-        val loads = mutableListOf<String>()
-        if (imports != null && imports.cycle.isNotEmpty()) {
-            loads += call("_k_self").text
-        }
+        // A module registers itself under its real path first (D85), so a use of it from anywhere finds this one.
+        val loads = mutableListOf(call("_k_self").text)
         if (sidecar != null) {
             loads += "_k_x = ${call("_k_extern", "__file__", pyString(sidecar), pyTuple(sidecarNames.map { (n, k) -> pyTuple(listOf(pyString(n), "$k")) })).text}"
         }
@@ -458,19 +455,18 @@ class PyModuleEmitter(
 
     private fun isEnum(t: KType?): Boolean = (t as? KType.Nominal)?.sym is EnumSymbol
 
-    /** `main: (args: List<Str>) Int32` is handed the program's arguments, as C++'s runMain hands it argv. */
+    /**
+     * `main: (args: List<Str>) Int32` is handed the program's arguments, as C++'s runMain hands it argv. `_k_run()` returns
+     * main's code (D85), so a console script or a Python caller runs the program as the guard does.
+     */
     private fun mainCall(fn: FnSymbol): String? {
         val withArgs = fn.params.size == 1 && fn.ret == KType.INT32 && magicName(fn.params[0].type) == "List" && elementOf(fn.params[0].type) == KType.Str
-        if (fn.params.isNotEmpty() && !withArgs) {
+        if (fn.params.isNotEmpty() && !withArgs || fn.ret != KType.Void && fn.ret != KType.INT32) {
             return null
         }
         val run = if (withArgs) call("_k_main", pyName(fn), "list(${helper("_k_sys")}.argv)").text else call("_k_main", pyName(fn)).text
-        val call = when (fn.ret) {
-            KType.Void -> run
-            KType.INT32 -> call("_k_exit", run).text
-            else -> return null
-        }
-        return "if __name__ == \"__main__\":\n    $call"
+        val guard = if (fn.ret == KType.INT32) call("_k_exit", "_k_run()").text else "_k_run()"
+        return "def _k_run():\n    return $run\n\n\nif __name__ == \"__main__\":\n    $guard"
     }
 
     /** The Python names of the module's globals [statements] assign: `global` for each. */
@@ -934,7 +930,7 @@ class PyModuleEmitter(
                     return if (mm.symbol is GlobalSymbol) ref(mm.symbol, target) else refuseText(target, "an assignment to this member")
                 }
                 val m = model.member(target) as? MemberRef.Field ?: return refuseText(target, "an assignment to this member")
-                if (!isUserClass(m.field.owner) && !isRefCell(m.field.owner)) {
+                if (!hasFields(m.field.owner) && !isRefCell(m.field.owner)) {
                     return refuseText(target, "an assignment to a field of ${m.field.owner.name}")
                 }
                 "${objectPlace(target.origin, f, spill, pre)}.${if (isRefCell(m.field.owner)) "value" else pyName(m.field)}"
@@ -975,7 +971,7 @@ class PyModuleEmitter(
         val field = (e as? MemberAccessExpr)?.let { model.member(it) as? MemberRef.Field }?.field
         return when {
             e is MemberAccessExpr && field != null -> when {
-                isUserClass(field.owner) -> "${objectPlace(e.origin, f, spill, pre)}.${pyName(field)}"
+                hasFields(field.owner) -> "${objectPlace(e.origin, f, spill, pre)}.${pyName(field)}"
                 isRefCell(field.owner) -> "${objectPlace(e.origin, f, spill, pre)}.value"
                 else -> refuseText(e, "this List")
             }
@@ -1179,7 +1175,7 @@ class PyModuleEmitter(
     /** `_k_map(Pt._k_clone, xs)`: a comprehension is a frame of its own before 3.12, which halved how deep a tree of structs could be copied. */
     private fun clones(v: Py, element: KType): String {
         val s = (element as KType.Nominal).sym as ClassSymbol
-        return "${helper("_k_map")}(${ref(s, s.decl ?: module.source.ast) ?: "None"}._k_clone, ${v.text})"
+        return "${helper("_k_map")}(${structClass(s, s.decl ?: module.source.ast) ?: "None"}._k_clone, ${v.text})"
     }
 
     private fun raw(e: Expr, f: Frame): Py {
@@ -1366,7 +1362,7 @@ class PyModuleEmitter(
                         val b = bindings.lookup(key) ?: return refusePy(e, "Result.${m.field.name} (no py binding)")
                         bound(b, { prec -> wrap(expr(e.origin, f), prec) }, emptyList(), f)
                     }
-                    isUserClass(m.field.owner) -> Py("${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}", PyPrec.POSTFIX)
+                    hasFields(m.field.owner) -> Py("${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}", PyPrec.POSTFIX)
                     isRefCell(m.field.owner) -> Py("${wrap(expr(e.origin, f), PyPrec.POSTFIX)}.value", PyPrec.POSTFIX)
                     isTuple(ot) -> Py("${wrap(expr(e.origin, f), PyPrec.POSTFIX)}[${m.field.index}]", PyPrec.POSTFIX)
                     else -> refusePy(e, "the field ${m.field.owner.name}.${m.field.name}")
@@ -1394,7 +1390,7 @@ class PyModuleEmitter(
         is MemberAccessExpr -> when (val m = model.member(e)) {
             is MemberRef.ModuleMember -> (m.symbol as? GlobalSymbol)?.let { ref(it, e) } ?: refuseText(e, "this List")
             is MemberRef.Field -> when {
-                isUserClass(m.field.owner) -> "${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}"
+                hasFields(m.field.owner) -> "${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}"
                 isRefCell(m.field.owner) -> "${wrap(expr(e.origin, f), PyPrec.POSTFIX)}.value"
                 else -> refuseText(e, "this List")
             }
@@ -1519,6 +1515,7 @@ class PyModuleEmitter(
         val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
         val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
             ?: return refusePy(c, "'${keys.firstOrNull() ?: fn.name}' (it has no py binding)")
+        binding.unsupported?.let { return refusedFor(c, "'${keys.first()}'", it) }
         // Python evaluates a binding's arguments in parameter order: named ones are taken only
         // where that is the order they were written in (D33).
         if (rc.args.any { it !is ArgBinding.Given } || rc.sourceOrder != rc.args.indices.toList()) {
@@ -1554,7 +1551,7 @@ class PyModuleEmitter(
     private fun isPlace(e: Expr): Boolean = when (e) {
         is ThisExpr -> true
         is Identifier -> model.symbolOf(e).let { it is LocalSymbol || it is ParamSymbol || it is FieldSymbol || (it is GlobalSymbol && it.module === module) }
-        is MemberAccessExpr -> (model.member(e) as? MemberRef.Field)?.field?.owner.let { isUserClass(it) || isRefCell(it) } && isPlace(e.origin)
+        is MemberAccessExpr -> (model.member(e) as? MemberRef.Field)?.field?.owner.let { hasFields(it) || isRefCell(it) } && isPlace(e.origin)
         else -> false
     }
 
@@ -1620,17 +1617,17 @@ class PyModuleEmitter(
         if (cls.kind == ClassKind.MAGIC) {
             // kira:sync keeps its own construction: its refusals and an Atomic's integer width (D77).
             syncClass(typeOf(o))?.let { return syncConstruction(o, init, it, typeOf(o) as KType.Nominal, f) }
+            val t = typeOf(o) ?: return Py("None", PyPrec.ATOM)
+            if (isRef(t)) {
+                val v = init.fields.filterIsInstance<FieldInit.Given>().singleOrNull()?.expr
+                return call("_k_Ref", v?.let { asValue(it, f, Use.STORE).text } ?: zeroValue((t as KType.Nominal).typeArgs()[0], o))
+            }
             // Built as C++'s make_shared builds it, from every field in declaration order (D80).
             runtimeClass(cls)?.let { name ->
                 return inFieldOrder(o, init, f, article(cls.name))?.let { call(name, *it.toTypedArray()) } ?: Py("None", PyPrec.ATOM)
             }
-            val t = typeOf(o) ?: return Py("None", PyPrec.ATOM)
             if (isTuple(t)) {
                 return tuple(o, init, f)
-            }
-            if (isRef(t)) {
-                val v = init.fields.filterIsInstance<FieldInit.Given>().singleOrNull()?.expr
-                return call("_k_Ref", v?.let { asValue(it, f, Use.STORE).text } ?: zeroValue((t as KType.Nominal).typeArgs()[0], o))
             }
             if (!isValue(t)) {
                 return refusePy(o, "a construction of ${t.display()}")
@@ -1643,6 +1640,9 @@ class PyModuleEmitter(
                 given.size == 1 && cls.name == "Set" -> Py("dict.fromkeys(${expr(given[0].expr, f).text})", PyPrec.POSTFIX)
                 else -> refusePy(o, "${article(cls.name)} construction with these values")
             }
+        }
+        if (isRuntimeStruct(cls)) {
+            return runtimeStruct(o, init, cls, f)
         }
         if (!isUserClass(cls)) {
             return refusePy(o, "a construction of ${cls.name}")
@@ -1674,6 +1674,25 @@ class PyModuleEmitter(
         }
         return Py("$clsName(${parts.joinToString(", ")})", PyPrec.POSTFIX)
     }
+
+    /** A stdlib struct (D84): the runtime's class given every field in declaration order, a left-out one its declared default. */
+    private fun runtimeStruct(o: ObjectInitExpr, init: ResolvedInit, cls: ClassSymbol, f: Frame): Py {
+        if (init.sourceOrder != init.sourceOrder.sorted() && init.fields.any { it is FieldInit.Given && model.effect(it.expr) != Effect.PURE }) {
+            return refusePy(o, "${article(cls.name)} whose values, written out of their order, have effects")
+        }
+        val values = init.fields.map { fi ->
+            when (fi) {
+                is FieldInit.Given -> wrap(asValue(fi.expr, f, Use.STORE), PyPrec.TERNARY)
+                is FieldInit.Default -> declaredDefault(fi.field, o)
+            }
+        }
+        return call("_k_${cls.name}", *values.toTypedArray())
+    }
+
+    /** A stdlib struct field's declared default, a new value at each construction, else its zero value (D38). */
+    private fun declaredDefault(field: FieldSymbol, at: ASTNode): String = field.default?.let { d ->
+        model.const(d)?.let { constText(it) } ?: wrap(asValue(d, Frame(null, null), Use.STORE), PyPrec.TERNARY)
+    } ?: zeroValue(field.type, at)
 
     /** The runtime's class of the Kira name (D77): `Thread { name, body }` starts it, an Atomic's integer add wraps as C++'s does. */
     private fun syncConstruction(o: ObjectInitExpr, init: ResolvedInit, name: String, t: KType.Nominal, f: Frame): Py {
@@ -1955,11 +1974,21 @@ class PyModuleEmitter(
     private fun isUserClass(owner: Any?): Boolean =
         owner is ClassSymbol && (owner.kind == ClassKind.CLASS || owner.kind == ClassKind.STRUCT) && !owner.module.isStdlib && owner.typeParams.isEmpty()
 
-    private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && isUserClass(it) } == true
+    private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && hasFields(it) } == true
 
-    /** A hosted system module's magic class as the runtime's `_k_<Name>` (D80), as C++ has kira::<m>::<Name>; null where the runtime has none. */
+    /** A stdlib magic class as the runtime's `_k_<Name>` (D80), whether or not C++ has a header for it (E1); null where the runtime has none. */
     private fun runtimeClass(s: ClassSymbol): String? =
-        "_k_${s.name}".takeIf { s.kind == ClassKind.MAGIC && CppTypeSpeller.systemHeaderFor(s.module.uri) != null && it in runtime.names }
+        "_k_${s.name}".takeIf { s.kind == ClassKind.MAGIC && s.module.isStdlib && it in runtime.names }
+
+    /** A stdlib struct the runtime defines as `_k_<Name>` (D84): built with every field, copied and compared as a user struct, never crossing to a sidecar. */
+    private fun isRuntimeStruct(owner: Any?): Boolean =
+        owner is ClassSymbol && owner.kind == ClassKind.STRUCT && owner.module.isStdlib && owner.typeParams.isEmpty() && "_k_${owner.name}" in runtime.names
+
+    /** A class whose fields are its Python object's attributes. */
+    private fun hasFields(owner: Any?): Boolean = isUserClass(owner) || isRuntimeStruct(owner)
+
+    /** The Python class of a struct: the runtime's for a stdlib one, else the module's own or another's. */
+    private fun structClass(s: ClassSymbol, at: ASTNode): String? = if (isRuntimeStruct(s)) helper("_k_${s.name}") else ref(s, at)
 
     /** Whether a value of [t] holds an opaque handle, whose == is the sidecar's own on py and the pointer's on C++ (D70). */
     private fun holdsHandle(t: KType, seen: MutableSet<ClassSymbol> = HashSet()): Boolean {
@@ -2023,6 +2052,7 @@ class PyModuleEmitter(
                 }
                 runtimeClass(s) != null -> t.typeArgs().firstNotNullOfOrNull { unsupportedType(it) }
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
+                isRuntimeStruct(s) -> s.fields.firstNotNullOfOrNull { unsupportedType(it.type) }
                 isUserClass(s) || isOpaque(t) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"
             }
@@ -2160,7 +2190,11 @@ class PyModuleEmitter(
             isStack(t) -> "[]"
             isQueue(t) -> "${helper("_k_collections")}.deque()"
             isStruct(t) -> ((t as KType.Nominal).sym as ClassSymbol).let { s ->
-                "${ref(s, at) ?: "None"}(${s.fields.filter { isPositional(it) }.joinToString(", ") { zeroValue(it.type, at) }})"
+                if (isRuntimeStruct(s)) {
+                    "${helper("_k_${s.name}")}(${s.fields.joinToString(", ") { declaredDefault(it, at) }})"
+                } else {
+                    "${ref(s, at) ?: "None"}(${s.fields.filter { isPositional(it) }.joinToString(", ") { zeroValue(it.type, at) }})"
+                }
             }
             else -> refuseText(at, "${article(t.display())} without a value") ?: "None"
         }
@@ -2181,16 +2215,21 @@ class PyModuleEmitter(
     // ---- diagnostics -------------------------------------------------------------------------
 
     private fun refuse(at: ASTNode, construct: String) {
+        report(at, "$construct is not supported on the py target yet")
+    }
+
+    /** A manifest's `py: { unsupported }` (D83): a decision, refused with its reason. */
+    private fun refusedFor(at: ASTNode, construct: String, why: String): Py {
+        report(at, "$construct is not supported on the py target: $why")
+        return Py("None", PyPrec.ATOM)
+    }
+
+    private fun report(at: ASTNode, message: String) {
         if (!reported.add(at)) {
             return
         }
         val where = program.locate(at)
-        diagnostics += CppDiagnostic(
-            UNSUPPORTED_CODE,
-            "$construct is not supported on the py target yet",
-            file = where?.first?.file ?: module.source.file,
-            position = where?.second,
-        )
+        diagnostics += CppDiagnostic(UNSUPPORTED_CODE, message, file = where?.first?.file ?: module.source.file, position = where?.second)
     }
 
     private fun refusePy(at: ASTNode, construct: String): Py {

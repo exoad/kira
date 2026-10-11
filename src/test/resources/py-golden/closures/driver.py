@@ -7,7 +7,7 @@ import os
 import runpy
 import sys
 
-path = os.path.join(sys.argv[1], "src", "lang", "closures.kira.py")
+path = os.path.join(sys.argv[1], "src", "lang", "closures_kira.py")
 spec = importlib.util.spec_from_file_location("closures_kira", path)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
@@ -52,5 +52,5 @@ check(copy() == 3 and t() == 4, "and a copy of the closure shares it")
 check(m.tally()() == 1, "while a new tally starts its own")
 print("\n%d checks, %d failed" % (checks, failures))
 sys.stdout.flush()
-runpy.run_path(os.path.join(sys.argv[1], "src", "lang", "fxvalues.kira.py"), run_name="__main__")
+runpy.run_path(os.path.join(sys.argv[1], "src", "lang", "fxvalues_kira.py"), run_name="__main__")
 sys.exit(0 if failures == 0 else 1)

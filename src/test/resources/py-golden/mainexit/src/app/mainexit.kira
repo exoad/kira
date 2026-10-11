@@ -13,7 +13,7 @@ use "kira:time"
 fx main: () Void {
     a: List<Str> = args()
     trace(a.size())
-    trace(a[0].endsWith("mainexit.kira.py"))
+    trace(a[0].endsWith("mainexit_kira.py"))
     mut i: Size = 1
     while i < a.size() {
         trace(a[i])

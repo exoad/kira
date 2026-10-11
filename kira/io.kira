@@ -9,3 +9,7 @@ pub @_magic fx println: (value: Any) Void;
 pub @_magic fx eprint: (value: Any) Void;
 
 pub @_magic fx assert: (condition: Bool, message: Str) Void;
+
+// From here on, a character stdout's encoding lacks is written as a backslash escape instead of
+// stopping the program: for text a person reads. Only py can fail there; C++ writes the UTF-8 as it is.
+pub @_magic fx escapeStdout: () Void;

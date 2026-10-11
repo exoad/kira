@@ -1,0 +1,34 @@
+module "app:numcalls"
+
+// Num's own methods on py (D83): equals is ==, hashCode is kira::hashCode, toInt32 and toInt64 are `as`, and
+// toFloat64 widens. The expected output is the C++ backend's run of this module.
+
+pub fx main: () Void {
+    a: Int32 = -7
+    b: Int64 = 9000000000
+    u: UInt64 = (0 - 1) as UInt64
+    s: UInt8 = 200
+    f: Float64 = 25000000000.5
+    n: Float64 = 0.0 / 0.0
+    z: Float64 = -0.0
+    trace(a.equals(-7))
+    trace(a.equals(7))
+    trace(f.equals(f))
+    trace(n.equals(n))
+    trace(z.equals(0.0))
+    trace(a.hashCode())
+    trace(u.hashCode())
+    trace(s.hashCode())
+    trace(f.hashCode())
+    trace(z.hashCode())
+    trace(b.toInt32())
+    trace(u.toInt32())
+    trace(f.toInt32())
+    trace((0.0 - f).toInt64())
+    trace(n.toInt64())
+    trace(u.toInt64())
+    trace(s.toInt64())
+    trace(a.toFloat64())
+    trace(b.toFloat64())
+    trace(u.toFloat64())
+}

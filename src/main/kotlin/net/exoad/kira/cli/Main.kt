@@ -88,7 +88,7 @@ fun main(args: Array<String>) {
             "--help", "-h" -> {
                 println("Usage: kira [--target c|cpp|js|py|neko|none] [--out <dir>] [--check] [--readable]")
                 println("  --out <dir>  where generated files go (cpp: everything under <dir> in the tree layout, runtime and")
-                println("               kira.gen.manifest included; py: each x.kira.py at its path under <dir>; c/js: the")
+                println("               kira.gen.manifest included; py: each x_kira.py at its path under <dir>; c/js: the")
                 println("               directory of out.kira.*)")
                 println("  --check      cpp and py: regenerate in memory, name each file on disk that differs, is missing or")
                 println("               (cpp) is stale, exit 1 on drift")

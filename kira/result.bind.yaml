@@ -26,4 +26,4 @@ Result.isErr:     { cpp: { expr: "{self}.isErr()", pure: true }, py: { expr: "(n
 Result.unwrap:    { cpp: { expr: "{self}.unwrap()", pure: true }, py: { expr: "_k_unwrap({self})" } }
 Result.unwrapErr: { cpp: { expr: "{self}.unwrapErr()", pure: true }, py: { expr: "_k_unwrap_err({self})" } }
 
-Weak.upgrade:     { cpp: { expr: "{self}.lock()", pure: true } }
+Weak.upgrade:     { cpp: { expr: "{self}.lock()", pure: true }, py: { unsupported: "a Weak (the py target has no weak reference)" } }

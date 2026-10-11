@@ -1,0 +1,7 @@
+module "app:parser"
+
+use "kira:json"
+
+pub fx parsed: (text: Str) Bool {
+    return !Json.parse(text).isNull()
+}

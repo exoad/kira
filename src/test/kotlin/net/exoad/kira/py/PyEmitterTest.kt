@@ -31,6 +31,13 @@ class PyEmitterTest {
         assertTrue(errors.any { it.contains(construct) && it.contains("is not supported on the py target yet") }, "no refusal names '$construct':\n${errors.joinToString("\n")}")
     }
 
+    /** The refusal a manifest's `py: { unsupported }` decision gives [body] (D83): [construct] and its reason. */
+    private fun decided(body: String, construct: String, why: String) {
+        val e = PyTestSupport.emit(body)
+        assertNull(e.text, "the module was emitted:\n${e.text}")
+        assertEquals(listOf("$construct is not supported on the py target: $why"), e.errors.map { it.substringAfter("py.unsupported: ") }, e.errors.joinToString("\n"))
+    }
+
     // ---- lowering ------------------------------------------------------------------------------
 
     @Test
@@ -398,7 +405,8 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("return _k_math.fabs(a)"), py)
         assertTrue(py.contains("import math as _k_math"), py)
-        assertFalse(py.contains("def _k_"), "fabs needs no helper:\n$py")
+        // A module's own registration (D85) is the only helper it carries.
+        assertEquals(listOf("_k_key", "_k_self"), Regex("def (_k_\\w+)").findAll(py).map { it.groupValues[1] }.toList(), "fabs needs no helper:\n$py")
     }
 
     @Test
@@ -1416,7 +1424,7 @@ class PyEmitterTest {
         assertTrue(main.contains("        c = object.__new__(self.__class__)"), main)
         assertTrue(main.contains("_k_self()\n_k_m_app_other = _k_use("), main)
         assertTrue(main.contains("    g = _k_self.__globals__"), main)
-        assertTrue(main.contains("if __name__ == \"__main__\":\n    _k_exit(_k_main(main))"), main)
+        assertTrue(main.contains("def _k_run():\n    return _k_main(main)\n\n\nif __name__ == \"__main__\":\n    _k_exit(_k_run())"), main)
     }
 
     @Test
@@ -1743,7 +1751,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("        c.kids = list(_k_map(Node._k_clone, self.kids))"), py)
         assertTrue(py.contains("    more = _k_collections.deque(_k_map(Node._k_clone, q))"), py)
-        assertTrue(py.contains("_k_map = _k_builtins.map"), py)
+        assertTrue(py.contains("def _k_map(f, xs):\n    return _k_builtins.map(f, xs)"), py)
     }
 
     @Test
@@ -2047,16 +2055,39 @@ class PyEmitterTest {
         assertTrue(e.errors.none { it.contains(PyModuleEmitter.UNSUPPORTED_CODE) }, e.errors.joinToString("\n"))
     }
 
+    /** D83: a `py: { unsupported }` entry is a decision, refused naming its reason. */
     @Test
-    fun anIntegersAbsHasNoPyBinding() {
-        refused(
+    fun anIntegersAbsIsADecidedRefusalThatSaysWhy() {
+        decided(
             """
             fx f: (x: Int32) Int32 {
                 return x.abs()
             }
             """,
-            "'Int32.abs' (it has no py binding)",
+            "'Int32.abs'",
+            "an integer's abs wraps its lowest value by its width, which the binding cannot see; kira:math's abs takes a Float64",
         )
+        decided("use \"kira:os\"\n\nfx f: () Bool {\n    return exists(\"x\")\n}", "'exists'", "kira:os is bound on py for args, onSignal and exit so far")
+        decided("fx f: (u: UInt64) Float64 {\n    return bitCast<Float64>(u)\n}", "'bitCast'", "a bit cast (writeF64Le then readU64Le gives a Float64's bits)")
+    }
+
+    /** Num's own methods bind on py (D83): golden numcalls runs them against the C++ target's output. */
+    @Test
+    fun numsOwnMethodsAreEqualityItsHashAndAs() {
+        val py = python(
+            """
+            fx f: (x: Int32, v: Float64) Float64 {
+                return x.toFloat64() + v.toInt32().toFloat64() + (x.hashCode() + v.toInt64()) as Float64
+            }
+
+            fx g: (x: Int32) Bool {
+                return x.equals(3)
+            }
+            """
+        )
+        assertTrue(py.contains("float(x) + float(_k_numi32(v))"), py)
+        assertTrue(py.contains("_k_numhash(x) + _k_numi64(v)"), py)
+        assertTrue(py.contains("    return (x == 3)"), py)
     }
 
     @Test
@@ -2141,7 +2172,7 @@ class PyEmitterTest {
         assertTrue(py.contains("if r[0] and not (not r[0]):"), py)
         assertTrue(py.contains("_k_i32(_k_unwrap(r) + _k_unwrap(r))"), py)
         assertTrue(py.contains("print(_k_unwrap_err(r))"), py)
-        assertTrue(py.contains("_k_Error = _k_errors()"), py)
+        assertTrue(py.contains("_k_Error = _k_errors().Error"), py)
     }
 
     @Test
@@ -2356,14 +2387,16 @@ class PyEmitterTest {
         )
         assertEquals(emptyList(), errors)
         val main = py.getValue("app:main")
-        assertTrue(main.contains("_k_m_lib_units = _k_use(__file__, \"../lib/units.kira.py\")"), main)
+        assertTrue(main.contains("_k_m_lib_units = _k_use(__file__, \"../lib/units_kira.py\")"), main)
         assertTrue(main.contains("m = _k_m_lib_units.Meter(\"a\")"), main)
         assertTrue(main.contains("    _k_m_lib_units.calls = 5\n    _k_m_lib_units.calls = _k_i32(_k_m_lib_units.calls + 1)"), main)
         assertTrue(main.contains("return _k_i32(_k_i32(m.scaled(_k_m_lib_units.bump()) + _k_m_lib_units.bump()) + _k_m_lib_units.SCALE)"), main)
         assertFalse(main.contains("global calls"), main)
-        assertFalse(main.contains("_k_self"), main)
+        // Every module registers itself under its real path before it loads another (D85).
+        assertTrue(main.contains("\n\n\n_k_self()\n_k_m_lib_units = _k_use("), main)
         val lib = py.getValue("lib:units")
         assertFalse(lib.contains("_k_use"), lib)
+        assertTrue(lib.contains("\n\n\n_k_self()\n"), lib)
         assertTrue(lib.contains("def bump():\n    global calls"), lib)
     }
 
@@ -2390,10 +2423,10 @@ class PyEmitterTest {
         assertEquals(emptyList(), errors)
         val even = py.getValue("app:even")
         // Its constants first, so the module that uses it back reads them while it loads.
-        assertTrue(even.contains("K = 2\n\n\n_k_self()\n_k_m_app_odd = _k_use(__file__, \"odd.kira.py\")"), even)
+        assertTrue(even.contains("K = 2\n\n\n_k_self()\n_k_m_app_odd = _k_use(__file__, \"odd_kira.py\")"), even)
         assertTrue(even.contains("return n == 0 or _k_m_app_odd.isOdd(_k_i32(n - 1))"), even)
         val odd = py.getValue("app:odd")
-        assertTrue(odd.contains("_k_self()\n_k_m_app_even = _k_use(__file__, \"even.kira.py\")"), odd)
+        assertTrue(odd.contains("_k_self()\n_k_m_app_even = _k_use(__file__, \"even_kira.py\")"), odd)
     }
 
     @Test
@@ -2634,7 +2667,7 @@ class PyEmitterTest {
         assertTrue(py.contains("    _k_sleep(5)\n"), py)
         assertTrue(py.contains("print(len(list(_k_sys.argv)))"), py)
         assertTrue(py.contains("def _k_main(main, *args):"), py)
-        assertTrue(py.trimEnd().endsWith("if __name__ == \"__main__\":\n    _k_main(_main)"), py)
+        assertTrue(py.trimEnd().endsWith("def _k_run():\n    return _k_main(_main)\n\n\nif __name__ == \"__main__\":\n    _k_run()"), py)
     }
 
     // ---- kira:sync (D77) ---------------------------------------------------------------------------
@@ -2744,11 +2777,125 @@ class PyEmitterTest {
         assertTrue(py.contains("    t = _k_Suite(name + \"!\")\n    r = _Runner(t)\n    _both(r.t, 3)\n"), py)
         assertTrue(py.contains("    kept = [t, _k_Suite(\"other\")]\n    return kept[0].finish()\n"), py)
         assertTrue(py.contains("        self.t = t\n"), "a Suite is one object, never copied:\n$py")
-        assertTrue(py.trimEnd().endsWith("_k_exit(_k_main(main))"), py)
+        assertTrue(py.trimEnd().endsWith("_k_exit(_k_run())"), py)
     }
 
     @Test
     fun aSystemClassTheRuntimeLacksIsStillRefused() {
         refused("use \"kira:os\"\n\nfx f: (u: UdpSocket) Void {\n}", "the parameter 'u': the type UdpSocket")
+    }
+
+    // ---- stdlib classes and structs on py (E1, D84) ----------------------------------------------
+
+    /** E1: a stdlib magic class is the runtime's class of its name whether or not C++ has a header for its module. */
+    @Test
+    fun aMagicClassOfAModuleWithoutACppHeaderIsTheRuntimesClassOfItsName() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "kira:extra" to "pub @_magic class Suite {\n    require pub title: Str\n}",
+            "app:main" to "use \"kira:extra\"\n\nfx f: () Void {\n    t: Suite = Suite { title = \"x\" }\n}",
+        )
+        assertEquals(emptyList(), errors)
+        assertTrue(py.getValue("app:main").contains("    t = _k_Suite(\"x\")\n"), py.getValue("app:main"))
+        val ref = python("fx f: () Int32 {\n    r: Ref<Int32> = Ref<Int32> { value = 1 }\n    return r.value\n}")
+        assertTrue(ref.contains("    r = _k_Ref(1)\n"), "a Ref keeps its own construction:\n$ref")
+    }
+
+    @Test
+    fun aStdlibStructIsBuiltWithItsDefaultsCopiedAndComparedAsAUserStruct() {
+        val py = python(
+            """
+            use "kira:os"
+
+            struct Seen {
+                pub last: Datagram
+            }
+
+            fx f: (d: Datagram) Bool {
+                mut e: Datagram = d
+                e.port = 2
+                r: Ready = Ready { events = POLL_READ }
+                xs: List<Ready> = [r]
+                ys: List<Ready> = xs
+                s: Seen = Seen { }
+                return e == d && ys[0] != r && s.last == Datagram { host = "h" }
+            }
+            """
+        )
+        assertTrue(py.contains("    e = d._k_clone()\n    e.port = 2\n    r = _k_Ready(-1, 1)\n"), py)
+        assertTrue(py.contains("    ys = list(_k_map(_k_Ready._k_clone, xs))\n"), py)
+        assertTrue(py.contains("        self.last = _k_Datagram(0, \"\", 0) if last is _k_unset else last._k_clone()\n"), py)
+        assertTrue(py.contains("return e == d and ys[0] != r and s.last == _k_Datagram(0, \"h\", 0)"), py)
+        assertTrue(py.contains("\nclass _k_Datagram:\n") && py.contains("\nclass _k_Ready:\n"), py)
+    }
+
+    /** D84: each stdlib struct's runtime class holds its Kira fields in declaration order, with the methods the emitter calls. */
+    @Test
+    fun everyStdlibStructsRuntimeClassHoldsItsFieldsInOrder() {
+        val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText().replace("\r\n", "\n")
+        val program = net.exoad.kira.types.TyperTestSupport.snippet("use \"kira:os\"\n")
+        val structs = program.modules.filter { it.isStdlib }.flatMap { it.declarations }
+            .filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>()
+            .filter { it.kind == net.exoad.kira.compiler.analysis.types.ClassKind.STRUCT }
+        assertEquals(listOf("Datagram", "Ready"), structs.map { it.name }.sorted())
+        structs.forEach { s ->
+            val block = runtime.substringAfter("\nclass _k_${s.name}:\n", "").substringBefore("\n\n\n")
+            val slots = s.fields.joinToString(", ") { "\"${it.name}\"" }
+            assertTrue(block.contains("    __slots__ = ($slots)\n"), "_k_${s.name}'s slots are not $slots:\n$block")
+            assertTrue(block.contains("    def __init__(self, ${s.fields.joinToString(", ") { it.name }}):"), block)
+            listOf("_k_clone(self)", "_k_set(self, o)", "__eq__(self, o)").forEach { assertTrue(block.contains("    def $it:"), "_k_${s.name} lacks $it") }
+        }
+    }
+
+    @Test
+    fun aStdlibStructNeverCrossesToASidecar() {
+        listOf(
+            "use \"kira:os\"\n\n@_extern fx send: (d: Datagram) Bool" to "the parameter 'd' of the extern 'send': a Datagram",
+            "use \"kira:os\"\n\nstruct Hold {\n    pub r: Ready\n}\n\n@_extern fx put: (h: Hold) Bool" to "the parameter 'h' of the extern 'put': Hold, whose field 'r' is a Ready",
+            "use \"kira:os\"\n\n@_extern fx got: () Maybe<Ready>" to "the result of the extern 'got': a Ready",
+        ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "stdstruct")) }
+    }
+
+    // ---- the patch surface (D88) and Fx-calling runtime classes (E6) ------------------------------
+
+    /** D88: a test that patches the stdlib reaches the runtime, which binds no stdlib function at load but the waits' clock. */
+    @Test
+    fun theRuntimeReadsEveryStdlibFunctionWhereItCallsIt() {
+        val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText().replace("\r\n", "\n")
+        assertTrue(runtime.lines().none { it.startsWith("from ") || it.trimStart().startsWith("from ") && " import " in it }, "a from-import in runtime.py")
+        val aliases = Regex("^(_k_[A-Za-z0-9_]+) = _k_[A-Za-z0-9_]+(\\.[A-Za-z_][A-Za-z0-9_]*)+$", RegexOption.MULTILINE).findAll(runtime).map { it.groupValues[1] }.toList()
+        assertEquals(listOf("_k_deadline"), aliases, "a stdlib function bound at load, which a test's patch would not reach")
+        assertTrue(runtime.contains("so a test's patch reaches it (D88)"), "runtime.py's header states the rule")
+    }
+
+    /** E6: a runtime class that calls a Kira Fx on a thread Python owns ends the process on its throw, panic or exit. */
+    @Test
+    fun aKiraFxARuntimeClassCallsEndsTheProcessOnWhatNoTryCatches() {
+        assumeTrue(PyTestSupport.python != null, "no Python on PATH (set KIRA_PYTHON)")
+        val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
+        val script = File(PyTestSupport.repoRoot, "build/tmp/py-kirafx/kirafx.py").apply { parentFile.mkdirs() }
+        val driver = """
+            import sys
+            import threading
+
+            def thrower():
+                _k_throw("from a handler")
+
+            def body(what):
+                print("returns", _k_kirafx(lambda n: n + 1, 4), flush=True)
+                {"throw": thrower, "panic": lambda: _k_panic("bad"), "exit": lambda: _k_exit(5), "none": lambda: None}[what]()
+                print("after", what, flush=True)
+
+            t = threading.Thread(target=lambda: _k_kirafx(body, sys.argv[1]))
+            t.start()
+            t.join()
+            print("main went on")
+        """.trimIndent()
+        script.writeText(runtime.select(setOf("_k_kirafx", "_k_throw", "_k_panic", "_k_exit")) + "\n\n\n" + driver + "\n")
+        val windows = System.getProperty("os.name").lowercase().contains("win")
+        for ((what, want) in listOf("throw" to 70, "panic" to (if (windows) 3 else 134), "exit" to 5, "none" to 0)) {
+            val ran = PyTestSupport.run(listOf(PyTestSupport.python!!, script.absolutePath, what), script.parentFile)
+            assertEquals(want, if (ran.exitCode == -6) 134 else ran.exitCode, "$what:\n${ran.all}")
+            assertEquals(if (what == "none") "returns 5\nafter none\nmain went on\n" else "returns 5\n", ran.stdout, "$what:\n${ran.all}")
+        }
     }
 }

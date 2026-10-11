@@ -7,7 +7,7 @@ import importlib.util
 import os
 import sys
 
-path = os.path.join(sys.argv[1], "src", "app", "shiftcount.kira.py")
+path = os.path.join(sys.argv[1], "src", "app", "shiftcount_kira.py")
 spec = importlib.util.spec_from_file_location("shiftcount_kira", path)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)

@@ -8,7 +8,7 @@ import os
 import runpy
 import sys
 
-path = os.path.join(sys.argv[1], "src", "lang", "stdapi.kira.py")
+path = os.path.join(sys.argv[1], "src", "lang", "stdapi_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("stdapi_kira", path)
 m = importlib.util.module_from_spec(spec)

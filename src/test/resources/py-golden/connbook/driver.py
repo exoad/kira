@@ -12,7 +12,7 @@ import struct
 import sys
 import threading
 
-path = os.path.join(sys.argv[1], "src", "dash", "connbook.kira.py")
+path = os.path.join(sys.argv[1], "src", "dash", "connbook_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("connbook_kira", path)
 m = importlib.util.module_from_spec(spec)

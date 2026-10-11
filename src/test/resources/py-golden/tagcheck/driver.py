@@ -15,7 +15,7 @@ import re
 import runpy
 import sys
 
-path = os.path.join(sys.argv[1], "src", "dash", "tagcheck.kira.py")
+path = os.path.join(sys.argv[1], "src", "dash", "tagcheck_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("tagcheck_kira", path)
 m = importlib.util.module_from_spec(spec)

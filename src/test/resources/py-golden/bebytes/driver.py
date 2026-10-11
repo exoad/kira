@@ -13,7 +13,7 @@ import runpy
 import struct
 import sys
 
-path = os.path.join(sys.argv[1], "src", "dbw", "bebytes.kira.py")
+path = os.path.join(sys.argv[1], "src", "dbw", "bebytes_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec = importlib.util.spec_from_file_location("bebytes_kira", path)
 m = importlib.util.module_from_spec(spec)

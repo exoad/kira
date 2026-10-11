@@ -1,5 +1,6 @@
 package net.exoad.kira.py
 
+import net.exoad.kira.compiler.backend.codegen.py.KiraPyBackend
 import net.exoad.kira.compiler.backend.codegen.py.PyNames
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.DynamicTest
@@ -45,7 +46,7 @@ class PyGoldenRunTest {
         out.deleteRecursively()
         val compiled = PyTestSupport.cli(case, "--target", "py", "--out", out.absolutePath)
         assertEquals(0, compiled.exitCode, "kira --target py failed for ${case.name}:\n${compiled.all}")
-        val generated = out.walkTopDown().filter { it.isFile && it.name.endsWith(".kira.py") }.toList()
+        val generated = out.walkTopDown().filter { it.isFile && it.name.endsWith(KiraPyBackend.SUFFIX) }.toList()
         assertTrue(generated.isNotEmpty(), "${case.name}: nothing was generated under $out")
         generated.forEach { assertNull(PyTestSupport.parsesAs310(it.toPath()), "${it.name} is no Python 3.10 source") }
         assertEquals(emptyList(), PyTestSupport.unreservedBuiltins(generated.map { it.toPath() }, PyNames.RESERVED), "${case.name} names a builtin a Kira name could shadow")

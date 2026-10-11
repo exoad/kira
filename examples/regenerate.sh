@@ -284,7 +284,7 @@ for dir in "${DIRS[@]}"; do
       cd "$dir"
       rm -rf "$WORK/py"
       "$KIRA_BIN" --target py --out "$WORK/py" >/dev/null 2>&1 || { echo "  kira (py) failed" >&2; exit 1; }
-      mapfile -t py_sources < <(find "$WORK/py" -name '*.kira.py' | sort | xargs grep -l '^if __name__ == "__main__":$')
+      mapfile -t py_sources < <(find "$WORK/py" -name '*_kira.py' | sort | xargs grep -l '^if __name__ == "__main__":$')
       if [[ ${#py_sources[@]} -ne 1 ]]; then
         echo "  kira (py) emitted ${#py_sources[@]} modules with a main under $WORK/py" >&2; exit 1
       fi

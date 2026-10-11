@@ -11,7 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-path = os.path.join(sys.argv[1], "src", "dbw", "dbwjson.kira.py")
+path = os.path.join(sys.argv[1], "src", "dbw", "dbwjson_kira.py")
 runpy.run_path(path, run_name="__main__")
 spec_ = importlib.util.spec_from_file_location("dbwjson_kira", path)
 m = importlib.util.module_from_spec(spec_)

@@ -1,0 +1,5 @@
+escaped on a cp1252 pipe -> exit 0, stdout b'a \\u2192 b \\u2713 \xe9\n'
+escaped on a utf-8 pipe -> exit 0, stdout b'a \xe2\x86\x92 b \xe2\x9c\x93 \xc3\xa9\n'
+strict on a cp1252 pipe -> exit abort, stdout b'before\n', last: UnicodeEncodeError
+strict on a utf-8 pipe -> exit 0, stdout b'before\na \xe2\x86\x92 b\n'
+escaped under a cp1252 wrapper -> b'a \\u2192 b \\u2713 \xe9\n'

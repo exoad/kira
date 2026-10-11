@@ -29,17 +29,22 @@ namespace kira::os
   inline constexpr std::int32_t POLL_WRITE = 2;
   inline constexpr std::int32_t POLL_ERROR = 4;
 
+  // Kira compares a struct field by field (D84), these two as its own.
   struct Datagram
   {
       Size size = 0;
       Str host = "";
       std::int32_t port = 0;
+
+      bool operator==(const Datagram&) const = default;
   };
 
   struct Ready
   {
       std::int64_t handle = -1;
       std::int32_t events = 0;
+
+      bool operator==(const Ready&) const = default;
   };
 
   class UdpSocket final

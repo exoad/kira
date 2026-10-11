@@ -1,0 +1,10 @@
+module "app:escaped"
+
+use "kira:io"
+
+// A report a person reads asks for escapes (D87): what stdout cannot encode is written as one.
+
+pub fx main: () Void {
+    escapeStdout()
+    println("a → b ✓ é")
+}
