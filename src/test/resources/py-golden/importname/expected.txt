@@ -6,8 +6,11 @@ quiet ran
 void _k_run -> None
 used first, imported after: 1 1 2 2
 in a package: 3 2 pkg.b_kira True (1, ['path', 'pkg.b_kira'])
+a package of links: 3 2 True
+a name an earlier entry holds: 1 shadow False
 main_kira.py x -> exit 3 ['main ran with 2 arguments, lib at 1']
 console script main -> exit 3 ['main ran with 2 arguments, lib at 1']
 quiet_kira.py -> exit 0 ['quiet ran']
+quiet_kira.py exec'd without a file -> exit 0 ['quiet ran']
 thrower_kira.py -> exit 70 ['kira:errors.Error: no luck']
 console script thrower -> exit 70 ['kira:errors.Error: no luck']

@@ -40,3 +40,12 @@ for label, path in (("copied", os.path.join(tmp, "copied_kira.py")), ("linked", 
         path = str(e)[len("kira: the sidecar "):-len(" is missing")]
         print(label, "-> kira: the sidecar .../%s is missing, an absolute path: %s" % (os.path.basename(path), os.path.isabs(path)))
 shutil.rmtree(tmp)
+
+# Python's import of missing_kira fails, then one of a module that uses it: the use fails as the import did.
+sys.path.insert(0, os.path.join(sys.argv[1], "src", "app"))
+for name in ("missing_kira", "usesmissing_kira"):
+    try:
+        importlib.import_module(name)
+        print("import", name, "-> imported")
+    except RuntimeError as e:
+        print("import", name, "->", e)

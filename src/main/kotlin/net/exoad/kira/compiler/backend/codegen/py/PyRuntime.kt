@@ -14,8 +14,15 @@ import java.nio.file.Path
  * [place] and [statement] may name them in any order: the emitter uses them only where the
  * receiver is a variable or field and no argument writes, [statement] only as a whole statement.
  * [unsupported] is a decision instead (`py: { unsupported: "<why>" }`, D83): a call is refused, naming why.
+ * [float] replaces [expr] on a FloatNum receiver: a Python caller may hand a Float64 over as an int.
  */
-data class PyBinding(val expr: String, val place: String? = null, val statement: String? = null, val unsupported: String? = null) {
+data class PyBinding(
+    val expr: String,
+    val place: String? = null,
+    val statement: String? = null,
+    val unsupported: String? = null,
+    val float: String? = null,
+) {
     /** The placeholders in the order the expression names them. */
     val placeholders: List<String> get() = PLACEHOLDER.findAll(expr).map { it.groupValues[1] }.toList()
 
@@ -80,7 +87,7 @@ class PyBindingTable {
                     return@forEach
                 }
                 val expr = py["expr"]?.toString() ?: return@forEach
-                out[key.toString()] = PyBinding(expr, py["place"]?.toString(), py["statement"]?.toString())
+                out[key.toString()] = PyBinding(expr, py["place"]?.toString(), py["statement"]?.toString(), float = py["float"]?.toString())
             }
             return out
         }

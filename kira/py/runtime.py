@@ -1,10 +1,7 @@
-# The py target's runtime: the helpers generated Python calls where Python's own operators
-# differ from Kira's. The emitter copies into each generated module only the definitions it
-# uses (and the ones those use), in this file's order, so a generated module imports nothing
-# of Kira's. Every name here starts with _k_, which no Kira name can take on this target.
-# Python 3.10 is the oldest this must run on (the board's).
-# A helper calls a stdlib function through its module when it runs (_k_time.sleep, never a name bound at load),
-# so a test's patch reaches it (D88); only _k_deadline, the waits' clock, is bound at load.
+# The py target's runtime: the helpers generated Python calls where Python's operators differ from Kira's. A
+# generated module copies the definitions it uses, in this file's order, and imports nothing of Kira's. Each name
+# starts with _k_, which no Kira name can take; Python 3.10 is the oldest this runs on. A helper calls a stdlib
+# function through its module when it runs, so a test's patch reaches it (D88).
 
 import builtins as _k_builtins
 import collections as _k_collections
@@ -25,19 +22,31 @@ import time as _k_time
 import traceback as _k_traceback
 
 
-# A used module is loaded once per process (D85): under its real path, and under the name an import gives it
-# when its directory is on sys.path or it sits in an imported package, so Kira and Python share one.
+# A used module is loaded once per process (D85): under its real path, and under the name Python's import
+# finds it by, so Kira and Python share one.
 def _k_key(path):
     return _k_os.path.normcase(_k_os.path.realpath(path))
 
 
-def _k_named(real):
-    d, base = _k_os.path.split(real)
+# The module under a real path, unless the import that put it there failed and Python dropped its name.
+def _k_held(key):
+    m = _k_sys.modules.get(key)
+    if m is not None and _k_sys.modules.get(m.__name__) is not m:
+        del _k_sys.modules[key]
+        return None
+    return m
+
+
+# The name a directory on sys.path or an imported package gives the file at p (a link's own place, not its
+# target), when Python's import of that name finds this file.
+def _k_named(p, key):
+    d, base = _k_os.path.split(p)
     parts = [base[:-3]] if base.endswith(".py") else []
-    roots = {_k_key(p or ".") for p in _k_sys.path if p.__class__ is str}
+    roots = {_k_key(r or ".") for r in _k_sys.path if r.__class__ is str}
     while parts and parts[-1].isidentifier():
-        if _k_key(d) in roots:
-            return ".".join(parts[::-1])
+        name = ".".join(parts[::-1])
+        if _k_key(d) in roots and _k_finds(name, key):
+            return name
         if not _k_os.path.isfile(_k_os.path.join(d, "__init__.py")):
             return None
         d, pkg = _k_os.path.split(d)
@@ -45,22 +54,27 @@ def _k_named(real):
     return None
 
 
+def _k_finds(name, key):
+    if "." in name and name.rpartition(".")[0] not in _k_sys.modules:
+        return False
+    try:
+        spec = _k_importlib.find_spec(name)
+    except (_k_builtins.ImportError, ValueError):
+        return False
+    return spec is not None and spec.origin is not None and _k_key(spec.origin) == key
+
+
 def _k_use(here, path):
-    real = _k_os.path.realpath(_k_os.path.join(_k_os.path.dirname(_k_os.path.abspath(here)), path))
-    key = _k_os.path.normcase(real)
-    m = _k_sys.modules.get(key)
+    p = _k_os.path.abspath(_k_os.path.join(_k_os.path.dirname(here), path))
+    key = _k_key(p)
+    m = _k_held(key)
     if m is not None:
         return m
-    name = _k_named(real)
-    m = _k_sys.modules.get(name) if name is not None else None
-    if m is not None:
-        if _k_key(_k_builtins.getattr(m, "__file__", None) or real + "?") == key:
-            return _k_sys.modules.setdefault(key, m)
-        name = None
-    parent, _, child = (name or "").rpartition(".")
-    if parent and parent not in _k_sys.modules:
-        name, parent = None, ""
-    spec = _k_importlib.spec_from_file_location(name or key, real)
+    name = _k_named(p, key)
+    if name is not None and name in _k_sys.modules:
+        m = _k_sys.modules[key] = _k_sys.modules[name]
+        return m
+    spec = _k_importlib.spec_from_file_location(name or key, p)
     m = _k_importlib.module_from_spec(spec)
     names = [key] if name is None else [key, name]
     for n in names:
@@ -72,18 +86,20 @@ def _k_use(here, path):
             if _k_sys.modules.get(n) is m:
                 del _k_sys.modules[n]
         raise
+    parent, _, child = (name or "").rpartition(".")
     if parent:
         _k_builtins.setattr(_k_sys.modules[parent], child, m)
     return m
 
 
 # Every module registers itself under its real path as it loads (D85): a use of it finds the one Python
-# imported, or the one run as __main__, instead of loading it a second time.
+# imported, or the one run as __main__, instead of loading it again. Code exec'd without a file has no path.
 def _k_self():
     g = _k_self.__globals__
-    m = _k_sys.modules.get(g["__name__"])
-    if m is not None and m.__dict__ is g:
-        _k_sys.modules.setdefault(_k_key(g["__file__"]), m)
+    m = _k_sys.modules.get(g.get("__name__"))
+    f = g.get("__file__")
+    if f and m is not None and m.__dict__ is g and _k_held(_k_key(f)) is None:
+        _k_sys.modules[_k_key(f)] = m
 
 
 # A field a construction leaves out (None is a Maybe's value, so it cannot say so).
@@ -277,19 +293,9 @@ def _k_f2i(v, bits, signed):
     return int(v)
 
 
-# Num.toInt32 and toInt64 are `as`: a Float64 saturates, an integer wraps. A Float64 is a float here, every
-# integer type an int.
-def _k_numi32(v):
-    return _k_f2i(v, 32, True) if v.__class__ is float else _k_as_i32(v)
-
-
-def _k_numi64(v):
-    return _k_f2i(v, 64, True) if v.__class__ is float else _k_as_i64(v)
-
-
-# Num.hashCode is kira::hashCode: an integer's value in an Int64, a Float64's bits.
-def _k_numhash(v):
-    return _k_struct.unpack("<q", _k_struct.pack("<d", v))[0] if v.__class__ is float else _k_as_i64(v)
+# A Float64's hashCode, kira::hashCode's: the bits of its double, an int a Python caller handed over included.
+def _k_fbits(v):
+    return _k_struct.unpack("<q", _k_struct.pack("<d", v))[0]
 
 
 # kira:math min and max: the first argument unless the second is strictly less or greater,
@@ -1296,8 +1302,9 @@ class _k_Thread:
             self.t.join(0.05 if me is _k_threading.main_thread() else None)
 
 
-# The clock a wait's limit is measured on, bound at load (D88): a test that freezes time.monotonic stops no wait.
-_k_deadline = _k_time.monotonic
+# The clock a wait's limit is measured on, the first module's for every one (D88): a test that freezes
+# time.monotonic, before or after a module loads, stops no wait.
+_k_deadline = _k_errors().__dict__.setdefault("deadline", _k_time.monotonic)
 
 
 # A wait as kira::sync's: negative without limit, zero one check, else up to ms. The main thread waits
@@ -1333,8 +1340,8 @@ class _k_Mutex:
             return _k_waitfor(self.cv, lambda: pred(self.value), ms)
 
 
-# Every write under one lock, reentrant so an onSignal handler can store while its thread holds it;
-# an integer add wraps as C++'s fetch_add does, and a float compareSwap compares bits as it does.
+# Every write under one lock, reentrant so an onSignal handler can store while its thread holds it; an integer
+# add wraps as C++'s fetch_add does, and a Float64's or Bool's compareSwap (no wrap) compares bits as it does.
 class _k_Atomic:
     __slots__ = ("v", "wrap", "lk")
 
@@ -1364,7 +1371,7 @@ class _k_Atomic:
     def compareSwap(self, expected, desired):
         with self.lk:
             v = self.v
-            if (_k_struct.pack("<d", v) != _k_struct.pack("<d", expected)) if v.__class__ is float else v != expected:
+            if (_k_struct.pack("<d", v) != _k_struct.pack("<d", expected)) if self.wrap is None else v != expected:
                 return False
             self.v = desired
             return True

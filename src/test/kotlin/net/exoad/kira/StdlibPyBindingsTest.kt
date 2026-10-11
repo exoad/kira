@@ -15,7 +15,7 @@ class StdlibPyBindingsTest {
     /** Lowered by the emitter itself: `enumOf<E>(raw)` needs E's Python class, which no template names. */
     private val emitterLowered = setOf("enumOf")
 
-    private val allowedPyKeys = setOf("expr", "place", "statement", "unsupported")
+    private val allowedPyKeys = setOf("expr", "place", "statement", "unsupported", "float")
 
     @Test
     fun everyMagicMethodAndFunctionHasAPyEntry() {

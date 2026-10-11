@@ -406,7 +406,7 @@ class PyEmitterTest {
         assertTrue(py.contains("return _k_math.fabs(a)"), py)
         assertTrue(py.contains("import math as _k_math"), py)
         // A module's own registration (D85) is the only helper it carries.
-        assertEquals(listOf("_k_key", "_k_self"), Regex("def (_k_\\w+)").findAll(py).map { it.groupValues[1] }.toList(), "fabs needs no helper:\n$py")
+        assertEquals(listOf("_k_key", "_k_held", "_k_self"), Regex("def (_k_\\w+)").findAll(py).map { it.groupValues[1] }.toList(), "fabs needs no helper:\n$py")
     }
 
     @Test
@@ -1345,10 +1345,13 @@ class PyEmitterTest {
         assertTrue(table.all().size >= 13, "py bindings: ${table.all().keys}")
         table.all().forEach { (key, binding) ->
             assertTrue(binding.isOrdered, "$key: ${binding.expr}")
-            listOfNotNull(binding.place, binding.statement).forEach { alt ->
+            listOfNotNull(binding.place, binding.statement, binding.float).forEach { alt ->
                 assertEquals(binding.placeholders.sorted(), PyBinding(alt).placeholders.sorted(), "$key: $alt names each of ${binding.expr}'s once")
             }
-            PyRuntime.HELPER.findAll(binding.expr).forEach { assertTrue(it.value in runtime.names, "$key names ${it.value}, which the runtime lacks") }
+            binding.float?.let { assertTrue(PyBinding(it).isOrdered, "$key: $it") }
+            listOfNotNull(binding.expr, binding.float).forEach { text ->
+                PyRuntime.HELPER.findAll(text).forEach { assertTrue(it.value in runtime.names, "$key names ${it.value}, which the runtime lacks") }
+            }
         }
     }
 
@@ -1358,7 +1361,7 @@ class PyEmitterTest {
         val table = PyBindingTable().apply { loadDir(File(PyTestSupport.repoRoot, "kira").toPath()) }
         val bindings = File(PyTestSupport.repoRoot, "build/tmp/py-builtins/bindings.py").apply { parentFile.mkdirs() }
         bindings.writeText(
-            table.all().values.flatMap { listOfNotNull(it.expr, it.place, it.statement) }
+            table.all().values.flatMap { listOfNotNull(it.expr, it.place, it.statement, it.float) }
                 .joinToString("\n", postfix = "\n") { it.replace(PyBinding.PLACEHOLDER, "_k_a").replace("{list}", "list") }
         )
         val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").toPath()
@@ -1859,14 +1862,6 @@ class PyEmitterTest {
             """,
             "the parameter 'v': a View<Char> (text is a Str on the py target)",
         )
-        refused(
-            """
-            fx f: (s: Str) Size {
-                return s.view().size()
-            }
-            """,
-            "a View<Char> (text is a Str on the py target)",
-        )
     }
 
     @Test
@@ -2064,14 +2059,14 @@ class PyEmitterTest {
                 return x.abs()
             }
             """,
-            "'Int32.abs'",
+            "'Num.abs'",
             "an integer's abs wraps its lowest value by its width, which the binding cannot see; kira:math's abs takes a Float64",
         )
         decided("use \"kira:os\"\n\nfx f: () Bool {\n    return exists(\"x\")\n}", "'exists'", "kira:os is bound on py for args, onSignal and exit so far")
         decided("fx f: (u: UInt64) Float64 {\n    return bitCast<Float64>(u)\n}", "'bitCast'", "a bit cast (writeF64Le then readU64Le gives a Float64's bits)")
     }
 
-    /** Num's own methods bind on py (D83): golden numcalls runs them against the C++ target's output. */
+    /** Num's own methods bind on py (D83) by the receiver's Kira type: golden numcalls runs them against the C++ target's output. */
     @Test
     fun numsOwnMethodsAreEqualityItsHashAndAs() {
         val py = python(
@@ -2083,11 +2078,22 @@ class PyEmitterTest {
             fx g: (x: Int32) Bool {
                 return x.equals(3)
             }
+
+            fx h: (v: Float64, n: Int64) Int64 {
+                return v.hashCode() + n.toInt32().toInt64()
+            }
             """
         )
-        assertTrue(py.contains("float(x) + float(_k_numi32(v))"), py)
-        assertTrue(py.contains("_k_numhash(x) + _k_numi64(v)"), py)
+        assertTrue(py.contains("float(x) + float(_k_f2i(v, 32, True))"), py)
+        assertTrue(py.contains("_k_as_i64(x) + _k_f2i(v, 64, True)"), py)
         assertTrue(py.contains("    return (x == 3)"), py)
+        assertTrue(py.contains("_k_fbits(v) + _k_as_i64(_k_as_i32(n))"), py)
+    }
+
+    /** A decided call whose result type py also refuses is refused with its decision's reason. */
+    @Test
+    fun aDecisionIsNamedBeforeTheTypeItReturns() {
+        decided("fx f: (s: Str) Size {\n    return s.view().size()\n}", "'Str.view'", "a View<Char> (text is a Str on the py target)")
     }
 
     @Test
@@ -2828,7 +2834,7 @@ class PyEmitterTest {
         assertTrue(py.contains("\nclass _k_Datagram:\n") && py.contains("\nclass _k_Ready:\n"), py)
     }
 
-    /** D84: each stdlib struct's runtime class holds its Kira fields in declaration order, with the methods the emitter calls. */
+    /** D84: each stdlib struct's runtime class holds its fields in declaration order, by the names the emitter reaches them by, with the methods it calls. */
     @Test
     fun everyStdlibStructsRuntimeClassHoldsItsFieldsInOrder() {
         val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText().replace("\r\n", "\n")
@@ -2839,7 +2845,8 @@ class PyEmitterTest {
         assertEquals(listOf("Datagram", "Ready"), structs.map { it.name }.sorted())
         structs.forEach { s ->
             val block = runtime.substringAfter("\nclass _k_${s.name}:\n", "").substringBefore("\n\n\n")
-            val slots = s.fields.joinToString(", ") { "\"${it.name}\"" }
+            // pyName: a field that is not pub is _name.
+            val slots = s.fields.joinToString(", ") { "\"${if (it.isPub) it.name else "_${it.name}"}\"" }
             assertTrue(block.contains("    __slots__ = ($slots)\n"), "_k_${s.name}'s slots are not $slots:\n$block")
             assertTrue(block.contains("    def __init__(self, ${s.fields.joinToString(", ") { it.name }}):"), block)
             listOf("_k_clone(self)", "_k_set(self, o)", "__eq__(self, o)").forEach { assertTrue(block.contains("    def $it:"), "_k_${s.name} lacks $it") }
@@ -2862,8 +2869,12 @@ class PyEmitterTest {
     fun theRuntimeReadsEveryStdlibFunctionWhereItCallsIt() {
         val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText().replace("\r\n", "\n")
         assertTrue(runtime.lines().none { it.startsWith("from ") || it.trimStart().startsWith("from ") && " import " in it }, "a from-import in runtime.py")
-        val aliases = Regex("^(_k_[A-Za-z0-9_]+) = _k_[A-Za-z0-9_]+(\\.[A-Za-z_][A-Za-z0-9_]*)+$", RegexOption.MULTILINE).findAll(runtime).map { it.groupValues[1] }.toList()
-        assertEquals(listOf("_k_deadline"), aliases, "a stdlib function bound at load, which a test's patch would not reach")
+        // A function a top-level line takes from a module without calling it is bound at load; a class (_k_re.Pattern) is no function.
+        val uncalled = Regex("\\b_k_[a-z]+\\.[a-z_]\\w*(?![\\w(])")
+        val bound = Regex("^(_k_\\w+) = (.*)$", RegexOption.MULTILINE).findAll(runtime)
+            .filter { uncalled.containsMatchIn(it.groupValues[2]) }.map { it.groupValues[1] }.toList()
+        assertEquals(listOf("_k_deadline"), bound, "a stdlib function bound at load, which a test's patch would not reach")
+        assertTrue(runtime.contains("\n_k_deadline = _k_errors().__dict__.setdefault(\"deadline\", _k_time.monotonic)\n"), "the waits' clock is one for every module")
         assertTrue(runtime.contains("so a test's patch reaches it (D88)"), "runtime.py's header states the rule")
     }
 

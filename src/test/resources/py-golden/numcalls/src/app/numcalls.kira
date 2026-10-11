@@ -7,6 +7,7 @@ pub fx main: () Void {
     a: Int32 = -7
     b: Int64 = 9000000000
     u: UInt64 = (0 - 1) as UInt64
+    w: UInt64 = 9007199254740993
     s: UInt8 = 200
     f: Float64 = 25000000000.5
     n: Float64 = 0.0 / 0.0
@@ -31,4 +32,19 @@ pub fx main: () Void {
     trace(a.toFloat64())
     trace(b.toFloat64())
     trace(u.toFloat64())
+    trace(u.toFloat64().fixed(0))
+    trace(w.toFloat64().fixed(0))
+    callers(10000000000.0, 10000000000.0)
+    callers(100000000000000000000.0, 100000000000000000000.0)
+    callers(-3.0, 3.0)
+}
+
+// The driver hands these the same numbers as Python ints, which must answer as the doubles do.
+pub fx callers: (v: Float64, w: Float64) Void {
+    trace(v as Int32)
+    trace(v.toInt32())
+    trace(v.toInt64())
+    trace(v.hashCode())
+    trace(v.equals(w))
+    trace(v.hashCode() == w.hashCode())
 }

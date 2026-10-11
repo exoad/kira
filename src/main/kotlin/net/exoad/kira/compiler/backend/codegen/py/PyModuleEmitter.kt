@@ -1023,7 +1023,7 @@ class PyModuleEmitter(
         val t = model.typeOrNull(e)
         if (t != null) {
             val held = if (c is Coercion.ToView && magicName(t) == "MutView") (t as KType.Nominal).typeArgs().firstOrNull() ?: t else t
-            unsupportedType(held)?.let { return refusePy(e, it) }
+            unsupportedType(held)?.let { return decision(e) ?: refusePy(e, it) }
         }
         return raw(e, f)
     }
@@ -1491,6 +1491,18 @@ class PyModuleEmitter(
         return parts.joinToString(", ")
     }
 
+    /** A magic call's py binding and the key it is under, the nearest of [CppBindingTable.keysFor]'s. */
+    private fun bindingOf(fn: FnSymbol, receiver: Expr?): Pair<String, PyBinding>? =
+        CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program).firstNotNullOfOrNull { k -> bindings.lookup(k)?.let { k to it } }
+
+    /** A manifest's refusal of the magic call [e] (D83), which names its reason before the type it returns is refused. */
+    private fun decision(e: Expr): Py? {
+        val c = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr ?: return null
+        val rc = model.call(c)?.takeIf { it.kind == CallKind.MAGIC } ?: return null
+        val (key, b) = rc.fn?.let { bindingOf(it, rc.receiver) } ?: return null
+        return b.unsupported?.let { refusedFor(c, "'$key'", it) }
+    }
+
     private fun magicCall(c: FunctionCallExpr, rc: ResolvedCall, f: Frame): Py {
         val fn = rc.fn ?: return refusePy(c, "this call")
         val key = (fn.foreign as? Foreign.Magic)?.key
@@ -1512,14 +1524,14 @@ class PyModuleEmitter(
         if ((fn.name == "contains" || fn.name == "containsValue") && compared != null && holdsHandle(compared)) {
             return refusePy(c, "'${fn.name}' on ${article(model.typeOrNull(receiver)!!.display())}, which compares an opaque handle")
         }
-        val keys = CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program)
-        val binding = keys.firstNotNullOfOrNull { bindings.lookup(it) }
-            ?: return refusePy(c, "'${keys.firstOrNull() ?: fn.name}' (it has no py binding)")
-        binding.unsupported?.let { return refusedFor(c, "'${keys.first()}'", it) }
+        val (bindingKey, found) = bindingOf(fn, receiver)
+            ?: return refusePy(c, "'${CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program).firstOrNull() ?: fn.name}' (it has no py binding)")
+        found.unsupported?.let { return refusedFor(c, "'$bindingKey'", it) }
+        val binding = found.float?.takeIf { receiver?.let { model.typeOrNull(it) }?.prim?.isFloat == true }?.let { PyBinding(it) } ?: found
         // Python evaluates a binding's arguments in parameter order: named ones are taken only
         // where that is the order they were written in (D33).
         if (rc.args.any { it !is ArgBinding.Given } || rc.sourceOrder != rc.args.indices.toList()) {
-            return refusePy(c, "a call of '${keys.firstOrNull() ?: fn.name}' with defaulted arguments, or named ones out of its parameters' order")
+            return refusePy(c, "a call of '$bindingKey' with defaulted arguments, or named ones out of its parameters' order")
         }
         val self: ((Int) -> String)? = receiver?.let { r ->
             { prec ->

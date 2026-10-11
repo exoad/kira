@@ -1,0 +1,9 @@
+module "app:usesmissing"
+
+use "app:missing"
+
+// A use of a module whose import failed raises that import's error again, never the half-loaded module (D85).
+
+pub fx viaMissing: (n: Int32) Int32 {
+    return present(n)
+}

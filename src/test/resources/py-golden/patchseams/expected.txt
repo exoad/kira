@@ -3,4 +3,5 @@ sleepMs(1500) slept [1.5]
 args 3
 waitUntil (80 ms) under a frozen time.monotonic returned: [False]
 pop (80 ms) under a frozen time.monotonic returned: [True]
+a module loaded since: waitUntil (80 ms) under a frozen time.monotonic returned: [False]
 restored: monoNowNs moves True | wallNowNs True

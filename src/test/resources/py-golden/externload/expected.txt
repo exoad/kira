@@ -8,3 +8,5 @@ fine -> loaded
 fine.g -> Missing: nothing here
 copied -> kira: the sidecar .../fine_ext.py is missing, an absolute path: True
 linked -> loaded
+import missing_kira -> kira: missing_ext.py defines no function absent taking 1 argument
+import usesmissing_kira -> kira: missing_ext.py defines no function absent taking 1 argument
