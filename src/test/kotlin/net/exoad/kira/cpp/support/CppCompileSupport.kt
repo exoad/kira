@@ -235,8 +235,13 @@ object CppCompileSupport {
         // A hosted link on Linux glibc needs -pthread (kira/os.hxx says so; goldens.sh and
         // sys.sh pass it): glibc 2.35 folds libpthread into libc, but gcc 11.4 on glibc 2.31
         // leaves pthread_create unresolved for a case that reaches kira/sync.hxx (measured).
-        // The aarch64 cross link targets glibc 2.35 and is left alone.
-        val hostLink = if (!CppToolchains.isWindows && toolchain.toolchain != CppToolchain.ZIG_AARCH64) listOf("-pthread") else emptyList()
+        // The aarch64 cross link targets glibc 2.35 and is left alone. On Windows, a case that compiles kira/os.cxx
+        // (osfiles2) links Winsock, which MSVC takes from os.cxx's pragma.
+        val hostLink = when {
+            toolchain.toolchain == CppToolchain.ZIG_AARCH64 -> emptyList()
+            CppToolchains.isWindows -> listOf("-lws2_32")
+            else -> listOf("-pthread")
+        }
         val command = toolchain.command + gnuWarningContract +
             includeDirs.flatMap { listOf("-I", it.absolutePath) } +
             defines.map { "-D$it" } +

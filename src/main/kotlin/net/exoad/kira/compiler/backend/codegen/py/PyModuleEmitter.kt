@@ -1392,6 +1392,8 @@ class PyModuleEmitter(
             is MemberRef.Field -> when {
                 hasFields(m.field.owner) -> "${wrap(objectOf(e.origin, f), PyPrec.POSTFIX)}.${pyName(m.field)}"
                 isRefCell(m.field.owner) -> "${wrap(expr(e.origin, f), PyPrec.POSTFIX)}.value"
+                // A Maybe is its value itself, so readFile(p).value.size() reads the List it holds.
+                magicName(model.typeOrNull(e.origin)) == "Maybe" -> wrap(expr(e, f), PyPrec.POSTFIX)
                 else -> refuseText(e, "this List")
             }
             else -> wrap(expr(e, f), PyPrec.POSTFIX)

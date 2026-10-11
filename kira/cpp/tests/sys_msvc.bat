@@ -7,10 +7,11 @@ REM                                    diff (printf reference against
 REM                                    kira::test::Suite) and the exit mode
 REM
 REM Visual Studio is found by bibo's tools\find_vs.bat, which is only called, never
-REM copied. Outputs go to build\cpp-tests\sys_msvc under the repository root.
+REM copied (KIRA_FIND_VS names another copy). Outputs go to build\cpp-tests\sys_msvc.
 setlocal EnableDelayedExpansion
 for %%i in ("%~dp0..\..\..") do set "ROOT=%%~fi"
 set "FINDVS=C:\Users\error\Code\bibo-kira\tools\find_vs.bat"
+if defined KIRA_FIND_VS set "FINDVS=%KIRA_FIND_VS%"
 if not exist "%FINDVS%" (
     echo [error] %FINDVS% not found: no way to find Visual Studio
     exit /b 1

@@ -23,6 +23,8 @@ namespace kira::os
   // call that can fail clears it first. close() and the noexcept getters
   // leave it alone, so a dropped object does not erase the reason.
   [[nodiscard]] Str lastError();
+  // NotFound, Exists, Permission, Timeout, Interrupted or Other, from errno or Win32's code; "" when lastError is.
+  [[nodiscard]] Str lastErrorKind();
 
   // Bits for Poller::add and Ready::events.
   inline constexpr std::int32_t POLL_READ = 1;
@@ -157,11 +159,46 @@ namespace kira::os
 
   [[nodiscard]] Maybe<List<std::uint8_t>> readFile(const Str& path);
   [[nodiscard]] Maybe<Str> readText(const Str& path);
+  [[nodiscard]] Maybe<Str> readTextLf(const Str& path);
+  [[nodiscard]] Maybe<List<std::uint8_t>> readFileHead(const Str& path, Size size);
+  [[nodiscard]] bool writeFile(const Str& path, View<std::uint8_t> bytes);
   [[nodiscard]] bool writeFileAtomic(const Str& path, View<std::uint8_t> bytes);
   [[nodiscard]] List<Str> listDir(const Str& path);
   [[nodiscard]] bool exists(const Str& path);
+  [[nodiscard]] bool isFile(const Str& path);
+  [[nodiscard]] bool isDir(const Str& path);
+  [[nodiscard]] std::int64_t fileSize(const Str& path);
+  [[nodiscard]] Maybe<double> modifiedS(const Str& path);
+  [[nodiscard]] bool removeFile(const Str& path);
+  [[nodiscard]] bool replaceFile(const Str& source, const Str& target);
   [[nodiscard]] bool makeDirs(const Str& path);
   [[nodiscard]] std::int64_t freeBytes(const Str& path);
+
+  class FileOut;
+  [[nodiscard]] Rc<FileOut> openAppend(const Str& path);
+  [[nodiscard]] Rc<FileOut> openWrite(const Str& path);
+
+  // A descriptor written through: POSIX open/write/fsync, the C runtime's _open/_write/_commit on Windows.
+  class FileOut final
+  {
+  public:
+      FileOut() = default;
+      FileOut(const FileOut&) = delete;
+      FileOut& operator=(const FileOut&) = delete;
+      ~FileOut();
+
+      [[nodiscard]] bool write(View<std::uint8_t> data);
+      [[nodiscard]] bool sync() const;
+      [[nodiscard]] std::int64_t size() const;
+      [[nodiscard]] bool isStale() const;
+      void close();
+
+  private:
+      friend Rc<FileOut> openAppend(const Str& path);
+      friend Rc<FileOut> openWrite(const Str& path);
+      int fd_ = -1;
+      Str path_;
+  };
 
   class Process final
   {
@@ -177,6 +214,7 @@ namespace kira::os
       [[nodiscard]] bool isRunning() const;
       // The read end of the stdout pipe on POSIX (pollable); -1 on Windows.
       [[nodiscard]] std::int64_t stdoutHandle() const noexcept;
+      [[nodiscard]] std::int64_t pid() const noexcept;
 
   private:
       friend Rc<Process> spawnProcess(const List<Str>& argv);
@@ -192,6 +230,24 @@ namespace kira::os
   };
 
   [[nodiscard]] Rc<Process> spawnProcess(const List<Str>& argv);
+
+  // sched_setaffinity on Linux; elsewhere false, with lastError.
+  [[nodiscard]] bool setAffinity(std::int64_t pid, const List<std::int32_t>& cpus);
+  // nice(3) on POSIX: the new niceness; none on Windows.
+  [[nodiscard]] Maybe<std::int32_t> nice(std::int32_t increment);
+
+  // kira:os declares runCapture's result and spawnPiped's class for py (their calls are py only), so a C++
+  // declaration that names one still compiles.
+  struct Ran
+  {
+      std::int32_t code = -1;
+      Str out = "";
+      Str err = "";
+
+      bool operator==(const Ran&) const = default;
+  };
+
+  class PipedProcess;
 
   inline constexpr std::int32_t SIGNAL_INT = 2;
   inline constexpr std::int32_t SIGNAL_TERM = 15;

@@ -1,0 +1,112 @@
+module "app:net"
+
+use "kira:os"
+use "kira:sync"
+use "kira:test"
+use "kira:time"
+
+// kira:os's sockets on py (K3), the checks kira/cpp/tests/sys_test.cxx makes of C++'s: UDP through a Poller, a long
+// datagram cut to the buffer, a closed port's reply, and a TCP echo to the peer's hang-up.
+
+fx text: (buf: List<UInt8>, n: Size) Str {
+    return Str.of(buf.slice(0, n))
+}
+
+// A Poller.wait that a SIGINT ends early (D78), as EINTR ends C++'s: the driver raises one 300 ms in.
+pub fx waitOnSignal: () Str {
+    flag: Atomic<Bool> = Atomic<Bool> { value = false }
+    installed: Bool = onSignal(SIGNAL_INT, flag)
+    s: UdpSocket = UdpSocket {}
+    bound: Bool = s.bind("127.0.0.1", 0)
+    p: Poller = Poller {}
+    p.add(s.handle(), POLL_READ)
+    before: Int64 = monoNowMs()
+    got: List<Ready> = p.wait(10000)
+    took: Int64 = monoNowMs() - before
+    return "installed ${installed} bound ${bound}: ${got.size()} ready, ${lastErrorKind()}, the flag ${flag.load()}, early ${took < 5000}"
+}
+
+fx udp: (t: Suite) Void {
+    a: UdpSocket = UdpSocket {}
+    b: UdpSocket = UdpSocket {}
+    t.check(a.bind("127.0.0.1", 0) && b.bind("127.0.0.1", 0), "two UDP sockets bind to port 0 on loopback")
+    pa: Int32 = a.localPort()
+    pb: Int32 = b.localPort()
+    t.check(pa > 0 && pb > 0 && pa != pb, "and each got its own port back")
+    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    t.check(b.recvFrom(buf.from(0)).isNone() && lastError() == "", "recvFrom on a quiet socket is none, not a wait or an error")
+    poller: Poller = Poller {}
+    poller.add(b.handle(), POLL_READ)
+    t.check(poller.wait(0).isEmpty(), "the poller sees nothing yet")
+    t.check(a.sendTo("hello".bytes(), "127.0.0.1", pb) == 5, "sendTo reports the 5 bytes sent")
+    ready: List<Ready> = poller.wait(2000)
+    t.check(ready.size() == 1 && ready[0].handle == b.handle() && (ready[0].events & POLL_READ) != 0, "the poller reports the receiving socket readable")
+    d: Maybe<Datagram> = b.recvFrom(buf.from(0))
+    t.check(d.isSome() && d.value.size == 5, "recvFrom returns the datagram's size")
+    t.checkStr(text(buf, 5), "hello", "and its bytes")
+    t.checkStr(d.value.host, "127.0.0.1", "and the sender's host")
+    t.check(d.value.port == pa && d.value == Datagram { 5, "127.0.0.1", pa }, "and the sender's port, a Datagram compared by field")
+    t.check(a.sendTo("x".bytes(), "not-a-host", pb) == -1 && lastError() == "address: not a numeric IPv4 host", "sendTo a name is -1: hosts are numeric")
+    t.check(b.recvFrom(buf.from(0)).isNone() && lastError() == "", "a quiet recvFrom after that error is none with lastError cleared")
+    t.check(!UdpSocket {}.bind("127.0.0.1", 70000) && lastError() == "address: port out of range", "a port past 65535 is refused")
+
+    t.check(a.sendTo("0123456789abcdef".bytes(), "127.0.0.1", pb) == 16 && !poller.wait(2000).isEmpty(), "16 bytes sent and seen")
+    mut small: List<UInt8> = [0, 0, 0, 0]
+    cut: Maybe<Datagram> = b.recvFrom(small.from(0))
+    t.check(cut.isSome() && cut.value.size == 4 && cut.value.port == pa, "recvFrom into 4 bytes returns size 4 and the sender: cut, not an error")
+    t.checkStr(text(small, 4), "0123", "with the first 4 bytes")
+    t.check(b.recvFrom(buf.from(0)).isNone() && lastError() == "", "and the rest of it is gone")
+
+    gone: UdpSocket = UdpSocket {}
+    t.check(gone.bind("127.0.0.1", 0), "a port bound")
+    closedPort: Int32 = gone.localPort()
+    gone.close()
+    t.check(b.sendTo("?".bytes(), "127.0.0.1", closedPort) == 1, "and closed, sent 1 byte")
+    poller.wait(100)
+    t.check(b.recvFrom(buf.from(0)).isNone() && lastError() == "", "the next recvFrom is none with no error, not a connection reset")
+    t.check(a.sendTo("still".bytes(), "127.0.0.1", pb) == 5 && !poller.wait(2000).isEmpty(), "and the socket still receives")
+    t.check(b.recvFrom(buf.from(0)).isSome() && text(buf, 5) == "still", "the datagram after it")
+    poller.remove(b.handle())
+    t.check(poller.wait(0).isEmpty(), "a removed handle is not polled")
+    a.close()
+    t.check(a.handle() == -1 && a.localPort() == -1 && lastError() == "localPort: socket is not bound", "a closed socket has no handle and no port")
+}
+
+fx tcp: (t: Suite) Void {
+    l: TcpListener = TcpListener {}
+    t.check(l.listen(0) && l.localPort() > 0, "a TCP listener takes port 0 and reports the port it got")
+    port: Int32 = l.localPort()
+    t.check(l.accept().isNone() && lastError() == "", "accept with nobody waiting is none, not a wait or an error")
+    c: TcpStream = TcpStream {}
+    t.check(c.connect("127.0.0.1", port) && c.isOpen(), "a client connects to it")
+    lp: Poller = Poller {}
+    lp.add(l.handle(), POLL_READ)
+    t.check(!lp.wait(2000).isEmpty(), "the poller reports the listener readable")
+    accepted: Maybe<TcpStream> = l.accept()
+    t.check(accepted.isSome() && accepted.value.isOpen(), "and accept returns the connection")
+    s: TcpStream = accepted.value
+    t.check(c.write("ping".bytes()) == 4, "the client writes 4 bytes")
+    sp: Poller = Poller {}
+    sp.add(s.handle(), POLL_READ)
+    t.check(!sp.wait(2000).isEmpty(), "the poller reports the server's stream readable")
+    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    got: Int64 = s.read(buf.from(0))
+    t.checkStr(text(buf, got as Size), "ping", "and the server reads them")
+    t.check(s.write("pong".bytes()) == 4, "the server writes 4 bytes back")
+    back: Int64 = c.read(buf.from(0))
+    t.checkStr(text(buf, back as Size), "pong", "and the client reads them, blocking")
+    c.close()
+    t.check(!c.isOpen() && c.write("x".bytes()) == -1 && lastError() == "write: stream is closed", "a closed stream is not open and writes nothing")
+    t.check(!sp.wait(2000).isEmpty(), "the poller reports the hang-up")
+    t.check(s.read(buf.from(0)) == 0, "and read returns 0 for the closed peer")
+    l.close()
+    refused: TcpStream = TcpStream {}
+    t.check(!refused.connect("127.0.0.1", port) && lastError() != "" && lastErrorKind() == "Other", "a connect to a closed port is refused, kind Other")
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "net - kira:os's sockets on py" }
+    udp(t)
+    tcp(t)
+    return t.finish()
+}

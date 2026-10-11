@@ -1,0 +1,131 @@
+module "app:osfiles2"
+
+use "kira:os"
+use "kira:test"
+
+// kira:os's files on both targets (K3, K4): what each call answers and the kind of each failure, the same lines on
+// C++ and py. It works in osfiles2.d, beside the program (args()[0]).
+
+fx dirOf: (path: Str) Str {
+    parts: List<Str> = path.replace("\\", "/").split("/")
+    last: Size = parts.size() - 1
+    mut kept: List<Str> = []
+    for i: Size in 0..last {
+        kept.add(parts[i])
+    }
+    if kept.isEmpty() {
+        return "."
+    }
+    return kept.joinToString("/")
+}
+
+fx textOf: (m: Maybe<Str>) Str {
+    if m.isSome() {
+        return m.value
+    }
+    return "<none>"
+}
+
+fx bytesOf: (m: Maybe<List<UInt8>>) Str {
+    if m.isSome() {
+        return Str.of(m.value)
+    }
+    return "<none>"
+}
+
+fx temporaryIn: (dir: Str) Bool {
+    for name: Str in listDir(dir) {
+        if name.endsWith(".tmp") {
+            return true
+        }
+    }
+    return false
+}
+
+// A missing file's read, for the driver: its reason is the thread's, whichever module reads it.
+pub fx missing: (path: Str) Bool {
+    return readFile(path).isNone()
+}
+
+pub fx head: (path: Str, n: Size) Maybe<List<UInt8>> {
+    return readFileHead(path, n)
+}
+
+pub fx changed: (path: Str) Maybe<Float64> {
+    return modifiedS(path)
+}
+
+pub fx atomic: (path: Str, text: Str) Bool {
+    return writeFileAtomic(path, text.bytes())
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "osfiles2 - kira:os files on C++ and py" }
+    dir: Str = dirOf(args()[0]) + "/osfiles2.d"
+    for name: Str in listDir(dir) {
+        removeFile(dir + "/" + name)
+    }
+    t.check(makeDirs(dir), "makeDirs makes the case's directory")
+    a: Str = dir + "/a.txt"
+    b: Str = dir + "/b.txt"
+    nope: Str = dir + "/nope"
+
+    t.check(writeFile(a, "one\r\ntwo\rthree\n".bytes()), "writeFile writes a new file")
+    t.checkStr(textOf(readText(a)), "one\r\ntwo\rthree\n", "readText reads it as it is")
+    t.checkStr(textOf(readTextLf(a)), "one\ntwo\nthree\n", "readTextLf reads CRLF and CR as LF")
+    t.checkStr(bytesOf(readFileHead(a, 3)), "one", "readFileHead(3) reads the first 3 bytes")
+    t.check(readFileHead(a, 1000).value.size() == 15, "and at most the file's 15")
+    t.check(readFileHead(a, 0).value.isEmpty(), "readFileHead(0) is empty")
+    t.check(isFile(a) && !isDir(a) && isDir(dir) && !isFile(dir), "isFile and isDir tell a file from a directory")
+    t.check(!isFile(nope) && !isDir(nope) && !exists(nope), "and are false for a missing path, as exists is")
+    t.check(fileSize(a) == 15 && lastErrorKind() == "", "fileSize is 15, with no error kind")
+    t.check(fileSize(nope) == -1 && lastErrorKind() == "NotFound", "fileSize of a missing path is -1, NotFound")
+    t.check(modifiedS(a).value > 1500000000.0, "modifiedS is seconds since 1970")
+    t.check(modifiedS(nope).isNone() && lastErrorKind() == "NotFound", "and none for a missing path, NotFound")
+    t.check(readFile(nope).isNone() && lastErrorKind() == "NotFound" && lastError() != "", "readFile of a missing file is none, NotFound, with a reason")
+    t.check(readFile(a).isSome() && lastErrorKind() == "" && lastError() == "", "and a read that works clears both")
+
+    t.check(writeFile(a, "x".bytes()) && fileSize(a) == 1, "writeFile truncates")
+    t.check(replaceFile(a, b) && !exists(a) && textOf(readText(b)) == "x", "replaceFile renames a file")
+    t.check(writeFile(a, "new".bytes()) && replaceFile(a, b) && textOf(readText(b)) == "new", "and over an existing one")
+    t.check(!replaceFile(nope, b) && lastErrorKind() == "NotFound", "replaceFile of a missing file is NotFound")
+    t.check(removeFile(b) && !exists(b), "removeFile removes a file")
+    t.check(!removeFile(b) && lastErrorKind() == "NotFound", "and the second time is NotFound")
+    t.check(!removeFile(dir) && lastError() != "" && isDir(dir), "removeFile refuses a directory")
+    t.check(writeFile(a, "f".bytes()) && !makeDirs(a) && lastErrorKind() == "Exists", "makeDirs over a file is Exists")
+    t.check(!makeDirs("") && lastErrorKind() == "NotFound", "makeDirs of an empty path is NotFound")
+    t.check(!writeFile(nope + "/x", "x".bytes()) && lastErrorKind() == "NotFound", "writeFile into a missing directory is NotFound")
+    t.check(!writeFileAtomic(nope + "/x", "x".bytes()) && lastErrorKind() == "NotFound", "so is writeFileAtomic")
+    t.check(writeFileAtomic(b, "whole".bytes()) && textOf(readText(b)) == "whole", "writeFileAtomic writes the file whole")
+    t.check(!writeFileAtomic(dir, "x".bytes()) && !temporaryIn(dirOf(dir)), "writeFileAtomic over a directory fails and leaves no temporary")
+    t.checkStr(listDir(dir).joinToString(","), "a.txt,b.txt", "listDir lists the names, sorted")
+    t.check(listDir(nope).isEmpty() && lastErrorKind() == "NotFound", "listDir of a missing directory is empty, NotFound")
+    t.check(freeBytes(dir) > 0 && freeBytes(nope) == -1 && lastErrorKind() == "NotFound", "freeBytes is positive, -1 for a missing path")
+
+    log: Str = dir + "/log.txt"
+    opened: Maybe<FileOut> = openAppend(log)
+    t.check(opened.isSome(), "openAppend opens a new file")
+    if opened.isNone() {
+        return t.finish()
+    }
+    f: FileOut = opened.value
+    t.check(f.size() == 0 && !f.isStale(), "empty, and not stale")
+    t.check(f.write("ab".bytes()) && f.size() == 2 && f.sync(), "write, size and sync")
+    g: FileOut = openAppend(log).value
+    t.check(g.write("cd".bytes()) && f.write("ef".bytes()), "two appenders write in turn")
+    t.checkStr(textOf(readText(log)), "abcdef", "each at the file's end")
+    f.close()
+    t.check(f.isStale() && !f.write("x".bytes()) && lastErrorKind() == "Other", "a closed FileOut is stale and refuses a write")
+    t.check(f.size() == -1 && !f.sync(), "and has no size and no sync")
+    g.close()
+    w: FileOut = openWrite(log).value
+    t.check(w.size() == 0 && w.write("z".bytes()), "openWrite truncates")
+    w.close()
+    t.checkStr(textOf(readText(log)), "z", "and writes from the start")
+    t.check(openAppend(nope + "/x").isNone() && lastErrorKind() == "NotFound", "openAppend in a missing directory is none, NotFound")
+
+    t.check(env("PATH").isSome() && env("KIRA_OSFILES2_NO_SUCH_VARIABLE").isNone(), "env finds PATH and nothing for a name that is not set")
+    t.check(setAffinity(0, [0]) || lastError() != "", "setAffinity pins this process, or says why it cannot")
+    t.check(nice(0).isSome() || lastError() != "", "nice(0) is the niceness, or none with a reason")
+    return t.finish()
+}

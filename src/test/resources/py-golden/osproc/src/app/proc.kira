@@ -1,0 +1,100 @@
+module "app:proc"
+
+use "kira:os"
+use "kira:test"
+
+// kira:os's processes on py (K3, K4), each child this Python running -c: spawnProcess, runCapture, runInherit and
+// spawnPiped, their exit codes (137 after kill), a missing program, an empty argv, and the reason each failure leaves.
+
+fx py: (code: Str) List<Str> {
+    return [pythonExecutable(), "-c", code]
+}
+
+fx drain: (p: Process) Str {
+    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    mut text: Str = ""
+    mut n: Int64 = p.readStdout(buf.from(0))
+    while n > 0 {
+        text = text + Str.of(buf.slice(0, n as Size))
+        n = p.readStdout(buf.from(0))
+    }
+    return text.replace("\r\n", "\n")
+}
+
+fx readSome: (p: PipedProcess, want: Size) Str {
+    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    mut text: Str = ""
+    while text.size() < want {
+        n: Int64 = p.readStdout(buf.from(0))
+        if n <= 0 {
+            return text
+        }
+        text = text + Str.of(buf.slice(0, n as Size))
+    }
+    return text
+}
+
+fx lineOf: (m: Maybe<Str>) Str {
+    if m.isSome() {
+        return m.value
+    }
+    return "<none>"
+}
+
+// A running child the Process is dropped on: the driver sees its pid gone.
+pub fx dropRunning: () Int64 {
+    p: Process = spawnProcess(py("import time; time.sleep(30)")).value
+    return p.pid()
+}
+
+pub fx spawned: () Bool {
+    return spawnProcess(py("pass")).isSome()
+}
+
+pub fx reason: () Str {
+    return lastError()
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "proc - kira:os's processes on py" }
+    hi: Process = spawnProcess(py("print('hi from a child')")).value
+    t.check(hi.pid() > 0, "spawnProcess starts a child with a pid")
+    t.checkStr(drain(hi), "hi from a child\n", "readStdout reads its stdout to the end")
+    t.check(hi.wait() == 0 && !hi.isRunning() && hi.wait() == 0, "wait is its exit code 0, again the second time")
+    t.check(spawnProcess(py("import sys; sys.exit(3)")).value.wait() == 3, "a child that exits 3 reports 3")
+    sleeper: Process = spawnProcess(py("import time; time.sleep(30)")).value
+    t.check(sleeper.isRunning(), "a sleeping child is running")
+    sleeper.kill()
+    t.check(sleeper.wait() == 137 && !sleeper.isRunning(), "kill ends it and wait reports 137")
+    t.check(spawnProcess(["kira-no-such-program-xyz"]).isNone() && lastErrorKind() == "NotFound", "a missing program is none, NotFound")
+    t.check(spawnProcess([]).isNone() && lastError() == "spawnProcess: empty argv", "an empty argv is refused")
+
+    fffd: List<UInt8> = [239, 191, 189]
+    code: Str = "import sys; d = sys.stdin.read(); sys.stdout.buffer.write(d.upper().encode() + b'a\\r\\nb\\rc\\xff'); sys.stderr.write('err'); sys.exit(4)"
+    ran: Maybe<Ran> = runCapture(py(code), "in put", 0)
+    t.check(ran.isSome() && ran.value.code == 4, "runCapture gives the exit code")
+    t.check(ran.value.out == "IN PUTa\nb\nc" + Str.of(fffd), "its input reached it, CRLF and CR are LF and a bad byte U+FFFD")
+    t.checkStr(ran.value.err, "err", "and stderr apart")
+    t.check(runCapture(py("import time; time.sleep(30)"), null, 200).isNone() && lastErrorKind() == "Timeout", "a child past its timeout is killed: none, Timeout")
+    t.check(lastError().startsWith("TimeoutExpired: "), "lastError names the timeout")
+    t.check(runCapture(["kira-no-such-program-xyz"], null, 0).isNone() && lastErrorKind() == "NotFound", "runCapture of a missing program is none, NotFound")
+    t.check(runCapture([], null, 0).isNone() && lastError() == "runCapture: empty argv", "and of an empty argv")
+    println("before a child that inherits stdout")
+    t.check(runInherit(py("print('inherited')")) == 0, "runInherit runs it on this stdout, after what this one wrote")
+    t.check(runInherit(py("import sys; sys.exit(5)")) == 5 && runInherit(["kira-no-such-program-xyz"]) == -1, "and gives its exit code, -1 when it never started")
+
+    script: Str = "import sys\nfor line in sys.stdin.buffer:\n    sys.stdout.buffer.write(line.upper())\n    sys.stdout.buffer.flush()\nsys.stderr.buffer.write(b'warn one\\nwarn two\\r\\npartial')"
+    piped: PipedProcess = spawnPiped(py(script)).value
+    t.check(piped.pid() > 0 && piped.isRunning(), "spawnPiped starts a child")
+    t.check(piped.writeStdin("abc\n".bytes()) == 4, "writeStdin writes all 4 bytes")
+    t.checkStr(readSome(piped, 4), "ABC\n", "and its stdout reads its answer")
+    piped.closeStdin()
+    t.check(piped.writeStdin("x".bytes()) == -1 && lastError() == "writeStdin: stdin is closed", "a closed stdin takes nothing")
+    t.checkStr(lineOf(piped.readStderrLine()), "warn one\n", "readStderrLine reads a line with its LF")
+    t.checkStr(lineOf(piped.readStderrLine()), "warn two\r\n", "splitting on LF alone")
+    t.checkStr(lineOf(piped.readStderrLine()), "partial", "the last one without")
+    t.check(piped.readStderrLine().isNone(), "and none at its end")
+    t.check(piped.wait() == 0, "the child exits 0")
+    t.check(spawnPiped([]).isNone() && lastError() == "spawnPiped: empty argv", "spawnPiped refuses an empty argv")
+    return t.finish()
+}

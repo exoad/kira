@@ -1,0 +1,46 @@
+
+net - kira:os's sockets on py
+
+  ok    two UDP sockets bind to port 0 on loopback
+  ok    and each got its own port back
+  ok    recvFrom on a quiet socket is none, not a wait or an error
+  ok    the poller sees nothing yet
+  ok    sendTo reports the 5 bytes sent
+  ok    the poller reports the receiving socket readable
+  ok    recvFrom returns the datagram's size
+  ok    and its bytes
+  ok    and the sender's host
+  ok    and the sender's port, a Datagram compared by field
+  ok    sendTo a name is -1: hosts are numeric
+  ok    a quiet recvFrom after that error is none with lastError cleared
+  ok    a port past 65535 is refused
+  ok    16 bytes sent and seen
+  ok    recvFrom into 4 bytes returns size 4 and the sender: cut, not an error
+  ok    with the first 4 bytes
+  ok    and the rest of it is gone
+  ok    a port bound
+  ok    and closed, sent 1 byte
+  ok    the next recvFrom is none with no error, not a connection reset
+  ok    and the socket still receives
+  ok    the datagram after it
+  ok    a removed handle is not polled
+  ok    a closed socket has no handle and no port
+  ok    a TCP listener takes port 0 and reports the port it got
+  ok    accept with nobody waiting is none, not a wait or an error
+  ok    a client connects to it
+  ok    the poller reports the listener readable
+  ok    and accept returns the connection
+  ok    the client writes 4 bytes
+  ok    the poller reports the server's stream readable
+  ok    and the server reads them
+  ok    the server writes 4 bytes back
+  ok    and the client reads them, blocking
+  ok    a closed stream is not open and writes nothing
+  ok    the poller reports the hang-up
+  ok    and read returns 0 for the closed peer
+  ok    a connect to a closed port is refused, kind Other
+
+38 checks, 0 failed
+
+main -> 0
+installed true bound true: 0 ready, Interrupted, the flag true, early true

@@ -27,7 +27,8 @@ class CppBindingTableTest {
             CppBindingTable.parse(m.toPath()).forEach { (key, b) ->
                 entries += 1
                 assertEquals(b, table.lookup(key), "$key from ${m.name}")
-                assertTrue(b.expr.isNotBlank(), key)
+                // A decision (D83) has its reason in place of an expression.
+                assertTrue(if (b.unsupported != null) b.expr.isEmpty() && b.unsupported.isNotBlank() else b.expr.isNotBlank(), key)
             }
         }
         assertTrue(entries > 150, "expected the stdlib's bindings, found $entries")
@@ -191,7 +192,8 @@ class CppBindingTableTest {
                 }
                 fns.forEach { fn ->
                     val key = (fn.foreign as? Foreign.Magic)?.key?.takeIf { it.isNotEmpty() } ?: return@forEach
-                    val b = table.lookup(key) ?: return@forEach
+                    // A decision lowers nothing: the call is refused before any operand is.
+                    val b = table.lookup(key)?.takeIf { it.unsupported == null } ?: return@forEach
                     checked += 1
                     val named = CppBindingTable.placeholders(b)
                     val taken = (if (fn.owner != null) listOf("self") else emptyList()) + fn.params.indices.map { "$it" }

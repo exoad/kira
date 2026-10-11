@@ -5,18 +5,26 @@
 
 import builtins as _k_builtins
 import collections as _k_collections
+import errno as _k_errno
 import functools as _k_functools
+import glob as _k_glob
 import importlib.util as _k_importlib
 import inspect as _k_inspect
+import io as _k_io
 import itertools as _k_itertools
 import json as _k_json
 import math as _k_math
 import operator as _k_operator
 import os as _k_os
 import re as _k_re
+import select as _k_select
+import shutil as _k_shutil
 import signal as _k_signal
+import socket as _k_socket
 import struct as _k_struct
+import subprocess as _k_subprocess
 import sys as _k_sys
+import tempfile as _k_tempfile
 import threading as _k_threading
 import time as _k_time
 import traceback as _k_traceback
@@ -944,11 +952,16 @@ def _k_main(main, *args):
         _k_end(None, True)
 
 
-# kira:os onSignal (D78): a handler that only stores true, which Python runs on the main thread;
-# false from any other thread, where signal.signal refuses, and for a signal it cannot catch.
+# kira:os onSignal (D78): a handler that only stores true, which Python runs on the main thread, and counts the
+# signal for _k_sliced; false from any other thread, where signal.signal refuses, and for a signal it cannot catch.
 def _k_onsignal(sig, flag):
+    def caught(n, frame):
+        flag.store(True)
+        e = _k_errors()
+        e.signalled = e.__dict__.get("signalled", 0) + 1
+
     try:
-        _k_signal.signal(sig, lambda n, frame: flag.store(True))
+        _k_signal.signal(sig, caught)
     except (ValueError, _k_builtins.OSError):
         return False
     return True
@@ -992,6 +1005,797 @@ class _k_Ready:
 
     def __eq__(self, o):
         return self.handle == o.handle and self.events == o.events
+
+
+class _k_Ran:
+    __slots__ = ("code", "out", "err")
+
+    def __init__(self, code, out, err):
+        self.code = code
+        self.out = out
+        self.err = err
+
+    def _k_clone(self):
+        return _k_Ran(self.code, self.out, self.err)
+
+    def _k_set(self, o):
+        self.code = o.code
+        self.out = o.out
+        self.err = o.err
+
+    def __eq__(self, o):
+        return self.code == o.code and self.out == o.out and self.err == o.err
+
+
+# kira:os's reasons (D86): a call that can fail clears them, and a failure leaves the category of what Python raised
+# (OSError for each of its subclasses, ValueError for each of its own) with str(e), and a kind every target names alike.
+def _k_osok():
+    _k_reasons.os = ""
+    _k_reasons.oskind = ""
+
+
+def _k_osfail(e):
+    c = "OSError" if isinstance(e, _k_builtins.OSError) else "ValueError" if isinstance(e, ValueError) else _k_builtins.type(e).__name__
+    text = str(e)
+    _k_reasons.os = c + ": " + text if text else c
+    _k_reasons.oskind = _k_oskind(e)
+
+
+# lastErrorKind's names, as C++ sorts errno and Win32's codes; subprocess's TimeoutExpired by name, so no module that
+# reads a file imports subprocess.
+def _k_oskind(e):
+    b = _k_builtins
+    for c, k in ((b.FileNotFoundError, "NotFound"), (b.FileExistsError, "Exists"), (b.PermissionError, "Permission"), (b.TimeoutError, "Timeout"), (b.InterruptedError, "Interrupted")):
+        if isinstance(e, c):
+            return k
+    return "Timeout" if b.type(e).__name__ == "TimeoutExpired" else "Other"
+
+
+# A failure kira:os finds itself, worded as C++'s: "what: why".
+def _k_osfailwith(what, why):
+    _k_reasons.os = what + ": " + why
+    _k_reasons.oskind = "Other"
+
+
+def _k_oserror():
+    return _k_builtins.getattr(_k_reasons, "os", "")
+
+
+def _k_oserrkind():
+    return _k_builtins.getattr(_k_reasons, "oskind", "")
+
+
+# A kira:os call: f(*args), else fallback with the reason, for an OSError, a ValueError (a NUL in a path) or an
+# OverflowError (a number past the C type).
+def _k_osget(fallback, f, *args):
+    _k_osok()
+    try:
+        return f(*args)
+    except (_k_builtins.OSError, ValueError, OverflowError) as e:
+        _k_osfail(e)
+        return fallback
+
+
+def _k_osdo(f, *args):
+    _k_osok()
+    try:
+        f(*args)
+    except (_k_builtins.OSError, ValueError, OverflowError) as e:
+        _k_osfail(e)
+        return False
+    return True
+
+
+# exists, isFile and isDir: false for any error, which leaves no reason.
+def _k_ostest(f, path):
+    _k_osok()
+    return f(path)
+
+
+# readFile (all of it, n < 0) and readFileHead; readText (newline "": the text as it is) and readTextLf (None:
+# universal newlines), strict UTF-8 where C++ returns the bytes.
+def _k_readfile(path, n):
+    _k_osok()
+    try:
+        with _k_builtins.open(path, "rb") as f:
+            return bytearray(f.read(n if n < 0 else min(n, _k_sys.maxsize)))
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_osfail(e)
+        return None
+
+
+def _k_readtext(path, newline):
+    _k_osok()
+    try:
+        with _k_builtins.open(path, encoding="utf-8", newline=newline) as f:
+            return f.read()
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_osfail(e)
+        return None
+
+
+def _k_writefile(path, data):
+    _k_osok()
+    try:
+        with _k_builtins.open(path, "wb") as f:
+            f.write(data)
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_osfail(e)
+        return False
+    return True
+
+
+# writeFileAtomic as kira::os's: <path>.<pid>.<n>.tmp, n counted for the process as C++'s static is, flushed to disk,
+# renamed over path as _k_replace retries it, then the directory flushed; a failure removes the temporary.
+def _k_writeatomic(path, data):
+    _k_osok()
+    n = _k_builtins.next(_k_errors().__dict__.setdefault("writers", _k_itertools.count()))
+    tmp = "%s.%d.%d.tmp" % (path, _k_os.getpid(), n)
+    try:
+        with _k_builtins.open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            _k_os.fsync(f.fileno())
+        _k_replace(tmp, path)
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_osfail(e)
+        try:
+            _k_os.remove(tmp)
+        except (_k_builtins.OSError, ValueError):
+            pass
+        return False
+    _k_syncdir(_k_os.path.dirname(_k_os.path.abspath(path)))
+    return True
+
+
+# os.replace, retried on Windows for about 200 ms while another handle holds the target (ERROR_ACCESS_DENIED,
+# ERROR_SHARING_VIOLATION), as kira::os's MoveFileEx is.
+def _k_replace(source, target):
+    attempt = 0
+    while True:
+        try:
+            _k_os.replace(source, target)
+            return
+        except _k_builtins.PermissionError as e:
+            if _k_os.name != "nt" or _k_builtins.getattr(e, "winerror", None) not in (5, 32) or attempt >= 20:
+                raise
+        _k_time.sleep(0.001 if attempt < 10 else 0.02)
+        attempt += 1
+
+
+# A rename's directory entry flushed to disk, at best: Windows opens no directory, and an error here loses no data.
+def _k_syncdir(d):
+    if _k_os.name == "nt":
+        return
+    try:
+        fd = _k_os.open(d, _k_os.O_RDONLY)
+        try:
+            _k_os.fsync(fd)
+        finally:
+            _k_os.close(fd)
+    except _k_builtins.OSError:
+        pass
+
+
+def _k_listdir(path):
+    return _k_builtins.sorted(_k_os.listdir(path))
+
+
+def _k_makedirs(path):
+    _k_os.makedirs(path, exist_ok=True)
+
+
+def _k_freebytes(path):
+    return _k_shutil.disk_usage(path).free
+
+
+def _k_touch(path, s):
+    _k_os.utime(path, (s, s))
+
+
+def _k_globbed(pattern):
+    return _k_builtins.sorted(_k_glob.glob(pattern))
+
+
+def _k_walkfiles(top):
+    return _k_builtins.sorted([_k_os.path.join(d, f) for d, _, fs in _k_os.walk(top) for f in fs])
+
+
+def _k_affinity(pid, cpus):
+    f = _k_builtins.getattr(_k_os, "sched_setaffinity", None)
+    if f is None:
+        raise _k_builtins.OSError("setAffinity is Linux's")
+    f(pid, cpus)
+
+
+def _k_nice(increment):
+    f = _k_builtins.getattr(_k_os, "nice", None)
+    if f is None:
+        raise _k_builtins.OSError("nice is POSIX's")
+    return f(increment)
+
+
+# moduleDir: the directory of the generated module this helper was copied into, its links resolved.
+def _k_moddir():
+    return _k_os.path.dirname(_k_os.path.realpath(_k_moddir.__globals__["__file__"]))
+
+
+# FileOut (critique 12): builtins.open in binary with no buffer of Python's, so a write reaches the OS whole and a
+# test's spy on open sees it; isStale reads os.path.exists.
+class _k_FileOut:
+    __slots__ = ("f", "path")
+
+    def __init__(self, f=None, path=""):
+        self.f = f
+        self.path = path
+
+    def write(self, data):
+        _k_osok()
+        if self.f is None or self.f.closed:
+            _k_osfailwith("write", "the file is closed")
+            return False
+        try:
+            with memoryview(data) as v:
+                done = 0
+                while done < len(v):
+                    done += self.f.write(v[done:])
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return False
+        return True
+
+    def sync(self):
+        return self.call("sync", lambda fd: _k_os.fsync(fd) or True, False)
+
+    def size(self):
+        return self.call("size", lambda fd: _k_os.fstat(fd).st_size, -1)
+
+    def call(self, what, f, fallback):
+        _k_osok()
+        if self.f is None or self.f.closed:
+            _k_osfailwith(what, "the file is closed")
+            return fallback
+        try:
+            return f(self.f.fileno())
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return fallback
+
+    def isStale(self):
+        return self.f is None or self.f.closed or not _k_os.path.exists(self.path)
+
+    def close(self):
+        if self.f is not None:
+            try:
+                self.f.close()
+            except _k_builtins.OSError:
+                pass
+
+
+def _k_openout(path, mode):
+    _k_osok()
+    try:
+        return _k_FileOut(_k_builtins.open(path, mode, buffering=0), path)
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_osfail(e)
+        return None
+
+
+# A blocking kira:os wait of ms (negative: no limit) that an onSignal handler ends, as EINTR ends C++'s (D78): the main
+# thread waits in 50 ms slices, between which Python runs the handler; another thread waits whole. once(s) waits s.
+def _k_sliced(ms, once):
+    if _k_threading.current_thread() is not _k_threading.main_thread():
+        return once(None if ms < 0 else ms / 1000)
+    e = _k_errors()
+    seen = e.__dict__.get("signalled", 0)
+    end = None if ms < 0 else _k_deadline() + ms / 1000
+    while True:
+        left = 0.05 if end is None else min(end - _k_deadline(), 0.05)
+        got = once(max(left, 0.0))
+        if got or end is not None and _k_deadline() >= end:
+            return got
+        if e.__dict__.get("signalled", 0) != seen:
+            raise _k_builtins.InterruptedError(_k_errno.EINTR, _k_os.strerror(_k_errno.EINTR))
+
+
+# Waits for f (a socket, or on POSIX any descriptor) to be readable, in _k_sliced's slices on the main thread.
+def _k_readable(f):
+    if _k_threading.current_thread() is _k_threading.main_thread() and (_k_os.name != "nt" or isinstance(f, _k_socket.socket)):
+        _k_sliced(-1, lambda s: _k_select.select([f], [], [], s)[0])
+
+
+# kira:os's sockets: IPv4 by number ("" is every interface), non-blocking UDP and listeners, blocking streams. On
+# Windows a closed port's ICMP reply is no reset of the next recvFrom, as kira::os turns SIO_UDP_CONNRESET off.
+def _k_addr(host, port):
+    if not 0 <= port <= 65535:
+        _k_osfailwith("address", "port out of range")
+        return None
+    try:
+        _k_socket.inet_pton(_k_socket.AF_INET, host or "0.0.0.0")
+    except (_k_builtins.OSError, ValueError):
+        _k_osfailwith("address", "not a numeric IPv4 host")
+        return None
+    return (host or "0.0.0.0", port)
+
+
+def _k_bound(kind, port, host, setup):
+    a = _k_addr(host, port)
+    if a is None:
+        return None
+    try:
+        s = _k_socket.socket(_k_socket.AF_INET, kind)
+    except _k_builtins.OSError as e:
+        _k_osfail(e)
+        return None
+    try:
+        setup(s, a)
+        s.setblocking(False)
+    except _k_builtins.OSError as e:
+        s.close()
+        _k_osfail(e)
+        return None
+    return s
+
+
+class _k_UdpSocket:
+    __slots__ = ("s",)
+
+    def __init__(self, s=None):
+        self.s = s
+
+    def bind(self, host, port):
+        _k_osok()
+        self.close()
+        self.s = _k_bound(_k_socket.SOCK_DGRAM, port, host, lambda s, a: s.bind(a))
+        return self.s is not None
+
+    def localPort(self):
+        return _k_localport(self.s, "bound")
+
+    def sendTo(self, data, host, port):
+        _k_osok()
+        if self.s is None:
+            _k_osfailwith("sendTo", "socket is not bound")
+            return -1
+        a = _k_addr(host, port)
+        if a is None:
+            return -1
+        try:
+            return self.s.sendto(data, a)
+        except _k_builtins.OSError as e:
+            _k_osfail(e)
+            return -1
+
+    def recvFrom(self, into):
+        _k_osok()
+        if self.s is None:
+            _k_osfailwith("recvFrom", "socket is not bound")
+            return None
+        while True:
+            try:
+                if _k_os.name == "nt":
+                    data, src = self.s.recvfrom(65536)
+                    n = min(len(data), len(into))
+                    into[:n] = data[:n]
+                else:
+                    n, src = self.s.recvfrom_into(into)
+                return _k_Datagram(n, src[0], src[1])
+            except _k_builtins.BlockingIOError:
+                return None
+            except _k_builtins.ConnectionResetError as e:
+                if _k_os.name != "nt":
+                    _k_osfail(e)
+                    return None
+            except _k_builtins.OSError as e:
+                _k_osfail(e)
+                return None
+
+    def handle(self):
+        return -1 if self.s is None else self.s.fileno()
+
+    def close(self):
+        if self.s is not None:
+            self.s.close()
+            self.s = None
+
+
+def _k_localport(s, state):
+    _k_osok()
+    if s is None:
+        _k_osfailwith("localPort", "socket is not " + state)
+        return -1
+    try:
+        return s.getsockname()[1]
+    except _k_builtins.OSError as e:
+        _k_osfail(e)
+        return -1
+
+
+# A restarted server binds its port while old connections linger in TIME_WAIT; on Windows SO_REUSEADDR would let a
+# second socket steal the port, so it stays off there.
+def _k_listening(s, a):
+    if _k_os.name != "nt":
+        s.setsockopt(_k_socket.SOL_SOCKET, _k_socket.SO_REUSEADDR, 1)
+    s.bind(a)
+    s.listen(16)
+
+
+class _k_TcpListener:
+    __slots__ = ("s",)
+
+    def __init__(self, s=None):
+        self.s = s
+
+    def listen(self, port):
+        _k_osok()
+        self.close()
+        self.s = _k_bound(_k_socket.SOCK_STREAM, port, "", _k_listening)
+        return self.s is not None
+
+    def localPort(self):
+        return _k_localport(self.s, "listening")
+
+    # Windows hands out a socket in the listener's non-blocking mode: blocking, as TcpStream promises.
+    def accept(self):
+        _k_osok()
+        if self.s is None:
+            _k_osfailwith("accept", "socket is not listening")
+            return None
+        try:
+            c = self.s.accept()[0]
+        except _k_builtins.BlockingIOError:
+            return None
+        except _k_builtins.OSError as e:
+            _k_osfail(e)
+            return None
+        try:
+            c.setblocking(True)
+        except _k_builtins.OSError as e:
+            c.close()
+            _k_osfail(e)
+            return None
+        return _k_TcpStream(c)
+
+    def handle(self):
+        return -1 if self.s is None else self.s.fileno()
+
+    def close(self):
+        if self.s is not None:
+            self.s.close()
+            self.s = None
+
+
+class _k_TcpStream:
+    __slots__ = ("s",)
+
+    def __init__(self, s=None):
+        self.s = s
+
+    def connect(self, host, port):
+        _k_osok()
+        self.close()
+        a = _k_addr(host, port)
+        if a is None:
+            return False
+        try:
+            s = _k_socket.socket(_k_socket.AF_INET, _k_socket.SOCK_STREAM)
+        except _k_builtins.OSError as e:
+            _k_osfail(e)
+            return False
+        try:
+            s.connect(a)
+        except _k_builtins.OSError as e:
+            s.close()
+            _k_osfail(e)
+            return False
+        self.s = s
+        return True
+
+    def read(self, into):
+        _k_osok()
+        if self.s is None:
+            _k_osfailwith("read", "stream is closed")
+            return -1
+        try:
+            _k_readable(self.s)
+            return self.s.recv_into(into)
+        except _k_builtins.OSError as e:
+            _k_osfail(e)
+            return -1
+
+    def write(self, data):
+        _k_osok()
+        if self.s is None:
+            _k_osfailwith("write", "stream is closed")
+            return -1
+        try:
+            self.s.sendall(data)
+        except _k_builtins.OSError as e:
+            _k_osfail(e)
+            return -1
+        return len(data)
+
+    def isOpen(self):
+        return self.s is not None
+
+    def handle(self):
+        return -1 if self.s is None else self.s.fileno()
+
+    def close(self):
+        if self.s is not None:
+            self.s.close()
+            self.s = None
+
+
+# Poller: select.poll on POSIX and select.select on Windows over the handles in the order added; a peer's hang-up is
+# POLL_READ and POLL_ERROR as poll(2) reports it, an error the empty List with its reason.
+class _k_Poller:
+    __slots__ = ("w",)
+
+    def __init__(self):
+        self.w = {}
+
+    def add(self, handle, events):
+        self.w[handle] = events
+
+    def remove(self, handle):
+        self.w.pop(handle, None)
+
+    def wait(self, ms):
+        _k_osok()
+        if not self.w:
+            return []
+        try:
+            return _k_sliced(ms, self.once)
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return []
+
+    def once(self, s):
+        got = {}
+        if _k_os.name == "nt":
+            r, w, x = _k_select.select([h for h, e in self.w.items() if e & 1], [h for h, e in self.w.items() if e & 2], list(self.w), s)
+            for bit, hs in ((1, r), (2, w), (4, x)):
+                for h in hs:
+                    got[h] = got.get(h, 0) | bit
+        else:
+            p = _k_select.poll()
+            for h, e in self.w.items():
+                p.register(h, (_k_select.POLLIN if e & 1 else 0) | (_k_select.POLLOUT if e & 2 else 0))
+            for h, re in p.poll(None if s is None else s * 1000):
+                hup = re & _k_select.POLLHUP
+                got[h] = (1 if re & _k_select.POLLIN or hup else 0) | (2 if re & _k_select.POLLOUT else 0) | (4 if re & (_k_select.POLLERR | _k_select.POLLNVAL) or hup else 0)
+        return [_k_Ready(h, got[h]) for h in self.w if got.get(h)]
+
+
+# Serial on pyserial, imported at open, so a program that opens none needs none. read waits up to ms for the first
+# byte, then takes what has come (in_waiting), as kira::os's poll and read do (critique 14).
+class _k_Serial:
+    __slots__ = ("p",)
+
+    def __init__(self):
+        self.p = None
+
+    def open(self, path, baud):
+        _k_osok()
+        self.close()
+        try:
+            self.p = _k_builtins.__import__("serial").Serial(path, baud, timeout=0)
+        except (_k_builtins.ImportError, _k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return False
+        return True
+
+    def read(self, into, ms):
+        _k_osok()
+        if not self.isOpen():
+            _k_osfailwith("read", "port is not open")
+            return -1
+        if len(into) == 0:
+            return 0
+        try:
+            t = None if ms < 0 else ms / 1000
+            if self.p.timeout != t:
+                self.p.timeout = t
+            data = self.p.read(1)
+            if data:
+                data += self.p.read(min(self.p.in_waiting, len(into) - 1))
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return -1
+        into[:len(data)] = data
+        return len(data)
+
+    def write(self, data):
+        _k_osok()
+        if not self.isOpen():
+            _k_osfailwith("write", "port is not open")
+            return -1
+        try:
+            return self.p.write(bytes(data))
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return -1
+
+    def isOpen(self):
+        return self.p is not None and self.p.is_open
+
+    def handle(self):
+        return self.p.fd if self.isOpen() and _k_os.name != "nt" else -1
+
+    def close(self):
+        if self.p is not None:
+            self.p.close()
+            self.p = None
+
+
+# kira:os's Process: Popen with stdout an unbuffered pipe and no other descriptor but stdin and stderr; wait is 128 +
+# the ending signal (137 after kill, Windows too), and a dropped running one is killed and reaped, as C++'s is.
+class _k_Process:
+    __slots__ = ("p",)
+
+    def __init__(self, p=None):
+        self.p = p
+
+    def readStdout(self, into):
+        _k_osok()
+        out = None if self.p is None else self.p.stdout
+        if out is None or out.closed:
+            _k_osfailwith("readStdout", "no pipe")
+            return -1
+        try:
+            _k_readable(out)
+            n = out.readinto(into)
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return -1
+        return 0 if n is None else n
+
+    def kill(self):
+        if self.p is None or self.p.poll() is not None:
+            return
+        if _k_os.name == "nt":
+            try:
+                _k_subprocess._winapi.TerminateProcess(self.p._handle, 137)
+            except _k_builtins.PermissionError:
+                pass
+        else:
+            self.p.kill()
+
+    def wait(self):
+        _k_osok()
+        if self.p is None:
+            _k_osfailwith("wait", "no process")
+            return -1
+        try:
+            return _k_code(self.p.wait())
+        except _k_builtins.OSError as e:
+            _k_osfail(e)
+            return -1
+
+    def isRunning(self):
+        _k_osok()
+        return self.p is not None and self.p.poll() is None
+
+    def stdoutHandle(self):
+        out = None if self.p is None else self.p.stdout
+        return -1 if out is None or out.closed or _k_os.name == "nt" else out.fileno()
+
+    def pid(self):
+        return -1 if self.p is None else self.p.pid
+
+    def __del__(self):
+        try:
+            if self.p is not None and self.p.poll() is None:
+                self.kill()
+                self.p.wait()
+        except _k_builtins.BaseException:
+            pass
+
+
+# PipedProcess (critique 14): spawnPiped's child, its stdin written whole (unbuffered), stderr read by line.
+class _k_PipedProcess(_k_Process):
+    __slots__ = ("err",)
+
+    def __init__(self, p=None):
+        _k_Process.__init__(self, p)
+        self.err = None if p is None else _k_io.BufferedReader(p.stderr)
+
+    def writeStdin(self, data):
+        _k_osok()
+        if self.p is None or self.p.stdin.closed:
+            _k_osfailwith("writeStdin", "stdin is closed")
+            return -1
+        try:
+            with memoryview(data) as v:
+                done = 0
+                while done < len(v):
+                    done += self.p.stdin.write(v[done:])
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return -1
+        return done
+
+    def closeStdin(self):
+        if self.p is not None:
+            try:
+                self.p.stdin.close()
+            except _k_builtins.OSError:
+                pass
+
+    def readStderrLine(self):
+        _k_osok()
+        if self.err is None:
+            _k_osfailwith("readStderrLine", "no pipe")
+            return None
+        try:
+            line = self.err.readline()
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_osfail(e)
+            return None
+        return line.decode("utf-8", "replace") if line else None
+
+
+# A child's exit status as kira::os reports it: a signal's 128 + its number, a Windows code as the Int32 C++ casts it to.
+def _k_code(rc):
+    return 128 - rc if rc < 0 else _k_as_i32(rc)
+
+
+# What a child writes after this process's own buffered lines, as C++'s fflush(nullptr) before the fork orders them.
+def _k_flushed():
+    for s in (_k_sys.stdout, _k_sys.stderr):
+        try:
+            s.flush()
+        except (_k_builtins.AttributeError, _k_builtins.OSError, ValueError):
+            pass
+
+
+def _k_spawn(argv, piped):
+    _k_osok()
+    if not argv:
+        _k_osfailwith("spawnPiped" if piped else "spawnProcess", "empty argv")
+        return None
+    _k_flushed()
+    pipe = _k_subprocess.PIPE
+    try:
+        p = _k_subprocess.Popen(list(argv), stdin=pipe if piped else None, stdout=pipe, stderr=pipe if piped else None, bufsize=0)
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_osfail(e)
+        return None
+    return _k_PipedProcess(p) if piped else _k_Process(p)
+
+
+# runCapture's text: UTF-8 with U+FFFD for a bad byte, CRLF and CR as LF.
+def _k_lftext(b):
+    return b.decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _k_runcapture(argv, given, ms):
+    _k_osok()
+    if not argv:
+        _k_osfailwith("runCapture", "empty argv")
+        return None
+    _k_flushed()
+    try:
+        data = None if given is None else given.encode("utf-8", "surrogatepass")
+        r = _k_subprocess.run(list(argv), input=data, capture_output=True, timeout=ms / 1000 if ms > 0 else None)
+    except (_k_builtins.OSError, ValueError, _k_subprocess.SubprocessError) as e:
+        _k_osfail(e)
+        return None
+    return _k_Ran(_k_code(r.returncode), _k_lftext(r.stdout), _k_lftext(r.stderr))
+
+
+def _k_runinherit(argv):
+    _k_osok()
+    if not argv:
+        _k_osfailwith("runInherit", "empty argv")
+        return -1
+    _k_flushed()
+    try:
+        return _k_code(_k_subprocess.run(list(argv)).returncode)
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_osfail(e)
+        return -1
 
 
 # kira:io escapeStdout (D87): from then on a character stdout's encoding lacks is written as a \u escape, not a

@@ -3,7 +3,7 @@ module "kira:os"
 // The operating system, hosted only: sockets, serial ports, files,
 // processes, signals, the environment. The runtime is kira/cpp/kira/os.hxx
 // with os.cxx, which has a Win32 half (Winsock, COM ports) and a POSIX half;
-// under KIRA_PROFILE_FREESTANDING the whole file is empty.
+// under KIRA_PROFILE_FREESTANDING the whole file is empty. On py it is kira/py/runtime.py's.
 //
 // Errors are values, never exceptions: a Maybe that is none, a Bool that is
 // false, or an Int64 that is -1. The reason is in lastError(), per thread,
@@ -12,11 +12,12 @@ module "kira:os"
 // Hosts are numeric IPv4 ("127.0.0.1", "0.0.0.0"): the car's devices have
 // addresses, not names, and a static musl binary resolves no names anyway.
 
-// Why the last call on this thread failed, or "" when it did not: every
-// call that can fail clears it first, so a quiet socket (none, "") and a
-// failed one (none, "recvfrom: ...") stay apart. close() and the handle
-// getters leave it alone, so a dropped object does not erase the reason.
+// Why the last call on this thread failed, "" when it did not: every call that can fail clears it first (close()
+// and the handle getters leave it), so a quiet socket and a failed one stay apart. The text is a log line's: C++
+// names the call, py the category of what Python raised (OSError for each of its subclasses) and its message.
 pub @_magic fx lastError: () Str;
+// The same failure's kind on every target: NotFound, Exists, Permission, Timeout, Interrupted or Other; "" for none.
+pub @_magic fx lastErrorKind: () Str;
 
 // --- networking ------------------------------------------------------------
 
@@ -68,8 +69,8 @@ pub @_magic class TcpListener {
 }
 
 // One TCP connection: from accept(), or connect() on a fresh one. Reads
-// and writes block, so poll the handle for POLL_READ before a read that must
-// not wait.
+// and writes block, on py too, so poll the handle for POLL_READ before a read
+// that must not wait.
 pub @_magic class TcpStream {
     pub mut fx connect: (host: Str, port: Int32) Bool;
     // Bytes read; 0 when the peer closed; -1 on error.
@@ -97,6 +98,7 @@ pub @_magic class Poller {
 // --- serial ----------------------------------------------------------------
 
 // A serial port as raw 8N1, no flow control: termios, or a Win32 COM port.
+// On py it is pyserial's, imported at open: without it open is false, naming the missing module.
 pub @_magic class Serial {
     // `path` is /dev/ttyUSB0 or COM3; `baud` a standard rate the port
     // accepts (50 to 4000000 on termios, 1200 for a Pico's bootloader
@@ -115,21 +117,72 @@ pub @_magic class Serial {
 // --- files -----------------------------------------------------------------
 
 pub @_magic fx readFile: (path: Str) Maybe<List<UInt8>>;
+// The file's text as it is. On py it must be UTF-8: other bytes are none, with lastError, where C++ returns them.
 pub @_magic fx readText: (path: Str) Maybe<Str>;
-// Writes to a temporary file beside `path`, flushes it to disk, and renames
-// it over `path`: a reader sees the old file or the new one, never a torn
-// one.
+// readText with CRLF and CR read as LF, as Python's universal newlines read them.
+pub @_magic fx readTextLf: (path: Str) Maybe<Str>;
+// At most size bytes from the start of the file.
+pub @_magic fx readFileHead: (path: Str, size: Size) Maybe<List<UInt8>>;
+// Creates or truncates the file and writes the bytes as they are.
+pub @_magic fx writeFile: (path: Str, bytes: View<UInt8>) Bool;
+// Writes <path>.<pid>.<n>.tmp beside `path`, flushes it to disk and renames it over `path`, so a reader sees
+// the old file or the new one, never a torn one; the directory is flushed after on POSIX.
 pub @_magic fx writeFileAtomic: (path: Str, bytes: View<UInt8>) Bool;
 // The entries of a directory, without . and .., sorted by name. Empty, with
 // lastError set, for a directory that cannot be opened or whose listing
 // fails part-way: never a partial list passed off as the whole.
 pub @_magic fx listDir: (path: Str) List<Str>;
 pub @_magic fx exists: (path: Str) Bool;
+pub @_magic fx isFile: (path: Str) Bool;
+pub @_magic fx isDir: (path: Str) Bool;
+// Its size in bytes, -1 when it cannot be read.
+pub @_magic fx fileSize: (path: Str) Int64;
+// When it last changed, in seconds since 1970 (st_mtime).
+pub @_magic fx modifiedS: (path: Str) Maybe<Float64>;
+// A file, never a directory.
+pub @_magic fx removeFile: (path: Str) Bool;
+// Renames source over target in one step: rename(2), MoveFileEx, os.replace.
+pub @_magic fx replaceFile: (source: Str, target: Str) Bool;
 // Creates every missing directory on the path; true when it exists after.
 pub @_magic fx makeDirs: (path: Str) Bool;
 // Bytes free to this process on the filesystem holding `path`, a file or a
 // directory, on both halves; -1 when `path` does not exist.
 pub @_magic fx freeBytes: (path: Str) Int64;
+
+// A file written as it goes: each write reaches the OS whole before it returns.
+pub @_magic class FileOut {
+    pub mut fx write: (data: View<UInt8>) Bool;
+    // Flushed to the disk (fsync).
+    pub fx sync: () Bool;
+    pub fx size: () Int64;
+    // Closed, or its path no longer exists (moved or removed).
+    pub fx isStale: () Bool;
+    pub mut fx close: () Void;
+}
+
+// Creates the file if it is missing; every write goes to its end.
+pub @_magic fx openAppend: (path: Str) Maybe<FileOut>;
+// Creates or truncates the file.
+pub @_magic fx openWrite: (path: Str) Maybe<FileOut>;
+
+// --- files, py only for now (cpp: unsupported) ------------------------------
+
+// A new directory under the system's temporary one, its name starting with prefix.
+pub @_magic fx tempDir: (prefix: Str) Maybe<Str>;
+// The directory and everything under it; false at the first error.
+pub @_magic fx removeTree: (path: Str) Bool;
+// Sets when the file was last read and changed to s seconds since 1970.
+pub @_magic fx setModifiedS: (path: Str, s: Float64) Bool;
+// The paths matching pattern (*, ?, [...], a leading dot only by name), sorted.
+pub @_magic fx glob: (pattern: Str) List<Str>;
+// Every file under dir as dir joined to its path, sorted; a linked directory is not entered.
+pub @_magic fx walkFiles: (dir: Str) List<Str>;
+// The program PATH finds for name, as a shell would run it.
+pub @_magic fx which: (name: Str) Maybe<Str>;
+// The interpreter running this program (sys.executable), to start another script under.
+pub @_magic fx pythonExecutable: () Str;
+// The directory of this module's own file, its links resolved.
+pub @_magic fx moduleDir: () Str;
 
 // --- processes -------------------------------------------------------------
 
@@ -150,6 +203,7 @@ pub @_magic class Process {
     pub fx isRunning: () Bool;
     // The read end of the stdout pipe (POSIX only, pollable); -1 on Windows.
     pub fx stdoutHandle: () Int64;
+    pub fx pid: () Int64;
 }
 
 // Starts argv[0] with the rest as its arguments, searching PATH; none when
@@ -161,6 +215,43 @@ pub @_magic class Process {
 // without). A child that outlives this process holds none of its sockets,
 // files or ports.
 pub @_magic fx spawnProcess: (argv: List<Str>) Maybe<Process>;
+
+// Pins process pid (0: this one) to the CPUs numbered in cpus; false off Linux.
+pub @_magic fx setAffinity: (pid: Int64, cpus: List<Int32>) Bool;
+// Adds increment to this process's niceness and returns the new one; none on Windows.
+pub @_magic fx nice: (increment: Int32) Maybe<Int32>;
+
+// --- processes, py only for now (cpp: unsupported) --------------------------
+
+// What runCapture's child did: its exit code (128 + the signal that ended it) and what it wrote.
+pub struct Ran {
+    pub code: Int32 = -1
+    pub out: Str = ""
+    pub err: Str = ""
+}
+
+// Runs argv (no shell) to its end with input on its stdin (none: this one's), its output read as UTF-8 (U+FFFD
+// for a bad byte) with CRLF and CR as LF; none when it cannot start or runs past timeoutMs (<= 0: no limit), killed.
+pub @_magic fx runCapture: (argv: List<Str>, input: Maybe<Str>, timeoutMs: Int64) Maybe<Ran>;
+// Runs argv with this process's stdin, stdout and stderr: its exit code, -1 when it never started.
+pub @_magic fx runInherit: (argv: List<Str>) Int32;
+
+// A child whose stdin, stdout and stderr are all pipes this side holds; dropped while running, it is killed.
+pub @_magic class PipedProcess {
+    // Bytes written (all of them), or -1.
+    pub fx writeStdin: (data: View<UInt8>) Int64;
+    pub mut fx closeStdin: () Void;
+    pub fx readStdout: (into: MutView<UInt8>) Int64;
+    // The next line of stderr with its \n (the last may lack one), a bad byte as U+FFFD; none at its end.
+    pub fx readStderrLine: () Maybe<Str>;
+    pub fx kill: () Void;
+    pub mut fx wait: () Int32;
+    pub fx isRunning: () Bool;
+    pub fx stdoutHandle: () Int64;
+    pub fx pid: () Int64;
+}
+
+pub @_magic fx spawnPiped: (argv: List<Str>) Maybe<PipedProcess>;
 
 // --- signals, environment, arguments, exit ---------------------------------
 

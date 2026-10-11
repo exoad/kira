@@ -1,0 +1,17 @@
+module "app:serial"
+
+use "kira:os"
+
+// kira:os's Serial on py without pyserial (K3): open imports it, so a program that never opens a port needs none, and
+// one that does is told which module is missing.
+
+pub fx main: () Int32 {
+    port: Serial = Serial {}
+    println("open ${port.open("kira-no-such-port", 115200)}")
+    println(lastError())
+    println(lastErrorKind())
+    mut buf: List<UInt8> = [0, 0]
+    println("read ${port.read(buf.from(0), 10)} write ${port.write(buf)} open ${port.isOpen()} handle ${port.handle()}")
+    println(lastError())
+    return 0
+}

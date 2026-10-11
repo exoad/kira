@@ -78,6 +78,11 @@ class SysDeclTest {
                 bound.forEach { (key, value) ->
                     val cpp = (value as? Map<*, *>)?.get("cpp") as? Map<*, *>
                     assertTrue(cpp != null, "$manifest: $key has no cpp map")
+                    // A py-only entry is a decision (D83), refused by name at compile time.
+                    if (cpp.keys == setOf("unsupported")) {
+                        assertTrue((cpp["unsupported"] as? String)?.isNotBlank() == true, "$manifest: $key's cpp.unsupported gives no reason")
+                        return@forEach
+                    }
                     val expr = cpp["expr"]
                     assertTrue(expr is String && expr.isNotBlank(), "$manifest: $key has no cpp.expr")
                     val includes = cpp["includes"]

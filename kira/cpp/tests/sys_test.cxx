@@ -683,6 +683,100 @@ namespace
       }
   }
 
+  [[nodiscard]] Str textOrNone(const kira::Maybe<Str>& s)
+  {
+      return kira::isSome(s) ? kira::unwrap(s) : Str("<none>");
+  }
+
+  [[nodiscard]] Str bytesOrNone(const kira::Maybe<kira::List<std::uint8_t>>& b)
+  {
+      return kira::isSome(b) ? textOf(kira::unwrap(b).data(), static_cast<std::int64_t>(kira::unwrap(b).size())) : Str("<none>");
+  }
+
+  [[nodiscard]] bool anyTemporary(const Str& dir)
+  {
+      for(const Str& name : kira::os::listDir(dir))
+      {
+          if(name.size() >= 4 && name.compare(name.size() - 4, 4, ".tmp") == 0)
+          {
+              return true;
+          }
+      }
+      return false;
+  }
+
+  // The K4 file calls and lastErrorKind (D86): the same kinds as py's, from errno on POSIX and Win32's codes on Windows.
+  void moreFileChecks(Suite& t, const Str& base)
+  {
+      using kira::os::lastErrorKind;
+      const Str dir = base + "/sys_test_more";
+      for(const Str& name : kira::os::listDir(dir))
+      {
+          (void)std::remove((dir + "/" + name).c_str());
+      }
+      for(const Str& name : kira::os::listDir(base))
+      {
+          if(name.rfind("sys_test_more.", 0) == 0)
+          {
+              (void)std::remove((base + "/" + name).c_str()); // a temporary a run that died left
+          }
+      }
+      t.check(kira::os::makeDirs(dir), "makeDirs makes the K4 directory");
+      const Str a = dir + "/a.txt";
+      const Str b = dir + "/b.txt";
+      const Str nope = dir + "/nope";
+      t.check(kira::os::writeFile(a, bytesOf("one\r\ntwo\rthree\n")), "writeFile writes a new file");
+      t.checkStr(textOrNone(kira::os::readText(a)), "one\r\ntwo\rthree\n", "readText reads it as it is");
+      t.checkStr(textOrNone(kira::os::readTextLf(a)), "one\ntwo\nthree\n", "readTextLf reads CRLF and CR as LF");
+      t.checkStr(bytesOrNone(kira::os::readFileHead(a, 3)), "one", "readFileHead(3) reads the first 3 bytes");
+      t.check(kira::isSome(kira::os::readFileHead(a, 1000)) && kira::unwrap(kira::os::readFileHead(a, 1000)).size() == 15, "and at most the file's 15");
+      t.check(kira::isSome(kira::os::readFileHead(a, 0)) && kira::unwrap(kira::os::readFileHead(a, 0)).empty(), "readFileHead(0) is empty");
+      t.check(kira::os::isFile(a) && !kira::os::isDir(a) && kira::os::isDir(dir) && !kira::os::isFile(dir), "isFile and isDir tell a file from a directory");
+      t.check(!kira::os::isFile(nope) && !kira::os::isDir(nope), "and are false for a missing path");
+      t.check(kira::os::fileSize(a) == 15 && lastErrorKind().empty(), "fileSize is 15, with no error kind");
+      t.check(kira::os::fileSize(nope) == -1 && lastErrorKind() == "NotFound", "fileSize of a missing path is -1, NotFound");
+      const kira::Maybe<double> when = kira::os::modifiedS(a);
+      t.check(kira::isSome(when) && kira::unwrap(when) > 1.5e9, "modifiedS is seconds since 1970");
+      t.check(!kira::isSome(kira::os::modifiedS(nope)) && lastErrorKind() == "NotFound", "and none for a missing path, NotFound");
+      t.check(!kira::isSome(kira::os::readFile(nope)) && lastErrorKind() == "NotFound", "readFile of a missing file is NotFound");
+      t.check(kira::isSome(kira::os::readFile(a)) && lastErrorKind().empty(), "and a read that works clears the kind");
+      t.check(kira::os::writeFile(a, bytesOf("x")) && kira::os::fileSize(a) == 1, "writeFile truncates");
+      t.check(kira::os::replaceFile(a, b) && !kira::os::exists(a) && textOrNone(kira::os::readText(b)) == "x", "replaceFile renames a file");
+      t.check(kira::os::writeFile(a, bytesOf("new")) && kira::os::replaceFile(a, b) && textOrNone(kira::os::readText(b)) == "new", "and over an existing one");
+      t.check(!kira::os::replaceFile(nope, b) && lastErrorKind() == "NotFound", "replaceFile of a missing file is NotFound");
+      t.check(kira::os::removeFile(b) && !kira::os::exists(b), "removeFile removes a file");
+      t.check(!kira::os::removeFile(b) && lastErrorKind() == "NotFound", "and a second time is NotFound");
+      t.check(!kira::os::removeFile(dir) && !kira::os::lastError().empty() && kira::os::isDir(dir), "removeFile refuses a directory");
+      t.check(kira::os::writeFile(a, bytesOf("f")) && !kira::os::makeDirs(a) && lastErrorKind() == "Exists", "makeDirs over a file is Exists");
+      t.check(!kira::os::makeDirs("") && lastErrorKind() == "NotFound", "makeDirs of an empty path is NotFound");
+      t.check(!kira::os::writeFile(nope + "/x", bytesOf("x")) && lastErrorKind() == "NotFound", "writeFile into a missing directory is NotFound");
+      t.check(!kira::os::writeFileAtomic(nope + "/x", bytesOf("x")) && lastErrorKind() == "NotFound", "so is writeFileAtomic");
+      t.check(!kira::os::writeFileAtomic(dir, bytesOf("x")) && !anyTemporary(base), "writeFileAtomic over a directory fails and leaves no temporary");
+
+      const Str log = dir + "/log.txt";
+      const kira::Rc<kira::os::FileOut> f = kira::os::openAppend(log);
+      t.check(f != nullptr && f->size() == 0 && !f->isStale(), "openAppend makes an empty file, not stale");
+      if(f == nullptr)
+      {
+          return;
+      }
+      t.check(f->write(bytesOf("ab")) && f->size() == 2 && f->sync(), "write, size and sync");
+      const kira::Rc<kira::os::FileOut> g = kira::os::openAppend(log);
+      t.check(g != nullptr && g->write(bytesOf("cd")) && f->write(bytesOf("ef")), "two appenders write in turn");
+      t.checkStr(textOrNone(kira::os::readText(log)), "abcdef", "each at the file's end");
+      f->close();
+      t.check(f->isStale() && !f->write(bytesOf("x")) && lastErrorKind() == "Other", "a closed FileOut is stale and refuses a write");
+      t.check(f->size() == -1 && !f->sync(), "and has no size or sync");
+      const kira::Rc<kira::os::FileOut> w = kira::os::openWrite(log);
+      t.check(w != nullptr && w->size() == 0 && w->write(bytesOf("z")), "openWrite truncates");
+      t.checkStr(textOrNone(kira::os::readText(log)), "z", "and writes from the start");
+      t.check(kira::os::openAppend(nope + "/x") == nullptr && lastErrorKind() == "NotFound", "openAppend in a missing directory is none, NotFound");
+#if !defined(_WIN32)
+      // POSIX lets an open file's path go: the FileOut sees it gone (Windows keeps the path while a handle is open).
+      t.check(g->isStale() == false && kira::os::removeFile(log) && g->isStale(), "a FileOut whose path is removed is stale");
+#endif
+  }
+
   void processChecks(Suite& t, const char* self)
   {
       using kira::os::Process;
@@ -709,6 +803,7 @@ namespace
           // with \r\n. That is the child's doing, not the pipe's.
           out.erase(std::remove(out.begin(), out.end(), '\r'), out.end());
           t.checkStr(out, "child says hi\n", "and reads its stdout to the end");
+          t.check(p->pid() > 0, "pid is the child's");
           t.check(p->wait() == 0, "wait returns its exit code 0");
           t.check(!p->isRunning(), "and it is not running");
           t.check(p->wait() == 0, "a second wait returns the same code");
@@ -824,6 +919,20 @@ namespace
                   || kira::os::lastError().find("CreateProcess") != Str::npos, "and lastError names the failure");
       }
       t.check(kira::os::spawnProcess(kira::List<Str>{}) == nullptr, "an empty argv is refused");
+      t.check(kira::os::lastErrorKind() == "Other", "and its kind is Other");
+#if defined(__linux__)
+      const bool pinned = kira::os::setAffinity(0, kira::List<std::int32_t>{0})
+                          && !kira::os::setAffinity(0, kira::List<std::int32_t>{-1}) && !kira::os::lastError().empty();
+#else
+      const bool pinned = !kira::os::setAffinity(0, kira::List<std::int32_t>{0}) && !kira::os::lastError().empty();
+#endif
+#if defined(_WIN32)
+      const bool niced = !kira::isSome(kira::os::nice(0)) && !kira::os::lastError().empty();
+#else
+      const bool niced = kira::isSome(kira::os::nice(0));
+#endif
+      t.check(pinned, "setAffinity pins this process to CPU 0 on Linux and is false, saying why, elsewhere");
+      t.check(niced, "nice(0) is the niceness on POSIX and none on Windows");
   }
 
   void signalChecks(Suite& t)
@@ -894,6 +1003,7 @@ namespace
       tcpChecks(*t);
       serialChecks(*t);
       fileChecks(*t, dirOf(argv[0]));
+      moreFileChecks(*t, dirOf(argv[0]));
       processChecks(*t, argv[0]);
       signalChecks(*t);
       envChecks(*t);

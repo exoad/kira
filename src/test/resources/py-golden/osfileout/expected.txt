@@ -1,0 +1,23 @@
+
+fileout - kira:os's FileOut on py
+
+  ok    two lines appended
+  ok    the header once, every line ending LF
+  ok    a write reaches the file before it returns
+  ok    a closed one is stale and says why it writes nothing
+  ok    and has no size and no sync
+  ok    openWrite starts the file again
+  ok    and the next append adds no header to it
+  ok    openWrite in a missing directory is none, NotFound
+  ok    the directory is removed
+
+9 checks, 0 failed
+
+main -> 0
+appended: True
+the open a spy sees: [(('ab',), {'buffering': 0}, 'FileIO')]
+its bytes: b'# header\nseen\n'
+a full disk: False OSError: [Errno 28] No space left on device Other
+_k_FileOut stale: False
+its path gone: True
+closed: True

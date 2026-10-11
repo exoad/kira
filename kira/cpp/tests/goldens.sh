@@ -51,8 +51,9 @@ esac
 # A hosted link on Linux glibc needs -pthread (kira/os.hxx says so, and sys.sh passes it):
 # glibc 2.35 (the Pi) folds libpthread into libc, but gcc 11.4 on glibc 2.31 leaves
 # pthread_create and pthread_cond_clockwait unresolved for any case that reaches
-# kira/sync.hxx (measured: sysdecls in the gcc:11.4 image, Debian 11).
-if [ "$linux" = 1 ]; then hostlink=(-pthread); else hostlink=(); fi
+# kira/sync.hxx (measured: sysdecls in the gcc:11.4 image, Debian 11). On Windows a case that
+# compiles kira/os.cxx (osfiles2) links Winsock; MSVC takes it from os.cxx's pragma.
+if [ "$linux" = 1 ]; then hostlink=(-pthread); elif [ "$windows" = 1 ]; then hostlink=(-lws2_32); else hostlink=(); fi
 p() { if [ "$windows" = 1 ]; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 have() { command -v "$1" > /dev/null 2>&1 || [ -x "$1" ]; }
 exe() { if [ "$windows" = 1 ]; then printf '%s.exe' "$1"; else printf '%s' "$1"; fi; }
@@ -85,7 +86,7 @@ else
     clangcmd=("$zig" c++ "${clangtarget[@]}")
 fi
 wanted() { [ -z "${KIRA_TOOLCHAINS:-}" ] || printf ',%s,' "$KIRA_TOOLCHAINS" | grep -q ",$1,"; }
-msvc_found() { [ "$windows" = 1 ] && [ -f "C:/Users/error/Code/bibo-kira/tools/find_vs.bat" ]; }
+msvc_found() { [ "$windows" = 1 ] && [ -f "${KIRA_FIND_VS:-C:/Users/error/Code/bibo-kira/tools/find_vs.bat}" ]; }
 
 # ---- case.yaml: flow lists and scalars only -----------------------------------------
 yaml_scalar() { sed -n -E "s/^$2:[[:space:]]*([^#]*[^[:space:]#]).*$/\1/p" "$1" | head -1; }

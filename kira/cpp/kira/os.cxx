@@ -26,7 +26,10 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <fcntl.h>
 #include <io.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #if defined(_MSC_VER)
 #pragma comment(lib, "ws2_32.lib")
 #endif
@@ -51,6 +54,7 @@
 #include <termios.h>
 #include <unistd.h>
 #if defined(__linux__)
+#include <sched.h>
 #include <sys/syscall.h>
 #endif
 #endif
@@ -117,11 +121,15 @@ namespace kira::os
     }
 #endif
 
+    // lastErrorKind's word: a static string, so the thread_local stays trivially destructible (safe on MinGW too).
+    thread_local const char* lastKind_ = "";
+
     // The message is built before the store, so GetLastError and errno are
     // read before anything here can change them.
-    void keepError(Str message)
+    void keepError(Str message, const char* kind)
     {
         *lastErrorOf(true) = std::move(message);
+        lastKind_ = kind;
     }
 
     // Every public call that can fail starts here, so after a call that did
@@ -133,29 +141,74 @@ namespace kira::os
         {
             held->clear();
         }
+        lastKind_ = "";
+    }
+
+    // errno's kind, as Python's OSError subclasses sort it (FileNotFoundError is ENOENT, ...).
+    [[nodiscard]] const char* kindOfErrno(int e) noexcept
+    {
+        switch(e)
+        {
+            case ENOENT: return "NotFound";
+            case EEXIST: return "Exists";
+            case EACCES:
+            case EPERM: return "Permission";
+            case ETIMEDOUT: return "Timeout";
+            case EINTR: return "Interrupted";
+            default: return "Other";
+        }
     }
 
     // errno, as text: "<what>: <strerror> (errno N)".
     void failErrno(const char* what)
     {
         const int e = errno;
-        keepError(cat(what, ": ", std::strerror(e), " (errno ", text(e), ")"));
+        keepError(cat(what, ": ", std::strerror(e), " (errno ", text(e), ")"), kindOfErrno(e));
     }
 
-    void failWith(const char* what, const char* why)
+    void failWith(const char* what, const char* why, const char* kind = "Other")
     {
-        keepError(cat(what, ": ", why));
+        keepError(cat(what, ": ", why), kind);
     }
 
 #if defined(_WIN32)
+    // Win32's and Winsock's codes, sorted as Python's errmap.h maps them onto errno.
+    [[nodiscard]] const char* kindOfWin(DWORD e) noexcept
+    {
+        switch(e)
+        {
+            case ERROR_FILE_NOT_FOUND:
+            case ERROR_PATH_NOT_FOUND:
+            case ERROR_INVALID_DRIVE:
+            case ERROR_BAD_NETPATH:
+            case ERROR_BAD_NET_NAME:
+            case ERROR_BAD_PATHNAME:
+            case ERROR_FILENAME_EXCED_RANGE: return "NotFound";
+            case ERROR_FILE_EXISTS:
+            case ERROR_ALREADY_EXISTS: return "Exists";
+            case ERROR_ACCESS_DENIED:
+            case ERROR_SHARING_VIOLATION:
+            case ERROR_LOCK_VIOLATION:
+            case WSAEACCES: return "Permission";
+            case WAIT_TIMEOUT:
+            case ERROR_TIMEOUT:
+            case ERROR_SEM_TIMEOUT:
+            case WSAETIMEDOUT: return "Timeout";
+            case WSAEINTR: return "Interrupted";
+            default: return "Other";
+        }
+    }
+
     void failWsa(const char* what)
     {
-        keepError(cat(what, ": Winsock error ", text(WSAGetLastError())));
+        const int e = WSAGetLastError();
+        keepError(cat(what, ": Winsock error ", text(e)), kindOfWin(static_cast<DWORD>(e)));
     }
 
     void failWin(const char* what)
     {
-        keepError(cat(what, ": Win32 error ", text(static_cast<std::uint32_t>(GetLastError()))));
+        const DWORD e = GetLastError();
+        keepError(cat(what, ": Win32 error ", text(static_cast<std::uint32_t>(e))), kindOfWin(e));
     }
 
     // WSAStartup once, WSACleanup at exit.
@@ -392,6 +445,11 @@ namespace kira::os
   {
       const Str* held = lastErrorOf(false);
       return held != nullptr ? *held : Str();
+  }
+
+  Str lastErrorKind()
+  {
+      return Str(lastKind_);
   }
 
   // ---- UdpSocket -------------------------------------------------------------------
@@ -1157,9 +1215,9 @@ namespace kira::os
         return std::fopen(path.c_str(), full.c_str());
     }
 
-    // Reads the whole file through stdio, in binary, into `out` by chunks.
+    // Reads the file through stdio, in binary, into `out` by chunks: all of it, or its first `most` bytes.
     template<class Container>
-    [[nodiscard]] bool slurp(const Str& path, Container& out)
+    [[nodiscard]] bool slurp(const Str& path, Container& out, Size most = ~Size(0))
     {
         std::FILE* f = openBinary(path, "r");
         if(f == nullptr)
@@ -1168,14 +1226,15 @@ namespace kira::os
             return false;
         }
         char chunk[65536];
-        for(;;)
+        while(out.size() < most)
         {
-            const Size got = std::fread(chunk, 1, sizeof chunk, f);
+            const Size want = std::min<Size>(sizeof chunk, most - out.size());
+            const Size got = std::fread(chunk, 1, want, f);
             if(got > 0)
             {
                 out.insert(out.end(), chunk, chunk + got);
             }
-            if(got < sizeof chunk)
+            if(got < want)
             {
                 break;
             }
@@ -1240,6 +1299,32 @@ namespace kira::os
         return static_cast<std::int64_t>(::getpid());
 #endif
     }
+
+    // exists() without touching lastError, for FileOut::isStale.
+    [[nodiscard]] bool pathExists(const Str& path)
+    {
+#if defined(_WIN32)
+        return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+#else
+        struct stat st;
+        return ::stat(path.c_str(), &st) == 0;
+#endif
+    }
+
+#if !defined(_WIN32)
+    // The directory entry a rename made, flushed to disk at best: an error here loses no data.
+    void syncDirOf(const Str& path)
+    {
+        const Size cut = path.find_last_of('/');
+        const Str dir = cut == Str::npos ? Str(".") : cut == 0 ? Str("/") : path.substr(0, cut);
+        const int fd = ::open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if(fd >= 0)
+        {
+            (void)::fsync(fd);
+            ::close(fd);
+        }
+    }
+#endif
   }
 
   Maybe<List<std::uint8_t>> readFile(const Str& path)
@@ -1262,6 +1347,175 @@ namespace kira::os
           return none;
       }
       return text;
+  }
+
+  Maybe<Str> readTextLf(const Str& path)
+  {
+      begin();
+      Str text;
+      if(!slurp(path, text))
+      {
+          return none;
+      }
+      Str out;
+      out.reserve(text.size());
+      for(Size i = 0; i < text.size(); ++i)
+      {
+          if(text[i] != '\r')
+          {
+              out += text[i];
+              continue;
+          }
+          out += '\n';
+          if(i + 1 < text.size() && text[i + 1] == '\n')
+          {
+              ++i;
+          }
+      }
+      return out;
+  }
+
+  Maybe<List<std::uint8_t>> readFileHead(const Str& path, Size size)
+  {
+      begin();
+      List<std::uint8_t> bytes;
+      if(!slurp(path, bytes, size))
+      {
+          return none;
+      }
+      return bytes;
+  }
+
+  bool writeFile(const Str& path, View<std::uint8_t> bytes)
+  {
+      begin();
+      std::FILE* f = openBinary(path, "w");
+      if(f == nullptr)
+      {
+          failErrno("open");
+          return false;
+      }
+      bool ok = bytes.size() == 0 || std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+      if(!ok)
+      {
+          failErrno("write");
+      }
+      if(std::fclose(f) != 0 && ok)
+      {
+          failErrno("close");
+          ok = false;
+      }
+      return ok;
+  }
+
+  bool isFile(const Str& path)
+  {
+      begin();
+#if defined(_WIN32)
+      const DWORD attrs = GetFileAttributesA(path.c_str());
+      return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+#else
+      struct stat st;
+      return ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+#endif
+  }
+
+  bool isDir(const Str& path)
+  {
+      begin();
+      return isDirectory(path);
+  }
+
+  std::int64_t fileSize(const Str& path)
+  {
+      begin();
+#if defined(_WIN32)
+      WIN32_FILE_ATTRIBUTE_DATA data;
+      if(!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &data))
+      {
+          failWin("GetFileAttributesEx");
+          return -1;
+      }
+      return static_cast<std::int64_t>((static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow);
+#else
+      struct stat st;
+      if(::stat(path.c_str(), &st) != 0)
+      {
+          failErrno("stat");
+          return -1;
+      }
+      return static_cast<std::int64_t>(st.st_size);
+#endif
+  }
+
+  // Python's st_mtime, to the bit: seconds + nanoseconds * 1e-9 in doubles (FILETIME's 100 ns ticks on Windows).
+  Maybe<double> modifiedS(const Str& path)
+  {
+      begin();
+#if defined(_WIN32)
+      WIN32_FILE_ATTRIBUTE_DATA data;
+      if(!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &data))
+      {
+          failWin("GetFileAttributesEx");
+          return none;
+      }
+      const std::int64_t ticks = static_cast<std::int64_t>((static_cast<std::uint64_t>(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime);
+      const std::int64_t sec = ticks / 10000000 - 11644473600LL;
+      const std::int64_t nsec = (ticks % 10000000) * 100;
+#else
+      struct stat st;
+      if(::stat(path.c_str(), &st) != 0)
+      {
+          failErrno("stat");
+          return none;
+      }
+#if defined(__APPLE__)
+      const std::int64_t sec = static_cast<std::int64_t>(st.st_mtimespec.tv_sec);
+      const std::int64_t nsec = static_cast<std::int64_t>(st.st_mtimespec.tv_nsec);
+#else
+      const std::int64_t sec = static_cast<std::int64_t>(st.st_mtim.tv_sec);
+      const std::int64_t nsec = static_cast<std::int64_t>(st.st_mtim.tv_nsec);
+#endif
+#endif
+      return static_cast<double>(sec) + static_cast<double>(nsec) * 1e-9;
+  }
+
+  bool removeFile(const Str& path)
+  {
+      begin();
+#if defined(_WIN32)
+      if(!DeleteFileA(path.c_str()))
+      {
+          failWin("DeleteFile");
+          return false;
+      }
+#else
+      if(::unlink(path.c_str()) != 0)
+      {
+          failErrno("unlink");
+          return false;
+      }
+#endif
+      return true;
+  }
+
+  bool replaceFile(const Str& source, const Str& target)
+  {
+      begin();
+#if defined(_WIN32)
+      if(!MoveFileExA(source.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING))
+      {
+          failWin("MoveFileEx");
+          return false;
+      }
+#else
+      if(std::rename(source.c_str(), target.c_str()) != 0)
+      {
+          failErrno("rename");
+          return false;
+      }
+#endif
+      return true;
   }
 
   bool writeFileAtomic(const Str& path, View<std::uint8_t> bytes)
@@ -1342,6 +1596,10 @@ namespace kira::os
               failErrno("rename");
               ok = false;
           }
+          else
+          {
+              syncDirOf(path);
+          }
 #endif
       }
       if(!ok)
@@ -1418,20 +1676,16 @@ namespace kira::os
   bool exists(const Str& path)
   {
       begin();
-#if defined(_WIN32)
-      return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
-#else
-      struct stat st;
-      return ::stat(path.c_str(), &st) == 0;
-#endif
+      return pathExists(path);
   }
 
+  // The kinds are os.makedirs's: FileNotFoundError for "", FileExistsError over a file.
   bool makeDirs(const Str& path)
   {
       begin();
       if(path.empty())
       {
-          failWith("makeDirs", "empty path");
+          failWith("makeDirs", "empty path", "NotFound");
           return false;
       }
       for(Size i = 1; i < path.size(); ++i)
@@ -1462,7 +1716,7 @@ namespace kira::os
       }
       if(!isDirectory(path))
       {
-          failWith("makeDirs", "the path exists and is not a directory");
+          failWith("makeDirs", "the path exists and is not a directory", "Exists");
           return false;
       }
       return true;
@@ -1506,6 +1760,149 @@ namespace kira::os
       }
       return static_cast<std::int64_t>(st.f_bavail) * static_cast<std::int64_t>(st.f_frsize);
 #endif
+  }
+
+  // ---- FileOut ---------------------------------------------------------------------
+
+  namespace
+  {
+    // A descriptor for FileOut: binary, never inherited, created 0644 on POSIX; -1 with lastError.
+    [[nodiscard]] int openOut(const Str& path, bool append)
+    {
+#if defined(_WIN32)
+        const int fd = ::_open(path.c_str(), _O_WRONLY | _O_CREAT | _O_BINARY | _O_NOINHERIT | (append ? _O_APPEND : _O_TRUNC), _S_IREAD | _S_IWRITE);
+#else
+        const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC | (append ? O_APPEND : O_TRUNC), 0644);
+#endif
+        if(fd < 0)
+        {
+            failErrno("open");
+        }
+        return fd;
+    }
+  }
+
+  Rc<FileOut> openAppend(const Str& path)
+  {
+      begin();
+      const int fd = openOut(path, true);
+      if(fd < 0)
+      {
+          return nullptr;
+      }
+      Rc<FileOut> out = std::make_shared<FileOut>();
+      out->fd_ = fd;
+      out->path_ = path;
+      return out;
+  }
+
+  Rc<FileOut> openWrite(const Str& path)
+  {
+      begin();
+      const int fd = openOut(path, false);
+      if(fd < 0)
+      {
+          return nullptr;
+      }
+      Rc<FileOut> out = std::make_shared<FileOut>();
+      out->fd_ = fd;
+      out->path_ = path;
+      return out;
+  }
+
+  FileOut::~FileOut()
+  {
+      close();
+  }
+
+  bool FileOut::write(View<std::uint8_t> data)
+  {
+      begin();
+      if(fd_ < 0)
+      {
+          failWith("write", "the file is closed");
+          return false;
+      }
+      Size done = 0;
+      while(done < data.size())
+      {
+#if defined(_WIN32)
+          const int wrote = ::_write(fd_, data.data() + done, static_cast<unsigned int>(std::min<Size>(data.size() - done, INT_MAX)));
+#else
+          const ssize_t wrote = ::write(fd_, data.data() + done, data.size() - done);
+          if(wrote < 0 && errno == EINTR)
+          {
+              continue;
+          }
+#endif
+          if(wrote < 0)
+          {
+              failErrno("write");
+              return false;
+          }
+          done += static_cast<Size>(wrote);
+      }
+      return true;
+  }
+
+  bool FileOut::sync() const
+  {
+      begin();
+      if(fd_ < 0)
+      {
+          failWith("sync", "the file is closed");
+          return false;
+      }
+#if defined(_WIN32)
+      if(::_commit(fd_) != 0)
+#else
+      if(::fsync(fd_) != 0)
+#endif
+      {
+          failErrno("fsync");
+          return false;
+      }
+      return true;
+  }
+
+  std::int64_t FileOut::size() const
+  {
+      begin();
+      if(fd_ < 0)
+      {
+          failWith("size", "the file is closed");
+          return -1;
+      }
+#if defined(_WIN32)
+      struct _stati64 st;
+      if(::_fstati64(fd_, &st) != 0)
+#else
+      struct stat st;
+      if(::fstat(fd_, &st) != 0)
+#endif
+      {
+          failErrno("fstat");
+          return -1;
+      }
+      return static_cast<std::int64_t>(st.st_size);
+  }
+
+  bool FileOut::isStale() const
+  {
+      return fd_ < 0 || !pathExists(path_);
+  }
+
+  void FileOut::close()
+  {
+      if(fd_ >= 0)
+      {
+#if defined(_WIN32)
+          (void)::_close(fd_);
+#else
+          (void)::close(fd_);
+#endif
+          fd_ = -1;
+      }
   }
 
   // ---- Process ---------------------------------------------------------------------
@@ -1629,6 +2026,11 @@ namespace kira::os
   std::int64_t Process::stdoutHandle() const noexcept
   {
       return -1;
+  }
+
+  std::int64_t Process::pid() const noexcept
+  {
+      return winProcess_ != nullptr ? static_cast<std::int64_t>(GetProcessId(static_cast<HANDLE>(winProcess_))) : -1;
   }
 
   namespace
@@ -1943,6 +2345,11 @@ namespace kira::os
       return out_;
   }
 
+  std::int64_t Process::pid() const noexcept
+  {
+      return pid_;
+  }
+
   Rc<Process> spawnProcess(const List<Str>& argv)
   {
       begin();
@@ -2064,6 +2471,56 @@ namespace kira::os
       return p;
   }
 #endif
+
+  // ---- scheduling ------------------------------------------------------------------
+
+  bool setAffinity(std::int64_t pid, const List<std::int32_t>& cpus)
+  {
+      begin();
+#if defined(__linux__)
+      cpu_set_t set;
+      CPU_ZERO(&set);
+      for(const std::int32_t cpu : cpus)
+      {
+          if(cpu < 0 || cpu >= CPU_SETSIZE)
+          {
+              failWith("setAffinity", "a CPU number out of range");
+              return false;
+          }
+          CPU_SET(static_cast<std::size_t>(cpu), &set);
+      }
+      if(::sched_setaffinity(static_cast<pid_t>(pid), sizeof set, &set) != 0)
+      {
+          failErrno("sched_setaffinity");
+          return false;
+      }
+      return true;
+#else
+      (void)pid;
+      (void)cpus;
+      failWith("setAffinity", "sched_setaffinity is Linux's");
+      return false;
+#endif
+  }
+
+  Maybe<std::int32_t> nice(std::int32_t increment)
+  {
+      begin();
+#if defined(_WIN32)
+      (void)increment;
+      failWith("nice", "nice is POSIX's");
+      return none;
+#else
+      errno = 0;
+      const int now = ::nice(increment);
+      if(now == -1 && errno != 0)
+      {
+          failErrno("nice");
+          return none;
+      }
+      return static_cast<std::int32_t>(now);
+#endif
+  }
 
   // ---- signals, environment, exit --------------------------------------------------
 

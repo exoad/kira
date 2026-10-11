@@ -2062,7 +2062,6 @@ class PyEmitterTest {
             "'Num.abs'",
             "an integer's abs wraps its lowest value by its width, which the binding cannot see; kira:math's abs takes a Float64",
         )
-        decided("use \"kira:os\"\n\nfx f: () Bool {\n    return exists(\"x\")\n}", "'exists'", "kira:os is bound on py for args, onSignal and exit so far")
         decided("fx f: (u: UInt64) Float64 {\n    return bitCast<Float64>(u)\n}", "'bitCast'", "a bit cast (writeF64Le then readU64Le gives a Float64's bits)")
     }
 
@@ -2786,9 +2785,34 @@ class PyEmitterTest {
         assertTrue(py.trimEnd().endsWith("_k_exit(_k_run())"), py)
     }
 
+    /** K3, K4: kira:os on py is the runtime's classes and helpers, each leaving its reason on the shared reasons (D86). */
     @Test
-    fun aSystemClassTheRuntimeLacksIsStillRefused() {
-        refused("use \"kira:os\"\n\nfx f: (u: UdpSocket) Void {\n}", "the parameter 'u': the type UdpSocket")
+    fun kiraOsIsTheRuntimesClassesAndHelpers() {
+        val py = python(
+            """
+            use "kira:os"
+
+            fx f: (path: Str) Bool {
+                s: UdpSocket = UdpSocket {}
+                ok: Bool = s.bind("127.0.0.1", 0) && exists(path) && readFile(path).value.size() > 0
+                out: Maybe<FileOut> = openAppend(path)
+                ran: Maybe<Ran> = runCapture([path], null, 0)
+                return ok && lastErrorKind() == "" && out.isSome() && ran.value.code == 0
+            }
+            """
+        )
+        assertTrue(py.contains("    s = _k_UdpSocket()\n    ok = s.bind(\"127.0.0.1\", 0) and _k_ostest(_k_os.path.exists, path) and len(_k_value(_k_readfile(path, -1))) > 0\n"), py)
+        assertTrue(py.contains("    out = _k_openout(path, \"ab\")\n    ran = _k_runcapture([path], None, 0)\n"), py)
+        assertTrue(py.contains("_k_oserrkind() == \"\""), py)
+        assertTrue(py.contains("\nclass _k_UdpSocket:\n") && py.contains("\nclass _k_FileOut:\n") && py.contains("\nclass _k_Ran:\n"), py)
+        assertTrue(py.contains("\n_k_reasons = _k_errors().__dict__.setdefault(\"reasons\", _k_threading.local())\n"), py)
+        val reads = python("use \"kira:os\"\n\nfx f: (path: Str) Str {\n    return readText(path).value + lastError()\n}")
+        listOf("subprocess", "socket", "select", "shutil").forEach { assertFalse(reads.contains("import $it as"), "a module that reads a file imports no $it:\n$reads") }
+    }
+
+    @Test
+    fun aStdlibClassTheRuntimeLacksIsStillRefused() {
+        refused("fx f: (u: StrBuf<64>) Void {\n}", "the parameter 'u': the type StrBuf")
     }
 
     // ---- stdlib classes and structs on py (E1, D84) ----------------------------------------------
@@ -2842,7 +2866,7 @@ class PyEmitterTest {
         val structs = program.modules.filter { it.isStdlib }.flatMap { it.declarations }
             .filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>()
             .filter { it.kind == net.exoad.kira.compiler.analysis.types.ClassKind.STRUCT }
-        assertEquals(listOf("Datagram", "Ready"), structs.map { it.name }.sorted())
+        assertEquals(listOf("Datagram", "Ran", "Ready"), structs.map { it.name }.sorted())
         structs.forEach { s ->
             val block = runtime.substringAfter("\nclass _k_${s.name}:\n", "").substringBefore("\n\n\n")
             // pyName: a field that is not pub is _name.
