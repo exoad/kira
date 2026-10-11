@@ -786,6 +786,43 @@ namespace kira
       writeU64Be(b, at, bitCast<std::uint64_t>(v));
   }
 
+  // bytes.find: where pattern first starts at or after start, -1 for nowhere or a start past the end.
+  [[nodiscard]] constexpr std::int64_t findBytes(View<std::uint8_t> data, View<std::uint8_t> pattern, Size start) noexcept
+  {
+      if(start > data.size() || pattern.size() > data.size() - start)
+      {
+          return -1;
+      }
+      for(Size i = start; i <= data.size() - pattern.size(); ++i)
+      {
+          Size j = 0;
+          while(j < pattern.size() && data.ptr[i + j] == pattern.ptr[j])
+          {
+              ++j;
+          }
+          if(j == pattern.size())
+          {
+              return static_cast<std::int64_t>(i);
+          }
+      }
+      return -1;
+  }
+
+  // CRC-16/XMODEM, binascii.crc_hqx's: polynomial 0x1021 from init, no reflection, no final XOR.
+  [[nodiscard]] constexpr std::uint16_t crc16Xmodem(View<std::uint8_t> data, std::uint16_t init) noexcept
+  {
+      std::uint32_t crc = init;
+      for(Size i = 0; i < data.size(); ++i)
+      {
+          crc ^= static_cast<std::uint32_t>(data.ptr[i]) << 8;
+          for(int bit = 0; bit < 8; ++bit)
+          {
+              crc = ((crc << 1) ^ ((crc & 0x8000u) != 0 ? 0x1021u : 0u)) & 0xFFFFu;
+          }
+      }
+      return static_cast<std::uint16_t>(crc);
+  }
+
   // ---- text without a heap ---------------------------------------------------
   // STRICT decimal: an optional sign, then digits, and nothing else; none on
   // overflow. Locale-free and heap-free: the Pico's parser and the pilot's

@@ -1,0 +1,29 @@
+
+paths - kira:path on py
+
+  ok    joinPath puts the host's separator between
+  ok    joinPaths joins every part
+  ok    baseName and dirName split it again
+  ok    a trailing separator has no base, a bare name no directory
+  ok    stripExt drops the last extension only
+  ok    normPath folds . and .., and "" is .
+  ok    absPath joins the current directory
+  ok    relPath from a start
+  ok    and none for an empty path
+  ok    expandUser reads only a leading ~
+
+10 checks, 0 failed
+
+paths -> 0
+joinPath is os.path's: 676 of 676
+joinPaths is os.path's: 676 of 676
+baseName is os.path's: 26 of 26
+dirName is os.path's: 26 of 26
+stripExt is os.path's: 26 of 26
+normPath is os.path's: 26 of 26
+absPath is os.path's: 26 of 26
+relPath is os.path's: 676 of 676
+expandUser is os.path's: 26 of 26
+slashed is os.path's: 26 of 26
+relPath across drives or of nothing is None: True None
+joinPaths of no parts: kira: joinPaths of no parts

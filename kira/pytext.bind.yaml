@@ -1,0 +1,26 @@
+# kira:pytext on py: Python's own builtins and str methods; runtime.py's _k_pyint, _k_pyfloat, _k_pyformat and
+# _k_roundeven leave their reason on the shared reasons (D86). C++ refuses each call (D83).
+
+pyTextError:   { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_pytexterror()" } }
+pyInt:         { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_pyint({0})" } }
+pyFloat:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_pyfloat({0})" } }
+strRepr:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_builtins.repr({0})" } }
+floatRepr:     { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_builtins.repr(float({0}))" } }
+jsonRepr:      { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_builtins.repr({0})" } }
+formatFloat:   { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_pyformat({0}, {1})" } }
+roundTo:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_builtins.round(float({0}), {1})" } }
+roundHalfEven: { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_roundeven({0})" } }
+upper:         { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.upper()" } }
+lower:         { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.lower()" } }
+strip:         { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.strip()" } }
+lstrip:        { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.lstrip()" } }
+rstrip:        { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.rstrip()" } }
+isUpper:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.isupper()" } }
+splitSpace:    { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.split()" } }
+splitLines:    { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.splitlines()" } }
+findFrom:      { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "{0}.find({1}, {2})" } }
+wrapWords:     { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "_k_wrapwords({0}, {1})" } }
+isSpace:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "chr({0}).isspace()" } }
+isAlnum:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "chr({0}).isalnum()" } }
+isAlpha:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "chr({0}).isalpha()" } }
+isDigit:       { cpp: { unsupported: "Python's text rules, py only" }, py: { expr: "chr({0}).isdigit()" } }

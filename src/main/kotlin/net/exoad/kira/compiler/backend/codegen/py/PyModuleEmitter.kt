@@ -1636,8 +1636,10 @@ class PyModuleEmitter(
                 val v = init.fields.filterIsInstance<FieldInit.Given>().singleOrNull()?.expr
                 return call("_k_Ref", v?.let { asValue(it, f, Use.STORE).text } ?: zeroValue((t as KType.Nominal).typeArgs()[0], o))
             }
-            // Built as C++'s make_shared builds it, from every field in declaration order (D80).
+            // Built as C++'s make_shared builds it, from every field in declaration order (D80); a class that is
+            // Python's own (kira:regex's re.Pattern) is made only by its module's calls.
             runtimeClass(cls)?.let { name ->
+                runtime.aliasOf(name)?.let { return refusedFor(o, "a construction of ${cls.name}", "${cls.name} is Python's $it, which only its module's calls make") }
                 return inFieldOrder(o, init, f, article(cls.name))?.let { call(name, *it.toTypedArray()) } ?: Py("None", PyPrec.ATOM)
             }
             if (isTuple(t)) {

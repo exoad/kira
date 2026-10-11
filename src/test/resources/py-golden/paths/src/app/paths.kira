@@ -1,0 +1,62 @@
+module "app:paths"
+
+use "kira:path"
+use "kira:test"
+
+// kira:path (K5): os.path's own calls, so main checks what holds on posixpath and ntpath alike and the driver
+// holds each function to os.path on this host.
+
+pub fx joined: (a: Str, b: Str) Str {
+    return joinPath(a, b)
+}
+
+pub fx joinedAll: (parts: List<Str>) Str {
+    return joinPaths(parts)
+}
+
+pub fx base: (p: Str) Str {
+    return baseName(p)
+}
+
+pub fx dirOf: (p: Str) Str {
+    return dirName(p)
+}
+
+pub fx stem: (p: Str) Str {
+    return stripExt(p)
+}
+
+pub fx norm: (p: Str) Str {
+    return normPath(p)
+}
+
+pub fx absOf: (p: Str) Str {
+    return absPath(p)
+}
+
+pub fx rel: (p: Str, start: Str) Maybe<Str> {
+    return relPath(p, start)
+}
+
+pub fx home: (p: Str) Str {
+    return expandUser(p)
+}
+
+pub fx slash: (p: Str) Str {
+    return slashed(p)
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "paths - kira:path on py" }
+    t.checkStr(slashed(joinPath("a", "b.txt")), "a/b.txt", "joinPath puts the host's separator between")
+    t.checkStr(slashed(joinPaths(["a", "b", "c.d"])), "a/b/c.d", "joinPaths joins every part")
+    t.checkStr(baseName(joinPath("a", "b.txt")) + " " + slashed(dirName(joinPath("a", "b.txt"))), "b.txt a", "baseName and dirName split it again")
+    t.checkStr(baseName("a/") + "|" + dirName("x"), "|", "a trailing separator has no base, a bare name no directory")
+    t.checkStr(stripExt("x/y.tar.gz") + " " + stripExt(".bashrc") + " " + stripExt("a.b/c"), "x/y.tar .bashrc a.b/c", "stripExt drops the last extension only")
+    t.checkStr(slashed(normPath("a/./b/../c")) + " " + normPath(""), "a/c .", "normPath folds . and .., and \"\" is .")
+    t.check(slashed(absPath("x")).endsWith("/x") && absPath("x") == joinPath(absPath("."), "x"), "absPath joins the current directory")
+    t.checkStr(slashed(relPath(joinPath("a", joinPath("b", "c")), "a").unwrapOr("none")) + " " + relPath("a", "a").unwrapOr("none"), "b/c .", "relPath from a start")
+    t.check(relPath("", "a").isNone(), "and none for an empty path")
+    t.checkStr(expandUser("x/~") + " " + "${slashed(expandUser(joinPath("~", "y"))).endsWith("/y")}", "x/~ true", "expandUser reads only a leading ~")
+    return t.finish()
+}

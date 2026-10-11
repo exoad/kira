@@ -1,0 +1,80 @@
+module "app:regexes"
+
+use "kira:regex"
+use "kira:test"
+use "app:why"
+
+// kira:regex (K6): a Regex and a Match are re's own, so the driver hands raw re objects over; regexError is str(e)
+// alone (critique 3), on the reasons every module shares, so app:why reads what compile here left (D86).
+
+pub fx compiled: (pattern: Str, flags: Int32) Maybe<Regex> {
+    return compile(pattern, flags)
+}
+
+pub fx searched: (r: Regex, text: Str) Maybe<Match> {
+    return r.search(text)
+}
+
+pub fx atStart: (r: Regex, text: Str) Maybe<Match> {
+    return r.matchStart(text)
+}
+
+pub fx atPos: (r: Regex, text: Str, pos: Size) Maybe<Match> {
+    return r.matchAt(text, pos)
+}
+
+pub fx whole: (r: Regex, text: Str) Maybe<Match> {
+    return r.fullMatch(text)
+}
+
+pub fx each: (r: Regex, text: Str) List<Match> {
+    return r.findIter(text)
+}
+
+pub fx allOf: (r: Regex, text: Str) List<Str> {
+    return r.findAll(text)
+}
+
+pub fx replaced: (r: Regex, replacement: Str, text: Str) Str {
+    return r.sub(replacement, text)
+}
+
+pub fx pieces: (r: Regex, text: Str) List<Str> {
+    return r.split(text)
+}
+
+pub fx groupOf: (m: Match, n: Int32) Maybe<Str> {
+    return m.group(n)
+}
+
+pub fx namedOf: (m: Match, name: Str) Maybe<Str> {
+    return m.groupNamed(name)
+}
+
+pub fx span: (m: Match) List<Size> {
+    mut out: List<Size> = []
+    out.add(m.start())
+    out.add(m.end())
+    return out
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "regexes - kira:regex on py" }
+    r: Regex = compile("(?P<word>[a-z]+)(\\d)?", IGNORE_CASE).value
+    hit: Match = r.search("-- Abc7 x").value
+    t.checkStr(hit.group(0).unwrapOr("none") + " " + hit.groupNamed("word").unwrapOr("none") + " " + hit.group(2).unwrapOr("none"), "Abc7 Abc 7", "search finds a match and its groups")
+    t.check(hit.start() == 3 && hit.end() == 7, "at its offsets")
+    t.check(r.search("xy").value.group(2).isNone(), "a group that took no part is none")
+    t.check(r.matchStart("-- a").isNone() && r.matchAt("-- a", 3).isSome() && r.fullMatch("ab1").isSome() && r.fullMatch("ab1 ").isNone(), "matchStart, matchAt and fullMatch anchor")
+    lines: Regex = compile("^\\w+$", MULTILINE).value
+    t.check(lines.findIter("one\ntwo\n3 x").size() == 2, "MULTILINE: ^ and $ at each line")
+    t.check(compile("^b", 0).value.matchAt("ab", 1).isNone(), "^ in matchAt is still the text's start")
+    t.checkStr(compile("<(\\w+)>", 0).value.findAll("<a> <bc> <>").joinToString(","), "a,bc", "findAll gives the one group")
+    t.checkStr(compile("(\\w+)@(\\w+)", 0).value.sub("\\2 at \\1", "me@home, you@work"), "home at me, work at you", "sub's template takes the groups")
+    t.checkStr(compile("(,)", 0).value.split("a,b").joinToString("|"), "a|,|b", "split keeps a group's text")
+    t.check(compile("(", 0).isNone() && regexError() == "missing ), unterminated subpattern at position 0", "compile is none for a bad pattern, regexError str(e) alone")
+    t.check(whyNot() == "missing ), unterminated subpattern at position 0", "and another module reads the same reason")
+    t.check(compile("a", 0).isSome() && whyNot() == "", "which a compile that works clears")
+    t.check(compile("a{4294967296}", 0).isNone() && regexError() == "the repetition number is too large", "a repeat past re's limit, an OverflowError, is none too")
+    return t.finish()
+}

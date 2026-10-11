@@ -26,6 +26,12 @@ pub @_magic @_infer fx min<T: FloatNum>: (a: T, b: T) T;
 pub @_magic @_infer fx max<T: FloatNum>: (a: T, b: T) T;
 // C's fmod (D60): a - b * trunc(a / b) exactly, with a's sign; NaN where b is 0 or a infinite.
 pub @_magic @_infer fx fmod<T: FloatNum>: (a: T, b: T) T;
+// C's hypot, atan2 and exp, and Python's math on py, whose exp past the largest double is inf too where math raises.
+pub @_magic @_infer fx hypot<T: FloatNum>: (x: T, y: T) T;
+pub @_magic @_infer fx atan2<T: FloatNum>: (y: T, x: T) T;
+pub @_magic @_infer fx exp<T: FloatNum>: (value: T) T;
+// Python's a % b (CPython's float_rem): fmod, plus b where their signs differ, a zero signed as b; NaN for b 0.
+pub @_magic @_infer fx floorMod<T: FloatNum>: (a: T, b: T) T;
 
 pub fx clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
     return max(lo, min(value, hi))

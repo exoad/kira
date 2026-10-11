@@ -38,3 +38,8 @@ writeF32Be: { cpp: { expr: "kira::writeF32Be({0}, {1}, {2})", constexpr: true },
 writeF64Be: { cpp: { expr: "kira::writeF64Be({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrf64be({0}, {1}, {2})" } }
 
 parseInt64: { cpp: { expr: "kira::parseInt64({0})", pure: true, constexpr: true }, py: { unsupported: "a View<Char> (text is a Str on the py target, whose toInt64 parses it)" } }
+
+# K5: findBytes and crc16Xmodem are core.hxx's, freestanding too; fromHex makes a List, so it is rt.hxx's.
+findBytes:   { cpp: { expr: "kira::findBytes({0}, {1}, {2})", pure: true, constexpr: true }, py: { expr: "_k_findbytes({0}, {1}, {2})" } }
+crc16Xmodem: { cpp: { expr: "kira::crc16Xmodem({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_binascii.crc_hqx({0}, {1})" } }
+fromHex:     { cpp: { expr: "kira::fromHex({0})", pure: true }, py: { expr: "_k_fromhex({0})" } }

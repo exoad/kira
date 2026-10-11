@@ -2,15 +2,17 @@
 #
 # Every entry is a `cpp` map without a `symbol` key, so the C loader skips
 # it: the C backend has no clock (the module is hosted only). The
-# placeholders and flags are those of core.bind.yaml. None of these calls is
-# pure: a clock read changes between two calls, and sleepMs blocks.
+# placeholders and flags are those of core.bind.yaml. Only utcStamp is pure:
+# a clock read changes between two calls, and sleepMs blocks.
 #
 # Runtime: kira/cpp/kira/time.hxx defines kira::time::{monoNowNs, monoNowMs,
-# wallNowNs, sleepMs}, all inline, on std::chrono's steady and system clocks;
+# wallNowNs, sleepMs, utcStamp}, all inline, on std::chrono's steady and system clocks;
 # py (D72): time.perf_counter_ns, steady and fine everywhere (time.monotonic
-# ticks 15.6 ms on Windows), and time.time_ns.
+# ticks 15.6 ms on Windows), and time.time_ns. utcStamp is no Kira body: time.hxx is
+# kira:time's whole C++ face, so the C++ backend emits nothing of time.kira.
 
 monoNowNs: { cpp: { expr: "kira::time::monoNowNs()", includes: ["kira/time.hxx"] }, py: { expr: "_k_time.perf_counter_ns()" } }
 monoNowMs: { cpp: { expr: "kira::time::monoNowMs()", includes: ["kira/time.hxx"] }, py: { expr: "(_k_time.perf_counter_ns() // 1000000)" } }
 wallNowNs: { cpp: { expr: "kira::time::wallNowNs()", includes: ["kira/time.hxx"] }, py: { expr: "_k_time.time_ns()" } }
 sleepMs:   { cpp: { expr: "kira::time::sleepMs({0})", includes: ["kira/time.hxx"] }, py: { expr: "_k_sleep({0})" } }
+utcStamp:  { cpp: { expr: "kira::time::utcStamp({0})", includes: ["kira/time.hxx"], pure: true }, py: { expr: "_k_utcstamp({0})" } }

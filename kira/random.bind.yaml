@@ -1,0 +1,9 @@
+# kira:random on py: Random is random.Random itself (critique 21); runtime.py's _k_below, _k_between and _k_bits
+# panic where Python raises. C++ refuses each call (D83).
+
+Random.nextFloat: { cpp: { unsupported: "Python's random.Random, py only" }, py: { expr: "{self}.random()" } }
+Random.uniform:   { cpp: { unsupported: "Python's random.Random, py only" }, py: { expr: "{self}.uniform({0}, {1})" } }
+Random.below:     { cpp: { unsupported: "Python's random.Random, py only" }, py: { expr: "_k_below({self}, {0})" } }
+Random.between:   { cpp: { unsupported: "Python's random.Random, py only" }, py: { expr: "_k_between({self}, {0}, {1})" } }
+Random.bits:      { cpp: { unsupported: "Python's random.Random, py only" }, py: { expr: "_k_bits({self}, {0})" } }
+newRandom:        { cpp: { unsupported: "Python's random.Random, py only" }, py: { expr: "_k_Random({0})" } }

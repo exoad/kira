@@ -1,0 +1,19 @@
+# kira:regex on py: Regex and Match are re.Pattern and re.Match (E1), so a method is the object's own; runtime.py's
+# _k_re* helpers panic where re raises, and _k_recompile keeps its reason (D86). C++ refuses each call (D83).
+
+Match.group:      { cpp: { unsupported: "Python's re, py only" }, py: { expr: "_k_regroup({self}, {0})" } }
+Match.groupNamed: { cpp: { unsupported: "Python's re, py only" }, py: { expr: "_k_regroup({self}, {0})" } }
+Match.start:      { cpp: { unsupported: "Python's re, py only" }, py: { expr: "{self}.start()" } }
+Match.end:        { cpp: { unsupported: "Python's re, py only" }, py: { expr: "{self}.end()" } }
+
+Regex.search:     { cpp: { unsupported: "Python's re, py only" }, py: { expr: "{self}.search({0})" } }
+Regex.matchStart: { cpp: { unsupported: "Python's re, py only" }, py: { expr: "{self}.match({0})" } }
+Regex.matchAt:    { cpp: { unsupported: "Python's re, py only" }, py: { expr: "{self}.match({0}, {1})" } }
+Regex.fullMatch:  { cpp: { unsupported: "Python's re, py only" }, py: { expr: "{self}.fullmatch({0})" } }
+Regex.findIter:   { cpp: { unsupported: "Python's re, py only" }, py: { expr: "list({self}.finditer({0}))" } }
+Regex.findAll:    { cpp: { unsupported: "Python's re, py only" }, py: { expr: "_k_refindall({self}, {0})" } }
+Regex.sub:        { cpp: { unsupported: "Python's re, py only" }, py: { expr: "_k_resub({self}, {0}, {1})" } }
+Regex.split:      { cpp: { unsupported: "Python's re, py only" }, py: { expr: "_k_resplit({self}, {0})" } }
+
+compile:    { cpp: { unsupported: "Python's re, py only" }, py: { expr: "_k_recompile({0}, {1})" } }
+regexError: { cpp: { unsupported: "Python's re, py only" }, py: { expr: "_k_reerror()" } }

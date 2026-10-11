@@ -1,0 +1,26 @@
+
+bytesplus - kira:bytes findBytes, crc16Xmodem and fromHex
+
+  ok    findBytes finds the first at or after start
+  ok    and none past the end, or longer than the data
+  ok    the empty pattern is at start, the end included
+  ok    and nowhere past the end
+  ok    an empty view holds the empty pattern, and a view itself
+  ok    a lent slice's offsets are its own
+  ok    the XMODEM check value of 123456789, 0x31C3
+  ok    continued from the first part's
+  ok    from 0xFFFF it is CCITT-FALSE's 0x29B1, and none leaves init
+  ok    fromHex reads pairs in either case
+  ok    ASCII space between the pairs and around them
+  ok    no pairs at all
+  ok    an odd digit, a space inside a pair, a letter
+  ok    a prefix, a space that is not ASCII's
+
+14 checks, 0 failed
+
+bytesplus -> 0
+find is bytes.find: 651 of 651
+and over a lent slice: 581 of 581
+crc is binascii.crc_hqx: 300 of 300
+hex is bytes.fromhex: 78 of 78
+of the types: bytearray None int int

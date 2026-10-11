@@ -1,0 +1,23 @@
+module "kira:path"
+
+// Paths by the host's rules: Python's os.path, posixpath or ntpath on Windows; py only for now.
+// Each is text alone, but absPath (the current directory) and expandUser (the home directory).
+
+// os.path.join(a, b): a later absolute part starts over; nothing is normalized.
+pub @_magic fx joinPath: (a: Str, b: Str) Str;
+// os.path.join(*parts); an empty List panics.
+pub @_magic fx joinPaths: (parts: List<Str>) Str;
+pub @_magic fx baseName: (path: Str) Str;
+pub @_magic fx dirName: (path: Str) Str;
+// splitext's first half: the path without its last extension (".bashrc" has none).
+pub @_magic fx stripExt: (path: Str) Str;
+// normpath: "." and ".." folded by their text, "" as ".".
+pub @_magic fx normPath: (path: Str) Str;
+// abspath: joined to the current directory and normalized; links are not resolved.
+pub @_magic fx absPath: (path: Str) Str;
+// relpath(path, start); none where there is none: another drive, or an empty path.
+pub @_magic fx relPath: (path: Str, start: Str) Maybe<Str>;
+// expanduser: a leading ~ or ~user from the home directory; the path as it is when there is none.
+pub @_magic fx expandUser: (path: Str) Str;
+// The path with os.sep written as "/".
+pub @_magic fx slashed: (path: Str) Str;

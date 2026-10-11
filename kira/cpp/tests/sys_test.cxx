@@ -189,6 +189,9 @@ namespace
       t.check(kira::time::monoNowNs() - ns0 < 50000000, "sleepMs of zero or less returns at once");
       // 2020-01-01T00:00:00Z in nanoseconds: the wall clock is set.
       t.check(kira::time::wallNowNs() > 1577836800LL * 1000000000LL, "wallNowNs is after 2020");
+      t.checkStr(kira::time::utcStamp(0) + " " + kira::time::utcStamp(-1), "1970-01-01T00:00:00.000Z 1969-12-31T23:59:59.999Z",
+                 "utcStamp floors to the millisecond, before 1970 too");
+      t.checkStr(kira::time::utcStamp((std::numeric_limits<std::int64_t>::min)()), "1677-09-21T00:12:43.145Z", "utcStamp of the first Int64");
   }
 
   void syncChecks(Suite& t)

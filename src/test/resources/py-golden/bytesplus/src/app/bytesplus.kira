@@ -1,0 +1,65 @@
+module "app:bytesplus"
+
+use "kira:bytes"
+use "kira:test"
+
+// kira:bytes' K5 additions: findBytes (bytes.find), crc16Xmodem (binascii.crc_hqx) and fromHex (bytes.fromhex).
+
+pub fx find: (data: List<UInt8>, pattern: List<UInt8>, start: Size) Int64 {
+    return findBytes(data, pattern, start)
+}
+
+// findBytes over a view of data from at, as a caller's slice lends it.
+pub fx findIn: (data: List<UInt8>, at: Size, pattern: List<UInt8>) Int64 {
+    return findBytes(data.from(at), pattern, 0)
+}
+
+pub fx crc: (data: List<UInt8>, init: UInt16) UInt16 {
+    return crc16Xmodem(data, init)
+}
+
+pub fx hex: (text: Str) Maybe<List<UInt8>> {
+    return fromHex(text)
+}
+
+fx shown: (got: Maybe<List<UInt8>>) Str {
+    if got.isNone() {
+        return "none"
+    }
+    mut parts: List<Str> = []
+    for b: UInt8 in got.value {
+        parts.add(b.toHex())
+    }
+    return "[" + parts.joinToString(" ") + "]"
+}
+
+// Each text's fromHex shown, one call at a time, joined by spaces.
+fx hexes: (texts: List<Str>) Str {
+    mut parts: List<Str> = []
+    for text: Str in texts {
+        parts.add(shown(fromHex(text)))
+    }
+    return parts.joinToString(" ")
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "bytesplus - kira:bytes findBytes, crc16Xmodem and fromHex" }
+    frame: List<UInt8> = [255, 216, 1, 255, 217, 255, 217]
+    end: List<UInt8> = [255, 217]
+    none: List<UInt8> = []
+    t.check(findBytes(frame, end, 0) == 3 && findBytes(frame, end, 4) == 5, "findBytes finds the first at or after start")
+    t.check(findBytes(frame, end, 6) == -1 && findBytes(end, frame, 0) == -1, "and none past the end, or longer than the data")
+    t.check(findBytes(frame, none, 3) == 3 && findBytes(frame, none, 7) == 7, "the empty pattern is at start, the end included")
+    t.check(findBytes(frame, none, 8) == -1 && findBytes(frame, end, 99) == -1, "and nowhere past the end")
+    t.check(findBytes(none, none, 0) == 0 && findBytes(frame, frame, 0) == 0, "an empty view holds the empty pattern, and a view itself")
+    t.check(findIn(frame, 4, end) == 1 && findIn(frame, 7, end) == -1, "a lent slice's offsets are its own")
+    t.check(crc16Xmodem("123456789".bytes(), 0) == 12739, "the XMODEM check value of 123456789, 0x31C3")
+    t.check(crc16Xmodem("56789".bytes(), crc16Xmodem("1234".bytes(), 0)) == 12739, "continued from the first part's")
+    t.check(crc16Xmodem("123456789".bytes(), 65535) == 10673 && crc16Xmodem(none, 4660) == 4660, "from 0xFFFF it is CCITT-FALSE's 0x29B1, and none leaves init")
+    t.checkStr(shown(fromHex("0a 0B ff")), "[a b ff]", "fromHex reads pairs in either case")
+    t.checkStr(shown(fromHex(" 0a\t0b\n0c\r ")), "[a b c]", "ASCII space between the pairs and around them")
+    t.checkStr(hexes(["", "   "]), "[] []", "no pairs at all")
+    t.checkStr(hexes(["0a 0", "0 a", "zz"]), "none none none", "an odd digit, a space inside a pair, a letter")
+    t.checkStr(hexes(["0x10", "0a "]), "none none", "a prefix, a space that is not ASCII's")
+    return t.finish()
+}

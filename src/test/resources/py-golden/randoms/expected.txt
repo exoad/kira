@@ -1,0 +1,20 @@
+
+randoms - kira:random on py
+
+  ok    newRandom(7) draws random.Random(7)'s floats
+  ok    and its integers after them
+  ok    a negative seed is Python's
+  ok    and a large one
+
+4 checks, 0 failed
+
+randoms -> 0
+newRandom draws random.Random's, every kind in turn: 8 of 8
+a random.Random of Python's own is a Random: True True
+and is advanced in place: True
+below(0): kira: Random.below(0): the stop must be above 0
+below(-1): kira: Random.below(-1): the stop must be above 0
+between(2, 1): kira: Random.between(2, 1): lo is above hi
+bits(64): kira: Random.bits(64): k is outside 0..63
+bits(-1): kira: Random.bits(-1): k is outside 0..63
+of the types: ['float', 'float', 'int', 'int', 'int', 'int', 'int', 'float', 'float']

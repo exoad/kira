@@ -57,4 +57,28 @@ class UnsupportedBindingTest {
         ).forEach { assertTrue(cpp.all.contains("error: cpp.unsupported: $it"), cpp.all) }
         assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
     }
+
+    /** K5, K6: kira:path, pytext, regex, random and csv bind on py and are refused on C++ by name, each with its reason. */
+    @Test
+    fun thePythonSemanticsModulesAreRefusedOnCppByName() {
+        val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-pymods").apply { deleteRecursively(); mkdirs() }
+        val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
+        File(dir, "kira.yaml").writeText("project:\n  name: unsupportedpymods\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
+        File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
+            "module \"app:main\"\n\nuse \"kira:path\"\nuse \"kira:pytext\"\nuse \"kira:regex\"\nuse \"kira:random\"\nuse \"kira:csv\"\n\n" +
+                "fx main: () Int32 {\n    line: Str = csvLine([\"b\"])\n    p: Str = joinPath(\"a\", line)\n    ok: Bool = compile(p, 0).isSome()\n" +
+                "    n: Maybe<Int64> = pyInt(p)\n    g: Random = newRandom(1)\n    return g.below(2) as Int32\n}\n"
+        )
+        val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
+        assertEquals(1, cpp.exitCode, cpp.all)
+        listOf(
+            "'joinPath' is not supported on the C++ target: py only for now: Python's os.path has no C++ half yet",
+            "'csvLine' is not supported on the C++ target: Python's csv module, py only",
+            "'compile' is not supported on the C++ target: Python's re, py only",
+            "'pyInt' is not supported on the C++ target: Python's text rules, py only",
+            "'newRandom' is not supported on the C++ target: Python's random.Random, py only",
+            "'Random.below' is not supported on the C++ target: Python's random.Random, py only",
+        ).forEach { assertTrue(cpp.all.contains("error: cpp.unsupported: $it"), cpp.all) }
+        assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
+    }
 }

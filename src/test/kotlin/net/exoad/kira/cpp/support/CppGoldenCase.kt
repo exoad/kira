@@ -53,15 +53,22 @@ data class CppGoldenCase(
      * whose cross-module include is spelled wrongly must fail here, not pass
      * because the harness found the header for it. A driver therefore
      * writes `#include "src/x.kira.hxx"`, the path under `expected/`.
+     * A case that reaches a Kira-written stdlib module holds its header at
+     * `expected/gen/kira/kira/std/`, the runtime directory a build includes
+     * the runtime from, so that directory is a root too when it exists.
      */
     fun includeDirs(runtimeDir: File): List<File> =
-        listOf(expectedDir, driverDir, runtimeDir).distinctBy { it.absoluteFile.normalize() }
+        (listOf(expectedDir, driverDir, runtimeDir) + listOf(File(expectedDir, STD_RUNTIME_DIR)).filter { it.isDirectory })
+            .distinctBy { it.absoluteFile.normalize() }
 
     /** expected.txt with the host's `\r` removed, matching what [CppCompileSupport.run] returns. */
     fun expectedStdout(): String = expectedText.readText().replace("\r", "")
 
     companion object {
         val emitModes: Set<String> = setOf("pending", "required")
+
+        /** Where a beside-layout case's emitted stdlib headers sit under `expected/`: the default runtime directory. */
+        const val STD_RUNTIME_DIR = "gen/kira"
 
         /** Load `<dir>/case.yaml` and validate the case's files. */
         fun load(dir: File): CppGoldenCase {

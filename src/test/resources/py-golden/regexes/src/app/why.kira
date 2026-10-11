@@ -1,0 +1,8 @@
+module "app:why"
+
+use "kira:regex"
+
+// The reason the last compile on this thread left, whichever module made it (D86).
+pub fx whyNot: () Str {
+    return regexError()
+}

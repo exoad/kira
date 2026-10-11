@@ -3,8 +3,11 @@
 # starts with _k_, which no Kira name can take; Python 3.10 is the oldest this runs on. A helper calls a stdlib
 # function through its module when it runs, so a test's patch reaches it (D88).
 
+import binascii as _k_binascii
 import builtins as _k_builtins
 import collections as _k_collections
+import csv as _k_csv
+import datetime as _k_datetime
 import errno as _k_errno
 import functools as _k_functools
 import glob as _k_glob
@@ -16,6 +19,7 @@ import json as _k_json
 import math as _k_math
 import operator as _k_operator
 import os as _k_os
+import random as _k_random
 import re as _k_re
 import select as _k_select
 import shutil as _k_shutil
@@ -25,6 +29,7 @@ import struct as _k_struct
 import subprocess as _k_subprocess
 import sys as _k_sys
 import tempfile as _k_tempfile
+import textwrap as _k_textwrap
 import threading as _k_threading
 import time as _k_time
 import traceback as _k_traceback
@@ -385,6 +390,19 @@ def _k_tan(v):
     return _k_math.tan(v) if _k_math.isfinite(v) else _k_math.nan
 
 
+# exp past the largest double is C's inf, where Python's math raises.
+def _k_exp(v):
+    try:
+        return _k_math.exp(v)
+    except OverflowError:
+        return _k_math.inf
+
+
+# floorMod is Python's own float %, NaN for a zero divisor, as C++'s fmod gives, where Python raises.
+def _k_floormod(a, b):
+    return float(a) % b if b else _k_math.nan
+
+
 # Text: a Bool in an interpolation or `as Str` is true or false; trace prints it as 1 or 0
 # and a float as %g (D42).
 def _k_btext(b):
@@ -732,6 +750,18 @@ def _k_rdf64be(b, at):
 def _k_wrf64be(b, at, v):
     _k_span(b, at, 8)
     _k_struct.pack_into(">d", b, at, v)
+
+
+# findBytes is bytes.find over the view, a memoryview's bytes copied first (it has no find).
+def _k_findbytes(data, pattern, start):
+    return (data if data.__class__ is bytearray else bytes(data)).find(pattern, start)
+
+
+def _k_fromhex(text):
+    try:
+        return bytearray.fromhex(text)
+    except ValueError:
+        return None
 
 
 # kira:json (D63): a Json is the value json.loads gives, None for JSON null. bool is an int in
@@ -1852,6 +1882,231 @@ def _k_sleep(ms):
         step = min(ms, 86400000)
         _k_time.sleep(step / 1000)
         ms -= step
+
+
+# kira:time utcStamp, kira::time's text: the day from the ordinal of 1970-01-01, the milliseconds floored.
+def _k_utcstamp(ns):
+    ms = ns // 1000000
+    d = _k_datetime.date.fromordinal(719163 + ms // 86400000)
+    ms %= 86400000
+    return "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ" % (d.year, d.month, d.day, ms // 3600000, ms // 60000 % 60, ms // 1000 % 60, ms % 1000)
+
+
+# kira:path: os.path.join of every part, none a program error (Python's TypeError); relpath, none where Python
+# raises (another drive, an empty path).
+def _k_joinall(parts):
+    if not parts:
+        _k_panic("joinPaths of no parts")
+    return _k_os.path.join(*parts)
+
+
+def _k_relpath(path, start):
+    try:
+        return _k_os.path.relpath(path, start)
+    except ValueError:
+        return None
+
+
+# kira:pytext's calls that can fail (D86): none where Python raises, the reason named as Python names it.
+def _k_pytextfail(e):
+    _k_reasons.pytext = ("OverflowError: " if isinstance(e, OverflowError) else "ValueError: ") + str(e)
+
+
+def _k_pyint(text):
+    _k_reasons.pytext = ""
+    try:
+        v = int(text)
+    except ValueError as e:
+        _k_pytextfail(e)
+        return None
+    return _k_pyint64(v)
+
+
+# None for an int past Int64, which Python itself would hold, with linkstate's OverflowError text.
+def _k_pyint64(v):
+    if -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF:
+        return v
+    _k_reasons.pytext = "OverflowError: past 64 bits"
+    return None
+
+
+def _k_pyfloat(text):
+    _k_reasons.pytext = ""
+    try:
+        return float(text)
+    except ValueError as e:
+        _k_pytextfail(e)
+        return None
+
+
+def _k_pyformat(v, spec):
+    _k_reasons.pytext = ""
+    try:
+        return _k_builtins.format(float(v), spec)
+    except (ValueError, OverflowError) as e:
+        _k_pytextfail(e)
+        return None
+
+
+def _k_roundeven(v):
+    _k_reasons.pytext = ""
+    try:
+        r = _k_builtins.round(float(v))
+    except (ValueError, OverflowError) as e:
+        _k_pytextfail(e)
+        return None
+    return _k_pyint64(r)
+
+
+def _k_pytexterror():
+    return _k_builtins.getattr(_k_reasons, "pytext", "")
+
+
+# textwrap.wrap with each word kept whole; a width of 0, which Python refuses, is a program error.
+def _k_wrapwords(text, width):
+    if width == 0:
+        _k_panic("wrapWords of a width of 0")
+    return _k_textwrap.wrap(text, width=width, break_long_words=False, break_on_hyphens=False)
+
+
+# kira:regex (E1): a Regex and a Match are re's own objects, so a Python caller's pattern is a Regex.
+_k_Regex = _k_re.Pattern
+
+
+_k_Match = _k_re.Match
+
+
+# compile's reason (D86) is str(e) alone: re.error's class is named "error", and PatternError on 3.13 (critique 3).
+# A repeat past re's limit is an OverflowError, deep nesting a RecursionError: none as well.
+def _k_recompile(pattern, flags):
+    _k_reasons.regex = ""
+    try:
+        return _k_re.compile(pattern, flags)
+    except (_k_re.error, ValueError, OverflowError, _k_builtins.RecursionError) as e:
+        _k_reasons.regex = str(e)
+        return None
+
+
+def _k_reerror():
+    return _k_builtins.getattr(_k_reasons, "regex", "")
+
+
+# What Python raises for a group the pattern lacks, findall's tuples, a bad template and split's None is a program error.
+def _k_regroup(m, g):
+    try:
+        return m.group(g)
+    except _k_builtins.IndexError:
+        _k_panic("Match.group of " + _k_builtins.repr(g) + ", which its pattern lacks")
+
+
+def _k_refindall(p, text):
+    if p.groups > 1:
+        _k_panic("Regex.findAll of a pattern of %d groups" % p.groups)
+    return p.findall(text)
+
+
+# A template's unknown group name is an IndexError, every other fault re.error.
+def _k_resub(p, replacement, text):
+    try:
+        return p.sub(replacement, text)
+    except (_k_re.error, _k_builtins.IndexError) as e:
+        _k_panic("Regex.sub's replacement: " + str(e))
+
+
+def _k_resplit(p, text):
+    pieces = p.split(text)
+    if None in pieces:
+        _k_panic("Regex.split by a group that took no part")
+    return pieces
+
+
+# kira:random (critique 21): random.Random itself, so a Python caller's own is a Random; a draw it refuses panics.
+_k_Random = _k_random.Random
+
+
+def _k_below(r, stop):
+    if stop <= 0:
+        _k_panic("Random.below(%d): the stop must be above 0" % stop)
+    return r.randrange(stop)
+
+
+def _k_between(r, lo, hi):
+    if lo > hi:
+        _k_panic("Random.between(%d, %d): lo is above hi" % (lo, hi))
+    return r.randint(lo, hi)
+
+
+def _k_bits(r, k):
+    if not 0 <= k <= 63:
+        _k_panic("Random.bits(%d): k is outside 0..63" % k)
+    return r.getrandbits(k)
+
+
+# kira:csv: csv.reader over a file read as UTF-8 with newline=""; the reasons (D86) are str(e), as csv.Error's class
+# is named Error (critique 3), and isMalformed tells a csv.Error, which a caller may end the program on (critique 15).
+class _k_CsvReader:
+    __slots__ = ("f", "rows", "bad")
+
+    def __init__(self, f=None):
+        self.f = f
+        self.rows = None if f is None else _k_csv.reader(f)
+        self.bad = False
+
+    def next(self):
+        _k_reasons.csv = ""
+        self.bad = False
+        if self.rows is None:
+            return None
+        try:
+            row = _k_builtins.next(self.rows, None)
+        except _k_csv.Error as e:
+            self.bad = True
+            return self.stop(e)
+        except (_k_builtins.OSError, ValueError) as e:
+            return self.stop(e)
+        if row is None:
+            self.close()
+        return row
+
+    def stop(self, e):
+        _k_reasons.csv = str(e)
+        self.close()
+        return None
+
+    def isMalformed(self):
+        return self.bad
+
+    def close(self):
+        f = self.f
+        self.f = None
+        self.rows = None
+        if f is not None:
+            try:
+                f.close()
+            except _k_builtins.OSError:
+                pass
+
+
+def _k_opencsv(path):
+    _k_reasons.csv = ""
+    try:
+        return _k_CsvReader(_k_builtins.open(path, encoding="utf-8", newline=""))
+    except (_k_builtins.OSError, ValueError) as e:
+        _k_reasons.csv = str(e)
+        return None
+
+
+def _k_csvline(cells):
+    out = _k_io.StringIO()
+    try:
+        _k_csv.writer(out).writerow(cells)
+    except _k_csv.Error as e:
+        _k_panic("csvLine: " + str(e))
+    return out.getvalue()
+
+
+def _k_csverror():
+    return _k_builtins.getattr(_k_reasons, "csv", "")
 
 
 # The sidecar X_ext.py beside X.kira (D67), found beside this file's real path and loaded once per

@@ -1,0 +1,46 @@
+module "kira:pytext"
+
+// Python's own text rules where Kira's differ: repr, format and round, Unicode's str methods, int() and
+// float(). Each is CPython's own code, so the module is py only.
+
+// Why the last pyInt, pyFloat, formatFloat or roundHalfEven on this thread failed, as Python names it
+// ("ValueError: invalid literal for int() with base 10: 'x'"); "" when it did not.
+pub @_magic fx pyTextError: () Str;
+
+// int(text): spaces, a sign, _ between digits, any script's digits; none where int() refuses, or past
+// Int64 ("OverflowError: past 64 bits").
+pub @_magic fx pyInt: (text: Str) Maybe<Int64>;
+// float(text): spaces, _ between digits, inf and nan, any script's digits; none where float() refuses.
+pub @_magic fx pyFloat: (text: Str) Maybe<Float64>;
+
+// repr of a str, of a float, and of the value json.loads makes of a Json.
+pub @_magic fx strRepr: (s: Str) Str;
+pub @_magic fx floatRepr: (v: Float64) Str;
+pub @_magic fx jsonRepr: (j: Json) Str;
+// format(v, spec), the whole format-spec mini-language; none for a spec this Python refuses.
+pub @_magic fx formatFloat: (v: Float64, spec: Str) Maybe<Str>;
+// round(v, digits): half to even on the double's exact value, so round(2.675, 2) is 2.67.
+pub @_magic fx roundTo: (v: Float64, digits: Int32) Float64;
+// int(round(v)), half to even; none for a NaN, an infinity or past Int64.
+pub @_magic fx roundHalfEven: (v: Float64) Maybe<Int64>;
+
+// str's own upper, lower, strip, lstrip and rstrip: every Unicode case and space.
+pub @_magic fx upper: (s: Str) Str;
+pub @_magic fx lower: (s: Str) Str;
+pub @_magic fx strip: (s: Str) Str;
+pub @_magic fx lstrip: (s: Str) Str;
+pub @_magic fx rstrip: (s: Str) Str;
+// str.isupper(): some cased character, and every cased one upper case.
+pub @_magic fx isUpper: (s: Str) Bool;
+// str.split() and str.splitlines(): runs of Unicode space; every line break Python knows, \v and \x85 among them.
+pub @_magic fx splitSpace: (s: Str) List<Str>;
+pub @_magic fx splitLines: (s: Str) List<Str>;
+// str.find(sub, start): the first sub at or after start, in code points, or -1.
+pub @_magic fx findFrom: (s: Str, sub: Str, start: Size) Int64;
+// textwrap.wrap(text, width), a word never broken at a hyphen or for its length; a width of 0 panics.
+pub @_magic fx wrapWords: (text: Str, width: Size) List<Str>;
+// str.isspace(), isalnum(), isalpha() and isdigit() of one character.
+pub @_magic fx isSpace: (c: Char) Bool;
+pub @_magic fx isAlnum: (c: Char) Bool;
+pub @_magic fx isAlpha: (c: Char) Bool;
+pub @_magic fx isDigit: (c: Char) Bool;

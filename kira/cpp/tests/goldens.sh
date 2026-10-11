@@ -4,7 +4,8 @@
 #     bash kira/cpp/tests/goldens.sh [case ...]
 #
 # Each case's expected/**/*.cxx and driver/*.cxx are compiled with the include path
-# kira/cpp, then <case>/driver, with every toolchain its case.yaml names:
+# kira/cpp, then <case>/driver (and <case>/expected/gen/kira, where the stdlib's Kira-written
+# headers are, when a case has them), with every toolchain its case.yaml names:
 #   gcc, clang, msvc   build, run, and diff stdout (CR stripped) with expected.txt;
 #                      the run must also exit 0
 #   zig-aarch64        compile and link for aarch64-linux-gnu.2.35 (nothing runs it)
@@ -118,7 +119,7 @@ build_gnu() {
     local bin
     bin=$(exe "$out/$name/$tc")
     rm -f "$bin"
-    if "$@" "${WARN[@]}" "${defs[@]}" -I "$inc" -I "$(p "$dir/driver")" "${srcs[@]}" "${hostlink[@]}" -o "$(p "$bin")" > "$out/$name/$tc.log" 2>&1 && [ -f "$bin" ]; then
+    if "$@" "${WARN[@]}" "${defs[@]}" -I "$inc" -I "$(p "$dir/driver")" "${std[@]}" "${srcs[@]}" "${hostlink[@]}" -o "$(p "$bin")" > "$out/$name/$tc.log" 2>&1 && [ -f "$bin" ]; then
         run_hosted "$name" "$dir" "$tc" "$bin"
     else
         grep -v '^[[:space:]]*|' "$out/$name/$tc.log" | head -30
@@ -137,6 +138,7 @@ build_msvc() {
         printf '/I"%s"\n' "$(cygpath -w "$root/kira/cpp")"
         printf '/I"%s"\n' "$(cygpath -w "$dir/driver")"
         local d
+        for d in "${stddirs[@]}"; do printf '/I"%s"\n' "$(cygpath -w "$d")"; done
         for d in "${defines[@]}"; do printf '/D"%s"\n' "$d"; done
         local s
         for s in "${srcs[@]}"; do printf '"%s"\n' "$(cygpath -w "$s")"; done
@@ -155,7 +157,7 @@ build_aarch64() {
     local name=$1 dir=$2
     local bin="$out/$name/aarch64"
     rm -f "$bin"
-    if "$zig" c++ -target aarch64-linux-gnu.2.35 "${WARN[@]}" "${defs[@]}" -I "$inc" -I "$(p "$dir/driver")" "${srcs[@]}" -o "$(p "$bin")" > "$out/$name/zig-aarch64.log" 2>&1 && [ -f "$bin" ]; then
+    if "$zig" c++ -target aarch64-linux-gnu.2.35 "${WARN[@]}" "${defs[@]}" -I "$inc" -I "$(p "$dir/driver")" "${std[@]}" "${srcs[@]}" -o "$(p "$bin")" > "$out/$name/zig-aarch64.log" 2>&1 && [ -f "$bin" ]; then
         ok "$name/zig-aarch64: compiles and links for aarch64-linux-gnu.2.35"
     else
         grep -v '^[[:space:]]*|' "$out/$name/zig-aarch64.log" | head -30
@@ -171,7 +173,7 @@ build_arm() {
         rm -f "$obj"
         if ! "$arm" -std=c++20 -mcpu=cortex-m33 -mthumb -Os -fno-exceptions -fno-rtti -DKIRA_PROFILE_FREESTANDING=1 \
             -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Werror -ffp-contract=off "${defs[@]}" \
-            -I "$inc" -I "$(p "$dir/driver")" -c "$s" -o "$(p "$obj")" > "$out/$name/arm.log" 2>&1 || [ ! -f "$obj" ]; then
+            -I "$inc" -I "$(p "$dir/driver")" "${std[@]}" -c "$s" -o "$(p "$obj")" > "$out/$name/arm.log" 2>&1 || [ ! -f "$obj" ]; then
             grep -v '^[[:space:]]*|' "$out/$name/arm.log" | head -30
             fail "$name/arm: $(basename "$s") does not compile freestanding"
             all_ok=0
@@ -231,6 +233,11 @@ for name in "${names[@]}"; do
     mapfile -t defines < <(yaml_list "$dir/case.yaml" defines)
     defs=()
     for d in "${defines[@]}"; do defs+=("-D$d"); done
+    # A Kira-written stdlib module's header (kira/std/x.kira.hxx) sits in the emitted runtime directory, as a build's does.
+    stddirs=()
+    if [ -d "$dir/expected/gen/kira" ]; then stddirs=("$dir/expected/gen/kira"); fi
+    std=()
+    for d in "${stddirs[@]}"; do std+=(-I "$(p "$d")"); done
     srcs=()
     while IFS= read -r s; do srcs+=("$(p "$s")"); done < <(find "$dir/expected" -name '*.cxx' | LC_ALL=C sort)
     while IFS= read -r s; do srcs+=("$(p "$s")"); done < <(find "$dir/driver" -maxdepth 1 -name '*.cxx' | LC_ALL=C sort)

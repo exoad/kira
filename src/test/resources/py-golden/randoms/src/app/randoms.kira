@@ -1,0 +1,61 @@
+module "app:randoms"
+
+use "kira:random"
+use "kira:test"
+
+// kira:random (K6): random.Random draw for draw; a Random is random.Random itself, so the driver hands its own over
+// (critique 21) and sees it advanced.
+
+pub fx seeded: (seed: Int64) Random {
+    return newRandom(seed)
+}
+
+pub fx floats: (r: Random, n: Int32) List<Float64> {
+    mut out: List<Float64> = []
+    for i: Int32 in 0..n {
+        out.add(r.nextFloat())
+    }
+    return out
+}
+
+pub fx uniforms: (r: Random, n: Int32, lo: Float64, hi: Float64) List<Float64> {
+    mut out: List<Float64> = []
+    for i: Int32 in 0..n {
+        out.add(r.uniform(lo, hi))
+    }
+    return out
+}
+
+pub fx belows: (r: Random, n: Int32, stop: Int64) List<Int64> {
+    mut out: List<Int64> = []
+    for i: Int32 in 0..n {
+        out.add(r.below(stop))
+    }
+    return out
+}
+
+pub fx betweens: (r: Random, n: Int32, lo: Int64, hi: Int64) List<Int64> {
+    mut out: List<Int64> = []
+    for i: Int32 in 0..n {
+        out.add(r.between(lo, hi))
+    }
+    return out
+}
+
+pub fx bitsOf: (r: Random, n: Int32, k: Int32) List<Int64> {
+    mut out: List<Int64> = []
+    for i: Int32 in 0..n {
+        out.add(r.bits(k))
+    }
+    return out
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "randoms - kira:random on py" }
+    r: Random = newRandom(7)
+    t.checkStr("${r.nextFloat()} ${r.uniform(1.0, 2.0)}", "0.32383276483316237 1.150849173924502", "newRandom(7) draws random.Random(7)'s floats")
+    t.checkStr("${r.below(100)} ${r.between(1, 6)} ${r.bits(16)} ${r.bits(0)} ${r.bits(63)}", "83 1 4747 0 4942639112109623332", "and its integers after them")
+    t.check(newRandom(-7).below(1000000000000000000) == 455200494606748983, "a negative seed is Python's")
+    t.check(newRandom(4611686018427387904).between(-5, 5) == -2, "and a large one")
+    return t.finish()
+}

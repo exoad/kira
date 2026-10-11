@@ -35,3 +35,8 @@ min: { symbol: fmin, includes: [math.h], cpp: { expr: "(std::min)({0}, {1})", in
 max: { symbol: fmax, includes: [math.h], cpp: { expr: "(std::max)({0}, {1})", includes: ["<algorithm>"], pure: true }, py: { expr: "_k_max({0}, {1})" } }
 # D60: no `symbol`, so the C backend's table stays as it was.
 fmod: { cpp: { expr: "std::fmod({0}, {1})", includes: ["<cmath>"], pure: true }, py: { expr: "_k_fmod({0}, {1})" } }
+# K5 (critique 16): hypot, atan2 and exp are <math.h>'s, so C binds them too; floorMod is kira/math.hxx's, C++ only.
+hypot: { symbol: hypot, includes: [math.h], cpp: { expr: "std::hypot({0}, {1})", includes: ["<cmath>"], pure: true }, py: { expr: "_k_math.hypot({0}, {1})" } }
+atan2: { symbol: atan2, includes: [math.h], cpp: { expr: "std::atan2({0}, {1})", includes: ["<cmath>"], pure: true }, py: { expr: "_k_math.atan2({0}, {1})" } }
+exp: { symbol: exp, includes: [math.h], cpp: { expr: "std::exp({0})", includes: ["<cmath>"], pure: true }, py: { expr: "_k_exp({0})" } }
+floorMod: { cpp: { expr: "kira::floorMod({0}, {1})", includes: ["kira/math.hxx"], pure: true }, py: { expr: "_k_floormod({0}, {1})" } }

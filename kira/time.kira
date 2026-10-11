@@ -17,3 +17,6 @@ pub @_magic fx wallNowNs: () Int64;
 // Blocks the calling thread for at least `ms` milliseconds; a value of zero
 // or less returns at once.
 pub @_magic fx sleepMs: (ms: Int64) Void;
+
+// unixNs as UTC "YYYY-MM-DDTHH:MM:SS.mmmZ", the milliseconds floored, before 1970 too.
+pub @_magic fx utcStamp: (unixNs: Int64) Str;

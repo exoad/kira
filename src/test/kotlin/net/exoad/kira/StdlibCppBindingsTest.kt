@@ -26,10 +26,15 @@ import kotlin.test.fail
 class StdlibCppBindingsTest {
     /**
      * What [CMagicBindingTable] resolved at the base commit (8d008e8), read
-     * from kira/math.bind.yaml and kira/io.bind.yaml as they were then. A
-     * `cpp` map is invisible to the C loader, so this list must not move.
+     * from kira/math.bind.yaml and kira/io.bind.yaml as they were then, and
+     * the <math.h> functions K5 added as the module declares the rest
+     * (critique 16: hypot, atan2, exp). A `cpp` map is invisible to the C
+     * loader, so this list moves only by such a decision.
      */
     private val cBindingsAtBase: Map<String, Pair<String, Set<String>>> = mapOf(
+        "hypot" to ("hypot" to setOf("math.h")),
+        "atan2" to ("atan2" to setOf("math.h")),
+        "exp" to ("exp" to setOf("math.h")),
         "sqrt" to ("sqrt" to setOf("math.h")),
         "pow" to ("pow" to setOf("math.h")),
         "floor" to ("floor" to setOf("math.h")),

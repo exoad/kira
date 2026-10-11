@@ -780,6 +780,47 @@ namespace kira
     }
   }
 
+  // kira:bytes fromHex, bytes.fromhex's rules: hex pairs in either case, ASCII whitespace between pairs.
+  [[nodiscard]] inline Maybe<List<std::uint8_t>> fromHex(const Str& text)
+  {
+      const auto digit = [](char c) -> int {
+          if(c >= '0' && c <= '9')
+          {
+              return c - '0';
+          }
+          if(c >= 'a' && c <= 'f')
+          {
+              return c - 'a' + 10;
+          }
+          if(c >= 'A' && c <= 'F')
+          {
+              return c - 'A' + 10;
+          }
+          return -1;
+      };
+      List<std::uint8_t> out;
+      Size i = 0;
+      while(true)
+      {
+          while(i < text.size() && (text[i] == ' ' || (text[i] >= '\t' && text[i] <= '\r')))
+          {
+              ++i;
+          }
+          if(i == text.size())
+          {
+              return out;
+          }
+          const int hi = digit(text[i]);
+          const int lo = i + 1 < text.size() ? digit(text[i + 1]) : -1;
+          if(hi < 0 || lo < 0)
+          {
+              return none;
+          }
+          out.push_back(static_cast<std::uint8_t>(hi * 16 + lo));
+          i += 2;
+      }
+  }
+
   // ---- text: `x as Str` and "${x}" ------------------------------------------
   namespace impl_
   {

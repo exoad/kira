@@ -33,6 +33,7 @@
 #endif
 
 #include "kira/core.hxx"
+#include "kira/math.hxx"
 
 #if KIRA_PROFILE_HOSTED
 #include "kira/main.hxx"
@@ -249,6 +250,16 @@ namespace
   static_assert(kira::hashCode(1.0) == std::int64_t{0x3FF0000000000000} && kira::hashCode(1.0f) == kira::hashCode(1.0));
   static_assert(crc32(CHECK_TEXT) == 0xCBF43926u, "the CRC-32 check value, through View and constexpr");
   static_assert(kira::view(CHECK_TEXT).from(7).size() == 2 && kira::view(CHECK_TEXT).slice(2, 3)[0] == '3');
+  static_assert(kira::crc16Xmodem(CHECK_TEXT, 0) == 0x31C3 && kira::crc16Xmodem(CHECK_TEXT, 0xFFFF) == 0x29B1,
+                "kira:bytes crc16Xmodem: XMODEM's check value, and CCITT-FALSE's from 0xFFFF");
+  static_assert(kira::crc16Xmodem(kira::view(CHECK_TEXT).from(4), kira::crc16Xmodem(kira::view(CHECK_TEXT).slice(0, 4), 0)) == 0x31C3,
+                "crc16Xmodem continues from a part's");
+  static_assert(kira::findBytes(CHECK_TEXT, kira::view(CHECK_TEXT).slice(3, 2), 0) == 3 &&
+                    kira::findBytes(CHECK_TEXT, kira::view(CHECK_TEXT).slice(3, 2), 4) == -1,
+                "kira:bytes findBytes: the first at or after start");
+  static_assert(kira::findBytes(CHECK_TEXT, kira::View<std::uint8_t>(), 9) == 9 && kira::findBytes(CHECK_TEXT, kira::View<std::uint8_t>(), 10) == -1 &&
+                    kira::findBytes(kira::view(CHECK_TEXT).slice(0, 2), CHECK_TEXT, 0) == -1,
+                "findBytes: the empty pattern up to the end and not past it, a pattern longer than the data nowhere");
   static_assert(kira::lit("abc").size() == 3 && kira::lit("abc") == kira::lit("abc") && kira::lit("abc") != kira::lit("abd"));
   static_assert(kira::readU32Le(written(), 0) == 0x04030201u && kira::readU16Le(written(), 4) == 0x0605);
   static_assert(written()[6] == 7 && written()[7] == 8);
@@ -520,6 +531,14 @@ namespace
       check(same(kira::text(opaque(1.0f / 3.0f)), "0.33333334"), "text(Float32) is the float's own shortest");
       check(same(kira::text(opaque(100.0)), "100") && same(kira::text(opaque(1e21)), "1e+21"), "text: 100 and 1e+21");
       check(same(kira::text(opaque(-0.0)), "-0"), "text(-0.0)");
+      check(kira::fromHex(" 0a\v0B\f\tff\r\n") == kira::Maybe<kira::List<std::uint8_t>>(kira::List<std::uint8_t>{0x0A, 0x0B, 0xFF}),
+            "fromHex: either case, each of bytes.fromhex's six ASCII spaces between pairs");
+      check(!kira::fromHex("0a0").has_value() && !kira::fromHex("0 a").has_value() && !kira::fromHex("0a\x1c").has_value() &&
+                kira::fromHex("") == kira::Maybe<kira::List<std::uint8_t>>(kira::List<std::uint8_t>{}),
+            "fromHex: an odd digit, a split pair and \\x1c (no ASCII space) are none; no text is no bytes");
+      check(kira::floorMod(-5.0, 3.0) == 1.0 && kira::floorMod(5.0f, -3.0f) == -1.0f && std::signbit(kira::floorMod(0.0, -3.0)) &&
+                kira::floorMod(-1e-300, 360.0) == 360.0 && std::isnan(kira::floorMod(1.0, 0.0)),
+            "floorMod: Python's %, a Float32's too, a zero signed as the divisor, NaN for a zero divisor");
       check(same(kira::text(Mood::MOOD_LOST), "MOOD_LOST"), "text(enum) is the entry's name");
       check(same(kira::text(kira::lit("view")), "view"), "text(View<Char>)");
       check(same(kira::cat("STEER ", 0.25f, " n=", 3, ' ', true, " ", Mood::MOOD_BUSY, kira::Str(" s"), std::uint8_t{7}),

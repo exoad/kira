@@ -157,6 +157,11 @@ class PyRuntime(text: String) {
     /** The helper names the runtime defines. */
     val names: Set<String> get() = blocks.keys
 
+    /** The Python class [name] is when its block only names one (`_k_Regex = _k_re.Pattern` is "re.Pattern"), else null. */
+    fun aliasOf(name: String): String? =
+        blocks[name]?.lines()?.firstOrNull { !it.startsWith("#") }?.let { ALIAS.matchEntire(it) }
+            ?.takeIf { it.groupValues[1] == name }?.let { "${it.groupValues[2]}.${it.groupValues[3]}" }
+
     /** The blocks named in [used], with every block they name, in the runtime's order; "" for none. */
     fun select(used: Set<String>): String {
         val wanted = LinkedHashSet<String>()
@@ -175,6 +180,7 @@ class PyRuntime(text: String) {
         const val FILE = "runtime.py"
         val HELPER = Regex("_k_[A-Za-z0-9_]+")
         private val DEFINES = Regex("^(?:def ([A-Za-z_][A-Za-z0-9_]*)|class ([A-Za-z_][A-Za-z0-9_]*)|import [A-Za-z0-9_.]+ as ([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*) *=)")
+        private val ALIAS = Regex("(_k_[A-Za-z0-9_]+) = _k_([A-Za-z0-9_]+)\\.([A-Za-z0-9_.]+)")
 
         /**
          * `py/runtime.py` beside the stdlib modules [program] holds (where the binding manifests

@@ -40,6 +40,14 @@ class PyGoldenRunTest {
             val source = "src/app/osfiles2.kira"
             assertEquals(File(cpp, source).readText(), File(root, "osfiles/$source").readText())
             assertTrue(File(root, "osfiles/expected.txt").readText().startsWith(File(cpp, "expected.txt").readText()))
+        } + listOf("utcstamp", "mathplus", "bytesplus").map { name ->
+            // K5's cpp+py calls: the py case runs the C++ case's program and prints its lines first.
+            DynamicTest.dynamicTest("$name holds cpp-golden/$name's source and output") {
+                val cpp = File(PyTestSupport.repoRoot, "src/test/resources/cpp-golden/$name")
+                val source = "src/app/$name.kira"
+                assertEquals(File(cpp, source).readText(), File(root, "$name/$source").readText())
+                assertTrue(File(root, "$name/expected.txt").readText().startsWith(File(cpp, "expected.txt").readText()))
+            }
         }
     }
 

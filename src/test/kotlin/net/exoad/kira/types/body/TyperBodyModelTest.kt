@@ -112,7 +112,8 @@ class TyperBodyModelTest {
         )
         expectNoErrors(p)
         assertEquals(emptyList(), capturesOf(p, lambdasIn(p, "test:main").single()))
-        val param = p.model.declSyms.values.filterIsInstance<ParamSymbol>().single { it.name == "x" }
+        // The snippet's own x: the stdlib's parameters are declared symbols too (kira:math's hypot takes an x).
+        val param = p.model.declSyms.values.filterIsInstance<ParamSymbol>().single { it.name == "x" && !it.module.isStdlib }
         assertEquals(KType.INT32, param.type)
     }
 

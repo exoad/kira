@@ -2810,6 +2810,46 @@ class PyEmitterTest {
         listOf("subprocess", "socket", "select", "shutil").forEach { assertFalse(reads.contains("import $it as"), "a module that reads a file imports no $it:\n$reads") }
     }
 
+    /** K5, K6: the Python-semantics modules are Python's own calls; Random is random.Random (critique 21), a CsvReader the runtime's. */
+    @Test
+    fun thePythonSemanticsModulesArePythonsOwnCalls() {
+        val py = python(
+            """
+            use "kira:path"
+            use "kira:pytext"
+            use "kira:regex"
+            use "kira:random"
+            use "kira:csv"
+
+            fx f: (p: Str, rx: Regex) Bool {
+                r: Maybe<Regex> = compile("a+", IGNORE_CASE)
+                g: Random = newRandom(7)
+                rows: Maybe<CsvReader> = openCsv(joinPath(p, "x.csv"))
+                return r.isSome() && pyInt(p).isSome() && g.below(3) >= 0 && rows.isSome() && rx.search(p).isSome() && strRepr(p) != regexError()
+            }
+            """
+        )
+        assertTrue(py.contains("    r = _k_recompile(\"a+\", 2)\n    g = _k_Random(7)\n    rows = _k_opencsv(_k_os.path.join(p, \"x.csv\"))\n"), py)
+        assertTrue(py.contains("(_k_pyint(p) is not None) and _k_below(g, 3) >= 0") && py.contains("(rx.search(p) is not None) and _k_builtins.repr(p) != _k_reerror()"), py)
+        assertTrue(py.contains("\n_k_Random = _k_random.Random\n") && py.contains("\nclass _k_CsvReader:\n") && py.contains("import csv as _k_csv"), py)
+        val path = python("use \"kira:path\"\n\nfx f: (p: Str) Str {\n    return slashed(normPath(p))\n}")
+        assertTrue(path.contains("    return _k_os.path.normpath(p).replace(_k_os.sep, \"/\")\n"), path)
+        listOf("csv", "random", "re", "textwrap", "datetime", "binascii").forEach { assertFalse(path.contains("import $it as"), "a module of paths imports no $it:\n$path") }
+        val plus = python("use \"kira:math\"\nuse \"kira:bytes\"\nuse \"kira:time\"\n\nfx f: (b: List<UInt8>) Str {\n    return utcStamp(findBytes(b, b, 0) + crc16Xmodem(b, 0) as Int64) + \"${'$'}{floorMod(-1.0, 3.0)} ${'$'}{exp(1.0)}\"\n}")
+        assertTrue(plus.contains("_k_utcstamp(_k_i64(_k_findbytes(b, b, 0) + _k_binascii.crc_hqx(b, 0)))") && plus.contains("_k_floormod(-1.0, 3.0)") && plus.contains("_k_exp(1.0)"), plus)
+    }
+
+    /** A stdlib class that is Python's own is made only by its module's calls: Regex { } would be re.Pattern(), a TypeError. */
+    @Test
+    fun aStdlibClassThatIsPythonsOwnIsNeverConstructed() {
+        decided("use \"kira:regex\"\n\nfx f: () Regex {\n    return Regex { }\n}", "a construction of Regex", "Regex is Python's re.Pattern, which only its module's calls make")
+        decided("use \"kira:random\"\n\nfx f: () Random {\n    return Random { }\n}", "a construction of Random", "Random is Python's random.Random, which only its module's calls make")
+        val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
+        assertEquals("re.Match", runtime.aliasOf("_k_Match"))
+        listOf("_k_CsvReader", "_k_Process", "_k_Error", "_k_reasons").forEach { assertNull(runtime.aliasOf(it), it) }
+        assertTrue(python("use \"kira:csv\"\n\nfx f: () CsvReader {\n    return CsvReader { }\n}").contains("    return _k_CsvReader()\n"))
+    }
+
     @Test
     fun aStdlibClassTheRuntimeLacksIsStillRefused() {
         refused("fx f: (u: StrBuf<64>) Void {\n}", "the parameter 'u': the type StrBuf")

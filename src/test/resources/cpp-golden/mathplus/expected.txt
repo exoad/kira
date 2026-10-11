@@ -1,0 +1,29 @@
+
+mathplus - kira:math hypot, atan2, exp and floorMod
+
+  ok    hypot(3, 4)
+  ok    hypot(-5, 12)
+  ok    hypot of zeros
+  ok    an infinity wins over a NaN, a NaN over a number
+  ok    hypot past the largest double's square is no overflow
+  ok    atan2 takes y first and its sign
+  ok    a quarter and an eighth turn
+  ok    and the zeros' signs
+  ok    and the infinities
+  ok    exp of zeros
+  ok    exp past the largest double is inf
+  ok    and below the least is 0
+  ok    floorMod takes the divisor's sign
+  ok    a negative divisor's too
+  ok    fractions
+  ok    a zero takes the divisor's sign
+  ok    a tiny negative angle rounds to the divisor, as Python's does
+  ok    turns, and a large one exactly
+  ok    an infinite divisor
+  ok    a negative one
+  ok    and zeros over infinities
+  ok    an infinite dividend or a NaN is a NaN
+  ok    and a zero divisor, where Python raises
+
+23 checks, 0 failed
+

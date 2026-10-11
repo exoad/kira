@@ -1,0 +1,24 @@
+
+csvs - kira:csv on py
+
+  ok    a day file
+  ok    the header row
+  ok    a quoted comma is the cell's
+  ok    and a quoted line break
+  ok    and a doubled quote one quote
+  ok    none at the end, with no reason
+  ok    and none again after it
+  ok    none for a missing file, csvError str(e) alone
+  ok    a file that ends inside a quote
+  ok    whose last cell holds the rest, no error
+  ok    csvLine quotes where csv.writer does, its \r\n included
+  ok    a lone empty cell is quoted, no cells is a bare \r\n
+  ok    the day file's directory removed
+
+13 checks, 0 failed
+
+csvs -> 0
+a CsvReader reads csv.reader's rows and stops at its error: 16 of 16
+strictRows of a field past the limit: kira: assertion failed: csv.Error: field larger than field limit (131072)
+csvLine is csv.writer's line, a panic where it raises: 11 of 11
+of the types: str _k_CsvReader None str
