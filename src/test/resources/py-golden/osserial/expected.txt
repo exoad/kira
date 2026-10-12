@@ -5,3 +5,14 @@ read -1 write -1 open false handle -1
 write: port is not open
 exit 0
 installed true open true: read 5 'hello', then -1, Interrupted, the flag true
+two bursts, on the main thread: 2 'ab' then 2 'cd', at once True, the second when it came True
+and on another, through pyserial's timeout: 2 'ab' then 2 'cd', at once True, the second when it came True
+a buffer smaller than what waits: 2 'he' 3 'llo'
+nothing waiting: 0 '' True 0 '' True and on another thread 0 '' True 0 '' True
+a wait past INT_MAX ms: 1 'x' 1 'y'
+a port without a descriptor, as Windows' pyserial: 2 'ab' then 2 'cd', at once True, the second when it came True
+write: 4 b'ping'
+open again: True the old one closed True True
+closed twice: open false handle -1 -1 '' read: port is not open (Other) -1
+an open pyserial refuses: open false handle -1 OSError: [Errno 2] could not open port missing: [Errno 2] No such file or directory: 'missing' (Other)
+an open pyserial refuses: open false handle -1 ValueError: Not a valid baudrate: -5 (Other)

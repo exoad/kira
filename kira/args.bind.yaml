@@ -1,0 +1,16 @@
+# kira:args on py: runtime.py's _k_ArgSpec over argparse.ArgumentParser and _k_Parsed over its Namespace. C++
+# refuses each call (D83).
+
+ArgSpec.positional: { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.positional({0}, {1})" } }
+ArgSpec.text:       { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.text({0}, {1}, {2})" } }
+ArgSpec.whole:      { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.whole({0}, {1}, {2})" } }
+ArgSpec.real:       { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.real({0}, {1}, {2})" } }
+ArgSpec.flag:       { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.flag({0}, {1})" } }
+ArgSpec.parse:      { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.parse({0})" } }
+
+Parsed.textOf:  { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.textOf({0})" } }
+Parsed.wholeOf: { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.wholeOf({0})" } }
+Parsed.realOf:  { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.realOf({0})" } }
+Parsed.isSet:   { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "{self}.isSet({0})" } }
+
+argSpec: { cpp: { unsupported: "Python's argparse, py only" }, py: { expr: "_k_ArgSpec({0}, {1})" } }

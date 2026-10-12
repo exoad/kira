@@ -3,6 +3,7 @@
 # starts with _k_, which no Kira name can take; Python 3.10 is the oldest this runs on. A helper calls a stdlib
 # function through its module when it runs, so a test's patch reaches it (D88).
 
+import argparse as _k_argparse
 import binascii as _k_binascii
 import builtins as _k_builtins
 import collections as _k_collections
@@ -11,6 +12,8 @@ import datetime as _k_datetime
 import errno as _k_errno
 import functools as _k_functools
 import glob as _k_glob
+import http.client as _k_httpclient
+import http.server as _k_httpserver
 import importlib.util as _k_importlib
 import inspect as _k_inspect
 import io as _k_io
@@ -33,6 +36,9 @@ import textwrap as _k_textwrap
 import threading as _k_threading
 import time as _k_time
 import traceback as _k_traceback
+import urllib.error as _k_urlerror
+import urllib.parse as _k_urlparse
+import urllib.request as _k_urlrequest
 
 
 # A used module is loaded once per process (D85): under its real path, and under the name Python's import
@@ -1632,8 +1638,8 @@ class _k_Poller:
         return [_k_Ready(h, got[h]) for h in self.w if got.get(h)]
 
 
-# Serial on pyserial, imported at open. read waits up to ms for the first byte (on the main thread on a POSIX port's
-# descriptor in _k_sliced's slices), then takes in_waiting, as kira::os's poll and read do (critique 14).
+# Serial on pyserial, imported at open. read waits up to ms (at most C++'s INT_MAX) for the first byte, on the main
+# thread on a POSIX port's descriptor in _k_sliced's slices, then takes in_waiting, as kira::os's poll and read do.
 class _k_Serial:
     __slots__ = ("p",)
 
@@ -1657,6 +1663,7 @@ class _k_Serial:
             return -1
         if len(into) == 0:
             return 0
+        ms = min(ms, 2147483647)
         try:
             t = None if ms < 0 else ms / 1000
             fd = _k_builtins.getattr(self.p, "fd", None)
@@ -2115,6 +2122,321 @@ def _k_csvline(cells):
 
 def _k_csverror():
     return _k_builtins.getattr(_k_reasons, "csv", "")
+
+
+# kira:http's structs (D84), as kira:os's.
+class _k_HttpReply:
+    __slots__ = ("status", "body")
+
+    def __init__(self, status, body):
+        self.status = status
+        self.body = body
+
+    def _k_clone(self):
+        return _k_HttpReply(self.status, bytearray(self.body))
+
+    def _k_set(self, o):
+        self.status = o.status
+        self.body = o.body
+
+    def __eq__(self, o):
+        return self.status == o.status and self.body == o.body
+
+
+class _k_HttpRequest:
+    __slots__ = ("method", "path", "host", "body")
+
+    def __init__(self, method, path, host, body):
+        self.method = method
+        self.path = path
+        self.host = host
+        self.body = body
+
+    def _k_clone(self):
+        return _k_HttpRequest(self.method, self.path, self.host, bytearray(self.body))
+
+    def _k_set(self, o):
+        self.method = o.method
+        self.path = o.path
+        self.host = o.host
+        self.body = o.body
+
+    def __eq__(self, o):
+        return self.method == o.method and self.path == o.path and self.host == o.host and self.body == o.body
+
+
+class _k_HttpAnswer:
+    __slots__ = ("status", "contentType", "body", "headers")
+
+    def __init__(self, status, contentType, body, headers):
+        self.status = status
+        self.contentType = contentType
+        self.body = body
+        self.headers = headers
+
+    def _k_clone(self):
+        return _k_HttpAnswer(self.status, self.contentType, bytearray(self.body), dict(self.headers))
+
+    def _k_set(self, o):
+        self.status = o.status
+        self.contentType = o.contentType
+        self.body = o.body
+        self.headers = o.headers
+
+    def __eq__(self, o):
+        return self.status == o.status and self.contentType == o.contentType and self.body == o.body and self.headers == o.headers
+
+
+# kira:http's client (D86): urlopen of an http or https URL, any status a reply (an HTTPError's code and body), none
+# when no reply came, the reason str(e); a wait is at most C++'s INT_MAX ms, past which settimeout overflows.
+def _k_httpcall(url, data, ctype, ms):
+    _k_reasons.http = ""
+    try:
+        req = _k_urlrequest.Request(url, None if data is None else bytes(data), {} if ctype is None else {"Content-Type": ctype})
+        if req.type not in ("http", "https"):
+            raise _k_urlerror.URLError("unknown url type: " + req.type)
+        try:
+            r = _k_urlrequest.urlopen(req, timeout=min(ms, 2147483647) / 1000 if ms > 0 else None)
+            status = r.status
+        except _k_urlerror.HTTPError as e:
+            r, status = e, e.code
+        try:
+            return _k_HttpReply(status, bytearray(r.read()))
+        finally:
+            r.close()
+    except (_k_builtins.OSError, ValueError, _k_httpclient.HTTPException) as e:
+        _k_reasons.http = str(e)
+        return None
+
+
+def _k_httperror():
+    return _k_builtins.getattr(_k_reasons, "http", "")
+
+
+def _k_jsontext(body):
+    _k_reasons.http = ""
+    b = bytes(body)
+    try:
+        return b.decode(_k_json.detect_encoding(b), "surrogatepass")
+    except ValueError as e:
+        _k_reasons.http = str(e)
+        return None
+
+
+# urlparse's path or query; a target it refuses (a bad IPv6 host) is none, as a client may send one.
+def _k_urlpart(target, part):
+    _k_reasons.http = ""
+    try:
+        return _k_builtins.getattr(_k_urlparse.urlparse(target), part)
+    except ValueError as e:
+        _k_reasons.http = str(e)
+        return None
+
+
+def _k_queryfirst(query, key):
+    found = _k_urlparse.parse_qs(query).get(key)
+    return found[0] if found else None
+
+
+# kira:http's server: SO_REUSEADDR off on Windows, where it lets a second server take the port, as kira:os keeps it.
+class _k_Httpd(_k_httpserver.ThreadingHTTPServer):
+    allow_reuse_address = _k_os.name != "nt"
+
+
+# Each request asks the server's Kira Fx through _k_kirafx (E6, D76); access lines are not logged.
+class _k_HttpGet(_k_httpserver.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.answer("GET", bytearray())
+
+    def answer(self, method, body):
+        self.reply(_k_kirafx(self.server.kira_handle, _k_HttpRequest(method, self.path, self.headers.get("Host") or "", body)))
+
+    def reply(self, a):
+        _k_kirafx(_k_httpheaders, a)
+        if a.status == 0:
+            self.close_connection = True
+        elif a.status >= 400 and not a.body:
+            self.send_error(a.status)
+        else:
+            self.send_response(a.status)
+            self.send_header("Content-Type", a.contentType)
+            self.send_header("Content-Length", str(len(a.body)))
+            for k, v in a.headers.items():
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(a.body)
+
+    def log_message(self, *args):
+        pass
+
+
+# A POST's length as int() reads Content-Length (none is 0, unreadable -1), clamped to what an Int64 holds; the body is
+# read before handle runs, so its answer never meets unread bytes, which a close would reset.
+class _k_HttpPost(_k_HttpGet):
+    def do_POST(self):
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        n = max(-(1 << 62), min(n, 1 << 62))
+        a = _k_kirafx(self.server.kira_admit, self.path, n)
+        if a.status != 0:
+            self.close_connection = True
+            self.reply(a)
+        else:
+            self.answer("POST", _k_httpbody(self.rfile, n))
+
+
+# n bytes in 64 KiB pieces, fewer when the client stops: a Content-Length past what comes costs only what came.
+def _k_httpbody(f, n):
+    out = bytearray()
+    while len(out) < n:
+        piece = f.read(min(n - len(out), 65536))
+        if not piece:
+            break
+        out += piece
+    return out
+
+
+# A header Python's own lines already send, or a line break, which would end the headers early, is a program error.
+def _k_httpheaders(a):
+    for k in a.headers:
+        if k.lower() in ("content-type", "content-length"):
+            _k_panic("HttpAnswer.headers sets " + k + ", which contentType and the body set")
+    for t in [a.contentType] + list(a.headers) + list(a.headers.values()):
+        if "\r" in t or "\n" in t:
+            _k_panic("HttpAnswer's header text " + _k_shown(t) + " holds a line break")
+
+
+def _k_httpbind(host, port, handle, admit):
+    _k_reasons.http = ""
+    try:
+        h = _k_Httpd((host, port), _k_HttpGet if admit is None else _k_HttpPost)
+    except (_k_builtins.OSError, ValueError, OverflowError, _k_builtins.TypeError) as e:
+        _k_reasons.http = str(e)
+        return None
+    h.kira_handle = handle
+    h.kira_admit = admit
+    return _k_HttpServer(h)
+
+
+# serve is serve_forever until shutdown, which ends a serve not begun yet at once (BaseServer.shutdown would wait).
+class _k_HttpServer:
+    __slots__ = ("h", "lk", "state")
+
+    def __init__(self, h=None):
+        self.h = h
+        self.lk = _k_threading.Lock()
+        self.state = "bound" if h is not None else "unbound"
+
+    def port(self):
+        return -1 if self.h is None else self.h.server_address[1]
+
+    def serve(self):
+        _k_reasons.http = ""
+        with self.lk:
+            if self.state != "bound":
+                if self.state != "closed":
+                    _k_reasons.http = "the server is " + self.state
+                return self.state == "closed"
+            self.state = "serving"
+        try:
+            self.h.serve_forever(0.5)
+        except (_k_builtins.OSError, ValueError) as e:
+            _k_reasons.http = str(e)
+            return False
+        finally:
+            with self.lk:
+                self.state = "closed"
+            self.h.server_close()
+        return True
+
+    def shutdown(self):
+        with self.lk:
+            state = self.state
+            if state != "unbound":
+                self.state = "closed"
+        if state == "serving":
+            self.h.shutdown()
+        elif state == "bound":
+            self.h.server_close()
+
+
+# kira:args: argparse with the program's own prog; a bad command line ends with 2 and --help with 0, as parse_args ends
+# them. A help text is plain: its % is no format of argparse's.
+class _k_ArgSpec:
+    __slots__ = ("p", "names")
+
+    def __init__(self, prog=None, description=None):
+        self.p = _k_argparse.ArgumentParser(prog=prog, description=description)
+        self.names = {}
+
+    def positional(self, name, about):
+        self.add(name, "text", False, dict(help=about))
+
+    def text(self, flag, fallback, about):
+        self.add(flag, "text", True, dict(default=fallback, help=about))
+
+    def whole(self, flag, fallback, about):
+        self.add(flag, "whole", True, dict(default=fallback, type=_k_argint, help=about))
+
+    def real(self, flag, fallback, about):
+        self.add(flag, "real", True, dict(default=fallback, type=float, help=about))
+
+    def flag(self, flag, about):
+        self.add(flag, "flag", True, dict(action="store_true", help=about))
+
+    def add(self, name, kind, option, kw):
+        if not name or name.startswith("-") != option:
+            _k_panic("ArgSpec: %r is no %s" % (name, "flag (it needs a leading -)" if option else "positional name (it has a leading -)"))
+        kw["help"] = kw["help"].replace("%", "%%")
+        try:
+            a = self.p.add_argument(name, **kw)
+        except (_k_argparse.ArgumentError, ValueError) as e:
+            _k_panic("ArgSpec: " + str(e))
+        self.names[name] = (a.dest, kind)
+
+    def parse(self, argv):
+        return _k_Parsed(self.p.parse_args(list(argv)), dict(self.names))
+
+
+# whole's type: int()'s text within Int64, else argparse's own "invalid int value".
+def _k_argint(text):
+    try:
+        v = int(text)
+    except ValueError:
+        v = None
+    if v is None or not -0x8000000000000000 <= v <= 0x7FFFFFFFFFFFFFFF:
+        raise _k_argparse.ArgumentTypeError("invalid int value: %r" % text)
+    return v
+
+
+class _k_Parsed:
+    __slots__ = ("ns", "names")
+
+    def __init__(self, ns=None, names=None):
+        self.ns = ns
+        self.names = {} if names is None else names
+
+    def value(self, name, kind):
+        d = self.names.get(name)
+        if d is None:
+            _k_panic("Parsed: no argument %r was declared" % name)
+        if d[1] != kind:
+            _k_panic("Parsed: %r is a %s argument, not a %s one" % (name, d[1], kind))
+        return _k_builtins.getattr(self.ns, d[0])
+
+    def textOf(self, name):
+        return self.value(name, "text")
+
+    def wholeOf(self, name):
+        return self.value(name, "whole")
+
+    def realOf(self, name):
+        return self.value(name, "real")
+
+    def isSet(self, name):
+        return self.value(name, "flag")
 
 
 # The sidecar X_ext.py beside X.kira (D67), found beside this file's real path and loaded once per

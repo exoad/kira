@@ -1,0 +1,46 @@
+
+httpclient - kira:http's client on py
+
+  ok    a URL without a scheme is none, httpError str(e)
+  ok    only http and https are opened
+  ok    a POST's URL too
+  ok    a URL urlparse refuses is none
+  ok    and one http.client refuses
+  ok    jsonText of UTF-8
+  ok    UTF-8 after a BOM, which it drops
+  ok    UTF-16, little-endian by its NULs
+  ok    none for bytes it cannot decode
+  ok    a call that works clears the reason
+  ok    urlPath and urlQuery split a target
+  ok    a target urlparse refuses is none
+  ok    queryFirst is parse_qs's first value
+  ok    none for a blank value, which parse_qs drops, and a missing one
+
+14 checks, 0 failed
+
+client -> 0
+a 200: as a sidecar's, 200 b'hello'
+its bytes: as a sidecar's, 200 b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17'
+a 404, its body: as a sidecar's, 404 b'nope'
+an HTTPError's body cut short: as a sidecar's, none: 'IncompleteRead(10 bytes read, 90 more expected)'
+a 200's body cut short: as a sidecar's, none: 'IncompleteRead(10 bytes read, 90 more expected)'
+a connection closed unanswered: as a sidecar's, none: 'Remote end closed connection without response'
+no HTTP reply: as a sidecar's, none: 'HELLO\r\n'
+a reply slower than the timeout: as a sidecar's, none: 'timed out'
+a redirect, followed: as a sidecar's, 200 b'hello'
+a body to the connection's end: as a sidecar's, 200 b'all of it'
+a 204: as a sidecar's, 204 b''
+a 304: as a sidecar's, 304 b''
+a POST: as a sidecar's, 201 b'POST text/plain 5 hello'
+an empty POST: as a sidecar's, 201 b'POST application/json 0 '
+a POST's 418: as a sidecar's, 418 b'short and stout'
+a Content-Type with a line break: as a sidecar's, none: "Invalid header value b'text/plain\\nX-Injected: 1'"
+a path past ASCII: as a sidecar's, none: "'ascii' codec can't encode character '\\xe9' in position 5: ordinal not in range(128)"
+a closed port: none True, as a sidecar's True
+no limit at 0, -1 and 2^62 ms: True
+a call that works clears the reason: True
+a reason is its thread's: [(None, True)] ''
+of the types: _k_HttpReply int bytearray None str
+jsonText decodes as json.loads would: 11 of 11
+urlPath and urlQuery split as urlparse: 11 of 11
+queryFirst is parse_qs's first: 8 of 8

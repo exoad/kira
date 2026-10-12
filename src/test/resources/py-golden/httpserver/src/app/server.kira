@@ -1,0 +1,142 @@
+module "app:server"
+
+use "kira:http"
+use "kira:os"
+use "kira:sync"
+use "kira:test"
+use "kira:time"
+
+// kira:http's server (K7): route and admit answer as the driver's BaseHTTPRequestHandler does, byte for byte, and a
+// throw, panic or exit in a handler ends the process (D76); main serves itself through kira:http's client.
+
+pub fx route: (r: HttpRequest) HttpAnswer {
+    if r.path == "/text" {
+        return HttpAnswer { status = 200, contentType = "text/plain; charset=utf-8", body = "hello".bytes() }
+    }
+    if r.path == "/json" {
+        mut h: Map<Str, Str> = Map<Str, Str> { }
+        h.put("Cache-Control", "no-store")
+        h.put("Location", "/text")
+        return HttpAnswer { status = 200, body = "{\"ok\": true}".bytes(), headers = h }
+    }
+    if r.path == "/missing" {
+        return HttpAnswer { status = 404 }
+    }
+    if r.path == "/refused" {
+        return HttpAnswer { status = 409, body = "{\"ok\": false}".bytes() }
+    }
+    if r.path == "/drop" {
+        return HttpAnswer { status = 0 }
+    }
+    if r.path == "/slow" {
+        sleepMs(800)
+        return HttpAnswer { status = 200, contentType = "text/plain", body = "slow".bytes() }
+    }
+    if r.path == "/throw" {
+        throw "from the handler"
+    }
+    if r.path == "/panic" {
+        assert(false, "a handler's panic")
+    }
+    if r.path == "/exit" {
+        exit(9)
+    }
+    if r.path == "/length" {
+        mut h: Map<Str, Str> = Map<Str, Str> { }
+        h.put("content-length", "1")
+        return HttpAnswer { status = 200, headers = h }
+    }
+    if r.path == "/break" {
+        mut h: Map<Str, Str> = Map<Str, Str> { }
+        h.put("X-Note", "one\r\nX-Injected: two")
+        return HttpAnswer { status = 200, headers = h }
+    }
+    return HttpAnswer { status = 200, contentType = "text/plain", body = "${r.method} ${r.path} '${r.host}' ${r.body.size()}: ${Str.of(r.body)}".bytes() }
+}
+
+// A body of at most 64 bytes is read; any other length is refused unread, the length it saw in the body.
+pub fx admit: (path: Str, n: Int64) HttpAnswer {
+    if n < 0 || n > 64 {
+        code: Int32 = if n < 0 {
+            400
+        } else {
+            413
+        }
+        return HttpAnswer { status = code, contentType = "text/plain", body = "length ${n}".bytes() }
+    }
+    return HttpAnswer { status = 0 }
+}
+
+pub fx bind: (host: Str, port: Int32, post: Bool) Maybe<HttpServer> {
+    if post {
+        return httpServerWithPost(host, port, route, admit)
+    }
+    return httpServer(host, port, route)
+}
+
+pub fx serveOn: (s: HttpServer) Bool {
+    return s.serve()
+}
+
+pub fx stop: (s: HttpServer) Void {
+    s.shutdown()
+}
+
+pub fx why: () Str {
+    return httpError()
+}
+
+fx bodyOf: (r: Maybe<HttpReply>) Str {
+    if r.isNone() {
+        return "none: " + httpError()
+    }
+    return "${r.value.status} ${Str.of(r.value.body)}"
+}
+
+pub fx main: () Int32 {
+    t: Suite = Suite { title = "httpserver - kira:http's server on py" }
+    s: HttpServer = httpServerWithPost("127.0.0.1", 0, route, admit).value
+    port: Int32 = s.port()
+    t.check(port > 0, "port 0 binds a free port, which port() says")
+    t.check(httpServer("127.0.0.1", port, route).isNone() && httpError() != "", "a second server on it is none, httpError saying why")
+    served: Atomic<Bool> = Atomic<Bool> { value = false }
+    th: Thread = spawn("serve", fx() Void {
+        served.store(s.serve())
+    })
+    url: Str = "http://127.0.0.1:${port}"
+    t.checkStr(bodyOf(httpGet(url + "/text", 5000)), "200 hello", "kira:http's client reads its server's 200")
+    t.checkStr(bodyOf(httpGet(url + "/refused", 5000)), "409 {\"ok\": false}", "and a 409 with its body")
+    t.check(httpGet(url + "/missing", 5000).value.status == 404, "and a 404 without one, Python's error page")
+    t.checkStr(bodyOf(httpGet(url + "/drop", 5000)), "none: Remote end closed connection without response", "a status of 0 answers nothing")
+    t.checkStr(bodyOf(httpPost(url + "/echo", "hi".bytes(), "text/plain", 5000)), "200 POST /echo '127.0.0.1:${port}' 2: hi", "a POST's body reaches the handler")
+    one: List<UInt8> = [65]
+    t.checkStr(bodyOf(httpPost(url + "/echo", one, "text/plain", 5000)), "200 POST /echo '127.0.0.1:${port}' 1: A", "one byte too")
+    t.check(!s.serve() && httpError() == "the server is serving", "a second serve while it serves is false")
+    s.shutdown()
+    th.join()
+    t.check(served.load(), "shutdown ends serve, which is true")
+    t.check(s.serve() && httpError() == "", "a serve after it returns true at once")
+    idle: HttpServer = httpServer("127.0.0.1", 0, route).value
+    idle.shutdown()
+    t.check(idle.serve(), "and so does one after a shutdown before any serve")
+    idle.shutdown()
+    again: Maybe<HttpServer> = httpServer("127.0.0.1", idle.port(), route)
+    t.check(again.isSome(), "which freed its port at once")
+    again.value.shutdown()
+    unbound: HttpServer = HttpServer { }
+    t.check(!unbound.serve() && httpError() == "the server is unbound" && unbound.port() == -1, "an HttpServer no call bound serves nothing")
+    base: HttpAnswer = HttpAnswer { body = "x".bytes() }
+    mut answer: HttpAnswer = base
+    answer.body.add(33)
+    answer.headers.put("A", "b")
+    request: HttpRequest = HttpRequest { body = "a".bytes() }
+    mut other: HttpRequest = request
+    other.body.add(98)
+    reply: HttpReply = HttpReply { status = 1, body = "r".bytes() }
+    mut copied: HttpReply = reply
+    copied.body.add(115)
+    t.check(base.body.size() == 1 && base.headers.size() == 0 && request.body.size() == 1 && reply.body.size() == 1, "each struct is a value, its List and Map copied with it")
+    same: HttpReply = HttpReply { status = 1, body = "r".bytes() }
+    t.check(same == reply && copied != reply && other != request && answer.body.size() == 2, "and compared field by field")
+    return t.finish()
+}

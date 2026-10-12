@@ -1,0 +1,39 @@
+
+httpserver - kira:http's server on py
+
+  ok    port 0 binds a free port, which port() says
+  ok    a second server on it is none, httpError saying why
+  ok    kira:http's client reads its server's 200
+  ok    and a 409 with its body
+  ok    and a 404 without one, Python's error page
+  ok    a status of 0 answers nothing
+  ok    a POST's body reaches the handler
+  ok    one byte too
+  ok    a second serve while it serves is false
+  ok    shutdown ends serve, which is true
+  ok    a serve after it returns true at once
+  ok    and so does one after a shutdown before any serve
+  ok    which freed its port at once
+  ok    an HttpServer no call bound serves nothing
+  ok    each struct is a value, its List and Map copied with it
+  ok    and compared field by field
+
+16 checks, 0 failed
+
+server -> 0
+GET and POST answers as the handler does: 18 of 18 []
+GET only answers as the handler does: 18 of 18 []
+b'HTTP/1.0 200 OK' b"HTTP/1.0 501 Unsupported method ('POST')"
+a body the client stops short: True b"POST /echo '' 4: abcd"
+a request waits for no other: True
+a port in use: none True, httpError as the bind's own True
+a port past 65535: none True, httpError as the bind's own True
+a negative one: none True, httpError as the bind's own True
+a host no name: none True, httpError as the bind's own True
+a NUL in the host: none True, httpError as the bind's own True
+of the types: _k_HttpAnswer int bytearray dict int
+/throw ends the process: as it should (70), no reply True, ['from the handler']
+/panic ends the process: as it should (aborted), no reply True, ["a handler's panic"]
+/exit ends the process: as it should (9), no reply True, []
+/length ends the process: as it should (aborted), no reply True, ['sets content-length']
+/break ends the process: as it should (aborted), no reply True, ['holds a line break']

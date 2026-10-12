@@ -2839,6 +2839,36 @@ class PyEmitterTest {
         assertTrue(plus.contains("_k_utcstamp(_k_i64(_k_findbytes(b, b, 0) + _k_binascii.crc_hqx(b, 0)))") && plus.contains("_k_floormod(-1.0, 3.0)") && plus.contains("_k_exp(1.0)"), plus)
     }
 
+    /** K7: kira:http is runtime.py's helpers over urllib and http.server, its handler a Kira function; kira:args argparse's. */
+    @Test
+    fun kiraHttpAndArgsAreTheRuntimesHelpersOverPythonsOwn() {
+        val py = python(
+            """
+            use "kira:http"
+            use "kira:args"
+
+            pub fx handle: (r: HttpRequest) HttpAnswer {
+                return HttpAnswer { status = 404 }
+            }
+
+            pub fx f: (url: Str) Bool {
+                got: Maybe<HttpReply> = httpGet(url, 500)
+                s: Maybe<HttpServer> = httpServer("127.0.0.1", 0, handle)
+                spec: ArgSpec = argSpec("tool", "what it does")
+                spec.whole("--n", 3, "how many")
+                b: List<UInt8> = "x".bytes()
+                return got.isSome() && httpPost(url, b, "text/plain", 0).isSome() && s.isSome() && spec.parse(["--n", "4"]).isSet("--n")
+            }
+            """
+        )
+        assertTrue(py.contains("    got = _k_httpcall(url, None, None, 500)\n    s = _k_httpbind(\"127.0.0.1\", 0, handle, None)\n    spec = _k_ArgSpec(\"tool\", \"what it does\")\n    spec.whole(\"--n\", 3, \"how many\")\n"), py)
+        assertTrue(py.contains("    return _k_HttpAnswer(404, \"application/json\", bytearray(()), {})\n") && py.contains("_k_httpcall(url, b, \"text/plain\", 0)"), py)
+        assertTrue(py.contains("\nclass _k_HttpGet(_k_httpserver.BaseHTTPRequestHandler):\n") && py.contains("\nclass _k_ArgSpec:\n") && py.contains("import argparse as _k_argparse"), py)
+        val split = python("use \"kira:http\"\n\nfx f: (t: Str) Str {\n    return urlPath(t).unwrapOr(\"/\") + queryFirst(urlQuery(t).unwrapOr(\"\"), \"s\").unwrapOr(\"\")\n}")
+        assertTrue(split.contains("_k_urlpart(t, \"path\")") && split.contains("import urllib.parse as _k_urlparse"), split)
+        listOf("http.server", "http.client", "urllib.request", "argparse").forEach { assertFalse(split.contains("import $it as"), "a module that splits a URL imports no $it:\n$split") }
+    }
+
     /** A stdlib class that is Python's own is made only by its module's calls: Regex { } would be re.Pattern(), a TypeError. */
     @Test
     fun aStdlibClassThatIsPythonsOwnIsNeverConstructed() {
@@ -2902,11 +2932,11 @@ class PyEmitterTest {
     @Test
     fun everyStdlibStructsRuntimeClassHoldsItsFieldsInOrder() {
         val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText().replace("\r\n", "\n")
-        val program = net.exoad.kira.types.TyperTestSupport.snippet("use \"kira:os\"\n")
+        val program = net.exoad.kira.types.TyperTestSupport.snippet("use \"kira:os\"\nuse \"kira:http\"\n")
         val structs = program.modules.filter { it.isStdlib }.flatMap { it.declarations }
             .filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>()
             .filter { it.kind == net.exoad.kira.compiler.analysis.types.ClassKind.STRUCT }
-        assertEquals(listOf("Datagram", "Ran", "Ready"), structs.map { it.name }.sorted())
+        assertEquals(listOf("Datagram", "HttpAnswer", "HttpReply", "HttpRequest", "Ran", "Ready"), structs.map { it.name }.sorted())
         structs.forEach { s ->
             val block = runtime.substringAfter("\nclass _k_${s.name}:\n", "").substringBefore("\n\n\n")
             // pyName: a field that is not pub is _name.

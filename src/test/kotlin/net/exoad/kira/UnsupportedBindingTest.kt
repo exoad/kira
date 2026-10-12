@@ -89,8 +89,9 @@ class UnsupportedBindingTest {
         val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
         File(dir, "kira.yaml").writeText("project:\n  name: unsupportedpyclasses\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
-            "module \"app:main\"\n\nuse \"kira:regex\"\nuse \"kira:random\"\nuse \"kira:csv\"\n\n" +
+            "module \"app:main\"\n\nuse \"kira:regex\"\nuse \"kira:random\"\nuse \"kira:csv\"\nuse \"kira:http\"\nuse \"kira:args\"\n\n" +
                 "fx keep: (r: Regex, m: Maybe<Match>, g: Random, c: Maybe<CsvReader>) Int32 {\n    return 0\n}\n\n" +
+                "fx serves: (s: HttpServer, a: ArgSpec, p: Maybe<Parsed>) Int32 {\n    return 0\n}\n\n" +
                 "fx main: () Int32 {\n    return 0\n}\n"
         )
         val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
@@ -100,8 +101,39 @@ class UnsupportedBindingTest {
             "the type Match is not supported on the C++ target: Python's re, py only",
             "the type Random is not supported on the C++ target: Python's random.Random, py only",
             "the type CsvReader is not supported on the C++ target: Python's csv module, py only",
+            "the type HttpServer is not supported on the C++ target: Python's urllib and http.server, py only",
+            "the type ArgSpec is not supported on the C++ target: Python's argparse, py only",
+            "the type Parsed is not supported on the C++ target: Python's argparse, py only",
         ).forEach { assertTrue(cpp.all.contains("error: cpp.unsupported: $it"), cpp.all) }
         assertFalse(cpp.all.contains("not lowered yet"), cpp.all)
         assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
+    }
+
+    /** K7: kira:http and kira:args bind on py and are refused on C++ by name; kira:http's structs are C++ values all the same. */
+    @Test
+    fun kiraHttpAndArgsAreRefusedOnCppByName() {
+        val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-httpargs").apply { deleteRecursively(); mkdirs() }
+        val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
+        File(dir, "kira.yaml").writeText("project:\n  name: unsupportedhttpargs\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
+        val main = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
+        main.writeText(
+            "module \"app:main\"\n\nuse \"kira:http\"\nuse \"kira:args\"\n\n" +
+                "fx handle: (r: HttpRequest) HttpAnswer {\n    return HttpAnswer { status = 404 }\n}\n\n" +
+                "fx main: () Int32 {\n    r: Maybe<HttpReply> = httpGet(\"http://h/\", 5)\n    ok: Bool = httpServer(\"\", 0, handle).isSome()\n" +
+                "    spec: ArgSpec = argSpec(\"tool\", \"\")\n    p: Parsed = spec.parse([\"x\"])\n    if p.isSet(\"--x\") {\n        return 1\n    }\n    return 0\n}\n"
+        )
+        val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
+        assertEquals(1, cpp.exitCode, cpp.all)
+        listOf(
+            "'httpGet' is not supported on the C++ target: Python's urllib and http.server, py only",
+            "'httpServer' is not supported on the C++ target: Python's urllib and http.server, py only",
+            "'argSpec' is not supported on the C++ target: Python's argparse, py only",
+            "'ArgSpec.parse' is not supported on the C++ target: Python's argparse, py only",
+            "'Parsed.isSet' is not supported on the C++ target: Python's argparse, py only",
+        ).forEach { assertTrue(cpp.all.contains("error: cpp.unsupported: $it"), cpp.all) }
+        assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
+        main.writeText("module \"app:main\"\n\nuse \"kira:http\"\n\nfx main: () Int32 {\n    a: HttpAnswer = HttpAnswer { status = 201 }\n    r: HttpReply = HttpReply { }\n    return a.status + r.status\n}\n")
+        assertEquals(0, PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath).exitCode)
+        assertTrue(File(dir, "out-cpp/kira/std/http.kira.hxx").readText().contains("struct HttpAnswer"))
     }
 }
