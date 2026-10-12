@@ -14,5 +14,8 @@ a port without a descriptor, as Windows' pyserial: 2 'ab' then 2 'cd', at once T
 write: 4 b'ping'
 open again: True the old one closed True True
 closed twice: open false handle -1 -1 '' read: port is not open (Other) -1
-an open pyserial refuses: open false handle -1 OSError: [Errno 2] could not open port missing: [Errno 2] No such file or directory: 'missing' (Other)
+a port that hung up, on the main thread: -1 '' OSError: device reports readiness to read but returned no data (Other), at once True
+a port that hung up, on another: -1 '' OSError: device reports readiness to read but returned no data (Other), at once True
+an open pyserial refuses: open false handle -1 OSError: [Errno 2] could not open port missing: [Errno 2] No such file or directory: 'missing' (NotFound)
+an open pyserial refuses: open false handle -1 OSError: could not open port 'COM9': FileNotFoundError(2, 'The system cannot find the file specified.', None, 2) (Other)
 an open pyserial refuses: open false handle -1 ValueError: Not a valid baudrate: -5 (Other)

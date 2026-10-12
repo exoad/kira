@@ -599,10 +599,14 @@ namespace
           n = ::read(master, back, sizeof back);
       }
       t.checkStr(n > 0 ? Str(back, static_cast<kira::Size>(n)) : Str(), "ok", "and the master reads them");
+      // The master's close hangs the slave up, as a USB device's reset does: poll is ready and read gives 0.
+      ::close(master);
+      const std::int64_t hungAt = kira::time::monoNowMs();
+      t.check(port->read(into, 2000) == -1 && kira::os::lastErrorKind() == "Other", "a read after a hang-up is -1, no timeout's 0");
+      t.check(kira::time::monoNowMs() - hungAt < 1000 && !kira::os::lastError().empty(), "at once, lastError saying so");
       port->close();
       t.check(!port->isOpen() && port->handle() == -1, "a closed port has no handle");
       ::close(slave);
-      ::close(master);
 #endif
   }
 

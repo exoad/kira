@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # The osserial golden (K3, K7): the module under -I -S, where no pyserial is found whether or not this Python has one;
-# then a stand-in for pyserial, read as critique 14 reads it, written, reopened, closed and met by a SIGINT (D78).
+# then a stand-in for pyserial, read as critique 14 reads it, written, reopened, closed, hung up and met by a SIGINT.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import importlib.util
@@ -32,6 +32,8 @@ class StandIn:
     def __init__(self, port, baud, timeout=None):
         if port == "missing":
             raise SerialException(2, "could not open port missing: [Errno 2] No such file or directory: 'missing'")
+        if port == "COM9":
+            raise SerialException("could not open port 'COM9': FileNotFoundError(2, 'The system cannot find the file specified.', None, 2)")
         if baud <= 0:
             raise ValueError("Not a valid baudrate: %r" % baud)
         self.ours, self.far = socket.socketpair()
@@ -136,6 +138,13 @@ print("open again:", m.reopen(p, "stand-in"), "the old one closed", not ps.is_op
 m.shut(p)
 m.shut(p)
 print("closed twice:", m.state(p), m.readSome(p, 4, 10), m.why(), m.writeText(p, "x"))
-for port, baud in (("missing", 115200), ("stand-in", -5)):
+for where, call in (("on the main thread", timed), ("on another", onthread)):
+    hup = m.openPort("stand-in", 115200)
+    StandIn.made[-1].far.close()
+    got, took = call(lambda: m.readSome(hup, 8, 2000) + " " + m.why())
+    print("a port that hung up, %s: %s, at once %s" % (where, got, took < 1.0))
+    m.shut(hup)
+# POSIX pyserial's error carries open's errno; Windows' names the cause only in its text.
+for port, baud in (("missing", 115200), ("COM9", 115200), ("stand-in", -5)):
     bad = m.openPort(port, baud)
     print("an open pyserial refuses:", m.state(bad), m.why())

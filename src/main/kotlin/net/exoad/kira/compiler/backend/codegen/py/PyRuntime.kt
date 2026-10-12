@@ -162,6 +162,10 @@ class PyRuntime(text: String) {
         blocks[name]?.lines()?.firstOrNull { !it.startsWith("#") }?.let { ALIAS.matchEntire(it) }
             ?.takeIf { it.groupValues[1] == name }?.let { "${it.groupValues[2]}.${it.groupValues[3]}" }
 
+    /** How many arguments class [name]'s `__init__` takes without a default (0 when it defines none). */
+    fun requiredArgs(name: String): Int =
+        blocks[name]?.let { INIT.find(it) }?.groupValues?.get(1).orEmpty().split(',').count { it.isNotBlank() && '=' !in it }
+
     /** The blocks named in [used], with every block they name, in the runtime's order; "" for none. */
     fun select(used: Set<String>): String {
         val wanted = LinkedHashSet<String>()
@@ -181,6 +185,7 @@ class PyRuntime(text: String) {
         val HELPER = Regex("_k_[A-Za-z0-9_]+")
         private val DEFINES = Regex("^(?:def ([A-Za-z_][A-Za-z0-9_]*)|class ([A-Za-z_][A-Za-z0-9_]*)|import [A-Za-z0-9_.]+ as ([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*) *=)")
         private val ALIAS = Regex("(_k_[A-Za-z0-9_]+) = _k_([A-Za-z0-9_]+)\\.([A-Za-z0-9_.]+)")
+        private val INIT = Regex("\\n    def __init__\\(self,? *([^)]*)\\):")
 
         /**
          * `py/runtime.py` beside the stdlib modules [program] holds (where the binding manifests

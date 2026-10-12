@@ -1087,12 +1087,14 @@ def _k_oscategory(e):
     return _k_builtins.type(e).__name__
 
 
-# lastErrorKind's names, as C++ sorts errno and Win32's codes; subprocess's TimeoutExpired by name.
+# lastErrorKind's names, as C++ sorts errno and Win32's codes: by the class, else by the class OSError(errno) is for
+# one that carries an errno in another class (pyserial's SerialException); subprocess's TimeoutExpired by name.
 def _k_oskind(e):
     b = _k_builtins
-    for c, k in ((b.FileNotFoundError, "NotFound"), (b.FileExistsError, "Exists"), (b.PermissionError, "Permission"), (b.TimeoutError, "Timeout"), (b.InterruptedError, "Interrupted")):
-        if isinstance(e, c):
-            return k
+    for x in (e, b.OSError(e.errno, "") if isinstance(e, b.OSError) and isinstance(e.errno, int) else e):
+        for c, k in ((b.FileNotFoundError, "NotFound"), (b.FileExistsError, "Exists"), (b.PermissionError, "Permission"), (b.TimeoutError, "Timeout"), (b.InterruptedError, "Interrupted")):
+            if isinstance(x, c):
+                return k
     return "Timeout" if b.type(e).__name__ == "TimeoutExpired" else "Other"
 
 
@@ -2187,8 +2189,8 @@ class _k_HttpAnswer:
         return self.status == o.status and self.contentType == o.contentType and self.body == o.body and self.headers == o.headers
 
 
-# kira:http's client (D86): urlopen of an http or https URL, any status a reply (an HTTPError's code and body), none
-# when no reply came, the reason str(e); a wait is at most C++'s INT_MAX ms, past which settimeout overflows.
+# kira:http's client (D86): an http or https URL opened as urlopen opens it, any status a reply (an HTTPError's code
+# and body), none when no reply came, str(e) the reason; a wait is at most INT_MAX ms; 3.10 overflows on a huge port.
 def _k_httpcall(url, data, ctype, ms):
     _k_reasons.http = ""
     try:
@@ -2196,7 +2198,7 @@ def _k_httpcall(url, data, ctype, ms):
         if req.type not in ("http", "https"):
             raise _k_urlerror.URLError("unknown url type: " + req.type)
         try:
-            r = _k_urlrequest.urlopen(req, timeout=min(ms, 2147483647) / 1000 if ms > 0 else None)
+            r = _k_httpopener().open(req, timeout=min(ms, 2147483647) / 1000 if ms > 0 else None)
             status = r.status
         except _k_urlerror.HTTPError as e:
             r, status = e, e.code
@@ -2204,9 +2206,46 @@ def _k_httpcall(url, data, ctype, ms):
             return _k_HttpReply(status, bytearray(r.read()))
         finally:
             r.close()
-    except (_k_builtins.OSError, ValueError, _k_httpclient.HTTPException) as e:
+    except (_k_builtins.OSError, ValueError, OverflowError, _k_httpclient.HTTPException) as e:
         _k_reasons.http = str(e)
         return None
+
+
+# urllib's default opener but these two handlers: one a process, built at its first call, as urlopen builds its own.
+def _k_httpopener():
+    e = _k_errors()
+    if "httpopener" not in e.__dict__:
+        e.httpopener = _k_urlrequest.build_opener(_k_HttpRedirect, _k_HttpPieces)
+    return e.httpopener
+
+
+# A redirect to a scheme other than http or https is not followed: its 3xx is the reply, as urllib answers one to
+# gopher:, where urllib follows one to ftp:.
+class _k_HttpRedirect(_k_urlrequest.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if _k_urlparse.urlparse(newurl).scheme not in ("http", "https"):
+            raise _k_urlerror.HTTPError(newurl, code, msg, headers, fp)
+        return _k_urlrequest.HTTPRedirectHandler.redirect_request(self, req, fp, code, msg, headers, newurl)
+
+
+# A reply's claimed length read in 64 KiB pieces, so one past memory is the IncompleteRead a short body is, never a
+# MemoryError; it runs before urllib's error processor, so a redirect's and an HTTPError's body are read so too.
+class _k_HttpPieces(_k_urlrequest.BaseHandler):
+    def http_response(self, req, r):
+        r._safe_read = _k_functools.partial(_k_httppieces, r)
+        return r
+
+    https_response = http_response
+
+
+def _k_httppieces(r, n):
+    data = bytearray()
+    while len(data) < n:
+        piece = r.fp.read(min(n - len(data), 65536))
+        if not piece:
+            raise _k_httpclient.IncompleteRead(bytes(data), n - len(data))
+        data += piece
+    return bytes(data)
 
 
 def _k_httperror():
@@ -2238,9 +2277,15 @@ def _k_queryfirst(query, key):
     return found[0] if found else None
 
 
-# kira:http's server: SO_REUSEADDR off on Windows, where it lets a second server take the port, as kira:os keeps it.
+# kira:http's server: SO_REUSEADDR off on Windows, where it lets a second server take the port, as kira:os keeps it; on
+# the main thread an onSignal handler that ran ends serve, as EINTR ends kira:os's waits (D78).
 class _k_Httpd(_k_httpserver.ThreadingHTTPServer):
     allow_reuse_address = _k_os.name != "nt"
+    kira_seen = None
+
+    def service_actions(self):
+        if self.kira_seen is not None and _k_errors().__dict__.get("signalled", 0) != self.kira_seen:
+            raise _k_builtins.InterruptedError(_k_errno.EINTR, _k_os.strerror(_k_errno.EINTR))
 
 
 # Each request asks the server's Kira Fx through _k_kirafx (E6, D76); access lines are not logged.
@@ -2252,7 +2297,7 @@ class _k_HttpGet(_k_httpserver.BaseHTTPRequestHandler):
         self.reply(_k_kirafx(self.server.kira_handle, _k_HttpRequest(method, self.path, self.headers.get("Host") or "", body)))
 
     def reply(self, a):
-        _k_kirafx(_k_httpheaders, a)
+        _k_kirafx(_k_httpcheck, a)
         if a.status == 0:
             self.close_connection = True
         elif a.status >= 400 and not a.body:
@@ -2271,7 +2316,7 @@ class _k_HttpGet(_k_httpserver.BaseHTTPRequestHandler):
 
 
 # A POST's length as int() reads Content-Length (none is 0, unreadable -1), clamped to what an Int64 holds; the body is
-# read before handle runs, so its answer never meets unread bytes, which a close would reset.
+# read before handle runs, so its answer never meets unread bytes, which a close would reset; a negative one reads none.
 class _k_HttpPost(_k_HttpGet):
     def do_POST(self):
         try:
@@ -2298,14 +2343,19 @@ def _k_httpbody(f, n):
     return out
 
 
-# A header Python's own lines already send, or a line break, which would end the headers early, is a program error.
-def _k_httpheaders(a):
+# A program error: a status of no three digits, a header Python's own lines send, and header text with a line break,
+# which would end the headers early, or past latin-1, which send_header cannot encode.
+def _k_httpcheck(a):
+    if a.status != 0 and not 100 <= a.status <= 999:
+        _k_panic("HttpAnswer.status %d is no HTTP status (0, or 100 to 999)" % a.status)
     for k in a.headers:
         if k.lower() in ("content-type", "content-length"):
             _k_panic("HttpAnswer.headers sets " + k + ", which contentType and the body set")
     for t in [a.contentType] + list(a.headers) + list(a.headers.values()):
         if "\r" in t or "\n" in t:
             _k_panic("HttpAnswer's header text " + _k_shown(t) + " holds a line break")
+        if _k_builtins.any(ord(c) > 255 for c in t):
+            _k_panic("HttpAnswer's header text " + _k_shown(t) + " is past latin-1")
 
 
 def _k_httpbind(host, port, handle, admit):
@@ -2340,6 +2390,8 @@ class _k_HttpServer:
                     _k_reasons.http = "the server is " + self.state
                 return self.state == "closed"
             self.state = "serving"
+        if _k_threading.current_thread() is _k_threading.main_thread():
+            self.h.kira_seen = _k_errors().__dict__.get("signalled", 0)
         try:
             self.h.serve_forever(0.5)
         except (_k_builtins.OSError, ValueError) as e:
@@ -2362,13 +2414,14 @@ class _k_HttpServer:
             self.h.server_close()
 
 
-# kira:args: argparse with the program's own prog; a bad command line ends with 2 and --help with 0, as parse_args ends
-# them. A help text is plain: its % is no format of argparse's.
+# kira:args: argparse with the program's own prog, made only by argSpec; a bad command line ends with 2 and --help with
+# 0, as parse_args ends them. Help and description are plain: no % in them is a format of argparse's.
 class _k_ArgSpec:
     __slots__ = ("p", "names")
 
-    def __init__(self, prog=None, description=None):
-        self.p = _k_argparse.ArgumentParser(prog=prog, description=description)
+    def __init__(self, prog, description):
+        plain = description.replace("%", "%%") if "%(prog)" in description else description
+        self.p = _k_argparse.ArgumentParser(prog=prog, description=plain)
         self.names = {}
 
     def positional(self, name, about):
@@ -2414,9 +2467,9 @@ def _k_argint(text):
 class _k_Parsed:
     __slots__ = ("ns", "names")
 
-    def __init__(self, ns=None, names=None):
+    def __init__(self, ns, names):
         self.ns = ns
-        self.names = {} if names is None else names
+        self.names = names
 
     def value(self, name, kind):
         d = self.names.get(name)

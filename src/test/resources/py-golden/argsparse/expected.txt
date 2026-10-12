@@ -6,6 +6,7 @@ each command line prints and exits as argparse's parser: 24 of 24
 parse from Python: ['m.onnx', 200, 3.0, 1e-05, None, False] ['str', 'int', 'float', 'float', 'NoneType', 'bool']
 ['--samples', 'x'] raises SystemExit 2 having written False True
 ['--help'] raises SystemExit 0 having written True False
+a description is plain too: 0 ['%(prog)s at 50%']
 kira: Parsed: '--out' is a text argument, not a whole one
 kira: Parsed: no argument '--nope' was declared
 kira: Parsed: 'onnx' is a text argument, not a flag one

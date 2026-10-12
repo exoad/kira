@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # The httpclient golden (K7): main, then each reply, HTTPError, cut body, bad reply, timeout and bad URL this server's
-# bytes give, against what a sidecar's urlopen and read gave on this interpreter (critique 9), and the value types.
+# bytes give, against what a sidecar's urlopen and read gave on this interpreter (critique 9); then what a sidecar did
+# not survive (a length past memory, a redirect to ftp:), and the value types.
 #
 #   python driver.py <the directory kira --target py --out wrote>
 import http.client
 import importlib.util
 import json
 import os
+import select
 import socket
 import sys
 import threading
@@ -21,7 +23,21 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 print("client ->", m._k_run())
 
+# An FTP port that only listens: a redirect to it must never connect.
+ftp = socket.socket()
+ftp.bind(("127.0.0.1", 0))
+ftp.listen(4)
+HUGE = b"Content-Length: %d\r\n\r\nhello" % (1 << 62)
 ANSWERS = {
+    "/huge": b"HTTP/1.0 200 OK\r\n" + HUGE,
+    "/hugeerror": b"HTTP/1.0 500 Oops\r\n" + HUGE,
+    "/hugeredirect": b"HTTP/1.0 302 Found\r\nLocation: /ok\r\n" + HUGE,
+    "/hugechunk": b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4000000000000000\r\nhello",
+    "/chunked": b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n",
+    "/chunkcut": b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n10\r\nabc",
+    "/toftp": b"HTTP/1.0 302 Found\r\nLocation: ftp://127.0.0.1:%d/secret.txt\r\nContent-Length: 4\r\n\r\nmove" % ftp.getsockname()[1],
+    "/tofile": b"HTTP/1.0 302 Found\r\nLocation: file:///secret.txt\r\nContent-Length: 4\r\n\r\nmove",
+    "/loop": b"HTTP/1.0 302 Found\r\nLocation: /loop\r\nContent-Length: 4\r\n\r\nloop",
     "/ok": b"HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\nhello",
     "/bytes": b"HTTP/1.0 200 OK\r\nContent-Length: 256\r\n\r\n" + bytes(range(256)),
     "/missing": b"HTTP/1.0 404 Not Found\r\nContent-Length: 4\r\n\r\nnope",
@@ -125,11 +141,24 @@ cases = [
     ("a POST's 418", "/teapot", b"{}", "application/json", 2000),
     ("a Content-Type with a line break", "/echo", b"x", "text/plain\nX-Injected: 1", 2000),
     ("a path past ASCII", "/é", None, None, 2000),
+    ("a chunked body", "/chunked", None, None, 2000),
+    ("a chunked body cut short", "/chunkcut", None, None, 2000),
+    ("a redirect to file:, urllib's refusal", "/tofile", None, None, 2000),
+    ("a redirect loop, urllib's refusal", "/loop", None, None, 2000),
 ]
+
+
+def shown(got):
+    return "none: %r" % got[1] if got[0] is None else "%d %r" % (got[0], got[1][:24])
+
+
 for what, path, data, ctype, ms in cases:
     got, want = kira(base + path, data, ctype, ms), sidecar(base + path, data, ctype, ms)
-    shown = "none: %r" % got[1] if got[0] is None else "%d %r" % (got[0], got[1][:24])
-    print("%s: %s, %s" % (what, "as a sidecar's" if got == want else "DIFFERS from %r" % (want,), shown))
+    print("%s: %s, %s" % (what, "as a sidecar's" if got == want else "DIFFERS from %r" % (want,), shown(got)))
+# A sidecar's read of a length past memory raised MemoryError; Kira's reads what came, as Python would with the memory.
+for what, path in [("a 200", "/huge"), ("an HTTPError", "/hugeerror"), ("a redirect", "/hugeredirect"), ("a chunk", "/hugechunk")]:
+    print("%s whose length is past memory: %s" % (what, shown(kira(base + path, None, None, 2000))))
+print("a redirect to ftp:, not followed: %s, the ftp port untouched %s" % (shown(kira(base + "/toftp", None, None, 2000)), not select.select([ftp], [], [], 0.2)[0]))
 got, want = kira(refused, None, None, 5000), sidecar(refused, None, None, 5000)
 print("a closed port: none %s, as a sidecar's %s" % (got[0] is None, got == want))
 print("no limit at 0, -1 and 2^62 ms:", [kira(base + "/ok", None, None, ms) for ms in (0, -1, 1 << 62)] == [(200, b"hello")] * 3)

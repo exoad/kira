@@ -9,6 +9,12 @@ use "kira:time"
 // kira:http's server (K7): route and admit answer as the driver's BaseHTTPRequestHandler does, byte for byte, and a
 // throw, panic or exit in a handler ends the process (D76); main serves itself through kira:http's client.
 
+fx withHeader: (name: Str, value: Str) HttpAnswer {
+    mut h: Map<Str, Str> = Map<Str, Str> { }
+    h.put(name, value)
+    return HttpAnswer { status = 200, headers = h }
+}
+
 pub fx route: (r: HttpRequest) HttpAnswer {
     if r.path == "/text" {
         return HttpAnswer { status = 200, contentType = "text/plain; charset=utf-8", body = "hello".bytes() }
@@ -41,22 +47,46 @@ pub fx route: (r: HttpRequest) HttpAnswer {
     if r.path == "/exit" {
         exit(9)
     }
+    if r.path == "/s100" {
+        return HttpAnswer { status = 100, contentType = "text/plain", body = "low".bytes() }
+    }
+    if r.path == "/s999" {
+        return HttpAnswer { status = 999, contentType = "text/plain", body = "high".bytes() }
+    }
+    if r.path == "/latin" {
+        return withHeader("X-Name", "café")
+    }
+    // Each a program error, which ends the process.
     if r.path == "/length" {
-        mut h: Map<Str, Str> = Map<Str, Str> { }
-        h.put("content-length", "1")
-        return HttpAnswer { status = 200, headers = h }
+        return withHeader("content-length", "1")
+    }
+    if r.path == "/ctype" {
+        return withHeader("Content-Type", "text/html")
     }
     if r.path == "/break" {
-        mut h: Map<Str, Str> = Map<Str, Str> { }
-        h.put("X-Note", "one\r\nX-Injected: two")
-        return HttpAnswer { status = 200, headers = h }
+        return withHeader("X-Note", "one\r\nX-Injected: two")
+    }
+    if r.path == "/lf" {
+        return withHeader("X-Note", "one\ntwo")
+    }
+    if r.path == "/ctypebreak" {
+        return HttpAnswer { status = 200, contentType = "text/plain\r\nX-Injected: 1" }
+    }
+    if r.path == "/notlatin" {
+        return withHeader("X-Price", "5 €")
+    }
+    if r.path == "/s1000" {
+        return HttpAnswer { status = 1000, body = "x".bytes() }
+    }
+    if r.path == "/s99" {
+        return HttpAnswer { status = 99, body = "x".bytes() }
     }
     return HttpAnswer { status = 200, contentType = "text/plain", body = "${r.method} ${r.path} '${r.host}' ${r.body.size()}: ${Str.of(r.body)}".bytes() }
 }
 
-// A body of at most 64 bytes is read; any other length is refused unread, the length it saw in the body.
+// A body of at most 64 bytes is read, any for /open; any other length is refused unread, the length it saw in the body.
 pub fx admit: (path: Str, n: Int64) HttpAnswer {
-    if n < 0 || n > 64 {
+    if path != "/open" && (n < 0 || n > 64) {
         code: Int32 = if n < 0 {
             400
         } else {
@@ -86,6 +116,24 @@ pub fx why: () Str {
     return httpError()
 }
 
+// serve on the main thread, which an onSignal handler ends as it ends kira:os's waits (D78): the driver's SIGINT 300 ms
+// in; the port is free after.
+pub fx serveOnSignal: () Str {
+    flag: Atomic<Bool> = Atomic<Bool> { value = false }
+    installed: Bool = onSignal(SIGNAL_INT, flag)
+    s: HttpServer = httpServer("127.0.0.1", 0, route).value
+    before: Int64 = monoNowMs()
+    served: Bool = s.serve()
+    took: Int64 = monoNowMs() - before
+    reason: Str = httpError()
+    again: Maybe<HttpServer> = httpServer("127.0.0.1", s.port(), route)
+    freed: Bool = again.isSome()
+    if freed {
+        again.value.shutdown()
+    }
+    return "installed ${installed}: serve ${served}, the flag ${flag.load()}, early ${took < 5000}, freed ${freed}: ${reason}"
+}
+
 fx bodyOf: (r: Maybe<HttpReply>) Str {
     if r.isNone() {
         return "none: " + httpError()
@@ -99,6 +147,9 @@ pub fx main: () Int32 {
     port: Int32 = s.port()
     t.check(port > 0, "port 0 binds a free port, which port() says")
     t.check(httpServer("127.0.0.1", port, route).isNone() && httpError() != "", "a second server on it is none, httpError saying why")
+    third: Maybe<HttpServer> = httpServer("127.0.0.1", 0, route)
+    t.check(third.isSome() && httpError() == "", "a bind that works clears the reason")
+    third.value.shutdown()
     served: Atomic<Bool> = Atomic<Bool> { value = false }
     th: Thread = spawn("serve", fx() Void {
         served.store(s.serve())
@@ -115,6 +166,9 @@ pub fx main: () Int32 {
     s.shutdown()
     th.join()
     t.check(served.load(), "shutdown ends serve, which is true")
+    after: Maybe<HttpServer> = httpServer("127.0.0.1", port, route)
+    t.check(after.isSome(), "and frees its port")
+    after.value.shutdown()
     t.check(s.serve() && httpError() == "", "a serve after it returns true at once")
     idle: HttpServer = httpServer("127.0.0.1", 0, route).value
     idle.shutdown()

@@ -1142,6 +1142,12 @@ namespace kira::os
           failErrno("read");
           return -1;
       }
+      // Ready yet empty is a tty that hung up (a USB device's reset): an error, as pyserial reads it, never a timeout.
+      if(got == 0 && into.size() > 0)
+      {
+          failWith("read", "the device hung up");
+          return -1;
+      }
       return static_cast<std::int64_t>(got);
   }
 

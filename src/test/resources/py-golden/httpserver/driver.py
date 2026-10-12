@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # The httpserver golden (K7): main, then each raw request's reply against a BaseHTTPRequestHandler answering as the
-# sidecars did, byte for byte but Date; bind failures, a request waiting for none, a handler ending the process (D76).
+# sidecars did, byte for byte but Date; bodies admitted past the reference's reach, the request's types, a serve a
+# signal ends, bind failures, a request waiting for none, a handler ending the process (D76).
 #
 #   python driver.py <the directory kira --target py --out wrote> [child]
+import errno
 import importlib.util
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -38,12 +41,18 @@ def route(method, path, host, body):
         return 409, "application/json", b'{"ok": false}', []
     if path == "/drop":
         return 0, "application/json", b"", []
+    if path == "/s100":
+        return 100, "text/plain", b"low", []
+    if path == "/s999":
+        return 999, "text/plain", b"high", []
+    if path == "/latin":
+        return 200, "application/json", b"", [("X-Name", "café")]
     said = "%s %s '%s' %d: %s" % (method, path, host, len(body), body.decode("utf-8", "replace"))
     return 200, "text/plain", said.encode("utf-8", "surrogatepass"), []
 
 
 def admit(path, n):
-    if n < 0 or n > 64:
+    if path != "/open" and (n < 0 or n > 64):
         return 400 if n < 0 else 413, "text/plain", b"length %d" % n, []
     return 0, "", b"", []
 
@@ -138,6 +147,9 @@ requests = [
     ("PUT, Python's 501", b"PUT /echo HTTP/1.0\r\n\r\n"),
     ("HEAD too", b"HEAD /text HTTP/1.0\r\n\r\n"),
     ("a bad request line, Python's 400", b"garbage\r\n\r\n"),
+    ("status 100, the lowest", b"GET /s100 HTTP/1.0\r\n\r\n"),
+    ("status 999, the highest", b"GET /s999 HTTP/1.0\r\n\r\n"),
+    ("a header in latin-1", b"GET /latin HTTP/1.0\r\n\r\n"),
 ]
 for post in (True, False):
     k, r = ports[post]
@@ -146,6 +158,35 @@ for post in (True, False):
 print(exchange(ports[True][0], requests[0][1]).split(b"\r\n")[0], exchange(ports[False][0], requests[7][1]).split(b"\r\n")[0])
 cut = b"POST /echo HTTP/1.0\r\nContent-Length: 10\r\n\r\nabcd"
 print("a body the client stops short:", exchange(ports[True][0], cut, True) == exchange(ports[True][1], cut, True), exchange(ports[True][0], cut, True).split(b"\r\n\r\n")[1])
+# The reference's rfile.read(n) raised MemoryError for the first and read to the end for the others.
+for what, length in [("a length past memory", b"%d" % (1 << 62)), ("an unreadable one", b"abc"), ("a negative one", b"-5")]:
+    raw = b"POST /open HTTP/1.0\r\nContent-Length: " + length + b"\r\n\r\nhello"
+    print("%s, admitted: %r" % (what, exchange(ports[True][0], raw, True).split(b"\r\n\r\n")[-1]))
+
+# The request a handler gets, its body a bytearray for a GET and a POST alike.
+seen = []
+
+
+def spy(r):
+    seen.append(type(r.body).__name__)
+    return m.route(r)
+
+
+spied = m._k_httpbind("127.0.0.1", 0, spy, m.admit)
+threading.Thread(target=spied.serve, daemon=True).start()
+exchange(spied.port(), b"GET /echo HTTP/1.0\r\n\r\n")
+exchange(spied.port(), b"POST /echo HTTP/1.0\r\nContent-Length: 2\r\n\r\nhi")
+spied.shutdown()
+print("a request's body:", seen)
+
+before = signal.getsignal(signal.SIGINT)
+t = threading.Thread(target=lambda: (time.sleep(0.3), signal.raise_signal(signal.SIGINT)), daemon=True)
+t.start()
+try:
+    print(m.serveOnSignal().replace(str(InterruptedError(errno.EINTR, os.strerror(errno.EINTR))), "EINTR's text"))
+finally:
+    t.join()
+    signal.signal(signal.SIGINT, before)
 
 took = {}
 
@@ -180,7 +221,10 @@ answer = m.route(m._k_HttpRequest("GET", "/json", "", bytearray()))
 print("of the types:", type(answer).__name__, type(answer.status).__name__, type(answer.body).__name__, type(answer.headers).__name__, type(m.bind("127.0.0.1", 0, False).port()).__name__)
 
 windows = os.name == "nt"
-for path, want in [(b"/throw", "70"), (b"/panic", "aborted"), (b"/exit", "9"), (b"/length", "aborted"), (b"/break", "aborted")]:
+ends = [(b"/throw", "70"), (b"/panic", "aborted"), (b"/exit", "9")]
+for path in (b"/length", b"/ctype", b"/break", b"/lf", b"/ctypebreak", b"/notlatin", b"/s1000", b"/s99"):
+    ends.append((path, "aborted"))
+for path, want in ends:
     child = subprocess.Popen([sys.executable, __file__, out, "child"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(os.environ, PYTHONUNBUFFERED="1"))
     try:
         port = int(child.stdout.readline())
@@ -193,5 +237,5 @@ for path, want in [(b"/throw", "70"), (b"/panic", "aborted"), (b"/exit", "9"), (
         child.kill()
         child.wait()
     shown = "aborted" if code in ((3,) if windows else (-6, 134)) else str(code)
-    said = [w for w in ("from the handler", "a handler's panic", "sets content-length", "holds a line break") if w in err]
+    said = [w for w in ("from the handler", "a handler's panic", "sets content-length", "sets Content-Type", "holds a line break", "past latin-1", "is no HTTP status") if w in err]
     print("%s ends the process: %s, no reply %s, %s" % (path.decode(), shown if shown != want else "as it should (%s)" % want, got if got not in (b"", b"<reset>") else True, said))

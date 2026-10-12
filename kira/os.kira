@@ -101,10 +101,11 @@ pub @_magic class Poller {
 pub @_magic class Serial {
     // `path` is /dev/ttyUSB0 or COM3; `baud` a standard rate the port
     // accepts (50 to 4000000 on termios, 1200 for a Pico's bootloader
-    // touch among them; any rate the driver takes on Windows).
+    // touch among them; any rate the driver takes on Windows). Windows'
+    // pyserial words why an open failed only in its text: kind Other there.
     pub mut fx open: (path: Str, baud: Int32) Bool;
     // Bytes read, waiting up to timeoutMs for the first one: 0 when the wait
-    // ran out, -1 on error.
+    // ran out, -1 on error, a device that hung up (a USB reset) among them.
     pub fx read: (into: MutView<UInt8>, timeoutMs: Int64) Int64;
     pub fx write: (data: View<UInt8>) Int64;
     pub fx isOpen: () Bool;

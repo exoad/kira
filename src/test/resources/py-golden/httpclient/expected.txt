@@ -6,6 +6,8 @@ httpclient - kira:http's client on py
   ok    a POST's URL too
   ok    a URL urlparse refuses is none
   ok    and one http.client refuses
+  ok    a port past a C long is none
+  ok    an IPv6 host's too
   ok    jsonText of UTF-8
   ok    UTF-8 after a BOM, which it drops
   ok    UTF-16, little-endian by its NULs
@@ -13,10 +15,11 @@ httpclient - kira:http's client on py
   ok    a call that works clears the reason
   ok    urlPath and urlQuery split a target
   ok    a target urlparse refuses is none
+  ok    a split that works clears the reason
   ok    queryFirst is parse_qs's first value
   ok    none for a blank value, which parse_qs drops, and a missing one
 
-14 checks, 0 failed
+17 checks, 0 failed
 
 client -> 0
 a 200: as a sidecar's, 200 b'hello'
@@ -36,6 +39,15 @@ an empty POST: as a sidecar's, 201 b'POST application/json 0 '
 a POST's 418: as a sidecar's, 418 b'short and stout'
 a Content-Type with a line break: as a sidecar's, none: "Invalid header value b'text/plain\\nX-Injected: 1'"
 a path past ASCII: as a sidecar's, none: "'ascii' codec can't encode character '\\xe9' in position 5: ordinal not in range(128)"
+a chunked body: as a sidecar's, 200 b'hello world'
+a chunked body cut short: as a sidecar's, none: 'IncompleteRead(5 bytes read)'
+a redirect to file:, urllib's refusal: as a sidecar's, 302 b'move'
+a redirect loop, urllib's refusal: as a sidecar's, 302 b'loop'
+a 200 whose length is past memory: none: 'IncompleteRead(5 bytes read, 4611686018427387899 more expected)'
+an HTTPError whose length is past memory: none: 'IncompleteRead(5 bytes read, 4611686018427387899 more expected)'
+a redirect whose length is past memory: none: 'IncompleteRead(5 bytes read, 4611686018427387899 more expected)'
+a chunk whose length is past memory: none: 'IncompleteRead(0 bytes read)'
+a redirect to ftp:, not followed: 302 b'move', the ftp port untouched True
 a closed port: none True, as a sidecar's True
 no limit at 0, -1 and 2^62 ms: True
 a call that works clears the reason: True

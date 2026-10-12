@@ -8,8 +8,8 @@ pub struct HttpReply {
     pub body: List<UInt8> = []
 }
 
-// urlopen(url): none when no reply came (no connection, a timeout, a bad URL or reply, a body cut short), httpError()
-// saying why. timeoutMs of 0 or less waits without limit; only http and https URLs are opened.
+// urlopen(url) of an http or https URL, a redirect to any other scheme its 3xx reply: none when no reply came (no
+// connection, a timeout, a bad URL or reply, a body cut short), httpError() saying why; timeoutMs <= 0: no limit.
 pub @_magic fx httpGet: (url: Str, timeoutMs: Int64) Maybe<HttpReply>;
 // A POST of body as contentType, as httpGet.
 pub @_magic fx httpPost: (url: Str, body: View<UInt8>, contentType: Str, timeoutMs: Int64) Maybe<HttpReply>;
@@ -32,7 +32,8 @@ pub struct HttpRequest {
 }
 
 // What a handler answers: status 0 closes the connection unanswered, and 400 or more with no body is Python's error
-// page; else Content-Type, Content-Length, then headers in order, which may set neither, nor hold a line break.
+// page; else Content-Type, Content-Length, then headers in order. A program error: a status past 100..999, a header
+// that sets either of those two, and header text with a line break or past latin-1.
 pub struct HttpAnswer {
     pub status: Int32 = 200
     pub contentType: Str = "application/json"
@@ -44,7 +45,8 @@ pub struct HttpAnswer {
 pub @_magic class HttpServer {
     // The port bound, port 0's choice included.
     pub fx port: () Int32;
-    // Serves until shutdown() from another thread, then closes: true; false at an error, httpError() saying why.
+    // Serves until shutdown() from another thread, then closes: true; false at an error, or on the main thread once an
+    // onSignal handler ran, as it ends kira:os's waits (D78), httpError() saying why.
     pub mut fx serve: () Bool;
     // Ends serve within half a second, or a serve not yet begun at once.
     pub mut fx shutdown: () Void;
@@ -53,7 +55,8 @@ pub @_magic class HttpServer {
 // GET only (any other method is Python's 501); none when the address cannot be bound, httpError() saying why.
 pub @_magic fx httpServer: (host: Str, port: Int32, handle: Fx<Tuple1<HttpRequest>, HttpAnswer>) Maybe<HttpServer>;
 // GET and POST. admit(path, contentLength) runs before the body is read (none sent is 0, unreadable -1, clamped to
-// +-2^62): status 0 reads the body, then calls handle; any other is sent unread and the connection closed.
+// +-2^62): status 0 reads the body (none for a negative length), then calls handle; any other is sent unread and the
+// connection closed.
 pub @_magic fx httpServerWithPost: (
     host: Str,
     port: Int32,

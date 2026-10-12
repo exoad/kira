@@ -7,7 +7,7 @@ use "kira:pytext"
 // command line and 0 for --help; the driver runs the same parser built in Python, as the sidecars built theirs.
 
 pub fx spec: () ArgSpec {
-    s: ArgSpec = argSpec("decode", "Decodes the tag heads.")
+    s: ArgSpec = argSpec("decode", "Decodes the tag heads, 50% of them at most.")
     s.positional("onnx", "")
     s.whole("--samples", 200, "")
     s.whole("--steps-per-epoch", 400, "steps in each epoch")
@@ -54,6 +54,12 @@ pub fx undashed: () Void {
 pub fx dashed: () Void {
     s: ArgSpec = spec()
     s.positional("--onnx", "")
+}
+
+// --help of a description that names %(prog)s, which argparse would format, and a lone %.
+pub fx plainHelp: () Void {
+    s: ArgSpec = argSpec("decode", "%(prog)s at 50%")
+    s.parse(["--help"])
 }
 
 fx orNone: (m: Maybe<Str>) Str {

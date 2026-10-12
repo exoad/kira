@@ -27,7 +27,7 @@ def int64(text):
 int64.__name__ = "int"
 
 if sys.argv[2:3] == ["reference"]:
-    ap = argparse.ArgumentParser(prog="decode", description="Decodes the tag heads.")
+    ap = argparse.ArgumentParser(prog="decode", description="Decodes the tag heads, 50% of them at most.")
     ap.add_argument("onnx")
     ap.add_argument("--samples", type=int64, default=200)
     ap.add_argument("--steps-per-epoch", type=int64, default=400, help="steps in each epoch")
@@ -86,6 +86,12 @@ for argv in (["--samples", "x"], ["--help"]):
         except SystemExit as x:
             caught = x.code
     print(argv, "raises SystemExit", caught, "having written", len(o.getvalue()) > 0, len(e.getvalue()) > 0)
+with contextlib.redirect_stdout(io.StringIO()) as o:
+    try:
+        m.plainHelp()
+    except SystemExit as x:
+        caught = x.code
+print("a description is plain too:", caught, [line for line in o.getvalue().splitlines() if "50" in line])
 
 
 def panics(f, *args):

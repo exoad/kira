@@ -41,6 +41,8 @@ pub fx main: () Int32 {
     t.check(httpPost("ftp://x/", "a".bytes(), "text/plain", 1000).isNone() && httpError() == "<urlopen error unknown url type: ftp>", "a POST's URL too")
     t.check(httpGet("http://[::1", 1000).isNone() && httpError() == "Invalid IPv6 URL", "a URL urlparse refuses is none")
     t.check(httpGet("http://127.0.0.1:abc/", 1000).isNone() && httpError() == "nonnumeric port: 'abc'", "and one http.client refuses")
+    t.check(httpGet("http://127.0.0.1:99999999999999999999/", 300).isNone() && httpError() != "", "a port past a C long is none")
+    t.check(httpGet("http://[::1]:99999999999999999999/", 300).isNone() && httpError() != "", "an IPv6 host's too")
     utf8: List<UInt8> = "{\"a\": \"é\"}".bytes()
     t.checkStr(jsonText(utf8).value, "{\"a\": \"é\"}", "jsonText of UTF-8")
     bom: List<UInt8> = [0xef, 0xbb, 0xbf, 0x5b, 0x5d]
@@ -52,6 +54,7 @@ pub fx main: () Int32 {
     t.check(jsonText(bom).isSome() && httpError() == "", "a call that works clears the reason")
     t.checkStr(urlPath("/power?s=60").value + "|" + urlQuery("/power?s=60").value, "/power|s=60", "urlPath and urlQuery split a target")
     t.check(urlPath("http://[x/").isNone() && httpError() == "Invalid IPv6 URL" && urlQuery("/").value == "", "a target urlparse refuses is none")
+    t.check(urlQuery("http://[x/").isNone() && urlPath("/a").value == "/a" && httpError() == "", "a split that works clears the reason")
     t.checkStr(queryFirst("s=60&s=90&t=", "s").value, "60", "queryFirst is parse_qs's first value")
     t.check(queryFirst("s=60&t=", "t").isNone() && queryFirst("s=60", "u").isNone(), "none for a blank value, which parse_qs drops, and a missing one")
     return t.finish()

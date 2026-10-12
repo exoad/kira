@@ -3,6 +3,7 @@ httpserver - kira:http's server on py
 
   ok    port 0 binds a free port, which port() says
   ok    a second server on it is none, httpError saying why
+  ok    a bind that works clears the reason
   ok    kira:http's client reads its server's 200
   ok    and a 409 with its body
   ok    and a 404 without one, Python's error page
@@ -11,6 +12,7 @@ httpserver - kira:http's server on py
   ok    one byte too
   ok    a second serve while it serves is false
   ok    shutdown ends serve, which is true
+  ok    and frees its port
   ok    a serve after it returns true at once
   ok    and so does one after a shutdown before any serve
   ok    which freed its port at once
@@ -18,13 +20,18 @@ httpserver - kira:http's server on py
   ok    each struct is a value, its List and Map copied with it
   ok    and compared field by field
 
-16 checks, 0 failed
+18 checks, 0 failed
 
 server -> 0
-GET and POST answers as the handler does: 18 of 18 []
-GET only answers as the handler does: 18 of 18 []
+GET and POST answers as the handler does: 21 of 21 []
+GET only answers as the handler does: 21 of 21 []
 b'HTTP/1.0 200 OK' b"HTTP/1.0 501 Unsupported method ('POST')"
 a body the client stops short: True b"POST /echo '' 4: abcd"
+a length past memory, admitted: b"POST /open '' 5: hello"
+an unreadable one, admitted: b"POST /open '' 0: "
+a negative one, admitted: b"POST /open '' 0: "
+a request's body: ['bytearray', 'bytearray']
+installed true: serve false, the flag true, early true, freed true: EINTR's text
 a request waits for no other: True
 a port in use: none True, httpError as the bind's own True
 a port past 65535: none True, httpError as the bind's own True
@@ -36,4 +43,10 @@ of the types: _k_HttpAnswer int bytearray dict int
 /panic ends the process: as it should (aborted), no reply True, ["a handler's panic"]
 /exit ends the process: as it should (9), no reply True, []
 /length ends the process: as it should (aborted), no reply True, ['sets content-length']
+/ctype ends the process: as it should (aborted), no reply True, ['sets Content-Type']
 /break ends the process: as it should (aborted), no reply True, ['holds a line break']
+/lf ends the process: as it should (aborted), no reply True, ['holds a line break']
+/ctypebreak ends the process: as it should (aborted), no reply True, ['holds a line break']
+/notlatin ends the process: as it should (aborted), no reply True, ['past latin-1']
+/s1000 ends the process: as it should (aborted), no reply True, ['is no HTTP status']
+/s99 ends the process: as it should (aborted), no reply True, ['is no HTTP status']

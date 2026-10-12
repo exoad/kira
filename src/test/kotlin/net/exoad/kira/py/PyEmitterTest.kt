@@ -2880,6 +2880,16 @@ class PyEmitterTest {
         assertTrue(python("use \"kira:csv\"\n\nfx f: () CsvReader {\n    return CsvReader { }\n}").contains("    return _k_CsvReader()\n"))
     }
 
+    /** A runtime class whose __init__ needs more than its fields is made only by its module's calls: ArgSpec { } has no prog. */
+    @Test
+    fun aStdlibClassThatNeedsItsModulesCallIsNeverConstructed() {
+        decided("use \"kira:args\"\n\nfx f: () ArgSpec {\n    return ArgSpec { }\n}", "a construction of ArgSpec", "ArgSpec is made only by its module's calls")
+        decided("use \"kira:args\"\n\nfx f: () Parsed {\n    return Parsed { }\n}", "a construction of Parsed", "Parsed is made only by its module's calls")
+        val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
+        assertEquals(listOf(2, 2, 0, 0, 2, 1), listOf("_k_ArgSpec", "_k_Parsed", "_k_HttpServer", "_k_Serial", "_k_Thread", "_k_Suite").map { runtime.requiredArgs(it) })
+        assertTrue(python("use \"kira:http\"\n\nfx f: () HttpServer {\n    return HttpServer { }\n}").contains("    return _k_HttpServer()\n"))
+    }
+
     @Test
     fun aStdlibClassTheRuntimeLacksIsStillRefused() {
         refused("fx f: (u: StrBuf<64>) Void {\n}", "the parameter 'u': the type StrBuf")
