@@ -1,5 +1,5 @@
 project:
-  name: ffi-mini
+  name: ffi.mini
 
 srcDir: src
 

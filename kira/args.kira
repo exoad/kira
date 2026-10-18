@@ -1,30 +1,28 @@
-module "kira:args"
-
 // A command line as Python's argparse reads it, with its usage, help and error text; py only.
 
 // The arguments a program takes, argparse.ArgumentParser's add_argument calls; only argSpec makes one.
-pub @_magic class ArgSpec {
+pub @_magic ArgSpec: Any {
     // A required value, read back with textOf(name).
-    pub mut fx positional: (name: Str, help: Str) Void;
+    pub mut positional: (name: Str, help: Str) Void;
     // "--flag value", none unless given or a fallback: the text, int()'s within Int64, float()'s.
-    pub mut fx text: (flag: Str, fallback: Maybe<Str>, help: Str) Void;
-    pub mut fx whole: (flag: Str, fallback: Maybe<Int64>, help: Str) Void;
-    pub mut fx real: (flag: Str, fallback: Maybe<Float64>, help: Str) Void;
+    pub mut text: (flag: Str, fallback: Maybe<Str>, help: Str) Void;
+    pub mut whole: (flag: Str, fallback: Maybe<Int64>, help: Str) Void;
+    pub mut real: (flag: Str, fallback: Maybe<Float64>, help: Str) Void;
     // A "--flag" without a value (store_true), read back with isSet.
-    pub mut fx flag: (flag: Str, help: Str) Void;
+    pub mut flag: (flag: Str, help: Str) Void;
     // argv without the program. A bad one prints the usage and the error to stderr and ends the program with 2; --help
     // prints the help and ends it with 0.
-    pub fx parse: (argv: List<Str>) Parsed;
+    pub parse: (argv: List<Str>) Parsed;
 }
 
 // What parse read (only parse makes one), each value by the name or flag it was declared with; any other name, or
 // another kind's, panics.
-pub @_magic class Parsed {
-    pub fx textOf: (name: Str) Maybe<Str>;
-    pub fx wholeOf: (name: Str) Maybe<Int64>;
-    pub fx realOf: (name: Str) Maybe<Float64>;
-    pub fx isSet: (name: Str) Bool;
+pub @_magic Parsed: Any {
+    pub textOf: (name: Str) Maybe<Str>;
+    pub wholeOf: (name: Str) Maybe<Int64>;
+    pub realOf: (name: Str) Maybe<Float64>;
+    pub isSet: (name: Str) Bool;
 }
 
 // ArgumentParser(prog, description): the usage names prog, never the generated file; the texts are plain, no format.
-pub @_magic fx argSpec: (prog: Str, description: Str) ArgSpec;
+pub @_magic argSpec: (prog: Str, description: Str) ArgSpec;

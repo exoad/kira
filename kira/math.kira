@@ -1,5 +1,3 @@
-module "kira:math"
-
 // Scalar math.
 //
 // The @_magic entries below lower to the matching `<math.h>` call, so the
@@ -13,36 +11,36 @@ module "kira:math"
 // arguments, so `sin(x)` with `x: Float32` is Float32 math, as bibo's C++ is.
 // This is the only type-argument inference Kira has, and only the stdlib uses it.
 
-pub @_magic @_infer fx sqrt<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx pow<T: FloatNum>: (base: T, exponent: T) T;
-pub @_magic @_infer fx floor<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx ceil<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx round<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx sin<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx cos<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx tan<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx abs<T: FloatNum>: (value: T) T;
-pub @_magic @_infer fx min<T: FloatNum>: (a: T, b: T) T;
-pub @_magic @_infer fx max<T: FloatNum>: (a: T, b: T) T;
+pub @_magic @_infer sqrt<T: FloatNum>: (value: T) T;
+pub @_magic @_infer pow<T: FloatNum>: (base: T, exponent: T) T;
+pub @_magic @_infer floor<T: FloatNum>: (value: T) T;
+pub @_magic @_infer ceil<T: FloatNum>: (value: T) T;
+pub @_magic @_infer round<T: FloatNum>: (value: T) T;
+pub @_magic @_infer sin<T: FloatNum>: (value: T) T;
+pub @_magic @_infer cos<T: FloatNum>: (value: T) T;
+pub @_magic @_infer tan<T: FloatNum>: (value: T) T;
+pub @_magic @_infer abs<T: FloatNum>: (value: T) T;
+pub @_magic @_infer min<T: FloatNum>: (a: T, b: T) T;
+pub @_magic @_infer max<T: FloatNum>: (a: T, b: T) T;
 // C's fmod (D60): a - b * trunc(a / b) exactly, with a's sign; NaN where b is 0 or a infinite.
-pub @_magic @_infer fx fmod<T: FloatNum>: (a: T, b: T) T;
+pub @_magic @_infer fmod<T: FloatNum>: (a: T, b: T) T;
 // C's hypot, atan2 and exp, and Python's math on py, whose exp past the largest double is inf too where math raises;
 // the targets may differ in the last bit (CPython's hypot is its own algorithm, and each libm rounds exp and atan2).
-pub @_magic @_infer fx hypot<T: FloatNum>: (x: T, y: T) T;
-pub @_magic @_infer fx atan2<T: FloatNum>: (y: T, x: T) T;
-pub @_magic @_infer fx exp<T: FloatNum>: (value: T) T;
+pub @_magic @_infer hypot<T: FloatNum>: (x: T, y: T) T;
+pub @_magic @_infer atan2<T: FloatNum>: (y: T, x: T) T;
+pub @_magic @_infer exp<T: FloatNum>: (value: T) T;
 // Python's a % b (CPython's float_rem): fmod, plus b where their signs differ, a zero signed as b; NaN for b 0.
-pub @_magic @_infer fx floorMod<T: FloatNum>: (a: T, b: T) T;
+pub @_magic @_infer floorMod<T: FloatNum>: (a: T, b: T) T;
 
-pub fx clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
+pub clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
     return max(lo, min(value, hi))
 }
 
-pub fx lerp: (a: Float64, b: Float64, t: Float64) Float64 {
+pub lerp: (a: Float64, b: Float64, t: Float64) Float64 {
     return a + (b - a) * t
 }
 
-pub fx sign: (value: Float64) Int32 {
+pub sign: (value: Float64) Int32 {
     if value > 0 {
         return 1
     } else if value < 0 {
@@ -52,7 +50,7 @@ pub fx sign: (value: Float64) Int32 {
     }
 }
 
-pub fx step: (edge: Float64, value: Float64) Float64 {
+pub step: (edge: Float64, value: Float64) Float64 {
     if value >= edge {
         return 1.0
     } else {
@@ -60,18 +58,18 @@ pub fx step: (edge: Float64, value: Float64) Float64 {
     }
 }
 
-pub fx inverseLerp: (a: Float64, b: Float64, value: Float64) Float64 {
+pub inverseLerp: (a: Float64, b: Float64, value: Float64) Float64 {
     return (value - a) / (b - a)
 }
 
-pub fx deg2rad: (degrees: Float64) Float64 {
+pub deg2rad: (degrees: Float64) Float64 {
     return degrees * 3.141592653589793 / 180.0
 }
 
-pub fx rad2deg: (radians: Float64) Float64 {
+pub rad2deg: (radians: Float64) Float64 {
     return radians * 180.0 / 3.141592653589793
 }
 
-pub fx isBetween: (value: Float64, lo: Float64, hi: Float64) Bool {
+pub isBetween: (value: Float64, lo: Float64, hi: Float64) Bool {
     return value >= lo && value <= hi
 }

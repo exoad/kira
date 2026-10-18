@@ -1,5 +1,3 @@
-module "app:utils"
-
-fx normalize: (text: Str) Str {
+normalize: (text: Str) Str {
     return text
 }

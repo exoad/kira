@@ -1,5 +1,5 @@
 project:
-  name: ffi-cpp
+  name: ffi.cpp
 
 srcDir: src
 

@@ -1,8 +1,6 @@
-module "app:main"
+functions.app.greetings as greetings
 
-use "app:greetings"
-
-fx main: () Void {
+main: () Void {
     message: Str = greeting()
     trace(message)
 }

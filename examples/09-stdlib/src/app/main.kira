@@ -1,8 +1,6 @@
-module "app:main"
+stdlib.tour.app.text as text
 
-use "app:text"
-
-fx main: () Void {
+main: () Void {
     // --- Str ---------------------------------------------------------
     name: Str = "  kira  "
     trimmed: Str = name.trim()

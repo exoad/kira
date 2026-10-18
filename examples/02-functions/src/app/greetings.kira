@@ -1,7 +1,5 @@
-module "app:greetings"
+functions.app.utils as utils
 
-use "app:utils"
-
-fx greeting: () Str {
+greeting: () Str {
     return normalize("hello from functions")
 }

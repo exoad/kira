@@ -1,37 +1,35 @@
-module "kira:json"
-
 // Json.parse, error, obj, arr, null and of are called on the type: the typer makes them (D64).
 
 // A reference (D63): put and add are seen through every copy.
-pub @_magic class Json {
-    pub fx isNull: () Bool;
-    pub fx isBool: () Bool;
-    pub fx isInt: () Bool;
-    pub fx isFloat: () Bool;
-    pub fx isStr: () Bool;
-    pub fx isArr: () Bool;
-    pub fx isObj: () Bool;
+pub @_magic Json: Any {
+    pub isNull: () Bool;
+    pub isBool: () Bool;
+    pub isInt: () Bool;
+    pub isFloat: () Bool;
+    pub isStr: () Bool;
+    pub isArr: () Bool;
+    pub isObj: () Bool;
 
-    pub fx asBool: () Maybe<Bool>;
+    pub asBool: () Maybe<Bool>;
     // An integer only: 3.0 is none.
-    pub fx asInt64: () Maybe<Int64>;
+    pub asInt64: () Maybe<Int64>;
     // A float, or an integer widened.
-    pub fx asFloat64: () Maybe<Float64>;
-    pub fx asStr: () Maybe<Str>;
+    pub asFloat64: () Maybe<Float64>;
+    pub asStr: () Maybe<Str>;
 
     // JSON null when the key or index is absent or this is no object or array.
-    pub fx get: (key: Str) Json;
-    pub fx at: (index: Size) Json;
-    pub fx has: (key: Str) Bool;
-    pub fx keys: () List<Str>;
-    pub fx size: () Size;
+    pub get: (key: Str) Json;
+    pub at: (index: Size) Json;
+    pub has: (key: Str) Bool;
+    pub keys: () List<Str>;
+    pub size: () Size;
 
     // A key put again keeps its place. Either one on the wrong kind of Json panics.
-    pub mut fx put: (key: Str, value: Json) Void;
-    pub mut fx add: (value: Json) Void;
+    pub mut put: (key: Str, value: Json) Void;
+    pub mut add: (value: Json) Void;
 
     // json.dumps(v) and json.dumps(v, indent=indent, ensure_ascii=ascii), byte for byte (D65);
     // nesting past 512 panics here and fails Json.parse (D66).
-    pub fx dump: () Str;
-    pub fx pretty: (indent: Size, ascii: Bool) Str;
+    pub dump: () Str;
+    pub pretty: (indent: Size, ascii: Bool) Str;
 }

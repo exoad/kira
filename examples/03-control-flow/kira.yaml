@@ -1,5 +1,5 @@
 project:
-  name: control-flow
+  name: control.flow
 
 srcDir: src
 

@@ -1,5 +1,3 @@
-module "app:main"
-
-fx main: () Void {
+main: () Void {
     trace("hello, kira")
 }

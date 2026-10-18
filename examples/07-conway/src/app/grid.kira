@@ -1,13 +1,11 @@
-module "app:grid"
-
-class Grid {
-    require pub width: Int32
-    require pub height: Int32
+Grid: Any {
+    pub width: Int32
+    pub height: Int32
     // `step` writes the next generation back through `set`, so the field is
     // a mutable place.
-    require pub mut cells: Arr<Int32>
+    pub mut cells: Arr<Int32>
 
-    fx countNeighbors: (row: Int32, col: Int32) Int32 {
+    countNeighbors: (row: Int32, col: Int32) Int32 {
         mut count: Int32 = 0
         mut r: Int32 = -1
         while r <= 1 {
@@ -31,7 +29,7 @@ class Grid {
         return count
     }
 
-    mut fx step: () Void {
+    mut step: () Void {
         mut next: Arr<Int32> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         mut i: Int32 = 0
         while i < width * height {
@@ -56,7 +54,7 @@ class Grid {
         }
     }
 
-    fx printGrid: () Void {
+    printGrid: () Void {
         mut r: Int32 = 0
         while r < height {
             mut c: Int32 = 0

@@ -1,9 +1,7 @@
-module "app:main"
+control.flow.app.ranges as ranges
+control.flow.app.checks as checks
 
-use "app:ranges"
-use "app:checks"
-
-fx main: () Void {
+main: () Void {
     mut i: Int32 = 0
     while i < 2 {
         i = i + 1

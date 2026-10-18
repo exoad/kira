@@ -1,47 +1,45 @@
-module "kira:result"
-
 // Fallible-value types. `Maybe` is the return shape for the partial `Map` /
 // `Stack` / `Queue` / `Deque` lookups in `kira:collections`.
 //
 // `Maybe` answers to both spellings (D40): `isNull` / `value` and
 // `isNone` / `unwrap`.
 
-pub @_magic class Maybe<T> {
-    require pub value: T
+pub @_magic Maybe<T>: Any {
+    pub value: T
 
-    pub fx isSome: () Bool;
-    pub fx isNone: () Bool;
-    pub fx isNull: () Bool;
-    pub fx unwrap: () T;
-    pub fx unwrapOr: (defaultValue: T) T;
+    pub isSome: () Bool;
+    pub isNone: () Bool;
+    pub isNull: () Bool;
+    pub unwrap: () T;
+    pub unwrapOr: (defaultValue: T) T;
 }
 
-pub @_magic class Result<T, E> {
-    require pub value: T
-    require pub error: E
+pub @_magic Result<T, E>: Any {
+    pub value: T
+    pub error: E
 
-    pub fx isOk: () Bool;
-    pub fx isErr: () Bool;
-    pub fx unwrap: () T;
-    pub fx unwrapErr: () E;
+    pub isOk: () Bool;
+    pub isErr: () Bool;
+    pub unwrap: () T;
+    pub unwrapErr: () E;
 }
 
-pub @_magic class Exception {
-    require pub message: Str
+pub @_magic Exception: Any {
+    pub message: Str
 }
 
 // A shared, mutable cell (the spec's `Ref<T>`, D46): every copy of a `Ref`
 // names the same `value`.
-pub @_magic class Ref<T> {
-    require pub mut value: T
+pub @_magic Ref<T>: Any {
+    pub mut value: T
 }
 
 // A non-owning reference to a class instance. `upgrade` yields the live
 // object, or none once every owning reference is gone.
-pub @_magic class Weak<T> {
-    pub fx upgrade: () Maybe<T>;
+pub @_magic Weak<T>: Any {
+    pub upgrade: () Maybe<T>;
 }
 
 // An unchecked pointer for FFI seams: no lifetime, no bounds, no nullability.
 // Only `@_extern` code hands these out.
-pub @_magic class Unsafe<T>
+pub @_magic Unsafe<T>: Any

@@ -1,8 +1,6 @@
-module "app:main"
+conway.app.grid as grid
 
-use "app:grid"
-
-fx main: () Void {
+main: () Void {
     g: Grid = Grid { 5, 5, [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
     mut gen: Int32 = 0
     while gen < 5 {

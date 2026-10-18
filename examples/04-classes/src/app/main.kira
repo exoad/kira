@@ -1,8 +1,6 @@
-module "app:main"
+classes.app.model as model
 
-use "app:model"
-
-fx main: () Void {
+main: () Void {
     rect: Rectangle = Rectangle { Point { 0, 1 }, Point { 1, 0 } }
     friend: Pet = Pet { "Mochi", "meow" }
 
