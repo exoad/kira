@@ -49,7 +49,7 @@ pub main: () Int32 {
     show(t.last)
     trace(s.ready.unwrap() == p)
 
-    mut ds: List<Datagram> = [d, made(1, "a")]
+    mut ds: List<Datagram> = @listOf(d, made(1, "a"))
     kept: List<Datagram> = ds
     ds.add(made(2, "b"))
     trace(kept.size())

@@ -24,7 +24,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import java.util.IdentityHashMap
 
@@ -34,7 +34,7 @@ import java.util.IdentityHashMap
  * reports nothing: views are second-class (decision 4b), and every view rule is ViewPass's.
  *
  * - An `Fx` parameter escapes when it is stored (in a local, field or global), returned, put
- *   in a container (an array literal or a construction), captured by a lambda, or passed to a
+ *   in a container (a builder or a construction), captured by a lambda, or passed to a
  *   parameter that escapes, to an extern, magic, virtual or trait-dispatched callee, or
  *   through an `Fx` value; an operator an `@op_*` overload implements passes its operand the
  *   same way (`Keeper {} + f`). The parameters of a virtual method always escape (a vtable has no
@@ -137,7 +137,7 @@ internal class EscapePass : RulePass {
                     n.positionalArgs.forEach { v -> AstScan.values(v).forEach { sink(it, Flow.Container) } }
                     n.namedArgs.forEach { a -> AstScan.values(a.value).forEach { sink(it, Flow.Container) } }
                 }
-                is ArrayLiteral -> n.value.forEach { v -> AstScan.values(v).forEach { sink(it, Flow.Container) } }
+                is BuilderExpr -> n.elements.forEach { v -> AstScan.values(v).forEach { sink(it, Flow.Container) } }
                 is FunctionCallExpr -> call(n)
                 else -> {}
             }

@@ -274,7 +274,7 @@ class RuntimeSuiteTest {
         assertStdout("10\n") {
             """
             main: () Void {
-                numbers: Arr<Int32> = [10, 20, 30]
+                numbers: Arr<Int32> = @arrOf(10, 20, 30)
                 trace(numbers[0])
             }
             """
@@ -294,7 +294,7 @@ class RuntimeSuiteTest {
                 "test:runtime.nested",
                 """
                 main: () Void {
-                    grid: Arr<Arr<Int32>> = [[1, 2], [3, 4]]
+                    grid: Arr<Arr<Int32>> = @arrOf(@arrOf(1, 2), @arrOf(3, 4))
                     trace(grid[1][0])
                 }
                 """

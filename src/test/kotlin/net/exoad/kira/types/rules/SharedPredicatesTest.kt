@@ -93,7 +93,7 @@ class SharedPredicatesTest {
         val p = snippet(
             callees + """
             pub caller: (h: Handle, s: Slot, xs: List<Int32>) Int32 {
-                mut ys: List<Int32> = List<Int32> { values = [1] }
+                mut ys: List<Int32> = List<Int32> { values = @arrOf(1) }
                 return ext(ys.view()) + proto(ys.view()) + h.op(ys.view()) + s.slot(ys.view()) + kira(ys.view()) + xs.get(0)
             }
             """,
@@ -228,8 +228,8 @@ class SharedPredicatesTest {
             pub extK: (k: K) Int32;
             pub caller: (f: Fx<Tuple0, Int32>, t: T, k: K, b: Base) Int32 {
                 mut x: Int32 = 0
-                mut xs: List<Int32> = List<Int32> { values = [1] }
-                ks: List<K> = List<K> { values = [k] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1) }
+                ks: List<K> = List<K> { values = @arrOf(k) }
                 a: Int32 = pure() + writesG() + writesOwn(mut x)
                 c: Int32 = apply(() Int32 {
                     return 1
@@ -297,8 +297,8 @@ class SharedPredicatesTest {
                 }
             }
             pub drive: () Void {
-                mut fs: List<Fx<Tuple0, Void>> = []
-                mut ns: List<Int32> = []
+                mut fs: List<Fx<Tuple0, Void>> = @listOf()
+                mut ns: List<Int32> = @listOf()
                 keepG<Fx<Tuple0, Void>>(mut fs, () Void {
                     G += 1
                 })
@@ -416,7 +416,7 @@ class SharedPredicatesTest {
             """
             kira.sync as sync
             pub mut G: Int32 = 0
-            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub mut hooks: List<Fx<Tuple0, Void>> = @listOf()
             pub quiet: () Void {
             }
             pub loud: () Void {

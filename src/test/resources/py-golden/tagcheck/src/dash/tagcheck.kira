@@ -7,7 +7,7 @@
 
 NOTE_MAX: Size = 80
 TAGS: Int64 = 48
-LABEL_IDS: List<Str> = ["none", "landmark", "home", "waypoint", "slow", "stop", "door", "test", "keep_out", "dock", "junction", "calibration", "bobo"]
+LABEL_IDS: List<Str> = @listOf("none", "landmark", "home", "waypoint", "slow", "stop", "door", "test", "keep_out", "dock", "junction", "calibration", "bobo")
 
 pub Answer: Any {
     pub ok: Bool

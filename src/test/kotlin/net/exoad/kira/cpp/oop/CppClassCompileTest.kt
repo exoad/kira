@@ -292,7 +292,7 @@ class CppClassCompileTest {
         // A skipped middle default of an Arr type: make_shared deduces nothing from a bare
         // braced list, so the filled-in default carries its type, in a subclass's construction too.
         pub Frame: Any {
-            pub mut buf: Arr<UInt8, 4> = [1, 2, 3, 4]
+            pub mut buf: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
             pub id: Int32
         }
 

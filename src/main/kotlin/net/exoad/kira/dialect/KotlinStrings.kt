@@ -1,5 +1,8 @@
 package net.exoad.kira.dialect
 
+import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.analysis.types.KiraTyper
+import net.exoad.kira.compiler.analysis.types.TyperMode
 import java.io.File
 
 /**
@@ -18,14 +21,15 @@ object KotlinStrings {
     private const val HOLE = "zzKtHole"
     private const val SNIPPET = "module \"kt:snippet\"\n"
 
-    fun convertAll(paths: List<String>, check: Boolean): Int {
+    /** [stage2]: stage 1's Kira to stage 2's ([Stage2]) instead of the old dialect to stage 1's. */
+    fun convertAll(paths: List<String>, check: Boolean, stage2: Boolean = false): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }.distinct().sorted()
         var changedFiles = 0
         var converted = 0
         var refused = 0
         for (f in files) {
             val text = f.readText()
-            val (out, n, bad) = convertFile(text, f.path)
+            val (out, n, bad) = convertFile(text, f.path, stage2)
             converted += n
             refused += bad
             if (out != text) {
@@ -33,12 +37,12 @@ object KotlinStrings {
                 if (!check) f.writeText(out)
             }
         }
-        println("kira-dialect kt: ${files.size} files, $converted literals converted in $changedFiles files, $refused left for a hand fix, $roleChanges with a role to check")
+        println("kira-dialect kt${if (stage2) " --stage2" else ""}: ${files.size} files, $converted literals converted in $changedFiles files, $refused left for a hand fix, $roleChanges with a role to check")
         return if (check && changedFiles > 0) 1 else 0
     }
 
     /** The file with each Kira literal converted; how many were; how many look like Kira and were not. */
-    fun convertFile(text: String, path: String): Triple<String, Int, Int> {
+    fun convertFile(text: String, path: String, stage2: Boolean = false): Triple<String, Int, Int> {
         val literals = literals(text)
         val sb = StringBuilder()
         var at = 0
@@ -46,7 +50,8 @@ object KotlinStrings {
         var bad = 0
         for (lit in literals) {
             val decoded = decode(text, lit)
-            when (val result = convertKira(decoded.text, path, text.substring(lit.bodyStart, lit.bodyEnd))) {
+            val source = text.substring(lit.bodyStart, lit.bodyEnd)
+            when (val result = if (stage2) stage2Kira(decoded.text, path, source) else convertKira(decoded.text, path, source)) {
                 null -> {}
                 is Outcome.Refused -> {
                     bad++
@@ -67,6 +72,46 @@ object KotlinStrings {
     private sealed class Outcome {
         class Converted(val edits: List<DialectConverter.Edit>) : Outcome()
         class Refused(val why: String) : Outcome()
+    }
+
+    /**
+     * Stage 1's Kira in a literal to stage 2's: read as a module (its `[...]` literals too) and
+     * typed alone beside the stdlib, rewritten and proved as [Stage2] does a file. A literal that
+     * does not parse, holds a bare value at the top level, or has nothing to rewrite is left.
+     */
+    private fun stage2Kira(kira: String, path: String, source: String): Outcome? {
+        if (!kira.contains('[') && !kira.contains(".copy(")) return null
+        val file = "$path#literal"
+        val unit = CompilationUnit(bootstrap = false)
+        stdlibTexts.forEach { (f, uri, text) -> ProjectUnits.read(unit, f, text, uri, literals = true) }
+        val (old, _) = ProjectUnits.read(unit, file, kira, "kt:snippet", literals = true)
+        if (old == null) return null
+        if (notKira(old, kira) != null) return null
+        val first = source.lines().first { it.isNotBlank() }.trim().take(70)
+        val program = KiraTyper.run(unit, TyperMode.STRICT)
+        val run = Stage2.Rewrite(kira, old, program)
+        run.collect()
+        if (run.problems.isNotEmpty()) return Outcome.Refused(run.problems.joinToString("; ") + ": $first")
+        if (run.edits.isEmpty()) return null
+        val out = run.apply()
+        val again = CompilationUnit(bootstrap = false)
+        stdlibTexts.forEach { (f, uri, text) -> ProjectUnits.read(again, f, text, uri, literals = true) }
+        val (nc, err) = ProjectUnits.read(again, file, out, "kt:snippet", literals = false)
+        if (nc == null) return Outcome.Refused("the new parser refuses the conversion ($err): $first")
+        // Typed (and so linked) as the old one was, before the trees are compared.
+        val program2 = KiraTyper.run(again, TyperMode.STRICT)
+        Stage2.Proof(old, nc, run.rewritten).compare()?.let { return Outcome.Refused("tree: $it: $first") }
+        Stage2.typed(old, program, nc, program2)?.let { return Outcome.Refused("type: $it: $first") }
+        return Outcome.Converted(run.edits.sortedBy { it.start })
+    }
+
+    /** The stdlib under `kira/` (path, module, text), each literal's unit reads it afresh. */
+    private val stdlibTexts: List<Triple<String, String, String>> by lazy {
+        val root = java.nio.file.Path.of("kira").toAbsolutePath().normalize()
+        if (!java.nio.file.Files.isRegularFile(root.resolve("core.kira"))) return@lazy emptyList()
+        root.toFile().walkTopDown().filter { it.isFile && it.extension == "kira" }.sortedBy { it.path }.map { f ->
+            Triple(ProjectUnits.canonical(f.path), net.exoad.kira.compiler.ModuleNames.dependency(root, f.toPath()), f.readText())
+        }.toList()
     }
 
     /** The old dialect's markers: a literal holding none of them needs nothing. */

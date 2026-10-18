@@ -61,7 +61,7 @@ pub places: () Int32 {
     mut xs: List<Int32> = List<Int32> { }
     xs.add(1)
     xs[0] = 5                              // @type Int32 place=Index(Local(xs), LIST) @ xs[0]
-    mut fixed: Arr<Int32, 2> = [1, 2]      // @type Arr<Int32, 2>
+    mut fixed: Arr<Int32, 2> = @arrOf(1, 2)      // @type Arr<Int32, 2>
     fixed[1] = fixed[0]                    // @type Int32 place=Index(Local(fixed), ARR) @ fixed[1]
     mut m: Map<Str, Int32> = Map<Str, Int32> { }
     m["k"] = 30                            // @type Int32 place=Index(Local(m), MAP) @ m["k"]

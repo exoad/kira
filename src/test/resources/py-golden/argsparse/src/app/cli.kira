@@ -57,7 +57,7 @@ pub dashed: () Void {
 // --help of a description that names %(prog)s, which argparse would format, and a lone %.
 pub plainHelp: () Void {
     s: ArgSpec = argSpec("decode", "%(prog)s at 50%")
-    s.parse(["--help"])
+    s.parse(@listOf("--help"))
 }
 
 orNone: (m: Maybe<Str>) Str {

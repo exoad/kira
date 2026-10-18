@@ -27,7 +27,8 @@ import kotlin.properties.Delegates
  * It will then pass this AST onto the [net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer] to make sure the AST is
  * valid grammar.
  *
- * [literals]: kira-dialect reads stage 1's text, whose old `[...]` literals parse as well.
+ * [literals]: kira-dialect reads stage 1's text, whose old `[...]` literals it parses as
+ * [Builder.INFER] builders; the clean dialect refuses them.
  */
 class KiraParser(private val context: SourceContext, private val literals: Boolean = false) {
     private val buffer = TokenBuffer(context.tokens)
@@ -1228,10 +1229,18 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             Token.Type.L_STRING_HEAD -> parseInterpolatedStringLiteral()
             Token.Type.L_CHAR -> parseCharLiteral()
             Token.Type.S_OPEN_BRACKET -> parseArrayLiteral()
+            Token.Type.S_OPEN_BRACE -> Diagnostics.panic(
+                "parse.brace.type",
+                "A value of a type is written with the type: `Obj { }`, never `{ }` alone.",
+                location = here(),
+                selectorLength = 1,
+                context = context
+            )
             Token.Type.INTRINSIC_IDENTIFIER -> {
                 // intrinsic tokens are lexed as a single token by the lexer
                 val startLoc = peek().canonicalLocation
                 val identifier = peek().content
+                Builder.byIntrinsic(identifier)?.let { return parseBuilder(it) }
                 advancePointer()
                 // if followed by '(' parse call-like parameters for intrinsics
                 var parameters: List<Expr>? = null
@@ -1913,7 +1922,18 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         return sb.toString()
     }
 
-    fun parseArrayLiteral(): ArrayLiteral {
+    /** `[a, b]`: stage 1's literal, read only for kira-dialect ([literals]); the clean dialect refuses it. */
+    fun parseArrayLiteral(): BuilderExpr {
+        if (!literals) {
+            Diagnostics.panic(
+                "parse.removed",
+                "`[...]` literals are not part of Kira any more: write @listOf(a, b) for a List, @arrOf(a, b) for an Arr, " +
+                    "@setOf(a, b) for a Set or @mapOf(k1, v1, k2, v2) for a Map.",
+                location = here(),
+                selectorLength = 1,
+                context = context
+            )
+        }
         val origin = here()
         expectThenAdvance(Token.Type.S_OPEN_BRACKET)
         val elements = mutableListOf<Expr>()
@@ -1926,7 +1946,35 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             }
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
-        return putOrigin(ArrayLiteral(elements.toTypedArray()), origin)
+        return putOrigin(BuilderExpr(Builder.INFER, emptyList(), elements), origin)
+    }
+
+    /** `@listOf<T>(a, b)` and its kin, the pointer on the intrinsic: its type arguments, then its elements (a trailing comma allowed). */
+    private fun parseBuilder(kind: Builder): BuilderExpr {
+        val origin = here()
+        advancePointer()
+        val typeArgs = if (at(Token.Type.S_OPEN_ANGLE)) parseTypeArgumentList() else emptyList()
+        if (!at(Token.Type.S_OPEN_PARENTHESIS)) {
+            Diagnostics.panic(
+                "parse.builder.call",
+                "@${kind.intrinsic} takes its elements in parentheses: @${kind.intrinsic}(a, b), or @${kind.intrinsic}<T>() for none.",
+                location = here(),
+                selectorLength = max(1, peek().content.length),
+                context = context
+            )
+        }
+        advancePointer()
+        val elements = mutableListOf<Expr>()
+        withNoObjectInit(false) {
+            while (!at(Token.Type.S_CLOSE_PARENTHESIS) && !at(Token.Type.S_EOF)) {
+                elements.add(parseExpr())
+                if (!at(Token.Type.S_CLOSE_PARENTHESIS)) {
+                    expectThenAdvance(Token.Type.S_COMMA)
+                }
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        return putOrigin(BuilderExpr(kind, typeArgs, elements), origin)
     }
 
     fun parseIntegerLiteral(): IntegerLiteral {

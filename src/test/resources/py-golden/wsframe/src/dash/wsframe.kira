@@ -152,7 +152,7 @@ same: (a: View<UInt8>, b: View<UInt8>) Bool {
     return true
 }
 
-KEY: Arr<UInt8, 4> = [0x37, 0xFA, 0x21, 0x3D]
+KEY: Arr<UInt8, 4> = @arrOf(0x37, 0xFA, 0x21, 0x3D)
 
 main: () Void {
     small: List<UInt8> = pattern(5, 3)

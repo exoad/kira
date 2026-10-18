@@ -30,11 +30,12 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -507,7 +508,9 @@ object KiraUnparser {
         is StringLiteral -> quote(e.value)
         is CharLiteral -> "'${charText(e.value)}'"
         is NullLiteral -> "null"
-        is ArrayLiteral -> e.value.joinToString(", ", "[", "]") { expr(it, 0) }
+        is BuilderExpr -> if (e.kind == Builder.INFER) e.elements.joinToString(", ", "[", "]") { expr(it, 0) } else
+            "@${e.kind.intrinsic}${if (e.typeArgs.isEmpty()) "" else e.typeArgs.joinToString(", ", "<", ">") { type(it) }}" +
+                e.elements.joinToString(", ", "(", ")") { expr(it, 0) }
         is InterpolatedStringLiteral -> e.parts.joinToString("", "\"", "\"") { part ->
             when (part) {
                 is InterpolationPart.Text -> quote(part.text).removeSurrounding("\"")

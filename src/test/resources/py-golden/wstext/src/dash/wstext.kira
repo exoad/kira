@@ -42,7 +42,7 @@ pub send: (text: Str) List<UInt8> {
 
 // Page.close(code, reason): ws_frame(8, code.to_bytes(2, "big") + reason.encode())
 pub close: (code: UInt16, reason: Str) List<UInt8> {
-    mut payload: List<UInt8> = [0, 0]
+    mut payload: List<UInt8> = @listOf(0, 0)
     writeU16Be(payload.view(), 0, code)
     payload.addAll(reason.bytes().toArr())
     return frame(8, payload)
@@ -101,12 +101,12 @@ main: () Void {
     trace(textOf(send("hold 1 held")))
     trace(hex(textOf(send("café ✓")).bytes()))
     trace(textOf(send(long)) == long)
-    bad: List<UInt8> = [0x81, 0x07, 0x61, 0xC3, 0x28, 0xFF, 0xE2, 0x82, 0x62]
+    bad: List<UInt8> = @listOf(0x81, 0x07, 0x61, 0xC3, 0x28, 0xFF, 0xE2, 0x82, 0x62)
     trace(hex(textOf(bad).bytes()))
     trace(closeOf(close(1000, "the drive socket closed")))
     trace(hex(closeOf(close(4001, "ünï")).bytes()))
-    cut: List<UInt8> = [0x88, 0x04, 0x0F, 0xA1, 0xC3, 0xE2]
+    cut: List<UInt8> = @listOf(0x88, 0x04, 0x0F, 0xA1, 0xC3, 0xE2)
     trace(hex(closeOf(cut).bytes()))
-    surrogate: List<UInt8> = [0x88, 0x05, 0x03, 0xE8, 0xED, 0xA0, 0x80]
+    surrogate: List<UInt8> = @listOf(0x88, 0x05, 0x03, 0xE8, 0xED, 0xA0, 0x80)
     trace(hex(closeOf(surrogate).bytes()))
 }

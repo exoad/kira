@@ -37,8 +37,8 @@ compute: (values: List<Int32>) Int32 {
 }
 
 main: () Void {
-    mut nums: List<Int32> = [1, 2, 3, 4, 5]
-    arr: Arr<Int32> = [ 10, 20, 30 ]
+    mut nums: List<Int32> = @listOf(1, 2, 3, 4, 5)
+    arr: Arr<Int32> = @arrOf( 10, 20, 30 )
     total: Int32 = compute(nums)
     p: Point = Point { 3, 4 }
     c: Circle = Circle { p, 5 }

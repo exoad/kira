@@ -26,14 +26,14 @@ import net.exoad.kira.source.SourceContext
  * wrote for a field the old dialect value-initialized.
  */
 object TreeProof {
-    /** A new-dialect parse of [text] as module [uri]: its context, or the error. */
+    /** A new-dialect parse of [text] as module [uri] (stage 1's: its `[...]` literals read too): its context, or the error. */
     fun parseNew(text: String, file: String, uri: String): Pair<SourceContext?, String?> {
         return try {
             val cu = CompilationUnit()
             val processed = KiraPreprocessor(text).process().processedContent
             val bare = cu.addSource(file, processed, emptyList(), uri)
             val ctx = cu.addSource(file, processed, KiraLexer(bare).tokenize())
-            KiraParser(ctx).parse()
+            KiraParser(ctx, literals = true).parse()
             ctx to null
         } catch (e: DiagnosticsException) {
             null to ((e.message.lines().firstOrNull { it.isNotBlank() } ?: e.toString()) + " at ${e.location}")

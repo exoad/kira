@@ -18,7 +18,7 @@ class ConstEligibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub INDEX_OF: Arr<Int8, 4> = [-1, 0, 2, 1]
+                pub INDEX_OF: Arr<Int8, 4> = @arrOf(-1, 0, 2, 1)
                 pub Decoder: Struct {
                     pub ticks: Int32 = 0
                     pub state: UInt8 = 0
@@ -52,7 +52,7 @@ class ConstEligibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub MAGIC: Arr<UInt8, 4> = [0x55, 0xAA, 0x05, 0x0A]
+                pub MAGIC: Arr<UInt8, 4> = @arrOf(0x55, 0xAA, 0x05, 0x0A)
                 pub @_const readU32: (p: View<UInt8>) UInt32 {
                     return (p[0] as UInt32) | ((p[1] as UInt32) << 8)
                 }
@@ -60,7 +60,7 @@ class ConstEligibilityPassTest {
                     p[0] = (v & 0xFF) as UInt8
                 }
                 pub @_const frame: (kind: UInt32) Maybe<Arr<UInt8, 8>> {
-                    mut p: Arr<UInt8, 8> = [0, 0, 0, 0, 0, 0, 0, 0]
+                    mut p: Arr<UInt8, 8> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
                     for i: Size in 0..MAGIC.size() {
                         p[i] = MAGIC[i]
                     }
@@ -99,7 +99,7 @@ class ConstEligibilityPassTest {
                 pub @_const sum: (a: V2, b: V2) V2 {
                     return a + b
                 }
-                pub LIMITS: Arr<Int32, 2> = [1, 2]
+                pub LIMITS: Arr<Int32, 2> = @arrOf(1, 2)
                 pub @_const lim: (i: Size) Int32 {
                     return LIMITS[i]
                 }
@@ -222,7 +222,7 @@ class ConstEligibilityPassTest {
             pub @_const same: (a: V2, b: V2) Bool {
                 return a == b
             }
-            pub DYN: Arr<Int32> = [1, 2, 3]
+            pub DYN: Arr<Int32> = @arrOf(1, 2, 3)
             pub @_const firstOf: () Int32 {
                 return DYN.get(0)
             }

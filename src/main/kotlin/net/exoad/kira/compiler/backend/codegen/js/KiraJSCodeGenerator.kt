@@ -1449,14 +1449,17 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndented("}")
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        // Arr is a native array; an empty literal is just [].
-        if (arrayLiteral.value.isEmpty()) {
+    override fun visitBuilderExpr(builderExpr: BuilderExpr) {
+        if (builderExpr.kind == Builder.SET || builderExpr.kind == Builder.MAP) {
+            throw UnsupportedConstruct(builderExpr, "@${builderExpr.kind.intrinsic}", TARGET_NAME)
+        }
+        // Arr is a native array; an empty one is just [].
+        if (builderExpr.elements.isEmpty()) {
             buffer.append("[]")
             return
         }
         buffer.append("[")
-        arrayLiteral.value.forEachIndexed { i, expr ->
+        builderExpr.elements.forEachIndexed { i, expr ->
             if (i > 0) buffer.append(", ")
             expr.accept(this)
         }

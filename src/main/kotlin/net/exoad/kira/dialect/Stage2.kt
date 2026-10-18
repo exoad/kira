@@ -4,12 +4,17 @@ import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.TyperMode
+import net.exoad.kira.compiler.analysis.types.containsError
+import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.source.SourceContext
@@ -17,10 +22,13 @@ import java.io.File
 import java.util.IdentityHashMap
 
 /**
- * `kira-dialect stage2 [--check] PATH...`: the clean dialect's stage 2 on .kira files in stage 1's:
- * `p.copy(f = v)`, which never compiled, becomes `p with {\n    f = v\n}`. Each file's group (its
- * project, the stdlib, or its folder) is typed as the compiler reads it, so a `copy` that is a
- * method of the receiver stays, and each converted file is proved by its tree.
+ * `kira-dialect stage2 [--check] PATH...`: the clean dialect's stage 2 on .kira files in stage 1's.
+ * Each `[...]` literal becomes the builder of the type stage 1's typer gave it (`@listOf(...)`
+ * for a List, `@arrOf(...)` for an Arr), and `p.copy(f = v)`, which never compiled, becomes
+ * `p with {\n    f = v\n}`. Each file's group (its project, the stdlib, or its folder) is typed
+ * as the compiler reads it, so a `copy` that is a method of the receiver stays. Each converted
+ * file is proved: its tree equals the old one but for those shapes, and its group typed again
+ * gives each builder the type its literal had.
  */
 object Stage2 {
     fun convertAll(paths: List<String>, check: Boolean): Int {
@@ -29,8 +37,10 @@ object Stage2 {
         var proved = 0
         var bad = 0
         for ((group, members) in files.groupBy { DialectMain.newUriOf(it).second }) {
-            val loaded = ProjectUnits.load(File(group), literals = true)
+            val extra = members.map { it.path }
+            val loaded = ProjectUnits.load(File(group), literals = true, extra = extra)
             val program = KiraTyper.run(loaded.unit, TyperMode.STRICT)
+            val outs = LinkedHashMap<File, Rewrite>()
             for (f in members) {
                 val path = ProjectUnits.canonical(f.path)
                 val old = loaded.sources[path]
@@ -39,8 +49,7 @@ object Stage2 {
                     println("NOT-READ $f: ${loaded.failures[path] ?: "not in its group's unit"}")
                     continue
                 }
-                val text = f.readText()
-                val run = Rewrite(text, old, program)
+                val run = Rewrite(f.readText(), old, program)
                 run.collect()
                 if (run.problems.isNotEmpty()) {
                     bad++
@@ -51,26 +60,53 @@ object Stage2 {
                     proved++
                     continue
                 }
-                val out = run.apply()
-                val (nc, err) = ProjectUnits.read(CompilationUnit(bootstrap = false), path, out, old.moduleName, literals = false)
-                if (nc == null) {
-                    bad++
-                    println("NEW-PARSE $f: $err")
-                    continue
+                outs[f] = run
+            }
+            if (outs.isEmpty()) {
+                continue
+            }
+            // The group again with the new texts, linked and typed as the old one was: its tree, and each builder's type.
+            val texts = outs.entries.associate { (f, run) -> ProjectUnits.canonical(f.path) to run.apply() }
+            val again = ProjectUnits.load(File(group), literals = true, texts, extra)
+            val program2 = KiraTyper.run(again.unit, TyperMode.STRICT)
+            for ((f, run) in outs) {
+                val path = ProjectUnits.canonical(f.path)
+                val nc = again.sources[path]
+                val diff = when {
+                    nc == null -> "the new text does not parse: ${again.failures[path]}"
+                    texts.getValue(path).contains('[') && ProjectUnits.read(CompilationUnit(bootstrap = false), path, texts.getValue(path), null, literals = false).first == null ->
+                        "the new text still holds a `[...]` literal"
+                    else -> Proof(loaded.sources.getValue(path), nc, run.rewritten).compare()?.let { "tree: $it" }
+                        ?: typed(loaded.sources.getValue(path), program, nc, program2)?.let { "type: $it" }
                 }
-                val diff = Proof(old, nc, run.rewritten).compare()
                 if (diff != null) {
                     bad++
-                    println("TREE $f: $diff")
+                    println("NOT-PROVED $f: $diff")
                     continue
                 }
                 proved++
                 changed++
-                if (!check) f.writeText(out)
+                if (!check) f.writeText(texts.getValue(path))
             }
         }
         println("kira-dialect stage2: ${files.size} files, $proved proved equal, $changed ${if (check) "would change" else "changed"}, $bad not converted")
         return if (bad > 0 || (check && changed > 0)) 1 else 0
+    }
+
+    /** The first builder of [nc] whose type under [p2] is not its old literal's in [oc] under [p1], or null. */
+    fun typed(oc: SourceContext, p1: TypedProgram, nc: SourceContext, p2: TypedProgram): String? {
+        val olds = AstWalk.all(oc.ast).filterIsInstance<BuilderExpr>()
+        val news = AstWalk.all(nc.ast).filterIsInstance<BuilderExpr>()
+        if (olds.size != news.size) return "${olds.size} literals became ${news.size} builders"
+        for ((o, n) in olds.zip(news)) {
+            val a = p1.model.types[o]?.display()
+            val b = p2.model.types[n]?.display()
+            if (a != b) {
+                val at = nc.astOrigins[n]?.let { "${it.lineNumber}:${it.column}" } ?: "?"
+                return "the builder at $at is $b, its literal was $a"
+            }
+        }
+        return null
     }
 
     /** The edits stage 2 makes to one file, on its original [text] by its tokens. */
@@ -87,11 +123,55 @@ object Stage2 {
             toks.forEachIndexed { i, t -> m.putIfAbsent(t.canonicalLocation.lineNumber to t.canonicalLocation.column, i) }
         }
 
+        /** The arguments of calls and constructions the typer could not resolve: no context reached them. */
+        private val unbound: MutableSet<ASTNode> = java.util.Collections.newSetFromMap(IdentityHashMap())
+
         fun collect() {
-            for (n in AstWalk.all(ctx.ast)) {
-                if (n is FunctionCallExpr) copy(n)
+            val nodes = AstWalk.all(ctx.ast)
+            for (n in nodes) {
+                when (n) {
+                    is FunctionCallExpr -> if (program.model.calls[n] == null) {
+                        n.positionalParameters.forEach { unbound.add(it.value) }
+                        n.namedParameters.forEach { unbound.add(it.value) }
+                    }
+                    is ObjectInitExpr -> if (program.model.inits[n] == null) {
+                        unbound.addAll(n.positionalArgs)
+                        n.namedArgs.forEach { unbound.add(it.value) }
+                    }
+                    else -> {}
+                }
+            }
+            for (n in nodes) {
+                when (n) {
+                    is FunctionCallExpr -> copy(n)
+                    is BuilderExpr -> if (n.kind == Builder.INFER) literal(n)
+                    else -> {}
+                }
             }
         }
+
+        /** `[a, b]` as the builder of the type the typer gave it: `@listOf(a, b)` or `@arrOf(a, b)`. */
+        private fun literal(n: BuilderExpr) {
+            val kind = program.model.inferred[n] ?: run {
+                problems += "${where(n)}: a [...] the typer did not reach"
+                return
+            }
+            // A literal typed in error, or given to a callee the typer could not find, says nothing of what it meant.
+            if (program.model.types[n]?.containsError() != false || n in unbound) {
+                problems += "${where(n)}: a [...] whose context the typer could not tell, so its builder is a hand fix"
+                return
+            }
+            val open = indexOf(n)?.takeIf { toks[it].type == Token.Type.S_OPEN_BRACKET } ?: run {
+                problems += "${where(n)}: a [...] whose '[' has no token"
+                return
+            }
+            val close = closing(open) ?: return
+            edits += DialectConverter.Edit(offsetOf(open), offsetOf(open) + 1, "@${kind.intrinsic}(")
+            edits += DialectConverter.Edit(offsetOf(close), offsetOf(close) + 1, ")")
+            rewritten[n] = kind.name
+        }
+
+        private fun where(n: ASTNode): String = ctx.astOrigins[n]?.let { "${it.lineNumber}:${it.column}" } ?: "?"
 
         fun apply(): String {
             val sb = StringBuilder()
@@ -208,14 +288,21 @@ object Stage2 {
         }
 
         private fun node(path: String, o: ASTNode, n: ASTNode): String? {
-            when (rewritten[o]) {
+            when (val shape = rewritten[o]) {
+                null -> {}
                 "with" -> return with(path, o as FunctionCallExpr, n)
-                else -> {}
+                else -> return builder(path, o as BuilderExpr, n, Builder.valueOf(shape))
             }
             if (o.javaClass != n.javaClass) return "$path: ${o.javaClass.simpleName} became ${n.javaClass.simpleName}"
             marks(path, o, n)?.let { return it }
             for (f in AstWalk.fieldsOf(o.javaClass)) value("$path.${f.name}", f.get(o), f.get(n))?.let { return it }
             return null
+        }
+
+        /** `[a, b]` became the builder [kind] of the same elements, with no type arguments. */
+        private fun builder(path: String, o: BuilderExpr, n: ASTNode, kind: Builder): String? {
+            if (n !is BuilderExpr || n.kind != kind || n.typeArgs.isNotEmpty()) return "$path: a [...] typed ${kind.intrinsic} became $n"
+            return list("$path.elements", o.elements, n.elements)
         }
 
         /** `r.copy(f = v, ...)` became `r with { f = v ... }`: the receiver and each assignment, in order. */

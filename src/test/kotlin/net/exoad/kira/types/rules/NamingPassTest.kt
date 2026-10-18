@@ -20,7 +20,7 @@ class NamingPassTest {
                 """
                 pub MAX_SIZE: Int32 = 3
                 pub mut counter: Int32 = 0
-                pub mut BUF: Arr<UInt8, 2> = [0, 0]
+                pub mut BUF: Arr<UInt8, 2> = @arrOf(0, 0)
                 pub Comparable<T>: Any {
                     pub compareTo: (other: T) Int32;
                 }

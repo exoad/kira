@@ -839,12 +839,12 @@ class CppExprRowsTest {
                 pub kind: Int32 = K2_OK
             }
 
-            pub TAIL: Arr<UInt8, 2> = [0x00, 0xFF]
+            pub TAIL: Arr<UInt8, 2> = @arrOf(0x00, 0xFF)
 
             pub places: () Int32 {
                 mut o: Out = Out { }
                 o.kind = K2_ERR
-                mut p: Arr<UInt8, 4> = [1, 2, 3, 4]
+                mut p: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
                 p[3] = TAIL[1]
                 return (p[3] as Int32) + o.kind
             }
@@ -1027,7 +1027,7 @@ class CppExprRowsTest {
             }
 
             pub text: () Str {
-                b: List<UInt8> = [0x68, 0xC3, 0xA9, 0xFF, 0xE2, 0x82]
+                b: List<UInt8> = @listOf(0x68, 0xC3, 0xA9, 0xFF, 0xE2, 0x82)
                 return Str.of(b)
             }
             """,
@@ -1225,7 +1225,7 @@ class CppExprRowsTest {
             }
 
             pub lend: () UInt8 {
-                mut p: Arr<UInt8, 4> = [0, 0, 0, 0]
+                mut p: Arr<UInt8, 4> = @arrOf(0, 0, 0, 0)
                 poke(p.from(2), 9)
                 return p[2]
             }
@@ -1385,7 +1385,7 @@ class CppExprRowsTest {
             pub mutIndexFirst: () Int32 {
                 ticks = 0
                 idx = 0
-                mut q: Arr<Int32, 4> = [0, 0, 0, 0]
+                mut q: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
                 store(mut q[nextSize()], next(), next())
                 return q[1]
             }
@@ -1393,14 +1393,14 @@ class CppExprRowsTest {
             pub targetFirst: () Int32 {
                 ticks = 0
                 idx = 0
-                mut s: Arr<Int32, 4> = [0, 0, 0, 0]
+                mut s: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
                 s[nextSize()] = next()
                 return s[1] * 10 + s[2]
             }
 
             pub dividedOnce: () Int32 {
                 idx = 0
-                mut p: Arr<Int32, 4> = [80, 80, 80, 80]
+                mut p: Arr<Int32, 4> = @arrOf(80, 80, 80, 80)
                 d: Int32 = 2
                 p[nextSize()] /= d
                 return p[1] * 100 + p[2] + (idx as Int32)
@@ -1408,7 +1408,7 @@ class CppExprRowsTest {
 
             pub shiftedOnce: () Int32 {
                 idx = 0
-                mut q: Arr<Int32, 4> = [1, 1, 1, 1]
+                mut q: Arr<Int32, 4> = @arrOf(1, 1, 1, 1)
                 n: Int32 = 3
                 q[nextSize()] <<= n
                 return q[1] * 10 + (idx as Int32)
@@ -1417,7 +1417,7 @@ class CppExprRowsTest {
             pub mutReceiverBound: () Int32 {
                 ticks = 0
                 idx = 0
-                mut boxes: Arr<Box, 1> = [Box { }]
+                mut boxes: Arr<Box, 1> = @arrOf(Box { })
                 boxes[nextSize() - 1].grow(next(), next())
                 return boxes[0].v
             }
@@ -1446,7 +1446,7 @@ class CppExprRowsTest {
         row(
             "f3",
             """
-            mut gl: List<Int32> = List<Int32> { values = [11, 22, 33] }
+            mut gl: List<Int32> = List<Int32> { values = @arrOf(11, 22, 33) }
             mut idx: Size = 0
 
             nextSize: () Size {
@@ -1477,7 +1477,7 @@ class CppExprRowsTest {
 
             pub viewOfATemporary: () Int32 {
                 idx = 0
-                return sumV(tailV(List<Int32> { values = [5, 6, 7] }.view(), nextSize()))
+                return sumV(tailV(List<Int32> { values = @arrOf(5, 6, 7) }.view(), nextSize()))
             }
 
             pub Acc: Struct {
@@ -1503,25 +1503,25 @@ class CppExprRowsTest {
             }
 
             pub fixedContains: () Bool {
-                a: Arr<Int32, 3> = [1, 2, 3]
+                a: Arr<Int32, 3> = @arrOf(1, 2, 3)
                 return a.contains(2) && !a.contains(4)
             }
 
             pub fixedClone: () Size {
-                a: Arr<Int32, 3> = [1, 2, 3]
+                a: Arr<Int32, 3> = @arrOf(1, 2, 3)
                 c: Arr<Int32> = a.clone()
                 return c.size()
             }
 
             pub mapLiteral: () Int32 {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = [Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }] }
+                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }) }
                 return (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
             }
 
             pub setLiteral: () Size {
-                s: Set<Int32> = Set<Int32> { values = [3, 4, 3] }
-                e: Map<Str, Int32> = Map<Str, Int32> { values = [] }
-                f: Set<Float32> = Set<Float32> { values = [1.5, 2.5] }
+                s: Set<Int32> = Set<Int32> { values = @arrOf(3, 4, 3) }
+                e: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf() }
+                f: Set<Float32> = Set<Float32> { values = @arrOf(1.5, 2.5) }
                 return s.size() * 100 + e.size() * 10 + f.size()
             }
             """,

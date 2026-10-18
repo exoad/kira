@@ -45,16 +45,16 @@ width: (s: Str) Int32 {
 
 happy: () Void {
     calls: Ref<Int32> = Ref<Int32> { value = 0 }
-    println("each ${each(["a", "bb", "ccc"], (s: Str) Int32 {
+    println("each ${each(@listOf("a", "bb", "ccc"), (s: Str) Int32 {
         calls.value = calls.value + 1
         return s.length() as Int32 * 10
     })}")
-    println("each, a named function ${each(["abcd"], width)}")
+    println("each, a named function ${each(@listOf("abcd"), width)}")
     println("callWith ${callWith("ok", (n: Int32, s: Str) Str {
         return "${n} ${s}"
     })}")
     println("bytesOf ${bytesOf(() List<UInt8> {
-        return [1, 2, 255]
+        return @listOf(1, 2, 255)
     })}")
     println("render ${render("/power", (path: Str) Reply {
         return Reply { 200, path.bytes() }
@@ -69,7 +69,7 @@ happy: () Void {
     }, 7)}")
     println("calls ${calls.value}")
     try {
-        each(["x"], (s: Str) Int32 {
+        each(@listOf("x"), (s: Str) Int32 {
             throw "no ${s}"
         })
     } on e: Str {
@@ -95,11 +95,11 @@ happy: () Void {
         return cfg
     })}, Kira's after Python wrote what it got: ${cfg.dump()}")
     println("kinds ${kinds(() Maybe<List<UInt8>> {
-        return [1, 2]
+        return @listOf(1, 2)
     }, () Tuple2<List<UInt8>, Int32> {
-        return Tuple2<List<UInt8>, Int32> { [3], 4 }
+        return Tuple2<List<UInt8>, Int32> { @listOf(3), 4 }
     }, () List<List<UInt8>> {
-        return [[5]]
+        return @listOf(@listOf(5))
     })}")
 }
 
@@ -119,8 +119,8 @@ pub main: () Int32 {
             return x
         }))
     } else if how == "panic" {
-        println(each(["a"], (s: Str) Int32 {
-            xs: List<Int32> = [1]
+        println(each(@listOf("a"), (s: Str) Int32 {
+            xs: List<Int32> = @listOf(1)
             return xs[s.length() + 1]
         }))
     } else if how == "swallow-throw" {
@@ -140,7 +140,7 @@ pub main: () Int32 {
             return x / (a.size() as Int32 - 2)
         }, 1))
     } else if how == "exit" {
-        println(each(["a"], (s: Str) Int32 {
+        println(each(@listOf("a"), (s: Str) Int32 {
             print("in the callback, unflushed")
             exit(6)
         }))

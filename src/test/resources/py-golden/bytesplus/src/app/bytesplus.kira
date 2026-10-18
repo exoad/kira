@@ -24,7 +24,7 @@ shown: (got: Maybe<List<UInt8>>) Str {
     if got.isNone() {
         return "none"
     }
-    mut parts: List<Str> = []
+    mut parts: List<Str> = @listOf()
     for b: UInt8 in got.value {
         parts.add(b.toHex())
     }
@@ -33,7 +33,7 @@ shown: (got: Maybe<List<UInt8>>) Str {
 
 // Each text's fromHex shown, one call at a time, joined by spaces.
 hexes: (texts: List<Str>) Str {
-    mut parts: List<Str> = []
+    mut parts: List<Str> = @listOf()
     for text: Str in texts {
         parts.add(shown(fromHex(text)))
     }
@@ -42,9 +42,9 @@ hexes: (texts: List<Str>) Str {
 
 pub main: () Int32 {
     t: Suite = Suite { title = "bytesplus - kira:bytes findBytes, crc16Xmodem and fromHex" }
-    frame: List<UInt8> = [255, 216, 1, 255, 217, 255, 217]
-    end: List<UInt8> = [255, 217]
-    none: List<UInt8> = []
+    frame: List<UInt8> = @listOf(255, 216, 1, 255, 217, 255, 217)
+    end: List<UInt8> = @listOf(255, 217)
+    none: List<UInt8> = @listOf()
     t.check(findBytes(frame, end, 0) == 3 && findBytes(frame, end, 4) == 5, "findBytes finds the first at or after start")
     t.check(findBytes(frame, end, 6) == -1 && findBytes(end, frame, 0) == -1, "and none past the end, or longer than the data")
     t.check(findBytes(frame, none, 3) == 3 && findBytes(frame, none, 7) == 7, "the empty pattern is at start, the end included")
@@ -56,8 +56,8 @@ pub main: () Int32 {
     t.check(crc16Xmodem("123456789".bytes(), 65535) == 10673 && crc16Xmodem(none, 4660) == 4660, "from 0xFFFF it is CCITT-FALSE's 0x29B1, and none leaves init")
     t.checkStr(shown(fromHex("0a 0B ff")), "[a b ff]", "fromHex reads pairs in either case")
     t.checkStr(shown(fromHex(" 0a\t0b\n0c\r ")), "[a b c]", "ASCII space between the pairs and around them")
-    t.checkStr(hexes(["", "   "]), "[] []", "no pairs at all")
-    t.checkStr(hexes(["0a 0", "0 a", "zz"]), "none none none", "an odd digit, a space inside a pair, a letter")
-    t.checkStr(hexes(["0x10", "0a "]), "none none", "a prefix, a space that is not ASCII's")
+    t.checkStr(hexes(@listOf("", "   ")), "[] []", "no pairs at all")
+    t.checkStr(hexes(@listOf("0a 0", "0 a", "zz")), "none none none", "an odd digit, a space inside a pair, a letter")
+    t.checkStr(hexes(@listOf("0x10", "0a ")), "none none", "a prefix, a space that is not ASCII's")
     return t.finish()
 }

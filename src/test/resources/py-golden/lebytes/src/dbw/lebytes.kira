@@ -47,7 +47,7 @@ append: (mut out: List<UInt8>, v: View<UInt8>) Void {
 // encode_raw: the magic, version, flags, seq, type and payload length, the payload, and the
 // CRC of all of it.
 pub encodeRaw: (typ: UInt16, payload: View<UInt8>, seq: UInt16, flags: UInt8, version: UInt8) List<UInt8> {
-    mut out: List<UInt8> = [MAGIC0, MAGIC1, version, flags, 0, 0, 0, 0, 0, 0]
+    mut out: List<UInt8> = @listOf(MAGIC0, MAGIC1, version, flags, 0, 0, 0, 0, 0, 0)
     writeU16Le(out.view(), 4, seq)
     writeU16Le(out.view(), 6, typ)
     writeU16Le(out.from(8), 0, payload.size() as UInt16)
@@ -178,7 +178,7 @@ main: () Void {
     trace(u32At(standby.from(8), 0))
     trace(crc32(standby.slice(12, 8)) == u32At(standby, 20))
 
-    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     putU16(buf.view(), 0, 0xFFFF)
     putU32(buf.view(), 2, 0xDEADBEEF)
     putU64(buf.from(6), 0, 0x0102030405060708)
@@ -200,7 +200,7 @@ main: () Void {
     trace(hex(buf.slice(0, 8)))
     trace(stamp(buf.slice(0, 0), 7))
 
-    payload: List<UInt8> = [0x10, 0x20, 0x30]
+    payload: List<UInt8> = @listOf(0x10, 0x20, 0x30)
     frame: List<UInt8> = encodeRaw(0x0102, payload, 0xFFFE, 0x01, 1)
     trace(hex(frame))
     back: Maybe<Frame> = parseFrame(frame)

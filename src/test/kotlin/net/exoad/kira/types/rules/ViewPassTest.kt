@@ -84,7 +84,7 @@ class ViewPassTest {
                 return v.size()
             }
             pub SBuf: Struct {
-                pub data: Arr<Char, 4> = ['a', 'b', 'c', 'd']
+                pub data: Arr<Char, 4> = @arrOf('a', 'b', 'c', 'd')
                 pub all: () View<Char> {
                     return data.view()
                 }
@@ -307,7 +307,7 @@ class ViewPassTest {
             }
             pub Sensor: Any {
                 pub mut buf: List<Int32> = List<Int32> {}
-                pub mut raw: Arr<Int32, 4> = [1, 2, 3, 4]
+                pub mut raw: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
                 pub log: Log = Log {}
                 pub read: () Int32 {
                     return total(buf.view(), log.note())
@@ -466,9 +466,9 @@ class ViewPassTest {
                 return v
             }
             pub arrview: () Int32 {
-                mut arr: Arr<Int32, 3> = [1, 2, 3]
+                mut arr: Arr<Int32, 3> = @arrOf(1, 2, 3)
                 w: View<Int32> = arr.view()
-                arr = [4, 5, 6]
+                arr = @arrOf(4, 5, 6)
                 return w[0]
             }
             pub strelem: (names: List<Str>) Size {
@@ -1083,10 +1083,10 @@ class ViewPassTest {
                 }
             }
             pub B: Any {
-                pub mut arr: Arr<Int32> = [1, 2, 3]
+                pub mut arr: Arr<Int32> = @arrOf(1, 2, 3)
             }
             pub refill: (v: View<Int32>, b: B) Int32 {
-                b.arr = [4, 5, 6]
+                b.arr = @arrOf(4, 5, 6)
                 return v[0]
             }
             pub r3: () Int32 {
@@ -1178,13 +1178,13 @@ class ViewPassTest {
                 """
                 // A view of a class's Arr<Int32> field; the field is assigned a new Arr (a std::vector move-assign frees the old buffer); the view is read.
                 pub Bag: Any {
-                    pub mut arr: Arr<Int32> = [1, 2]
+                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
                 }
 
                 pub main: () Int32 {
                     b: Bag = Bag {}
                     v: View<Int32> = b.arr.view()
-                    b.arr = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+                    b.arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                     trace(v.size())
                     trace(v.get(0))
                     trace(v.get(1))
@@ -1197,13 +1197,13 @@ class ViewPassTest {
                 """
                 // arrview with an Arr of the same length: `a = [4, 5]` on an Arr<Int32> field, the shape the classes part says leaves the buffer in place.
                 pub Bag: Any {
-                    pub mut arr: Arr<Int32> = [1, 2]
+                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
                 }
 
                 pub main: () Int32 {
                     b: Bag = Bag {}
                     v: View<Int32> = b.arr.view()
-                    b.arr = [4, 5]
+                    b.arr = @arrOf(4, 5)
                     trace(v.get(0))
                     trace(v.get(1))
                     return 0
@@ -1215,11 +1215,11 @@ class ViewPassTest {
                 """
                 // A method views its own Arr<Int32> field, assigns the field a new Arr, then reads the view.
                 pub Bag: Any {
-                    pub mut arr: Arr<Int32> = [1, 2]
+                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
                     pub mut swap: () Int32 {
                         v: View<Int32> = arr.view()
-                        arr = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+                        arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                         return v.get(0) + v.get(1)
                     }
                 }
@@ -1237,10 +1237,10 @@ class ViewPassTest {
                 // A const& Arr<Int32> parameter bound to a class field; the body views it, the field is assigned a new Arr through
                 // another handle, and the view is read.
                 pub Bag: Any {
-                    pub mut arr: Arr<Int32> = [1, 2]
+                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
                     pub mut refill: () Void {
-                        arr = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+                        arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                     }
                 }
 
@@ -1263,10 +1263,10 @@ class ViewPassTest {
                 """
                 // A view of a class's Arr<Int32> field handed to a function that assigns the field a new Arr, then reads the view.
                 pub Bag: Any {
-                    pub mut arr: Arr<Int32> = [1, 2]
+                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
                     pub mut refill: () Void {
-                        arr = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+                        arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                     }
                 }
 
@@ -1287,11 +1287,11 @@ class ViewPassTest {
                 """
                 // A view of a class's Arr<Int32> field; the field is passed mut to a function that assigns it a new Arr; the view is read.
                 pub Bag: Any {
-                    pub mut arr: Arr<Int32> = [1, 2]
+                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
                 }
 
                 pub refill: (mut a: Arr<Int32>) Void {
-                    a = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+                    a = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                 }
 
                 pub main: () Int32 {
@@ -1309,7 +1309,7 @@ class ViewPassTest {
                 """
                 // A method returns a view of its Arr<Int32> field; the caller assigns the field a new Arr, then reads the view.
                 pub Bag: Any {
-                    pub mut arr: Arr<Int32> = [1, 2]
+                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
                     pub all: () View<Int32> {
                         return arr.view()
@@ -1319,7 +1319,7 @@ class ViewPassTest {
                 pub main: () Int32 {
                     b: Bag = Bag {}
                     v: View<Int32> = b.all()
-                    b.arr = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+                    b.arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                     trace(v.get(0))
                     trace(v.get(1))
                     return 0
@@ -1331,9 +1331,9 @@ class ViewPassTest {
                 """
                 // A view of the Arr<Int32> a Ref box holds; the box is given a new Arr; the view is read.
                 pub main: () Int32 {
-                    r: Ref<Arr<Int32>> = Ref<Arr<Int32>> { value = [1, 2] }
+                    r: Ref<Arr<Int32>> = Ref<Arr<Int32>> { value = @arrOf(1, 2) }
                     v: View<Int32> = r.value.view()
-                    r.value = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+                    r.value = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                     trace(v.get(0))
                     trace(v.get(1))
                     return 0
@@ -1536,7 +1536,7 @@ class ViewPassTest {
                 mut gv: Maybe<MutView<Int32>> = null
 
                 makeRef: () Ref<List<Int32>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] } }
+                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 keepField: (r: Ref<List<Int32>>) Void {
@@ -1567,7 +1567,7 @@ class ViewPassTest {
                 mut gv: Maybe<MutView<Int32>> = null
 
                 makeRef: () Ref<List<Int32>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] } }
+                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 total: (v: MutView<Int32>) Int32 {
@@ -1607,7 +1607,7 @@ class ViewPassTest {
                 }
 
                 main: () Void {
-                    Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] } } }.lock((mut l: Ref<List<Int32>>) Void {
+                    Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } } }.lock((mut l: Ref<List<Int32>>) Void {
                         gv = l.value.view()
                     })
                     // Kira: 1360.
@@ -1624,7 +1624,7 @@ class ViewPassTest {
                 mut gv: Maybe<MutView<Int32>> = null
 
                 makeMRef: () Maybe<Ref<List<Int32>>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] } }
+                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 keepM: (m: Maybe<Ref<List<Int32>>>) Void {
@@ -1655,7 +1655,7 @@ class ViewPassTest {
                 mut gref: Ref<List<MutView<Int32>>> = Ref<List<MutView<Int32>>> { value = List<MutView<Int32>> { } }
 
                 makeRef: () Ref<List<Int32>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] } }
+                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 total: (v: MutView<Int32>) Int32 {
@@ -1705,7 +1705,7 @@ class ViewPassTest {
                 }
 
                 main: () Void {
-                    lockAndKeep(Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] } } })
+                    lockAndKeep(Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } } })
                     // Kira: 1360.
                     trace(total(gv.unwrap()))
                 }
@@ -1714,7 +1714,7 @@ class ViewPassTest {
             ),
             "w23-k3" to Probe(
                 """
-                mut gl: List<Int32> = List<Int32> { values = [100, 200, 300] }
+                mut gl: List<Int32> = List<Int32> { values = @arrOf(100, 200, 300) }
 
                 growL: () Int32 {
                     mut i: Int32 = 0
@@ -1809,9 +1809,9 @@ class ViewPassTest {
             pub @_extern(cpp = "ext::setFirst", header = "ext.hxx") setFirst: (p: MutView<Int32>, v: Int32) Void;
             pub @_extern(cpp = "ext::peek", header = "ext.hxx") peek: (p: View<Int32>, q: MutView<Int32>) Int32;
             pub locals: () Int32 {
-                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
-                mut arr: Arr<Int32, 3> = [1, 2, 3]
-                ys: List<Int32> = List<Int32> { values = [4] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+                mut arr: Arr<Int32, 3> = @arrOf(1, 2, 3)
+                ys: List<Int32> = List<Int32> { values = @arrOf(4) }
                 fillP(xs.view(), xs.size(), 7)
                 fillP(arr.view(), 3, 1)
                 setFirst(xs.view(), 9)
@@ -1847,14 +1847,14 @@ class ViewPassTest {
         // remedy, an if statement with one call per branch, is allowed; so is an if-expression over places.
         val p = snippet(
             """
-            pub mut gl: List<Int32> = List<Int32> { values = [1] }
+            pub mut gl: List<Int32> = List<Int32> { values = @arrOf(1) }
             pub mut ticks: Int32 = 0
             pub next: () Int32 {
                 ticks += 1
                 return ticks
             }
             pub makeList: () List<Int32> {
-                return List<Int32> { values = [2] }
+                return List<Int32> { values = @arrOf(2) }
             }
             pub minus: (v: View<Int32>, k: Int32) Int32 {
                 return v.size() as Int32 - k
@@ -1871,7 +1871,7 @@ class ViewPassTest {
                 } else {
                     d = total(gl.view())
                 }
-                mut xs: List<Int32> = List<Int32> { values = [3] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(3) }
                 e: Int32 = total(if c { xs.view() } else { xs.view().from(1) })
                 return a + b + d + e
             }
@@ -2022,11 +2022,11 @@ class ViewPassTest {
             """
             kira.sync as sync
 
-            mut gl: List<Int32> = [1, 2, 3]
+            mut gl: List<Int32> = @listOf(1, 2, 3)
 
             bump: () Int32 {
                 t: Thread = Thread { name = "w", body = () Void {
-                    gl = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+                    gl = @listOf(100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700)
                 } }
                 return 0
             }

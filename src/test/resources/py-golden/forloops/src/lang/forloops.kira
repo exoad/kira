@@ -1,4 +1,4 @@
-mut log: List<Int32> = [1, 2, 3]
+mut log: List<Int32> = @listOf(1, 2, 3)
 mut other: List<Int32> = List<Int32> { }
 
 Bag: Any {
@@ -72,7 +72,7 @@ walkMut: (mut xs: List<Int32>) Int32 {
 }
 
 made: () List<Int32> {
-    return [4, 5, 6]
+    return @listOf(4, 5, 6)
 }
 
 show: (xs: List<Int32>) Str {
@@ -124,7 +124,7 @@ main: () Void {
         }
     }
 
-    mut xs: List<Int32> = [1, 2, 3]
+    mut xs: List<Int32> = @listOf(1, 2, 3)
     for x: Int32 in xs {
         trace(x)
     }
@@ -135,7 +135,7 @@ main: () Void {
     }
 
     // a field, while a method writes another field of the object
-    mut bag: Bag = Bag { [1, 2] }
+    mut bag: Bag = Bag { @listOf(1, 2) }
     trace(bag.walk())
     trace(show(bag.seen))
     for x: Int32 in bag.items {
@@ -151,7 +151,7 @@ main: () Void {
 
     // parameters, a call's List, views
     trace(walkParam(xs))
-    mut zs: List<Int32> = [1, 2]
+    mut zs: List<Int32> = @listOf(1, 2)
     trace(walkMut(mut zs))
     trace(show(zs))
     for x: Int32 in made() {
@@ -159,7 +159,7 @@ main: () Void {
     }
     trace(sumView(xs))
     trace(sumView(xs.from(2)))
-    octets: List<UInt8> = [200, 100, 7]
+    octets: List<UInt8> = @listOf(200, 100, 7)
     trace(sumBytes(octets))
     trace(sumBytes(octets.slice(1, 2)))
     for b: UInt8 in octets {

@@ -48,7 +48,7 @@ abstract class KiraASTVisitor {
     abstract fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
     abstract fun visitStringLiteral(stringLiteral: StringLiteral)
     abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
-    abstract fun visitArrayLiteral(arrayLiteral: ArrayLiteral)
+    abstract fun visitBuilderExpr(builderExpr: BuilderExpr)
     abstract fun visitNullLiteral(nullLiteral: NullLiteral) // this will always be the same instance of null (null isnt a true value)
 
     // ELEMENTS

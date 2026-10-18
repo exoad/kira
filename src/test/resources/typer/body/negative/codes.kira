@@ -10,7 +10,7 @@ pub Point: Struct {
 }
 
 pub codes: (s: Str, v: View<UInt8>, i: Int32, p: Point) Void {
-    a: Int32 = []                          // @error types.array.untyped
+    a: Int32 = @arrOf()                    // @error types.builder.untyped
     b: UInt32 = bitCast<UInt32>()          // @error types.bitcast.args
     c: UInt32 = bitCast(1.5)               // @error types.bitcast.type-args
     d: Int32 = Point(1)                    // @error types.call.type-name

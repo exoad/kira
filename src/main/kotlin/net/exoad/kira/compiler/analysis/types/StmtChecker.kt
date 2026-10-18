@@ -23,7 +23,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
@@ -193,8 +193,8 @@ internal class StmtChecker(private val c: PhaseC) {
      * literal type ([TypeFacts.isLiteralType]) is `inline constexpr` in C++, so its initializer
      * is a constant expression ([notConstant]). A global of any other type (`Arr<Int32>`, a
      * struct holding a `List`, a `StrBuf`) is built at run time, and D49 asks only that no
-     * static-initialization order can matter: its initializer is an array literal, or a
-     * construction of a struct or a magic container (`List<Int32> { }` as much as `[]`; a
+     * static-initialization order can matter: its initializer is a builder, or a
+     * construction of a struct or a magic container (`List<Int32> { }` as much as `@listOf()`; a
      * fixed array, a tuple, a StrBuf, a Map), whose operands are such initializers or constant
      * expressions. A field the construction leaves out runs its default, so the default is
      * held to the same rule. Reading another run-time global anywhere in there would depend
@@ -207,7 +207,7 @@ internal class StmtChecker(private val c: PhaseC) {
             return notConstant(init)
         }
         return when (init) {
-            is ArrayLiteral -> init.value.firstNotNullOfOrNull { el -> notConstantInit(el, model.types[el] ?: KType.Error) }
+            is BuilderExpr -> init.elements.firstNotNullOfOrNull { el -> notConstantInit(el, model.types[el] ?: KType.Error) }
             is ObjectInitExpr -> {
                 val ri = model.inits[init] ?: return NO_REASON
                 val cls = ri.cls ?: return NO_REASON
@@ -292,12 +292,12 @@ internal class StmtChecker(private val c: PhaseC) {
                     }
                 }
             }
-            is ArrayLiteral -> {
+            is BuilderExpr -> {
                 val t = model.types[e] ?: return NO_REASON
                 if (!facts.isLiteralType(t)) {
                     return runTime(KiraUnparser.text(e), t)
                 }
-                e.value.firstNotNullOfOrNull { notConstant(it) }
+                e.elements.firstNotNullOfOrNull { notConstant(it) }
             }
             is ArrayIndexExpr -> when {
                 model.types[e.originExpr] == KType.Str -> " (indexing a Str runs at run time: kira::str::at is not constexpr)"

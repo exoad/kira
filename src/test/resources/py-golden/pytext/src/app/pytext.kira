@@ -42,7 +42,7 @@ pub roundedInt: (v: Float64) Maybe<Int64> {
 }
 
 pub cased: (s: Str) List<Str> {
-    return [upper(s), lower(s), strip(s), lstrip(s), rstrip(s)]
+    return @listOf(upper(s), lower(s), strip(s), lstrip(s), rstrip(s))
 }
 
 pub allUpper: (s: Str) Bool {

@@ -6,13 +6,13 @@
 // The expected output is the C++ backend's run of this same module.
 
 A: Arr<Int32, 2> = B
-B: Arr<Int32, 2> = [7, 8]
+B: Arr<Int32, 2> = @arrOf(7, 8)
 mut k: Arr<UInt8, 2> = KEY
-KEY: Arr<UInt8, 2> = [0xAB, 0xCD]
+KEY: Arr<UInt8, 2> = @arrOf(0xAB, 0xCD)
 G: Arr<Int32, 3> = table()
 
-TABLE: Arr<Int32, 3> = [4, 5, 6]
-SEED: List<Int32> = [9, 10]
+TABLE: Arr<Int32, 3> = @arrOf(4, 5, 6)
+SEED: List<Int32> = @listOf(9, 10)
 
 Holder: Any {
     pub mut items: List<Int32> = SEED

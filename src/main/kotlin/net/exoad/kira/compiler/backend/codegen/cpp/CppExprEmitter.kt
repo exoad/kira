@@ -50,7 +50,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -342,7 +343,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             is StringLiteral -> CppEx(CppDeclEmitter.cppString(e.value), CppPrec.PRIMARY)
             is NullLiteral -> CppEx("kira::none", CppPrec.PRIMARY)
             is InterpolatedStringLiteral -> interpolation(e)
-            is ArrayLiteral -> arrayLiteral(e)
+            is BuilderExpr -> builder(e)
             is IntrinsicExpr -> intrinsic(e)
             is Identifier -> identifier(e)
             is ThisExpr -> thisValue(e)
@@ -1193,19 +1194,28 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     // ---- literals of containers, construction (R9) ---------------------------------------------
 
-    private fun arrayLiteral(e: ArrayLiteral): CppEx {
+    /** A builder: `T{a, b}` (kira::Set's initializer_list of values too), and a Map's `kira::Map<K, V>{{k, v}, ...}` of entries. */
+    private fun builder(e: BuilderExpr): CppEx {
         val t = typeOf(e)
         if (CppHoister.holdsSecondClass(t)) {
-            hoister.internalView(e, "this array literal holds views, a ${t.display()}", "type")
+            hoister.internalView(e, "this builder holds views, a ${t.display()}", "type")
         }
-        val elements = e.value.map { operandOf(it) { coerced(it) } }
+        val elements = e.elements.map { operandOf(it) { coerced(it) } }
         return hoister.lower(elements, t) { texts ->
-            CppEx("${ctx.spell(t, Pos.VALUE, e)}{${texts.joinToString(", ") { wrap(it, CppPrec.ASSIGN) }}}", CppPrec.POSTFIX)
+            val items = if (e.kind == Builder.MAP) {
+                texts.chunked(2).map { kv -> "{${kv.joinToString(", ") { wrap(it, CppPrec.ASSIGN) }}}" }
+            } else {
+                texts.map { wrap(it, CppPrec.ASSIGN) }
+            }
+            CppEx("${ctx.spell(t, Pos.VALUE, e)}{${items.joinToString(", ")}}", CppPrec.POSTFIX)
         }
     }
 
-    /** The elements of an array literal as a braced list (a local's copy-list-initializer). */
-    fun bracedElements(e: ArrayLiteral): String = "{${e.value.joinToString(", ") { emit(it, CppPrec.ASSIGN) }}}"
+    /** A List or Arr builder (stage 1's `[...]` too), whose elements are a braced list. */
+    fun isSequence(e: BuilderExpr): Boolean = e.kind != Builder.SET && e.kind != Builder.MAP
+
+    /** A sequence builder's elements as a braced list (a local's copy-list-initializer). */
+    fun bracedElements(e: BuilderExpr): String = "{${e.elements.joinToString(", ") { emit(it, CppPrec.ASSIGN) }}}"
 
     /**
      * R9: a struct is an aggregate with designated initializers in declaration order; a class
@@ -1288,7 +1298,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 // Set built from one is refused by name.
                 val values = givenFields[0].expr
                 when {
-                    values is ArrayLiteral -> CppEx("$typeText${bracedElements(values)}", CppPrec.POSTFIX)
+                    values is BuilderExpr && isSequence(values) -> CppEx("$typeText${bracedElements(values)}", CppPrec.POSTFIX)
                     cls.name == "List" -> CppEx("$typeText(${emit(values, CppPrec.ASSIGN)})", CppPrec.POSTFIX)
                     else -> unsupported(e, "constructing a ${cls.name} from a List value (write its elements as a literal)")
                 }

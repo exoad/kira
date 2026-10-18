@@ -64,7 +64,7 @@ pub calls: () Void {
     ws: List<Str> = s.splitWhitespace()    // @type List<Str> call=MAGIC(Str.splitWhitespace)
     rp: Str = s.replace("b", "")           // @type Str call=MAGIC(Str.replace)
     hexv: Maybe<Int64> = s.toInt64Radix(16) // @type Maybe<Int64> call=MAGIC(Str.toInt64Radix)
-    names: List<Str> = ["a", "b"]
+    names: List<Str> = @listOf("a", "b")
     jn: Str = names.joinToString(", ")     // @type Str call=MAGIC(List.joinToString)
     nine: Char = '9'
     dg: Bool = nine.isDigit()              // @type Bool call=MAGIC(Char.isDigit)

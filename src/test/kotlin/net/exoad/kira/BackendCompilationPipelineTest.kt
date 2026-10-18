@@ -157,7 +157,7 @@ class BackendCompilationPipelineTest {
             }
 
             main: () Void {
-                numbers: Arr<Int32> = [10, 20, 30]
+                numbers: Arr<Int32> = @arrOf(10, 20, 30)
                 head: Int32 = first(numbers)
                 entries: Map<Str, Int32> = Map<Str, Int32> { }
                 present: Bool = hasAny(entries)

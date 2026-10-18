@@ -609,8 +609,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // should be true
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        // TODO("Not yet implemented")
+    override fun visitBuilderExpr(builderExpr: BuilderExpr) {
+        // The typer types a builder.
     }
 
     override fun visitNullLiteral(nullLiteral: NullLiteral) {

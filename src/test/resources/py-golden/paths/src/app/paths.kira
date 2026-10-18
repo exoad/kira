@@ -47,7 +47,7 @@ pub slash: (p: Str) Str {
 pub main: () Int32 {
     t: Suite = Suite { title = "paths - kira:path on py" }
     t.checkStr(slashed(joinPath("a", "b.txt")), "a/b.txt", "joinPath puts the host's separator between")
-    t.checkStr(slashed(joinPaths(["a", "b", "c.d"])), "a/b/c.d", "joinPaths joins every part")
+    t.checkStr(slashed(joinPaths(@listOf("a", "b", "c.d"))), "a/b/c.d", "joinPaths joins every part")
     t.checkStr(baseName(joinPath("a", "b.txt")) + " " + slashed(dirName(joinPath("a", "b.txt"))), "b.txt a", "baseName and dirName split it again")
     t.checkStr(baseName("a/") + "|" + dirName("x"), "|", "a trailing separator has no base, a bare name no directory")
     t.checkStr(stripExt("x/y.tar.gz") + " " + stripExt(".bashrc") + " " + stripExt("a.b/c"), "x/y.tar .bashrc a.b/c", "stripExt drops the last extension only")

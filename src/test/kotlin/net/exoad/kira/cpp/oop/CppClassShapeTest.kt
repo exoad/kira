@@ -1915,7 +1915,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub Frame: Any {
-                pub mut buf: Arr<UInt8, 4> = [1, 2, 3, 4]
+                pub mut buf: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
                 pub id: Int32
             }
             pub Tagged: Frame {

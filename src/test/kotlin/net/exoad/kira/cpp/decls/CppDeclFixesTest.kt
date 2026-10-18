@@ -101,7 +101,7 @@ class CppDeclFixesTest {
             pub NEG1: Int64 = 0xFFFFFFFFFFFFFFFF
             pub MASK: UInt32 = 0xFFFFFFFF
             pub MINUS: Int32 = -010
-            pub TENS: Arr<Int32, 010> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            pub TENS: Arr<Int32, 010> = @arrOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
             """
         )
         assertContains(
@@ -156,7 +156,7 @@ class CppDeclFixesTest {
         val (emitted, _) = emit(
             """
             pub S: Struct { pub xs: List<S> = EMPTY }
-            pub EMPTY: List<S> = []
+            pub EMPTY: List<S> = @listOf()
             """
         )
         val cycle = emitted.diagnostics.filter { it.code == CppPlacement.DECL_CYCLE_CODE }
@@ -499,7 +499,7 @@ class CppDeclFixesTest {
     fun aFunctionAValueOrADefaultNamesIsHoistedBeforeIt() {
         val (emitted, _) = emit(
             """
-            pub DATA: Arr<UInt8, 2> = [1, 2]
+            pub DATA: Arr<UInt8, 2> = @arrOf(1, 2)
             pub X: UInt32 = crc8(DATA)
             pub @_const crc8: (buf: View<UInt8>) UInt32 { return 7 }
             pub S: Struct { pub n: Int32 = limit() }

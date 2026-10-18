@@ -180,7 +180,7 @@ class TyperPhaseTest {
 
     @Test
     fun aConstantNameInTypeArgumentPositionIsAConst() {
-        val p = snippet("pub LEN: Size = 2\npub Arr<UInt8, LEN> as Frame\nf: Frame = [1, 2]")
+        val p = snippet("pub LEN: Size = 2\npub Arr<UInt8, LEN> as Frame\nf: Frame = @arrOf(1, 2)")
         expectNoErrors(p)
         val frame = p.workspaceModules.single().members["f"] as GlobalSymbol
         assertEquals("Arr<UInt8, 2>", frame.type.display())

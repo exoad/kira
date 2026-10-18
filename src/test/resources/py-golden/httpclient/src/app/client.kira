@@ -43,11 +43,11 @@ pub main: () Int32 {
     t.check(httpGet("http://[::1]:99999999999999999999/", 300).isNone() && httpError() != "", "an IPv6 host's too")
     utf8: List<UInt8> = "{\"a\": \"é\"}".bytes()
     t.checkStr(jsonText(utf8).value, "{\"a\": \"é\"}", "jsonText of UTF-8")
-    bom: List<UInt8> = [0xef, 0xbb, 0xbf, 0x5b, 0x5d]
+    bom: List<UInt8> = @listOf(0xef, 0xbb, 0xbf, 0x5b, 0x5d)
     t.checkStr(jsonText(bom).value, "[]", "UTF-8 after a BOM, which it drops")
-    wide: List<UInt8> = [0x5b, 0x00, 0x5d, 0x00]
+    wide: List<UInt8> = @listOf(0x5b, 0x00, 0x5d, 0x00)
     t.checkStr(jsonText(wide).value, "[]", "UTF-16, little-endian by its NULs")
-    bad: List<UInt8> = [0x22, 0xff, 0x22]
+    bad: List<UInt8> = @listOf(0x22, 0xff, 0x22)
     t.check(jsonText(bad).isNone() && httpError().startsWith("'utf-8' codec can't decode byte 0xff in position 1"), "none for bytes it cannot decode")
     t.check(jsonText(bom).isSome() && httpError() == "", "a call that works clears the reason")
     t.checkStr(urlPath("/power?s=60").value + "|" + urlQuery("/power?s=60").value, "/power|s=60", "urlPath and urlQuery split a target")

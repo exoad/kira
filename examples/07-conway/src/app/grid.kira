@@ -30,7 +30,7 @@ Grid: Any {
     }
 
     mut step: () Void {
-        mut next: Arr<Int32> = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        mut next: Arr<Int32> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         mut i: Int32 = 0
         while i < width * height {
             mut row: Int32 = i / width

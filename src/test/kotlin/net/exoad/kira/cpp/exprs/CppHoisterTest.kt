@@ -40,7 +40,7 @@ class CppHoisterTest {
         mut ticks: Int32 = 0
         mut idx: Size = 0
         mut row: Size = 1
-        mut garr: Arr<Int32, 4> = [10, 20, 30, 40]
+        mut garr: Arr<Int32, 4> = @arrOf(10, 20, 30, 40)
         mut gl: List<Int32> = List<Int32> { }
 
         next: () Int32 {
@@ -73,7 +73,7 @@ class CppHoisterTest {
             }
         }
 
-        mut gboxes: Arr<Box, 2> = [Box { }, Box { }]
+        mut gboxes: Arr<Box, 2> = @arrOf(Box { }, Box { })
 
         makeBox: () Box {
             ticks += 1
@@ -98,18 +98,18 @@ class CppHoisterTest {
         }
 
         pub nestedTarget: () Void {
-            mut grid: Arr<Arr<Int32, 3>, 3> = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+            mut grid: Arr<Arr<Int32, 3>, 3> = @arrOf(@arrOf(0, 0, 0), @arrOf(0, 0, 0), @arrOf(0, 0, 0))
             grid[nextSize()][nextSize()] = 5
             grid[nextSize()][nextSize()] += 1
         }
 
         pub nestedMutArgument: () Void {
-            mut grid: Arr<Arr<Int32, 3>, 3> = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+            mut grid: Arr<Arr<Int32, 3>, 3> = @arrOf(@arrOf(0, 0, 0), @arrOf(0, 0, 0), @arrOf(0, 0, 0))
             put(mut grid[row][nextSize()], 1, 2)
         }
 
         pub nestedMutReceiver: () Void {
-            mut boxes: Arr<Arr<Box, 3>, 3> = [[Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }]]
+            mut boxes: Arr<Arr<Box, 3>, 3> = @arrOf(@arrOf(Box { }, Box { }, Box { }), @arrOf(Box { }, Box { }, Box { }), @arrOf(Box { }, Box { }, Box { }))
             boxes[nextSize()][nextSize()].grow(1, 2)
         }
 
@@ -137,7 +137,7 @@ class CppHoisterTest {
         }
 
         resetL: () Int32 {
-            gl = List<Int32> { values = [8] }
+            gl = List<Int32> { values = @arrOf(8) }
             return 0
         }
 
@@ -207,7 +207,7 @@ class CppHoisterTest {
         }
 
         pub placeIndex: () Int32 {
-            mut q: Arr<Int32, 4> = [0, 0, 0, 0]
+            mut q: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
             put(mut q[nextSize()], next(), next())
             return q[1]
         }
@@ -221,7 +221,7 @@ class CppHoisterTest {
         }
 
         pub targetFirst: () Void {
-            mut s: Arr<Int32, 4> = [0, 0, 0, 0]
+            mut s: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
             s[nextSize()] = next()
             s[0] = next()
         }
@@ -373,7 +373,7 @@ class CppHoisterTest {
         }
 
         pub mutViewSibling: () Int32 {
-            mut p: Arr<Int32, 4> = [1, 2, 3, 4]
+            mut p: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
             return sub(p[0], zero(p.from(0)))
         }
 
@@ -392,10 +392,10 @@ class CppHoisterTest {
 
         mut gll: List<List<Int32>> = List<List<Int32>> { }
         mut gls: List<Int32> = List<Int32> { }
-        mut gv3: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        mut gv3: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
 
         growGll: () Int32 {
-            gll.add(List<Int32> { values = [1] })
+            gll.add(List<Int32> { values = @arrOf(1) })
             return 7
         }
 
@@ -430,7 +430,7 @@ class CppHoisterTest {
         }
 
         pub boundLocalList: () Void {
-            mut ll: List<Int32> = List<Int32> { values = [1] }
+            mut ll: List<Int32> = List<Int32> { values = @arrOf(1) }
             put(mut ll[0], next(), 1)
         }
 
@@ -848,7 +848,7 @@ class CppHoisterTest {
         """
         mut ticks: Int32 = 0
         mut idx: Size = 0
-        mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        mut gl: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
 
         next: () Int32 {
             ticks += 1
@@ -862,19 +862,19 @@ class CppHoisterTest {
 
         makeList: () List<Int32> {
             ticks += 1
-            return List<Int32> { values = [1000, 2000, 3000, 4000] }
+            return List<Int32> { values = @arrOf(1000, 2000, 3000, 4000) }
         }
 
         // Impure (they count), so their result is an owner D33 must spill before the view of
         // it is formed; a pure one stays in the full expression that uses the view.
         makeRef: () Ref<List<Int32>> {
             ticks += 1
-            return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40] } }
+            return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40) } }
         }
 
         makeMaybe: () Maybe<List<Int32>> {
             ticks += 1
-            m: Maybe<List<Int32>> = List<Int32> { values = [10, 20, 30, 40] }
+            m: Maybe<List<Int32>> = List<Int32> { values = @arrOf(10, 20, 30, 40) }
             return m
         }
 
@@ -940,7 +940,7 @@ class CppHoisterTest {
 
         pub pureOwnerKept: () Int32 {
             idx = 0
-            return total(tail(List<Int32> { values = [5, 6, 7] }.view(), nextSize()))
+            return total(tail(List<Int32> { values = @arrOf(5, 6, 7) }.view(), nextSize()))
         }
 
         pub inOneStatement: () Int32 {
@@ -953,13 +953,13 @@ class CppHoisterTest {
         }
 
         pub elementWriteSeen: () Int32 {
-            mut ls: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            mut ls: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
             return minus(ls, setAt(mut ls[0]))
         }
 
         churn: () Int32 {
             ticks += 1
-            mut junk: List<Int32> = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }
+            mut junk: List<Int32> = List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7) }
             junk.add(7)
             return ticks
         }
@@ -978,12 +978,12 @@ class CppHoisterTest {
 
         pub positionalOwner: () Int32 {
             ticks = 0
-            return sum2(Wrap { Ref<List<Int32>> { [100, 200, 300, 400, 500, 600, 700, 800] } }.items(), churn())
+            return sum2(Wrap { Ref<List<Int32>> { @listOf(100, 200, 300, 400, 500, 600, 700, 800) } }.items(), churn())
         }
 
         pub namedOwner: () Int32 {
             ticks = 0
-            return sum2(Wrap { r = Ref<List<Int32>> { value = List<Int32> { values = [100, 200, 300, 400, 500, 600, 700, 800] } } }.items(), churn())
+            return sum2(Wrap { r = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(100, 200, 300, 400, 500, 600, 700, 800) } } }.items(), churn())
         }
 
         pub Stamp: Struct {
@@ -1125,7 +1125,7 @@ class CppHoisterTest {
         }
 
         pub handedAMutView: () Int32 {
-            mut p: Arr<Int32, 4> = [1, 2, 3, 4]
+            mut p: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
             return sub(p[0], zero(p.from(0)))
         }
         """,
@@ -1166,7 +1166,7 @@ class CppHoisterTest {
     private val refusing = """
         kira.sync as sync
 
-        mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        mut gl: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
         mut sbs: List<StrBuf<8>> = List<StrBuf<8>> { }
         mut gv: Maybe<MutView<Int32>> = null
         mut ticks: Int32 = 0
@@ -1182,7 +1182,7 @@ class CppHoisterTest {
         }
 
         makeList: () List<Int32> {
-            return List<Int32> { values = [10, 20, 30] }
+            return List<Int32> { values = @arrOf(10, 20, 30) }
         }
 
         tail: (v: View<Int32>, at: Size) View<Int32> {
@@ -1233,7 +1233,7 @@ class CppHoisterTest {
         }
 
         pub keptByATemporaryMutex: () Void {
-            Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = [1] } } }.lock((mut l: Ref<List<Int32>>) Void {
+            Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(1) } } }.lock((mut l: Ref<List<Int32>>) Void {
                 gv = l.value.view()
             })
         }
@@ -1428,20 +1428,20 @@ class CppHoisterTest {
         "hoist:ranges",
         """
         makeLists: () List<List<Int32>> {
-            return List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
+            return List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
         }
 
         makeRef: () Ref<List<Int32>> {
-            return Ref<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }
+            return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(1, 2, 3) } }
         }
 
         makeMaybe: () Maybe<List<Int32>> {
-            m: Maybe<List<Int32>> = List<Int32> { values = [1, 2, 3] }
+            m: Maybe<List<Int32>> = List<Int32> { values = @arrOf(1, 2, 3) }
             return m
         }
 
         makeList: () List<Int32> {
-            return List<Int32> { values = [1, 2, 3] }
+            return List<Int32> { values = @arrOf(1, 2, 3) }
         }
 
         pub rangesOfTemporaries: () Int32 {
@@ -1501,7 +1501,7 @@ class CppHoisterTest {
         """
         pub mut G: Int32 = 5
         pub mut GS: Str = "old"
-        pub mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
+        pub mut GL: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
         pub mut GSL: List<Str> = List<Str> { }
         pub mut GLL: List<List<Int32>> = List<List<Int32>> { }
         pub mut GLS: List<Int32> = List<Int32> { }
@@ -1509,10 +1509,10 @@ class CppHoisterTest {
         pub reset: () Void {
             G = 5
             GS = "old"
-            GL = List<Int32> { values = [1, 2, 3] }
-            GSL = List<Str> { values = ["firstfirstfirstfirstfirstfirstfirstfirstfirstfirstfirst"] }
-            GLL = List<List<Int32>> { values = [List<Int32> { values = [1] }] }
-            GLS = List<Int32> { values = [100] }
+            GL = List<Int32> { values = @arrOf(1, 2, 3) }
+            GSL = List<Str> { values = @arrOf("firstfirstfirstfirstfirstfirstfirstfirstfirstfirstfirst") }
+            GLL = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1) }) }
+            GLS = List<Int32> { values = @arrOf(100) }
         }
 
         pub bumpG: () Int32 {
@@ -1546,7 +1546,7 @@ class CppHoisterTest {
         pub growGLL: () Int32 {
             mut i: Int32 = 0
             while i < 64 {
-                GLL.add(List<Int32> { values = [i] })
+                GLL.add(List<Int32> { values = @arrOf(i) })
                 i += 1
             }
             return 7
@@ -1743,9 +1743,9 @@ class CppHoisterTest {
         """
         mut ticks: Int32 = 0
         mut idx: Size = 0
-        mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
-        mut gstrs: List<Str> = List<Str> { values = ["first"] }
-        mut gll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] }
+        mut gl: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+        mut gstrs: List<Str> = List<Str> { values = @arrOf("first") }
+        mut gll: List<List<Int32>> = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(10, 20, 30) }) }
         mut gms: Maybe<Str> = "some"
 
         next: () Int32 {
@@ -1763,12 +1763,12 @@ class CppHoisterTest {
         }
 
         resetL: () Int32 {
-            gl = List<Int32> { values = [8] }
+            gl = List<Int32> { values = @arrOf(8) }
             return 0
         }
 
         change: () Int32 {
-            gstrs = List<Str> { values = ["replaced, and long enough to live on the heap, not in a small buffer"] }
+            gstrs = List<Str> { values = @arrOf("replaced, and long enough to live on the heap, not in a small buffer") }
             gms = "replaced too, and long enough to live on the heap, not in a small buffer"
             return 0
         }
@@ -1795,22 +1795,22 @@ class CppHoisterTest {
         }
 
         pub lentScalar: () Int32 {
-            gl = List<Int32> { values = [1, 2, 3] }
+            gl = List<Int32> { values = @arrOf(1, 2, 3) }
             return sub(gl.get(0), resetL())
         }
 
         pub indexScalar: () Int32 {
-            gl = List<Int32> { values = [1, 2, 3] }
+            gl = List<Int32> { values = @arrOf(1, 2, 3) }
             return sub(gl[0], resetL())
         }
 
         pub lentStr: () Str {
-            gstrs = List<Str> { values = ["first"] }
+            gstrs = List<Str> { values = @arrOf("first") }
             return showL(gstrs.get(0), change())
         }
 
         pub indexStr: () Str {
-            gstrs = List<Str> { values = ["first"] }
+            gstrs = List<Str> { values = @arrOf("first") }
             return showL(gstrs[0], change())
         }
 
@@ -1825,12 +1825,12 @@ class CppHoisterTest {
         }
 
         pub lentView: () Int32 {
-            mut ll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
+            mut ll: List<List<Int32>> = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
             return minus(ll.get(0), setAt(mut ll[0][0]))
         }
 
         pub indexView: () Int32 {
-            mut ll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
+            mut ll: List<List<Int32>> = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
             return minus(ll[0], setAt(mut ll[0][0]))
         }
 
@@ -1913,8 +1913,8 @@ class CppHoisterTest {
     private val lentRefused = Module(
         "hoist:lentrefused",
         """
-        mut gl2: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
-        mut gm: Maybe<List<Int32>> = List<Int32> { values = [1, 2, 3] }
+        mut gl2: List<List<Int32>> = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
+        mut gm: Maybe<List<Int32>> = List<Int32> { values = @arrOf(1, 2, 3) }
 
         pub @_extern(cpp = "w::sumVF", header = "w.hxx") sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
 
@@ -1927,12 +1927,12 @@ class CppHoisterTest {
         }
 
         sumAndClear: (v: View<Int32>) Int32 {
-            gl2 = List<List<Int32>> { values = [List<Int32> { values = [7] }] }
+            gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7) }) }
             return sumV(v)
         }
 
         sumAndClearM: (v: View<Int32>) Int32 {
-            gm = List<Int32> { values = [7] }
+            gm = List<Int32> { values = @arrOf(7) }
             return sumV(v)
         }
 
@@ -1945,13 +1945,13 @@ class CppHoisterTest {
         }
 
         pub c2c: () Int32 {
-            return sumVF(gl2.get(0).view(), () Void { gl2 = List<List<Int32>> { values = [List<Int32> { values = [7] }] } })
+            return sumVF(gl2.get(0).view(), () Void { gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7) }) } })
         }
 
         pub c4: () Int32 {
             mut s: Int32 = 0
             for x: Int32 in gl2.get(0) {
-                gl2 = List<List<Int32>> { values = [List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }] }
+                gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7) }) }
                 s += x
             }
             return s
@@ -1960,7 +1960,7 @@ class CppHoisterTest {
         pub c4b: () Int32 {
             mut s: Int32 = 0
             for x: Int32 in gm.unwrap() {
-                gm = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }
+                gm = List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7) }
                 s += x
             }
             return s
@@ -1983,8 +1983,8 @@ class CppHoisterTest {
             line("return sumAndClear(gl2.get(0).view())") to "rules.view.write",
             line("return sumAndClearM(gm.unwrap().view())") to "rules.view.write",
             line("return sumVF(gl2.get(0).view()") to "rules.view.write",
-            line("gl2 = List<List<Int32>> { values = [List<Int32> { values = [7, 7") to "rules.exclusivity.loop",
-            line("gm = List<Int32> { values = [7, 7") to "rules.exclusivity.loop",
+            line("gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7, 7") to "rules.exclusivity.loop",
+            line("gm = List<Int32> { values = @arrOf(7, 7") to "rules.exclusivity.loop",
         )
         assertEquals(expected.toSet(), found.toSet(), result.diagnostics.joinToString("\n") { it.render() })
     }

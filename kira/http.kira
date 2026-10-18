@@ -3,7 +3,7 @@
 // What a server answered: any status, a 404 or a 500 too, and its body.
 pub HttpReply: Struct {
     pub status: Int32 = 0
-    pub body: List<UInt8> = []
+    pub body: List<UInt8> = @listOf()
 }
 
 // urlopen(url) of an http or https URL, a redirect to any other scheme its 3xx reply: none when no reply came (no
@@ -26,7 +26,7 @@ pub HttpRequest: Struct {
     pub method: Str = ""
     pub path: Str = ""
     pub host: Str = ""
-    pub body: List<UInt8> = []
+    pub body: List<UInt8> = @listOf()
 }
 
 // What a handler answers: status 0 closes the connection unanswered, and 400 or more with no body is Python's error
@@ -35,7 +35,7 @@ pub HttpRequest: Struct {
 pub HttpAnswer: Struct {
     pub status: Int32 = 200
     pub contentType: Str = "application/json"
-    pub body: List<UInt8> = []
+    pub body: List<UInt8> = @listOf()
     pub headers: Map<Str, Str> = Map<Str, Str> { }
 }
 

@@ -42,7 +42,7 @@ queueing: () Void {
     producer: Thread = spawn("producer", () Void {
         for i: Int32 in 0..3 {
             tens: Int32 = i * 10
-            q.push([i, tens])
+            q.push(@listOf(i, tens))
         }
         q.close()
     })
@@ -60,10 +60,10 @@ queueing: () Void {
     }
     producer.join()
     println("popped ${got}, total ${total}, closed ${q.isClosed()}, then ${q.pop(0).isNone()}")
-    q.push([9])
+    q.push(@listOf(9))
     println("a push after close is dropped: ${q.size()}")
     rows: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
-    mut row: List<Int32> = [1]
+    mut row: List<Int32> = @listOf(1)
     rows.push(row)
     row.add(2)
     first: Size = rows.pop(0).unwrap().size()

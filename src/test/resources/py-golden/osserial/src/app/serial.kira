@@ -18,7 +18,7 @@ pub readOnSignal: () Str {
     installed: Bool = onSignal(SIGNAL_INT, flag)
     port: Serial = Serial {}
     opened: Bool = port.open("stand-in", 115200)
-    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
     n: Int64 = port.read(buf.from(0), 2000)
     first: Str = text(buf, n)
     m: Int64 = port.read(buf.from(0), -1)
@@ -27,7 +27,7 @@ pub readOnSignal: () Str {
 
 // Critique 14's read (K7): the first byte waited for, then what is waiting, at most size of them.
 pub readSome: (port: Serial, size: Size, ms: Int64) Str {
-    mut buf: List<UInt8> = []
+    mut buf: List<UInt8> = @listOf()
     for i: Size in 0..size {
         buf.add(0)
     }
@@ -66,7 +66,7 @@ pub main: () Int32 {
     println("open ${port.open("kira-no-such-port", 115200)}")
     println(lastError())
     println(lastErrorKind())
-    mut buf: List<UInt8> = [0, 0]
+    mut buf: List<UInt8> = @listOf(0, 0)
     println("read ${port.read(buf.from(0), 10)} write ${port.write(buf)} open ${port.isOpen()} handle ${port.handle()}")
     println(lastError())
     return 0

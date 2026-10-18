@@ -28,7 +28,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -171,7 +171,7 @@ class CppCopyPolicy(private val lower: CppLowering) {
 
     /**
      * PRVALUE (2.0): [e]'s C++ is an object made for this use. A coercion that converts
-     * ([converts]); a numeric, `Char`, `Str`, `null` or array literal; an interpolation; a
+     * ([converts]); a numeric, `Char`, `Str` or `null` literal, a builder; an interpolation; a
      * construction; a lambda literal; an operator or a cast; an if-expression lowered as an
      * IIFE, or a ternary whose branches are prvalues (a `Str` ternary's always are:
      * `kira::Str(branch)`); a class's `this` (`shared_from_this()`, a new handle); a call of a
@@ -193,7 +193,7 @@ class CppCopyPolicy(private val lower: CppLowering) {
             return false
         }
         return when (e) {
-            is IntegerLiteral, is FloatLiteral, is CharLiteral, is StringLiteral, is NullLiteral, is ArrayLiteral,
+            is IntegerLiteral, is FloatLiteral, is CharLiteral, is StringLiteral, is NullLiteral, is BuilderExpr,
             is InterpolatedStringLiteral, is ObjectInitExpr, is LambdaExpr, is BinaryExpr, is UnaryExpr, is TypeCastExpr,
             -> true
             is IfExpr -> if (model.ifShape(e) == true) {

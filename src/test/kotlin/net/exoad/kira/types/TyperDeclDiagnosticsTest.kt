@@ -10,7 +10,8 @@ import net.exoad.kira.compiler.analysis.types.ModuleGraph
 import net.exoad.kira.compiler.analysis.types.Severity
 import net.exoad.kira.compiler.analysis.types.TyperMode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.types.TyperTestSupport.astModule
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
@@ -278,7 +279,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun aMutableGlobalCannotSizeAnArr() {
-        val p = snippet("mut COUNT: Size = 4\nbuf: Arr<UInt8, COUNT> = [1, 2, 3, 4]")
+        val p = snippet("mut COUNT: Size = 4\nbuf: Arr<UInt8, COUNT> = @arrOf(1, 2, 3, 4)")
         expectDiagnostic(p, "types.type.const-arg")
     }
 
@@ -326,13 +327,13 @@ class TyperDeclDiagnosticsTest {
             pub TWO: Size = 2
             pub THREE: Size = 3
             pub FOUR: Size = 4
-            pub MAGIC: Arr<UInt8, FOUR> = [1, 2, 3]
-            pub OVER: Arr<UInt8, TWO> = [1, 2, 3]
-            pub EXACT: Arr<UInt8, THREE> = [1, 2, 3]
-            pub OPEN: Arr<UInt8> = [1, 2, 3]
-            pub NESTED: Arr<Arr<UInt8, TWO>, ONE> = [[1, 2, 3]]
+            pub MAGIC: Arr<UInt8, FOUR> = @arrOf(1, 2, 3)
+            pub OVER: Arr<UInt8, TWO> = @arrOf(1, 2, 3)
+            pub EXACT: Arr<UInt8, THREE> = @arrOf(1, 2, 3)
+            pub OPEN: Arr<UInt8> = @arrOf(1, 2, 3)
+            pub NESTED: Arr<Arr<UInt8, TWO>, ONE> = @arrOf(@arrOf(1, 2, 3))
             pub Frame: Any {
-                pub head: Arr<UInt8, TWO> = [1]
+                pub head: Arr<UInt8, TWO> = @arrOf(1)
             }
             """
         )
@@ -344,7 +345,7 @@ class TyperDeclDiagnosticsTest {
         assertEquals("[1:UInt8, 2:UInt8, 3:UInt8]", (m.members["EXACT"] as GlobalSymbol).constValue.toString())
         assertEquals("[1:UInt8, 2:UInt8, 3:UInt8]", (m.members["OPEN"] as GlobalSymbol).constValue.toString())
         val magic = expectDiagnostic(p, "types.const.arr-size")
-        assertTrue(magic.message.contains("This literal has 3 elements, but Arr<UInt8, 4> holds exactly 4"), magic.message)
+        assertTrue(magic.message.contains("This @arrOf has 3 elements, but Arr<UInt8, 4> holds exactly 4"), magic.message)
         assertEquals(5, magic.position?.lineNumber, "located at the literal")
         assertTrue(
             p.diagnostics.any { it.code == "types.const.arr-size" && it.message.contains("has 1 element, but Arr<UInt8, 2>") },
@@ -355,7 +356,7 @@ class TyperDeclDiagnosticsTest {
         val unit = CompilationUnit()
         val send = fn(
             "send",
-            listOf(param("tail", ty("Arr", ty("UInt8"), ConstTypeArg(IntegerLiteral(1))), ArrayLiteral(arrayOf(IntegerLiteral(1), IntegerLiteral(2))))),
+            listOf(param("tail", ty("Arr", ty("UInt8"), ConstTypeArg(IntegerLiteral(1))), BuilderExpr(Builder.ARR, emptyList(), listOf(IntegerLiteral(1), IntegerLiteral(2))))),
             ty("Void"),
         )
         astModule(unit, "test:arrdef", send)

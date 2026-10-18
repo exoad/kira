@@ -37,10 +37,10 @@ show: (xs: List<Int32>) Str {
 }
 
 main: () Void {
-    p: Pair<Int32, Int32> = minmax([4, 9, 1, 7])
+    p: Pair<Int32, Int32> = minmax(@listOf(4, 9, 1, 7))
     trace("${p.first} ${p.second} ${p.size()}")
 
-    mut src: List<Int32> = [1, 2]
+    mut src: List<Int32> = @listOf(1, 2)
     t: Tuple3<Str, List<Int32>, Bool> = tagged("t", src)
     src.add(3)
     mut inner: List<Int32> = t.second
@@ -60,14 +60,14 @@ main: () Void {
     trace("${es[0].first}=${es[0].second} ${es[1].first}=${es[1].second}")
     again: Tuple2<Str, Int32> = Tuple2<Str, Int32> { "n", 6 }
     head: Tuple2<Str, Int32> = es[0]
-    built: Map<Str, Int32> = Map<Str, Int32> { values = [named, head, again] }
+    built: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(named, head, again) }
     trace("${built.size()} ${built.get("n").unwrapOr(0)} ${built.keys()[0]}")
     for e: Tuple2<Str, Int32> in m {
         trace("${e.first} ${e.second}")
     }
 
     // a Result of a List: a copy in, a copy out
-    mut data: List<Int32> = [7]
+    mut data: List<Int32> = @listOf(7)
     r: Result<List<Int32>, Str> = checked(data)
     data.add(8)
     mut got: List<Int32> = r.unwrap()

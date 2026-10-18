@@ -320,7 +320,7 @@ class SemanticSuiteTest {
         assertHealthy(
             """
             main: () Void {
-                v: List<UInt8> = [104, 105]
+                v: List<UInt8> = @listOf(104, 105)
                 trace(Str.of(bytes = v))
                 r: Result<Int32, Str> = Result.success(value = 5)
                 e: Result<Int32, Str> = Result.error(value = "no")
@@ -330,7 +330,7 @@ class SemanticSuiteTest {
         val msgs = assertUnhealthy(
             """
             main: () Void {
-                v: List<UInt8> = [104, 105]
+                v: List<UInt8> = @listOf(104, 105)
                 trace(Str.of(text = v))
             }
             """

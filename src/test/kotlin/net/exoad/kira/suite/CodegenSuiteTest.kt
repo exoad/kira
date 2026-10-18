@@ -273,7 +273,7 @@ class CodegenSuiteTest {
         val output = emit(
             """
             main: () Void {
-                grid: Arr<Arr<Int32>> = [[1, 2], [3, 4]]
+                grid: Arr<Arr<Int32>> = @arrOf(@arrOf(1, 2), @arrOf(3, 4))
                 trace(grid[1][0])
             }
             """
@@ -402,7 +402,7 @@ class CodegenSuiteTest {
         val output = emit(
             """
             main: () Void {
-                numbers: Arr<Int32> = [10, 20, 30]
+                numbers: Arr<Int32> = @arrOf(10, 20, 30)
                 entries: Map<Str, Int32> = Map<Str, Int32> { }
                 trace(numbers[0])
                 entries.put("a", 1)
@@ -483,7 +483,7 @@ class CodegenSuiteTest {
         val output = emit(
             """
             main: () Void {
-                numbers: Arr<Int32> = [10, 20]
+                numbers: Arr<Int32> = @arrOf(10, 20)
                 trace(numbers[0])
             }
             """

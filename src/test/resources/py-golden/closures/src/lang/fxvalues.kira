@@ -96,7 +96,7 @@ pub main: () Void {
     }
     println("loop variable copied:${seen}")
 
-    mut xs: List<Int32> = [1, 2]
+    mut xs: List<Int32> = @listOf(1, 2)
     size: Fx<Tuple0, Size> = () Size {
         return xs.size()
     }
@@ -110,7 +110,7 @@ pub main: () Void {
     got.add(9)
     println("a returned capture is a copy: ${give().size()} then ${got.size()}")
 
-    mut mine: List<Int32> = [7]
+    mut mine: List<Int32> = @listOf(7)
     counted: Fx<Tuple0, Size> = counterOf(mine)
     mine.add(8)
     println("a captured parameter: ${counted()} of ${mine.size()}")
@@ -164,7 +164,7 @@ pub main: () Void {
     bump()
     println("two closures, one Ref: ${read()} ${count.value}")
 
-    cells: Ref<List<Int32>> = Ref<List<Int32>> { value = [1] }
+    cells: Ref<List<Int32>> = Ref<List<Int32>> { value = @listOf(1) }
     grow: Fx<Tuple0, Void> = () Void {
         cells.value.add(cells.value.size() as Int32 + 1)
     }

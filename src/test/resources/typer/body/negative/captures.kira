@@ -38,7 +38,7 @@ pub captures: (mut q: Pt, mut fr: Frame) Int32 {
     mut p: Pt = Pt { }
     mut buf: StrBuf<64> = StrBuf<64> { }
     mut ages: Map<Str, Int32> = Map<Str, Int32> { }
-    mut ptsInside: Arr<Pt> = [Pt { }]
+    mut ptsInside: Arr<Pt> = @arrOf(Pt { })
     g: Fx<Tuple0, Void> = () Void {
         xs.add(1)                          // @error types.lambda.assign-capture
         p.shift(2)                         // @error types.lambda.assign-capture
@@ -79,17 +79,17 @@ pub mut SEED: Float64 = sqrt(4.0)          // @error types.global.mut-init
 @_static_assert(floor(1.5) == 1.0, "no")  // @error types.static-assert.not-constant
 
 pub Bag: Struct {
-    pub items: List<Int32> = []
+    pub items: List<Int32> = @listOf()
     pub n: Int32 = 1
 }
 
-pub DYN: Arr<Int32> = [1, 2, 3]            // no error: built at run time from literals, in no order (D49)
+pub DYN: Arr<Int32> = @arrOf(1, 2, 3)            // no error: built at run time from literals, in no order (D49)
 pub DSIZE: Size = DYN.size()               // @error types.const.not-constant
 pub DFIRST: Int32 = DYN.get(0)             // @error types.const.not-constant
 pub DV: View<Int32> = DYN.view()           // @error types.const.not-constant; @error rules.view.type
 pub DCOPY: Arr<Int32> = DYN.clone()        // @error types.const.not-constant
 pub mut SEED0: Int32 = DYN.get(0) + 1      // @error types.global.mut-init
-pub LST: List<Int32> = [4, 5]
+pub LST: List<Int32> = @listOf(4, 5)
 pub L0: Int32 = LST[0]                     // @error types.const.not-constant
 pub BAG: Bag = Bag { }
 pub BN: Int32 = BAG.n                      // @error types.const.not-constant
@@ -112,7 +112,7 @@ pub Sized: Struct {
 }
 
 pub SizedBag: Struct {
-    pub items: List<Int32> = []
+    pub items: List<Int32> = @listOf()
     pub n: Size = DYN.size()
 }
 
@@ -188,5 +188,5 @@ pub Box<T>: Struct {
     pub v: T
 }
 
-pub BL: Box<List<Int32>> = Box<List<Int32>> { [] }
+pub BL: Box<List<Int32>> = Box<List<Int32>> { @listOf() }
 pub BLN: Size = BL.v.size()                // @error types.const.not-constant

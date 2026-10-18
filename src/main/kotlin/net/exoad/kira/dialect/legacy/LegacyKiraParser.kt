@@ -1732,7 +1732,8 @@ class LegacyKiraParser(private val context: SourceContext) {
         return sb.toString()
     }
 
-    fun parseArrayLiteral(): ArrayLiteral {
+    /** `[a, b]`, as the clean dialect's parser reads it for kira-dialect: an INFER builder. */
+    fun parseArrayLiteral(): BuilderExpr {
         val origin = here()
         expectThenAdvance(Token.Type.S_OPEN_BRACKET)
         val elements = mutableListOf<Expr>()
@@ -1745,7 +1746,7 @@ class LegacyKiraParser(private val context: SourceContext) {
             }
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
-        return putOrigin(ArrayLiteral(elements.toTypedArray()), origin)
+        return putOrigin(BuilderExpr(Builder.INFER, emptyList(), elements), origin)
     }
 
     fun parseIntegerLiteral(): IntegerLiteral {

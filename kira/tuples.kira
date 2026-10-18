@@ -11,6 +11,11 @@ pub Tuple<T>: Any {
 // reference.
 pub @_magic Fx<P, R>: Any
 
+// A tuple of one type whose length each use fixes, the axiom under variadics: the elements of
+// @listOf, @arrOf and @setOf are one (a Map's keys and values in turn). A variadic parameter of
+// one is not built yet.
+pub @_magic TupleN<T>: Any
+
 pub @_magic Tuple0: Tuple<Void> {
     pub size: () Int32 {
         return 0

@@ -5,7 +5,7 @@ kira.test as test
 // moduleDir, with lastError's category and readText's strict UTF-8.
 
 slashed: (paths: List<Str>, root: Str) Str {
-    mut out: List<Str> = []
+    mut out: List<Str> = @listOf()
     for p: Str in paths {
         out.add(p.replace("\\", "/").replace(root.replace("\\", "/") + "/", ""))
     }
@@ -44,7 +44,7 @@ pub main: () Int32 {
     t.check(setModifiedS(root + "/z.md", 1000000000.0) && modifiedS(root + "/z.md").value == 1000000000.0, "setModifiedS sets what modifiedS reads")
     t.check(!setModifiedS(root + "/nope", 1.0) && lastErrorKind() == "NotFound", "and is NotFound for a missing file")
     t.check(readText(root + "/nope").isNone() && lastError().startsWith("OSError: [Errno 2] "), "lastError names OSError for its FileNotFoundError")
-    bad: List<UInt8> = [255, 10]
+    bad: List<UInt8> = @listOf(255, 10)
     t.check(writeFile(root + "/bad.txt", bad) && readText(root + "/bad.txt").isNone(), "readText of bytes that are not UTF-8 is none")
     t.check(lastError().startsWith("ValueError: 'utf-8' codec can't decode byte 0xff") && lastErrorKind() == "Other", "with ValueError's reason, kind Other")
     t.check(readFile(root + "/bad.txt").value.size() == 2, "while readFile reads them")

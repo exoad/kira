@@ -7,11 +7,11 @@ kira.time as time
 // spawnPiped, their exit codes (137 after kill), a missing program, an empty argv, and the reason each failure leaves.
 
 py: (code: Str) List<Str> {
-    return [pythonExecutable(), "-c", code]
+    return @listOf(pythonExecutable(), "-c", code)
 }
 
 drain: (p: Process) Str {
-    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
     mut text: Str = ""
     mut n: Int64 = p.readStdout(buf.from(0))
     while n > 0 {
@@ -22,7 +22,7 @@ drain: (p: Process) Str {
 }
 
 readSome: (p: PipedProcess, want: Size) Str {
-    mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
+    mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
     mut text: Str = ""
     while text.size() < want {
         n: Int64 = p.readStdout(buf.from(0))
@@ -60,7 +60,7 @@ pub readOnSignal: () Str {
     flag: Atomic<Bool> = Atomic<Bool> { value = false }
     installed: Bool = onSignal(SIGNAL_INT, flag)
     p: Process = spawnProcess(py("import time; time.sleep(1)")).value
-    mut buf: List<UInt8> = [0, 0, 0, 0]
+    mut buf: List<UInt8> = @listOf(0, 0, 0, 0)
     before: Int64 = monoNowMs()
     n: Int64 = p.readStdout(buf.from(0))
     took: Int64 = monoNowMs() - before
@@ -78,10 +78,10 @@ pub main: () Int32 {
     t.check(sleeper.isRunning(), "a sleeping child is running")
     sleeper.kill()
     t.check(sleeper.wait() == 137 && !sleeper.isRunning(), "kill ends it and wait reports 137")
-    t.check(spawnProcess(["kira-no-such-program-xyz"]).isNone() && lastErrorKind() == "NotFound", "a missing program is none, NotFound")
-    t.check(spawnProcess([]).isNone() && lastError() == "spawnProcess: empty argv", "an empty argv is refused")
+    t.check(spawnProcess(@listOf("kira-no-such-program-xyz")).isNone() && lastErrorKind() == "NotFound", "a missing program is none, NotFound")
+    t.check(spawnProcess(@listOf()).isNone() && lastError() == "spawnProcess: empty argv", "an empty argv is refused")
 
-    fffd: List<UInt8> = [239, 191, 189]
+    fffd: List<UInt8> = @listOf(239, 191, 189)
     code: Str = "import sys; d = sys.stdin.read(); sys.stdout.buffer.write(d.upper().encode() + b'a\\r\\nb\\rc\\xff'); sys.stderr.write('err'); sys.exit(4)"
     ran: Maybe<Ran> = runCapture(py(code), "in put", 0)
     t.check(ran.isSome() && ran.value.code == 4, "runCapture gives the exit code")
@@ -89,11 +89,11 @@ pub main: () Int32 {
     t.checkStr(ran.value.err, "err", "and stderr apart")
     t.check(runCapture(py("import time; time.sleep(30)"), null, 200).isNone() && lastErrorKind() == "Timeout", "a child past its timeout is killed: none, Timeout")
     t.check(lastError().startsWith("subprocess.SubprocessError: Command "), "lastError names its category, as raises= did")
-    t.check(runCapture(["kira-no-such-program-xyz"], null, 0).isNone() && lastErrorKind() == "NotFound", "runCapture of a missing program is none, NotFound")
-    t.check(runCapture([], null, 0).isNone() && lastError() == "runCapture: empty argv", "and of an empty argv")
+    t.check(runCapture(@listOf("kira-no-such-program-xyz"), null, 0).isNone() && lastErrorKind() == "NotFound", "runCapture of a missing program is none, NotFound")
+    t.check(runCapture(@listOf(), null, 0).isNone() && lastError() == "runCapture: empty argv", "and of an empty argv")
     println("before a child that inherits stdout")
     t.check(runInherit(py("print('inherited')")) == 0, "runInherit runs it on this stdout, after what this one wrote")
-    t.check(runInherit(py("import sys; sys.exit(5)")) == 5 && runInherit(["kira-no-such-program-xyz"]) == -1, "and gives its exit code, -1 when it never started")
+    t.check(runInherit(py("import sys; sys.exit(5)")) == 5 && runInherit(@listOf("kira-no-such-program-xyz")) == -1, "and gives its exit code, -1 when it never started")
 
     script: Str = "import sys\nfor line in sys.stdin.buffer:\n    sys.stdout.buffer.write(line.upper())\n    sys.stdout.buffer.flush()\nsys.stderr.buffer.write(b'warn one\\nwarn two\\r\\npartial')"
     piped: PipedProcess = spawnPiped(py(script)).value
@@ -107,6 +107,6 @@ pub main: () Int32 {
     t.checkStr(lineOf(piped.readStderrLine()), "partial", "the last one without")
     t.check(piped.readStderrLine().isNone(), "and none at its end")
     t.check(piped.wait() == 0, "the child exits 0")
-    t.check(spawnPiped([]).isNone() && lastError() == "spawnPiped: empty argv", "spawnPiped refuses an empty argv")
+    t.check(spawnPiped(@listOf()).isNone() && lastError() == "spawnPiped: empty argv", "spawnPiped refuses an empty argv")
     return t.finish()
 }

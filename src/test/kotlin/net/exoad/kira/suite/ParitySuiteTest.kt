@@ -219,10 +219,10 @@ class ParitySuiteTest {
         assertBothPrint("bob\n3\n1\n6\n") {
             """
             main: () Void {
-                names: Arr<Str> = ["ada", "bob"]
+                names: Arr<Str> = @arrOf("ada", "bob")
                 trace(names[1])
                 trace(names[0].length())
-                flags: Arr<Bool> = [true, false]
+                flags: Arr<Bool> = @arrOf(true, false)
                 trace(flags[0])
                 nums: List<Int32> = List<Int32> { }
                 nums.add(5)
@@ -238,7 +238,7 @@ class ParitySuiteTest {
         assertCPrints("4294967296\n") {
             """
             main: () Void {
-                wide: Arr<Int64> = [4294967296]
+                wide: Arr<Int64> = @arrOf(4294967296)
                 trace(wide[0])
             }
             """
@@ -253,7 +253,7 @@ class ParitySuiteTest {
         assertBothPrint("6\nada\ngrace\n7\n3\n") {
             """
             main: () Void {
-                xs: Arr<Int32> = [1, 2, 3]
+                xs: Arr<Int32> = @arrOf(1, 2, 3)
                 mut sum: Int32 = 0
                 for mut x: xs {
                     sum = sum + x

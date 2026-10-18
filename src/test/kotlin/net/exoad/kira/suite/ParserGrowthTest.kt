@@ -474,7 +474,7 @@ class ParserGrowthTest {
     fun integerTypeArgumentsBecomeConstTypeArgs() {
         val p = parse(
             """
-            pub MAGIC: Arr<UInt8, 4> = [1, 2, 3, 4]
+            pub MAGIC: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
             pub Arr<UInt8, USER_CMD_BYTES> as Frame
             """
         )
@@ -705,7 +705,7 @@ class ParserGrowthTest {
         refusedAs("f: () Void { if Foo { }.ok() { trace(1) } } ", "KiraParser::parsePrimaryExpr", "a '.' (Dot) is not allowed here")
         // A construction the body follows directly cannot be told from a
         // condition and a body either, so it is refused the same way.
-        refusedAs("f: () Void { while Foo { 1 } { trace(1) } }", "KiraParser::parsePrimaryExpr", "an '{' (Opening Brace) is not allowed here")
+        refusedAs("f: () Void { while Foo { 1 } { trace(1) } }", "parse.brace.type", "never `{ }` alone")
     }
 
     // --- char literals and interpolated strings ---------------------------------
@@ -814,7 +814,7 @@ class ParserGrowthTest {
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { return a + b + c }\nf: () Int32 { return g(1, c = 3) }",
         "over a container" to "f: (xs: Arr<Int32>) Void { for x: Int32 in xs { trace(x) } }",
         "@_static_assert" to "f: () Void { @_static_assert(1 == 1, \"ok\") }",
-        "const type argument" to "f: () Void { xs: Arr<Int32, 4> = [1, 2, 3, 4] }",
+        "const type argument" to "f: () Void { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4) }",
         "'mut' in an Fx parameter type" to "g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }",
     )
 
@@ -923,10 +923,10 @@ class ParserGrowthTest {
         "call-site 'mut'" to "g: (mut x: Int32) Void { x = 1 }\nmain: () Int32 { mut y: Int32 = 0\n g(mut y)\n return y }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { return a + b }\nmain: () Int32 { return g(1) }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { return a + b + c }\nmain: () Int32 { return g(1, c = 3) }",
-        "over a container" to "main: () Int32 { xs: Arr<Int32> = [1, 2]\n for x: Int32 in xs { trace(x) }\n return 0 }",
+        "over a container" to "main: () Int32 { xs: Arr<Int32> = @arrOf(1, 2)\n for x: Int32 in xs { trace(x) }\n return 0 }",
         "@_static_assert" to "@_static_assert(1 == 1, \"ok\")\nmain: () Int32 { return 0 }",
         "@_static_assert" to "main: () Int32 { @_static_assert(1 == 1, \"ok\")\n return 0 }",
-        "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> = [1, 2, 3, 4]\n return 0 }",
+        "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)\n return 0 }",
         "'mut' in an Fx parameter type" to "g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }\nmain: () Int32 { return 0 }",
     )
 

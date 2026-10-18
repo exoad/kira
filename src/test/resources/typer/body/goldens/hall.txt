@@ -1,21 +1,21 @@
-hall.kira:6:31  [1, 3, 2, 6, 4, 5]  Arr<UInt8, 6>  const=[1:UInt8, 3:UInt8, 2:UInt8, 6:UInt8, 4:UInt8, 5:UInt8]
-hall.kira:6:32  1  UInt8  const=1:UInt8
-hall.kira:6:35  3  UInt8  const=3:UInt8
-hall.kira:6:38  2  UInt8  const=2:UInt8
-hall.kira:6:41  6  UInt8  const=6:UInt8
-hall.kira:6:44  4  UInt8  const=4:UInt8
-hall.kira:6:47  5  UInt8  const=5:UInt8
-hall.kira:8:30  [-1, 0, 2, 1, 4, 5, 3, -1]  Arr<Int8, 8>  const=[-1:Int8, 0:Int8, 2:Int8, 1:Int8, 4:Int8, 5:Int8, 3:Int8, -1:Int8]
-hall.kira:8:31  -1  Int8  const=-1:Int8
-hall.kira:8:32  1  Int8
-hall.kira:8:35  0  Int8  const=0:Int8
-hall.kira:8:38  2  Int8  const=2:Int8
-hall.kira:8:41  1  Int8  const=1:Int8
-hall.kira:8:44  4  Int8  const=4:Int8
-hall.kira:8:47  5  Int8  const=5:Int8
-hall.kira:8:50  3  Int8  const=3:Int8
-hall.kira:8:53  -1  Int8  const=-1:Int8
-hall.kira:8:54  1  Int8
+hall.kira:6:32  @arrOf(1, 3, 2, 6, 4, 5)  Arr<UInt8, 6>  const=[1:UInt8, 3:UInt8, 2:UInt8, 6:UInt8, 4:UInt8, 5:UInt8]
+hall.kira:6:38  1  UInt8  const=1:UInt8
+hall.kira:6:41  3  UInt8  const=3:UInt8
+hall.kira:6:44  2  UInt8  const=2:UInt8
+hall.kira:6:47  6  UInt8  const=6:UInt8
+hall.kira:6:50  4  UInt8  const=4:UInt8
+hall.kira:6:53  5  UInt8  const=5:UInt8
+hall.kira:8:31  @arrOf(-1, 0, 2, 1, 4, 5, 3, -1)  Arr<Int8, 8>  const=[-1:Int8, 0:Int8, 2:Int8, 1:Int8, 4:Int8, 5:Int8, 3:Int8, -1:Int8]
+hall.kira:8:37  -1  Int8  const=-1:Int8
+hall.kira:8:38  1  Int8
+hall.kira:8:41  0  Int8  const=0:Int8
+hall.kira:8:44  2  Int8  const=2:Int8
+hall.kira:8:47  1  Int8  const=1:Int8
+hall.kira:8:50  4  Int8  const=4:Int8
+hall.kira:8:53  5  Int8  const=5:Int8
+hall.kira:8:56  3  Int8  const=3:Int8
+hall.kira:8:59  -1  Int8  const=-1:Int8
+hall.kira:8:60  1  Int8
 hall.kira:9:31  true  Bool  const=true  sym=kira:core.true
 hall.kira:10:25  50  UInt32  const=50:UInt32
 hall.kira:11:33  10  Int32  const=10:Int32

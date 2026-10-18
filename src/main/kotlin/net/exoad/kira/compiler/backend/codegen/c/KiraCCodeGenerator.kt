@@ -1005,7 +1005,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 walkExprs(node.value, visit)
                 walkExprs(node.type, visit)
             }
-            is ArrayLiteral -> node.value.forEach { walkExprs(it, visit) }
+            is BuilderExpr -> node.elements.forEach { walkExprs(it, visit) }
             is Type -> node.children.forEach { walkExprs(it, visit) }
             else -> {}
         }
@@ -3096,10 +3096,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.append("/* function literal */")
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
+    override fun visitBuilderExpr(builderExpr: BuilderExpr) {
+        if (builderExpr.kind == Builder.SET || builderExpr.kind == Builder.MAP) {
+            throw UnsupportedConstruct(builderExpr, "@${builderExpr.kind.intrinsic}", TARGET_NAME)
+        }
         // Compound-literal backed Arr view over KiraSlot elements. Lifetime is
         // the enclosing block -- fine for locals and immediate call arguments.
-        val n = arrayLiteral.value.size
+        val n = builderExpr.elements.size
         if (n == 0) {
             // (KiraSlot[]){ } is a GCC extension with zero size; prefer the helper.
             buffer.append("Arr_empty()")
@@ -3107,7 +3110,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         val elem = pendingArrayElementType
         buffer.append("Arr_lit((KiraSlot[]){ ")
-        arrayLiteral.value.forEachIndexed { i, expr ->
+        builderExpr.elements.forEachIndexed { i, expr ->
             if (i > 0) buffer.append(", ")
             // Integer literals already widen to KiraSlot; only pointers need the cast.
             if (isPointerSlotType(elem)) emitSlotIn(elem, expr) else expr.accept(this)

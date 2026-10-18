@@ -68,7 +68,7 @@ pub cleanBox: (box: Json) Json {
     if !box.isObj() {
         return out
     }
-    sides: List<Str> = ["front", "back", "left", "right"]
+    sides: List<Str> = @listOf("front", "back", "left", "right")
     mut i: Size = 0
     while i < sides.size() {
         f: Maybe<Float64> = pyFloat(box.get(sides[i]))

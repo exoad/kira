@@ -18,9 +18,9 @@ class TestBroken {
 
     @Test
     fun testVariadicsAreNotAllowed() {
-        // `<[T]>` is no type-parameter list, so the head is no declaration: refused where `:` follows it.
-        refusedAs("\nA<[T]>: Any", "KiraParser::parsePrimaryExpr", "a ':' (Colon) is not allowed here")
-        refusedAs("\nA<[T: A]>: Any", "KiraParser::parsePrimaryExpr", "a ':' (Colon) is not allowed here")
+        // `<[T]>` is no type-parameter list, so the head is no declaration: its `[` is a removed literal.
+        refusedAs("\nA<[T]>: Any", "parse.removed", "`[...]` literals are not part of Kira")
+        refusedAs("\nA<[T: A]>: Any", "parse.removed", "`[...]` literals are not part of Kira")
     }
 
 

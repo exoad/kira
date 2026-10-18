@@ -203,7 +203,7 @@ class ExternFxRunTest {
         }
 
         pub element: () Int32 {
-            fs: List<Fx<Tuple0, Int32>> = [() Int32 { return 9 }]
+            fs: List<Fx<Tuple0, Int32>> = @listOf(() Int32 { return 9 })
             return callKind(fs[0])
         }
 

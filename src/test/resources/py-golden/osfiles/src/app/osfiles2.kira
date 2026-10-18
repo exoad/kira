@@ -7,7 +7,7 @@ kira.test as test
 dirOf: (path: Str) Str {
     parts: List<Str> = path.replace("\\", "/").split("/")
     last: Size = parts.size() - 1
-    mut kept: List<Str> = []
+    mut kept: List<Str> = @listOf()
     for i: Size in 0..last {
         kept.add(parts[i])
     }
@@ -123,7 +123,7 @@ pub main: () Int32 {
     t.check(openAppend(nope + "/x").isNone() && lastErrorKind() == "NotFound", "openAppend in a missing directory is none, NotFound")
 
     t.check(env("PATH").isSome() && env("KIRA_OSFILES2_NO_SUCH_VARIABLE").isNone(), "env finds PATH and nothing for a name that is not set")
-    t.check(setAffinity(0, [0]) || lastError() != "", "setAffinity pins this process, or says why it cannot")
+    t.check(setAffinity(0, @listOf(0)) || lastError() != "", "setAffinity pins this process, or says why it cannot")
     t.check(nice(0).isSome() || lastError() != "", "nice(0) is the niceness, or none with a reason")
     return t.finish()
 }

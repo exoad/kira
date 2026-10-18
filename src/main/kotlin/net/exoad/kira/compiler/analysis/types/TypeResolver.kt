@@ -87,7 +87,17 @@ class TypeResolver(private val program: TypedProgram) {
         }
         var notVisible: ModuleGraph.Lookup.NotVisible? = null
         when (val found = program.graph.lookup(scope.module, name, ::isTypeLike)) {
-            is ModuleGraph.Lookup.Found -> return symbolType(found.symbol, t, id, scope)
+            is ModuleGraph.Lookup.Found -> {
+                if (isTupleN(found.symbol) && !scope.module.isStdlib) {
+                    program.report(
+                        "types.type.tuplen",
+                        "TupleN<T> is the tuple a builder's elements make; a variadic parameter of one is not built yet: take a List<T>.",
+                        t,
+                    )
+                    return KType.Error
+                }
+                return symbolType(found.symbol, t, id, scope)
+            }
             is ModuleGraph.Lookup.Ambiguous -> {
                 program.report(
                     "types.type.ambiguous",
@@ -119,6 +129,9 @@ class TypeResolver(private val program: TypedProgram) {
         program.report("types.type.unknown", "Unknown type '$name'.", t)
         return KType.Error
     }
+
+    /** The stdlib's TupleN<T> (kira:tuples). */
+    private fun isTupleN(s: Symbol): Boolean = s is ClassSymbol && s.kind == ClassKind.MAGIC && s.name == "TupleN" && s.module.isStdlib
 
     /** `shapes.Impl`: the pub type `Impl` of the module the alias `shapes` imports. */
     private fun qualified(t: Type, id: QualifiedIdentifier, scope: TypeScope): KType {

@@ -30,8 +30,8 @@ pub TAG: Char = 'S'
 pub SIGNED: Bool = true
 pub BIG: Int64 = 5000000000
 pub MASK_ALL: UInt32 = 0xFFFFFFFF
-pub ORDER: Arr<UInt8, 4> = [0x03, 0x01, 0x02, 0x00]
-pub DELTAS: Arr<Int8, 3> = [-1, 0, 1]
+pub ORDER: Arr<UInt8, 4> = @arrOf(0x03, 0x01, 0x02, 0x00)
+pub DELTAS: Arr<Int8, 3> = @arrOf(-1, 0, 1)
 
 pub Arr<Int32, MAX_POINTS> as Outline
 

@@ -70,7 +70,7 @@ class CppDeclEmitterTest {
             """
             pub LIMIT: Int32 = 10
             pub IP: Str = "192.168.1.62"
-            pub MAGIC: Arr<UInt8, 4> = [0x55, 0xAA, 0x05, 0x0A]
+            pub MAGIC: Arr<UInt8, 4> = @arrOf(0x55, 0xAA, 0x05, 0x0A)
             pub MASK: UInt32 = 0xFFFFFFFF
             pub HALF: Float32 = 0.5
             pub RATE: Float64 = 1e-3
@@ -80,7 +80,7 @@ class CppDeclEmitterTest {
             pub NL: Char = '\n'
             pub DOUBLED: Int32 = LIMIT * 2
             pub NEG: Int32 = -7
-            pub LIST: Arr<Int32> = [1, 2, 3]
+            pub LIST: Arr<Int32> = @arrOf(1, 2, 3)
             """
         )
         assertContains(
@@ -205,7 +205,7 @@ class CppDeclEmitterTest {
         val h = header(
             """
             pub Outer: Struct { pub a: Inner = Inner {} pub m: Maybe<Mid> = null }
-            pub Mid: Struct { pub xs: Arr<Inner, 2> = [Inner {}, Inner {}] pub list: List<Outer> = List<Outer> {} }
+            pub Mid: Struct { pub xs: Arr<Inner, 2> = @arrOf(Inner {}, Inner {}) pub list: List<Outer> = List<Outer> {} }
             pub Inner: Struct { pub v: Int32 = 0 }
             """,
             parts = fakeBodies,

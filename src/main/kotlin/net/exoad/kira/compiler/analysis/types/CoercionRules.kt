@@ -32,6 +32,12 @@ internal class TypeFacts(private val builtins: Builtins) {
 
     fun tuple2Of(a: KType, b: KType): KType = nominal("Tuple2", a, b)
 
+    fun listOf(element: KType): KType = nominal("List", element)
+
+    fun setOf(element: KType): KType = nominal("Set", element)
+
+    fun mapOf(key: KType, value: KType): KType = nominal("Map", key, value)
+
     private fun nominal(name: String, vararg args: KType): KType {
         val cls = builtins.classFor(name) ?: return KType.Error
         return KType.Nominal(cls, args.map { TypeArg.Ty(it) })

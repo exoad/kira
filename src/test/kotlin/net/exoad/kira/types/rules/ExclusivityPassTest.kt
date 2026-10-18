@@ -20,7 +20,7 @@ class ExclusivityPassTest {
         pub Bag: Struct {
             pub a: Int32 = 0
             pub b: Int32 = 0
-            pub items: Arr<Int32> = []
+            pub items: Arr<Int32> = @arrOf()
             pub mut absorb: (other: Bag) Void {
                 a += other.a
             }
@@ -57,7 +57,7 @@ class ExclusivityPassTest {
         }
         pub Counter: Struct {
             pub a: Int32 = 0
-            pub items: Arr<Int32> = []
+            pub items: Arr<Int32> = @arrOf()
             pub mut grow: () Int32 {
                 a += 1
                 return a
@@ -110,7 +110,7 @@ class ExclusivityPassTest {
             snippet(
                 bag + """
                 pub f: () Void {
-                    mut xs: Arr<Int32> = [1, 2]
+                    mut xs: Arr<Int32> = @arrOf(1, 2)
                     n: Size = xs.size()
                     put(mut xs[0], n as Int32)
                     grow(mut xs)
@@ -206,7 +206,7 @@ class ExclusivityPassTest {
                 mut s: Bag = Bag {}
                 put(mut s.a, s.a)
                 grow(mut s.items)
-                mut xs: Arr<Int32> = [1, 2]
+                mut xs: Arr<Int32> = @arrOf(1, 2)
                 put(mut xs[0], sum(xs.view()))
                 fill(mut xs, xs.view())
             }
@@ -255,7 +255,7 @@ class ExclusivityPassTest {
                 return pair8(mv[0], fill(mv))
             }
             pub f: () UInt8 {
-                mut arr: Arr<UInt8, 4> = [1, 2, 3, 4]
+                mut arr: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
                 a: UInt8 = pair8(arr[0], fill(arr.view()))
                 c: UInt8 = arr[0] + fill(arr.view())
                 d: UInt8 = pair8(arr.get(0), fill(arr.from(0)))
@@ -275,7 +275,7 @@ class ExclusivityPassTest {
         val p = snippet(
             bag + """
             pub f: () Int32 {
-                mut xs: Arr<Int32> = [1, 2]
+                mut xs: Arr<Int32> = @arrOf(1, 2)
                 a: Int32 = pair(xs.view()[0], bump(mut xs[1]))
                 put(mut xs[0], bump(mut xs[1]))
                 return a
@@ -325,10 +325,10 @@ class ExclusivityPassTest {
                 n += bump(mut n)
                 bx: Box = Box { n, bump(mut n) }
                 pt: Pt = Pt { n, bump(mut n) }
-                arr: Arr<Int32, 2> = [n, bump(mut n)]
+                arr: Arr<Int32, 2> = @arrOf(n, bump(mut n))
                 mut s: Str = "abc"
                 t: Str = s.substring(0 as Size, app(mut s))
-                mut xs: Arr<Int32, 2> = [1, 2]
+                mut xs: Arr<Int32, 2> = @arrOf(1, 2)
                 mut i: Size = 0
                 xs[i] = bump(mut n) + (bumpS(mut i) as Int32)
                 n = bump(mut n)
@@ -607,7 +607,7 @@ class ExclusivityPassTest {
                 for x: Int32 in xs {
                     xs.add(x)
                 }
-                mut ys: Arr<Int32> = [1]
+                mut ys: Arr<Int32> = @arrOf(1)
                 for y: Int32 in ys {
                     grow(mut ys)
                 }
@@ -983,7 +983,7 @@ class ExclusivityPassTest {
             """
             pub mut G: Int32 = 0
             pub mut S: Str = "ab"
-            pub mut GL: List<Int32> = List<Int32> { values = [1, 2] }
+            pub mut GL: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
             pub bumpG: () Int32 {
                 G += 1
                 return 0
@@ -1000,7 +1000,7 @@ class ExclusivityPassTest {
                 return x + y
             }
             pub f: () Int32 {
-                mut xs: Arr<Int32> = [1, 2, 3]
+                mut xs: Arr<Int32> = @arrOf(1, 2, 3)
                 a: Int32 = add2(G, bumpG())
                 b: Int32 = G + bumpG()
                 G += bumpG()
@@ -1081,11 +1081,11 @@ class ExclusivityPassTest {
                 ticks += next()
                 mut x: Int32 = 5
                 a: Int32 = sub(x, inc(mut x))
-                mut xs: List<Int32> = List<Int32> { values = [1, 2] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
                 b: Int32 = lenOf(xs, pushTo(mut xs))
                 mut z: Int32 = 5
                 z += inc(mut z)
-                mut ws: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                mut ws: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
                 c: Int32 = sub(ws[0], poke(ws.from(0)))
                 d: Int32 = gl[setFirst()]
                 ticks = ticks + next()
@@ -1172,14 +1172,14 @@ class ExclusivityPassTest {
         val p = snippet(
             evalorder + """
             pub mut S: Str = "a"
-            pub mut GA: Arr<Int32, 2> = [1, 2]
+            pub mut GA: Arr<Int32, 2> = @arrOf(1, 2)
             pub resetL: () List<Int32> {
                 gl = List<Int32> { }
-                return List<Int32> { values = [3] }
+                return List<Int32> { values = @arrOf(3) }
             }
             pub resetA: () Arr<Int32, 2> {
-                GA = [5, 6]
-                return [1, 2]
+                GA = @arrOf(5, 6)
+                return @arrOf(1, 2)
             }
             pub growS: () Str {
                 S = S + "b"
@@ -1208,7 +1208,7 @@ class ExclusivityPassTest {
         val p = snippet(
             """
             pub Holder: Any {
-                pub mut items: List<Int32> = List<Int32> { values = [1, 2] }
+                pub mut items: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
                 pub mut n: Int32 = 0
                 pub mut reset: () Void {
                     items = List<Int32> { }
@@ -1308,7 +1308,7 @@ class ExclusivityPassTest {
             pub f: (p: H) Void {
                 mut a: Int32 = 0
                 bumpAfter(mut a)
-                mut xs: List<Int32> = List<Int32> { values = [1] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1) }
                 bumpAfter(mut xs[0])
                 h: H = H {}
                 bumpAfter(mut h.n)
@@ -1328,7 +1328,7 @@ class ExclusivityPassTest {
         val p = snippet(
             hooks + """
             pub mut G: Int32 = 0
-            pub mut GL: List<Int32> = List<Int32> { values = [1] }
+            pub mut GL: List<Int32> = List<Int32> { values = @arrOf(1) }
             pub f: () Void {
                 inc(mut G)
                 GL.add(1)
@@ -1381,7 +1381,7 @@ class ExclusivityPassTest {
                 bump(mut h.item.count, () Void {
                     c.reset()
                 })
-                bumpList(mut h.item.count, List<Fx<Tuple0, Void>> { values = [() Void { c.reset() }] })
+                bumpList(mut h.item.count, List<Fx<Tuple0, Void>> { values = @arrOf(() Void { c.reset() }) })
                 bumpWrap(mut h.item.count, Wrap { f = () Void { c.reset() } })
                 bump(mut h.item.count, f)
                 bump(mut h.item.count, () Void { })
@@ -1428,7 +1428,7 @@ class ExclusivityPassTest {
         val p = snippet(
             """
             pub mut gs: Str = "old"
-            pub mut gl: List<Str> = List<Str> { values = ["a long list element, past the small buffer"] }
+            pub mut gl: List<Str> = List<Str> { values = @arrOf("a long list element, past the small buffer") }
             pub rewrite: () Void {
                 gs = "new"
                 gl = List<Str> {}
@@ -1445,7 +1445,7 @@ class ExclusivityPassTest {
             }
             pub both: () Str {
                 a: Str = viaFx(gs, rewrite)
-                b: Str = viaList(gl[0], List<Fx<Tuple0, Void>> { values = [rewrite] })
+                b: Str = viaList(gl[0], List<Fx<Tuple0, Void>> { values = @arrOf(rewrite) })
                 c: Str = viaFx(gs, () Void { })
                 return a + b + c
             }
@@ -1460,7 +1460,7 @@ class ExclusivityPassTest {
         val alb = snippet(
             """
             pub H: Any {
-                pub mut items: List<Str> = List<Str> { values = ["a long list element, past the small buffer"] }
+                pub mut items: List<Str> = List<Str> { values = @arrOf("a long list element, past the small buffer") }
             }
             pub pick: (h: H) H {
                 return h
@@ -1483,17 +1483,17 @@ class ExclusivityPassTest {
     /** gen.py's prelude: the storages, a writer that replaces every one of them, and the helpers the routes use. */
     private val genPrelude = """
         pub mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
-        pub mut gl: List<Int32> = [1, 2, 3]
-        pub mut gls: List<Str> = ["old-text-long-enough-to-live-on-the-heap-000000"]
-        pub mut hooks: List<Fx<Tuple0, Void>> = []
+        pub mut gl: List<Int32> = @listOf(1, 2, 3)
+        pub mut gls: List<Str> = @listOf("old-text-long-enough-to-live-on-the-heap-000000")
+        pub mut hooks: List<Fx<Tuple0, Void>> = @listOf()
         pub Node: Any {
             pub mut name: Str = "old-text-long-enough-to-live-on-the-heap-000000"
         }
         pub mut gh: Maybe<Node> = null
         pub clobber: () Void {
             gs = "new"
-            gl = [100]
-            gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"]
+            gl = @listOf(100)
+            gls = @listOf("x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j")
             gh = Node { name = "new" }
         }
         pub callIt: (g: Fx<Tuple0, Void>) Void {
@@ -1604,8 +1604,8 @@ class ExclusivityPassTest {
         val p3 = snippet(
             """
             pub mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
-            pub mut gl: List<Int32> = [1, 2, 3]
-            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub mut gl: List<Int32> = @listOf(1, 2, 3)
+            pub mut hooks: List<Fx<Tuple0, Void>> = @listOf()
             pub runHooks: () Void {
                 items: List<Fx<Tuple0, Void>> = hooks
                 for h: Fx<Tuple0, Void> in items {
@@ -1635,12 +1635,12 @@ class ExclusivityPassTest {
             pub drive: () Void {
                 hooks.add(() Void {
                     gs = "new"
-                    gl = [100]
+                    gl = @listOf(100)
                     gn = Node { n = 9 }
                 })
                 trace(lenAfter(gs))
                 gs = "old-text-long-enough-to-live-on-the-heap-000000"
-                gl = [1, 2, 3]
+                gl = @listOf(1, 2, 3)
                 trace(sumAfter(gl))
                 gn = Node {}
                 trace(gn.value.nAfter())
@@ -1666,7 +1666,7 @@ class ExclusivityPassTest {
                 }
             }
             pub mut gt: Tag = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
-            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub mut hooks: List<Fx<Tuple0, Void>> = @listOf()
             pub runHooks: () Void {
                 items: List<Fx<Tuple0, Void>> = hooks
                 for h: Fx<Tuple0, Void> in items {
@@ -1687,7 +1687,7 @@ class ExclusivityPassTest {
         // The control: an add whose declared parameter IS an Fx (a Kira function that runs it) is still charged.
         val ctl = snippet(
             """
-            pub mut hooks: List<Fx<Tuple0, Void>> = []
+            pub mut hooks: List<Fx<Tuple0, Void>> = @listOf()
             pub mut gs: Str = "old"
             pub addRun: (mut hs: List<Fx<Tuple0, Void>>, f: Fx<Tuple0, Void>) Void {
                 f()
@@ -1695,7 +1695,7 @@ class ExclusivityPassTest {
             }
             pub drive: () Void {
                 addRun(mut hooks, () Void {
-                    hooks = []
+                    hooks = @listOf()
                 })
             }
             """,
@@ -1716,12 +1716,12 @@ class ExclusivityPassTest {
             kira.sync as sync
 
             mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
-            mut gl: List<Int32> = [1, 2, 3]
+            mut gl: List<Int32> = @listOf(1, 2, 3)
 
             startAndJoin: () Void {
                 t: Thread = Thread { name = "w", body = () Void {
                     gs = "new"
-                    gl = [100]
+                    gl = @listOf(100)
                 } }
             }
 
@@ -1742,7 +1742,7 @@ class ExclusivityPassTest {
             main: () Void {
                 trace(lenAfter(gs))
                 gs = "old-text-long-enough-to-live-on-the-heap-000000"
-                gl = [1, 2, 3]
+                gl = @listOf(1, 2, 3)
                 trace(sumAfter(gl))
             }
             """,
@@ -1758,8 +1758,8 @@ class ExclusivityPassTest {
             kira.sync as sync
 
             mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
-            mut gls: List<Str> = ["old-text-long-enough-to-live-on-the-heap-000000"]
-            mut hooks: List<Fx<Tuple0, Void>> = []
+            mut gls: List<Str> = @listOf("old-text-long-enough-to-live-on-the-heap-000000")
+            mut hooks: List<Fx<Tuple0, Void>> = @listOf()
 
             startAndJoin: () Void {
                 t: Thread = Thread { name = "w", body = hooks[0] }
@@ -1776,16 +1776,16 @@ class ExclusivityPassTest {
             }
 
             main: () Void {
-                mut hs: List<Fx<Tuple0, Void>> = []
+                mut hs: List<Fx<Tuple0, Void>> = @listOf()
                 hs.add(() Void {
                     gs = "new"
-                    gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"]
+                    gls = @listOf("x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j")
                 })
                 hooks = hs
                 trace(lenAfter(gs))
                 gs = "old-text-long-enough-to-live-on-the-heap-000000"
                 trace(lenAfter(gls[0]))
-                gls = ["old-text-long-enough-to-live-on-the-heap-000000"]
+                gls = @listOf("old-text-long-enough-to-live-on-the-heap-000000")
                 setAfter(mut gls[0])
                 trace(gls[0])
             }

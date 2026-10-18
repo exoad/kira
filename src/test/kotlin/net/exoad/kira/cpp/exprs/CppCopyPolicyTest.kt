@@ -29,10 +29,10 @@ class CppCopyPolicyTest {
         "copy:policy",
         """
         mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
-        mut gl: List<Int32> = [1, 2, 3]
-        mut gl2: List<Int32> = [4, 5, 6]
-        mut hooks: List<Fx<Tuple0, Void>> = []
-        mut gfs: List<Fx<Tuple0, Int32>> = []
+        mut gl: List<Int32> = @listOf(1, 2, 3)
+        mut gl2: List<Int32> = @listOf(4, 5, 6)
+        mut hooks: List<Fx<Tuple0, Void>> = @listOf()
+        mut gfs: List<Fx<Tuple0, Int32>> = @listOf()
 
         pub Tag: Struct {
             pub name: Str = ""
@@ -63,7 +63,7 @@ class CppCopyPolicyTest {
 
         pub arm: () Void {
             gs = "old-text-long-enough-to-live-on-the-heap-000000"
-            gl = [1, 2, 3]
+            gl = @listOf(1, 2, 3)
             gt = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
             tag: Str = "held-by-the-closure-long-enough-for-the-heap-00"
             // Rule M (round 5): a global handed an Fx that is not CONFINED is refused as a
@@ -77,7 +77,7 @@ class CppCopyPolicyTest {
             mut hs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
             hs.add(() Void {
                 gs = "new"
-                gl = [100]
+                gl = @listOf(100)
                 gt = Tag { name = "new", n = 2 }
                 gfs = List<Fx<Tuple0, Int32>> { }
             })
@@ -188,8 +188,8 @@ class CppCopyPolicyTest {
         }
 
         pub ownerTernary: (c: Bool) Int32 {
-            la: List<Int32> = [1, 2, 3]
-            lb: List<Int32> = [4, 5]
+            la: List<Int32> = @listOf(1, 2, 3)
+            lb: List<Int32> = @listOf(4, 5)
             return total((if c { la } else { lb }).view())
         }
 
@@ -310,16 +310,16 @@ class CppCopyPolicyTest {
         }
 
         leaf: (v: Int32, n: Str) Tree {
-            return Tree { v = v, name = n, kids = [] }
+            return Tree { v = v, name = n, kids = @listOf() }
         }
 
         two: () Tree {
-            return Tree { v = 2, name = "two-long-name-that-lives-on-the-heap-000000", kids = [leaf(7, "seven-long-name-that-lives-on-the-heap-0000"), leaf(8, "eight-long-name-that-lives-on-the-heap-0000")] }
+            return Tree { v = 2, name = "two-long-name-that-lives-on-the-heap-000000", kids = @listOf(leaf(7, "seven-long-name-that-lives-on-the-heap-0000"), leaf(8, "eight-long-name-that-lives-on-the-heap-0000")) }
         }
 
         // One kid, two(), with room for more, so a vector assign takes the no-reallocation path.
         roomy: () Tree {
-            mut t: Tree = Tree { v = 1, name = "one", kids = [] }
+            mut t: Tree = Tree { v = 1, name = "one", kids = @listOf() }
             t.kids.add(two())
             t.kids.add(leaf(9, "nine"))
             t.kids.add(leaf(10, "ten"))
@@ -340,7 +340,7 @@ class CppCopyPolicyTest {
             return true
         }
 
-        mut gt: Tree = Tree { v = 0, name = "g", kids = [] }
+        mut gt: Tree = Tree { v = 0, name = "g", kids = @listOf() }
 
         pub Holder: Struct {
             pub t: Tree
@@ -401,7 +401,7 @@ class CppCopyPolicyTest {
         }
 
         pub elementFromSibling: () Str {
-            mut xs: List<Str> = ["a-long-string-that-lives-on-the-heap-0000000", "b"]
+            mut xs: List<Str> = @listOf("a-long-string-that-lives-on-the-heap-0000000", "b")
             xs[0] = xs[1]
             xs[1] = xs[0] + xs[0]
             return "${'$'}{xs[0]} ${'$'}{xs[1]}"
@@ -415,7 +415,7 @@ class CppCopyPolicyTest {
         }
 
         pub listElements: () Str {
-            mut ts: List<Tree> = [roomy(), leaf(5, "five")]
+            mut ts: List<Tree> = @listOf(roomy(), leaf(5, "five"))
             ts[1] = ts[0].kids[0]
             ts[0] = ts[0].kids[0]
             return "${'$'}{shape(ts[0])}|${'$'}{shape(ts[1])}"
@@ -610,7 +610,7 @@ class CppCopyPolicyTest {
         churn: () Void {
             mut i: Int32 = 0
             while i < 200 {
-                junk.add(List<Int32> { values = [-1, -2] })
+                junk.add(List<Int32> { values = @arrOf(-1, -2) })
                 i += 1
             }
         }
@@ -618,10 +618,10 @@ class CppCopyPolicyTest {
         growGll: () Size {
             mut i: Int32 = 0
             while i < 64 {
-                gll.add(List<Int32> { values = [i] })
+                gll.add(List<Int32> { values = @arrOf(i) })
                 i += 1
             }
-            gll.set(0, List<Int32> { values = [77, 88, 99, 111, 222, 333, 444, 555] })
+            gll.set(0, List<Int32> { values = @arrOf(77, 88, 99, 111, 222, 333, 444, 555) })
             churn()
             return 1
         }
@@ -644,7 +644,7 @@ class CppCopyPolicyTest {
 
         resetLists: () Void {
             gll = List<List<Int32>> { }
-            gll.add(List<Int32> { values = [10, 20] })
+            gll.add(List<Int32> { values = @arrOf(10, 20) })
             gls = List<Str> { }
             gls.add("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz")
         }
@@ -756,8 +756,8 @@ class CppCopyPolicyTest {
         "copy:fncall",
         """
         mut gi: Int32 = 29
-        mut hooks: List<Fx<Tuple0, Void>> = []
-        mut adds: List<Fx<Tuple1<Int32>, Void>> = []
+        mut hooks: List<Fx<Tuple0, Void>> = @listOf()
+        mut adds: List<Fx<Tuple1<Int32>, Void>> = @listOf()
 
         pub Runner: Struct {
             pub f: Fx<Tuple0, Void>
@@ -808,7 +808,7 @@ class CppCopyPolicyTest {
 
         pub statementHook: () Int32 {
             gi = 29
-            mut hs: List<Fx<Tuple0, Void>> = []
+            mut hs: List<Fx<Tuple0, Void>> = @listOf()
             hs.add(() Void {
                 gi = gi + 100
             })
@@ -819,7 +819,7 @@ class CppCopyPolicyTest {
 
         pub statementHookArg: () Int32 {
             gi = 29
-            mut xs: List<Fx<Tuple1<Int32>, Void>> = []
+            mut xs: List<Fx<Tuple1<Int32>, Void>> = @listOf()
             xs.add((n: Int32) Void {
                 gi = gi + n
             })

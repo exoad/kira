@@ -625,9 +625,9 @@ class CppClassCopyTest {
             c.item = Item {}
             h: Holder = c
             r: Base = Sub {}
-            return r.fire(c.item.unwrap().label, [() Void {
+            return r.fire(c.item.unwrap().label, @listOf(() Void {
                 h.clear()
-            }])
+            }))
         }
 
         // A trait receiver in object storage (and one given as a parameter) whose callback replaces its only owner.
@@ -863,8 +863,8 @@ class CppClassCopyTest {
     /** The five holders of an `Fx` 40-round3 5.5 names, each as a value the call is given, whose callback runs `c.reset()`. */
     private val holders = listOf(
         Triple("a class field", "w: Wrap", "held: Wrap = Wrap { f = () Void { c.reset() } }"),
-        Triple("an Arr", "w: Arr<Fx<Tuple0, Void>, 1>", "held: Arr<Fx<Tuple0, Void>, 1> = [() Void { c.reset() }]"),
-        Triple("a List", "w: List<Fx<Tuple0, Void>>", "held: List<Fx<Tuple0, Void>> = [() Void { c.reset() }]"),
+        Triple("an Arr", "w: Arr<Fx<Tuple0, Void>, 1>", "held: Arr<Fx<Tuple0, Void>, 1> = @arrOf(() Void { c.reset() })"),
+        Triple("a List", "w: List<Fx<Tuple0, Void>>", "held: List<Fx<Tuple0, Void>> = @listOf(() Void { c.reset() })"),
         Triple("a Maybe", "w: Maybe<Fx<Tuple0, Void>>", "held: Maybe<Fx<Tuple0, Void>> = () Void { c.reset() }"),
         Triple("a tuple", "w: Tuple2<Fx<Tuple0, Void>, Int32>", "held: Tuple2<Fx<Tuple0, Void>, Int32> = Tuple2<Fx<Tuple0, Void>, Int32> { () Void { c.reset() }, 1 }"),
     )
@@ -917,7 +917,7 @@ class CppClassCopyTest {
             pub bumpVia: (b: Bumper) Int32 {
                 h: Box = Box {}
                 c: Box = h
-                fs: List<Fx<Tuple0, Void>> = [() Void { c.reset() }]
+                fs: List<Fx<Tuple0, Void>> = @listOf(() Void { c.reset() })
                 b.bump(mut h.item.count, fs)
                 return h.item.count
             }
@@ -933,7 +933,7 @@ class CppClassCopyTest {
         val programs = listOf(
             "pub later: (s: Str, h: Box) Int32 {\n    return measure(s, () Void {\n        h.reset()\n    })\n}",
             "pub direct: (s: Str, h: Box) Int32 {\n    return plain(s)\n}",
-            "pub sumAll: (s: Str, xs: List<Int32>) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    xs: List<Int32> = [1, 2]\n    return sumAll(s, xs)\n}",
+            "pub sumAll: (s: Str, xs: List<Int32>) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    xs: List<Int32> = @listOf(1, 2)\n    return sumAll(s, xs)\n}",
             "pub inspect: (it: Item, f: Fx<Tuple0, Void>) Int32;\n\npub later: (c: Box, h: Box) Int32 {\n    return inspect(c.item, () Void {\n        h.reset()\n    })\n}",
             "pub later: (c: Box, h: Box) Int32 {\n    return measure(c.item.label, () Void {\n        h.reset()\n    })\n}",
         ) + holders.map { (_, param, build) ->

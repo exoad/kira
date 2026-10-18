@@ -28,7 +28,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentEx
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
@@ -295,7 +295,7 @@ class CppStmtEmitter : CppStmtPart {
         val scalar = t is KType.Scalar
         return when {
             scalar -> "$unused$declarator{${lower.emit(init, CppPrec.ASSIGN)}};"
-            init is ArrayLiteral && ctx.model.coercion(init) == null -> "$unused$declarator = ${lower.bracedElements(init)};"
+            init is BuilderExpr && lower.isSequence(init) && ctx.model.coercion(init) == null -> "$unused$declarator = ${lower.bracedElements(init)};"
             else -> "$unused$declarator = ${lower.emit(init, CppPrec.ASSIGN)};"
         }
     }

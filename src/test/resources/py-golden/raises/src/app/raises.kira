@@ -38,7 +38,7 @@ pub caught: (what: Str) Str {
 
 pub main: () Void {
     trace(parse("42"))
-    for what: Str in ["missing", "key", "empty", "decode", "timeout", "gone", "denied", "fine"] {
+    for what: Str in @arrOf("missing", "key", "empty", "decode", "timeout", "gone", "denied", "fine") {
         trace(caught(what))
     }
 }

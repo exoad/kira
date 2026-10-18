@@ -63,7 +63,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -795,7 +795,7 @@ class PyModuleEmitter(
             is GlobalSymbol -> !sym.isMut
             else -> false
         }
-        is FunctionCallExpr, is ObjectInitExpr, is ArrayLiteral -> true
+        is FunctionCallExpr, is ObjectInitExpr, is BuilderExpr -> true
         is MemberAccessExpr -> target.member is FunctionCallExpr && model.member(target) !is MemberRef.Field
         else -> false
     }
@@ -1190,7 +1190,7 @@ class PyModuleEmitter(
             is UnaryExpr -> unary(e, f)
             is TypeCastExpr -> cast(e, f)
             is IfExpr -> ternary(e, f)
-            is ArrayLiteral -> arrayLiteral(e, f)
+            is BuilderExpr -> builder(e, f)
             is LambdaExpr -> lambda(e, f)
             is WithExpr -> withExpr(e, f)
             is ThrowExpr -> call("_k_throw", wrap(expr(e.value, f), PyPrec.TERNARY))
@@ -1198,14 +1198,22 @@ class PyModuleEmitter(
         }
     }
 
-    /** `[a, b]` as the List or Arr the typer gave it: a list, or a bytearray of UInt8. */
-    private fun arrayLiteral(e: ArrayLiteral, f: Frame): Py {
+    /**
+     * A builder as the List, Arr, Set or Map the typer gave it: a list (a bytearray of UInt8), a
+     * Set's dict of keys, a Map's dict; each value a copy, in Kira's order (a dict reads a key before its value).
+     */
+    private fun builder(e: BuilderExpr, f: Frame): Py {
         val t = typeOf(e) ?: return Py("None", PyPrec.ATOM)
-        if (!isList(t)) {
-            return refusePy(e, "an array literal of ${article(t.display())}")
+        val stored = { x: Expr -> wrap(asValue(x, f, Use.STORE), PyPrec.TERNARY) }
+        return when {
+            isSet(t) -> if (e.elements.isEmpty()) Py("{}", PyPrec.ATOM) else Py("dict.fromkeys([${e.elements.joinToString(", ") { stored(it) }}])", PyPrec.POSTFIX)
+            isMap(t) -> Py("{${e.elements.chunked(2).joinToString(", ") { (k, v) -> "${wrap(expr(k, f), PyPrec.TERNARY)}: ${stored(v)}" }}}", PyPrec.ATOM)
+            !isList(t) -> refusePy(e, "a builder of ${article(t.display())}")
+            else -> {
+                val items = e.elements.joinToString(", ") { stored(it) }
+                if (isBytes(t)) call("bytearray", "($items${if (e.elements.size == 1) "," else ""})") else Py("[$items]", PyPrec.ATOM)
+            }
         }
-        val items = e.value.joinToString(", ") { wrap(asValue(it, f, Use.STORE), PyPrec.TERNARY) }
-        return if (isBytes(t)) call("bytearray", "($items${if (e.value.size == 1) "," else ""})") else Py("[$items]", PyPrec.ATOM)
     }
 
     /**

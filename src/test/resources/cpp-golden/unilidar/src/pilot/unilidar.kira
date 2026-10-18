@@ -7,8 +7,8 @@ pub LIDAR_PORT: UInt16 = 6101
 pub HOST_IP: Str = "192.168.1.2"
 pub HOST_PORT: UInt16 = 6201
 
-pub MAGIC: Arr<UInt8, 4> = [0x55, 0xAA, 0x05, 0x0A]
-pub TAIL: Arr<UInt8, 2> = [0x00, 0xFF]
+pub MAGIC: Arr<UInt8, 4> = @arrOf(0x55, 0xAA, 0x05, 0x0A)
+pub TAIL: Arr<UInt8, 2> = @arrOf(0x00, 0xFF)
 
 pub HEADER_BYTES: Size = 12
 pub TAIL_BYTES: Size = 12

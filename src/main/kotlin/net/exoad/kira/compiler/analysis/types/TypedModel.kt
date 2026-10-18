@@ -3,6 +3,8 @@ package net.exoad.kira.compiler.analysis.types
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
@@ -224,6 +226,9 @@ class TypedModel {
 
     /** A bare name in a `with` block that is a member of that `with`'s receiver. */
     val withMembers: IdentityHashMap<Identifier, WithExpr> = IdentityHashMap()
+
+    /** What each stage 1 `[...]` literal ([Builder.INFER]) was typed as: a List or an Arr (kira-dialect reads it). */
+    val inferred: IdentityHashMap<BuilderExpr, Builder> = IdentityHashMap()
 
     /** The classes some `with` copies. */
     val withCopied: MutableSet<ClassSymbol> = java.util.Collections.newSetFromMap(IdentityHashMap())

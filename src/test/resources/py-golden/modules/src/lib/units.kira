@@ -6,7 +6,7 @@ pub SCALE: Int32 = 1000
 pub NAME: Str = "units"
 pub mut calls: Int32 = 0
 pub mut seen: List<Int32> = List<Int32> { }
-pub TABLE: List<Int32> = [3, 1, 4]
+pub TABLE: List<Int32> = @listOf(3, 1, 4)
 
 pub Meter: Any {
     pub label: Str

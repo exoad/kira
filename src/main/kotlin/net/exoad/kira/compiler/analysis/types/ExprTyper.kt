@@ -27,7 +27,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -58,6 +58,7 @@ internal class PhaseC(val program: TypedProgram) {
     val exprs = ExprTyper(this)
     val stmts = StmtChecker(this)
     val withs = WithTyper(this)
+    val builders = BuilderTyper(this)
     val bindings = MagicBindings()
 
     /** The lambda whose body declares each local or parameter (absent: declared outside every lambda). */
@@ -166,7 +167,7 @@ internal class PhaseC(val program: TypedProgram) {
  * Bidirectional expression typing (design 3.3): [check] types an expression against the type
  * its context expects, recording any implicit conversion (CoercionRules), and [synth] types it
  * from itself alone. The expected type flows into the expressions whose type depends on it:
- * literals, arithmetic built on literals, array literals, lambdas, if-expressions and the
+ * literals, arithmetic built on literals, builders, lambdas, if-expressions and the
  * `@_infer` magic calls. A `Maybe<T>` context gives them `T` and wraps the result.
  *
  * Every expression typed gets `TypedModel.types`; identifiers get `refs`; places get `places`;
@@ -205,7 +206,7 @@ internal class ExprTyper(private val c: PhaseC) {
         is StringLiteral -> c.literals.string(e)
         is InterpolatedStringLiteral -> interpolation(e, ctx, scope)
         is NullLiteral -> KType.NullT
-        is ArrayLiteral -> array(e, hint, ctx, scope)
+        is BuilderExpr -> c.builders.builder(e, hint, ctx, scope)
         is IntrinsicExpr -> c.calls.intrinsic(e, ctx, scope)
         is Identifier -> identifier(e, ctx, scope)
         is ThisExpr -> thisExpr(e, ctx)
@@ -430,35 +431,6 @@ internal class ExprTyper(private val c: PhaseC) {
             }
         }
         return KType.Str
-    }
-
-    /**
-     * `[a, b]` takes its type from the context (design 3.3): an `Arr<T>` or `Arr<T, N>` (whose
-     * count must match), or a `List<T>` (the spec's `xs: List<Int32> = [1, 2, 3]`), and its
-     * elements check against `T`. Without one it is an `Arr` of its first element's type.
-     */
-    private fun array(e: ArrayLiteral, hint: KType?, ctx: BodyContext, scope: Scope): KType {
-        val arr = hint?.takeIf { facts.isArr(it) || facts.isList(it) } as? KType.Nominal
-        if (arr != null) {
-            val element = facts.elementOf(arr) ?: KType.Error
-            val size = arr.constArgs().firstOrNull()
-            if (size != null && e.value.size.toLong() != size) {
-                c.report(
-                    "types.const.arr-size",
-                    "This literal has ${e.value.size} element${if (e.value.size == 1) "" else "s"}, but ${arr.display()} holds exactly $size.",
-                    e,
-                )
-            }
-            e.value.forEachIndexed { i, v -> check(v, element, ctx, scope, "element ${i + 1} of the array") }
-            return arr
-        }
-        if (e.value.isEmpty()) {
-            c.report("types.array.untyped", "An empty array literal needs its type from the context, like xs: Arr<Int32> = [].", e)
-            return KType.Error
-        }
-        val first = synth(e.value.first(), ctx, scope)
-        e.value.drop(1).forEachIndexed { i, v -> check(v, first, ctx, scope, "element ${i + 2} of the array") }
-        return if (first.containsError()) KType.Error else facts.arrOf(first)
     }
 
     // ---- indexing ----------------------------------------------------------------------------

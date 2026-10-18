@@ -27,7 +27,7 @@ pub line: (cells: List<Str>) Str {
 
 // Every row of the file; a row csv refuses ends the program here, as Python's csv.Error ended powerpage's reader.
 pub strictRows: (path: Str) List<List<Str>> {
-    mut out: List<List<Str>> = []
+    mut out: List<List<Str>> = @listOf()
     r: CsvReader = openCsv(path).value
     mut row: Maybe<List<Str>> = r.next()
     while row.isSome() {
@@ -53,8 +53,8 @@ pub main: () Int32 {
     t.check(openCsv(dir + "/nope.csv").isNone() && csvError().startsWith("[Errno 2] "), "none for a missing file, csvError str(e) alone")
     t.check(writeFile(path, "a,\"b\n".bytes()), "a file that ends inside a quote")
     t.checkStr(strictRows(path)[0].joinToString("|"), "a|b\n", "whose last cell holds the rest, no error")
-    t.checkStr(csvLine(["a", "b,c", "q\"q", "", "l\nm"]), "a,\"b,c\",\"q\"\"q\",,\"l\nm\"\r\n", "csvLine quotes where csv.writer does, its \\r\\n included")
-    t.checkStr(csvLine([""]) + csvLine([]), "\"\"\r\n\r\n", "a lone empty cell is quoted, no cells is a bare \\r\\n")
+    t.checkStr(csvLine(@listOf("a", "b,c", "q\"q", "", "l\nm")), "a,\"b,c\",\"q\"\"q\",,\"l\nm\"\r\n", "csvLine quotes where csv.writer does, its \\r\\n included")
+    t.checkStr(csvLine(@listOf("")) + csvLine(@listOf()), "\"\"\r\n\r\n", "a lone empty cell is quoted, no cells is a bare \\r\\n")
     t.check(removeTree(dir), "the day file's directory removed")
     return t.finish()
 }

@@ -35,7 +35,7 @@ main: () Void {
     mut segs: List<Seg> = List<Seg> { }
     segs.add(s)
     trace(segs.contains(t))
-    t.tags = [7]
+    t.tags = @listOf(7)
     trace(segs.contains(t))
     trace(Pt { 1, 2 } == probe)
 

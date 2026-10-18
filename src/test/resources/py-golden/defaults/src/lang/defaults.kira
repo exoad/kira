@@ -1,6 +1,6 @@
 pub STEP: Int32 = 7
 pub LABEL: Str = "dflt"
-pub ROW: List<Int32> = [1, 2, 3]
+pub ROW: List<Int32> = @listOf(1, 2, 3)
 
 mut made: Int32 = 0
 
@@ -77,14 +77,14 @@ main: () Void {
     trace(words("hi", true))
     trace(words(m = 5, s = "x", loud = false, mark = 63 as Char, w = 2.0))
     trace(total())
-    trace(total(extra = 10, xs = [1]))
-    trace(total([5, 5]))
+    trace(total(extra = 10, xs = @listOf(1)))
+    trace(total(@listOf(5, 5)))
 
     // a field left out runs its default; a field given does not
     a: Knob = Knob { "a" }
     trace(a.level)
     trace(made)
-    mut src: List<Int32> = [4, 5]
+    mut src: List<Int32> = @listOf(4, 5)
     b: Knob = Knob { "b", tick(3), src }
     src.add(6)
     trace(b.level)

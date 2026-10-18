@@ -33,7 +33,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -777,9 +778,9 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             is StringLiteral -> return cppString(e.value)
             is CharLiteral -> return cppChar(e.value)
             is NullLiteral -> return "kira::none"
-            is ArrayLiteral -> {
+            is BuilderExpr -> if (e.kind != Builder.SET && e.kind != Builder.MAP) {
                 val element = (type as? KType.Nominal)?.typeArgs()?.firstOrNull() ?: KType.Error
-                return e.value.joinToString(", ", "{", "}") { initText(it, element) }
+                return e.elements.joinToString(", ", "{", "}") { initText(it, element) }
             }
             is UnaryExpr -> if (e.operator == UnaryOp.NEG) {
                 when (val operand = e.operand) {

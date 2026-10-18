@@ -78,7 +78,7 @@ main: () Void {
     mut copied: List<Pt> = pts
     copied[0].x = 1000
     trace("${pts[0].x} ${copied[0].x}")
-    lit: List<Pt> = [a, q]
+    lit: List<Pt> = @listOf(a, q)
     a.y = 55
     trace("${lit[0].y} ${lit[1].x}")
 

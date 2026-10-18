@@ -30,7 +30,7 @@ class MutabilityPassTest {
                     mut p: P = P {}
                     p.x = 3
                     p.bump()
-                    mut xs: Arr<Int32> = [1, 2]
+                    mut xs: Arr<Int32> = @arrOf(1, 2)
                     xs[0] = 5
                     COUNT = 1
                 }
@@ -149,7 +149,7 @@ class MutabilityPassTest {
                 q.bump()
                 q.x = 2
                 c.n = 3
-                zs: Arr<Int32> = [1]
+                zs: Arr<Int32> = @arrOf(1)
                 zs[0] = 2
             }
             """,

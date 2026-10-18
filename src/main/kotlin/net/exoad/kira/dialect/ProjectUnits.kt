@@ -21,8 +21,12 @@ object ProjectUnits {
     /** The unit, each source read by its canonical path, and each one that did not parse with its error. */
     class Loaded(val unit: CompilationUnit, val sources: Map<String, SourceContext>, val failures: Map<String, String>)
 
-    /** [group]'s unit; [literals]: `[...]` literals are read too, as the converter does. */
-    fun load(group: File, literals: Boolean): Loaded {
+    /**
+     * [group]'s unit; [literals]: `[...]` literals are read too, as the converter does; [overlay]:
+     * a file's text by its canonical path, in place of the disk's; [extra]: files the group's
+     * project leaves out (outside its srcDir), read in it as loose modules.
+     */
+    fun load(group: File, literals: Boolean, overlay: Map<String, String> = emptyMap(), extra: List<String> = emptyList()): Loaded {
         val root = group.absoluteFile.toPath().normalize()
         val yaml = root.resolve("kira.yaml")
         val (deps, workspace, names) = when {
@@ -45,9 +49,9 @@ object ProjectUnits {
         val unit = CompilationUnit(bootstrap = false)
         val sources = LinkedHashMap<String, SourceContext>()
         val failures = LinkedHashMap<String, String>()
-        for (f in (deps + workspace).distinctBy { canonical(it) }) {
+        for (f in (deps + workspace + extra).distinctBy { canonical(it) }) {
             val path = canonical(f)
-            val (ctx, error) = read(unit, path, File(f).readText(), names[path], literals)
+            val (ctx, error) = read(unit, path, overlay[path] ?: File(f).readText(), names[path] ?: ModuleNames.loose(f), literals)
             if (ctx != null) sources[path] = ctx else failures[path] = error ?: "unreadable"
         }
         return Loaded(unit, sources, failures)

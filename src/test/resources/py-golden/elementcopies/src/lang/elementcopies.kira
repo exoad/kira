@@ -28,7 +28,7 @@ World: Any {
     }
 }
 
-GRID: List<List<Int32>> = [[1, 2], [3]]
+GRID: List<List<Int32>> = @listOf(@listOf(1, 2), @listOf(3))
 
 first: (xs: List<Pt>) Pt {
     for p: Pt in xs {
@@ -80,7 +80,7 @@ main: () Void {
     trace("${pts[0].x} ${pts[1].x}")
 
     mut g: List<List<Int32>> = List<List<Int32>> { }
-    g.add([1, 2])
+    g.add(@listOf(1, 2))
     mut r: List<Int32> = firstRow(g)
     r.add(3)
     mut c: List<Int32> = gridRow()

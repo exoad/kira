@@ -10,7 +10,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -27,7 +28,7 @@ import java.util.IdentityHashMap
  * It folds integer, float, bool, char and string literals; `null`; references to other
  * constants; unary `- + ! ~`; arithmetic, bitwise, shift, comparison and logical operators on
  * constants of one type; `+` of two Str constants; `E.ENTRY`; numeric `as` conversions; and
- * `Arr` literals of constants. A literal takes the type the context expects (the
+ * `@arrOf` builders of constants. A literal takes the type the context expects (the
  * declaration's type, or the other operand's), else Int32 or Float64, as in phase C.
  *
  * What it reports, because nothing later would: signed overflow and division by zero while
@@ -125,7 +126,7 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         is UnaryExpr -> unary(e, expected, module)
         is BinaryExpr -> binary(e, expected, module)
         is TypeCastExpr -> cast(e, module)
-        is ArrayLiteral -> array(e, expected, module)
+        is BuilderExpr -> if (e.kind == Builder.ARR || e.kind == Builder.INFER) array(e, expected, module) else null
         else -> null
     }
 
@@ -395,28 +396,28 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
     }
 
     /**
-     * An Arr literal against `Arr<T>` or `Arr<T, N>`. Against `Arr<T, N>` the literal must have
+     * An `@arrOf` against `Arr<T>` or `Arr<T, N>`. Against `Arr<T, N>` the builder must have
      * exactly N elements, whether or not they fold: an ArrConst's type is the declared one, so
      * a value of another length would be a false fact, and a C++ `std::array<T, N>` initialised
      * with more elements does not compile, with fewer it zero-fills (`types.const.arr-size`).
      */
-    private fun array(e: ArrayLiteral, expected: KType?, module: ModuleSymbol): ConstValue? {
+    private fun array(e: BuilderExpr, expected: KType?, module: ModuleSymbol): ConstValue? {
         val arr = expected as? KType.Nominal ?: return null
         if (arr.sym.name != Builtins.ARR || (arr.sym as? ClassSymbol)?.kind != ClassKind.MAGIC) {
             return null
         }
         val element = arr.typeArgs().firstOrNull() ?: return null
         val size = arr.constArgs().firstOrNull()
-        if (size != null && e.value.size.toLong() != size) {
+        if (size != null && e.elements.size.toLong() != size) {
             program.report(
                 "types.const.arr-size",
-                "This literal has ${e.value.size} element${if (e.value.size == 1) "" else "s"}, " +
+                "This ${if (e.kind == Builder.INFER) "literal" else "@arrOf"} has ${e.elements.size} element${if (e.elements.size == 1) "" else "s"}, " +
                     "but ${arr.display()} holds exactly $size.",
                 e,
             )
             return null
         }
-        val values = e.value.map { fold(it, element, module) ?: return null }
+        val values = e.elements.map { fold(it, element, module) ?: return null }
         return ConstValue.ArrConst(values, arr)
     }
 }

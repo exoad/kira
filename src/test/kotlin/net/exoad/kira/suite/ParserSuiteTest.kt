@@ -201,8 +201,8 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             main: () Void {
-                a: Arr<Arr<Arr<Int32>>> = [[[1]]]
-                b: Arr<Arr<Arr<Arr<Int32>>>> = [[[[1]]]]
+                a: Arr<Arr<Arr<Int32>>> = @arrOf(@arrOf(@arrOf(1)))
+                b: Arr<Arr<Arr<Arr<Int32>>>> = @arrOf(@arrOf(@arrOf(@arrOf(1))))
             }
             """
         )
@@ -214,7 +214,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                a: Arr<Int32> = [1]
+                a: Arr<Int32> = @arrOf(1)
                 b: Bool = a.size() > 0
                 c: Bool = a.size() >= 1
                 d: Bool = a.size() < 2
@@ -394,7 +394,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                values: Arr<Int32> = [1, 2, 3]
+                values: Arr<Int32> = @arrOf(1, 2, 3)
                 first: Int32 = values[0]
                 length: Int32 = values.size()
                 typed: Int32 = first as Int32
@@ -536,9 +536,9 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                empty: Arr<Int32> = []
-                nums: Arr<Int32> = [1, 2, 3]
-                nested: Arr<Arr<Int32>> = [[1], [2, 3]]
+                empty: Arr<Int32> = @arrOf()
+                nums: Arr<Int32> = @arrOf(1, 2, 3)
+                nested: Arr<Arr<Int32>> = @arrOf(@arrOf(1), @arrOf(2, 3))
             }
             """
         )

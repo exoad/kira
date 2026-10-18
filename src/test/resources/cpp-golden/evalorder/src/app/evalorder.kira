@@ -23,7 +23,7 @@ golden.evalorder.lib.ctr as ctr
 mut ticks: Int32 = 0
 mut idx: Size = 0
 mut row: Size = 1
-mut garr: Arr<Int32, 4> = [10, 20, 30, 40]
+mut garr: Arr<Int32, 4> = @arrOf(10, 20, 30, 40)
 mut gl: List<Int32> = List<Int32> { }
 
 next: () Int32 {
@@ -80,7 +80,7 @@ bumpB: () Int32 {
 }
 
 resetL: () Int32 {
-    gl = List<Int32> { values = [8] }
+    gl = List<Int32> { values = @arrOf(8) }
     return 0
 }
 
@@ -147,7 +147,7 @@ main: () Void {
     // An impure receiver runs before the spilled arguments: 30, then 31 and 32.
     trace(makeBox().pair(next(), next()))
     // A mut argument's index runs before its siblings: slot 1 takes 33 and 34.
-    mut slots: Arr<Int32, 4> = [0, 0, 0, 90]
+    mut slots: Arr<Int32, 4> = @arrOf(0, 0, 0, 90)
     store(mut slots[nextSize()], next(), next())
     trace(slots[1])
     // A place assignment locates its target before the value runs: slot 2 takes 35.
@@ -159,13 +159,13 @@ main: () Void {
     trace(slots[3])
     trace(idx)
     // The receiver of a mut fx is the element itself, never a copy: box 0 takes 36 and 37.
-    mut boxes: Arr<Box, 1> = [Box { }]
+    mut boxes: Arr<Box, 1> = @arrOf(Box { })
     idx = 0
     boxes[nextSize() - 1].grow(next(), next())
     trace(boxes[0].v)
     // A nested element place orders both indexes and writes the element itself, never a
     // copy of the row: grid[1][2] takes 5, then 6.
-    mut grid: Arr<Arr<Int32, 3>, 3> = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    mut grid: Arr<Arr<Int32, 3>, 3> = @arrOf(@arrOf(0, 0, 0), @arrOf(0, 0, 0), @arrOf(0, 0, 0))
     idx = 0
     grid[nextSize()][nextSize()] = 5
     trace(grid[1][2] * 10 + grid[2][1])
@@ -177,14 +177,14 @@ main: () Void {
     store(mut grid[row][nextSize()], next(), next())
     trace(grid[1][1])
     // The receiver of a mut fx two elements deep is that element: cell [1][2] takes 40 and 41.
-    mut cells: Arr<Arr<Box, 3>, 3> = [[Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }]]
+    mut cells: Arr<Arr<Box, 3>, 3> = @arrOf(@arrOf(Box { }, Box { }, Box { }), @arrOf(Box { }, Box { }, Box { }), @arrOf(Box { }, Box { }, Box { }))
     idx = 0
     cells[nextSize()][nextSize()].grow(next(), next())
     trace(cells[1][2].v)
     // A view of a List parameter beside an effect points at the caller's list, never at a
     // copy: 2 + 3 + 4.
     idx = 0
-    trace(sumTail(List<Int32> { values = [1, 2, 3, 4] }))
+    trace(sumTail(List<Int32> { values = @arrOf(1, 2, 3, 4) }))
     // A view lent from a global: 20 + 30 + 40.
     idx = 0
     trace(total(garr.from(nextSize())))
@@ -208,7 +208,7 @@ main: () Void {
     // A binding that names its receiver twice (StrBuf.set) and a StrBuf interpolation, one
     // call per piece, locate the receiver once: idx ends at 1 both times, and bufs[1] holds
     // a2b, 3 characters.
-    mut bufs: Arr<StrBuf<8>, 3> = [StrBuf<8> { }, StrBuf<8> { }, StrBuf<8> { }]
+    mut bufs: Arr<StrBuf<8>, 3> = @arrOf(StrBuf<8> { }, StrBuf<8> { }, StrBuf<8> { })
     idx = 0
     bufs[nextSize()].set("x")
     trace(idx)
@@ -226,7 +226,7 @@ main: () Void {
     // 2 elements: 5 - 1, 2.
     mut x: Int32 = 5
     trace(sub(x, inc(mut x)))
-    mut xs: List<Int32> = List<Int32> { values = [1, 2] }
+    mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
     trace(lenOf(xs, pushTo(mut xs)))
     // A compound assignment reads its target before a value that writes it: 5 + 1.
     mut z: Int32 = 5
@@ -238,7 +238,7 @@ main: () Void {
     // The receiver of a mut fx and a mut argument at an element of a List are located after
     // a sibling that grows the List: C++ bound the element first and wrote into the storage the
     // growth freed. gll[0] ends [1, 7] beside 64 more rows, and gls[0] takes 71 beside 64 more.
-    gll.add(List<Int32> { values = [1] })
+    gll.add(List<Int32> { values = @arrOf(1) })
     gll[0].add(growGll())
     trace(gll[0].size())
     trace(gll[0].get(1))
@@ -252,7 +252,7 @@ main: () Void {
     trace(sub(gv.view().get(0), setGv()))
     // A MutView handed to a callee writes what it is lent from, so a read of that local is
     // made before the call (gcc and MSVC printed 8): 1 - 1.
-    mut ws: List<Int32> = List<Int32> { values = [1, 2, 3] }
+    mut ws: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
     trace(sub(ws[0], poke(ws.from(0))))
     // A view of a temporary is formed inside the lambda that holds its owner (design 30, E2:
     // gcc printed garbage for a kira::View copied out of the list's declaration): the list is
@@ -286,21 +286,21 @@ main: () Void {
 }
 
 freshLists: () List<List<Int32>> {
-    return List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] }
+    return List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(10, 20, 30) }) }
 }
 
 freshRef: () Ref<List<Int32>> {
-    return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30] } }
+    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30) } }
 }
 
 freshMaybe: () Maybe<List<Int32>> {
-    m: Maybe<List<Int32>> = List<Int32> { values = [10, 20, 30] }
+    m: Maybe<List<Int32>> = List<Int32> { values = @arrOf(10, 20, 30) }
     return m
 }
 
 makeList: () List<Int32> {
     ticks += 1
-    return List<Int32> { values = [1000, 2000, 3000, 4000] }
+    return List<Int32> { values = @arrOf(1000, 2000, 3000, 4000) }
 }
 
 minus: (v: View<Int32>, k: Int32) Int32 {
@@ -309,13 +309,13 @@ minus: (v: View<Int32>, k: Int32) Int32 {
 
 mut gll: List<List<Int32>> = List<List<Int32>> { }
 mut gls: List<Int32> = List<Int32> { }
-mut gv: List<Int32> = List<Int32> { values = [1, 2, 3] }
+mut gv: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
 
 // Appends past any capacity gll had: its rows move.
 growGll: () Int32 {
     mut i: Int32 = 0
     while i < 64 {
-        gll.add(List<Int32> { values = [i] })
+        gll.add(List<Int32> { values = @arrOf(i) })
         i += 1
     }
     return 7

@@ -95,7 +95,7 @@ strOrder: () Void {
     trace(order("ÿ", "Ā"))
     trace(order("é", "✓"))
     trace(order("✓", "🚗"))
-    e000: List<UInt8> = [0xEE, 0x80, 0x80]
+    e000: List<UInt8> = @listOf(0xEE, 0x80, 0x80)
     pua: Str = Str.of(e000)
     trace(order(pua, "🚗"))
     trace(order("✓", pua))
@@ -106,7 +106,7 @@ strOrder: () Void {
 }
 
 pieces: () List<Str> {
-    return ["a", "b", " ", "\t", "\n", "\r", "${11 as Char}", "${12 as Char}", "${28 as Char}", "é", "ab", "ba", "✓"]
+    return @listOf("a", "b", " ", "\t", "\n", "\r", "${11 as Char}", "${12 as Char}", "${28 as Char}", "é", "ab", "ba", "✓")
 }
 
 pub radixOf: (s: Str, radix: Int32) Str {
@@ -186,10 +186,10 @@ strText: () Void {
 }
 
 joins: () Void {
-    abc: List<Str> = ["a", "", "b"]
+    abc: List<Str> = @listOf("a", "", "b")
     none: List<Str> = List<Str> { }
-    one: List<Str> = ["x"]
-    marks: List<Str> = ["é", "✓"]
+    one: List<Str> = @listOf("x")
+    marks: List<Str> = @listOf("é", "✓")
     trace(vis(abc.joinToString(", ")) + vis(none.joinToString(", ")) + vis(one.joinToString("-")))
     trace(vis(" the  quick\tbrown ".splitWhitespace().joinToString("_")) + vis(marks.joinToString("")))
     ps: List<Str> = pieces()
@@ -346,41 +346,41 @@ listOrder: () Void {
     zero: Float64 = 0.0
     inf: Float64 = 1.0 / zero
     nan: Float64 = zero / zero
-    mut ns: List<Int32> = [3, -1, 2, -1, 0, 2147483647, -2147483648]
+    mut ns: List<Int32> = @listOf(3, -1, 2, -1, 0, 2147483647, -2147483648)
     ns.sort()
     trace(ints(ns))
-    mut fs: List<Float64> = [2.0, nan, 0.0, -inf, -0.0, 1.5, nan, -0.0, inf, -1.5, 0.0]
+    mut fs: List<Float64> = @listOf(2.0, nan, 0.0, -inf, -0.0, 1.5, nan, -0.0, inf, -1.5, 0.0)
     fs.sort()
     trace(floats(fs))
-    mut cs: List<Char> = ['h', 'e', 'l', 'l', 'o', ',', ' ', 'W', (200 as Char), (127 as Char), (128 as Char), '0']
+    mut cs: List<Char> = @listOf('h', 'e', 'l', 'l', 'o', ',', ' ', 'W', (200 as Char), (127 as Char), (128 as Char), '0')
     cs.sort()
     trace(codes(cs))
-    mut ss: List<Str> = ["pear", "Apple", "éclair", "apple", "", "✓", "🚗", "", "Ā", "ÿ", "a"]
+    mut ss: List<Str> = @listOf("pear", "Apple", "éclair", "apple", "", "✓", "🚗", "", "Ā", "ÿ", "a")
     ss.sort()
     trace(visAll(ss))
-    mut bs: List<UInt8> = [200, 3, 255, 0, 3]
+    mut bs: List<UInt8> = @listOf(200, 3, 255, 0, 3)
     bs.sort()
     trace(bytes8(bs))
     mut none: List<Int32> = List<Int32> { }
     none.sort()
     trace(ints(none))
-    trace("${sum32([1, -2, 3])} ${sum32(none)} ${sum64([9223372036854775807, -1, 1])} ${sum64([-9223372036854775807, -1])}")
-    u8s: List<UInt8> = [200, 100]
-    i8s: List<Int8> = [100, 100]
-    i16s: List<Int16> = [30000, 30000]
-    u64s: List<UInt64> = [0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF, 3]
-    szs: List<Size> = [3, 4]
+    trace("${sum32(@listOf(1, -2, 3))} ${sum32(none)} ${sum64(@listOf(9223372036854775807, -1, 1))} ${sum64(@listOf(-9223372036854775807, -1))}")
+    u8s: List<UInt8> = @listOf(200, 100)
+    i8s: List<Int8> = @listOf(100, 100)
+    i16s: List<Int16> = @listOf(30000, 30000)
+    u64s: List<UInt64> = @listOf(0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF, 3)
+    szs: List<Size> = @listOf(3, 4)
     trace("${u8s.sum()} ${i8s.sum()} ${i16s.sum()} ${u64s.sum()} ${szs.sum()}")
-    tenths: List<Float64> = [0.1, 0.2, 0.3]
-    kahan: List<Float64> = [1e16, 1.0, -1e16]
-    negz: List<Float64> = [-0.0]
+    tenths: List<Float64> = @listOf(0.1, 0.2, 0.3)
+    kahan: List<Float64> = @listOf(1e16, 1.0, -1e16)
+    negz: List<Float64> = @listOf(-0.0)
     nofs: List<Float64> = List<Float64> { }
-    infs: List<Float64> = [inf, -inf]
+    infs: List<Float64> = @listOf(inf, -inf)
     trace("${tenths.sum()} ${kahan.sum()} ${negz.sum()} ${nofs.sum()} ${infs.sum()}")
     trace(mi(ns.minOrNull()) + " " + mi(ns.maxOrNull()) + " " + mi(none.minOrNull()) + " " + mi(none.maxOrNull()))
-    zs: List<Float64> = [0.0, -0.0, 0.0]
-    nzs: List<Float64> = [-0.0, 0.0, -0.0]
-    withNan: List<Float64> = [1.0, nan, -1.0]
+    zs: List<Float64> = @listOf(0.0, -0.0, 0.0)
+    nzs: List<Float64> = @listOf(-0.0, 0.0, -0.0)
+    withNan: List<Float64> = @listOf(1.0, nan, -1.0)
     trace(mf(zs.minOrNull()) + " " + mf(zs.maxOrNull()) + " " + mf(nzs.minOrNull()) + " " + mf(nzs.maxOrNull()) + " " + mf(withNan.minOrNull()) + " " + mf(withNan.maxOrNull()) + " " + mf(nofs.minOrNull()))
     trace(mf(infs.minOrNull()) + " " + mf(infs.maxOrNull()) + " " + mf(tenths.minOrNull()) + " " + mf(tenths.maxOrNull()))
     trace(ms(ss.minOrNull()) + " " + ms(ss.maxOrNull()) + " " + mc(cs.minOrNull()) + " " + mc(cs.maxOrNull()) + " " + "${bs.maxOrNull().unwrapOr(0)}")

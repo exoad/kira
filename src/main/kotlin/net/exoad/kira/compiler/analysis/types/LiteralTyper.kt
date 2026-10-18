@@ -8,7 +8,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -147,14 +148,17 @@ internal class ConstFolder(private val c: PhaseC) {
             is UnaryExpr -> unary(e)
             is BinaryExpr -> binary(e)
             is TypeCastExpr -> cast(e)
-            is ArrayLiteral -> {
-                // A literal of another length than its Arr<T, N> is not a value of that type.
+            is BuilderExpr -> {
+                if (e.kind == Builder.SET || e.kind == Builder.MAP) {
+                    return drop(e, type)
+                }
+                // A builder of another length than its Arr<T, N> is not a value of that type.
                 val size = (type as? KType.Nominal)?.takeIf { c.facts.isArr(it) }?.constArgs()?.firstOrNull()
-                if (size != null && size != e.value.size.toLong()) {
+                if (size != null && size != e.elements.size.toLong()) {
                     model.consts.remove(e)
                     return null
                 }
-                val values = e.value.map { model.consts[it] ?: return drop(e, type) }
+                val values = e.elements.map { model.consts[it] ?: return drop(e, type) }
                 ConstValue.ArrConst(values, type)
             }
             else -> null

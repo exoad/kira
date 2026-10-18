@@ -35,7 +35,7 @@ class EffectsPassTest {
                 acc += twice(v)
                 mut p: P = P {}
                 p.x = acc
-                mut xs: Arr<Int32, 2> = [1, 2]
+                mut xs: Arr<Int32, 2> = @arrOf(1, 2)
                 xs[0] = p.x
                 return xs[0] + LIMIT + p.doubled()
             }
@@ -354,7 +354,7 @@ class EffectsPassTest {
                 return clobber(GXSS.view())
             }
             pub nested: () Int32 {
-                return applyAll([() Void {}])
+                return applyAll(@arrOf(() Void {}))
             }
             pub prototype: () Int32 {
                 return proto()
@@ -382,7 +382,7 @@ class EffectsPassTest {
         // accessor on a local is PURE either way.
         val p = snippet(
             """
-            mut GL: List<Int32> = List<Int32> { values = [1] }
+            mut GL: List<Int32> = List<Int32> { values = @arrOf(1) }
             pub g: () Int32 {
                 return GL.get(0)
             }
@@ -390,7 +390,7 @@ class EffectsPassTest {
                 return GL[0]
             }
             pub l: () Int32 {
-                xs: List<Int32> = List<Int32> { values = [1] }
+                xs: List<Int32> = List<Int32> { values = @arrOf(1) }
                 return xs.get(0) + xs[0]
             }
             """,

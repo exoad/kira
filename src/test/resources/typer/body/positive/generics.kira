@@ -71,9 +71,9 @@ pub uses: () Float64 {
 }
 
 pub lists: () Int32 {
-    xs: List<Int32> = [1, 2, 3]            // @type List<Int32> @ [1, 2, 3]
-    ys: List<Float32> = [1.0, 2.5]         // @type List<Float32> @ [1.0, 2.5]
-    zs: List<Str> = ["a"]                  // @type List<Str> @ ["a"]
+    xs: List<Int32> = @listOf(1, 2, 3)            // @type List<Int32> @ @listOf(1, 2, 3)
+    ys: List<Float32> = @listOf(1.0, 2.5)         // @type List<Float32> @ @listOf(1.0, 2.5)
+    zs: List<Str> = @listOf("a")                  // @type List<Str> @ @listOf("a")
     return xs.get(0)                       // @type Int32 call=MAGIC(List.get)
 }
 
@@ -86,16 +86,16 @@ pub mut LEVEL: Int32 = POS * 2             // @type Int32
 // A constant of a literal type (Arr<T, N> is a std::array) is constexpr, and its constexpr
 // magic calls are constants; a global of a run-time type (Arr<T> is a std::vector, a struct
 // holding a List) is built from literals in no order (D49), and is read at run time only.
-pub FIXED: Arr<Int32, 3> = [1, 2, 3]       // @type Arr<Int32, 3>
+pub FIXED: Arr<Int32, 3> = @arrOf(1, 2, 3)       // @type Arr<Int32, 3>
 pub FN: Size = FIXED.size()                // @type Size call=MAGIC(Arr.size)
 pub F0: Int32 = FIXED.get(0)               // @type Int32 call=MAGIC(Arr.get)
 pub F1: Int32 = FIXED[1]                   // @type Int32
 pub FVN: Size = FIXED.view().size()        // @type Size call=MAGIC(View.size); @type View<Int32> call=MAGIC(Arr.view) @ FIXED.view()
-pub DYN: Arr<Int32> = [POS, 2, 3]          // @type Arr<Int32>
-pub mut STATE: List<Int32> = [F0, F1]      // @type List<Int32>
+pub DYN: Arr<Int32> = @arrOf(POS, 2, 3)          // @type Arr<Int32>
+pub mut STATE: List<Int32> = @listOf(F0, F1)      // @type List<Int32>
 
 pub Bag: Struct {
-    pub items: List<Int32> = []
+    pub items: List<Int32> = @listOf()
     pub n: Int32 = 1
 }
 

@@ -209,9 +209,10 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        node("LArray") {
-            arrayLiteral.value.forEach { it.accept(this) }
+    override fun visitBuilderExpr(builderExpr: BuilderExpr) {
+        node("Builder", "kind=\"${builderExpr.kind.intrinsic}\"") {
+            builderExpr.typeArgs.forEach { it.accept(this) }
+            builderExpr.elements.forEach { it.accept(this) }
         }
     }
 

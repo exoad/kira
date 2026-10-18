@@ -40,11 +40,11 @@ class ExternCoercionRunTest {
 
         mut gs: Str = "$OLD"
         mut gm: Maybe<Str> = "$OLD"
-        mut gls: List<Str> = ["$OLD"]
+        mut gls: List<Str> = @listOf("$OLD")
 
         reset: () Void {
             gs = "$OLD"
-            gls = ["$OLD"]
+            gls = @listOf("$OLD")
         }
 
         two: () Int32 {
@@ -81,7 +81,7 @@ class ExternCoercionRunTest {
 
         pub mElement: () Int32 {
             reset()
-            return lenAfter(gls[0], () Void { gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"] })
+            return lenAfter(gls[0], () Void { gls = @listOf("x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j") })
         }
 
         pub mLiteral: () Int32 {
@@ -175,7 +175,7 @@ class ExternCoercionRunTest {
             pub mut dog: Dog = Dog { }
         }
 
-        mut gks: List<Kid> = []
+        mut gks: List<Kid> = @listOf()
 
         pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") nameLenAfter: (b: Base, f: Fx<Tuple0, Void>) Int32;
 
@@ -199,8 +199,8 @@ class ExternCoercionRunTest {
         }
 
         pub kElement: () Int32 {
-            gks = [Kid { }]
-            return nameLenAfter(gks[0], () Void { gks = [Kid { name = "x" }, Kid { name = "y" }, Kid { name = "z" }] })
+            gks = @listOf(Kid { })
+            return nameLenAfter(gks[0], () Void { gks = @listOf(Kid { name = "x" }, Kid { name = "y" }, Kid { name = "z" }) })
         }
         """,
     )

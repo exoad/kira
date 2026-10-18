@@ -23,7 +23,7 @@ pub K_B: Int32 = 0x7F
 pub TEN: Int32 = 010
 pub NINE: Int32 = 09
 pub NEG1: Int64 = 0xFFFFFFFFFFFFFFFF
-pub TENS: Arr<Int32, 010> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+pub TENS: Arr<Int32, 010> = @arrOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 
 pub Pt: Struct {
     pub x: Int32 = 0

@@ -245,10 +245,10 @@ main: () Void {
     trace(command("rec 3", true))
     trace(command("", true))
     trace(command("zap 1 2", true))
-    sel: List<UInt8> = [0x73, 0x65, 0x6C, 0x20, 0x33]
+    sel: List<UInt8> = @listOf(0x73, 0x65, 0x6C, 0x20, 0x33)
     trace(frame(sel, true))
-    bad: List<UInt8> = [0x73, 0x65, 0x6C, 0x20, 0xFF]
+    bad: List<UInt8> = @listOf(0x73, 0x65, 0x6C, 0x20, 0xFF)
     trace(frame(bad, true))
-    heart: List<UInt8> = [0x68, 0xC3]
+    heart: List<UInt8> = @listOf(0x68, 0xC3)
     trace(frame(heart, false))
 }

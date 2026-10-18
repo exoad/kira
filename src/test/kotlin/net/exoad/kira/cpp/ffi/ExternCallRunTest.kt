@@ -97,34 +97,34 @@ class ExternCallRunTest {
 
         mut GS: Str = "$LONG"
         mut GS2: Str = "other"
-        mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
-        mut GL2: List<Int32> = List<Int32> { values = [4, 5, 6] }
-        mut GLL: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
-        mut GA: Arr<Int32, 3> = [1, 2, 3]
+        mut GL: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+        mut GL2: List<Int32> = List<Int32> { values = @arrOf(4, 5, 6) }
+        mut GLL: List<List<Int32>> = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
+        mut GA: Arr<Int32, 3> = @arrOf(1, 2, 3)
         mut GM: Maybe<Str> = "$LONG"
         mut GP: Pt = Pt { name = "$LONG", n = 1 }
         mut GP2: Pt = Pt { name = "y", n = 3 }
-        mut GSTRS: List<Str> = List<Str> { values = ["$LONG"] }
+        mut GSTRS: List<Str> = List<Str> { values = @arrOf("$LONG") }
         mut GBOXES: List<Box> = List<Box> { }
         GREETING: Str = "hi"
         mut TICKS: Int32 = 0
 
         reset: () Void {
             GS = "$LONG"
-            GL = List<Int32> { values = [1, 2, 3] }
-            GLL = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
-            GA = [1, 2, 3]
+            GL = List<Int32> { values = @arrOf(1, 2, 3) }
+            GLL = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
+            GA = @arrOf(1, 2, 3)
             GM = "$LONG"
             GP = Pt { name = "$LONG", n = 1 }
-            GSTRS = List<Str> { values = ["$LONG"] }
+            GSTRS = List<Str> { values = @arrOf("$LONG") }
         }
 
         growGs: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = [() Void { GS = "$LONGER" + GS }] }
+            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "$LONGER" + GS }) }
         }
 
         growGl: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = [() Void { GL = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7, 7] } }] }
+            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GL = List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7, 7) } }) }
         }
 
         pub sGlobal: () Int32 {
@@ -135,13 +135,13 @@ class ExternCallRunTest {
 
         pub sLent: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GSTRS = List<Str> { values = ["$LONGER"] } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GSTRS = List<Str> { values = @arrOf("$LONGER") } }) }
             return lenAfterL(GSTRS[0], fs)
         }
 
         pub sField: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GP = Pt { name = "$LONGER", n = 2 } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GP = Pt { name = "$LONGER", n = 2 } }) }
             return lenAfterL(GP.name, fs)
         }
 
@@ -167,7 +167,7 @@ class ExternCallRunTest {
 
         pub sComputed: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GS = "" }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "" }) }
             return lenAfterL(GS + "!", fs)
         }
 
@@ -185,7 +185,7 @@ class ExternCallRunTest {
 
         tick: () List<Fx<Tuple0, Void>> {
             TICKS += 1
-            return List<Fx<Tuple0, Void>> { values = [() Void { GS = "" }] }
+            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "" }) }
         }
 
         pub sSpilled: () Int32 {
@@ -206,32 +206,32 @@ class ExternCallRunTest {
 
         pub cList: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GL = List<Int32> { values = [9, 7] } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GL = List<Int32> { values = @arrOf(9, 7) } }) }
             return sumListL(GL, fs)
         }
 
         pub cArr: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GA = [7, 7, 7] }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GA = @arrOf(7, 7, 7) }) }
             return sumArrL(GA, fs)
         }
 
         pub cMaybe: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GM = null }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GM = null }) }
             return lenMaybeL(GM, fs)
         }
 
         pub cStruct: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GP = Pt { name = "x", n = 2 } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GP = Pt { name = "x", n = 2 } }) }
             return ptLenL(GP, fs)
         }
 
         pub cClass: () Int32 {
             GBOXES = List<Box> { }
             GBOXES.add(newBox(82))
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GBOXES = List<Box> { } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GBOXES = List<Box> { } }) }
             return boxLenL(GBOXES[0], fs)
         }
 
@@ -265,8 +265,8 @@ class ExternCallRunTest {
         }
 
         pub gPeek: () Int32 {
-            ys: List<Int32> = List<Int32> { values = [10, 20] }
-            mut xs: List<Int32> = List<Int32> { values = [1, 2] }
+            ys: List<Int32> = List<Int32> { values = @arrOf(10, 20) }
+            mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
             return peek(ys.view(), xs.view())
         }
 
@@ -333,14 +333,14 @@ class ExternCallRunTest {
 
         pub r1P: (c: Bool) Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GP = Pt { name = "x", n = 2 } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GP = Pt { name = "x", n = 2 } }) }
             return ptNAfterL(if c { GP } else { GP2 }, fs)
         }
 
         pub r1Local: (c: Bool) Int32 {
             reset()
-            a: List<Int32> = List<Int32> { values = [1, 2, 3] }
-            b: List<Int32> = List<Int32> { values = [4, 5, 6] }
+            a: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+            b: List<Int32> = List<Int32> { values = @arrOf(4, 5, 6) }
             return sumListL(if c { a } else { b }, growGl())
         }
         """,
@@ -493,7 +493,7 @@ class ExternCallRunTest {
         mut GS: Str = "$LONG"
 
         growGs: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = [() Void { GS = "$LONGER" + GS }] }
+            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "$LONGER" + GS }) }
         }
 
         pub t13: () Int32 {

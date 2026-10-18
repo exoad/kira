@@ -26,7 +26,7 @@ class ProfilePassTest {
                 """
                 pub MODE_A: Int32 = 0
                 pub Frame: Struct {
-                    pub bytes: Arr<UInt8, 8> = [0, 0, 0, 0, 0, 0, 0, 0]
+                    pub bytes: Arr<UInt8, 8> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
                     pub mode: Int32 = MODE_A
                     pub mut clear: () Void {
                         bytes[0] = 0

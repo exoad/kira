@@ -100,8 +100,8 @@ class LentPlacesTest {
             // A by-value element beside a mut write of its owner: an Int32 D33 copies first (F1), both accepted.
             Pair(
                 "by-value element",
-                "mut xs: List<Int32> = List<Int32> { values = [1, 2] }\n return sub(xs[0], pushTo(mut xs))",
-                "mut xs: List<Int32> = List<Int32> { values = [1, 2] }\n return sub(xs.get(0), pushTo(mut xs))",
+                "mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }\n return sub(xs[0], pushTo(mut xs))",
+                "mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }\n return sub(xs.get(0), pushTo(mut xs))",
                 emptyList(),
             ),
         )
@@ -260,7 +260,7 @@ class LentPlacesTest {
                 return d + h
             }
             pub mk: () List<Int32> {
-                return List<Int32> { values = [1] }
+                return List<Int32> { values = @arrOf(1) }
             }
             """,
         )
@@ -296,7 +296,7 @@ class LentPlacesTest {
                     x = v
                 }
                 pub g: () Void {
-                    mut xs: List<Int32> = List<Int32> { values = [1] }
+                    mut xs: List<Int32> = List<Int32> { values = @arrOf(1) }
                     mut ys: List<List<Int32>> = List<List<Int32>> { }
                     mut mm: Maybe<List<Int32>> = null
                     $body

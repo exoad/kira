@@ -158,7 +158,7 @@ pub main: () Int32 {
     t.check(httpGet(url + "/missing", 5000).value.status == 404, "and a 404 without one, Python's error page")
     t.checkStr(bodyOf(httpGet(url + "/drop", 5000)), "none: Remote end closed connection without response", "a status of 0 answers nothing")
     t.checkStr(bodyOf(httpPost(url + "/echo", "hi".bytes(), "text/plain", 5000)), "200 POST /echo '127.0.0.1:${port}' 2: hi", "a POST's body reaches the handler")
-    one: List<UInt8> = [65]
+    one: List<UInt8> = @listOf(65)
     t.checkStr(bodyOf(httpPost(url + "/echo", one, "text/plain", 5000)), "200 POST /echo '127.0.0.1:${port}' 1: A", "one byte too")
     t.check(!s.serve() && httpError() == "the server is serving", "a second serve while it serves is false")
     s.shutdown()

@@ -488,7 +488,7 @@ class TyperBodyModelTest {
                 a: Json = Json.of(n)
                 b: Json = Json.of(x)
                 c: Json = Json.of(null)
-                d: Json = Json.of([1, 2])
+                d: Json = Json.of(@listOf(1, 2))
                 e: Json = Json { }
                 f: Json = Json.make()
             }

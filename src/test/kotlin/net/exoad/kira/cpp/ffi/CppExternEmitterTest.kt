@@ -350,7 +350,7 @@ class CppExternEmitterTest {
                 mut v: Float32 = 0.0
                 moved: Bool = sliderFloat("throttle", mut v, 0.0, 1.0)
                 drawList().addLine(7)
-                mut bytes: List<UInt8> = List<UInt8> { values = [1, 2, 3, 4] }
+                mut bytes: List<UInt8> = List<UInt8> { values = @arrOf(1, 2, 3, 4) }
                 fill(bytes.view(), 4)
                 return hypot(3, 4) + cOnly(1)
             }
@@ -611,7 +611,7 @@ class CppExternEmitterTest {
 
             pub GREETING: Str = "hi"
             pub mut TITLE: Str = "t"
-            pub mut NAMES: List<Str> = List<Str> { values = ["n"] }
+            pub mut NAMES: List<Str> = List<Str> { values = @arrOf("n") }
 
             show: (label: Str, version: CStr) Void {
                 text(version)
@@ -759,7 +759,7 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "probe::nameOf", header = "probe.hxx") nameOf: (i: Int32) Str;
             pub @_extern(cpp = "probe::fillFrom", header = "probe.hxx") fillFrom: (s: Str, mut buf: Unsafe<UInt8>) Void;
             cat: () Void {
-                mut b: List<UInt8> = List<UInt8> { values = [0, 0, 0, 0] }
+                mut b: List<UInt8> = List<UInt8> { values = @arrOf(0, 0, 0, 0) }
                 fillFrom(nameOf(1), b.view())
             }
             """,
@@ -848,8 +848,8 @@ class CppExternEmitterTest {
                 pub mut n: Int32 = 0
             }
             pub mut GS: Str = "hi"
-            pub mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
-            pub mut GSTRS: List<Str> = List<Str> { values = ["hi"] }
+            pub mut GL: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+            pub mut GSTRS: List<Str> = List<Str> { values = @arrOf("hi") }
             pub mut GP: Pt = Pt { n = 1 }
             pub GREETING: Str = "hi"
             inList: (fs: List<Fx<Tuple0, Void>>) Int32 {
@@ -920,7 +920,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::sumP", header = "probe.hxx") sumP: (p: Unsafe<Int32>, n: Size) Int32;
             cat: () Int32 {
-                ys: List<Int32> = List<Int32> { values = [1, 2] }
+                ys: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
                 return sumP(ys, ys.size())
             }
             """
@@ -939,7 +939,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::sumP", header = "probe.hxx") sumP: (p: Unsafe<Int32>, n: Size) Int32;
             cat: () Int32 {
-                xs: Arr<Int32, 4> = [1, 2, 3, 4]
+                xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
                 return sumP(xs, 4)
             }
             """
@@ -1016,8 +1016,8 @@ class CppExternEmitterTest {
         val body = """
             pub peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
             cat: () Int32 {
-                xs: List<Int32> = List<Int32> { values = [1, 2] }
-                mut ys: List<Int32> = List<Int32> { values = [3, 4] }
+                xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
+                mut ys: List<Int32> = List<Int32> { values = @arrOf(3, 4) }
                 return peek(xs.view(), ys.view())
             }
         """
@@ -1043,8 +1043,8 @@ class CppExternEmitterTest {
             """
             peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
             cat: () Int32 {
-                xs: List<Int32> = List<Int32> { values = [1, 2] }
-                mut ys: List<Int32> = List<Int32> { values = [3, 4] }
+                xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
+                mut ys: List<Int32> = List<Int32> { values = @arrOf(3, 4) }
                 return peek(xs.view(), ys.view())
             }
             """
@@ -1255,9 +1255,9 @@ class CppExternEmitterTest {
         val locals = codes(
             """
             cat: () Int32 {
-                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
-                mut arr: Arr<Int32, 3> = [1, 2, 3]
-                ys: List<Int32> = List<Int32> { values = [4, 5, 6] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+                mut arr: Arr<Int32, 3> = @arrOf(1, 2, 3)
+                ys: List<Int32> = List<Int32> { values = @arrOf(4, 5, 6) }
                 fillP(xs.view(), xs.size(), 7)
                 fillP(arr.view(), 3, 1)
                 n: Int32 = setFirst(xs.view(), 9)
@@ -1269,7 +1269,7 @@ class CppExternEmitterTest {
         val c = callsOf(
             decls + "\n" + """
             cat: () Void {
-                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
                 fillP(xs.view(), xs.size(), 7)
             }
             """.trimIndent()
@@ -1278,7 +1278,7 @@ class CppExternEmitterTest {
 
         val shared = codes(
             """
-            mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
+            mut gl: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
             cat: () Void {
                 fillP(gl.view(), 3, 7)
             }
@@ -1289,7 +1289,7 @@ class CppExternEmitterTest {
         val capturedIntoUnsafe = codes(
             """
             cat: () Void {
-                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
                 run(() Void { fillP(xs.view(), 3, 0) })
             }
             """
@@ -1298,7 +1298,7 @@ class CppExternEmitterTest {
         val capturedIntoMutView = codes(
             """
             cat: () Void {
-                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
                 run(() Void { zero(xs.view().from(1)) })
             }
             """
@@ -1308,9 +1308,9 @@ class CppExternEmitterTest {
         val reads = codes(
             """
             cat: () Void {
-                mut xs: List<Int32> = List<Int32> { values = [1, 2, 3] }
+                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
                 run(() Void {
-                    mut own: List<Int32> = List<Int32> { values = [1] }
+                    mut own: List<Int32> = List<Int32> { values = @arrOf(1) }
                     fillP(own.view(), 1, 0)
                     trace(peek(xs.view(), own.view()))
                 })

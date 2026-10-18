@@ -608,7 +608,7 @@ class PyEmitterTest {
 
             pub Doc: Any {
                 pub body: Json
-                pub mut items: List<Json> = []
+                pub mut items: List<Json> = @listOf()
             }
 
             pub build: (t: Str, x: Float64, n: Int64, m: Maybe<Float64>, s: Maybe<Str>) Str {
@@ -985,9 +985,9 @@ class PyEmitterTest {
         val py = python(
             """
             A: Arr<Int32, 2> = B
-            B: Arr<Int32, 2> = [7, 8]
+            B: Arr<Int32, 2> = @arrOf(7, 8)
             mut k: Arr<UInt8, 2> = KEY
-            KEY: Arr<UInt8, 2> = [0xAB, 0xCD]
+            KEY: Arr<UInt8, 2> = @arrOf(0xAB, 0xCD)
 
             total: (xs: Arr<Int32, 2>) Int32 {
                 return xs[0] + xs[1]
@@ -1196,9 +1196,9 @@ class PyEmitterTest {
             }
 
             f: (xs: List<UInt8>, a: Arr<UInt8>) List<UInt8> {
-                mut out: List<UInt8> = [0xFF, 0xD8]
-                mut one: Arr<UInt8> = [7]
-                mut ints: List<Int32> = [1, 2]
+                mut out: List<UInt8> = @listOf(0xFF, 0xD8)
+                mut one: Arr<UInt8> = @arrOf(7)
+                mut ints: List<Int32> = @listOf(1, 2)
                 mut p: Cmd = Cmd { }
                 p[1] = 3
                 mut copy: List<UInt8> = List<UInt8> { values = a }
@@ -1251,7 +1251,7 @@ class PyEmitterTest {
                 mut xs: List<UInt8> = List<UInt8> { }
                 fill(xs.view(), 1)
                 fill(xs.from(2), 1)
-                ints: List<Int32> = [1, 2]
+                ints: List<Int32> = @listOf(1, 2)
                 return sum(xs) + sum(xs.slice(0, 2)) + readU32Le(xs, 0) + (readF64Le(xs.from(1), 0) as UInt32)
             }
             """
@@ -1316,7 +1316,7 @@ class PyEmitterTest {
             }
 
             f: () Int32 {
-                mut xs: List<Int32> = [1, 2, 3]
+                mut xs: List<Int32> = @listOf(1, 2, 3)
                 return at(xs.from(1), 0) + at(xs, 2)
             }
             """
@@ -1513,7 +1513,7 @@ class PyEmitterTest {
     fun aDefaultIsTheDefsOwnWhenItFoldsAndAPubFieldIsAKeywordOfInit() {
         val py = python(
             """
-            pub ROW: List<Int32> = [1, 2]
+            pub ROW: List<Int32> = @listOf(1, 2)
 
             Knob: Any {
                 pub name: Str
@@ -1812,7 +1812,7 @@ class PyEmitterTest {
         refused(
             """
             f: () Void {
-                mut xs: List<Int32> = [1, 2, 3]
+                mut xs: List<Int32> = @listOf(1, 2, 3)
                 xs.from(1).set(0, 5)
             }
             """,
@@ -2682,7 +2682,7 @@ class PyEmitterTest {
             }
 
             g: () Int32 {
-                return each(["a"], size)
+                return each(@listOf("a"), size)
             }
             """,
             "fxarg",
@@ -2737,7 +2737,7 @@ class PyEmitterTest {
                 hits: Atomic<Int32> = Atomic<Int32> { value = 0 }
                 tally: Mutex<Tally> = Mutex<Tally> { value = Tally { } }
                 q: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
-                mut row: List<Int32> = [1]
+                mut row: List<Int32> = @listOf(1)
                 t: Thread = spawn("w", () Void {
                     hits.add(1)
                     q.push(row)
@@ -2835,7 +2835,7 @@ class PyEmitterTest {
                 t: Suite = Suite { title = name + "!" }
                 r: Runner = Runner { t }
                 both(r.t, 3)
-                kept: List<Suite> = [t, Suite { "other" }]
+                kept: List<Suite> = @listOf(t, Suite { "other" })
                 return kept[0].finish()
             }
             """
@@ -2859,7 +2859,7 @@ class PyEmitterTest {
                 s: UdpSocket = UdpSocket {}
                 ok: Bool = s.bind("127.0.0.1", 0) && exists(path) && readFile(path).value.size() > 0
                 out: Maybe<FileOut> = openAppend(path)
-                ran: Maybe<Ran> = runCapture([path], null, 0)
+                ran: Maybe<Ran> = runCapture(@listOf(path), null, 0)
                 return ok && lastErrorKind() == "" && out.isSome() && ran.value.code == 0
             }
             """
@@ -2920,7 +2920,7 @@ class PyEmitterTest {
                 spec: ArgSpec = argSpec("tool", "what it does")
                 spec.whole("--n", 3, "how many")
                 b: List<UInt8> = "x".bytes()
-                return got.isSome() && httpPost(url, b, "text/plain", 0).isSome() && s.isSome() && spec.parse(["--n", "4"]).isSet("--n")
+                return got.isSome() && httpPost(url, b, "text/plain", 0).isSome() && s.isSome() && spec.parse(@listOf("--n", "4")).isSet("--n")
             }
             """
         )
@@ -2987,7 +2987,7 @@ class PyEmitterTest {
                 mut e: Datagram = d
                 e.port = 2
                 r: Ready = Ready { events = POLL_READ }
-                xs: List<Ready> = [r]
+                xs: List<Ready> = @listOf(r)
                 ys: List<Ready> = xs
                 s: Seen = Seen { }
                 return e == d && ys[0] != r && s.last == Datagram { host = "h" }

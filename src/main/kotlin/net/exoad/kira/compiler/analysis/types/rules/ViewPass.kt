@@ -53,7 +53,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
@@ -71,7 +71,7 @@ import java.util.IdentityHashMap
  *
  * - `rules.view.type` (1.2): a type that holds a second-class type, where it is written or
  *   inferred: a global, a field, a `for` variable, a `mut` parameter, a type argument of any
- *   container, `Maybe`, tuple, `Ref` or user generic class, a construction, an array literal.
+ *   container, `Maybe`, tuple, `Ref` or user generic class, a construction, a builder.
  * - `rules.view.local` (2.1): a local whose type is second-class.
  * - `rules.view.generic` (1.3): a generic function instantiated with a second-class `T` that
  *   returns a `T`, stores one, or passes it to a function that does (a fixpoint).
@@ -397,7 +397,7 @@ internal class ViewPass : RulePass {
 
         class Range(val loop: ForIterationExpr) : Ctx
 
-        /** Kept in a slot of type [slot]: a local's, global's or field's initializer, an assignment, a construction's field, an array literal's element; [sym] the declaration when there is one. */
+        /** Kept in a slot of type [slot]: a local's, global's or field's initializer, an assignment, a construction's field, a builder's element; [sym] the declaration when there is one. */
         class Kept(val slot: KType?, val sym: Symbol?, val what: String) : Ctx
 
         /** A parameter's default, bound to the parameter of type [slot]. */
@@ -635,10 +635,10 @@ internal class ViewPass : RulePass {
                             "builds a ${t.display()}")
                     }
                 }
-                is ArrayLiteral -> if (n !in covered) {
+                is BuilderExpr -> if (n !in covered) {
                     val t = model.types[n] ?: return
                     c.misplaced(t, false, sc)?.let { held ->
-                        report(n, TYPE, c.typeMessage("This array literal", t, held, "keep the owners, and form each view where it is passed"), "builds a ${t.display()}")
+                        report(n, TYPE, c.typeMessage("This builder", t, held, "keep the owners, and form each view where it is passed"), "builds a ${t.display()}")
                     }
                 }
                 is FunctionCallExpr -> generic(n)
@@ -667,7 +667,7 @@ internal class ViewPass : RulePass {
             }
             if (refusedHere) {
                 refuse(sym)
-                if (value is ObjectInitExpr || value is ArrayLiteral) {
+                if (value is ObjectInitExpr || value is BuilderExpr) {
                     covered.add(value)
                 }
             }
@@ -737,7 +737,7 @@ internal class ViewPass : RulePass {
                 is AssignmentExpr -> if (p.value === e) Ctx.Kept(model.types[p.target] ?: (model.refs[p.target] as? LocalSymbol)?.type, model.refs[p.target], "'${p.target.value}'") else Ctx.Other("an assignment")
                 is PlaceAssignmentExpr -> if (p.value === e) Ctx.Kept(model.types[p.target], null, "'${KiraUnparser.text(p.target)}'") else Ctx.Other("an assignment")
                 is ObjectInitExpr -> constructionContext(p, e)
-                is ArrayLiteral -> Ctx.Kept(model.types[p], null, "an array literal")
+                is BuilderExpr -> Ctx.Kept(model.types[p], null, "a builder")
                 is FunctionDeclParameterExpr -> if (p.defaultValue === e) Ctx.Default((model.declSyms[p] as? ParamSymbol)?.type) else Ctx.Other("a parameter")
                 is Statement -> {
                     val g = parent[p]
