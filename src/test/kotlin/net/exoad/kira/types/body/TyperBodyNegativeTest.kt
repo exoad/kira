@@ -201,6 +201,15 @@ class TyperBodyNegativeTest {
                 "pub class Leaf: Base {\n    pub m: Int32 = 0\n}\npub K: Leaf = Leaf { }",
         )
         assertEquals(listOf("types.const.not-constant"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
+        val r = snippet("pub class D {\n    pub n: Int32 = 0\n\n    finally {\n        trace(1)\n    }\n}\npub K: D = D { }")
+        assertEquals(listOf("types.const.not-constant"), r.diagnostics.map { it.code }, TyperTestSupport.render(r))
+    }
+
+    @Test
+    fun aRadixLiteralPastInt64IsItsBitsUnlessSigned() {
+        TyperTestSupport.expectNoErrors(snippet("pub A: UInt64 = 0xFFFFFFFFFFFFFFFF\npub B: Int64 = 0xFFFFFFFFFFFFFFFF"))
+        val q = snippet("pub F: Float64 = 0xFFFFFFFFFFFFFFFF")
+        assertEquals(listOf("types.literal.range"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
     }
 
     @Test

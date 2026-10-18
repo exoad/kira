@@ -1,6 +1,7 @@
 package net.exoad.kira.py
 
 import net.exoad.kira.Public
+import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.backend.codegen.py.PyBinding
 import net.exoad.kira.compiler.backend.codegen.py.PyBindingTable
 import net.exoad.kira.compiler.backend.codegen.py.PyModuleEmitter
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -2355,6 +2357,80 @@ class PyEmitterTest {
         )
     }
 
+
+    @Test
+    fun aParameterIsNamedByItsOwnModuleAtEveryCall() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "lib:span" to """
+                pub LIMIT: List<Int32> = List<Int32> { }
+
+                pub fx g: (from: Int32, count: List<Int32> = LIMIT) Int32 {
+                    return from
+                }
+                """,
+            "app:main" to """
+                use "lib:span"
+
+                pub fx count: () Int32 {
+                    return 1
+                }
+
+                fx f: () Int32 {
+                    return g(from = count()) + g(1)
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("k_from=") && main.contains("count=") && !main.contains("k_count="), main)
+    }
+
+    @Test
+    fun aParameterNamedLikeItsModulesDeclarationIsRefused() {
+        refused(
+            """
+            pub fx helper: () Int32 {
+                return 1
+            }
+
+            pub fx span: (from: Int32, helper: Int32 = 2) Int32 {
+                return from + helper
+            }
+            """,
+            "a parameter named like the module's own 'helper'",
+        )
+    }
+
+    @Test
+    fun aLambdaLocalNamedSelfIsRenamedBesideTheCapturedThis() {
+        val py = python(
+            """
+            class C {
+                pub n: Int32 = 2
+
+                pub fx twice: () Int32 {
+                    return n * 2
+                }
+
+                pub fx run: () Int32 {
+                    f: Fx<Tuple0, Int32> = fx() Int32 {
+                        self: Int32 = twice()
+                        return self
+                    }
+                    return f()
+                }
+            }
+            """
+        )
+        assertTrue(py.contains("k_self = "), py)
+    }
+
+    @Test
+    fun aUnicodeEscapeIsFourHexDigitsOfACodePoint() {
+        listOf("\\u-001", "\\u+0e9", "\\u00", "\\u0000", "\\ud800").forEach { esc ->
+            assertFailsWith<DiagnosticsException>(esc) { PyTestSupport.emit("fx f: () Str {\n    return \"x${esc}y\"\n}") }
+        }
+    }
 
     // ---- programs of several modules ----------------------------------------------------------
 

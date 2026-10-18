@@ -2603,8 +2603,14 @@ def _k_check(v, spec, where, declared):
         if c is dict:
             return {_k_check(a, spec[1], where, declared): _k_check(b, spec[2], where, declared) for a, b in v.items()}
     elif k == "Z":
+        # A Python set has no order: Kira's comes back sorted where its values sort.
         if c is _k_builtins.set or c is _k_builtins.frozenset:
-            return dict.fromkeys([_k_check(x, spec[1], where, declared) for x in v])
+            items = [_k_check(x, spec[1], where, declared) for x in v]
+            try:
+                items.sort()
+            except _k_builtins.TypeError:
+                pass
+            return dict.fromkeys(items)
     elif k == "T":
         if c is _k_builtins.tuple and len(v) == len(spec) - 1:
             return _k_builtins.tuple([_k_check(x, s, where, declared) for x, s in _k_builtins.zip(v, spec[1:])])

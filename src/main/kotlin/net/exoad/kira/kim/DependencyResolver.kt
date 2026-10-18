@@ -3,6 +3,7 @@ package net.exoad.kira.kim
 import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
@@ -245,7 +246,7 @@ object DependencyResolver {
         return if (Files.exists(parentResolved)) parentResolved else null
     }
 
-    /** The .kira files under [path]; a directory [prune] names is never entered, and one that vanishes mid-walk is skipped. */
+    /** The .kira files under [path] (a linked file too); a directory [prune] names is never entered, one that vanishes mid-walk is skipped. */
     private fun scanKiraFiles(path: Path, prune: (Path) -> Boolean = { false }): List<String> {
         if (!Files.exists(path)) {
             return emptyList()
@@ -269,15 +270,17 @@ object DependencyResolver {
                 if (dir != path && prune(dir)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
 
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                if (attrs.isRegularFile && file.toString().endsWith(".kira")) {
+                if (file.toString().endsWith(".kira") && Files.isRegularFile(file)) {
                     entries.add(file.toAbsolutePath().toString())
                 }
                 return FileVisitResult.CONTINUE
             }
 
-            override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+            override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult =
+                if (exc is NoSuchFileException) FileVisitResult.CONTINUE else throw exc
 
-            override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult = FileVisitResult.CONTINUE
+            override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult =
+                if (exc == null || exc is NoSuchFileException) FileVisitResult.CONTINUE else throw exc
         })
         return entries.distinct().sorted()
     }

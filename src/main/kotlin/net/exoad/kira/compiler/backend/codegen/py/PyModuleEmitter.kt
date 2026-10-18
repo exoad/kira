@@ -326,7 +326,7 @@ class PyModuleEmitter(
         val frame = Frame(cls, fn)
         val params = fn.params.map { p ->
             val node: ASTNode = p.decl ?: at
-            checkLocal(p.name, node)
+            checkParam(p.name, node)
             checkType(p.type, node, "the parameter '${p.name}'")
             if (p.byRef && !byReference(p.type)) {
                 refuse(node, "the mut parameter '${p.name}': ${p.type.display()} (only a List, a Map, a struct or a class is passed by reference)")
@@ -335,7 +335,7 @@ class PyModuleEmitter(
                 refuse(node, "a new ${p.type.display()} assigned to the mut parameter '${p.name}' (Python cannot give the caller's variable another object)")
             }
             frame.scopes.first().add(p.name)
-            pyDefault(p)?.let { "${local(p.name)}=$it" } ?: local(p.name)
+            pyDefault(p)?.let { "${pyParam(p.name)}=$it" } ?: pyParam(p.name)
         }
         val head = "def ${pyName(fn)}(${(listOfNotNull(if (cls != null) "self" else null) + params).joinToString(", ")}):"
         val body = mutableListOf<String>()
@@ -500,7 +500,7 @@ class PyModuleEmitter(
         checkName(fn.name, at)
         externChecks(fn, at, "the extern '${fn.name}'")
         sidecarNames += fn.name to fn.params.size
-        val head = "def ${pyName(fn)}(${fn.params.joinToString(", ") { local(it.name) }}):"
+        val head = "def ${pyName(fn)}(${fn.params.joinToString(", ") { pyParam(it.name) }}):"
         return boundary(head, "_k_x.${fn.name}", fn, "$sidecarStem.${fn.name}", at)
     }
 
@@ -521,7 +521,7 @@ class PyModuleEmitter(
             if (out.isNotEmpty()) {
                 out += listOf("", "")
             }
-            val head = "def ${opaqueWrapper(c, m)}(${(listOf("_k_o") + m.params.map { local(it.name) }).joinToString(", ")}):"
+            val head = "def ${opaqueWrapper(c, m)}(${(listOf("_k_o") + m.params.map { pyParam(it.name) }).joinToString(", ")}):"
             out += boundary(head, "_k_o.${m.name}", m, "${c.name}.${m.name}", node)
         }
         return out
@@ -539,7 +539,7 @@ class PyModuleEmitter(
         }
         fn.params.forEach { p ->
             val node: ASTNode = p.decl ?: at
-            checkLocal(p.name, node)
+            checkParam(p.name, node)
             when {
                 p.default != null -> refuse(node, "a default on the parameter '${p.name}' of $what")
                 p.byRef -> refuse(node, "the mut parameter '${p.name}' of $what (Python writes only into a MutView<UInt8> it is lent)")
@@ -569,22 +569,22 @@ class PyModuleEmitter(
             when {
                 // The call is the Fx's owner while it runs: a throw from it on this thread reaches Kira's try (D76).
                 t is KType.Fn -> "_k_f$i".also {
-                    lends += "${call("_k_fx", local(p.name), fxSpecs(t, at), pyString("the Fx ${p.name} given to $where")).text} as $it"
+                    lends += "${call("_k_fx", pyParam(p.name), fxSpecs(t, at), pyString("the Fx ${p.name} given to $where")).text} as $it"
                 }
-                isView(t) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${local(p.name)}, ${if (magicName(t) == "MutView") "True" else "False"}) as $it" }
-                isJson(t) -> local(p.name)
-                isBytes(t) -> "bytes(${local(p.name)})"
-                isSet(t) -> "${helper("_k_builtins")}.set(${local(p.name)})"
-                isList(t) && element != null && !mayHold(element) -> "list(${local(p.name)})"
-                mayHold(t) -> call("_k_out", local(p.name)).text
-                else -> local(p.name)
+                isView(t) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${pyParam(p.name)}, ${if (magicName(t) == "MutView") "True" else "False"}) as $it" }
+                isJson(t) -> pyParam(p.name)
+                isBytes(t) -> "bytes(${pyParam(p.name)})"
+                isSet(t) -> "${helper("_k_builtins")}.set(${pyParam(p.name)})"
+                isList(t) && element != null && !mayHold(element) -> "list(${pyParam(p.name)})"
+                mayHold(t) -> call("_k_out", pyParam(p.name)).text
+                else -> pyParam(p.name)
             }
         }
         val called = "$callee(${args.joinToString(", ")})"
         val names = raisesOf(fn, at)
         // A Json goes as itself, so what Python wrote into it is checked as a result is.
         val written = fn.params.filter { isJson(it.type) }.map {
-            call("_k_check", local(it.name), "(\"J\",)", pyString("$where's argument ${it.name}"), "\"Json\"").text
+            call("_k_check", pyParam(it.name), "(\"J\",)", pyString("$where's argument ${it.name}"), "\"Json\"").text
         }
         val checked = { r: String -> "return ${call("_k_check", r, spec(fn.ret, at) ?: "None", pyString(where), pyString(fn.ret.display())).text}" }
         if (names.isEmpty() && lends.isEmpty() && written.isEmpty()) {
@@ -1254,7 +1254,6 @@ class PyModuleEmitter(
                 }
             }
         }
-        inner.scopes.first().addAll(names)
         val params = l.def.parameters.mapIndexed { i, p ->
             val name = p.name.value
             val sym = model.declSymbol(p) as? ParamSymbol
@@ -1482,7 +1481,7 @@ class PyModuleEmitter(
             }
             if (b.expr in named) {
                 sawNamed = true
-                parts += "${local(fn.params[k].name)}=$text"
+                parts += "${pyParam(fn.params[k].name)}=$text"
             } else {
                 if (sawNamed) {
                     refuse(b.expr, "a positional argument after a named one")
@@ -1493,7 +1492,7 @@ class PyModuleEmitter(
         rc.args.filterIsInstance<ArgBinding.Default>().forEach { d ->
             val value = d.param.default
             if (value != null && pyDefault(d.param) == null) {
-                parts += "${local(d.param.name)}=${wrap(asValue(value, f, Use.ARG, emptyList(), false), PyPrec.TERNARY)}"
+                parts += "${pyParam(d.param.name)}=${wrap(asValue(value, f, Use.ARG, emptyList(), false), PyPrec.TERNARY)}"
             }
         }
         return parts.joinToString(", ")
@@ -2196,9 +2195,19 @@ class PyModuleEmitter(
         PyNames.privateRefusal(name)?.let { refuse(at, "the name $it") }
     }
 
-    /** A local's Python name: one Python reserves, or a module declaration's, which it would hide from the whole function, is `k_<name>`. */
-    private fun local(name: String): String =
-        if (name in PyNames.KEYWORDS || name in PyNames.RESERVED || name in topNames) "k_$name" else name
+    /** A function's parameter may be named at a call in another module, so it takes no module declaration's name. */
+    private fun checkParam(name: String, at: ASTNode) {
+        checkLocal(name, at)
+        if (name in topNames) {
+            refuse(at, "a parameter named like the module's own '$name'")
+        }
+    }
+
+    /** A parameter's Python name, the same in every module: one Python reserves is `k_<name>`. */
+    private fun pyParam(name: String): String = if (name in PyNames.KEYWORDS || name in PyNames.RESERVED) "k_$name" else name
+
+    /** A local's Python name: a module declaration's, which it would hide from the whole function, is `k_<name>` too. */
+    private fun local(name: String): String = if (name in topNames) "k_$name" else pyParam(name)
 
     /** A Kira-written stdlib function is `_k_kira_math_clamp`: every module that calls one carries its own copy. */
     private fun pyName(sym: Symbol): String {

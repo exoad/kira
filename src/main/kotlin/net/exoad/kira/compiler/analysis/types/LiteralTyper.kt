@@ -40,8 +40,8 @@ internal class LiteralTyper(private val c: PhaseC) {
     /** [e] (negated when [negate]) as an integer literal under [hint]. [at] is where to report and record. */
     fun integer(e: IntegerLiteral, hint: KType?, negate: Boolean = false, at: Expr = e): KType {
         val prim = target(hint)?.takeIf { it.isInteger || it.isFloat } ?: Prim.INT32
-        // Only a radix literal past Int64 is negative here (0xFFFFFFFFFFFFFFFF is -1's bits): unsigned, it is its bits.
-        val bits = BigInteger.valueOf(e.value).let { if (it.signum() < 0 && prim.isInteger && !prim.signed) it.add(BigInteger.ONE.shiftLeft(64)) else it }
+        // Only a radix literal past Int64 is negative here (0xFFFFFFFFFFFFFFFF is -1's bits, as in C): any type but a signed one reads it unsigned.
+        val bits = BigInteger.valueOf(e.value).let { if (it.signum() < 0 && !(prim.isInteger && prim.signed)) it.add(BigInteger.ONE.shiftLeft(64)) else it }
         val value = if (negate) bits.negate() else bits
         if (prim.isFloat) {
             val limit = BigInteger.ONE.shiftLeft(if (prim == Prim.FLOAT32) 24 else 53)

@@ -1930,12 +1930,14 @@ class KiraParser(private val context: SourceContext) {
             }
             val next = raw.getOrNull(i + 1)
             if (next == 'u') {
-                // `\uXXXX`: one code point of the Basic Multilingual Plane, never half a surrogate pair.
-                val code = raw.substring(i + 2, minOf(i + 6, raw.length)).takeIf { it.length == 4 }?.toIntOrNull(16)
-                if (code == null || code in 0xD800..0xDFFF) {
+                // `\uXXXX`: four hex digits of a code point of the Basic Multilingual Plane, never half a
+                // surrogate pair, nor U+0000, which would end a C++ Str's text.
+                val hex = raw.substring(i + 2, minOf(i + 6, raw.length))
+                val code = hex.takeIf { it.length == 4 && it.all { h -> h in '0'..'9' || h.lowercaseChar() in 'a'..'f' } }?.toInt(16)
+                if (code == null || code == 0 || code in 0xD800..0xDFFF) {
                     Diagnostics.panic(
                         "KiraParser::parseStringLiteral",
-                        "The escape '\\u' in a string literal takes four hex digits of a code point outside D800..DFFF, as in \\u00e9.",
+                        "The escape '\\u' in a string literal takes four hex digits of a code point other than 0000 and D800..DFFF, as in \\u00e9.",
                         location = token.canonicalLocation,
                         selectorLength = raw.length + 2,
                         context = context
